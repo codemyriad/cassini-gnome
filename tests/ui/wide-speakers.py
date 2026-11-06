@@ -180,7 +180,15 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page_minimum <= 980, page_minimum
     assert minimum(page.speakers) <= 260, minimum(page.speakers)
     # Include an unbroken long name in a bound transcript row.
-    page.update(replace(many, turns=tuple(replace(turn, speaker=speakers[-1].id) for turn in turns)))
+    rebound_words = tuple(replace(word, speaker=speakers[-1].id) for word in many.words)
+    rebound = replace(many, words=rebound_words, turns=reading_turns(rebound_words))
+    page.update(rebound)
+    assert page.store.get_item(0).turn is rebound.turns[0]
+    until(
+        window,
+        lambda: 0 in page.bound and page.bound[0][0] is rebound.turns[0],
+        "Turn 0 rebound to the long speaker name",
+    )
     assert minimum(page) <= 980, minimum(page)
     dialog = ExportDialog(window, many)
     assert minimum(dialog.names) <= 360, minimum(dialog.names)

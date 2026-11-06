@@ -397,6 +397,9 @@ class BrowserService:
         )
         self.auto_record = False
         self.auto_record_revision = time.monotonic_ns()
+        # Explicit auto opt-in supersedes already admitted Stops, including
+        # saves whose publication/finished callback has not reached the broker.
+        self._superseded_user_stops = set()
         with contextlib.suppress(OSError, ValueError, AttributeError):
             self.auto_record = json.loads(self.config.read_text()).get("autoRecord") is True
         self.lock = threading.RLock()
@@ -428,6 +431,7 @@ class BrowserService:
         # The document changes a control packet reports, per reader thread:
         # applied to their captures once the broker's lock is released (#230).
         self._documents = threading.local()
+        self._capture_callbacks = threading.local()  # Resume refusal checkpoints also wait off this lock.
         self.capture_parent, self.tap_factory = capture_parent, tap_factory
         self.applications = {}
         self.application_pids = {}
@@ -523,15 +527,14 @@ class BrowserService:
             return
         if identity is not None:
             owner.call_identity = identity
-        owner.end_reason = owner.end_reason or reason
-        owner.request_stop()
+        owner.request_stop(reason=reason, user_stopped=self._stopped_identity(identity) and reason == "user")
         if capture_id not in self._cancel_capture_pending:
             self._cancel_capture_pending.add(capture_id)
             self.workers.submit(self._finish_cancelled_capture, capture_id, owner, reason)
 
     def _finish_cancelled_capture(self, capture_id, owner, reason):
         try:
-            owner.stop(reason=reason)
+            owner.stop(reason=reason, user_stopped=False)
         except (OSError, ValueError, TimeoutError):
             logging.getLogger(__name__).exception("Could not finish cancelled browser capture")
         finally:
@@ -561,7 +564,7 @@ class BrowserService:
         if capture is not None and capture not in owners:
             owners.append(capture)
         for owner in owners:
-            owner.stop(reason=reason)
+            owner.stop(reason=reason, user_stopped=metadata.get("user_stopped", False))
         return capture or (owners[-1] if owners else None)
 
     @staticmethod
@@ -596,7 +599,12 @@ class BrowserService:
                 if capture is not None:
                     # D58 #10 (R82 1b): the host's result code is the message.
                     code = packet.get("code")
-                    capture.refuse_resume(None, code if word(code) else None, request_id=request_id)
+                    refusal = (capture, code if word(code) else None, request_id)
+                    pending = getattr(self._capture_callbacks, "pending", None)
+                    if pending is not None:
+                        pending.append(refusal)
+                    else:
+                        capture.refuse_resume(None, refusal[1], request_id=request_id)
             return
         pending = browser.pending.get(request_id)
         metadata = pending or browser.commands.get(request_id)
@@ -929,7 +937,7 @@ class BrowserService:
 
     def _capture_changed(self, capture, event):
         if event == "error":
-            self.workers.submit(capture.stop, capture.error)
+            self.workers.submit(capture.stop, capture.error, user_stopped=False)
         elif event == "finished" and (capture.directory is not None or getattr(capture, "nothing_recorded", False)):
             # D58.1: a recording nothing ever opened into ends without a folder
             # at Stop; its tab must not stay "recording".
@@ -938,7 +946,10 @@ class BrowserService:
                 for (instance, tab), (capture_id, url) in self.call_captures.items():
                     if capture_id == capture.capture_id:
                         capture.call_identity = (instance, tab, url)
-                        if getattr(capture, "user_stopped", False):
+                        if (
+                            getattr(capture, "user_stopped", False)
+                            and capture.capture_id not in self._superseded_user_stops
+                        ):
                             self._store_stop((instance, tab), url)
                             if url is not None:
                                 self._cancel_call(self._logical_id((instance, tab, url)))
@@ -954,6 +965,7 @@ class BrowserService:
                 finished = [key for key, owner in self.captures.items() if owner.finished]
                 for key in finished[:-19]:
                     self.captures.pop(key, None)
+                    self._superseded_user_stops.discard(key)
             if capture.directory is not None:
                 self._remember_saved(str(capture.directory), capture.host.session.manifest["title"])
 
@@ -1134,7 +1146,7 @@ class BrowserService:
             return
         try:
             if problem or self.closed.is_set():
-                capture.stop(problem, reason="error" if problem else "appQuit")
+                capture.stop(problem, reason="error" if problem else "appQuit", user_stopped=False)
             else:
                 try:
                     capture.retire_transport_spans(transport.spans)
@@ -1161,6 +1173,12 @@ class BrowserService:
             self.auto_record = enabled
             self.auto_record_revision = max(self.auto_record_revision + 1, time.monotonic_ns())
             if enabled:
+                self._superseded_user_stops.intersection_update(self.captures)
+                self._superseded_user_stops.update(
+                    key
+                    for key, capture in self.captures.items()
+                    if getattr(capture, "stop_requested", None) is not None and capture.stop_requested.is_set()
+                )
                 self.stopped_calls.clear()
                 self._attempted_calls.clear()
                 for browser in self.browsers.values():
@@ -1268,12 +1286,12 @@ class BrowserService:
                 if not isinstance(item, dict) or type(item.get("tabId")) is not int:
                     continue
                 owner = self.captures.get(item.get("captureId"))
-                if owner is not None and not owner.finished and str(owner.directory) == item.get("path"):
+                if self._still_recording(owner) and str(owner.directory) == item.get("path"):
                     states.setdefault(item["tabId"], dict(item, recording=True))
                     browser.attempted.add(item["tabId"])
         for tab, old in previous.items():
             owner = self.captures.get(old.get("captureId"))
-            if owner is not None and not owner.finished and owner.browser_lost:
+            if self._still_recording(owner) and owner.browser_lost:
                 states.setdefault(tab, old)
             state = states.get(tab, {})
             capture_id = old.get("captureId")
@@ -1298,8 +1316,7 @@ class BrowserService:
                 if (
                     instance == browser.browser_instance
                     and tab in (browser.meetings.keys() | states.keys() | previous.keys())
-                    and owner is not None
-                    and not owner.finished
+                    and self._still_recording(owner)
                 ):
                     state = states.setdefault(
                         tab, dict(recording=True, tabId=tab, captureId=capture_id, path=str(owner.directory))
@@ -1378,7 +1395,7 @@ class BrowserService:
             if (
                 tab is None
                 or generation is None
-                or capture.finished
+                or not self._still_recording(capture)
                 or capture.directory is None
                 or key in self._cancelled_captures
                 or browser.meetings.get(tab, {}).get("callGeneration") != generation
@@ -1406,6 +1423,21 @@ class BrowserService:
         retired = owner.observe_document(document, navigating=page == "navigating", present=page == "present")
         if retired:
             logging.getLogger(__name__).debug("Retired %d spans of a gone document from the PCM watchdog", retired)
+
+    @staticmethod
+    def _still_recording(capture):
+        """An owned capture still recording, not one stopped and only saving.
+
+        A stopped managed capture publishes in the background (stopping, not
+        finished), as BrowserCapture.snapshot reports: it must not be shown
+        or treated as recording its call (#237).
+        """
+        return (
+            capture is not None
+            and not capture.finished
+            and not getattr(capture, "stopping", False)
+            and not (getattr(capture, "stop_requested", None) is not None and capture.stop_requested.is_set())
+        )
 
     def _generation_recording(self, tab, meeting, *, active=False):
         """Whether an unfinished capture already records this row's call.
@@ -1487,14 +1519,20 @@ class BrowserService:
 
     def update(self, browser, packet):
         self._documents.pending = documents = []
+        self._capture_callbacks.pending = callbacks = []
         try:
             self._update(browser, packet)
         finally:
             # In report order, on this peer's reader thread, outside the
             # broker's lock: they may wait for a stalled capture lock (#230).
             self._documents.pending = None
-            for owner, page, document in documents:
-                self._observe_document(owner, page, document)
+            self._capture_callbacks.pending = None
+            try:
+                for owner, page, document in documents:
+                    self._observe_document(owner, page, document)
+            finally:
+                for capture, code, request_id in callbacks:
+                    capture.refuse_resume(None, code, request_id=request_id)
         self.policy()
 
     def _update(self, browser, packet):
@@ -1569,12 +1607,7 @@ class BrowserService:
                 if browser.browser_instance is not None:
                     for (instance, tab), (capture_id, _url) in self.call_captures.items():
                         owner = self.captures.get(capture_id)
-                        if (
-                            instance == browser.browser_instance
-                            and tab in meetings
-                            and owner is not None
-                            and not owner.finished
-                        ):
+                        if instance == browser.browser_instance and tab in meetings and self._still_recording(owner):
                             browser.states.setdefault(
                                 tab, dict(recording=True, tabId=tab, captureId=capture_id, path=str(owner.directory))
                             )
@@ -1692,9 +1725,12 @@ class BrowserService:
                     )
                 if identity is not None:
                     self._cancel_call(self._logical_id(identity))
-            if user:
-                self._remember_capture_stop(capture)
-            capture.stop(reason=reason)
+                capture.request_stop(reason=reason, user_stopped=user and reason == "user")
+                if user:
+                    # In the same admission: an opt-in queued on the lock then
+                    # orders after the whole Stop intent and supersedes it.
+                    self._remember_capture_stop(capture)
+            capture.stop(reason=reason, user_stopped=user and reason == "user")
             return self.snapshot()
         with self.lock:
             expected = self._expected_call(identifier)
@@ -1710,6 +1746,8 @@ class BrowserService:
             recovering = bool(self._pending_calls.get(logical))
             if action == "stop" and not preserve_capture:
                 self._cancel_call(logical)
+                if local is not None:
+                    local.request_stop(reason=reason, user_stopped=user and reason == "user")
                 if user and expected is not None:
                     lineage = self._call_lineage.get((expected[0], expected[1]))
                     if (
@@ -1721,7 +1759,7 @@ class BrowserService:
                     ):
                         self._store_stop((expected[0], expected[1]), expected[2])
         if local is not None:
-            local.stop(reason=reason)
+            local.stop(reason=reason, user_stopped=user and reason == "user")
         try:
             identifier = self._resolve_call(
                 identifier, wait=action == "start", deadline=deadline, for_stop=action == "stop"
@@ -1770,8 +1808,7 @@ class BrowserService:
             if action == "stop" and user and expected is None:
                 self._remember_stop(browser, tab, True)
                 if capture is not None and not preserve_capture:
-                    capture.end_reason = capture.end_reason or reason
-                    capture.request_stop()
+                    capture.request_stop(reason=reason, user_stopped=user and reason == "user")
             if action == "start" and any(
                 p.get("action") == "start" for p in self._pending_calls.get(logical, {}).values()
             ):
@@ -1816,6 +1853,7 @@ class BrowserService:
                     serial=browser.command_serial,
                     expected=expected,
                     reason=reason,
+                    user_stopped=user and reason == "user",
                     preserve_capture=preserve_capture,
                     captures=set(),
                     captureId=browser.states.get(tab, {}).get("captureId"),
@@ -1840,14 +1878,13 @@ class BrowserService:
                 if capture is not None:
                     pending["captures"].add(capture.capture_id)
                 if capture is not None and action == "stop" and not preserve_capture:
-                    capture.end_reason = capture.end_reason or reason
-                    capture.request_stop()
+                    capture.request_stop(reason=reason, user_stopped=user and reason == "user")
         if joining is not None:
             if capture is not None and not preserve_capture:
                 # Local save is authoritative. The existing browser Stop may
                 # still be waiting for an unreachable page; do not keep the
                 # user's Stop waiting after their audio is safely saved.
-                capture.stop(reason=reason)
+                capture.stop(reason=reason, user_stopped=user and reason == "user")
                 return dict(self.snapshot(), stoppedPath=str(capture.directory))
             if not joining["event"].wait(min(self.command_timeout, max(0, deadline - self.deadline_clock()))):
                 raise TimeoutError("The browser did not finish the recording command")
@@ -1862,7 +1899,7 @@ class BrowserService:
             )
         try:
             if capture is not None and action == "stop" and not preserve_capture:
-                capture.stop(reason=reason)
+                capture.stop(reason=reason, user_stopped=user and reason == "user")
             packet = dict(type="command", requestId=request_id, action=action, tabId=tab, mode="tracks")
             if independent:
                 packet.update(independent=True, captureLocal=False, microphone=microphone)
@@ -2223,7 +2260,7 @@ class BrowserService:
                 session_clock=session_clock,
             )
         except Exception as error:
-            capture.stop(str(error))
+            capture.stop(str(error), user_stopped=False)
             with self.lock:
                 if capture.directory is None:
                     self.captures.pop(capture_id, None)
@@ -2234,7 +2271,7 @@ class BrowserService:
                     browser.states[tab] = dict(recording=False, tabId=tab)
             raise
         if cancelled is not None and cancelled.is_set() or deadline is not None and self.deadline_clock() >= deadline:
-            capture.stop(reason="user")
+            capture.stop(reason="user", user_stopped=False)
             raise ValueError("Recording start was cancelled")
         return capture.snapshot()
 
@@ -2315,8 +2352,7 @@ class BrowserService:
                 for _key, capture in captures:
                     if quitting_pid is None:
                         self._remember_capture_stop(capture)
-                    capture.end_reason = capture.end_reason or reason
-                    capture.request_stop()
+                    capture.request_stop(reason=reason, user_stopped=quitting_pid is None and reason == "user")
             snapshot = self.snapshot()
             paths = [
                 s["path"]
@@ -2335,7 +2371,13 @@ class BrowserService:
                     )
             # Save native-owned audio before waiting for any browser acknowledgement.
             jobs = [
-                ("capture:" + key, lambda capture=capture: capture.stop(reason=reason)) for key, capture in captures
+                (
+                    "capture:" + key,
+                    lambda capture=capture: capture.stop(
+                        reason=reason, user_stopped=quitting_pid is None and reason == "user"
+                    ),
+                )
+                for key, capture in captures
             ]
             jobs.extend(
                 (
@@ -2637,7 +2679,9 @@ class BrowserService:
                             and self._meeting_id(browser, tab) not in self._scheduled_calls
                             and self._auto_start_ready(browser, meeting)
                             and not browser.states.get(tab, {}).get("recording")
-                            and not self._generation_recording(tab, meeting)
+                            # A capture the user stopped, only saving, does not block
+                            # a start the policy is otherwise allowed (#237).
+                            and not self._generation_recording(tab, meeting, active=True)
                         ):
                             browser.attempted.add(tab)
                             browser.scheduled.add(tab)
@@ -2685,7 +2729,7 @@ class BrowserService:
             else:
                 # Save before waiting for a potentially unreachable extension.
                 reason = action.partition(":")[2] or "user"
-                capture.stop(reason=reason)
+                capture.stop(reason=reason, user_stopped=False)
                 if identifier is not None:
                     self.command(identifier, "stop", reason=reason, expected_capture=key)
         except (OSError, ValueError, TimeoutError):
@@ -2833,7 +2877,7 @@ class BrowserService:
                         "call-evidence-v1" in browser.capabilities
                         and not self._auto_start_ready(browser, meeting)
                         # The call may have gained a capture while this task waited.
-                        or self._generation_recording(int(raw_tab), meeting)
+                        or self._generation_recording(int(raw_tab), meeting, active=True)
                     ):
                         # Evidence may disappear while this task waits for a worker.
                         if browser is not None:
@@ -3253,7 +3297,7 @@ class BrowserService:
                     for capture in captures:
                         if capture.directory is not None and not capture.finished:
                             try:
-                                capture.stop("Recording service closed")
+                                capture.stop("Recording service closed", user_stopped=False)
                             except (OSError, ValueError, TimeoutError):
                                 logging.getLogger(__name__).exception("Could not finish service-owned capture")
                     self.workers.shutdown(wait=False, cancel_futures=True)

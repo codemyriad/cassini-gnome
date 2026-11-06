@@ -51,11 +51,11 @@ class CaptureRecord:
     def discover(self, sources, *, expected=lambda _kind: True, admitted=False):
         """Merge discovered sources. `admitted`: the summary of the Stop that
         sealed the identities (admit_stop()), which alone may add identities
-        once they are sealed."""
+        once they are sealed. Later nonempty summaries cannot rewrite existing sources either."""
         # Validate the entire request before changing the durable accounting.
         proposed = self._proposed(sources, expected)
         with self._identities:
-            if self.sealed and not admitted and proposed.seen.keys() - self.seen.keys():
+            if self.sealed and not admitted and sources:
                 raise ProtocolError("state", "No active recording")  # It came after an admitted Stop.
             self.seen = proposed.seen
 

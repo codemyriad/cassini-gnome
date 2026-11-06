@@ -717,22 +717,30 @@ class CassiniApplication(Adw.Application):
         """Whether a browser recording runs: both caches project the broker's
         state the same way, "recording" only, so whichever answered last a
         capture that only saves reads the same (it is not one)."""
-        from .capture_activity import standing_broker_caches
+        from pathlib import Path
+
+        from .capture_activity import retired_captures, standing_broker_caches
+        from .library import meeting_id
 
         app_stands, sources = standing_broker_caches(self)
+        retired = retired_captures(self)
         snapshots = [self, *self.get_windows()] if app_stands else []
         return any(
-            s.get("recording")
+            s.get("recording") and not (isinstance(s.get("path"), str) and meeting_id(Path(s["path"])) in retired)
             for target in snapshots
             for s in getattr(target, "_browser_snapshot", {}).get("statuses", [])
-        ) or any(state == "recording" for source in sources for state in (source.snapshot or {}).values())
+        ) or any(
+            state == "recording" and identifier not in retired
+            for source in sources
+            for identifier, state in (source.snapshot or {}).items()
+        )
 
     def recording_to_stop(self):
         """What Record stops, named: a recording that runs or starts. A browser
         capture that only saves (stopped, still publishing) is not one: Record
         then starts a new recording (D18) instead of a silent Stop, while the
         top bar already shows the app as ready. A test recording never counts."""
-        from .capture_activity import standing_broker_caches
+        from .capture_activity import retired_captures, standing_broker_caches
         from .capture_guard import recorder_busy
         from .library import meeting_id
 
@@ -745,9 +753,20 @@ class CassiniApplication(Adw.Application):
         statuses = []
         for target in [self, *self.get_windows()] if app_stands else ():
             statuses.extend(getattr(target, "_browser_snapshot", {}).get("statuses", []))
+        # A stopped or finished phase in any cache wins over "recording" in
+        # another, whatever order their replies were received in (#237).
+        retired = retired_captures(self)
+
+        def known_retired(status):
+            path = status.get("path")
+            return isinstance(path, str) and meeting_id(Path(path)) in retired
+
         # The broker's per-capture phase is the one start_all uses: a capture
         # that is stopping never blocks a new session.
-        if any(s.get("phase") == "recording" if "phase" in s else s.get("recording") for s in statuses):
+        if any(
+            (s.get("phase") == "recording" if "phase" in s else s.get("recording")) and not known_retired(s)
+            for s in statuses
+        ):
             reasons.append("browser")
         # The broker's status for a capture wins over the Library's 1 s
         # BrowserActivity cache of it: a cached "recording" for a capture the
@@ -755,7 +774,7 @@ class CassiniApplication(Adw.Application):
         reported = {meeting_id(Path(s["path"])) for s in statuses if isinstance(s.get("path"), str)}
         for source in sources:
             for identifier, state in (source.snapshot or {}).items():
-                if state == "recording" and identifier not in reported:
+                if state == "recording" and identifier not in reported and identifier not in retired:
                     reasons.append("browser activity")
         if any(recorder_busy(r) for r in self.native_captures.values()):
             reasons.append("native")
