@@ -134,7 +134,37 @@ def child():
             record_event("speaker")
             window.back_to_library()
             window.activate_action("win.search", None)
-            window.search_page.entry.set_text("budget")
+            page = window.search_page
+            complete = page._complete
+
+            def completed(*args):
+                result = complete(*args)
+                if not page.pending and page.entry.get_text() == "budget" and page.hits:
+                    record_event("search-ready")
+                return result
+
+            page._complete = completed
+            page.entry.set_text("budget")
+
+        def command(_source, _condition):
+            assert sys.stdin.readline().strip() == "refresh"
+            page = window.search_page
+            # Keep the old GTK object alive: an AT client can retain its exported
+            # accessible after removal, rather than getting an unknown-object error.
+            page._probe_play = page.play
+            complete = page._complete
+
+            def refreshed(*args):
+                result = complete(*args)
+                if not page.pending:
+                    record_event("search-refreshed")
+                return result
+
+            page._complete = refreshed
+            page.request()
+            return GLib.SOURCE_CONTINUE
+
+        GLib.io_add_watch(sys.stdin, GLib.IO_IN, command)
 
         # The accessibility client drives the real widgets/actions. Capture
         # and name-writing callbacks are observed without opening any devices.
@@ -142,7 +172,7 @@ def child():
         window.stop_meeting = stop
         app.recording_settings.set_boolean("skip-record-first", False)
         record_event("ready")
-        until(lambda: events[-1] == "speaker" and window.player.playing and window.player.position >= 4000)
+        until(lambda: "speaker" in events and window.player.playing and window.player.position >= 4000)
         record_event("search-play")
         window.player.pause()
         app.on_quit()
@@ -185,7 +215,17 @@ def parent():
             if "accessible-buttons" in app.get_name().lower():
                 yield from walk(app)
 
-    def activate(name, expected_event):
+    def wait_event(expected_event):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            drain()
+            if OUTPUT.exists() and expected_event in json.loads(OUTPUT.read_text())["events"]:
+                return
+            assert process.poll() is None, f"GTK child exited before {expected_event}"
+            time.sleep(0.025)
+        raise AssertionError(f"App did not report {expected_event}")
+
+    def activate(name, expected_event, *, refresh_after_lookup=False):
         deadline = time.monotonic() + 10
         names = []
         while time.monotonic() < deadline:
@@ -198,15 +238,19 @@ def parent():
                 if target and target.get_state_set().contains(Atspi.StateType.SENSITIVE):
                     action = target.get_action_iface()
                     assert action and action.get_n_actions() > 0, f"No AT-SPI action for {name}"
-                    print(f"AT-SPI activating {name}", flush=True)
-                    assert action.do_action(0), f"AT-SPI could not activate {name}"
-                    print(f"AT-SPI dispatched {name}", flush=True)
                     break
             except GLib.Error:
                 pass  # A replaced page can invalidate its old accessible objects.
             time.sleep(0.025)
         else:
             raise AssertionError(f"No named AT-SPI button {name!r}; visible buttons: {names!r}")
+        if refresh_after_lookup:
+            process.stdin.write("refresh\n")
+            process.stdin.flush()
+            wait_event("search-refreshed")
+        print(f"AT-SPI activating {name}", flush=True)
+        assert action.do_action(0), f"AT-SPI could not activate {name}"
+        print(f"AT-SPI dispatched {name}", flush=True)
         if expected_event:
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
@@ -221,7 +265,7 @@ def parent():
     OUTPUT.unlink(missing_ok=True)
     log_path = OUTPUT.with_suffix(".gtk.log")
     with log_path.open("w") as log:
-        process = subprocess.Popen([sys.executable, __file__, "--child"], stdout=log, stderr=log)
+        process = subprocess.Popen([sys.executable, __file__, "--child"], stdin=subprocess.PIPE, text=True, stdout=log, stderr=log)
         try:
             deadline = time.monotonic() + 10
             while not OUTPUT.exists() and time.monotonic() < deadline:
@@ -234,7 +278,8 @@ def parent():
             activate("Playback speed, 1×", "speed-menu")
             activate("1.5×", "speed-changed")
             activate("Marta", "speaker")
-            activate("Play from 00:00:04", "search-play")
+            wait_event("search-ready")
+            activate("Play from 00:00:04", "search-play", refresh_after_lookup=True)
             assert process.wait(10) == 0
             assert not any(value in log_path.read_text() for value in ("Gtk-WARNING", "Gtk-CRITICAL"))
         finally:
