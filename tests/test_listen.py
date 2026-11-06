@@ -546,3 +546,117 @@ def test_folder_player_spans_cross_source_boundaries(tmp_path):
         assert player.position == 10900
     finally:
         player.shutdown()
+
+
+@pytest.mark.parametrize("speaker,index,previous", [("ben", 1, 3), ("ada", 5, 4), ("cleo", 0, None)])
+@pytest.mark.parametrize("restore", ["none", "recompute", "sample"])
+def test_previous_after_finished_chain_or_restored_listening(player, speaker, index, previous, restore):
+    controller = listening(player)
+    controller.start(speaker, index)
+    until(lambda: controller.finished, "the last listening span")
+    if restore == "recompute":
+        controller.set_turns(TURNS)
+    elif restore == "sample":
+        position = player.position
+        assert player.play_range(1000, 1500)
+        until(lambda: not player.playing, "dialog sample")
+        player.clear_range()
+        player.seek(position)
+    assert controller.finished
+    assert controller.step_target(-1) == previous
+    assert controller.step_target(1) is None
+
+
+@pytest.mark.parametrize("restore", ["recompute", "sample"])
+def test_next_in_lead_in_after_listening_restore(player, restore, monkeypatch):
+    controller = listening(player)
+    # Keep the pipeline paused while entering the lead-in; no wall-clock race
+    # with an unsynchronised sink that can render the whole turn immediately.
+    with monkeypatch.context() as patch:
+        patch.setattr(player, "play", lambda: None)
+        controller.start("ada", 0)
+    position = player.position
+    assert position < ADA[0].start_ms
+    if restore == "recompute":
+        controller.set_turns(TURNS)
+    else:
+        assert player.play_range(7000, 7500)
+        until(lambda: not player.playing, "dialog sample")
+        player.clear_range()
+        player.seek(position)
+    assert controller.step_target(1) == 1
+    assert controller.step_target(-1) is None
+
+
+def test_dialog_sample_ticks_do_not_advance_listening_chain(player):
+    controller = listening(player)
+    controller.start("ben", 1)
+    player.pause()
+    assert player.play_range(15000, 15500)
+    player.position = 15000
+    assert controller.index == 1
+    until(lambda: not player.playing, "dialog sample")
+    assert controller.index == 1
+
+
+@pytest.mark.parametrize("rate", [1.0, 1.5])
+def test_finished_span_is_disarmed_and_pause_keeps_exact_end(player, rate):
+    player.set_rate(rate)
+    done = []
+    player.play_span(1000, 1500, done.append)
+    until(lambda: done, "span EOS")
+    player.pause()
+    assert player.position == 1500
+    player.seek(500)
+    player.play()
+    until(lambda: player._at_end, "file EOS")
+    assert done == [1500]
+    assert player.position == DURATION_MS
+
+
+def test_rate_change_after_non_unit_speed_sink_eos_does_not_replay_tail(player):
+    player.set_rate(1.5)
+    done = []
+    player.play_span(1000, 1500, done.append)
+    bus = player._pipeline.get_bus()
+    eos = bus.timed_pop_filtered(10 * Gst.SECOND, Gst.MessageType.EOS)
+    assert eos is not None
+    before = tuple(player.rendered.buffers)
+    bus.post(eos)
+    player.set_rate(1.0)
+    until(lambda: done, "queued span EOS")
+    assert tuple(player.rendered.buffers) == before
+    assert done == [1500]
+
+
+@pytest.mark.parametrize("pause_pending", [False, True])
+def test_prepreroll_span_seeks_before_rendering_and_pause_keeps_pending_position(player, tmp_path, pause_pending):
+    path = tmp_path / "new.wav"
+    wav(path, 2)
+    player.load(path.as_uri())
+    with player.rendered.lock:
+        player.rendered.buffers.clear()
+        player.rendered.waiting = False  # Include any unwanted audio before the seek's flush.
+    done = []
+    assert player.play_span(1000, 3000, done.append)
+    assert player._pipeline.get_state(0)[2] != Gst.State.PLAYING
+    if pause_pending:
+        player.pause()
+        assert player.position == 1000
+        player.play()
+    until(lambda: done or player.errors, "preroll and span EOS")
+    assert not player.errors
+    assert done == [2000]
+    assert player.rendered.spans() == [(1000, 2000)]
+
+
+def test_speed_change_after_seeking_away_from_finished_span_applies_to_new_segment(player):
+    done = []
+    player.play_span(1000, 1500, done.append)
+    until(lambda: done, "span EOS")
+    player.seek(5000)
+    player.set_rate(1.5)
+    assert not player._stale_segment
+    player.play()
+    until(lambda: player._at_end, "file EOS")
+    assert done == [1500]
