@@ -550,3 +550,43 @@ def test_auto_opt_in_preserves_a_later_bound_user_stop(tmp_path, route):
     finally:
         service.workers.shutdown(wait=True)
         capture.stop()
+
+
+def test_auto_opt_in_racing_a_capture_stop_orders_after_its_whole_intent(tmp_path, monkeypatch):
+    """An opt-in that waits for the broker lock during a capture-ID Stop's
+    admission supersedes that Stop entirely: nothing recorded after the lock
+    is released may reinstate its suppression (codex finding 2 on #237)."""
+    taps = DrainingTaps()
+    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
+    tap, _ = record_live(capture, clock)
+    service, browser, identity, _logical, finished = bound_broker(tmp_path, capture)
+    tap.drained.set()
+    configured = threading.Event()
+    request_stop, remember = capture.request_stop, service._remember_capture_stop
+    opt_in = []
+
+    def admitted(*args, **kwargs):
+        request_stop(*args, **kwargs)
+        if not opt_in:
+            # Under the admission's lock: the opt-in queues on it meanwhile.
+            opt_in.append(in_thread("opt-in", lambda: (service.configure(True), configured.set())))
+
+    def remember_after_opt_in(owner):
+        # Anything still left after the admission runs only once the opt-in is done.
+        assert configured.wait(BOUND)
+        remember(owner)
+
+    monkeypatch.setattr(capture, "request_stop", admitted)
+    monkeypatch.setattr(service, "_remember_capture_stop", remember_after_opt_in)
+    try:
+        service.command("capture:" + capture.capture_id, "stop", user=True)
+        assert configured.wait(BOUND) and finished.wait(BOUND)
+        thread, result = opt_in[0]
+        thread.join(BOUND)
+        assert not thread.is_alive() and "error" not in result, result
+        assert capture.user_stopped and capture.capture_id in service._superseded_user_stops
+        assert not service._stopped_identity(identity), service.stopped_calls
+    finally:
+        configured.set()
+        service.workers.shutdown(wait=True)
+        capture.stop()
