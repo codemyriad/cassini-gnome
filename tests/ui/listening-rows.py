@@ -174,7 +174,18 @@ with tempfile.TemporaryDirectory() as temporary:
     old_play = page._speaker_rows["voice-0"][1]
     generation = len(rebuilt)
     window.set_visible(False)
-    page.update(replace(meeting, metadata_editable=False))
+    # Deliver the read-only state through the scanner's real UI entry point.
+    # The one-second activity tick reapplies _source_snapshot even after
+    # monitor.close(); a page-only edit would be replaced by its editable copy
+    # during GTK's delayed activation, unrealizing and cancelling the button.
+    editable_snapshot = window._source_snapshot
+    readonly_snapshot = replace(
+        editable_snapshot,
+        meetings=tuple(
+            replace(m, metadata_editable=False) if m.key == meeting.key else m for m in editable_snapshot.meetings
+        ),
+    )
+    window._library_scanned(readonly_snapshot)
     replacement = page._speaker_rows["voice-0"][1]
     assert replacement is not old_play and not replacement.get_realized()
     assert len(rebuilt) == generation
@@ -194,6 +205,10 @@ with tempfile.TemporaryDirectory() as temporary:
     play.connect("clicked", lambda *_: clicks.append(window.listen.speaker))
     error_handler = window.player.connect("error", lambda _player, message: errors.append(message))
     assert play.activate()
+    # Force the formerly failing ordering; no dependence on the timer phase.
+    window._activity_tick()
+    assert not page.meeting.metadata_editable
+    assert page._speaker_rows["voice-0"][1] is play and play.get_realized()
     try:
         until(window, lambda: window.listen.active)
     except AssertionError as error:
@@ -217,6 +232,9 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.listen.speaker == "voice-0" and clicks == ["voice-0"]
     assert page.speakers_dialog is None
     page._listen_speaker("voice-0")
+    generation = len(rebuilt)
+    window._library_scanned(editable_snapshot)
+    until(window, lambda: len(rebuilt) > generation)
     # Force a caption rebuild in each supported language and check the time
     # receives its natural width, even when provenance must ellipsize.
     for language in LANGUAGES:
