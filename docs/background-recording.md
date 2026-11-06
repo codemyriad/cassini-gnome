@@ -25,9 +25,10 @@ Portal host rejection: <https://github.com/flatpak/xdg-desktop-portal/blob/8c3ef
 
 `status_notifier.py` implements the StatusNotifierItem and dbusmenu interfaces
 through Gio. It watches an existing watcher without activating one, exports on
-the application's session-bus connection, and registers only when a real host is
-reported. Registration uses the application's well-known name, matching host
-discovery of the conventional item path, so both paths identify one panel item. Idle visibility and recording visibility are separate. A timer-label
+a private session-bus connection, and registers only when a real host is
+reported. Only that connection's unique name exposes the item. The application
+alias exports no item, so desktop discovery cannot add a second identity, and
+relaunching the app gets a fresh identity. Connection setup runs off GTK. Idle visibility and recording visibility are separate. A timer-label
 change updates only the status row; an unchanged snapshot emits nothing.
 
 The protocol references are [KDE's item interface](https://github.com/KDE/kstatusnotifieritem/blob/master/src/org.kde.StatusNotifierItem.xml)
