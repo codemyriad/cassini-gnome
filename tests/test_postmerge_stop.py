@@ -430,3 +430,84 @@ def test_superseded_bound_start_cancel_does_not_invent_a_user_stop(tmp_path, sup
     finally:
         service.workers.shutdown(wait=True)
         capture.stop()
+
+
+@pytest.mark.parametrize("target", ["call", "capture"])
+def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, monkeypatch, target):
+    """Opt-in can overtake a completed save's broker callback after metadata is durable."""
+    from concurrent.futures import Future
+
+    taps = DrainingTaps()
+    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
+    tap, _ = record_live(capture, clock)
+    service, browser, identity, logical, finished = bound_broker(tmp_path, capture)
+    tap.drained.set()
+    completed, automatic, sent = [], [], []
+    changed, submit, send = capture.changed, service.workers.submit, browser.send
+
+    def delay_finished(owner, event):
+        if event == "finished":
+            completed.append(lambda: changed(owner, event))
+        else:
+            changed(owner, event)
+
+    def hold_automatic(function, *args, **kwargs):
+        if function == service._automatic:
+            automatic.append((function, args, kwargs))
+            return Future()
+        return submit(function, *args, **kwargs)
+
+    def observe_send(packet):
+        sent.append(packet)
+        return send(packet)
+
+    capture.changed = delay_finished
+    monkeypatch.setattr(service.workers, "submit", hold_automatic)
+    monkeypatch.setattr(browser, "send", observe_send)
+    try:
+        service.command("capture:" + capture.capture_id if target == "capture" else logical, "stop", user=True)
+        assert capture.finished and completed and not finished.is_set()
+        assert service._stopped_identity(identity)
+        assert capture.host.session.manifest["events"][-1]["reason"] == "user"
+        if target == "capture":
+            # The companion reports its stopped session independently of the
+            # native owner's delayed publication/completion callback.
+            service.update(browser, dict(type="status", recording=False, tabId=identity[1]))
+        service.configure(True)  # Explicit opt-in resets the previous Stop.
+        assert not service._stopped_identity(identity)
+        assert len(automatic) == 1, (
+            browser.states,
+            browser.meetings,
+            browser.attempted,
+            service._scheduled_calls,
+            service._stopping_all.is_set(),
+        )
+        completed.pop()()  # The old save's broker callback arrives afterward.
+        assert finished.wait(BOUND)
+        function, args, kwargs = automatic.pop(0)
+        function(*args, **kwargs)
+        actual = (service._stopped_identity(identity), [p["action"] for p in sent])
+        assert actual == (False, ["stop", "start"] if target == "call" else ["start"]), actual
+    finally:
+        service.workers.shutdown(wait=True)
+        capture.stop()
+
+
+@pytest.mark.parametrize("route", ["browser", "broker"])
+def test_auto_opt_in_preserves_a_later_bound_user_stop(tmp_path, route):
+    taps = DrainingTaps()
+    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
+    tap, _ = record_live(capture, clock)
+    service, _browser, identity, logical, finished = bound_broker(tmp_path, capture)
+    tap.drained.set()
+    try:
+        service.configure(True)  # This capture has not stopped yet.
+        if route == "broker":
+            service.command(logical, "stop", user=True)
+        else:
+            capture.handle(dict(type="stop", captureId=capture.capture_id, reason="user"))
+        assert finished.wait(BOUND)
+        assert capture.user_stopped is True and service._stopped_identity(identity) is True
+    finally:
+        service.workers.shutdown(wait=True)
+        capture.stop()
