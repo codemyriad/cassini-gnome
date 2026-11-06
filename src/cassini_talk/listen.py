@@ -54,6 +54,7 @@ class ListenController(GObject.Object):
         # The turn _play started (its lead-in belongs to it), or None after a
         # seek: a playhead in the gap before a turn has not reached that turn.
         self._started = None
+        self._listening_position = None
 
     # Turn data
 
@@ -214,6 +215,7 @@ class ListenController(GObject.Object):
         last = self.chain_last(index)
         self._span_last = last
         self._started = index
+        self._listening_position = self.lead_start(index)
         self._player.span_follow = self._follow
         self._update(index, finished=False, force=True)
         # A refusal (nothing loaded, or an error) returns False; the error path stops listening.
@@ -235,7 +237,16 @@ class ListenController(GObject.Object):
         """Player.span_follow: where a seek to *ms* plays to while listening."""
         if not self.active:
             return None
+        # A recompute or a dialog sample restore seeks to the saved listening
+        # position. Keep ownership of its lead-in; a deliberate seek elsewhere
+        # still follows the playhead rather than the previously started turn.
+        started = self._started
         self._started = None
+        if ms == self._listening_position and started is not None:
+            index = bisect_right(self._starts, ms)
+            if index < len(self._targets) and self.lead_start(index) <= ms < self._starts[index]:
+                self._started = index
+        self._listening_position = ms
         index = self._containing(ms)
         if index is None:
             index = bisect_right(self._starts, ms)
@@ -261,18 +272,23 @@ class ListenController(GObject.Object):
     def _current(self, position):
         """The turn the playhead belongs to: the one _play started (its lead-in and
         tail included) or else the one holding the playhead."""
+        if self.finished and self._targets and position == self.span_end(len(self._targets) - 1):
+            return len(self._targets) - 1
         index = self._started
         if index is not None and (
-            0 <= index < len(self._targets)
-            and self.lead_start(index) <= position <= self._targets[index].end_ms + TAIL_MS
+            0 <= index <= self.index < len(self._targets)
+            and self.lead_start(index) <= position <= self.span_end(self.index)
         ):
-            return index
+            return self.index if position >= self._starts[self.index] else index
         return self._containing(position)
 
     def _position_changed(self, player, _pspec):
         # Within a chain played as one span, the index follows the playhead.
         # Display only: the stop itself is exact and needs no position.
-        if not self.active or self._span_last is None or not player.playing:
+        if not self.active or player._range_end is not None:
+            return
+        self._listening_position = player.position
+        if self._span_last is None or not player.playing:
             return
         index = bisect_right(self._starts, player.position) - 1
         if self.index < index <= self._span_last:

@@ -108,7 +108,12 @@ class Player(GObject.Object):
         elif self._stale_segment:
             # Continue from the position, under the stop span_follow decides (if any).
             self.seek(self.position)
-        if self._pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
+        # Preroll must apply the segment before any audio can reach the sink.
+        waiting = not self._prerolled and (
+            self._pending_seek is not None or self._stop_ms() is not None or self.rate != 1.0
+        )
+        state = Gst.State.PAUSED if waiting else Gst.State.PLAYING
+        if self._pipeline.set_state(state) == Gst.StateChangeReturn.FAILURE:
             # The bus usually holds the reason; take it so it is reported once.
             message = self._pipeline.get_bus().pop_filtered(Gst.MessageType.ERROR)
             text = message.parse_error()[0].message if message else _("The audio could not be played.")
@@ -209,13 +214,15 @@ class Player(GObject.Object):
         if self.duration:
             ms = min(ms, self.duration)
         self._at_end = False
-        self.position = ms
         self._stale_segment = False
         if self._range_end is None:
             if self.span_follow is not None:
                 self._span = self.span_follow(ms)
             elif self._span is not None and ms >= self._span[0]:
                 self._span = None
+        # Let the listening controller classify the seek before its position
+        # notification can overwrite the last non-sample listening position.
+        self.position = ms
         if not self._prerolled:
             self._pending_seek = ms
             return True
@@ -230,7 +237,10 @@ class Player(GObject.Object):
             return
         position = self._query_position() or self.position
         stop = self._stop_ms()
-        if stop is not None and position >= stop:
+        drained = self._eos_seqnum is _CONSUMED or (
+            isinstance(self._eos_seqnum, tuple) and self._eos_seqnum[1] == self._seek_seqnum
+        )
+        if self._stale_segment or self._at_end or drained or (stop is not None and position >= stop):
             # The span has rendered to its stop and its EOS is on its way: a seek
             # now would drop that EOS and play on past the turn. play() applies
             # the rate when it continues.
@@ -258,6 +268,9 @@ class Player(GObject.Object):
             Gst.SeekType.SET,
             stop * Gst.MSECOND if stop is not None else -1,
         )
+        # A consumed EOS belongs to the previous segment, not the seek we
+        # are about to send. The streaming probe tags any new EOS afresh.
+        self._eos_seqnum = None
         sent = self._pipeline.send_event(event)
         if sent:
             self._seek_seqnum = event.get_seqnum()
@@ -300,6 +313,8 @@ class Player(GObject.Object):
         return pos // Gst.MSECOND if ok and pos >= 0 else None
 
     def _update_position(self):
+        if not self._prerolled or self._pending_seek is not None or self._stale_segment or self._at_end:
+            return
         pos = self._query_position()
         if pos is not None and pos != self.position:
             self.position = pos
@@ -312,9 +327,13 @@ class Player(GObject.Object):
                     ok, dur = self._pipeline.query_duration(Gst.Format.TIME)
                     if ok and dur > 0:
                         self.duration = dur // Gst.MSECOND
-                if self._pending_seek is not None or self.rate != 1.0:
+                if self._span is not None and self.duration:
+                    self._span = min(self._span[0], self.duration), self._span[1]
+                if self._pending_seek is not None or self._stop_ms() is not None or self.rate != 1.0:
                     self._do_seek(self._pending_seek or 0)
                     self._pending_seek = None
+                if self.playing:
+                    self._pipeline.set_state(Gst.State.PLAYING)
         elif message.type == Gst.MessageType.DURATION_CHANGED:
             ok, dur = self._pipeline.query_duration(Gst.Format.TIME)
             if ok and dur > 0 and not self.duration:
@@ -328,6 +347,7 @@ class Player(GObject.Object):
             self._stop_tick()
             if self._range_end is None and self._span is not None:
                 end_ms, on_done = self._span
+                self._span = None
                 self._stale_segment = True
                 self._at_end = bool(self.duration) and end_ms >= self.duration
                 self.position = end_ms
