@@ -31,6 +31,7 @@ import re
 import threading
 import time
 import wave
+from fractions import Fraction
 from itertools import pairwise
 
 import pytest
@@ -370,10 +371,13 @@ def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, c
             # The track starts at its commit time, inside a buffer: the first
             # recorded buffer loses its frames before that time (selected_pcm),
             # or follows it after a zero prefix (append_native) that
-            # session.json records (D52.2). The same arithmetic, written out:
+            # session.json records (D52.2). Count on an exact rational clock:
+            # native ns plus whole 48 kHz frames share 1/3-ns ticks.
             offset, start = calls[kind][first][1], track.start_offset_ms
-            trim = max(0, math.ceil((start - offset) * 48000 / 1000))
-            prefix = max(0, round((offset + trim * 1000 / 48000 - start) * 48000 / 1000))
+            offset_q = Fraction(round(offset * 3_000_000), 3_000_000)
+            start_q = Fraction(round(start * 3_000_000), 3_000_000)
+            trim = max(0, math.ceil((start_q - offset_q) * 48))
+            prefix = max(0, round((offset_q + Fraction(trim, 48) - start_q) * 48))
             assert written[first] == sizes[first] - trim + prefix, kind
             gaps = [(gap["kind"], gap["frames"]) for gap in track.gaps or ()]
             assert gaps == ([("prefix", prefix)] if prefix else []), kind
