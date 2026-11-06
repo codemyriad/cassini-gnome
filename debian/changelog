@@ -1,3 +1,13 @@
+cassini-talk (0.4.1) unstable; urgency=medium
+
+  * Fix wrapping speaker names and screen-reader playback in Search.
+  * Keep browser Stop and automatic-recording choices through saving.
+  * Buffer browser audio through brief computer stalls; keep Stop responsive.
+  * Update the browser companion to 0.2.15 for steadier recording timing.
+  * After upgrading, log out and back in so the new version takes effect.
+
+ -- Silvio Tomatis <silviot@gmail.com>  Fri, 06 Nov 2026 17:00:00 +0100
+
 cassini-talk (0.4.0) unstable; urgency=medium
 
   * First release as Cassini talk (D45).
