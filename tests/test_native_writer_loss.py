@@ -242,8 +242,11 @@ def test_timeout_tail_infers_only_unobserved_host_time_after_known_frames(tmp_pa
     assert session.manifest["events"][-1]["reason"] == "error"
 
 
-@pytest.mark.parametrize("following_at_stop", [False, True])
+@pytest.mark.parametrize("following_at_stop", [False, True, "just-before"])
 def test_browser_capture_stop_flushes_known_tail_and_never_counts_post_stop_callbacks(tmp_path, following_at_stop):
+    """`just-before`: the following callback starts a fraction of a frame before
+    the cut (agy minor on #239): it keeps one frame and still delivers the known
+    drops it carries, so none are lost."""
     from test_tap_stall import DrainingTaps, start_capture, stop_in_background, tone
 
     taps = DrainingTaps()
@@ -257,15 +260,17 @@ def test_browser_capture_stop_flushes_known_tail_and_never_counts_post_stop_call
     admission.take(0)  # A stalled writer still occupies its bounded budget.
     assert not admission.enter(9_000_000, 480, start + 9)
     admission.done(480)
+    # Host ns and timeline ms of the callback that follows the stall.
+    follower = (18_995_000, start + 19 - 0.005) if following_at_stop == "just-before" else (19_000_000, start + 19)
     if following_at_stop:
-        assert admission.enter(19_000_000, 480, start + 19)
+        assert admission.enter(follower[0], 480, follower[1])
     clock.ms = start + 19
     stopper, result = stop_in_background(capture, tap)
     try:
         admission.seal(tap.stop_boundary())
         if following_at_stop:
-            frames, lost = admission.take(19_000_000)
-            tap.append(tone(frames), start + 19, writer_frames=lost)
+            frames, lost = admission.take(follower[0])
+            tap.append(tone(frames), follower[1], writer_frames=lost)
             admission.done(frames)
         assert not admission.enter(30_000_000, 480, start + 30)
         tap.drained.set()
@@ -273,9 +278,13 @@ def test_browser_capture_stop_flushes_known_tail_and_never_counts_post_stop_call
         assert not stopper.is_alive() and "error" not in result, result
         saved = json.loads((capture.directory / "session.json").read_text())
         track = next(t for t in saved["tracks"] if t["id"] == identifier)
-        assert track["frames"] == 960 and track["droppedFrames"] == 480
+        # A follower starting before the cut keeps at least its first frame
+        # (pcm_before rounds up), and the known drops it carries count.
+        assert track["frames"] == (961 if following_at_stop == "just-before" else 960)
+        assert track["droppedFrames"] == 480
         assert (saved["problemKind"], saved["events"][-1]["reason"]) == ("io", "error")
-        assert saved["events"][-1]["atMs"] == pytest.approx(start + 20)
+        extra = 1000 / 48000 if following_at_stop == "just-before" else 0  # its kept frame
+        assert saved["events"][-1]["atMs"] == pytest.approx(start + 20 + extra)
     finally:
         tap.drained.set()
         stopper.join(BOUND)
