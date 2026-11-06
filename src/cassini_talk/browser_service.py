@@ -397,6 +397,9 @@ class BrowserService:
         )
         self.auto_record = False
         self.auto_record_revision = time.monotonic_ns()
+        # Explicit auto opt-in supersedes already admitted Stops, including
+        # saves whose publication/finished callback has not reached the broker.
+        self._superseded_user_stops = set()
         with contextlib.suppress(OSError, ValueError, AttributeError):
             self.auto_record = json.loads(self.config.read_text()).get("autoRecord") is True
         self.lock = threading.RLock()
@@ -943,7 +946,10 @@ class BrowserService:
                 for (instance, tab), (capture_id, url) in self.call_captures.items():
                     if capture_id == capture.capture_id:
                         capture.call_identity = (instance, tab, url)
-                        if getattr(capture, "user_stopped", False):
+                        if (
+                            getattr(capture, "user_stopped", False)
+                            and capture.capture_id not in self._superseded_user_stops
+                        ):
                             self._store_stop((instance, tab), url)
                             if url is not None:
                                 self._cancel_call(self._logical_id((instance, tab, url)))
@@ -959,6 +965,7 @@ class BrowserService:
                 finished = [key for key, owner in self.captures.items() if owner.finished]
                 for key in finished[:-19]:
                     self.captures.pop(key, None)
+                    self._superseded_user_stops.discard(key)
             if capture.directory is not None:
                 self._remember_saved(str(capture.directory), capture.host.session.manifest["title"])
 
@@ -1166,6 +1173,12 @@ class BrowserService:
             self.auto_record = enabled
             self.auto_record_revision = max(self.auto_record_revision + 1, time.monotonic_ns())
             if enabled:
+                self._superseded_user_stops.intersection_update(self.captures)
+                self._superseded_user_stops.update(
+                    key
+                    for key, capture in self.captures.items()
+                    if getattr(capture, "stop_requested", None) is not None and capture.stop_requested.is_set()
+                )
                 self.stopped_calls.clear()
                 self._attempted_calls.clear()
                 for browser in self.browsers.values():
