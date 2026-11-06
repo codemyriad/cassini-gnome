@@ -26,6 +26,17 @@ def wait_until(check, description, *, timeout=12, diagnostics=lambda: {}):
     raise AssertionError(f"Timed out after {timeout}s: {description}; diagnostics={diagnostics()!r}")
 
 
+def capture_files(capture):
+    """Snapshot a live capture only after its current checkpoint commits.
+
+    Native input keeps checkpointing while a replacement source is refused.
+    The capture's writer lock covers session.tmp through its atomic rename;
+    waiting on that boundary keeps either snapshot from observing that file.
+    """
+    with capture.lock:
+        return {path.name for path in capture.directory.iterdir()}
+
+
 class PCMProgress:
     """Count real complete S16LE frames observed on a streaming pad, thread-safely."""
 
