@@ -706,6 +706,8 @@ class RecordingSession:
         problem = optional_string(problem, None, "state") or None
         if self.finished:
             return
+        if self.capture_record is not None:
+            self.capture_record.close()  # #230: every admitted Stop's summary first.
         self.finished = True
         failure = None
         for identifier, writer in self.writers.items():
@@ -900,19 +902,28 @@ class BrowserHost:
     def prepare_stop(self, message, *, admitted=False):
         """A Stop's refusal, or None once its source summary is merged (writer
         lock held). `admitted`: admit_stop() admitted this Stop, and it sealed
-        the identities."""
+        the identities: its summary, kept at admission, is merged now unless
+        the capture already finished and merged it (#230).
+
+        Its reply then: a session finished by another path (a later Stop, a
+        stop-all, a close) saved its summary, so it gets that saved result,
+        {"type": "stopped", "path"}, as the Stop that finished it did. Any
+        other Stop after the save still adds nothing: one with sources is
+        refused ("Capture already saved"), an empty one gets the result."""
         if not self.source_outcomes:
             return None
         if message.get("captureId") != self.capture_id:
             return dict(type="error", code="state", message="Capture identity does not match", scope="command")
+        record = self.session.capture_record
         if self.session.finished:
-            if message.get("discoveredSources"):
+            if message.get("discoveredSources") and not (admitted and record.admitted_merged):
                 return dict(type="error", code="state", message="Capture already saved", scope="command")
             return dict(type="stopped", path=str(self.session.directory))
         try:
-            self.session.capture_record.discover(
-                message.get("discoveredSources", []), expected=self._source_selected, admitted=admitted
-            )
+            if admitted:
+                record.merge_admitted()
+            else:
+                record.discover(message.get("discoveredSources", []), expected=self._source_selected)
         except ProtocolError as error:
             return dict(type="error", code=error.code, message=str(error), scope="command")
         return None
@@ -936,7 +947,9 @@ class BrowserHost:
             return refusal, False, False
         if self.session.finished:
             return None, False, False
-        error, marked, sealing = self.session.capture_record.admit_stop(message.get("discoveredSources", []), mark)
+        error, marked, sealing = self.session.capture_record.admit_stop(
+            message.get("discoveredSources", []), mark, expected=self._source_selected
+        )
         if error is not None:
             return dict(type="error", code=error.code, message=str(error), scope="command"), False, False
         return None, marked, sealing

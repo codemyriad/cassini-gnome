@@ -10,6 +10,7 @@ under test sets, with a bound only as an upper limit (E1).
 """
 
 import base64
+import json
 import os
 import struct
 import threading
@@ -866,6 +867,56 @@ def test_only_the_first_marked_browser_stop_may_add_sources_after_the_seal(tmp_p
     sources = {s["sourceTrackId"]: s["kind"] for s in capture.host.session.manifest["captureOutcome"]["sources"]}
     assert sources == {"x": "remote"}  # A's summary, merged.
     assert_kept_before_stop(capture, start, problem_kind="capture")  # x was expected and never heard.
+
+
+def test_a_later_stop_that_finishes_the_capture_first_saves_the_admitted_stops_summary(tmp_path):
+    """#230 Codex: Stop A arrives at 945 ms with a summary naming an expected
+    remote source (x) and is admitted, then waits on a stalled capture.lock.
+    Stop B, with an empty summary, takes the lock first and finishes the
+    capture. The save must include A's summary (x: remote, expected, never
+    heard), and A's reply is the saved result, as B's is. On 6cd9a9d B saved
+    captureOutcome.sources [] and A got "Capture already saved"."""
+    taps = DrainingTaps()
+    capture, clock = start_capture(
+        tmp_path, taps, microphone=True, others_source="browser", features=("source-outcomes-v1",)
+    )
+    tap, start = record_live(capture, clock)  # A arrives at 945 ms.
+    go = threading.Event()
+    ordered = capture.lock = OrderedLock(capture.lock, "test-stop-a", go)
+    holder, release = stall_holding(capture)
+    try:
+        a = dict(type="stop", captureId="stall", discoveredSources=[dict(sourceTrackId="x", kind="remote")])
+        stopper_a, stopped_a = in_thread("test-stop-a", lambda: capture.handle(a))
+        assert ordered.waited_by("test-stop-a")
+        assert capture.stop_requested.is_set() and capture.stop_at_ms == pytest.approx(start + 945)
+        clock.ms = start + 1500
+        b = dict(type="stop", captureId="stall", discoveredSources=[])
+        stopper_b, stopped_b = in_thread("test-stop-b", lambda: capture.handle(b))
+        assert ordered.waited_by("test-stop-b")
+        clock.ms = start + 2950
+        release.set()
+        holder.join(BOUND)
+        assert tap.draining.wait(BOUND)  # B took the lock first and is finishing; A is gated.
+        drain_across_stop(tap, start, clock)
+        stopper_b.join(BOUND)
+        assert not stopper_b.is_alive() and "error" not in stopped_b, stopped_b
+        assert stopped_b["value"] == dict(type="stopped", path=str(capture.directory)), stopped_b
+        saved = json.loads((capture.directory / "session.json").read_text())
+        assert saved["state"] == "interrupted" and saved["problemKind"] == "capture"
+        (source,) = saved["captureOutcome"]["sources"]  # B finished it: A's summary is in the save.
+        assert source["sourceTrackId"] == "x" and source["kind"] == "remote"
+        assert source["captureOutcome"] == "neverAudio" and "captureExpected" not in source
+    finally:
+        release.set()
+        go.set()
+    stopper_a.join(BOUND)
+    assert not stopper_a.is_alive() and "error" not in stopped_a, stopped_a
+    assert stopped_a["value"] == stopped_b["value"], stopped_a  # Its summary was saved: the saved result.
+    assert_kept_before_stop(capture, start, problem_kind="capture")  # x was expected and never heard.
+    # A Stop after the save still adds nothing.
+    late = dict(type="stop", captureId="stall", discoveredSources=[dict(sourceTrackId="y", kind="tab")])
+    assert capture.handle(late)["message"] == "Capture already saved"
+    assert [s["sourceTrackId"] for s in capture.host.session.manifest["captureOutcome"]["sources"]] == ["x"]
 
 
 @pytest.mark.parametrize("first_ms, opens", [(-20, True), (-5, True), (0, False), (10, False)])

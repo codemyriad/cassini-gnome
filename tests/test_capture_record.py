@@ -885,3 +885,24 @@ def test_page_microphone_is_unexpected_when_the_app_records_me_natively(tmp_path
             assert session.manifest["state"] == "interrupted"
     finally:
         host.close()
+
+
+@pytest.mark.parametrize("route", ["finish", "disconnect"])
+def test_other_finalization_paths_save_the_admitted_stop_summary(host, route):
+    source = dict(sourceTrackId="unheard", kind="remote")
+    message = dict(type="stop", captureId="capture-a", discoveredSources=[source])
+    assert host.admit_stop(message, lambda: True) == (None, True, True)
+    # Admission owns its validated summary, even if the caller reuses its message.
+    source["sourceTrackId"] = "changed-after-admission"
+    if route == "finish":
+        host.session.finish(reason="user")
+    else:
+        host.close()
+    saved = json.loads((host.session.directory / "session.json").read_text())
+    assert saved["state"] == "interrupted" and saved["problemKind"] == "capture"
+    (unheard,) = saved["captureOutcome"]["sources"]
+    assert unheard["sourceTrackId"] == "unheard" and unheard["captureOutcome"] == "neverAudio"
+    assert unheard.get("captureExpected", True)
+    assert host.prepare_stop(message, admitted=True) == dict(type="stopped", path=str(host.session.directory))
+    assert stop(host, discoveredSources=[source])["message"] == "Capture already saved"
+    assert json.loads((host.session.directory / "session.json").read_text()) == saved

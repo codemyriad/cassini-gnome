@@ -24,6 +24,12 @@ class CaptureRecord:
         # under the capture lock later.
         self._identities = threading.Lock()
         self.sealed = False
+        # #230: the sealing Stop's validated summary, kept at its admission
+        # until it is merged: by its own Stop, or by close() when another
+        # Stop (or any other path) finishes the capture first.
+        self._admitted = None
+        self.closed = False
+        self.admitted_merged = False
 
     def _expectable(self, kind):
         return not (self.native_me and kind == "local")
@@ -53,7 +59,7 @@ class CaptureRecord:
                 raise ProtocolError("state", "No active recording")  # It came after an admitted Stop.
             self.seen = proposed.seen
 
-    def admit_stop(self, sources, mark):
+    def admit_stop(self, sources, mark, *, expected=lambda _kind: True):
         """R93-2: a browser Stop's summary, validated without the capture lock.
 
         Returns (refusal, marked, sealing): its refusal (a ProtocolError)
@@ -65,8 +71,16 @@ class CaptureRecord:
         the seal (discover(admitted=True)): a later Stop was validated without
         the sealing Stop's summary, which may name its new sources with
         another kind, so its own new sources are refused instead, whichever
-        merges first. mark() may raise: nothing is sealed."""
+        merges first. mark() may raise: nothing is sealed.
+
+        #230: the sealing Stop's summary is kept here at its admission, with
+        `expected` (read when it is merged). Whichever Stop or path finishes
+        the capture merges it first (close()), so a later Stop that takes the
+        capture lock first cannot save without it. A closed record admits
+        nothing: (None, False, False), as for a finished session."""
         with self._identities:
+            if self.closed:
+                return None, False, False
             try:
                 self._proposed(sources, lambda _kind: True)
             except ProtocolError as error:
@@ -74,7 +88,30 @@ class CaptureRecord:
             marked = mark()
             sealing = marked and not self.sealed
             self.sealed = self.sealed or marked
+            if sealing:
+                self._admitted = [dict(source) for source in sources], expected
         return None, marked, sealing
+
+    def merge_admitted(self):
+        """Merge the sealing Stop's kept summary, once (capture lock held). It
+        was validated against every identity it can meet: none but its own
+        joins after the seal, and a seen source never changes kind."""
+        with self._identities:
+            admitted, self._admitted = self._admitted, None
+        if admitted is not None:
+            sources, expected = admitted
+            self.discover(sources, expected=expected, admitted=True)
+            self.admitted_merged = True
+
+    def close(self):
+        """#230: the capture is finishing (capture lock held): merge the sealing
+        Stop's summary if its own Stop has not yet, and admit no Stop after.
+        Every path that finishes the session comes here first, so the saved
+        outcome includes every admitted summary. A Stop sealed before this
+        is merged here; none can seal after it."""
+        with self._identities:
+            self.closed = True
+        self.merge_admitted()
 
     def _proposed(self, sources, expected):
         """This record with `sources` merged into a copy (it raises their refusal)."""
