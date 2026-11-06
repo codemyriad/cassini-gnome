@@ -782,3 +782,116 @@ def test_native_drain_timeout_reports_only_unaccounted_failures(tmp_path, loss, 
             assert saved["problem"] == expected
     finally:
         recorder.close()
+
+
+def test_stop_drains_admitted_pcm_before_held_finalization_and_repeated_stop(tmp_path, monkeypatch):
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+    from gi.repository import GLib, Gst
+
+    from cassini_talk import native_recorder
+
+    Gst.init(None)
+    recorder = native_recorder.NativeRecorder()
+    session = recorder.session = RecordingSession(tmp_path)
+    session.add_track("microphone", "Me", "microphone", 48000, 1)
+    pipeline = recorder.pipeline = Gst.Pipeline.new(None)
+    bus = pipeline.get_bus()
+    bus.add_signal_watch()
+    recorder._bus_handler = bus.connect("message", recorder._message)
+    recorder._test_sources = True
+    recorder._stop_requested = False
+    parse = Gst.parse_bin_from_description
+    monkeypatch.setattr(
+        Gst,
+        "parse_bin_from_description",
+        lambda description, *args: parse("appsrc name=source format=time ! " + description.split(" ! ", 1)[1], *args),
+    )
+    branch = recorder._branch("microphone")
+    recorder._branches["microphone"] = branch
+    pipeline.add(branch)
+    source = branch.get_by_name("source")
+    source.set_property(
+        "caps", Gst.Caps.from_string("audio/x-raw,format=S16LE,rate=48000,channels=1,layout=interleaved")
+    )
+    written, queued, release_pcm, eos_requested, finishing, release_finish = (threading.Event() for _ in range(6))
+    append, finish = session.append_native, session.finish
+
+    def appended(*args, **kwargs):
+        append(*args, **kwargs)
+        written.set()
+
+    def held_finish(*args, **kwargs):
+        finishing.set()
+        GLib.MainContext.default().wakeup()
+        assert release_finish.wait(BOUND), "Held finalization was not released"
+        return finish(*args, **kwargs)
+
+    monkeypatch.setattr(session, "append_native", appended)
+    monkeypatch.setattr(session, "finish", held_finish)
+    monkeypatch.setattr(recorder, "_elapsed_ms", lambda _pipeline: 20)
+    request_eos = native_recorder.request_eos
+
+    def requested(*args):
+        request_eos(*args)
+        eos_requested.set()
+
+    monkeypatch.setattr(native_recorder, "request_eos", requested)
+
+    def push(at):
+        buffer = Gst.Buffer.new_wrapped(b"\x01\x00" * 480)
+        buffer.pts, buffer.duration = at * Gst.MSECOND, 10 * Gst.MSECOND
+        assert source.emit("push-buffer", buffer) == Gst.FlowReturn.OK
+
+    def wait(predicate, message):
+        context = GLib.MainContext.default()
+        expired = []
+        timer = GLib.timeout_add(BOUND * 1000, lambda: expired.append(True) or False)
+        try:
+            while not predicate():
+                assert not expired, message
+                context.iteration(True)
+        finally:
+            if not expired:
+                GLib.source_remove(timer)
+
+    errors = []
+    recorder.connect("error", lambda _r, text: errors.append(text))
+    try:
+        pipeline.set_state(Gst.State.PLAYING)
+        push(0)
+        assert written.wait(BOUND)
+
+        def hold(_pad, _info):
+            queued.set()
+            assert release_pcm.wait(BOUND), "Queued PCM was not released"
+            return Gst.PadProbeReturn.REMOVE
+
+        branch.get_by_name("tap-queue").get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, hold)
+        push(10)
+        assert queued.wait(BOUND)
+        assert branch._writer_queue.snapshot()["buffered_frames"] == 480
+        recorder.stop()
+        wait(eos_requested.is_set, "Stop never requested its queue drain")
+        assert not finishing.is_set(), "Finalization bypassed admitted PCM"
+        release_pcm.set()
+        wait(finishing.is_set, "Drained Stop never entered finalization")
+        assert recorder._finishing and not session.finished
+        recorder.stop()  # Quit while the original Stop is still finalizing.
+        release_finish.set()
+        _wait_native_finished(recorder)
+        saved = json.loads((session.directory / "session.json").read_text())
+        assert saved["state"] == "completed" and "problem" not in saved
+        assert saved["events"][-1] == dict(type="end", atMs=20.0, reason="user")
+        (track,) = saved["tracks"]
+        assert track["frames"] == 960 and track["gaps"] == [] and "droppedFrames" not in track
+        with wave.open(str(session.directory / track["file"]), "rb") as stream:
+            assert stream.readframes(960) == b"\x01\x00" * 960
+        assert not errors
+    finally:
+        release_pcm.set()
+        release_finish.set()
+        pipeline.set_state(Gst.State.NULL)
+        recorder._executor.shutdown(wait=True)
+        recorder._bus_worker.shutdown(wait=True)
+        session.release_lease()

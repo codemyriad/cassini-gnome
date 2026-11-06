@@ -487,7 +487,10 @@ with tempfile.TemporaryDirectory() as tmp:
             else:
                 app.on_quit()
             if mode == "stop-finishing":
-                app.recorder._begin_finish()
+                # Enter held finalization through Stop's EOS drain. Calling
+                # _begin_finish directly aborts live queued PCM, correctly
+                # producing D69 writer loss instead of a completed session.
+                app.stop_native()
                 phase = 2
                 return True
             if mode.startswith("keep-"):
