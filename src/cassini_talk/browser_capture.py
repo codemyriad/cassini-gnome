@@ -159,7 +159,7 @@ class BrowserCapture:
     def directory(self):
         return self.host.session.directory if self.host.session and not self.discarded else None
 
-    def request_stop(self, at_ms=None, *, reason=None, problem=None, user_stopped=None):
+    def request_stop(self, at_ms=None, *, reason=None, problem=None, user_stopped=False):
         """Claim the first Stop's moment, reason, problem and user intent atomically.
 
         A tap's queue can still hold audio captured before Stop (up to 10 s
@@ -168,8 +168,9 @@ class BrowserCapture:
         lock, which a stalled checkpoint can hold: Stop is marked when it is
         pressed, not when storage recovers. `at_ms` is a Stop moment read
         earlier (a browser Stop, read before its admission took the lock).
-        `user_stopped` lets broker policy commands distinguish intent from their
-        end reason; subsequent callers join without replacing the first claim."""
+        `user_stopped` is explicit intent, false unless a caller knows the user
+        stopped this call. The saved end reason cannot establish that intent.
+        Subsequent callers join without replacing the first claim."""
         from .session_events import END_REASONS
 
         if reason is not None and (not isinstance(reason, str) or reason not in END_REASONS):
@@ -180,7 +181,7 @@ class BrowserCapture:
                 requested_reason = reason or ("error" if problem else "user")
                 self.end_reason = self.end_reason or requested_reason
                 self._stop_problem = problem
-                self.user_stopped = requested_reason == "user" if user_stopped is None else user_stopped
+                self.user_stopped = user_stopped
                 if self.session_clock is not None:
                     self.stop_at_ms = self.elapsed_ms() if at_ms is None else at_ms
                 # Publish the entire first Stop, not just its PCM boundary, before
@@ -326,16 +327,20 @@ class BrowserCapture:
             self.starting = False
             if self.host.session is not None:
                 if isinstance(error, StartCancelled):
-                    self.stop(discard=())
+                    self.stop(discard=(), user_stopped=False)
                 else:
-                    self.stop(str(error), discard=error.unwritten if isinstance(error, NothingOpened) else None)
+                    self.stop(
+                        str(error),
+                        discard=error.unwritten if isinstance(error, NothingOpened) else None,
+                        user_stopped=False,
+                    )
             self.ready.set()
             raise
         finally:
             self.starting = False
             self.ready.set()
         if self.stop_requested.is_set():
-            self.stop()
+            self.stop(user_stopped=False)
         return result
 
     @staticmethod
@@ -1170,7 +1175,7 @@ class BrowserCapture:
                 problem = optional_string(message.get("problem"), None, "state") or None
                 if not self.stop_requested.is_set() and message.get("failureReason") == "lost":
                     return False
-                self.request_stop(arrived, reason=reason, problem=problem)
+                self.request_stop(arrived, reason=reason, problem=problem, user_stopped=reason == "user")
                 return True
 
             # The Stop is admitted and its boundary published before it waits
@@ -1191,8 +1196,8 @@ class BrowserCapture:
                 if not self.stop_requested.is_set():
                     self.fallback()
                     return dict(type="stopped", path=str(self.directory))
-                return self.stop()  # A lost packet joins the Stop that superseded it.
-            return self.stop(at_ms=arrived)
+                return self.stop(user_stopped=False)  # A lost packet joins the Stop that superseded it.
+            return self.stop(at_ms=arrived, user_stopped=False)
         with self.lock:
             if self.finished or self.stopping or self.stop_requested.is_set():
                 if self.host.source_outcomes and message.get("type") == "sources":
@@ -1215,7 +1220,7 @@ class BrowserCapture:
             self.spectrogram.release_if_idle()
         return result
 
-    def stop(self, problem=None, *, reason=None, discard=None, at_ms=None):
+    def stop(self, problem=None, *, reason=None, discard=None, at_ms=None, user_stopped=False):
         """Finish this capture. `discard` (the start refusals) removes a folder
         nothing opened into, unless the user already typed into it (D58).
         `at_ms`: the Stop moment, when it was read before this call."""
@@ -1230,7 +1235,7 @@ class BrowserCapture:
                 self._publication_future.cancel()
         # R93-2: Stop's moment is fixed before the capture lock, which a stalled
         # checkpoint can hold for seconds; audio captured after it stays out.
-        self.request_stop(at_ms, reason=reason, problem=problem)
+        self.request_stop(at_ms, reason=reason, problem=problem, user_stopped=user_stopped)
         problem = self._stop_problem
         with self.lock, self._asks:
             self.resume_asks.clear()  # A result after Stop writes nothing.
@@ -1323,14 +1328,14 @@ class BrowserCapture:
         self.audio_connected = False
         if not self.finished and self.host.session is not None:
             if self.stop_requested.is_set():
-                self.stop()
+                self.stop(user_stopped=False)
             else:
                 try:
                     self.fallback()
                 except Exception as error:
                     # Loss cannot leave an unowned microphone/session alive if
                     # limits, durability or the replacement device reject Q4.
-                    self.stop(str(error))
+                    self.stop(str(error), user_stopped=False)
 
     def elapsed_ms(self):
         """Session time now, on the capture's one monotonic mapping (D61): a wall
