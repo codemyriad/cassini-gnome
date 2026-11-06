@@ -530,3 +530,130 @@ def test_source_change_closes_history_before_slow_device_shutdown(tmp_path, monk
     session.finish()
     if kind == "native":
         capture._executor.shutdown()
+
+
+def pulse_capture_snapshot(index=7, *, pid=None):
+    import os
+
+    return dict(
+        source_outputs=[dict(index=index, source=11, properties={"application.process.id": str(pid or os.getpid())})],
+        sources=[dict(index=11, name="captured.monitor"), dict(index=12, name="default.monitor")],
+    )
+
+
+def cached_pulse_branch(index=7):
+    class Source:
+        def get_property(self, name):
+            assert name == "source-output-index", "current-device queries the retiring libpulse context"
+            return self.index
+
+    source = Source()
+    source.index = index
+    return SimpleNamespace(get_by_name=lambda name: source if name == "capture-source" else None), source
+
+
+def test_monitor_device_uses_the_stream_index_without_querying_gstreamers_context(monkeypatch):
+    from cassini_talk.output_mute import monitor_device
+
+    branch, _source = cached_pulse_branch()
+
+    def run(command, **options):
+        assert command == ["pactl", "--format=json", "list"]
+        assert options == dict(check=True, capture_output=True, text=True, timeout=1)
+        return SimpleNamespace(stdout=json.dumps(pulse_capture_snapshot()))
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert monitor_device(branch) == "captured.monitor"
+
+
+@pytest.mark.parametrize("stage", ["cached-index", "external-query"])
+def test_monitor_query_ordered_against_context_teardown_is_safe_and_unknown(monkeypatch, stage):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from cassini_talk.output_mute import monitor_device
+
+    entered, release = threading.Event(), threading.Event()
+
+    class Source:
+        index, context = 7, object()
+
+        def get_property(self, name):
+            if name == "current-device":
+                entered.set()
+                assert release.wait(3)
+                assert self.context is not None, "pa_context_get_source_info_by_index(NULL) would abort"
+                return "captured.monitor"
+            assert name == "source-output-index"
+            index = self.index
+            if stage == "cached-index" and not entered.is_set():
+                entered.set()
+                assert release.wait(3)
+            return index
+
+    source = Source()
+    branch = SimpleNamespace(get_by_name=lambda _name: source)
+
+    def run(*_args, **_kwargs):
+        if stage == "external-query":
+            entered.set()
+            assert release.wait(3)
+        return SimpleNamespace(stdout=json.dumps(pulse_capture_snapshot()))
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        query = executor.submit(monitor_device, branch)
+        try:
+            assert entered.wait(3), "Query never reached its teardown barrier"
+            source.context, source.index = None, 0xFFFFFFFF
+        finally:
+            release.set()
+        assert query.result(timeout=3) is None
+
+
+@pytest.mark.parametrize("index", [None, True, -1, 0xFFFFFFFF])
+def test_monitor_without_a_live_stream_never_queries_pulse(monkeypatch, index):
+    from cassini_talk.output_mute import monitor_device
+
+    branch, _source = cached_pulse_branch(index)
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_kw: pytest.fail("No live stream to query"))
+    assert monitor_device(branch) is None
+    assert monitor_device(None) is None
+
+
+@pytest.mark.parametrize("kind", ["foreign-pid", "missing-stream", "missing-source", "changed-stream", "malformed"])
+def test_monitor_snapshot_cannot_attribute_a_different_or_disconnected_stream(monkeypatch, kind):
+    import os
+
+    from cassini_talk.output_mute import monitor_device
+
+    branch, source = cached_pulse_branch()
+    data = pulse_capture_snapshot()
+    if kind == "foreign-pid":
+        data = pulse_capture_snapshot(pid=os.getpid() + 1)
+    elif kind == "missing-stream":
+        data["source_outputs"] = []
+    elif kind == "missing-source":
+        data["sources"] = []
+    elif kind == "malformed":
+        data = []
+
+    def run(*_args, **_kwargs):
+        if kind == "changed-stream":
+            source.index += 1
+        return SimpleNamespace(stdout=json.dumps(data))
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert monitor_device(branch) is None
+
+
+def test_pulse_query_child_abort_is_unknown_and_cannot_abort_the_app(monkeypatch):
+    from cassini_talk.output_mute import monitor_device
+
+    branch, _source = cached_pulse_branch()
+
+    def abort(command, **_kwargs):
+        raise subprocess.CalledProcessError(-6, command)
+
+    monkeypatch.setattr(subprocess, "run", abort)
+    assert monitor_device(branch) is None
