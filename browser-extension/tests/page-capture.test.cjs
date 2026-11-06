@@ -144,3 +144,41 @@ test('starting after an address change refreshes the call generation before the 
  await f.start('B',{sourceOutcomes:true});assert.equal(f.captures.length,1);
  assert.equal(f.messages.find(m=>m.type==='packet'&&m.packet.type==='track').token,'B');
 }));
+
+test('a replacement relay is ready only after the departing capture token drains',()=>fixture(async f=>{
+ const remote=f.remote();await f.tick();remote.packets=10;await f.tick();await f.start('departing');
+ await f.receive({type:'handshake',protocol:1,instanceId:'replacement'});
+ assert.equal(f.messages.some(m=>m.type==='hookReady'),false);
+ await f.stop();
+ assert.equal(f.messages.find(m=>m.type==='hookReady').instanceId,'replacement');
+ await f.start('replacement-capture');
+ assert.equal(f.captures.length,2,'the same live peer can record through the replacement relay');
+}));
+
+
+test('duplicate stops during a flush cannot close the shared context or announce replacement readiness early',async()=>{
+ let release,entered,closeCount=0,stopCount=0;
+ const flushing=new Promise(resolve=>release=resolve),stopping=new Promise(resolve=>entered=resolve);
+ class Context {state='running';async close(){assert.equal(this.state,'running');this.state='closed';closeCount++}}
+ await fixture(async f=>{
+  const remote=f.remote();await f.tick();remote.packets=10;await f.tick();await f.start('departing');
+  await f.receive({type:'handshake',protocol:1,instanceId:'replacement'});
+  const first=f.stop();
+  try {
+   await stopping;
+   await f.receive({type:'stop',token:'departing'});
+   assert.equal(stopCount,1,'one recorder stop owns the flush');
+   assert.equal(closeCount,0,'context remains open through the flush');
+   assert.equal(f.messages.some(m=>m.type==='stopped'||m.type==='hookReady'),false);
+  } finally {release();await first}
+  assert.equal(closeCount,1);
+  assert.equal(f.messages.filter(m=>m.type==='stopped').length,1);
+  assert.equal(f.messages.filter(m=>m.type==='hookReady').length,1);
+  assert.ok(f.messages.findIndex(m=>m.type==='stopped')<f.messages.findIndex(m=>m.type==='hookReady'));
+  await f.start('replacement');
+  assert.equal(f.captures.length,2,'replacement starts only after the old flush');
+ },{Context,capture:async options=>{
+  options.getSharedContext();let ending=false;
+  return {async stop(){stopCount++;if(ending)return;ending=true;entered();await flushing}};
+ }});
+});

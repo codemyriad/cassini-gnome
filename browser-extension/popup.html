@@ -1,15 +1,64 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Cassini Recorder</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Cassini browser companion</title>
 <style>
-body { font: 14px system-ui; width: 310px; padding: 16px; color: #202124; }
-h1 { font-size: 20px; margin-top: 0; } button { padding: 9px 12px; margin: 4px 4px 4px 0; }
-p { line-height: 1.5; } #path { overflow-wrap: anywhere; font-size: 12px; } .note { color: #555; font-size: 12px; }
+:root { color-scheme: light dark; font: 13px system-ui, sans-serif; color: #252a30; background: #fff; }
+* { box-sizing: border-box; }
+body { margin: 0; width: 376px; max-width: 100vw; }
+header { display: flex; align-items: center; gap: 9px; padding: 22px 22px 17px; }
+.mark { width: 14px; height: 14px; border: 4px solid #f9d5c8; border-radius: 50%; background: #e46a54; }
+h1 { font-size: 17px; letter-spacing: -.4px; margin: 0; }
+.subtitle { margin-left: auto; color: #7a838b; font-size: 11px; }
+#connection { margin: 0 22px; padding: 0 0 17px; border-bottom: 1px solid #e9edef; color: #66727b; font-size: 11px; }
+#connection::before { content: '●'; margin-right: 7px; color: #87929a; }
+#connection[data-connected="true"]::before { color: #398569; }
+main { padding: 22px; }
+.eyebrow { color: #828b93; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+#tab-title { margin: 6px 0 3px; font-size: 15px; font-weight: 650; overflow-wrap: anywhere; }
+#site { margin: 0; color: #7a858f; font-size: 11px; overflow-wrap: anywhere; }
+.card { margin-top: 22px; padding: 16px; border: 1px solid #e4e8ec; border-radius: 9px; background: #f6f8fa; }
+.card[data-tone="good"] { border-color: #dcebe2; background: #f2f8f5; }
+.card[data-tone="warning"] { border-color: #efe2c9; background: #fcf8ef; }
+#status { margin: 0; font-size: 14px; font-weight: 650; line-height: 1.45; }
+#explanation { margin: 9px 0 0; color: #65717b; font-size: 12px; line-height: 1.65; }
+#recording-note { margin: 18px 0 0; color: #68747e; font-size: 12px; line-height: 1.6; }
+button { width: 100%; margin-top: 17px; padding: 10px 12px; border: 1px solid #d5dde5; border-radius: 7px; background: #fff; color: #365f93; font: 600 12px system-ui; cursor: pointer; }
+button:hover { background: #f1f5fa; } button:disabled { opacity: .55; cursor: default; }
+button:focus-visible, summary:focus-visible { outline: 3px solid #7c9cd1; outline-offset: 3px; }
+#reload-warning { margin: 7px 0 0; color: #7a838c; font-size: 10px; line-height: 1.5; }
+#installation-warning { color: #926a31; font-size: 11px; line-height: 1.6; }
+#action-error { color: #a4582f; font-size: 12px; line-height: 1.5; }
+footer { padding: 15px 22px 20px; border-top: 1px solid #e9edef; }
+footer > p { margin: 0 0 14px; font-size: 12px; color: #66727b; line-height: 1.6; }
+summary { width: fit-content; cursor: pointer; color: #737f89; font-size: 11px; }
+#diagnostics { white-space: pre-wrap; overflow-wrap: anywhere; color: #66727b; font-size: 10px; line-height: 1.65; }
+#copy { margin-top: 5px; width: auto; padding: 7px 10px; font-size: 11px; }
+#copy-result { color: #66727b; font-size: 11px; }
+[hidden] { display: none !important; }
+@media (prefers-color-scheme: dark) {
+ :root { color: #e4e8ed; background: #24272c; }
+ #connection, footer { border-color: #3c4249; }
+ #connection, #explanation, #recording-note, #diagnostics, footer > p, #copy-result { color: #b4bdc7; }
+ .subtitle, .eyebrow, #site, summary, #reload-warning { color: #a7b1bc; }
+ .card { background: #2d333b; border-color: #424b56; }
+ .card[data-tone="good"] { background: #273b32; border-color: #3e5b4a; }
+ .card[data-tone="warning"] { background: #40392b; border-color: #625237; }
+ button { background: #303741; color: #b9d1f4; border-color: #4d5b6d; }
+ button:hover { background: #3c4755; } #installation-warning { color: #e2bc7e; }
+#action-error { color: #f0b28b; }
+}
 </style></head><body>
-<h1>Cassini Recorder</h1>
-<p id="status" role="status">Checking…</p>
-<button id="tracks">Record separate tracks</button><button id="tab">Record the whole tab</button>
-<button id="stop" hidden>Stop and save</button>
-<p id="path"></p>
-<p class="note">Separate tracks records each audio track the meeting page exposes, yours and the other participants’, as its own file. The whole tab records what the tab plays, usually without your microphone. For a complete recording that includes your microphone, use Record Meeting in Cassini.</p>
-<p class="note">Recordings are saved on this computer, in Music/Cassini. Nothing is uploaded. Track names come from the meeting page and are not verified identities. Cassini must be installed and connected to this browser.</p>
-<script src="popup.js"></script></body></html>
+<header><span class="mark" aria-hidden="true"></span><h1>Cassini</h1><span class="subtitle">Browser companion</span></header>
+<p id="connection">Checking the app connection…</p>
+<main id="tab-status" aria-busy="true">
+ <div class="eyebrow">This tab</div><p id="tab-title">Checking this tab…</p><p id="site"></p>
+ <section class="card" id="card" aria-live="polite" aria-atomic="true"><h2 id="status">Checking meeting detection…</h2><p id="explanation"></p></section>
+ <p id="installation-warning" hidden>Some audio capture files could not be read. See connection details; this check does not determine page readiness.</p>
+ <p id="recording-note">Recording is managed in Cassini.</p>
+ <button id="reload" hidden>Reload meeting tab</button><p id="reload-warning" hidden>Reloading briefly disconnects you from the call.</p>
+ <p id="action-error" role="status" hidden></p>
+</main>
+<footer>
+ <p>Use the Cassini app to start, stop, or manage automatic recording.</p>
+ <details><summary>Connection details</summary><pre id="diagnostics">Checking…</pre><button id="copy" disabled>Copy diagnostics</button><p id="copy-result" role="status" hidden></p></details>
+</footer>
+<script type="module" src="popup.js"></script></body></html>

@@ -48,7 +48,7 @@ function collect(stream) {
 }
 
 test('frames are read across any chunk boundary, native-endian, stamped when complete', () => {
-  const messages = [{ type: 'hello', text: 'caffè ☕' }, resume('r-1'), { type: 'command', action: 'stop', requestId: 'r-2' }];
+  const messages = [{ type: 'hello', text: 'café ☕' }, resume('r-1'), { type: 'command', action: 'stop', requestId: 'r-2' }];
   const bytes = Buffer.concat(messages.map(m => frame(m)));
   for (const size of [1, 2, 3, 5, 7, bytes.length]) {
     const reader = new FrameReader();

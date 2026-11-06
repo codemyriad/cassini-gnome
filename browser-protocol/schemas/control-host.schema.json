@@ -47,7 +47,8 @@
         "action": {
           "enum": [
             "start",
-            "stop"
+            "stop",
+            "reloadTab"
           ]
         },
         "tabId": {

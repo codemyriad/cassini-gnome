@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4bfHu05n/2FMxqgKy4P14UtVfbDrHyYM+vBu6p/VRs8o3G0TR6R7QzJRg1COSc8dyxiBE+alWBqWWRIa8lvr3mCkHidNWzsc42m1bcVGXf7j0jY9UlYPFQDi/QMBdnOWl0wxTkC6+WHzxftzqM92E+WMJpEjMeSeMQY3HHdTQJlrnNqyworOrMJADDq8/UsNCl7r6Ytp8t9fDhfKOX+u+FJFmCT+tEruZfVdtoId2YN8pahBIs+SRnOA9L9tPtW+G4fV/n4f64UO8z/58fBiGe7YMfxnZr5NPaHVkZh62IfdNNX4vdsvDc2o5VZyl0qeCmgUAtffv830+EgEpd4sewIDAQAB",
-  "name": "Cassini Recorder",
-  "version": "0.2.16",
+  "name": "Cassini Browser Companion",
+  "version": "0.2.20",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon-16.png",
@@ -10,7 +10,7 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "description": "Record a meeting\u2019s audio tracks, or the whole tab, to WAV files on this computer with Cassini.",
+  "description": "Connect browser meeting audio to Cassini and check meeting detection and connection status.",
   "permissions": [
     "activeTab",
     "nativeMessaging",
@@ -18,7 +18,8 @@
     "tabCapture",
     "storage",
     "tabs",
-    "alarms"
+    "alarms",
+    "scripting"
   ],
   "background": {
     "service_worker": "background.js",
@@ -30,7 +31,7 @@
       "32": "icons/icon-32.png"
     },
     "default_popup": "popup.html",
-    "default_title": "Cassini Recorder"
+    "default_title": "Cassini browser companion"
   },
   "content_scripts": [
     {
@@ -79,7 +80,11 @@
       "suggested_key": {
         "default": "Ctrl+Shift+9"
       },
-      "description": "Open Cassini Recorder"
+      "description": "Open Cassini browser companion"
     }
-  }
+  },
+  "host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ]
 }

@@ -1,26 +1,26 @@
-tree 75ee643f26798115b93a571ba13f244bab07d028
-parent b8a493a10a57b89040c45ad19eddcfa9a0659358
-parent c89b2951752c6ef297bf0b01927358675831e1eb
-author Silvio Tomatis <silviot@gmail.com> 1793962468 +0100
-committer GitHub <noreply@github.com> 1793962468 +0100
+tree 97235a82020a3917b7c443fa5307297b23708569
+parent 6d139e3d79613711b7cf84cbbcac67c7650c50ab
+parent 4904a26526c0ed267feb3c7d3124d6c4f7ca7795
+author Silvio Tomatis <silviot@gmail.com> 1793996073 +0100
+committer GitHub <noreply@github.com> 1793996073 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq7bHkCRC1aQ7uu5UhlAAA5+0QAHxAWRG7ogOWzRzoWSVLYxzl
- 8SMifFcd/Q+I+F532PC1CTqmka3zXJFGFfCO9vVwEDDD7tK+CPay5VuwRX3xkt0W
- ruX7f/Kev3VvraKQsBmWuiKx6Ofr6qb23i0OkUNU6NBj5YnN3YgLrraA1bqOZUL+
- gxVP6LJc80ZtCZo3XqCqIgSVryGqAWV5ezL64PLhS6YO/BNy8OdTECGtRb6CWFJw
- JPHfw2y7aXzFg6ReOR8V3f0jxfjc5YNX1cmVKCEL13LH43d9/ayusk91qCgqPgOC
- GNvpupiomTe+RTPlppmNsYuFUjZ7hM85Sojb2pRxwmYinjKvUEaDjuLQQRhZj0mQ
- ro22m4FI9eISktDsp+Q6JJ3OOc3m7HDzKO0Ev3pwQSYJVZx7zl0G6/4AHznqe8yV
- 1v4lToDMTi0LCC9WESKx/Pqs0bLenzZmQglNQmuKCEN9TyBPJfcyJKJHrREb4fxP
- MoJ1mvYf6fTnuzW/o+z4hwVz3B7C+sGF0s7yNXdbudjE72AP5JiaKqAD32fap2GR
- mAtH0siYtCruCu8TDQ7gPYqa8z7zqkMp4uh8DxMiKZrm8Myi04nafn+ge9m/W5Qe
- I7C+R3s4n3cjmUJoBm3MzcL2HXV1HWxe3fPq9RXx1cFSijCauFOZj1hVa3IweGZO
- wb9eAn8bfFzuzTH2dCQL
- =ZArK
+ wsFcBAABCAAQBQJq7jUpCRC1aQ7uu5UhlAAAGkEQAESVuJkQKZSzODpNjw/QNPXa
+ hX7m29hezTRQejEAJMc8jj2aViQqdbUZBijqSwRSVWbofbt2Q/8f97zAp+ppZGmA
+ i4ur3VrYviZnMNT6E3YZpg9Cx5DrGhQo0vbyNqYjVGzLUWPmEhrqjlzwqTh5qftY
+ M9ZfK6WAamuobgEYEVeIT3GZnbuWJhoS5Ad15K5rTZGGm6bb9Efghekp+ndp5xg2
+ cHlQhNBD+reR/+L3pscpsvbSPVmuO758OGONko7eJkNNzNrm/B6q9BLeQoTkJrAd
+ BMnVb+3d9dsYNOLzInEVGwlAjypeR7QvJyIz4C0OA7KE62VJPprZL8GPf+X1OCY5
+ 712PWYOfoRl6feYYwSMzTiQIJCQPitJW9XU70qG2zwpBDE9a+m69e8GWbyMDA4Is
+ 8oC879y2h+y5ycug7MEMLaY+Xc3B2ZML1KWRzQvnxDmVTuPGOlMGt6xZ6jlJdadQ
+ ZQp7+sfXwEUNMZbDDjifQlZQV6GGf/2kHVWodKbOiM7dcE5a7MIj2Tvi/CsZP3ja
+ cXFt5k3DhwlphKt0tCVmoIkkqB3lYzdWaaqr67nOPylTaGXy6eIBDTTClayNQEeh
+ dyMMU71yTP/rT+CWrRxSO+v8P+eKTKtoxFJTuMBZAmoF11CFg28NTfdOKfODlLwl
+ 7Nv4Bquugc3tWN07ut3O
+ =XhlP
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #63 from codemyriad/fix/committed-clock-stop
+Merge pull request #67 from codemyriad/feat/companion-status-popup
 
-Keep Stop tails on the committed shared capture clock
+feat: replace recording popup with current-tab companion status

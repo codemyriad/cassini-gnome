@@ -13,9 +13,9 @@ async function setup({delay,previous,grantError,grantDelay=0,startDelay=0,storag
       if(packet.type==='start')phase='start-ack';
       setTimeout(()=>this.onMessage.emit(packet.type==='start'?{type:'started',path:'/Recording-test'}:packet.type==='stop'?{type:'stopped',path:'/Recording-test'}:{type:'ack'}),packet.type==='start'?startDelay:0);
     }};ports.push(port);return port;
-  }},storage:{session:{async get(){if(storageGetError)throw Error('storage unavailable');return {...stored}},async set(value){phase='storage-set';await wait(storageDelay);Object.assign(stored,value)},async remove(key){delete stored[key]}}},
+  }},storage:{session:{async get(){if(storageGetError)throw Error('storage unavailable');return {...stored}},async set(value){if(value.cassiniActive){phase='storage-set';await wait(storageDelay)}Object.assign(stored,value)},async remove(key){delete stored[key]}}},
   tabs:{query:async()=>[{id:1,url:'https://meeting.test',title:'Test'}],onRemoved:event(),onUpdated:event(),async sendMessage(){
-    if(delay!==undefined)setTimeout(()=>connect.emit({name:'cassini-frame',sender:{id:'test',tab:{id:1}},onMessage:event(),onDisconnect:event(),postMessage(){}}),delay);
+    if(delay!==undefined)setTimeout(()=>connect.emit({name:'cassini-frame',sender:{id:'test',tab:{id:1}},onMessage:event(),onDisconnect:event(),postMessage(m){if(m.type==='relayHello')queueMicrotask(()=>{this.onMessage.emit({...m});this.onMessage.emit({...m,type:'relayReady'})})}}),delay);
   }},tabCapture:{async getMediaStreamId(){phase='grant';await wait(grantDelay);if(grantError)throw Error('No invocation');return 'stream'}},
   offscreen:{async closeDocument(){offscreen=false},async createDocument(){phase='offscreen-create';await wait(createDelay);offscreen=true}},action:{async setBadgeText(value){badge=value.text},async setBadgeBackgroundColor(){}}};
   const context=vm.createContext({AppControl:class {start(){} publish(){} publishStatus(){}},chrome,TextEncoder,setTimeout,clearTimeout,crypto:{randomUUID:()=> 'token',subtle:require('node:crypto').webcrypto.subtle},queueMicrotask});

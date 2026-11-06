@@ -144,17 +144,19 @@ def test_analysis_failure_does_not_reject_a_wire_packet_or_change_saved_pcm(tmp_
 
 
 def test_deselected_wire_pcm_is_not_analysed_and_new_span_is_declared(tmp_path):
-    capture = capture_at(tmp_path)
+    capture = capture_at(tmp_path, opened_at=0)
     capture.spectrogram.subscribe()
     pcm = tone(4800, amplitude=300)
     try:
         declare(capture)
         packet(capture, pcm)
+        capture.elapsed_ms = lambda: 100
         capture.select(True, False)
         assert "wire" in capture.spectrogram.retired
         before = capture.spectrogram.calls
         packet(capture, pcm, 1, 100)
         assert capture.spectrogram.calls == before
+        capture.elapsed_ms = lambda: 200
         capture.select(True, True)
         identifier = capture.streams.tracks["wire"].recorded
         assert identifier != "wire" and identifier in capture.spectrogram.known

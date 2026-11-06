@@ -78,6 +78,26 @@ for now, because launching a browser with an extension and an audio device is wh
 platforms differ. `TESTING.md` describes the layers and what each one does and does not
 prove.
 
+## browser companion popup
+
+The extension popup reports the active tab’s meeting-source readiness separately
+from its app-control connection. Recording controls live in the Cassini app;
+the extension popup does not start or stop recordings. A detected source is not
+a verified participant or proof of saved audio. A missing current-tab health row
+means no meeting is reported, not proof that page injection succeeded or failed.
+
+Reload guidance targets only the current tab, warns that reloading interrupts
+the call, and respects the background worker’s refusal to reload active captures.
+Connection details can be copied without meeting titles, URLs or recording paths.
+The packaged-file self-check remains diagnostic and never gates page readiness.
+
+Run `node tests/popup.mjs` for the popup’s isolated Chromium interaction checks;
+`node --test extension/tests/popup-state.test.cjs` covers its evidence-to-status
+mapping. Browser fixtures initiate capture through the trusted popup RPC rather
+than keeping obsolete recording buttons in the product. The first popup increment
+does not expose app auto-record policy, confirmed saved audio, or an app launcher:
+those need explicit app-backed APIs instead of inferred or simulated state.
+
 ## changing things
 
 Changes to the protocol, the schemas, the vectors or the extension land here first, with a

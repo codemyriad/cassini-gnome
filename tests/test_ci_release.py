@@ -111,7 +111,7 @@ def candidate(tmp_path):
         "build-aux/rpm/cassini-talk.spec": "Version: 7.8.9\n",
         "build-aux/arch/PKGBUILD": "pkgver=7.8.9\n",
         "NEWS": "Version 7.8.9\n~~~~~~~~~~~~~\nNot released yet.\n",
-        "browser-extension/manifest.json": '{"version":"0.2.16"}\n',
+        "browser-extension/manifest.json": '{"version":"0.2.20"}\n',
         "data/cassini-talk.1": '.TH CASSINI-TALK 1 "October 2026" "cassini-talk 7.8.9" "User Commands"\n',
         "data/io.codemyriad.CassiniTalk.metainfo.xml.in": (
             '<component><releases><release version="7.8.9" date="2026-10-29"/></releases></component>'
@@ -127,7 +127,7 @@ def candidate(tmp_path):
 def test_release_metadata_accepts_a_consistent_candidate_without_creating_a_tag(candidate):
     result = module("release_metadata").check(candidate, "v7.8.9")
     assert result["version"] == "7.8.9" and result["date"] == "2026-10-29"
-    assert result["extensionVersion"] == "0.2.16"
+    assert result["extensionVersion"] == "0.2.20"
     assert len(result["versions"]) == 7
     assert not (candidate / ".git").exists()
     with pytest.raises(ValueError, match="does not match"):
@@ -163,7 +163,7 @@ def test_release_metadata_requires_a_real_metainfo_date(candidate, replacement):
 
 def test_release_metadata_rejects_the_old_browser_companion(candidate):
     (candidate / "browser-extension/manifest.json").write_text('{"version":"0.2.1"}\n')
-    with pytest.raises(ValueError, match="Browser companion version must be 0.2.16"):
+    with pytest.raises(ValueError, match="Browser companion version must be 0.2.20"):
         module("release_metadata").check(candidate)
 
 
@@ -180,7 +180,7 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
         '<component><id>io.codemyriad.CassiniTalk</id><releases><release version="7.8.9"/></releases></component>'
     )
     desktop.write_text("[Desktop Entry]\n")
-    extension.write_text('{"version":"0.2.16"}\n')
+    extension.write_text('{"version":"0.2.20"}\n')
     calls = []
 
     def run(command, *, check):
@@ -190,7 +190,7 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
     policy = module("validate_installed")
     result = policy.validate(prefix, "io.codemyriad.CassiniTalk", "7.8.9", run=run)
     assert result["version"] == "7.8.9" and result["appstream"] == result["desktop"] == "passed"
-    assert result["extensionVersion"] == "0.2.16"
+    assert result["extensionVersion"] == "0.2.20"
     assert calls == [
         ["appstreamcli", "validate", "--no-net", str(metainfo)],
         ["desktop-file-validate", str(desktop)],
@@ -203,7 +203,7 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
         path.write_text(original)
     calls.clear()
     extension.write_text('{"version":"0.2.1"}\n')
-    with pytest.raises(ValueError, match="Installed browser companion version must be 0.2.16"):
+    with pytest.raises(ValueError, match="Installed browser companion version must be 0.2.20"):
         policy.validate(prefix, "io.codemyriad.CassiniTalk", "7.8.9", run=run)
     assert calls == []
 

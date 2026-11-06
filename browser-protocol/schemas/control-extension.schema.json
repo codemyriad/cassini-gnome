@@ -18,6 +18,30 @@
             "maxLength": 80
           },
           "uniqueItems": true
+        },
+        "extensionVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "extensionInstance": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "installType": {
+          "type": "string",
+          "enum": [
+            "admin",
+            "development",
+            "normal",
+            "sideload",
+            "other",
+            "unknown"
+          ]
+        },
+        "filesOk": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -256,6 +280,9 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 253402300799000
+        },
+        "browserHealth": {
+          "$ref": "#/$defs/browserHealth"
         }
       },
       "required": [
@@ -435,6 +462,9 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 253402300799000
+        },
+        "browserHealth": {
+          "$ref": "#/$defs/browserHealth"
         }
       },
       "required": [
@@ -443,6 +473,102 @@
         "tabId",
         "path",
         "message"
+      ],
+      "additionalProperties": true
+    },
+    "browserHealth": {
+      "type": "object",
+      "properties": {
+        "worker": {
+          "const": "ready"
+        },
+        "nativeControl": {
+          "enum": [
+            "connected",
+            "disconnected"
+          ]
+        },
+        "extensionVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "extensionInstance": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "state": {
+          "enum": [
+            "idle",
+            "ready",
+            "checking",
+            "reloadRequired"
+          ]
+        },
+        "tabs": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "properties": {
+              "tabId": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "state": {
+                "enum": [
+                  "ready",
+                  "checking",
+                  "reloadRequired"
+                ]
+              },
+              "hookSeen": {
+                "type": "boolean"
+              },
+              "relayAlive": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "action": {
+                "const": "reloadMeetingTab"
+              }
+            },
+            "required": [
+              "tabId",
+              "state",
+              "hookSeen",
+              "relayAlive"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "installType": {
+          "type": "string",
+          "enum": [
+            "admin",
+            "development",
+            "normal",
+            "sideload",
+            "other",
+            "unknown"
+          ]
+        },
+        "filesOk": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "worker",
+        "nativeControl",
+        "extensionVersion",
+        "extensionInstance",
+        "state",
+        "tabs"
       ],
       "additionalProperties": true
     }

@@ -1,0 +1,148 @@
+[
+  {
+    "name": "idle-connected",
+    "status": {
+      "type": "status",
+      "recording": false,
+      "tabId": null,
+      "path": null,
+      "message": "Ready.",
+      "browserHealth": {
+        "worker": "ready",
+        "nativeControl": "connected",
+        "extensionVersion": "0.2.17",
+        "extensionInstance": "extension-load-1",
+        "state": "idle",
+        "tabs": []
+      }
+    },
+    "expectReloadWarning": false
+  },
+  {
+    "name": "idle-disconnected",
+    "status": {
+      "type": "status",
+      "recording": false,
+      "tabId": null,
+      "path": null,
+      "message": "Ready.",
+      "browserHealth": {
+        "worker": "ready",
+        "nativeControl": "disconnected",
+        "extensionVersion": "0.2.17",
+        "extensionInstance": "extension-load-1",
+        "state": "idle",
+        "tabs": []
+      }
+    },
+    "expectReloadWarning": false
+  },
+  {
+    "name": "ready-meeting",
+    "status": {
+      "type": "status",
+      "recording": false,
+      "tabId": null,
+      "path": null,
+      "message": "Ready.",
+      "browserHealth": {
+        "worker": "ready",
+        "nativeControl": "connected",
+        "extensionVersion": "0.2.17",
+        "extensionInstance": "extension-load-1",
+        "state": "ready",
+        "tabs": [
+          {
+            "tabId": 2,
+            "state": "ready",
+            "hookSeen": true,
+            "relayAlive": true
+          }
+        ]
+      }
+    },
+    "expectReloadWarning": false
+  },
+  {
+    "name": "checking-meeting",
+    "status": {
+      "type": "status",
+      "recording": false,
+      "tabId": null,
+      "path": null,
+      "message": "Ready.",
+      "browserHealth": {
+        "worker": "ready",
+        "nativeControl": "connected",
+        "extensionVersion": "0.2.17",
+        "extensionInstance": "extension-load-1",
+        "state": "checking",
+        "tabs": [
+          {
+            "tabId": 2,
+            "state": "checking",
+            "hookSeen": true,
+            "relayAlive": false
+          }
+        ]
+      }
+    },
+    "expectReloadWarning": false
+  },
+  {
+    "name": "orphaned-meeting-relay",
+    "status": {
+      "type": "status",
+      "recording": false,
+      "tabId": null,
+      "path": null,
+      "message": "Ready.",
+      "browserHealth": {
+        "worker": "ready",
+        "nativeControl": "connected",
+        "extensionVersion": "0.2.17",
+        "extensionInstance": "extension-load-1",
+        "state": "reloadRequired",
+        "tabs": [
+          {
+            "tabId": 2,
+            "state": "reloadRequired",
+            "hookSeen": true,
+            "relayAlive": false,
+            "message": "Reload the meeting tab so Cassini can record it.",
+            "action": "reloadMeetingTab"
+          }
+        ]
+      }
+    },
+    "expectReloadWarning": true
+  },
+  {
+    "name": "incompatible-old-hook",
+    "status": {
+      "type": "status",
+      "recording": false,
+      "tabId": null,
+      "path": null,
+      "message": "Ready.",
+      "browserHealth": {
+        "worker": "ready",
+        "nativeControl": "connected",
+        "extensionVersion": "0.2.17",
+        "extensionInstance": "extension-load-1",
+        "state": "reloadRequired",
+        "tabs": [
+          {
+            "tabId": 2,
+            "state": "reloadRequired",
+            "hookSeen": true,
+            "relayAlive": true,
+            "message": "Reload the meeting tab so Cassini can record it.",
+            "action": "reloadMeetingTab"
+          }
+        ]
+      }
+    },
+    "expectReloadWarning": true
+  }
+]

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Persistent app management, independent of the per-recording PCM connection.
 export class AppControl {
-  constructor({ runtime, alarms, snapshot, command, capabilities = [], cancelPending = () => {}, connected = async () => {},
+  constructor({ runtime, alarms, snapshot, command, capabilities = [], identity = () => ({}), cancelPending = () => {}, connected = async () => {},
                 later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id), busy = () => false }) {
-    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, cancelPending, connected, later, cancel, busy });
+    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, identity, cancelPending, connected, later, cancel, busy });
     this.port = null;
     this.ready = false;
+    this.connecting = false;
     this.retry = null;
     this.delay = 1000;
     this.stopped = false;
@@ -26,7 +27,7 @@ export class AppControl {
     this.cancel(this.retry);
     this.alarms.onAlarm.removeListener(this.alarm);
     this.alarms.clear('cassini-app-control').catch(() => {});
-    const port = this.port; this.port = null; this.ready = false;
+    const port = this.port; this.port = null; this.ready = false; this.connecting = false;
     port?.disconnect();
   }
   reconnect() {
@@ -45,6 +46,7 @@ export class AppControl {
     if (port !== this.port) return;
     this.port = null;
     this.ready = false;
+    this.connecting = false;
     if (Date.now() - this.connectedAt >= 30000) this.delay = 1000;
     try { port.disconnect(); } catch {}
     this.requests.clear(); this.completed.clear();
@@ -59,19 +61,25 @@ export class AppControl {
     catch { this.reconnect(); return; }
     this.port = port;
     this.ready = false;
+    this.connecting = true;
     this.tabTails.clear();
     this.connectedAt = Date.now();
     this.requests.clear(); this.completed.clear();
     port.onDisconnect.addListener(() => { void this.runtime.lastError; this.disconnected(port); });
     port.onMessage.addListener(message => this.receive(port, message));
-    const hello = { type: 'hello', version: 1 };
+    const hello = { type: 'hello', version: 1, ...this.identity() };
     if (this.capabilities.length) hello.capabilities = this.capabilities;
     this.send(port, hello);
     Promise.resolve().then(() => this.connected()).then(() => {
       if (port !== this.port) return;
+      this.connecting = false;
       this.alarms.clear('cassini-app-control').catch(() => {});
       this.publish();
-    }).catch(() => this.publish());
+    }).catch(() => {
+      if (port !== this.port) return;
+      this.connecting = false;
+      this.publish();
+    });
   }
   publishStatus(message) {
     // Lifecycle edges must not wait behind an asynchronous inventory refresh.
@@ -80,9 +88,9 @@ export class AppControl {
   }
   publish() {
     this.dirty = true;
-    if (!this.port || this.publishing) return;
+    if (!this.port || this.connecting || this.publishing) return;
     this.publishing = (async () => {
-      while (this.dirty && this.port) {
+      while (this.dirty && this.port && !this.connecting) {
         this.dirty = false;
         const port = this.port;
         try {
@@ -157,7 +165,7 @@ export class AppControl {
         try {
           // D58 #11: `busy` wins over every other refusal of a Start for that tab.
           if (this.busy(message)) throw Object.assign(new Error('A recording is already running. Stop it before starting another.'), { resultCode: 'busy' });
-          if (!['start', 'stop'].includes(message.action) || !Number.isSafeInteger(message.tabId) || message.tabId < 0)
+          if ((!['start', 'stop'].includes(message.action) && !(message.action === 'reloadTab' && this.capabilities.includes('tab-readiness-v1'))) || !Number.isSafeInteger(message.tabId) || message.tabId < 0)
             throw invalid('Choose a meeting to record.');
           if (message.action === 'start' && message.mode !== 'tracks')
             throw invalid('To record the whole tab, click Record the whole tab in the browser.');

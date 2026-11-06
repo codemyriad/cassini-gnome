@@ -66,14 +66,17 @@ def test_install_is_stable_idempotent_and_newer_only_without_touching_profiles(t
     assert list(target.parent.glob(".browser-companion*")) == [target.parent / ".browser-companion.lock"]
 
 
-def test_pinned_companion_upgrades_an_installed_022_copy_with_all_resources(tmp_path):
+@pytest.mark.parametrize("old_version", ["0.2.2", "0.2.15", "0.2.16", "0.2.17", "0.2.18", "0.2.19"])
+def test_pinned_companion_upgrades_older_installs_with_all_resources(tmp_path, old_version):
     current = ROOT / "browser-extension"
-    old = tmp_path / "installed-022-bundle"
+    old = tmp_path / ("installed-" + old_version + "-bundle")
     shutil.copytree(current, old)
     manifest = json.loads((old / "manifest.json").read_text())
-    manifest["version"] = "0.2.2"
+    manifest["version"] = old_version
     (old / "manifest.json").write_text(json.dumps(manifest))
     (old / "background.js").write_bytes(b"// previous installed companion bytes\n")
+    (old / "popup.js").write_bytes(b"// previous installed popup bytes\n")
+    (old / "popup-state.mjs").unlink()  # Introduced with the 0.2.20 status popup.
     destination = tmp_path / "host-data" / "browser-companion"
     bundle.prepare(old, destination=destination)
     before = fingerprint(destination)

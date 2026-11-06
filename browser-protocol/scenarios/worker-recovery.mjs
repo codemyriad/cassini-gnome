@@ -21,7 +21,10 @@ export async function stopRecordingWorker(context, meetingPage, extensionId) {
 // With library, the host's meeting must stay inside that private test Library.
 export async function workerDeathDuringRecording({ context, meetingPage, popup, extensionId, mode = 'tracks', library }) {
   const status = () => popup.evaluate(() => chrome.runtime.sendMessage({ target: 'background', type: 'status' }));
-  await popup.click(mode === 'tracks' ? '#tracks' : '#tab');
+  // The companion popup has no product recording controls. Keep the fixture
+  // on the trusted popup RPC, which is also used by the reload regression.
+  const started = await popup.evaluate(mode => chrome.runtime.sendMessage({target: 'background', type: 'start', mode}), mode);
+  assert.ok(!started.error, `worker fixture could not start: ${JSON.stringify(started)}`);
   const deadline = Date.now() + 20000;
   let before, metadata;
   while (true) {

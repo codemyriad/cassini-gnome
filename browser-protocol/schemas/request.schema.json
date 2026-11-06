@@ -210,9 +210,38 @@
             "$ref": "#/$defs/discoveredSource"
           },
           "$comment": "The framed JSON size limit bounds diagnostics; the separate 64-track limit bounds audio allocation."
+        },
+        "cause": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[A-Za-z][A-Za-z0-9]*$",
+          "$comment": "Optional diagnostic beside failureReason:lost. Known codes are documented; readers tolerate future cause codes.",
+          "not": {
+            "pattern": "[^A-Za-z0-9]"
+          }
         }
       },
-      "additionalProperties": true
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "cause"
+            ]
+          },
+          "then": {
+            "required": [
+              "failureReason"
+            ],
+            "properties": {
+              "failureReason": {
+                "const": "lost"
+              }
+            }
+          }
+        }
+      ]
     },
     {
       "type": "object",
