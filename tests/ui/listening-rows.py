@@ -139,8 +139,10 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.player.loaded and not unready_play.get_realized()
     assert unready_play.activate()
     assert not unready_clicks and not window.listen.active
+    rebuilt = []
+    page.connect("rows-rebuilt", lambda *_: rebuilt.append(dict(page._speaker_rows)))
     window.present()
-    until(window, lambda: window.player._prerolled and len(page._speaker_rows) == 14)
+    until(window, lambda: rebuilt and window.player._prerolled and len(page._speaker_rows) == 14)
     window.monitor.close()
     row, play, when = page._speaker_rows["voice-12"]
     assert when.endswith("00:00:34")
@@ -169,12 +171,50 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not window.player.playing and play.get_icon_name() == "media-playback-start-symbolic"
     assert not row.has_css_class("listening")
     # Read-only rows retain Play, but have no naming action.
+    old_play = page._speaker_rows["voice-0"][1]
+    generation = len(rebuilt)
+    window.set_visible(False)
     page.update(replace(meeting, metadata_editable=False))
-    row, play, _ = page._speaker_rows["voice-0"]
+    replacement = page._speaker_rows["voice-0"][1]
+    assert replacement is not old_play and not replacement.get_realized()
+    assert len(rebuilt) == generation
+    # Check the actual replacement's wiring independently of GTK activation:
+    # clicked must reach the existing controller even before its first map.
+    replacement.emit("clicked")
+    assert window.listen.active and window.listen.speaker == "voice-0"
+    page._listen_speaker("voice-0")
+    assert not window.listen.active
+    window.present()
+    until(window, lambda: len(rebuilt) > generation)
+    row, play, _ = rebuilt[-1]["voice-0"]
+    assert play is not old_play and page._speaker_rows["voice-0"][1] is play
     assert not isinstance(row.get_child(), Gtk.Button) and play.get_visible()
-    until(window, lambda: play.get_width() > 0)
-    play.activate()
-    until(window, lambda: window.listen.active)
+    assert play.get_realized() and play.get_mapped() and play.get_sensitive()
+    clicks, errors = [], []
+    play.connect("clicked", lambda *_: clicks.append(window.listen.speaker))
+    error_handler = window.player.connect("error", lambda _player, message: errors.append(message))
+    assert play.activate()
+    try:
+        until(window, lambda: window.listen.active)
+    except AssertionError as error:
+        raise AssertionError(
+            dict(
+                stage="read-only Play",
+                clicks=clicks,
+                errors=errors,
+                current=page._speaker_rows["voice-0"][1] is play,
+                realized=play.get_realized(),
+                mapped=play.get_mapped(),
+                sensitive=play.get_sensitive(),
+                width=play.get_width(),
+                loaded=window.player.loaded,
+                prerolled=window.player._prerolled,
+                position=window.player.position,
+            )
+        ) from error
+    finally:
+        window.player.disconnect(error_handler)
+    assert window.listen.speaker == "voice-0" and clicks == ["voice-0"]
     assert page.speakers_dialog is None
     page._listen_speaker("voice-0")
     # Force a caption rebuild in each supported language and check the time

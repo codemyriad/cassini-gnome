@@ -27,6 +27,8 @@ class TurnItem(GObject.Object):
 
 
 class MeetingPage(Adw.NavigationPage):
+    __gsignals__ = {"rows-rebuilt": (GObject.SignalFlags.RUN_LAST, None, ())}
+
     def __init__(self, window, meeting):
         super().__init__(title=meeting.title)
         self.window, self.meeting = window, meeting
@@ -46,6 +48,7 @@ class MeetingPage(Adw.NavigationPage):
         self._match_signature = None
         self._listening_turns = None
         self._speaker_rows = {}
+        self._rows_rebuilt_tick = 0
         self._can_listen = False
         self._scroll_target = None
         self._listening_target = None
@@ -472,6 +475,26 @@ class MeetingPage(Adw.NavigationPage):
         self._match_signature = matches
         self._starts = [turn.start_ms for turn in meeting.turns]
         self._position()
+        if not self._rows_rebuilt_tick:
+            self._rows_rebuilt_tick = self.add_tick_callback(self._rows_ready)
+
+    def _rows_ready(self, _page, _clock):
+        # Allocation alone can survive unmapping. Announce only the current
+        # installed rows, wired, mapped and allocated for GTK activation.
+        if self._closed:
+            self._rows_rebuilt_tick = 0
+            return GLib.SOURCE_REMOVE
+        if not self.get_mapped() or any(
+            not row.get_mapped()
+            or not row.get_realized()
+            or row.get_width() <= 0
+            or (play.get_visible() and (not play.get_mapped() or not play.get_realized() or play.get_width() <= 0))
+            for row, play, _when in self._speaker_rows.values()
+        ):
+            return GLib.SOURCE_CONTINUE
+        self._rows_rebuilt_tick = 0
+        self.emit("rows-rebuilt")
+        return GLib.SOURCE_REMOVE
 
     def _speaker_row(self, speaker, share, matches):
         turns = self.window.listen.turns_of(speaker.id)
@@ -707,6 +730,9 @@ class MeetingPage(Adw.NavigationPage):
 
     def close(self):
         self._closed = True
+        if self._rows_rebuilt_tick:
+            self.remove_tick_callback(self._rows_rebuilt_tick)
+            self._rows_rebuilt_tick = 0
         if self.speakers_dialog and not self.speakers_dialog.closed:
             self.speakers_dialog.close()
         if self._speaker_future is not None:
