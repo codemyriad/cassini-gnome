@@ -725,7 +725,7 @@ def test_lost_audio_acknowledgement_keeps_native_mic_and_falls_back(server, monk
     monkeypatch.setattr(browser_service, "send_packet", blocked_ack)
     actor.start()
     try:
-        assert browser_service.read_packet(peer_stream) == dict(ready=True, protocol=2)
+        assert browser_service.read_packet(peer_stream) == dict(ready=True, protocol=2, identity=service.identity)
         send(
             peer_stream,
             dict(

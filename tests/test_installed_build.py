@@ -588,3 +588,30 @@ def test_native_identity_rejects_traversal_even_with_matching_manifest_digest(tm
     value["buildId"] = hashlib.sha256(json.dumps(fields, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     with pytest.raises(ValueError, match="path"):
         decode(json.dumps(value).encode())
+
+
+@pytest.mark.parametrize("became_busy", [False, True])
+def test_build_refresh_rechecks_broker_before_restarting_after_idle_snapshot(monkeypatch, became_busy):
+    import threading
+
+    from cassini_talk import broker_lifecycle, browser_service
+
+    app, held, finished, _ = application()
+    app.browser_watch = object()
+    main_thread = threading.get_ident()
+    calls = []
+    monkeypatch.setattr(browser_service, "request", lambda: dict(statuses=[]))
+
+    def retire():
+        assert threading.get_ident() != main_thread
+        calls.append(True)
+        return became_busy
+
+    monkeypatch.setattr(broker_lifecycle, "retire_idle", retire)
+    refresh, clock = controller(app, SimpleNamespace(changed=lambda: True, restart=None))
+    refresh.check()
+    clock.finish()
+    assert calls == [True]
+    assert bool(finished) is (not became_busy)
+    assert refresh.browser_busy is became_busy
+    assert not held
