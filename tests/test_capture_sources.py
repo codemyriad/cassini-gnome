@@ -185,7 +185,46 @@ def test_invalid_browser_identity_allocates_no_track(tmp_path, identity, use_sel
 )
 @pytest.mark.parametrize("channels", [1, 2])
 def test_native_stop_cut_uses_nanosecond_stamps_without_an_extra_frame(end, expected, channels):
-    from cassini_talk.capture_sources import pcm_before
+    from cassini_talk.capture_sources import pcm_before, selected_pcm
 
-    pcm = b"\x01\x00" * (480 * channels)
-    assert pcm_before(pcm, 1023.784049, 48000, channels, end) == pcm[: expected * channels * 2]
+    pcm = b"".join(frame.to_bytes(2, "little") * channels for frame in range(480))
+    before = pcm_before(pcm, 1023.784049, 48000, channels, end)
+    after, _offset = selected_pcm(pcm, 1023.784049, 48000, channels, end)
+    assert before == pcm[: expected * channels * 2]
+    assert len(before) + len(after) == len(pcm)
+    assert before + after == pcm
+
+
+@pytest.mark.parametrize("rate", [8000, 44100, 48000, 96000, 192000])
+@pytest.mark.parametrize("offset", [0, 83.784049, 1023.784049, 1234567.000001])
+@pytest.mark.parametrize("frames", [1, 2, 4, 5, 481, 482])
+@pytest.mark.parametrize("channels", [1, 2])
+def test_sample_derived_track_end_partitions_pcm_exactly(rate, offset, frames, channels):
+    from cassini_talk.capture_sources import pcm_before, selected_pcm, track_end
+
+    pcm = b"".join(frame.to_bytes(2, "little") * channels for frame in range(960))
+    boundary = track_end(dict(startOffsetMs=offset, frames=frames, sampleRate=rate))
+    before = pcm_before(pcm, offset, rate, channels, boundary)
+    after, selected_offset = selected_pcm(pcm, offset, rate, channels, boundary)
+    assert before == pcm[: frames * channels * 2]
+    assert after == pcm[frames * channels * 2 :]
+    assert len(before) + len(after) == len(pcm) and before + after == pcm
+    assert selected_offset == boundary
+
+
+@pytest.mark.parametrize("rate", [8000, 44100, 48000, 96000, 192000])
+@pytest.mark.parametrize("offset", [0, 83.784049, 1000.0, 1023.784049])
+@pytest.mark.parametrize("skip", [1, 2, 4, 5])
+@pytest.mark.parametrize("stop_frame", [480, 481, 482])
+def test_selection_then_stop_does_not_requantize_fractional_sample_timestamps(rate, offset, skip, stop_frame):
+    from cassini_talk.capture_sources import pcm_before, selected_pcm, track_end
+
+    pcm = b"".join(frame.to_bytes(2, "little") for frame in range(960))
+    # Select halfway into the preceding frame: skip exactly `skip` frames.
+    start = offset + (skip - 0.5) * 1000 / rate
+    selected, selected_offset = selected_pcm(pcm, offset, rate, 1, start)
+    assert selected == pcm[skip * 2 :]
+    end = track_end(dict(startOffsetMs=offset, frames=stop_frame, sampleRate=rate))
+    kept = pcm_before(selected, selected_offset, rate, 1, end)
+    assert kept == pcm[skip * 2 : stop_frame * 2]
+    assert len(kept) // 2 == stop_frame - skip
