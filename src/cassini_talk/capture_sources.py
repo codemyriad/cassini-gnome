@@ -39,16 +39,29 @@ def canonical_order(tracks):
             tracks.insert(system, tracks.pop())
 
 
+def _frames_between(start, end, rate):
+    """Ceiling on the common grid of nanoseconds and whole sample frames.
+
+    Source stamps originate in nanoseconds, but trimming and track_end add
+    whole frames with fractional nanoseconds (thirds at 48 kHz). Recover both on their
+    common tick grid before subtracting; rounding to nanoseconds alone would
+    discard that fractional frame position and can retain or skip one extra.
+    """
+    step = rate // math.gcd(1_000_000_000, rate)
+    ticks = round(end * 1_000_000 * step) - round(start * 1_000_000 * step)
+    return max(0, -(-ticks * rate // (1_000_000_000 * step)))
+
+
 def selected_pcm(data, offset, rate, channels, start):
     """Drop queued pre-selection frames without moving their original timestamps."""
-    skip = max(0, math.ceil((start - offset) * rate / 1000))
+    skip = _frames_between(offset, start, rate)
     return data[skip * channels * 2 :], offset + skip * 1000 / rate
 
 
 def pcm_before(data, offset, rate, channels, end):
     """Keep only the frames captured before `end` (selected_pcm's tail): a Stop
     boundary inside a queued buffer cuts it there (R93-2)."""
-    keep = max(0, math.ceil((end - offset) * rate / 1000))
+    keep = _frames_between(offset, end, rate)
     return data[: keep * channels * 2]
 
 
