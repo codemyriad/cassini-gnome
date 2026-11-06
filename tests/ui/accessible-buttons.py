@@ -196,6 +196,9 @@ def parent():
     gi.require_version("Atspi", "2.0")
     from gi.repository import Atspi, GLib
 
+    sys.path.insert(0, str(ROOT / "src"))
+    from cassini_talk.strings import plural, text
+
     Atspi.set_timeout(1000, 1000)
 
     def drain():
@@ -302,7 +305,15 @@ def parent():
             activate("Stop", "stop")
             activate("Playback speed, 1×", "speed-menu")
             activate("1.5×", "speed-changed")
-            activate("Marta", "speaker")
+            activate(
+                text(
+                    "speakers.row.a11y",
+                    name="Marta",
+                    provenance=text("meeting.speakerCaption.namedByYou"),
+                    when=plural("speakers.when.times", 2, count=2, position="00:02:41"),
+                ),
+                "speaker",
+            )
             wait_event("search-ready")
             activate("Play from 00:00:04", "search-play", refresh_after_lookup=True)
             wait_event("activation-refreshed")
