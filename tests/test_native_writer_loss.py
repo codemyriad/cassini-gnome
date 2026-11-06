@@ -370,7 +370,8 @@ def test_browser_deselection_drains_before_ending_track_and_keeps_known_loss(tmp
 
 @pytest.mark.parametrize("kind", ["microphone", "system"])
 @pytest.mark.parametrize("follower", [False, True])
-def test_native_recorder_deselection_preserves_known_queue_tail(tmp_path, monkeypatch, kind, follower):
+@pytest.mark.parametrize("fail_change", [False, True])
+def test_native_recorder_deselection_preserves_known_queue_tail(tmp_path, monkeypatch, kind, follower, fail_change):
     gi = pytest.importorskip("gi")
     gi.require_version("Gst", "1.0")
     from gi.repository import Gst
@@ -426,6 +427,21 @@ def test_native_recorder_deselection_preserves_known_queue_tail(tmp_path, monkey
         admission.take(1)
         assert not admission.enter(9_000_000, 480, 9)
         admission.done(480)
+        if fail_change:
+            before = (session.directory / "session.json").read_bytes()
+            state = branch.get_state(0)[1]
+            checkpoint = session.checkpoint
+
+            def refused():
+                raise OSError("Generated selection checkpoint failure")
+
+            with monkeypatch.context() as patch:
+                patch.setattr(session, "checkpoint", refused)
+                with pytest.raises(OSError, match="selection checkpoint"):
+                    recorder._select(kind != "microphone", kind != "system")
+            assert (session.directory / "session.json").read_bytes() == before
+            assert branch.get_state(0)[1] == state and recorder._branches[kind] is branch
+            assert session.checkpoint == checkpoint
         if follower:
             queued, sealed = threading.Event(), threading.Event()
 

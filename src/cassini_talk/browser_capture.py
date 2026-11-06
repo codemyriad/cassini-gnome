@@ -448,10 +448,10 @@ class BrowserCapture:
             opened = False
             with self.lock:
                 state["heard"] = True
-                if not state["active"] or not self._current(kind, identifier):
-                    # Readiness PCM is not a committed recording span, and a
-                    # retired tap's buffer (one in flight while a deselect
-                    # stops it) opens no track after its side was turned off.
+                if not state.get("retiring") and (not state["active"] or not self._current(kind, identifier)):
+                    # Readiness and fully retired taps own no recording span.
+                    # A tap still draining a committed deselection keeps only
+                    # the pre-boundary PCM under its own cutoff below.
                     return
                 cut = self._native_cut()
                 if state.get("until") is not None:
@@ -1071,47 +1071,8 @@ class BrowserCapture:
                     if self.finished or self.stopping or self.stop_requested.is_set():
                         raise ProtocolError("state", "No active recording")
                     if self.tab_closed and (fallback is not None or restore):
-                        return self.snapshot()
-                    if pending and self._fallback_cancelled:
-                        return self.snapshot()
-                    for kind, (_identifier, _tap, state) in prepared.items():
-                        if state["error"]:
-                            opening = kind
-                            raise OSError(state["error"])
-                    needed = self.streams.additions(me, others, browser=not lost) + len(prepared)
-                    if len(self.host.session.writers) + needed > 64:
-                        raise ProtocolError("limit", "A session supports at most 64 sources")
-                    at = change_time(self.host.session, self.elapsed_ms())
-                    removed = {kind: value for kind, value in self.native_taps.items() if kind not in desired}
-                    # Keep ownership until pre-deselection PCM has drained. A
-                    # retired queue can still carry known drops with its tail.
-                    for identifier, tap in removed.values():
-                        self._tap_states[identifier]["until"] = at
-                        if hasattr(tap, "seal"):
-                            tap.seal(at)
-                for identifier, tap in removed.values():
-                    try:
-                        tap.stop()
-                    except Exception:
-                        logging.getLogger(__name__).exception("Could not finish a deselected source")
-                    finally:
-                        with self.lock:
-                            state = self._tap_states[identifier]
-                            admission = getattr(tap, "writer_queue", None)
-                            if admission is not None and state["track"]:
-                                state["timeline"].flush_loss(
-                                    self.host.session,
-                                    identifier,
-                                    admission,
-                                    at,
-                                    inferred=getattr(tap, "timed_out", False),
-                                )
-                with self.lock:
-                    if self.finished or self.stopping or self.stop_requested.is_set():
-                        raise ProtocolError("state", "No active recording")
-                    if not removed and self.tab_closed and (fallback is not None or restore):
                         return self.snapshot()  # A tab may close while a fallback device gets ready.
-                    if not removed and pending and self._fallback_cancelled:
+                    if pending and self._fallback_cancelled:
                         return self.snapshot()  # The call returned first: nothing is committed.
                     for kind, (_identifier, _tap, state) in prepared.items():
                         if state["error"]:
@@ -1121,6 +1082,8 @@ class BrowserCapture:
                     needed = self.streams.additions(me, others, browser=not lost) + len(prepared)
                     if len(self.host.session.writers) + needed > 64:
                         raise ProtocolError("limit", "A session supports at most 64 sources")
+                    at = change_time(self.host.session, self.elapsed_ms())
+                    removed = {kind: value for kind, value in self.native_taps.items() if kind not in desired}
                     # D58.1: an armed tap (no first buffer yet) has no track to end.
                     ending = {kind: value for kind, value in removed.items() if self._has_track(value[0])}
                     with (
@@ -1128,8 +1091,6 @@ class BrowserCapture:
                         self.host.session.change(self._events(me, others, lost, fallback, at)),
                     ):
                         self.streams.select(me, others, at, browser=not lost)
-                        for identifier, _tap in ending.values():
-                            self.host.session.end_track(identifier)
                         for kind, (identifier, _tap, state) in prepared.items():
                             if state["heard"]:
                                 self._add_native(kind, at, identifier=identifier)
@@ -1140,14 +1101,18 @@ class BrowserCapture:
                     self.me, self.others, self.browser_lost = me, others, lost
                     if not lost:
                         self.browser_lost_since = None
-                    for kind, (identifier, _tap) in removed.items():
+                    retiring = {}
+                    for kind, (identifier, tap) in removed.items():
                         self.native_taps.pop(kind)
-                        # Retired before the lock is released: a first buffer
-                        # that arrives while tap.stop() runs below records
-                        # nothing (an armed tap would open a new track).
+                        # Detach error/level ownership only after the change's
+                        # durable commit. PCM alone keeps a bounded drain;
+                        # teardown errors cannot stop the replacement.
                         retired = self._tap_states.pop(identifier, None)
                         if retired is not None:
-                            retired["active"] = False
+                            retired.update(active=False, retiring=True, until=at)
+                            retiring[identifier] = retired
+                        if hasattr(tap, "seal"):
+                            tap.seal(at)
                         self.levels[0 if kind == "microphone" else 1] = 0
                     for kind, (identifier, tap, state) in prepared.items():
                         # A turn-on's armed tap is refused at its time; a
@@ -1161,6 +1126,28 @@ class BrowserCapture:
                     committed = True
                 if "system" in ending and self._mute_observer:
                     self._mute_observer.retire(ending["system"][0], at)
+                for identifier, tap in removed.values():
+                    try:
+                        tap.stop()
+                    except Exception:
+                        logging.getLogger(__name__).exception("Could not finish a deselected source")
+                    finally:
+                        with self.lock:
+                            state = retiring[identifier]
+                            admission = getattr(tap, "writer_queue", None)
+                            if admission is not None and state["track"]:
+                                state["timeline"].flush_loss(
+                                    self.host.session,
+                                    identifier,
+                                    admission,
+                                    at,
+                                    inferred=getattr(tap, "timed_out", False),
+                                )
+                            if state["track"]:
+                                self.host.session.end_track(identifier)
+                            state["retiring"] = False
+                with self.lock:
+                    self._sync_spectrogram()
                 if self._mute_observer:
                     self._mute_observer.refresh()
                 self.changed(self, "sources")

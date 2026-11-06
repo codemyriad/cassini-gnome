@@ -772,40 +772,6 @@ class NativeRecorder(GObject.Object):
             opening = None
             elapsed = self._elapsed_ms(pipeline)
             with self._lock:
-                if (
-                    self.pipeline is not pipeline
-                    or self.stopping
-                    or self._finishing
-                    or self._stop_requested
-                    or self._discard
-                ):
-                    raise ValueError("No source change is available")
-                for kind, attempt in prepared.items():
-                    if attempt["error"]:
-                        opening = kind
-                        raise OSError(attempt["error"])
-                at = change_time(self.session, elapsed)
-                retiring = {
-                    kind: self._branches.get(kind) or self._pending_sources[kind]["branch"]
-                    for kind in removed
-                    if kind in self._branches or self._pending_sources.get(kind, {}).get("armed")
-                }
-                for branch in retiring.values():
-                    branch._selection_cut_ms = at
-                    admission = getattr(branch, "_writer_queue", None)
-                    if admission is not None:
-                        admission.seal(at)
-            # Do not hold the PCM lock while EOS drains the retiring branch.
-            # Its callbacks still own the track until loss is flushed below.
-            drained = {kind: self._drain_branch(kind, branch) for kind, branch in retiring.items()}
-            with self._lock:
-                for kind, branch in retiring.items():
-                    identifier = self._track_ids.get(kind)
-                    admission = getattr(branch, "_writer_queue", None)
-                    if admission is not None and identifier in self._timelines:
-                        self._timelines[identifier].flush_loss(
-                            self.session, identifier, admission, at, inferred=not drained[kind]
-                        )
                 # _discard: an armed refusal on this worker found nothing open
                 # and queued the finish to the main loop; nothing commits now.
                 if (
@@ -820,6 +786,7 @@ class NativeRecorder(GObject.Object):
                     if attempt["error"]:
                         opening = kind
                         raise OSError(attempt["error"])
+                at = change_time(self.session, elapsed)
                 # A selection is written only when it changes (R82 1c): Try again
                 # on a side refused at start reopens it under the start selection.
                 changed = (me, others) != (current.me, current.others)
@@ -829,14 +796,10 @@ class NativeRecorder(GObject.Object):
                 elif "system" in added and not current.others:
                     events.append(dict(atMs=at, type="othersSource", source="system", reason="user"))
                 identifiers = dict(self._track_ids)
-                retired_ids = [identifiers[kind] for kind in removed if kind in identifiers]
                 retired_system = identifiers.get("system") if "system" in removed else None
                 # D58.1: a side that heard nothing yet gets its track at its first buffer.
                 heard = {kind for kind, attempt in prepared.items() if attempt["ready"].is_set()}
                 with self.session.change(events):
-                    for kind in removed:
-                        if kind in identifiers:
-                            self.session.end_track(identifiers.pop(kind))
                     for kind in sorted(heard):
                         identifier = kind + "-" + str(uuid4())
                         self.session.add_track(
@@ -848,15 +811,25 @@ class NativeRecorder(GObject.Object):
                     self.spectrogram.declare(identifiers[kind], kind=kind, now_ms=at)
                     self._spectro_starts[identifiers[kind]] = at
                 self._track_ids = identifiers
-                retired = [self._branches.pop(kind) for kind in removed if kind in self._branches]
-                self._retired_branches.update(retired)
+                retiring = {kind: self._branches[kind] for kind in removed if kind in self._branches}
+                self._retired_branches.update(retiring.values())
                 disarmed = [
                     (kind, self._pending_sources[kind])
                     for kind in removed
                     if self._pending_sources.get(kind, {}).get("armed")
                 ]
                 for kind, attempt in disarmed:
-                    self._retire_attempt(kind, attempt)
+                    admission = getattr(attempt["branch"], "_writer_queue", None)
+                    if admission is not None and admission.last_end_ms is not None:
+                        retiring[kind] = attempt["branch"]
+                        self._retired_branches.add(attempt["branch"])
+                    else:
+                        self._retire_attempt(kind, attempt)
+                for branch in retiring.values():
+                    branch._selection_cut_ms = at
+                    admission = getattr(branch, "_writer_queue", None)
+                    if admission is not None:
+                        admission.seal(at)
                 for kind, attempt in prepared.items():
                     self._boundaries[kind] = at
                     if kind in heard:
@@ -870,15 +843,28 @@ class NativeRecorder(GObject.Object):
                             "Native %s side (%s) heard nothing yet; it opens on its first buffer", SIDES[kind], kind
                         )
                 committed = True
-            for identifier in retired_ids:
-                self.spectrogram.retire(identifier)
-                self._spectro_starts.pop(identifier, None)
             if retired_system is not None and self._mute_observer:
                 self._mute_observer.retire(retired_system, at)
             for kind in removed:
                 self.levels[0 if kind == "microphone" else 1] = 0
-            for branch in retired:
-                branch.set_state(Gst.State.NULL)
+            for kind, branch in retiring.items():
+                drained = self._drain_branch(kind, branch)
+                with self._lock:
+                    identifier = self._track_ids.get(kind)
+                    admission = getattr(branch, "_writer_queue", None)
+                    if admission is not None and identifier in self._timelines:
+                        self._timelines[identifier].flush_loss(
+                            self.session, identifier, admission, at, inferred=not drained
+                        )
+                    if identifier is not None:
+                        self.session.end_track(identifier)
+                        self._track_ids.pop(kind)
+                        self.spectrogram.retire(identifier)
+                        self._spectro_starts.pop(identifier, None)
+                    self._branches.pop(kind, None)
+                    for pending_kind, attempt in disarmed:
+                        if pending_kind == kind:
+                            self._retire_attempt(kind, attempt)
                 pipeline.remove(branch)
             for _kind, attempt in disarmed:
                 self._detach(pipeline, attempt)
@@ -929,12 +915,16 @@ class NativeRecorder(GObject.Object):
 
     def _drain_branch(self, kind, branch):
         """Finish a deselected source before retiring its queue and track."""
+        admission = getattr(branch, "_writer_queue", None)
+        if admission is None:
+            # Branches without bounded admission have no writer-loss tail.
+            branch.set_state(Gst.State.NULL)
+            return True
         ended = threading.Event()
         sink = branch.get_by_name(kind)
         handler = sink.connect("eos", lambda *_: ended.set())
         try:
-            admission = getattr(branch, "_writer_queue", None)
-            if admission is not None and admission.last_end_ms is None:
+            if admission.last_end_ms is None:
                 return True  # An armed source heard nothing; EOS may wait forever.
             request_eos(branch, lambda *_: False)
             return ended.wait(10)
