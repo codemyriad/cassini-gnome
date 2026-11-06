@@ -547,7 +547,7 @@ class NativeRecorder(GObject.Object):
             return False
         if attempt["error"] or attempt["retired"]:
             return False
-        at = max(pts_ms, attempt.get("refuse_at", 0))
+        at = self._side_start_ms(attempt, pts_ms)
         cut = getattr(attempt["branch"], "_selection_cut_ms", None)
         if cut is not None and at >= cut:
             return False
@@ -572,13 +572,22 @@ class NativeRecorder(GObject.Object):
         clock = pipeline.get_clock()
         return max(0, (clock.get_time() - pipeline.get_base_time()) / Gst.MSECOND) if clock is not None else 0
 
+    def _side_start_ms(self, attempt, pts_ms):
+        at = max(pts_ms, attempt.get("refuse_at", 0))
+        if getattr(attempt["branch"], "_selection_cut_ms", None) is None:
+            # A live attempt respects the latest committed selection. A
+            # retiring one instead drains within its already sealed span:
+            # its own deselection (or a later Stop) cannot move its start.
+            at = max([at, *(event["atMs"] for event in self.session.manifest.get("events", []))])
+        return at
+
     def _commit_side(self, kind, attempt, at_ms):
         """Commit a start or armed side at its first admitted buffer (lock held)."""
         from .strings import text
 
-        # The source's turn-on bounds its first buffer, not later events.
-        # Deselection is already committed while pre-cut PCM drains here.
-        at = max(at_ms, attempt.get("refuse_at", 0))
+        # A retiring side's own turn-on bounds its first buffer, even though
+        # its deselection is already committed while pre-cut PCM drains here.
+        at = self._side_start_ms(attempt, at_ms)
         label = text("common.me" if kind == "microphone" else "common.theOthers")
         identifier = attempt["identifier"]
         # One checkpoint holds the track with its start.
