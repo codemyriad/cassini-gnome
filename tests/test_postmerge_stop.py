@@ -447,21 +447,19 @@ def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, mon
     from concurrent.futures import Future
 
     from cassini_talk import library_publication
-    from cassini_talk.library_publication import capture_parent, publish_stopped
+    from cassini_talk.library_publication import capture_parent
 
-    published = threading.Event()
+    # A stand-in publication the test completes: the broker's ordering while a
+    # stopped managed capture publishes is under test, not the Opus mixdown,
+    # which needs NumPy (absent on purpose on alpine:edge, the no-NumPy leg;
+    # there the real one fails and keeps the WAVs). test_library_publication
+    # covers real publication.
+    result, submitted = object(), []
 
     def gated_submit(session, *, cancel=None):
+        assert session is capture.host.session and not cancel.is_set()
         future = Future()
-
-        def run():
-            published.wait(BOUND)
-            try:
-                future.set_result(publish_stopped(session, cancel=cancel))
-            except Exception as error:  # noqa: BLE001 - delivered through the future
-                future.set_exception(error)
-
-        threading.Thread(target=run, daemon=True).start()
+        submitted.append(future)
         return future
 
     monkeypatch.setattr(library_publication, "submit_stopped", gated_submit)
@@ -517,15 +515,18 @@ def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, mon
             service._scheduled_calls,
             service._stopping_all.is_set(),
         )
-        published.set()  # The old save's completion arrives afterwards.
+        assert len(submitted) == 1
+        submitted[0].set_result(result)  # The old save's completion arrives afterwards.
         assert finished.wait(BOUND)
-        assert capture.publication is not None and capture.error is None
+        assert capture.publication is result and capture.error is None, (capture.publication, capture.error)
         function, args, kwargs = automatic.pop(0)
         function(*args, **kwargs)
         actual = (service._stopped_identity(identity), [p["action"] for p in sent])
         assert actual == (False, ["stop", "start"] if target == "call" else ["start"]), actual
     finally:
-        published.set()
+        for future in submitted:
+            if not future.done():
+                future.set_result(None)  # Never leave the capture waiting on its save.
         service.workers.shutdown(wait=True)
         capture.stop()
 
