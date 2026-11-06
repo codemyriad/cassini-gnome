@@ -248,3 +248,16 @@ def test_schema_boolean_constants_are_distinct_from_numbers(value, const, expect
     from cassini_talk.library_schema import valid
 
     assert valid(value, {"const": const}) is expected
+
+
+def test_loaded_listening_turns_follow_merges_and_are_cached_between_scans(meeting):
+    scanner = LibraryScanner(meeting.directory.parent)
+    before = scanner.scan().meetings[0]
+    assert [(t.speaker, t.word_indices) for t in before.listening_turns] == [("a", (0,)), ("b", (1,)), ("c", (2,))]
+    assert scanner.scan().meetings[0].listening_turns is before.listening_turns
+    merge_into(meeting.directory, "b", "a")
+    after = scanner.scan(changed_directories={meeting.directory}).meetings[0]
+    assert [(t.speaker, t.word_indices) for t in after.listening_turns] == [("a", (0, 1)), ("c", (2,))]
+    undo_merge(meeting.directory)
+    restored = scanner.scan(changed_directories={meeting.directory}).meetings[0]
+    assert restored.listening_turns == before.listening_turns
