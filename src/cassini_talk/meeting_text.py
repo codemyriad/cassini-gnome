@@ -1,13 +1,58 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """R12: shares from timed items, and timing-preserving transcript markup."""
 
+from dataclasses import dataclass
 from fractions import Fraction
 from html import escape
 
+from .portable import Word
 from .transcript import display_items
 
 COLOURS = ("#1c71d8", "#b34d00", "#813d9c", "#21804b", "#bd2028", "#167c8b")
 DARK_COLOURS = ("#78aeed", "#ffa348", "#ce91df", "#77d39a", "#ff9298", "#79c7d1")
+
+
+@dataclass(frozen=True, slots=True)
+class SpeakerTurn:
+    """D70 listening span, retaining the original timed words and their indices."""
+
+    index: int
+    speaker: str
+    words: tuple[Word, ...]
+    word_indices: tuple[int, ...]
+    start_ms: int
+    end_ms: int
+
+    @property
+    def text(self):
+        return " ".join(value for value in display_items(self.words) if value)
+
+
+def speaker_turns(words):
+    """Maximal speaker runs after merges, independent of reading paragraphs.
+
+    Callers apply the meeting's merge overlay first. Stable chronological order
+    includes overlapping asides as their own speaker runs. Neither pauses nor
+    the transcript's layout limits split a listening turn. Original word indices
+    let the transcript highlight the same words across several reading rows.
+    """
+    turns = []
+    run, indices = [], []
+    end = 0
+
+    def append():
+        turns.append(SpeakerTurn(len(turns), run[0].speaker, tuple(run), tuple(indices), run[0].start_ms, end))
+
+    for index, word in sorted(enumerate(words), key=lambda item: item[1].start_ms):
+        if run and run[-1].speaker != word.speaker:
+            append()
+            run, indices = [], []
+        end = max(end, word.end_ms) if run else word.end_ms
+        run.append(word)
+        indices.append(index)
+    if run:
+        append()
+    return tuple(turns)
 
 
 def speaking_shares(words, speaker_ids):
