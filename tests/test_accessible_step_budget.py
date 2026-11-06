@@ -15,8 +15,9 @@ def test_seven_bounded_steps_can_exceed_the_old_total_deadline_without_sleeping(
     now, events = [0], []
 
     def dispatch():
-        now[0] += 9
-        events.append(f"step-{len(events) + 1}")
+        now[0] += 1
+        if now[0] % 9 == 0:
+            events.append(f"step-{len(events) + 1}")
 
     progress_wait.until_progress(
         lambda: len(events) == 7,
