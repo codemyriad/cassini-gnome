@@ -125,3 +125,12 @@ uses a pidfd to send SIGINT without a PID-reuse race. Unknown or busy peers rema
 running. The client waits for the old service lock before spawning its replacement.
 SIGTERM takes the broker's normal capture-finalization path. BuildRefresh performs
 its own idle recheck before restarting the app.
+
+### Browser loss evidence
+
+A lost Stop keeps its optional bounded ASCII `cause` and the first 1,000
+characters of its `problem` on the committed `othersSource` event as `cause` and
+`detail`. Unknown future identifiers remain opaque; malformed diagnostic causes
+are ignored. The fields do not alter fallback, selection or Stop policy. An audio
+transport EOF records `transportClosed`. Cleanup after an earlier loss does not
+replace that loss's evidence, and a normal explicit Stop adds no loss evidence.
