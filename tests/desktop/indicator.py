@@ -57,13 +57,6 @@ def assert_one_indicator(appid):
         "Object.values(Main.panel.statusArea).filter(a=>a?._indicator?.id===" + json.dumps(appid) + ").length"
     )
     assert actors == 1, (appid, actors)
-    unique = call(
-        "org.freedesktop.DBus",
-        "/org/freedesktop/DBus",
-        "org.freedesktop.DBus",
-        "GetNameOwner",
-        GLib.Variant("(s)", (appid,)),
-    )[0]
     items = call(
         "org.kde.StatusNotifierWatcher",
         "/StatusNotifierWatcher",
@@ -71,8 +64,30 @@ def assert_one_indicator(appid):
         "Get",
         GLib.Variant("(ss)", ("org.kde.StatusNotifierWatcher", "RegisteredStatusNotifierItems")),
     )[0]
-    matching = [item for item in items if item.split("@", 1)[0].split("/", 1)[0] in (appid, unique)]
-    assert len(matching) == 1 and matching[0].startswith(appid), (appid, items)
+    matching = []
+    for item in items:
+        service, separator, path = item.partition("@")
+        if not separator:
+            service, separator, suffix = item.partition("/")
+            path = "/" + suffix if separator else "/StatusNotifierItem"
+        identifier = call(
+            service,
+            path,
+            "org.freedesktop.DBus.Properties",
+            "Get",
+            GLib.Variant("(ss)", ("org.kde.StatusNotifierItem", "Id")),
+        )[0]
+        if identifier == appid:
+            matching.append((service, path))
+    assert len(matching) == 1, (appid, items)
+    owner_name = call(
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "GetNameOwner",
+        GLib.Variant("(s)", (appid,)),
+    )[0]
+    assert matching[0][0].startswith(":") and matching[0][0] != owner_name, matching
     return matching
 
 
@@ -535,6 +550,7 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
     third = wait_for_recording(root, appid, "recording with the Library open")
     assert third not in (manifest, second) and windows(appid)
     until(lambda appid=appid: (indicator(appid) or {}).get("visible"), "recording SNI with the Library open")
+    assert_one_indicator(appid)
     menu_click(appid, "Quit Cassini")
     until(lambda appid=appid: not owner(appid), "SNI Quit with the Library open stops and exits")
     until(lambda third=third: kept(third), "SNI Quit with the Library open keeps WAVs")

@@ -40,7 +40,7 @@ def connection():
     )
 
 
-server, client, host = connection(), connection(), connection()
+application, client, host = connection(), connection(), connection()
 errors, actions, registrations = [], [], []
 app = SimpleNamespace(
     get_application_id=lambda: "io.codemyriad.CassiniTalk",
@@ -48,7 +48,7 @@ app = SimpleNamespace(
     activate_action=lambda name, _: actions.append(name),
 )
 application_name = app.get_application_id()
-assert server.call_sync(
+assert application.call_sync(
     "org.freedesktop.DBus",
     "/org/freedesktop/DBus",
     "org.freedesktop.DBus",
@@ -59,7 +59,10 @@ assert server.call_sync(
     2000,
     None,
 ).unpack() == (1,)
-notifier = StatusNotifier(app, server)
+notifier = StatusNotifier(app)
+until(lambda: notifier.bus is not None, "private indicator connection")
+server = notifier.bus
+assert server.get_unique_name() != application.get_unique_name()
 identities = set()
 
 
@@ -90,7 +93,7 @@ def call(path, interface, method, parameters=None, *, destination=None):
     return replies[0]
 
 
-def discover_items():
+def discover_items(*, registered=True):
     # Ubuntu AppIndicator scans well-known names and keys its discovered
     # items by the literal bus name + path, not the resolved unique owner.
     names = call("/org/freedesktop/DBus", "org.freedesktop.DBus", "ListNames", destination="org.freedesktop.DBus")[0]
@@ -122,7 +125,7 @@ def discover_items():
             name,
         )
     until(lambda: len(completed) == len(candidates), "host discovery introspection replies")
-    assert identities == {(application_name, ITEM_PATH)}, identities
+    assert identities == ({(server.get_unique_name(), ITEM_PATH)} if registered else set()), identities
 
 
 def prop(name):
@@ -184,7 +187,7 @@ host.emit_signal(None, "/StatusNotifierWatcher", WATCHER, "StatusNotifierHostReg
 until(lambda: notifier.available, "host registration again")
 assert server.get_unique_name().startswith(":")
 discover_items()  # App registers first, then the host discovers its alias.
-assert registrations == [(server.get_unique_name(), application_name)]
+assert registrations == [(server.get_unique_name(), server.get_unique_name())]
 assert prop("Status") == "Active"
 assert prop("IconName") == "io.codemyriad.CassiniTalk-symbolic"
 revision, layout = call(MENU_PATH, MENU, "GetLayout", GLib.Variant("(iias)", (0, -1, [])))
@@ -245,19 +248,51 @@ assert notifier.served_revision == -1, "a new watcher's host must fetch the layo
 identities.clear()
 registrations.clear()
 notifier.update(recording=False, windowless=True, automatic=True)
-discover_items()
+discover_items(registered=False)
 owned = Gio.bus_own_name_on_connection(host, WATCHER, Gio.BusNameOwnerFlags.NONE, None, None)
 until(lambda: notifier.registered, "registration after watcher restart and discovery")
-assert registrations == [(server.get_unique_name(), application_name)]
-assert identities == {(application_name, ITEM_PATH)}
+assert registrations == [(server.get_unique_name(), server.get_unique_name())]
+assert identities == {(server.get_unique_name(), ITEM_PATH)}
 discover_items()
-Gio.bus_unown_name(owned)
-until(lambda: notifier.proxy is None, "restarted watcher disappears")
+
+
+def peer_left(_bus, _sender, _path, _interface, _signal, parameters):
+    name, _old, owner = parameters.unpack()
+    if not owner:
+        identities.discard((name, ITEM_PATH))
+
+
+subscription = host.signal_subscribe(
+    "org.freedesktop.DBus",
+    "org.freedesktop.DBus",
+    "NameOwnerChanged",
+    "/org/freedesktop/DBus",
+    None,
+    Gio.DBusSignalFlags.NONE,
+    peer_left,
+)
 notifier.close()
+notifier.close()  # Closing during application teardown is idempotent.
 assert not notifier.exports and not errors
+until(server.is_closed, "private connection closes on shutdown")
+until(lambda: not identities, "host removes the old private identity")
+old_name = server.get_unique_name()
+registrations.clear()
+notifier = StatusNotifier(app)
+notifier.update(recording=True, message="Recording again", label="00:00:01")
+until(lambda: notifier.bus is not None, "replacement private connection")
+server = notifier.bus
+assert server.get_unique_name() not in (old_name, application.get_unique_name())
+until(lambda: notifier.registered, "same application id registers after relaunch with the same watcher")
+discover_items()
+assert prop("Title") == "Recording again"
+Gio.bus_unown_name(owned)
+notifier.close()
+until(server.is_closed, "replacement connection closes")
+host.signal_unsubscribe(subscription)
 host.unregister_object(export)
-for bus in (client, host, server):
+for bus in (client, host, application):
     bus.close_sync(None)
 print(
-    "PASS optional SNI: absent watcher, absent host, one app/discovery identity in both orders and on restart, real wire layout/properties/actions, stable timer, hide and shutdown"
+    "PASS optional SNI: absent watcher, absent host, one private identity in both orders, host restart and same-app relaunch, real wire layout/properties/actions, stable timer, hide and shutdown"
 )
