@@ -1,26 +1,6 @@
-tree 9e99cbcd54b91fa5a599cda061c6882be48bf5c1
-parent 8a3f856c8534a68a12d66b3eca37f3472df2f55b
-parent 383a4185dc877fff622d824e82e36b2802d548c2
-author Silvio Tomatis <silviot@gmail.com> 1793958271 +0100
-committer GitHub <noreply@github.com> 1793958271 +0100
-gpgsig -----BEGIN PGP SIGNATURE-----
- 
- wsFcBAABCAAQBQJq7aF/CRC1aQ7uu5UhlAAA/FwQABV3BT6KA/0pa50n2TXYPDNK
- v0UoFDP2Hqj1O3s72GurlSZ3E0rdwW5V2Urio7qkkWdpq2fpWdJwrDD9d1hioPV/
- OVjM0P2PMWbaNDfZdW/ZXm9eFnxNPSNVGRoF0BLWlnzd4qfTmSt6tfEN4XhTRngI
- tAim8OwxClxPhhDJhgtp+T7YFfHpT4rrtRuI0j7fOnwZMWhUDIr69YFmgvFbaPV8
- TLOhGBhv3z9+sXIEseTWTIPQOiJJp4pJl6oiij9B5jdi5w0WiGsuxR40NfEqLg2p
- AIKID825QTQioEAr4AdEEWjUtiRJHRcf5aNszXbyJ206cVGsLwKfHGZ93/hZZM+K
- ov0leHoeQ5Ea+LE+ptqLgg6x30aD/SnRAOA51fHxj3yMwD+EIQZ/ewZgSQF/NCHW
- TlsYwrkFAMS7TeTgCNHfgE/LXo7sxMqZIGQ2SbipUie6fNkPUgR5VYFJ7G9VSQg0
- J2ZzX1cGaSNkqW1kufvtvuw1Na+O3F9WVS4reQYKh7oSfwG3jheMjCDVenEMB6zb
- 1pvpVlLoWixnXt8v46NBLkoEpK/lPGpoGFxakAU32kVouf0I4yAMUI3tKnsYEprz
- FCCYgPfBc+0TWrCyaqkamepOKzhvKkPEHNHkG8wQf1wPe+/BeILZjzwziXqo6vJS
- 1h0S3RZLsoZrsGIEKUB6
- =YCMr
- -----END PGP SIGNATURE-----
- 
+tree 75ee643f26798115b93a571ba13f244bab07d028
+parent b8a493a10a57b89040c45ad19eddcfa9a0659358
+author Silvio Tomatis <silviot@gmail.com> 1793961030 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1793961062 +0100
 
-Merge pull request #62 from codemyriad/spec/d69-writer-loss
-
-D69: record native writer loss through Stop as I/O loss
+Keep stopping spans on the committed shared capture clock

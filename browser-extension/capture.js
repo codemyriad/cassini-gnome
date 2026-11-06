@@ -139,9 +139,9 @@ function resumeSuspended(context) {
 // within a millisecond while rendering catches up faster than real time, so their stamps fall
 // steadily and neighbours agree by chance. A rise that neither confirms nor reverts settles at
 // its smallest reading SETTLE_MS after it opened; one that keeps flipping sign settles at no
-// step then, so no chunk is held longer. At a span's Stop an unsettled rise places only that
-// span's held chunks, at its smallest reading, and stays open for the context's other and later
-// spans. A rise seen first against the calibration seed (plus the roundTrip uncertainty) is a
+// step then, so no chunk is held longer. At a span's Stop an unsettled rise places that
+// span's held chunks on the committed mapping; the rise stays open for the context's other
+// and later spans. A rise seen first against the calibration seed (plus the roundTrip uncertainty) is a
 // freeze between calibration and the first device callbacks. Offsets never move backward: a
 // confirmed fall that is no drift is credit that offsets a later rise. A fall that opens within
 // STALL_RECOVER_MS of a re-anchor or of such a fall, ramp or not, is rendering returning part of
@@ -576,14 +576,11 @@ async function captureOnce({ stream, id, label, kind, origin, workletURL, send, 
             node.port.postMessage("stop");
           }).catch(abort);
         }
-        // A held chunk is never lost on stop, and is placed before the end is declared. A rise
-        // still unsettled places this span's chunks at its smallest reading, but is not
-        // committed: one span's end is no evidence, and the context's other spans would keep it.
+        // Stop is no evidence that a pending rise is real. Release this span on the
+        // committed clock, so a successor cannot start inside a speculative tail.
+        // Other and later spans keep judging the rise on the shared context.
         observe(context, clock);
-        if (clock.pending && held.length) {
-          const { anchor } = settlement(clock, clock.pending.readings);
-          release(true, anchor ? { ...clock, anchors: [...clock.anchors, anchor] } : clock);
-        } else release(true);
+        release(true);
         // Accept the worklet's final flush through its stopped barrier, then
         // fence even a retained callback before draining admitted PCM.
         ending = true;
