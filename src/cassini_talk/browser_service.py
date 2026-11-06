@@ -1607,11 +1607,7 @@ class BrowserService:
                 if browser.browser_instance is not None:
                     for (instance, tab), (capture_id, _url) in self.call_captures.items():
                         owner = self.captures.get(capture_id)
-                        if (
-                            instance == browser.browser_instance
-                            and tab in meetings
-                            and self._still_recording(owner)
-                        ):
+                        if instance == browser.browser_instance and tab in meetings and self._still_recording(owner):
                             browser.states.setdefault(
                                 tab, dict(recording=True, tabId=tab, captureId=capture_id, path=str(owner.directory))
                             )

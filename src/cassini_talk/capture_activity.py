@@ -76,6 +76,35 @@ def standing_broker_caches(app, browser=None):
     return stands(app_at), [s for s in sources if stands(getattr(s, "answered_at", None))]
 
 
+def retired_captures(app):
+    """Recordings any broker cache already knows stopped (saving) or finished.
+
+    A capture only moves forward: recording, then stopping, then finished.
+    A cache can be stale, so it can only show an earlier phase, never a later
+    one. The receive stamps order replies, not when they were sampled: an
+    activity poll sampled before Stop can arrive after Watch's stopping reply
+    and stand as the newest (#237). So a stopped or finished phase seen in any
+    cache, standing or not, wins over a "recording" from any other.
+    """
+    from pathlib import Path
+
+    from .library import meeting_id
+
+    retired = set()
+    for target in [app, *app.get_windows()]:
+        for status in getattr(target, "_browser_snapshot", {}).get("statuses", []):
+            path = status.get("path") if isinstance(status, dict) else None
+            if isinstance(path, str) and (status.get("stopping") or not status.get("recording")):
+                identifier = meeting_id(Path(path))
+                if identifier:
+                    retired.add(identifier)
+        source = getattr(target, "_activity_source", None)
+        for identifier, state in (getattr(source, "snapshot", None) or {}).items():
+            if state == "saving":
+                retired.add(identifier)
+    return retired
+
+
 def read_browser_activity(path=None, with_connection=False, with_paths=False, *, unanswered=None):
     """The broker's capture state. No broker (BROKER_ABSENT) reads as idle: an
     answer that nothing records. With `unanswered`, any other failure, from a

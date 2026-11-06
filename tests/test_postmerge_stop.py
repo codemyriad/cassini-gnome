@@ -466,9 +466,7 @@ def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, mon
 
     monkeypatch.setattr(library_publication, "submit_stopped", gated_submit)
     taps = DrainingTaps()
-    capture, clock = start_capture(
-        capture_parent(tmp_path / "Library"), taps, microphone=True, others_source="browser"
-    )
+    capture, clock = start_capture(capture_parent(tmp_path / "Library"), taps, microphone=True, others_source="browser")
     tap, _ = record_live(capture, clock)
     service, browser, identity, logical, finished = bound_broker(tmp_path, capture)
     # The call has a generation (D52.5), so the generation guard is exercised too.

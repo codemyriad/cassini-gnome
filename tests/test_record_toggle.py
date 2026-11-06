@@ -180,9 +180,7 @@ def test_a_held_activity_reply_stamped_after_the_stopping_reply_never_revives_th
     replies, now = queue.Queue(), [0.0]
     monkeypatch.setattr(capture_activity, "read_browser_activity", lambda *_, **__: replies.get())
     changes = []
-    activity = capture_activity.BrowserActivity(
-        lambda: changes.append(1), interval_ms=3_600_000, clock=lambda: now[0]
-    )
+    activity = capture_activity.BrowserActivity(lambda: changes.append(1), interval_ms=3_600_000, clock=lambda: now[0])
     try:
         replies.put(({identifier: "recording"}, False, {identifier: path}))
         pump(lambda: activity.answered_at == 0.0, "first activity poll")
