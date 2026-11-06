@@ -373,7 +373,10 @@ class MeetingPage(Adw.NavigationPage):
             undo,
             self.window.get_application().meeting_trash.allowed(meeting, self.window),
             matches,
-            id(meeting.words),
+            # Library scans reparse the same words. Identity would rebuild the
+            # rows and unrealize a button during GTK's delayed activation,
+            # cancelling its pending click (and losing keyboard focus).
+            meeting.words,
             meeting.speakers,
             meeting.transcript,
             meeting.eta_minutes,

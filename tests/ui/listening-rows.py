@@ -127,8 +127,8 @@ with tempfile.TemporaryDirectory() as temporary:
     window.player = FolderPlayer(audio_sink=sink)
     window._connect_player()
     meeting = window.snapshot.meetings[0]
-    # Force the original race: audio/row data can be ready while GTK has not
-    # realized the button. Gtk.Button.activate() still returns True then, but
+    # Also cover activation before GTK realizes the row: audio/row data
+    # can already be ready. Gtk.Button.activate() still returns True then, but
     # schedules no click at all (gtk_real_button_activate checks realized).
     window.set_visible(False)
     window.open_meeting(meeting)
@@ -151,6 +151,13 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, lambda: play.get_mapped() and play.get_sensitive() and play.get_width() > 0)
     assert play.get_realized(), "A mapped button must be realized before activation"
     assert play.activate()
+    # A monitor scan can finish during GTK's delayed keyboard activation.
+    # Equal freshly parsed words must preserve the live button and its click.
+    fresh = replace(meeting, words=tuple(list(meeting.words)))
+    assert fresh.words == meeting.words and fresh.words is not meeting.words
+    page.update(fresh)
+    assert page._speaker_rows["voice-12"][1] is play
+    assert play.get_realized()
     until(window, lambda: window.listen.active)
     assert window.listen.speaker == "voice-12" and page.speakers_dialog is None
     assert play.get_icon_name() == "media-playback-stop-symbolic"
