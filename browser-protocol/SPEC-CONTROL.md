@@ -720,3 +720,162 @@ cancel) and a failure reported by the native host, or the loss of that host, car
 raises the error; a tracks Start answers before the page's capture begins, so today these
 reach the app as a later source failure (`captureOutcome failed`, P10), not on a result.
 Shared wire cases: the `wire` list in `conformance/refusals/writer.json`.
+
+## Tab readiness (`tab-readiness-v1`, extension 0.2.17)
+
+Native control connectivity does not prove that an open meeting tab can reach the
+worker. Chromium can leave an old isolated content-script realm behind when the
+extension reloads or updates, while its MAIN-world WebRTC hook keeps discovering
+sources. An idle browser with no detected meeting is not an error.
+
+A capable hello adds `extensionVersion` (1–80 characters) and `extensionInstance`
+(1–128 characters). The instance identifies one loaded extension, persists through
+service-worker eviction via `storage.session`, and changes on extension reload,
+update or browser restart. The wire version remains 1; old peers may ignore these
+optional fields and the new capability.
+
+Each status (including a successful result's nested status) adds `browserHealth`:
+
+```json
+{"worker":"ready","nativeControl":"connected","extensionVersion":"0.2.17","extensionInstance":"extension-load-1","state":"reloadRequired","tabs":[{"tabId":2,"state":"reloadRequired","hookSeen":true,"relayAlive":false,"message":"Reload the meeting tab so Cassini can record it.","action":"reloadMeetingTab"}]}
+```
+
+- `worker` is `ready`: this status was produced by the worker. Worker loss is
+  detected by the app's existing control connection/heartbeat rules.
+- `nativeControl` is `connected` or `disconnected`. It describes the persistent
+  control port, independently of per-recording native audio connections. The
+  disconnected value is observable in the popup; it cannot travel over a missing
+  native connection. A host receives status only while its own port exists.
+- `tabs` has at most 100 entries, each scoped to this browser/profile's `tabId`.
+  It contains only tabs with discovered meeting sources or a lost relay that had
+  meeting sources. It does not disclose unrelated idle tab URLs or titles.
+- Per-tab `state` is `checking`, `ready`, or `reloadRequired`. `hookSeen` records
+  discovery or a valid hook handshake; `relayAlive` records the relay's answer to
+  the current instance challenge. A live relay with an incompatible old hook can
+  therefore be `reloadRequired` with both booleans true.
+- Overall `state` is `reloadRequired` if any detected meeting needs reload, else
+  `checking` if any is being checked, else `ready` if there are detected meetings,
+  else `idle`. **Idle never produces a reload warning**, even when an unrelated
+  restricted page cannot accept injected scripts or the native host is absent.
+- Apps render the extension's health decision. Only `reloadRequired` supplies the
+  guidance and optional action above. They must not infer a broken meeting from an
+  empty inventory, a missing native host, or a tab's URL. An unready tab is not an
+  eligible Start/auto-start inventory entry. This decision covers the entire tab:
+  one healthy frame cannot make a tab eligible while another detected meeting
+  frame is checking, unavailable, or lost. Idle inventory omits that tab, and both
+  app and popup track Start refuse with `pageUnreachable` before native Start.
+  Admission is rechecked after asynchronous tab lookup/relay discovery. Existing
+  recording or pending-Start ownership still takes `busy` precedence. Existing
+  recordings retain their inventory, normal status and failure handling; health
+  does not fabricate a Stop. Once all detected meeting frames recover, new Start
+  eligibility returns; an unrelated unready tab does not block a healthy tab.
+
+The isolated relay and MAIN hook exchange protocol-1 readiness tied to the
+worker's current instance. The worker accepts readiness only from its own
+extension port and matching instance/protocol. Page evidence remains advisory:
+handshakes do not authorize recording, paths, native commands, or app actions.
+A relay exists independently of its hook being compatible. A handshake's bounded
+deadline reports an unavailable hook rather than treating port existence as ready.
+
+On install, update, startup and control reconnect, the worker probes open web tabs
+and re-injects **only the isolated relay** where needed. It does not re-wrap an
+already-running MAIN hook. A compatible hook keeps its peer objects, source keys
+and document identity. A pre-handshake hook requires a full tab reload. Relay
+injection is idempotent; invalidated relays stop, fail admitted/late requests and
+remove listeners after capture drains (bounded by ten seconds). Navigation and tab
+closure clear stale readiness. A browser may forbid injection into a restricted
+frame; failed injection alone is not evidence of a meeting or a reason to warn.
+The manifest's `scripting` and HTTP(S) host permissions cover this repair; they do
+not authorize recording without the existing popup/app command.
+
+An app may offer an explicit user action by sending:
+
+```json
+{"type":"command","requestId":"reload-2","action":"reloadTab","tabId":2,"independent":true}
+```
+
+Send it only to a `tab-readiness-v1` peer, only after the user chooses the reload
+recovery action. The worker accepts it only for a detected `reloadRequired` tab,
+refuses a tab that is recording or starting (`busy`), and invokes Chrome's normal
+tab reload. It never starts native capture. A tab without that recovery condition
+is refused with `gone`. Deduplication and ordering follow the existing command
+rules. The popup provides the same explicit action. Consumers must reconcile the
+following snapshots instead of replaying Start on a stale tab instance.
+
+`conformance/control/tab-readiness-vectors.json` supplies consumer states;
+`tests/extension-reload.mjs` loads and reloads the unpacked extension, then joins a
+persistent meeting page to a synthetic audio peer and verifies non-silent PCM at
+the replacement worker. Its native sink is an in-memory fixture, not an app writer
+or evidence of device/native-host integration. No microphone or speaker is used.
+
+## Companion diagnostics (extension 0.2.18)
+
+The version/instance hello from `tab-readiness-v1` also carries optional diagnostic
+fields `installType` and `filesOk`. These fields do not introduce a new wire
+version or capability; **feature gating continues to use capabilities**, never
+version strings, install type, or the self-check. Versions are for diagnostic
+wording and comparison with an app's bundled companion pin.
+
+```json
+{"type":"hello","version":1,"extensionVersion":"0.2.18","extensionInstance":"extension-load-1","installType":"development","filesOk":true,"capabilities":["multi-stream-v1","page-state-v1","call-evidence-v1","resume-capture-v1","heartbeat-v1","tab-readiness-v1"]}
+```
+
+- `extensionVersion` comes from `chrome.runtime.getManifest().version`.
+- `installType` comes from `chrome.management.getSelf()`, which needs no additional
+  management permission. Its values are `admin`, `development` (unpacked),
+  `normal`, `sideload`, `other`, or `unknown` when unavailable.
+- `filesOk` is true only when startup fetches and reads nonempty `capture.js` and
+  `pcm-worklet.js` through this extension's own `runtime.getURL`, without cache.
+  A missing/unreadable/empty file or a file-read timeout reports false. This is a
+  packaged-file readability check, not a checksum, module execution, audio-device
+  test, or proof of per-tab readiness. Unavailable installation metadata leaves
+  `installType: "unknown"` independently of the file result.
+- Startup bounds the check at 2.5 s, aborting pending file fetches. It completes
+  before the first native control connection, so hello is still sent immediately
+  on that connection. Each worker checks once and reuses the result across
+  control reconnects; worker restart/update performs a fresh check. No retry
+  conceals a missing file. `status.browserHealth` and the popup details expose the
+  same completed diagnostics; fields can be absent while the popup's startup
+  check is pending. A missing file does not accuse an idle browser of a broken
+  meeting tab.
+
+Older hellos omit these fields: absence means unknown, not a successful check.
+Apps may use diagnostics for setup/recovery wording; they do not change the
+existing capability contract or infer that a particular meeting failed.
+
+### Cause of a lost browser capture
+
+An extension Stop that already carries `failureReason: "lost"` also carries an
+optional `cause`, next to the existing `problem` text:
+
+```json
+{"type":"stop","captureId":"capture-1","failureReason":"lost","cause":"frameError","problem":"The meeting page could not record separate tracks. Record the whole tab instead. Audio recorded so far was saved."}
+```
+
+| Cause | Observed extension trigger |
+| --- | --- |
+| `frameError` | The page hook or offscreen capture reports a fatal error. |
+| `frameClosed` | A recording relay disconnects under the existing immediate-loss policy. |
+| `tabClosed` | Chrome reports the recording tab removed under that policy. |
+| `nativeHostError` | The native host reports a capture-wide error or an audio request fails/times out. Source-scoped refusals retain their existing behavior. |
+| `startupError` | An unexpected startup failure occurs after the native folder is owned, outside an explicit cancellation. |
+| `transportClosed` | The native audio port disconnects or a native-port write throws. |
+| `lifecycle` | The frame stops unexpectedly without a more specific terminal error. |
+
+The first terminal loss cause wins. An earlier nonfatal source warning does not
+choose it, and a later failure during cleanup cannot replace it. The extension
+chooses causes at its own failure branches; it does not trust a page-supplied
+cause or classify failures by parsing human-readable text. The new field changes
+neither when a failure is declared nor the existing Stop/fallback policy.
+
+Cause is a bounded ASCII identifier (1–80 characters). Readers tolerate unknown
+future codes and absent legacy causes; a cause never changes `failureReason`,
+recording state, or end reason. A normal explicit Stop, an opted-in navigation
+boundary, or a source warning alone adds neither a lost failureReason nor cause.
+If the native pipe is already closed, no Stop diagnostic can be delivered over
+it: the app/writer still observes EOF and records its own `transportClosed`
+diagnostic. This extension change does not implement app-side persistence or UI.
+
+`conformance/control/companion-diagnostics-vectors.json` contains current and
+legacy hellos plus lost/normal Stop examples. Their optional keys remain valid
+under the older schemas' unknown-field policy.

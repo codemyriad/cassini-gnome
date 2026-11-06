@@ -1,26 +1,26 @@
-tree 75ee643f26798115b93a571ba13f244bab07d028
-parent b8a493a10a57b89040c45ad19eddcfa9a0659358
-parent c89b2951752c6ef297bf0b01927358675831e1eb
-author Silvio Tomatis <silviot@gmail.com> 1793962468 +0100
-committer GitHub <noreply@github.com> 1793962468 +0100
+tree eda2773b27f5179200373a2418b9e415b0a1f946
+parent d288865799ae61a2a7bdec18406b70f63acda951
+parent fe826aa833d2ca0e5f795c7ecd7007835d78cc99
+author Silvio Tomatis <silviot@gmail.com> 1793989469 +0100
+committer GitHub <noreply@github.com> 1793989469 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq7bHkCRC1aQ7uu5UhlAAA5+0QAHxAWRG7ogOWzRzoWSVLYxzl
- 8SMifFcd/Q+I+F532PC1CTqmka3zXJFGFfCO9vVwEDDD7tK+CPay5VuwRX3xkt0W
- ruX7f/Kev3VvraKQsBmWuiKx6Ofr6qb23i0OkUNU6NBj5YnN3YgLrraA1bqOZUL+
- gxVP6LJc80ZtCZo3XqCqIgSVryGqAWV5ezL64PLhS6YO/BNy8OdTECGtRb6CWFJw
- JPHfw2y7aXzFg6ReOR8V3f0jxfjc5YNX1cmVKCEL13LH43d9/ayusk91qCgqPgOC
- GNvpupiomTe+RTPlppmNsYuFUjZ7hM85Sojb2pRxwmYinjKvUEaDjuLQQRhZj0mQ
- ro22m4FI9eISktDsp+Q6JJ3OOc3m7HDzKO0Ev3pwQSYJVZx7zl0G6/4AHznqe8yV
- 1v4lToDMTi0LCC9WESKx/Pqs0bLenzZmQglNQmuKCEN9TyBPJfcyJKJHrREb4fxP
- MoJ1mvYf6fTnuzW/o+z4hwVz3B7C+sGF0s7yNXdbudjE72AP5JiaKqAD32fap2GR
- mAtH0siYtCruCu8TDQ7gPYqa8z7zqkMp4uh8DxMiKZrm8Myi04nafn+ge9m/W5Qe
- I7C+R3s4n3cjmUJoBm3MzcL2HXV1HWxe3fPq9RXx1cFSijCauFOZj1hVa3IweGZO
- wb9eAn8bfFzuzTH2dCQL
- =ZArK
+ wsFcBAABCAAQBQJq7htdCRC1aQ7uu5UhlAAAtb8QAB/aABIDJFRKstcR7R1ihMr3
+ KGdKPL0KZ69nnLnoTlvQUgEF7YbPuCuvc/DZqmAvKmVWTaRbyyJTc7pGxQSJ5G3n
+ pAh8beN5H4JcdEk8mdJr61pS8lO2NH7yZknKfewc8ozGaoYYBGJyrhRZDuMudJLY
+ AiWYXL4MPKFO/rHBvaU9ROK6pz+xx1wBa8FZx+NksaQ50Kr2gtLKp5HakANGpaNt
+ QQmaRkFIM1HNFkzjPvqz5nrSIrje8bz3ZaY2gMDoyAsBbUxv7JyeB+6PILv7YDZD
+ 2kXyrluo3Nnv/CUHt8nhmUzTDCnY3YCPLVeD6hMqmGSFtWgLelXkkWQTVXS1IAhg
+ iey0/a+c3E5WwXYtpi8pyCEeqKq6GLUySWFmhd/eEOwFE30PvaI2TW2KjHucguhm
+ kqrrczGOUQstmRUJZoFT620iOf9Tz5x6mkbzgSVG4t3Eo4iSm2MA6Aj125atWhkS
+ QWT4FjpwuJ436B5HKBMZR/NWgW2aBA5u+HF8r7Sx3daGpg41u06qQ/YnC+UchUv3
+ v7sJQCJm0LTse4845H1ikGVf9b/YJ79QLuhIr8iB2yDJz2axMpbHsXBcLqrYU6mU
+ CfdL/dNRwvonJHgg6KiYdnG/2sqSYr4yPAZbPAOnSnTN3ERtYibwyohUFGjjWPGe
+ Kl1Dfi1P1E5RjWr26vO6
+ =XZyI
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #63 from codemyriad/fix/committed-clock-stop
+Merge pull request #66 from codemyriad/chore/english-frame-sample
 
-Keep Stop tails on the committed shared capture clock
+Use English sample in UTF-8 frame-reader fixture

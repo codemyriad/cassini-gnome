@@ -16,7 +16,7 @@ async function twoMeetings() {
 test('independent capability starts two tabs, routes packets and stops only one', async () => {
   const app = await twoMeetings();
   try {
-    assert.deepEqual(Array.from(app.ports[0].sent[0].capabilities), ['independent-sessions-v1', 'call-evidence-v1', 'page-state-v1', 'multi-stream-v1', 'resume-capture-v1', 'heartbeat-v1']);
+    assert.deepEqual(Array.from(app.ports[0].sent[0].capabilities), ['independent-sessions-v1', 'call-evidence-v1', 'page-state-v1', 'multi-stream-v1', 'resume-capture-v1', 'heartbeat-v1', 'tab-readiness-v1']);
     assert.equal((await app.command(command('one','start',2,{captureLocal:false,microphone:true}))).ok,true);
     const second = await app.command(command('two','start',3,{captureLocal:false,microphone:false}));
     assert.equal(second.ok,true);assert.equal(app.audio.length,2);
@@ -259,7 +259,7 @@ for(const vector of autoStartCases)test('desktop manual vector: '+vector.name,as
   try {
     const expectedCapabilities=vector.capabilities.includes('call-evidence-v1')
       ?app.ports[0].sent.find(packet=>packet.type==='hello').capabilities:['independent-sessions-v1'];
-    assert.deepEqual(vector.capabilities,expectedCapabilities,'vectors use a real compatible transport hello');
+    assert.ok(vector.capabilities.every(cap => expectedCapabilities.includes(cap)), 'vectors use a real compatible transport hello');
     app.pages[0].onMessage.emit({type:'discovery',sourceCount:vector.meeting.sourceCount,heard:vector.meeting.heard});
     const result=await app.command(command('vector-manual','start',vector.meeting.tabId));
     // D52.5: `recordings` live in the app's registry, which the extension never

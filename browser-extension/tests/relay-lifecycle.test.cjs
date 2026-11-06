@@ -3,8 +3,8 @@ function event(){const list=[];return {addListener(fn){list.push(fn)},emit(...va
 test('worker disconnect drains old page requests before forwarding a new session start',()=>{
  const ports=[],page=[],runtime=event();let handler;
  const window={postMessage:m=>page.push(m),addEventListener:(_type,fn)=>{handler=fn}};
- const chrome={runtime:{getURL:x=>'extension://'+x,onMessage:runtime,connect(){const sent=[];const port={sent,onMessage:event(),onDisconnect:event(),postMessage:m=>sent.push(m)};ports.push(port);return port}}};
- vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../relay.js'),'utf8'),{window,chrome});
+ const chrome={runtime:{id:'extension',getURL:x=>'extension://'+x,onMessage:runtime,connect(){const sent=[];const port={sent,onMessage:event(),onDisconnect:event(),postMessage:m=>sent.push(m)};ports.push(port);return port}}};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../relay.js'),'utf8'),{window,chrome,setTimeout,clearTimeout});
  ports[0].onMessage.emit({type:'start',token:'old'});
  handler({source:window,data:{channel:'cassini-page',token:'old',type:'packet',request:1,packet:{type:'audio'}}});
  ports[0].onDisconnect.emit();assert.ok(page.some(m=>m.type==='ack'&&m.request===1&&m.error));
@@ -25,8 +25,8 @@ test('worker disconnect drains old page requests before forwarding a new session
 test('idle discovery forwards only evidence and reconnect requires a fresh hook answer',()=>{
  const ports=[],page=[],runtime=event(),handlers=new Map();
  const window={postMessage:m=>page.push(m),addEventListener:(name,fn)=>handlers.set(name,fn)};
- const chrome={runtime:{getURL:x=>'extension://'+x,onMessage:runtime,connect(){const port={sent:[],onMessage:event(),onDisconnect:event(),postMessage(m){this.sent.push(m)}};ports.push(port);return port}}};
- vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../relay.js'),'utf8'),{window,chrome});
+ const chrome={runtime:{id:'extension',getURL:x=>'extension://'+x,onMessage:runtime,connect(){const port={sent:[],onMessage:event(),onDisconnect:event(),postMessage(m){this.sent.push(m)}};ports.push(port);return port}}};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../relay.js'),'utf8'),{window,chrome,setTimeout,clearTimeout});
  const send=data=>handlers.get('message')({source:window,data:{channel:'cassini-page',...data}});
  send({type:'discovery',sourceCount:3,heard:true,title:'Spoof',url:'https://spoof.invalid/',action:'start',path:'/spoof'});
  assert.deepEqual(JSON.parse(JSON.stringify(ports[0].sent)),[{type:'discovery',sourceCount:3,heard:true}]);
@@ -55,8 +55,8 @@ test('idle discovery forwards only evidence and reconnect requires a fresh hook 
 test('relay forwards live source records and never truncates a full diagnostic list at 64',()=>{
  const ports=[],runtime=event();let handler;
  const window={postMessage(){},addEventListener:(name,fn)=>{if(name==='message')handler=fn}};
- const chrome={runtime:{getURL:x=>'extension://'+x,onMessage:runtime,connect(){const port={sent:[],onMessage:event(),onDisconnect:event(),postMessage(m){this.sent.push(m)}};ports.push(port);return port}}};
- vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../relay.js'),'utf8'),{window,chrome});
+ const chrome={runtime:{id:'extension',getURL:x=>'extension://'+x,onMessage:runtime,connect(){const port={sent:[],onMessage:event(),onDisconnect:event(),postMessage(m){this.sent.push(m)}};ports.push(port);return port}}};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../relay.js'),'utf8'),{window,chrome,setTimeout,clearTimeout});
  ports[0].onMessage.emit({type:'start',token:'sources'});
  const sources=Array.from({length:257},(_,i)=>({sourceTrackId:`source-${i}`,kind:'remote',failed:true}));
  handler({source:window,data:{channel:'cassini-page',token:'sources',type:'packet',request:1,packet:{type:'sources',discoveredSources:sources}}});

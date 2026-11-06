@@ -5,6 +5,123 @@ async function hasOffscreenDocument() {
 }
 
 const frames = new Set();
+// A storage.session identity survives worker eviction, but Chrome clears it on
+// extension reload/update. No content script can read this storage area.
+const relayProtocol = 1;
+const TAB_READY_DEADLINE_MS = 2500;
+const relayTimers = {later:(fn,ms)=>setTimeout(fn,ms), cancel:id=>clearTimeout(id)};
+const extensionVersion = chrome.runtime.getManifest?.().version || "test";
+// A local-file check is diagnostic only. It never changes capability gating
+// or retries a failed file read. Its deadline also bounds a stalled getSelf().
+async function checkCompanion(runtime, management, fetchResource,
+                              timers = {later:(fn,ms)=>setTimeout(fn,ms), cancel:id=>clearTimeout(id)}) {
+  let installType = "unknown", filesOk = false, deadline;
+  const controller = typeof AbortController === "undefined" ? null : new AbortController();
+  const read = async name => {
+    try {
+      const response = await fetchResource(runtime.getURL(name), {cache:"no-store", ...(controller ? {signal:controller.signal} : {})});
+      return response.ok === true && (await response.text()).length > 0;
+    } catch { return false; }
+  };
+  const files = Promise.all([read("capture.js"),read("pcm-worklet.js")]).then(([capture,worklet]) => { filesOk = capture && worklet; });
+  const installation = (async () => {
+    try {
+      const info = await management?.getSelf();
+      if (["admin","development","normal","sideload","other"].includes(info?.installType)) installType = info.installType;
+    } catch { /* Metadata can be unavailable without invalidating the files. */ }
+  })();
+  try {
+    return await Promise.race([
+      Promise.all([files,installation]).then(() => ({installType,filesOk})),
+      new Promise(resolve => { deadline = timers.later(() => {
+        controller?.abort(); resolve({installType,filesOk});
+      }, 2500); })
+    ]);
+  } finally { timers.cancel(deadline); }
+}
+let companionDiagnostics = null;
+const diagnosticsReady = checkCompanion(chrome.runtime, chrome.management, globalThis.fetch)
+  .then(value => { companionDiagnostics = value; });
+let extensionInstance;
+const identityReady = (async () => {
+  const stored = await chrome.storage.session.get("cassiniExtensionInstance");
+  extensionInstance = typeof stored.cassiniExtensionInstance === "string" && stored.cassiniExtensionInstance.length > 0 && stored.cassiniExtensionInstance.length <= 128 ? stored.cassiniExtensionInstance : crypto.randomUUID();
+  await chrome.storage.session.set({cassiniExtensionInstance:extensionInstance});
+})().catch(() => { extensionInstance = crypto.randomUUID(); });
+const lostMeetings = new Map();
+const tabRepairs = new Map();
+const relayReady = frame => frame.relayAlive === true && frame.hookReady === true && !frame.obsolete;
+// One decision for health, idle inventory and new track captures. Undetected
+// idle frames do not create a warning or change popup admission by themselves.
+function tabReadiness(tabId) {
+  const current = [...frames].filter(f => f.tabId === tabId && !f.obsolete);
+  const relevant = current.filter(f => f.sourceCount > 0);
+  const lost = [...lostMeetings.values()].some(f => f.tabId === tabId);
+  if (!lost && !relevant.length) return null;
+  const ready = !lost && relevant.every(relayReady);
+  const unavailable = relevant.some(f => f.relayAlive && !f.checking && !f.hookReady);
+  const repairing = [...tabRepairs.keys()].some(key => key === tabId || String(key).startsWith(`${tabId}:`));
+  const checking = !ready && !unavailable && (repairing || current.some(f => f.checking));
+  return {tabId, state:ready ? "ready" : checking ? "checking" : "reloadRequired",
+    hookSeen:current.some(f => f.hookSeen) || lost,
+    relayAlive:current.some(f => f.relayAlive),
+    ...(ready || checking ? {} : {message:"Reload the meeting tab so Cassini can record it.", action:"reloadMeetingTab"})};
+}
+function requireTrackReadiness(tabId) {
+  const readiness = tabReadiness(tabId);
+  if (readiness && readiness.state !== "ready")
+    throw refused("Cassini cannot reach this page yet. Reload the meeting tab, then try again.", "pageUnreachable");
+}
+function browserHealth() {
+  const candidates = new Set([...lostMeetings.values()].map(f => f.tabId).concat([...frames].filter(f => !f.obsolete && f.sourceCount > 0).map(f => f.tabId)));
+  const tabs = [...candidates].slice(0, 100).map(tabReadiness);
+  const state = tabs.some(t => t.state === "reloadRequired") ? "reloadRequired" : tabs.some(t => t.state === "checking") ? "checking" : tabs.length ? "ready" : "idle";
+  return {worker:"ready", nativeControl:appControl.port ? "connected" : "disconnected",
+    extensionVersion, extensionInstance, ...companionDiagnostics, state, tabs};
+}
+async function repairTab(tabId, frameId = null) {
+  const key = frameId === null ? tabId : `${tabId}:${frameId}`;
+  if (tabRepairs.has(key)) return tabRepairs.get(key);
+  const repair = (async () => {
+    await identityReady;
+    const probe = async () => {
+      let deadline;
+      try {
+        return await Promise.race([
+          chrome.tabs.sendMessage(tabId, {type:"cassini-connect"}, frameId === null ? {} : {frameId}).catch(() => null),
+          new Promise(resolve => { deadline = relayTimers.later(() => resolve(null), TAB_READY_DEADLINE_MS); })
+        ]);
+      } finally { relayTimers.cancel(deadline); }
+    };
+    const current = await probe();
+    if ((current?.connected || current?.needsReload) && current.protocol === relayProtocol && current.instanceId === extensionInstance) return;
+    // Never wrap RTCPeerConnection again on an already-running page. A fresh
+    // isolated relay can reuse a compatible MAIN hook; older hooks require reload.
+    try {
+      await chrome.scripting.executeScript({target:frameId === null ? {tabId,allFrames:true} : {tabId,frameIds:[frameId]},files:["relay.js"],world:"ISOLATED"});
+      await probe();
+    } catch (error) {
+      // A browser-confirmed removed frame is gone, not a broken meeting relay.
+      // A permission failure proves neither removal nor a new meeting.
+      if (frameId !== null && /No frame with id|No tab with id|Frame with ID .* (removed|not found)/i.test(String(error.message)))
+        lostMeetings.delete(`${tabId}:${frameId}`);
+    }
+  })().finally(() => { tabRepairs.delete(key); notifyControl(); });
+  tabRepairs.set(key, repair);
+  return repair;
+}
+let repairingTabs;
+function repairOpenTabs() {
+  if (repairingTabs) return repairingTabs;
+  repairingTabs = (async () => {
+    await recovery;
+    const tabs = await chrome.tabs.query({});
+    await Promise.all(tabs.filter(t => /^https?:/.test(t.url || "")).map(t => repairTab(t.id)));
+  })().catch(() => {}).finally(() => { repairingTabs = null; });
+  return repairingTabs;
+}
+chrome.runtime.onInstalled?.addListener(() => { void repairOpenTabs(); });
+chrome.runtime.onStartup?.addListener(() => { void repairOpenTabs(); });
 // Browser-owned lifecycle evidence, never supplied by a page-posted packet.
 const pageStates = new Map();
 // The app stops a closed tab's retained session as tabClosed after its 2 s
@@ -198,12 +315,12 @@ class NativeHost {
         clearTimeout(request.timer);
         message.type === "error" ? request.reject(Object.assign(new Error(message.message), { code: message.code, scope: message.scope, id: message.id, ...(message.retired === true ? {retired:true} : {}) })) : request.resolve(message);
       }
-      if (message.type === "error" && !["source", "command"].includes(message.scope)) onFailure(message.message);
+      if (message.type === "error" && !["source", "command"].includes(message.scope)) onFailure(message.message, "nativeHostError");
     });
     this.port.onDisconnect.addListener(() => {
       const message = chrome.runtime.lastError?.message || "Lost the connection to Cassini. Audio recorded so far was saved.";
-      for (const request of this.pending.splice(0)) { clearTimeout(request.timer); request.reject(new Error(message)); }
-      if (!this.closed) onFailure(message);
+      for (const request of this.pending.splice(0)) { clearTimeout(request.timer); request.reject(Object.assign(new Error(message), {lossCause:"transportClosed"})); }
+      if (!this.closed) onFailure(message, "transportClosed");
     });
   }
   send(packet) {
@@ -211,12 +328,12 @@ class NativeHost {
     if (this.pending.length >= 512) return Promise.reject(new Error("Cassini cannot keep up with the audio. Audio recorded so far was saved."));
     return new Promise((resolve, reject) => {
       const request = { resolve, reject, timer: setTimeout(() => {
-        reject(new Error("Cassini stopped responding. Audio recorded so far was saved."));
+        reject(Object.assign(new Error("Cassini stopped responding. Audio recorded so far was saved."), {lossCause:"nativeHostError"}));
         this.close();
       }, 10000) };
       this.pending.push(request);
       try { this.port.postMessage(packet); }
-      catch (error) { clearTimeout(request.timer); this.pending.pop(); reject(error); }
+      catch (error) { clearTimeout(request.timer); this.pending.pop(); reject(Object.assign(error, {lossCause:"transportClosed"})); }
     });
   }
   close() {
@@ -248,8 +365,8 @@ function status(session = firstSession()) {
   return session ? { recording: true, captureId: session.token, timelineOriginMs: session.origin, documentGeneration: documentFor(session.tabId), callGeneration: session.callGeneration, stopping: session.stopping, tracks: session.tracks, tabId: session.tabId, mode: session.mode,
     pageState: pageState(session.tabId), failedSources: [...new Set([...session.discoveredSources].filter(([,s])=>s.failed).map(([id])=>id).concat([...(session.sourceWarnings?.keys() || [])]))], message: session.sourceWarnings?.values().next().value || session.warning || (!session.tracks ? "Waiting for audio. Join the call, or record the whole tab instead." : `${session.stopping ? "Saving" : "Recording"} ${session.mode === "tracks" ? "separate tracks" : "the whole tab"} · ${session.tracks} ${session.tracks === 1 ? "recorded track" : "recorded tracks"}`), path: session.path } : lastStatus;
 }
-function failure(message, session = firstSession()) {
-  if (session) { session.problem ??= message; session.loss = true; notifyControl(); void stop(session); }
+function failure(message, session = firstSession(), cause = "lifecycle") {
+  if (session) { session.problem ??= message; session.loss = true; session.lossCause ??= cause; notifyControl(); void stop(session); }
 }
 async function stop(session = firstSession(), reason = "user") {
   if (!session) { for (const request of pendingStarts.values()) request.cancelled = true; return; }
@@ -278,7 +395,7 @@ async function stop(session = firstSession(), reason = "user") {
         packet.discoveredSources = []; // The acknowledged live batches are already durable.
       }
       if ((session.keepOnNavigation || session.sourceOutcomes) && !session.loss) packet.reason = reason;
-      if (session.independent && session.loss) packet.failureReason = "lost";
+      if (session.independent && session.loss) { packet.failureReason = "lost"; packet.cause = session.lossCause || "lifecycle"; }
       // A refused/unsupported resume never owns the target. Closing this
       // transport must not turn an attempted attachment into a Stop of it.
       const result = session.host && (!session.resumeTarget || session.resumed) ? await session.host.send(packet) : {};
@@ -318,6 +435,7 @@ async function start(mode, tabId = null, options = {}) {
     if (request.cancelled || options.resumeIntent?.cancelled) throw new Error("Recording could not start.");
     if (!Number.isSafeInteger(tab?.id) || tab.id < 0 || !/^https?:/.test(tab.url || "")) throw refused("Open the meeting tab first. Recording works on web pages only.", "notWebPage");
     if (sessions.has(tab.id)) throw refused("A recording is already running. Stop it before starting another.", "busy");
+    if (mode === "tracks") requireTrackReadiness(tab.id);
     const identity = callInfo(tab.id);
     if (options.expectedCallGeneration !== undefined && options.expectedCallGeneration !== identity.generation)
       throw refused("That call is no longer active.", "gone");
@@ -342,16 +460,17 @@ async function start(mode, tabId = null, options = {}) {
       if (mode === "tracks") {
         await chrome.tabs.sendMessage(tab.id, { type: "cassini-connect" }).catch(() => {});
         const deadline = Date.now() + 500;
-        while (!session.stopping && ![...frames].some(frame => frame.tabId === tab.id) && Date.now() < deadline) {
+        while (!session.stopping && ![...frames].some(frame => frame.tabId === tab.id && relayReady(frame)) && Date.now() < deadline) {
           await new Promise(resolve => setTimeout(resolve, 50));
         }
-        if (![...frames].some(frame => frame.tabId === tab.id)) throw refused("Cassini cannot reach this page yet. Reload the meeting tab, then try again.", "pageUnreachable");
+        if (![...frames].some(frame => frame.tabId === tab.id && relayReady(frame))) throw refused("Cassini cannot reach this page yet. Reload the meeting tab, then try again.", "pageUnreachable");
+        requireTrackReadiness(tab.id);
       } else {
         streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
       }
       // No output folder exists until discovery or the invocation grant has succeeded.
       checkStarting();
-      session.host = new NativeHost(message => failure(message, session));
+      session.host = new NativeHost((message,cause) => failure(message, session, cause));
       const start = { type: "start", version: 1, title: tab.title || "Browser meeting", features: ["source-outcomes-v1"],
         callGeneration: session.callGeneration, documentGeneration: documentFor(tab.id) };
       if (session.independent) Object.assign(start, { independent: true, microphone: options.microphone !== false, captureId: session.token, timelineOriginMs: session.origin });
@@ -382,7 +501,7 @@ async function start(mode, tabId = null, options = {}) {
       session.ready = true;
       if (mode === "tracks") {
         for (const frame of frames) {
-          if (frame.tabId !== tab.id || session.frames.has(frame)) continue;
+          if (frame.tabId !== tab.id || !relayReady(frame) || session.frames.has(frame)) continue;
           session.frames.add(frame);
           frame.port.postMessage({ type: "start", token: session.token, origin: session.origin, captureLocal: session.captureLocal, sourceOutcomes: session.sourceOutcomes });
         }
@@ -413,7 +532,7 @@ async function start(mode, tabId = null, options = {}) {
       // Once the app owns a folder, an unexpected startup failure is browser
       // loss too. Preserve its native inputs/fallback just like a later relay
       // failure. An explicit Stop during startup must still finalize normally.
-      if (session.independent && session.path && !session.stopping) session.loss = true;
+      if (session.independent && session.path && !session.stopping) { session.loss = true; session.lossCause ??= error.lossCause || "startupError"; }
       await stop(session);
       throw error;
     }
@@ -473,23 +592,33 @@ async function forwardPacket(session, packet, documentGeneration) {
 
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== "cassini-frame" || port.sender?.id !== chrome.runtime.id || !port.sender.tab) return;
-  const frame = { port, tabId: port.sender.tab.id, frameId: port.sender.frameId ?? 0, sourceCount: 0, heard: false, fencedGenerations: new Set() };
+  const frame = { port, tabId: port.sender.tab.id, frameId: port.sender.frameId ?? 0, sourceCount: 0, heard: false, checking:true, relayAlive:false, hookReady:false, fencedGenerations: new Set() };
   if (pageState(frame.tabId) === "closed") return;
   if (frame.frameId === 0) setPageState(frame.tabId, "present");
   frames.add(frame);
   if (!identitiesHydrated && frame.frameId === 0) void recovery.then(() => {
     if (frames.has(frame) && !frame.obsolete) setPageState(frame.tabId, "present");
   });
-  port.postMessage({ type: "discover" });
-  // Newly inserted frames may carry meeting tracks; they share the original session clock.
-  const current = sessions.get(frame.tabId);
-  if (current?.ready && current.mode === "tracks" && !current.stopping) {
-    current.frames.add(frame);
-    port.postMessage({ type: "start", token: current.token, origin: current.origin, captureLocal: current.captureLocal, sourceOutcomes: current.sourceOutcomes });
-  }
+
   port.onMessage.addListener(async message => {
     if (!identitiesHydrated) await recovery;
     if (!frames.has(frame)) return;
+    if (message.type === "relayHello" || message.type === "relayReady" || message.type === "relayUnavailable") {
+      if (message.protocol !== relayProtocol || message.instanceId !== extensionInstance || frame.obsolete) return;
+      frame.relayAlive = true;
+      if (message.type !== "relayHello") {
+        frame.checking = false; clearTimeout(frame.handshakeDeadline); frame.hookReady = message.type === "relayReady";
+        frame.hookSeen ||= frame.hookReady;
+        if (frame.hookReady) {
+          const current = sessions.get(frame.tabId);
+          if (current?.ready && current.mode === "tracks" && !current.stopping && !current.frames.has(frame)) {
+            current.frames.add(frame);
+            port.postMessage({type:"start",token:current.token,origin:current.origin,captureLocal:current.captureLocal,sourceOutcomes:current.sourceOutcomes});
+          }
+        }
+      }
+      notifyControl(); return;
+    }
     if (message.type === "pageState") {
       if (!frame.obsolete && frame.frameId === 0 && ["present", "navigating"].includes(message.state)) {
         setPageState(frame.tabId, message.state);
@@ -499,6 +628,8 @@ chrome.runtime.onConnect.addListener(port => {
     }
     if (message.type === "discovery") {
       if (frame.obsolete || pageState(frame.tabId) === "closed") return;
+      frame.hookSeen = true;
+      lostMeetings.delete(`${frame.tabId}:${frame.frameId}`);
       // A subframe's spans belong to the main document it appeared under (D61).
       if (frame.frameId !== 0) frame.mainFrame ??= mainFrame(frame.tabId);
       const document = message.documentGeneration, generation = message.callGeneration;
@@ -540,17 +671,17 @@ chrome.runtime.onConnect.addListener(port => {
     }
     if (session.sourceOutcomes && Array.isArray(message.discoveredSources)) {
       try { await recordSources(session, message.discoveredSources); }
-      catch (error) { failure(error.message, session); return; }
+      catch (error) { failure(error.message, session, error.lossCause || "nativeHostError"); return; }
     }
     if (message.type === "stopped") {
-      if (!session.stopping) failure("The meeting page stopped sending audio. The recording so far was saved.", session);
+      if (!session.stopping) failure("The meeting page stopped sending audio. The recording so far was saved.", session, "lifecycle");
       frame.finished?.(); return;
     }
     if (message.type === "warning") {
       sourceWarning(session, message, "One track was interrupted and has a gap. The other tracks continue.");
       return;
     }
-    if (message.type === "error") { failure("The meeting page could not record separate tracks. Record the whole tab instead. Audio recorded so far was saved.", session); return; }
+    if (message.type === "error") { failure("The meeting page could not record separate tracks. Record the whole tab instead. Audio recorded so far was saved.", session, "frameError"); return; }
     if (message.type !== "packet" || !["track", "audio", ...(session.sourceOutcomes ? ["trackEnd", "sources"] : [])].includes(message.packet?.type)) return;
     try {
       await forwardPacket(session, message.packet, spanDocument(frame));
@@ -564,10 +695,10 @@ chrome.runtime.onConnect.addListener(port => {
         if (session.sourceOutcomes && typeof key === "string") {
           const previous = session.discoveredSources.get(key);
           try { await recordSources(session, [{sourceTrackId:key,kind:previous?.kind || message.packet.kind || "remote",label:previous?.label || message.packet.label || "Audio",failed:true}]); }
-          catch (recordError) { failure(recordError.message, session); }
+          catch (recordError) { failure(recordError.message, session, recordError.lossCause || "nativeHostError"); }
         }
         session.warning = "One track was interrupted and has a gap. The other tracks continue."; session.problem ??= session.warning; notifyControl(); }
-      else if (!["command", "source"].includes(error.scope)) failure(error.message, session);
+      else if (!["command", "source"].includes(error.scope)) failure(error.message, session, error.lossCause || "nativeHostError");
       try { port.postMessage({ type: "ack", token: session.token, request: message.request, error: error.message, code: error.code, scope: error.scope, ...(error.retired === true ? {retired:true} : {}) }); } catch {}
       return;
     }
@@ -576,17 +707,32 @@ chrome.runtime.onConnect.addListener(port => {
     try { port.postMessage({ type: "ack", token: session.token, request: message.request }); } catch {}
   });
   port.onDisconnect.addListener(() => {
+    if (frame.sourceCount > 0 && !frame.obsolete && pageState(frame.tabId) === "present") {
+      lostMeetings.set(`${frame.tabId}:${frame.frameId}`, {tabId:frame.tabId,frameId:frame.frameId});
+      if (lostMeetings.size > 100) lostMeetings.delete(lostMeetings.keys().next().value);
+      void repairTab(frame.tabId, frame.frameId);
+    }
+    clearTimeout(frame.handshakeDeadline);
     frames.delete(frame);
     notifyControl();
     frame.finished?.();
     const session = sessions.get(frame.tabId);
     if (session?.frames.has(frame)) {
       session.frames.delete(frame);
-      if (!session.stopping && !session.keepOnNavigation) failure("The meeting page closed or navigated away. The recording so far was saved.", session);
+      if (!session.stopping && !session.keepOnNavigation) failure("The meeting page closed or navigated away. The recording so far was saved.", session, "frameClosed");
       if (session.keepOnNavigation && ![...frames].some(f => f.tabId === frame.tabId && f.sourceCount > 0))
         setPageState(frame.tabId, "navigating");
     }
   });
+  const hello = () => {
+    if (!frames.has(frame)) return;
+    frame.handshakeDeadline = setTimeout(() => {
+      if (!frames.has(frame) || !frame.checking) return;
+      frame.checking = false; notifyControl();
+    }, TAB_READY_DEADLINE_MS);
+    port.postMessage({type:"relayHello",protocol:relayProtocol,instanceId:extensionInstance});
+  };
+  if (extensionInstance) hello(); else void identityReady.then(hello).catch(() => {});
 });
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
@@ -602,7 +748,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         await recordSources(active, [{sourceTrackId:active.tabSourceId,kind:"tab",label:"Tab audio",failed:true}]);
       }
       if (message.type === "warning" && active) { sourceWarning(active, message, "Tab audio lost samples during a recording stall."); return {}; }
-      if (message.type === "error") { failure(message.message, active); return {}; }
+      if (message.type === "error") { failure(message.message, active, "frameError"); return {}; }
       if (message.type === "packet" && active?.mode === "tab" && ["track", "audio", ...(active.sourceOutcomes ? ["trackEnd"] : [])].includes(message.packet?.type)) {
         try { await forwardPacket(active, message.packet); }
         catch (error) {
@@ -617,17 +763,19 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (!popup) throw new Error("Only the extension popup can control recording.");
     if (message.type === "start") await start(message.mode);
     else if (message.type === "stop") await stop();
+    else if (message.type === "reloadMeetingTab") await reloadMeetingTab(message.tabId);
     else if (message.type !== "status") throw new Error("Unknown control message.");
-    return status();
+    return {...status(), browserHealth:browserHealth()};
   })().then(respond, error => respond({ error: error.message, code: error.code, scope: error.scope, ...(error.retired === true ? {retired:true} : {}) }));
   return true;
 });
 chrome.tabs.onRemoved.addListener(id => {
-  if (!sessions.has(id) && ![...frames].some(f => f.tabId === id)) return;
+  for (const [key, value] of lostMeetings) if (value.tabId === id) lostMeetings.delete(key);
+  if (!sessions.has(id) && ![...frames].some(f => f.tabId === id)) { notifyControl(); return; }
   setPageState(id, "closed");
   for (const frame of frames) if (frame.tabId === id) { frame.sourceCount = 0; frame.heard = false; }
   const session = sessions.get(id);
-  if (session && !session.keepOnNavigation) failure("The meeting tab was closed. The recording so far was saved.", session);
+  if (session && !session.keepOnNavigation) failure("The meeting tab was closed. The recording so far was saved.", session, "tabClosed");
   if (session?.keepOnNavigation) for (const frame of [...session.frames]) {
     session.frames.delete(frame); frames.delete(frame); frame.obsolete = true; frame.finished?.();
   }
@@ -642,6 +790,7 @@ function tabUpdated(id, change) {
     info.url = callAddress(change.url);
   }
   if (change.status === "loading") {
+    for (const [key, value] of lostMeetings) if (value.tabId === id) lostMeetings.delete(key);
     if (sessions.has(id) || [...frames].some(f => f.tabId === id)) setPageState(id, "navigating");
     for (const frame of frames) if (frame.tabId === id) { frame.sourceCount = 0; frame.heard = false; frame.obsolete = true; }
   }
@@ -661,11 +810,12 @@ function controlStatus(tabId = null) {
       stopping: session.stopping, message: value.message, pageState: pageState(session.tabId), failedSources: value.failedSources,
       documentGeneration: value.documentGeneration, callGeneration: session.callGeneration };
   });
+  packet.browserHealth = browserHealth();
   return packet;
 }
 async function meetings() {
   const counts = new Map();
-  for (const frame of frames) if (frame.sourceCount > 0) counts.set(frame.tabId, Math.min(4096, (counts.get(frame.tabId) || 0) + frame.sourceCount));
+  for (const frame of frames) if (relayReady(frame) && frame.sourceCount > 0) counts.set(frame.tabId, Math.min(4096, (counts.get(frame.tabId) || 0) + frame.sourceCount));
   for (const session of sessions.values()) if (!counts.has(session.tabId)) counts.set(session.tabId, 0);
   const tabs = await Promise.all([...counts].sort(([a], [b]) => Number(sessions.has(b)) - Number(sessions.has(a)) || a - b).slice(0, 100).map(async ([tabId]) => {
     try { return [tabId, await chrome.tabs.get(tabId)]; }
@@ -674,6 +824,7 @@ async function meetings() {
   const found = tabs.map(([tabId, tab]) => {
     try {
       const session = sessions.get(tabId);
+      if (!session && tabReadiness(tabId)?.state !== "ready") return null;
       const known = !!tab && /^https?:/.test(tab.url || "");
       if (!known) tab = session?.lastTab;
       if (!tab || !/^https?:/.test(tab.url || "")) return null;
@@ -681,7 +832,7 @@ async function meetings() {
       if (known && callInfo(tabId).url === null) callInfo(tabId).url = callAddress(tab.url);
       // A can reload after its lookup finishes while B's is still pending.
       // Collect every row's current evidence synchronously after ALL lookups.
-      const current = [...frames].filter(frame => frame.tabId === tabId && frame.sourceCount > 0);
+      const current = [...frames].filter(frame => frame.tabId === tabId && relayReady(frame) && frame.sourceCount > 0);
       const sourceCount = known ? Math.min(4096, current.reduce((total, frame) => total + frame.sourceCount, 0)) : session.lastSourceCount;
       if (session && known) session.lastSourceCount = sourceCount;
       if (!sourceCount && !sessions.has(tabId)) return null;
@@ -691,12 +842,24 @@ async function meetings() {
   });
   return { type: "meetings", meetings: found.filter(Boolean) };
 }
+async function reloadMeetingTab(tabId) {
+  if (sessions.has(tabId) || pendingStarts.has(tabId)) throw refused("Stop and save the recording before reloading its tab.", "busy");
+  const health = browserHealth().tabs.find(tab => tab.tabId === tabId);
+  if (health?.state !== "reloadRequired") throw refused("That meeting tab does not need a reload.", "gone");
+  await chrome.tabs.reload(tabId);
+  tabUpdated(tabId, {status:"loading"});
+}
 async function controlCommand(command, intent = {}) {
   await recovery;
   if (intent.cancelled) throw new Error("Recording could not start.");
+  if (command.action === "reloadTab") {
+    await reloadMeetingTab(command.tabId);
+    return controlStatus();
+  }
   if (command.action === "start") {
     if (startBusy(command)) throw refused("A recording is already running. Stop it before starting another.", "busy");
-    if (![...frames].some(frame => frame.tabId === command.tabId && frame.sourceCount > 0))
+    requireTrackReadiness(command.tabId);
+    if (![...frames].some(frame => frame.tabId === command.tabId && relayReady(frame) && frame.sourceCount > 0))
       throw refused("No audio is available from that meeting yet.", "noSources");
     await start("tracks", command.tabId, { independent: command.independent === true,
       captureLocal: command.captureLocal, microphone: command.microphone, keepOnNavigation: command.keepOnNavigation, expectedCallGeneration: command.callGeneration, resumeCapture: command.resumeCapture, requestId: command.requestId, resumeIntent: intent });
@@ -720,13 +883,9 @@ function cancelPendingStart(command) {
 }
 function notifyControl() { appControl.publish(); }
 const appControl = new AppControl({
-  runtime: chrome.runtime, alarms: chrome.alarms, busy: startBusy, capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1"], cancelPending: cancelPendingStart,
-  connected: async () => {
-    await recovery;
-    const tabs = await chrome.tabs.query({});
-    await Promise.all(tabs.filter(tab => /^https?:/.test(tab.url || "")).map(tab => chrome.tabs.sendMessage(tab.id, { type: "cassini-connect" }).catch(() => {})));
-  },
+  runtime: chrome.runtime, alarms: chrome.alarms, busy: startBusy, capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1", "tab-readiness-v1"], identity: () => ({extensionVersion,extensionInstance,...companionDiagnostics}), cancelPending: cancelPendingStart,
+  connected: repairOpenTabs,
   snapshot: async () => { await recovery; return [await meetings(), controlStatus()]; },
   command: controlCommand
 });
-appControl.start();
+void Promise.all([identityReady,diagnosticsReady]).then(() => { appControl.start(); void repairOpenTabs(); });

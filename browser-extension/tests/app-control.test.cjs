@@ -160,3 +160,63 @@ test('app control: a peer without heartbeat-v1 never answers pings', async () =>
     assert.deepEqual(ports[0].sent.map(m => m.type), ['hello']);
   } finally { control.close(); }
 });
+
+
+for(const rejected of [false,true])test('app control: recovery notifications wait for the connected callback '+(rejected?'rejection':'completion'),async()=>{
+ const app=await setup();let release,entered;
+ const gate=new Promise((resolve,reject)=>{release=()=>rejected?reject(Error('Generated recovery failure')):resolve()});
+ const probing=new Promise(resolve=>entered=resolve);
+ try {
+  await app.command({type:'command',requestId:'record',action:'start',tabId:2,mode:'tracks',independent:true,keepOnNavigation:true});
+  await app.api.appControl.publishing;
+  app.api.appControl.connected=async()=>{entered();await gate};
+  app.ports.at(-1).disconnect();app.chrome.alarms.onAlarm.emit({name:'cassini-app-control'});
+  await probing;
+  const port=app.ports.at(-1);
+  app.frame(2,0); // relayHello/relayReady publish while repair is in flight.
+  app.api.appControl.publish();
+  await app.api.appControl.publishing;
+  assert.deepEqual(port.sent.map(m=>m.type),['hello']);
+  assert.equal(app.api.appControl.ready,false);
+  release();await until(()=>port.sent.some(m=>m.type==='status'));
+  assert.deepEqual(port.sent.slice(0,3).map(m=>m.type),['hello','meetings','status']);
+  assert.equal(app.api.appControl.ready,true);
+ } finally {release?.();app.close()}
+});
+
+test('app control: a snapshot started on the old port cannot publish through replacement recovery',async()=>{
+ const app=await setup();let releaseSnapshot,releaseRecovery;
+ try {
+  const control=app.api.appControl,snapshot=control.snapshot;
+  let enteredSnapshot,enteredRecovery;
+  const snapshotEntered=new Promise(resolve=>enteredSnapshot=resolve),recoveryEntered=new Promise(resolve=>enteredRecovery=resolve);
+  const snapshotGate=new Promise(resolve=>releaseSnapshot=resolve),recoveryGate=new Promise(resolve=>releaseRecovery=resolve);
+  control.snapshot=async()=>{enteredSnapshot();await snapshotGate;return snapshot()};
+  control.publish();await snapshotEntered;
+  control.connected=async()=>{enteredRecovery();await recoveryGate};
+  app.ports.at(-1).disconnect();app.chrome.alarms.onAlarm.emit({name:'cassini-app-control'});await recoveryEntered;
+  const port=app.ports.at(-1);
+  control.publish();releaseSnapshot();await control.publishing;
+  assert.deepEqual(port.sent.map(m=>m.type),['hello']);assert.equal(control.ready,false);
+  releaseRecovery();await until(()=>port.sent.some(m=>m.type==='status'));
+ } finally {releaseSnapshot?.();releaseRecovery?.();app.close()}
+});
+
+test('app control: a stale failed recovery cannot finish recovery of the replacement connection',async()=>{
+ const app=await setup();const gates=[];
+ try {
+  const control=app.api.appControl;
+  control.connected=()=>new Promise((resolve,reject)=>gates.push({resolve,reject}));
+  for(let count=1;count<=2;count++){
+   app.ports.at(-1).disconnect();app.chrome.alarms.onAlarm.emit({name:'cassini-app-control'});
+   await until(()=>gates.length===count);
+  }
+  const port=app.ports.at(-1);
+  gates[0].reject(Error('Generated stale recovery failure'));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(control.connecting,true);assert.equal(control.ready,false);
+  control.publish();await control.publishing;
+  assert.deepEqual(port.sent.map(m=>m.type),['hello']);
+  gates[1].resolve();await until(()=>port.sent.some(m=>m.type==='status'));
+ } finally {for(const gate of gates)gate.resolve();app.close()}
+});

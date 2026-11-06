@@ -269,3 +269,53 @@ its end on a real pipe) with no browser.
 Protocol CI runs both with `node --check` of every scenario. There is no Playwright run of the
 driver here (no protocol host can resume or select): GNOME's `live-folder` job and the
 Mac self-test run it against the real writers.
+
+## Extension reload and tab readiness
+
+`node tests/extension-reload.mjs` uses a temporary Chromium profile and unpacked
+extension with a disposable signing key, so installed native-host allowlists cannot
+connect this fixture to a real app. It reloads through Chromium's extension manager, keeps the meeting
+document alive, joins an 880 Hz WebRTC peer, and waits for discovery, the new
+relay and non-silent PCM at a fixture native sink in the replacement worker.
+It then reloads during active recording while the peer keeps sending, observes one
+relay stop and one shared-context close, and records again in the same document
+with no page errors. A separate case keeps a pre-handshake hook across an upgrade, checks the reload
+guidance and reload action, then rejoins and becomes ready. It uses no
+microphone, speaker, installed app or real Library. The 15 s bounds
+limit observed worker/discovery/audio waits; there are no fixed settling sleeps.
+The test runs in `npm test` and is portable to the bundled Chromium on macOS.
+
+The VM `relay-readiness` tests exercise incompatible hooks, stale instance replies,
+invalidated-relay cleanup (including exactly one stop on invalidated disconnect),
+restricted injection, per-frame lost readiness and the
+explicit reload action. The control schema/consumer vectors separate native
+connectivity from tab readiness and require idle browsers to remain warning-free.
+
+The page-capture unit regression holds the recorder flush on an explicit promise,
+then delivers a duplicate Stop. Context closure, stopped, and replacement hookReady
+must wait for that flush and occur once; the replacement can then record. This
+covers the reviewed disconnect/retire ordering independently of Chromium's choice
+to invalidate a relay through its next send or its disconnect callback. Control
+unit tests hold recovery across notifications, stale callbacks and an old pending
+snapshot; only hello may publish before recovery completes or fails. Reload-action
+tests require the response to clear stale readiness and a repeated command to say
+gone even before Chrome delivers its loading event.
+
+Mixed-frame readiness regressions combine a healthy frame with an unavailable,
+checking, or lost meeting frame. They verify idle inventory omission, refusal of
+app and popup track Start before native creation, recovery to exactly one capture,
+retained active inventory/status and busy precedence. Separate event-driven cases
+change readiness during tab lookup/relay discovery and inventory lookup, and check
+that an unrelated unready tab does not block a healthy one.
+
+## Companion diagnostics
+
+The companion-diagnostics unit tests check hello version/install metadata, both
+404 file cases, empty/unreadable files, a controlled startup deadline, reconnect
+caching, each terminal loss cause, first-cause preservation and normal Stops.
+The unpacked-extension browser test checks Chrome's actual development install
+type and resource self-check, then removes the worklet only from its disposable
+copy and checks the degraded diagnostic. Schema vectors retain legacy hellos and
+Stops, and tolerate unknown future cause identifiers. These are extension-side
+checks; app setup wording, fallback persistence and Details rendering belong to
+the consumer implementations.

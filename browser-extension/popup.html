@@ -10,6 +10,8 @@ p { line-height: 1.5; } #path { overflow-wrap: anywhere; font-size: 12px; } .not
 <button id="tracks">Record separate tracks</button><button id="tab">Record the whole tab</button>
 <button id="stop" hidden>Stop and save</button>
 <p id="path"></p>
+<p id="health" role="status" hidden></p><button id="reload" hidden>Reload meeting tab</button>
+<details><summary>Connection details</summary><pre id="diagnostics"></pre></details>
 <p class="note">Separate tracks records each audio track the meeting page exposes, yours and the other participants’, as its own file. The whole tab records what the tab plays, usually without your microphone. For a complete recording that includes your microphone, use Record Meeting in Cassini.</p>
 <p class="note">Recordings are saved on this computer, in Music/Cassini. Nothing is uploaded. Track names come from the meeting page and are not verified identities. Cassini must be installed and connected to this browser.</p>
 <script src="popup.js"></script></body></html>

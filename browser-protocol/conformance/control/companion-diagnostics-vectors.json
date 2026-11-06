@@ -1,0 +1,164 @@
+{
+  "hellos": [
+    {
+      "name": "healthy-unpacked",
+      "hello": {
+        "type": "hello",
+        "version": 1,
+        "extensionVersion": "0.2.18",
+        "extensionInstance": "extension-load-1",
+        "installType": "development",
+        "filesOk": true,
+        "capabilities": [
+          "multi-stream-v1",
+          "page-state-v1",
+          "call-evidence-v1",
+          "resume-capture-v1",
+          "heartbeat-v1",
+          "tab-readiness-v1"
+        ]
+      }
+    },
+    {
+      "name": "missing-packaged-files",
+      "hello": {
+        "type": "hello",
+        "version": 1,
+        "extensionVersion": "0.2.18",
+        "extensionInstance": "extension-load-1",
+        "installType": "normal",
+        "filesOk": false,
+        "capabilities": [
+          "multi-stream-v1",
+          "page-state-v1",
+          "call-evidence-v1",
+          "resume-capture-v1",
+          "heartbeat-v1",
+          "tab-readiness-v1"
+        ]
+      }
+    },
+    {
+      "name": "metadata-unavailable",
+      "hello": {
+        "type": "hello",
+        "version": 1,
+        "extensionVersion": "0.2.18",
+        "extensionInstance": "extension-load-1",
+        "installType": "unknown",
+        "filesOk": true,
+        "capabilities": [
+          "multi-stream-v1"
+        ]
+      }
+    },
+    {
+      "name": "legacy-hello",
+      "hello": {
+        "type": "hello",
+        "version": 1,
+        "capabilities": [
+          "multi-stream-v1"
+        ]
+      }
+    }
+  ],
+  "stops": [
+    {
+      "name": "frameError",
+      "packet": {
+        "type": "stop",
+        "captureId": "capture-1",
+        "failureReason": "lost",
+        "cause": "frameError",
+        "problem": "Generated capture loss."
+      }
+    },
+    {
+      "name": "frameClosed",
+      "packet": {
+        "type": "stop",
+        "captureId": "capture-1",
+        "failureReason": "lost",
+        "cause": "frameClosed",
+        "problem": "Generated capture loss."
+      }
+    },
+    {
+      "name": "tabClosed",
+      "packet": {
+        "type": "stop",
+        "captureId": "capture-1",
+        "failureReason": "lost",
+        "cause": "tabClosed",
+        "problem": "Generated capture loss."
+      }
+    },
+    {
+      "name": "nativeHostError",
+      "packet": {
+        "type": "stop",
+        "captureId": "capture-1",
+        "failureReason": "lost",
+        "cause": "nativeHostError",
+        "problem": "Generated capture loss."
+      }
+    },
+    {
+      "name": "startupError",
+      "packet": {
+        "type": "stop",
+        "captureId": "capture-1",
+        "failureReason": "lost",
+        "cause": "startupError",
+        "problem": "Generated capture loss."
+      }
+    },
+    {
+      "name": "transportClosed",
+      "packet": {
+        "type": "stop",
+        "captureId": "capture-1",
+        "failureReason": "lost",
+        "cause": "transportClosed",
+        "problem": "Generated capture loss."
+      }
+    },
+    {
+      "name": "lifecycle",
+      "packet": {
+        "type": "stop",
+        "captureId": "capture-1",
+        "failureReason": "lost",
+        "cause": "lifecycle",
+        "problem": "Generated capture loss."
+      }
+    },
+    {
+      "name": "futureCause",
+      "packet": {
+        "type": "stop",
+        "captureId": "capture-1",
+        "failureReason": "lost",
+        "cause": "futureCause",
+        "problem": "Generated capture loss."
+      }
+    },
+    {
+      "name": "legacy-lost",
+      "packet": {
+        "type": "stop",
+        "failureReason": "lost",
+        "problem": "Generated capture loss."
+      }
+    },
+    {
+      "name": "normal-stop",
+      "packet": {
+        "type": "stop",
+        "reason": "user",
+        "problem": null
+      }
+    }
+  ]
+}
