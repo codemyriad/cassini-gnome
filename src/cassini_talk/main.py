@@ -175,8 +175,8 @@ class CassiniApplication(Adw.Application):
         self._restore_automatic()
         from .status_notifier import StatusNotifier
 
-        if bus := self.get_dbus_connection():
-            self.status_notifier = StatusNotifier(self, bus, changed=self.windowless_background.indicator_ready)
+        if self.get_dbus_connection() is not None:
+            self.status_notifier = StatusNotifier(self, changed=self.windowless_background.indicator_ready)
         from .main_loop_watchdog import MainLoopWatchdog
 
         self._watchdog = MainLoopWatchdog()

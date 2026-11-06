@@ -2,11 +2,14 @@
 """D41.2 optional StatusNotifierItem and dbusmenu, using only Gio.
 
 Interfaces: KDE kstatusnotifieritem and Ubuntu AppIndicator interfaces-xml.
-No service is activated, and no extra well-known name is owned. The watcher
-registers this connection's unique name and the conventional item path.
+No service is activated, and no extra well-known name is owned. The item uses
+a private connection and its unique name: the application alias exports no item,
+so desktop discovery cannot register a second identity.
 """
 
+import logging
 import math
+import threading
 
 from gi.repository import Gio, GLib
 
@@ -104,8 +107,9 @@ def recording_pixels(size=24):
 
 
 class StatusNotifier:
-    def __init__(self, app, connection, *, changed=None):
+    def __init__(self, app, connection=None, *, changed=None):
         self.app, self.bus = app, connection
+        self._owns_bus = connection is None
         self.changed = changed or (lambda: None)
         self.closed = self.registered = self.registering = False
         self.proxy = None
@@ -119,11 +123,41 @@ class StatusNotifier:
         self.rows = menu_rows(self.message, False)
         self.exports = []
         self.cancel = Gio.Cancellable()
+        self.watch = 0
+        self.pixels = recording_pixels()
+        self.activation_token = ""
+        if connection is not None:
+            self._connected(connection)
+        else:
+            # A new connection has only its unique name. Never use bus_get's
+            # shared connection, which also owns the application's alias.
+            threading.Thread(target=self._connect, name="cassini-indicator-bus", daemon=True).start()
+
+    def _connect(self):
+        try:
+            address = Gio.dbus_address_get_for_bus_sync(Gio.BusType.SESSION, self.cancel)
+            connection = Gio.DBusConnection.new_for_address_sync(
+                address,
+                Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+                None,
+                self.cancel,
+            )
+        except GLib.Error:
+            if not self.closed:
+                logging.getLogger(__name__).info("Optional panel connection unavailable", exc_info=True)
+            return
+        GLib.idle_add(self._connected, connection)
+
+    def _connected(self, connection):
+        if self.closed:
+            if self._owns_bus:
+                connection.close(None, None, None)
+            return GLib.SOURCE_REMOVE
+        self.bus = connection
         self.watch = Gio.bus_watch_name_on_connection(
             connection, WATCHER, Gio.BusNameWatcherFlags.NONE, self._appeared, self._vanished
         )
-        self.pixels = recording_pixels()
-        self.activation_token = ""
+        return GLib.SOURCE_REMOVE
 
     def update(self, *, recording, message="", label="", windowless=False, automatic=False):
         wanted = bool(recording or (windowless and automatic))
@@ -388,11 +422,17 @@ class StatusNotifier:
             invocation.return_dbus_error("org.freedesktop.DBus.Error.InvalidArgs", str(error))
 
     def close(self):
+        if self.closed:
+            return
         self.closed = True
         self.cancel.cancel()
         self._clear_retry()
-        Gio.bus_unwatch_name(self.watch)
+        if self.watch:
+            Gio.bus_unwatch_name(self.watch)
+            self.watch = 0
         for identifier in self.exports:
             self.bus.unregister_object(identifier)
         self.exports.clear()
         self.proxy = None
+        if self._owns_bus and self.bus is not None:
+            self.bus.close(None, None, None)
