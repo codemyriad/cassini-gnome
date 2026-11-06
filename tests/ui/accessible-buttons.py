@@ -31,23 +31,32 @@ def child():
     Gio.resources_register(
         Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource"))
     )
+    from progress_wait import until_progress
+
     from cassini_talk.folder_player import FolderPlayer
     from cassini_talk.library_window import LibraryWindow
     from cassini_talk.main import CassiniApplication
     from cassini_talk.player import Player
 
+    events = []
+
     def until(check):
-        deadline = time.monotonic() + 55
         context = GLib.MainContext.default()
-        while time.monotonic() < deadline:
-            for _ in range(64):
-                if not context.pending():
-                    break
-                context.iteration(False)
-            if check():
-                return
-            time.sleep(0.01)
-        raise AssertionError("AT-SPI activation did not reach the production callback")
+        # Wake only to check the bound when no GTK/AT-SPI event arrives. D-Bus
+        # calls are dispatched immediately instead of waiting on a sleep poll.
+        wake = GLib.timeout_add(50, lambda: GLib.SOURCE_CONTINUE)
+        try:
+            until_progress(
+                check,
+                progress=lambda: len(events),
+                dispatch=lambda: context.iteration(True),
+                diagnostics=lambda: (
+                    f"events[-1]={events[-1] if events else None}; "
+                    f"playing={window.player.playing}; position={window.player.position}"
+                ),
+            )
+        finally:
+            GLib.source_remove(wake)
 
     with tempfile.TemporaryDirectory() as temporary:
         tmp = Path(temporary)
@@ -84,7 +93,6 @@ def child():
         window = app.get_active_window()
         until(lambda: not window._pending)
         window.monitor.callback = lambda _snapshot: None
-        events = []
         saved_snapshot = window.snapshot
 
         def record_event(event):
