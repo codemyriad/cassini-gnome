@@ -25,16 +25,19 @@ Portal host rejection: <https://github.com/flatpak/xdg-desktop-portal/blob/8c3ef
 
 `status_notifier.py` implements the StatusNotifierItem and dbusmenu interfaces
 through Gio. It watches an existing watcher without activating one, exports on
-its unique session-bus connection, and registers only when a real host is
-reported. Idle visibility and recording visibility are separate. A timer-label
+the application's session-bus connection, and registers only when a real host is
+reported. Registration uses the application's well-known name, matching host
+discovery of the conventional item path, so both paths identify one panel item. Idle visibility and recording visibility are separate. A timer-label
 change updates only the status row; an unchanged snapshot emits nothing.
 
 The protocol references are [KDE's item interface](https://github.com/KDE/kstatusnotifieritem/blob/master/src/org.kde.StatusNotifierItem.xml)
 and Ubuntu AppIndicator's [menu](https://github.com/ubuntu/gnome-shell-extension-appindicator/blob/master/interfaces-xml/DBusMenu.xml)
 and [watcher](https://github.com/ubuntu/gnome-shell-extension-appindicator/blob/master/interfaces-xml/StatusNotifierWatcher.xml)
 interfaces. `tests/ui/status-notifier.py` exercises the actual wire replies and
-a fake watcher on a private session bus, including missing watcher/host, unique
-registration, action guards, timer updates and teardown. The component is wired
+a fake watcher on a private session bus, including missing watcher/host,
+brute-force discovery before and after registration, watcher restart, action
+guards, timer updates and teardown. The real AppIndicator desktop gate asserts
+one registered identity and one panel actor before and after extension restart. The component is wired
 into application and capture lifecycles; the Flatpak has only the
 `org.kde.StatusNotifierWatcher` talk-name.
 

@@ -3,7 +3,8 @@
 
 Interfaces: KDE kstatusnotifieritem and Ubuntu AppIndicator interfaces-xml.
 No service is activated, and no extra well-known name is owned. The watcher
-registers this connection's unique name and the conventional item path.
+registers the application's well-known name and the conventional item path,
+matching the identity desktop hosts discover on that same connection.
 """
 
 import math
@@ -278,7 +279,9 @@ class StatusNotifier:
 
         self.proxy.call(
             "RegisterStatusNotifierItem",
-            GLib.Variant("(s)", (self.bus.get_unique_name(),)),
+            # AppIndicator also discovers this path on the application's name.
+            # Register that same identity, or discovery adds a second timer.
+            GLib.Variant("(s)", (self.app.get_application_id(),)),
             Gio.DBusCallFlags.NO_AUTO_START,
             2000,
             self.cancel,
