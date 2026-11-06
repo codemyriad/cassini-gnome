@@ -377,6 +377,8 @@ def _native_deselection_case(tmp_path, monkeypatch, kind, follower, fail_change,
 
     Gst.init(None)
     recorder = NativeRecorder()
+    errors = []
+    recorder.connect("error", lambda _, problem: errors.append(problem))
     session = recorder.session = RecordingSession(tmp_path)
     session.manifest["events"] = [dict(type="selection", atMs=0, me=True, others=True, reason="start")]
     for side in ("microphone", "system"):
@@ -477,8 +479,8 @@ def _native_deselection_case(tmp_path, monkeypatch, kind, follower, fail_change,
         if stop_during_drain:
             assert entered.wait(BOUND)
             monkeypatch.setattr(recorder, "_elapsed_ms", lambda _: 40)
-            recorder._drain_timed_out = True
             recorder.stop()
+            recorder._timed_out()
             assert recorder._stop_requested and recorder._stop_at_ms == 40
             release.set()
         changing.result(BOUND)
@@ -501,6 +503,10 @@ def _native_deselection_case(tmp_path, monkeypatch, kind, follower, fail_change,
             assert track["droppedFrames"] == 768 and track["frames"] == 1248
             assert track["ended"] and track["endOffsetMs"] == 26
             assert saved["events"][-1]["atMs"] == 40
+            assert not errors
+            from cassini_talk.writer_loss import writer_only
+
+            assert writer_only(saved), saved.get("problem")
             assert next(e for e in reversed(saved["events"]) if e["type"] == "selection")["atMs"] == 25
         else:
             assert track["droppedFrames"] == 480
@@ -564,7 +570,13 @@ def test_stop_during_browser_deselection_timeout_flushes_retiring_loss_once(tmp_
         capture.close()
 
 
-def test_deselecting_armed_post_cut_input_releases_held_eos(tmp_path, monkeypatch):
+@pytest.mark.parametrize("kind", ["microphone", "system"])
+@pytest.mark.parametrize("first_ms", [10, 30])
+@pytest.mark.parametrize("turn_on_ms", [0, 15])
+@pytest.mark.parametrize("stop_during_drain", [False, True])
+def test_deselecting_armed_input_preserves_pre_cut_audio_and_releases_eos(
+    tmp_path, monkeypatch, kind, first_ms, turn_on_ms, stop_during_drain
+):
     gi = pytest.importorskip("gi")
     gi.require_version("Gst", "1.0")
     from gi.repository import Gst
@@ -574,10 +586,11 @@ def test_deselecting_armed_post_cut_input_releases_held_eos(tmp_path, monkeypatc
     Gst.init(None)
     recorder = NativeRecorder()
     session = recorder.session = RecordingSession(tmp_path)
-    session.add_track("microphone", "Me", "microphone", 48000, 1)
-    session.append_native("microphone", b"\x01\x00" * 480, 0)
+    other = "system" if kind == "microphone" else "microphone"
+    session.add_track(other, "Other selected side", other, 48000, 1)
+    session.append_native(other, b"\x01\x00" * 480, 0)
     session.manifest["events"] = [dict(type="selection", atMs=0, me=True, others=True, reason="start")]
-    recorder._track_ids = {"microphone": "microphone"}
+    recorder._track_ids = {other: other}
     recorder._stop_requested = recorder._discard = False
     pipeline = recorder.pipeline = Gst.Pipeline.new(None)
     recorder._test_sources = True
@@ -587,9 +600,9 @@ def test_deselecting_armed_post_cut_input_releases_held_eos(tmp_path, monkeypatc
         "parse_bin_from_description",
         lambda description, *args: parse("appsrc name=source format=time ! " + description.split(" ! ", 1)[1], *args),
     )
-    branch = recorder._branch("system")
+    branch = recorder._branch(kind)
     pipeline.add(branch)
-    sink, source = branch.get_by_name("system"), branch.get_by_name("source")
+    sink, source = branch.get_by_name(kind), branch.get_by_name("source")
     source.set_property(
         "caps", Gst.Caps.from_string("audio/x-raw,format=S16LE,rate=48000,channels=1,layout=interleaved")
     )
@@ -604,11 +617,12 @@ def test_deselecting_armed_post_cut_input_releases_held_eos(tmp_path, monkeypatc
         error=None,
         deadline=None,
         ready=threading.Event(),
-        identifier="system-late",
+        identifier=kind + "-late",
+        refuse_at=turn_on_ms,
         filename=None,
         hold=(pad, hold),
     )
-    recorder._pending_sources["system"] = attempt
+    recorder._pending_sources[kind] = attempt
     queued, release, sealed = (threading.Event() for _ in range(3))
 
     def gate(*_):
@@ -618,6 +632,17 @@ def test_deselecting_armed_post_cut_input_releases_held_eos(tmp_path, monkeypatc
 
     branch.get_by_name("tap-queue").get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, gate)
     admission = branch._writer_queue
+    admission.capacity = 480
+    rejected = threading.Event()
+    enter = admission.enter
+
+    def observed_enter(stamp, frames, offset):
+        accepted = enter(stamp, frames, offset)
+        if not accepted:
+            rejected.set()
+        return accepted
+
+    monkeypatch.setattr(admission, "enter", observed_enter)
     seal = admission.seal
 
     def observed_seal(at):
@@ -637,19 +662,48 @@ def test_deselecting_armed_post_cut_input_releases_held_eos(tmp_path, monkeypatc
     changing = None
     try:
         pipeline.set_state(Gst.State.PLAYING)
-        buffer = Gst.Buffer.new_wrapped(bytes(960))
-        buffer.pts, buffer.duration = 30 * Gst.MSECOND, 10 * Gst.MSECOND
+        buffer = Gst.Buffer.new_wrapped(b"\x02\x00" * 480)
+        buffer.pts, buffer.duration = first_ms * Gst.MSECOND, 10 * Gst.MSECOND
         assert source.emit("push-buffer", buffer) == Gst.FlowReturn.OK
         assert queued.wait(BOUND)
-        changing = recorder.select(True, False)
+        if first_ms == 10:
+            # While the first 10 ms is held before the writer, exact admission
+            # rejects another 5 ms. Both callbacks were captured before the cut.
+            dropped = Gst.Buffer.new_wrapped(b"\x03\x00" * 240)
+            dropped.pts, dropped.duration = 20 * Gst.MSECOND, 5 * Gst.MSECOND
+            assert source.emit("push-buffer", dropped) == Gst.FlowReturn.OK
+            assert rejected.wait(BOUND)
+        changing = recorder.select(kind != "microphone", kind != "system")
         assert sealed.wait(BOUND)
+        if stop_during_drain:
+            monkeypatch.setattr(recorder, "_elapsed_ms", lambda _: 40)
+            recorder.stop()
+            assert recorder._stop_requested and recorder._stop_at_ms == 40
         release.set()
         changing.result(2 * BOUND)
         assert drained == [True], "Armed source's EOS was held until the drain timeout"
         assert "hold" not in attempt and attempt["retired"]
-        assert not recorder._pending_sources and [t["kind"] for t in session.manifest["tracks"]] == ["microphone"]
-        session.finish(reason="user", at_ms=50)
-        assert session.manifest["state"] == "completed" and not session.manifest.get("problemKind")
+        assert not recorder._pending_sources
+        if stop_during_drain:
+            _wait_native_finished(recorder)
+        else:
+            session.finish(reason="user", at_ms=50)
+        if first_ms == 10:
+            track = next(t for t in session.manifest["tracks"] if t["kind"] == kind)
+            start = max(first_ms, turn_on_ms)
+            received = (20 - start) * 48
+            assert track["startOffsetMs"] == start and track["endOffsetMs"] == 25
+            assert track["frames"] == received + 240 and track["droppedFrames"] == 240
+            assert track["ended"]
+            assert track["gaps"] == [dict(atMs=20, durationMs=5, frames=240, kind="writer")]
+            with wave.open(str(session.directory / track["file"])) as audio:
+                assert audio.readframes(audio.getnframes()) == b"\x02\x00" * received + bytes(480)
+            from cassini_talk.writer_loss import writer_only
+
+            assert writer_only(session.manifest)
+        else:
+            assert [t["kind"] for t in session.manifest["tracks"]] == [other]
+            assert session.manifest["state"] == "completed" and not session.manifest.get("problemKind")
     finally:
         release.set()
         if changing is not None:
@@ -670,3 +724,61 @@ def test_native_recorder_deselection_preserves_known_queue_tail(tmp_path, monkey
 @pytest.mark.parametrize("kind", ["microphone", "system"])
 def test_stop_during_native_deselection_timeout_flushes_retiring_loss_once(tmp_path, monkeypatch, kind):
     _native_deselection_case(tmp_path, monkeypatch, kind, False, False, stop_during_drain=True)
+
+
+def _wait_native_finished(recorder):
+    from gi.repository import GLib
+
+    loop, finished = GLib.MainLoop(), []
+    handler = recorder.connect("finished", lambda *_: (finished.append(True), loop.quit()))
+    timer = GLib.timeout_add_seconds(BOUND, lambda: (loop.quit(), GLib.SOURCE_REMOVE)[1])
+    loop.run()
+    if finished:
+        GLib.source_remove(timer)
+    recorder.disconnect(handler)
+    assert finished, "Native Stop did not finish"
+
+
+@pytest.mark.parametrize("loss", ["none", "known", "inferred"])
+@pytest.mark.parametrize("problem", [None, "Generated audio device failure"])
+def test_native_drain_timeout_reports_only_unaccounted_failures(tmp_path, loss, problem):
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+    from types import SimpleNamespace
+
+    from cassini_talk.native_recorder import NativeRecorder
+    from cassini_talk.writer_loss import sentence, writer_only
+
+    recorder = NativeRecorder()
+    session = recorder.session = RecordingSession(tmp_path)
+    session.add_track("microphone", "Me", "microphone", 48000, 1)
+    session.append_native("microphone", b"\x01\x00" * 480, 0)
+    timeline = recorder._timelines["microphone"] = NativeTimeline(48000)
+    timeline.map(0, 480, 0)
+    admission = NativeQueue(capacity_frames=480)
+    writer_frames = 480 if loss != "none" else 0
+    if loss == "known":
+        assert admission.enter(0, 480, 0)
+        admission.take(0)
+        assert not admission.enter(10_000_000, writer_frames, 10)
+        admission.done(480)
+    recorder._branches["microphone"] = SimpleNamespace(_writer_queue=admission)
+    recorder._stop_at_ms = 20 if writer_frames else 10
+    recorder._problem = problem
+    errors = []
+    recorder.connect("error", lambda _, message: errors.append(message))
+    try:
+        recorder._timed_out()
+        _wait_native_finished(recorder)
+        saved = json.loads((session.directory / "session.json").read_text())
+        expected = problem or (None if writer_frames else "Timed out while saving the recording.")
+        assert errors == ([expected] if expected else [])
+        if writer_frames:
+            track = saved["tracks"][0]
+            assert track["frames"] == 960 and track["droppedFrames"] == 480
+            assert saved["problem"] == " ".join(filter(None, [expected, sentence(10, "microphone")]))
+            assert writer_only(saved) is (problem is None)
+        else:
+            assert saved["problem"] == expected
+    finally:
+        recorder.close()

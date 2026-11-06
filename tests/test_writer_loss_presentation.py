@@ -6,6 +6,9 @@ by Recording details. The file keeps D69 as written (problemKind io, end
 reason error, the stored sentence); only the presentation is calm.
 """
 
+import json
+from dataclasses import replace
+
 import pytest
 
 from cassini_talk.capture_details import read_details
@@ -87,3 +90,24 @@ def test_writer_loss_with_a_real_gap_still_shows_the_gap(tmp_path):
 def test_a_short_input_gap_does_not_turn_writer_loss_into_an_interruption(tmp_path):
     _session, meeting = record(tmp_path, RATE, input_gap_frames=RATE // 2)
     assert meeting.badge() is None
+
+
+@pytest.mark.parametrize("at_ms", [5000, None])
+@pytest.mark.parametrize("input_gap", [0, RATE])
+def test_metadata_end_without_session_events_keeps_writer_only_loss_quiet(tmp_path, at_ms, input_gap):
+    session, meeting = record(tmp_path, RATE, input_gap_frames=input_gap)
+    session.manifest.pop("events")
+    (session.directory / "session.json").write_text(json.dumps(session.manifest))
+    end = dict(reason="error")
+    if at_ms is not None:
+        end["atMs"] = at_ms
+    meeting = replace(meeting, metadata=dict(meeting.metadata, recordingDetails=dict(end=end)))
+    report = read_details(meeting)
+    if input_gap:
+        assert report.ended == (
+            text("details.end.at", reason=text("details.end.error"), time=position(at_ms))
+            if at_ms is not None
+            else text("details.end.error")
+        )
+    else:
+        assert report.ended == (position(at_ms) if at_ms is not None else text("details.unknown"))
