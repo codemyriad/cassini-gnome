@@ -206,6 +206,8 @@ talk_sources = files(
   'cassini_talk/output_mute.py',
   'cassini_talk/browser_control_host.py',
   'cassini_talk/browser_service.py',
+  'cassini_talk/broker_identity.py',
+  'cassini_talk/broker_lifecycle.py',
   'cassini_talk/companion.py',
   'cassini_talk/registration.py',
   'cassini_talk/companion_bundle.py',

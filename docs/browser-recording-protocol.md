@@ -108,3 +108,20 @@ even one that failed before declaring a track. Rejected selection changes roll
 back that expectation. Periodic WAV flush/fsync failures retire only that writer
 and checkpoint every healthy writer. Manifest and directory durability errors
 remain fatal; they are never downgraded into a per-source response.
+
+### Broker build identity and idle upgrades
+
+Status and the internal audio-ready reply carry the broker's immutable payload
+identity (app, version, build ID, module root, PID and start time). Clients compare
+it with the current installed payload; Flatpak clients consult the host's current
+deployment while the broker reports the build it actually loaded. Legacy audio
+ready replies remain accepted and marked as legacy.
+
+A mismatched or identity-less broker is retired only after an idle status. New
+brokers recheck their identity and unfinished captures/recording operations under
+the same lock as Start, then accept an idle shutdown. Legacy retirement checks the
+socket peer UID and exact Python module/socket command line, rereads status and
+uses a pidfd to send SIGINT without a PID-reuse race. Unknown or busy peers remain
+running. The client waits for the old service lock before spawning its replacement.
+SIGTERM takes the broker's normal capture-finalization path. BuildRefresh performs
+its own idle recheck before restarting the app.

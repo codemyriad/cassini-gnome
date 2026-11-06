@@ -85,7 +85,11 @@ class BuildRefresh:
                     from . import browser_service
 
                     value = browser_service.request()
-                    browser = any(s.get("recording") for s in value.get("statuses", ()))
+                    from .broker_lifecycle import busy, retire_idle
+
+                    browser = busy(value)
+                    if not browser:
+                        browser = retire_idle()
                 future.set_result((changed, browser))
             except Exception as error:
                 future.set_exception(error)

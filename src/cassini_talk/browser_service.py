@@ -10,6 +10,7 @@ import contextlib
 import json
 import logging
 import os
+import signal
 import socket
 import struct
 import subprocess
@@ -178,14 +179,16 @@ def ensure_service(path=None, *, cancelled=None, absent=None):
     may not take over within it."""
     target = Path(path or service_path())
     try:
-        connection = connect(target, timeout=0.5)
-        connection.close()
-        return target
+        from .broker_lifecycle import reusable
+
+        with connect(target, timeout=0.5) as connection:
+            if reusable(connection, target, cancelled=cancelled):
+                return target
     except BROKER_ABSENT as error:
         if absent is not None:
             absent(error)
-    except OSError:
-        pass
+    except (OSError, ValueError):
+        return target
     if cancelled is not None and cancelled.is_set():
         raise CancelledError()
     # A filesystem lock in serve() elects one process if browser and app start together.
@@ -225,6 +228,10 @@ def request(action="status", *, path=None, **values):
             raise OSError("Browser connection service closed")
         if response.get("error"):
             raise ValueError(response["error"])
+        if action == "status":
+            from .broker_identity import matches
+
+            response["brokerStale"] = not matches(response.get("identity"))
         return response
 
 
@@ -390,6 +397,9 @@ class BrowserService:
         require_application=False,
         clock=time.monotonic,
     ):
+        from .broker_identity import running
+
+        self.identity = running()
         self.config = (
             Path(config)
             if config
@@ -917,6 +927,9 @@ class BrowserService:
                 if identifier not in seen:
                     statuses.append(dict(value, id="capture:" + identifier))
             return dict(
+                identity=dict(self.identity),
+                idleShutdown=True,
+                brokerBusy=self._busy_locked(),
                 browsers=len(self.browsers),
                 protocol=2,
                 connectedBrowsers=sum(b.hello_seen and b.status_seen for b in self.browsers.values()),
@@ -934,6 +947,29 @@ class BrowserService:
                 recordings=list(self.recordings),
                 statuses=statuses,
             )
+
+    def _busy_locked(self):
+        return bool(
+            any(not capture.finished for capture in self.captures.values())
+            or self._pending_calls
+            or self._scheduled_calls
+            or self._record_groups
+            or self._stopping_all.is_set()
+            or self._capture_policy_pending
+            or any(
+                browser.busy or browser.pending or any(state.get("recording") for state in browser.states.values())
+                for browser in self.browsers.values()
+            )
+        )
+
+    def shutdown_idle(self, identity):
+        with self.lock:
+            if identity != self.identity:
+                return dict(shutdown=False, reason="changed")
+            if self._busy_locked():
+                return dict(shutdown=False, reason="busy")
+            self.closed.set()
+            return dict(shutdown=True)
 
     def _capture_changed(self, capture, event):
         if event == "error":
@@ -1061,7 +1097,7 @@ class BrowserService:
         with self.lock:
             self._audio_transports.add(transport)
         try:
-            reply(dict(ready=True, protocol=2))
+            reply(dict(ready=True, protocol=2, identity=dict(self.identity)))
             while (packet := read_packet(stream)) is not None:
                 # D52.5: a frame arriving at or after PCM_STALE_AFTER is too
                 # late, even when no tick has noticed the deadline yet.
@@ -1081,7 +1117,11 @@ class BrowserService:
                         if not isinstance(identifier, str) or not identifier:
                             raise ProtocolError("state", "Invalid independent capture identity")
                         with self.lock:
-                            if identifier in self._cancelled_captures or self._stopping_all.is_set():
+                            if (
+                                self.closed.is_set()
+                                or identifier in self._cancelled_captures
+                                or self._stopping_all.is_set()
+                            ):
                                 raise ProtocolError("state", "Recording start was cancelled")
                             if any(
                                 capture_id == identifier and self.stopped_calls.get(key, (None,))[0] == url
@@ -1775,7 +1815,8 @@ class BrowserService:
                 raise ValueError("This browser is no longer connected")
             tab = int(raw_tab)
             if action == "start" and (
-                self._stopping_all.is_set()
+                self.closed.is_set()
+                or self._stopping_all.is_set()
                 or self.deadline_clock() >= deadline
                 or cancelled is not None
                 and cancelled.is_set()
@@ -2041,6 +2082,8 @@ class BrowserService:
         if not isinstance(token, str) or not 0 < len(token) <= 128:
             raise ValueError("Invalid recording operation")
         with self.lock:
+            if self.closed.is_set():
+                raise ValueError("Recording start was cancelled")
             if token in self._cancelled_groups:
                 group.set()
             owners = self._owners()
@@ -2863,7 +2906,8 @@ class BrowserService:
             if action == "start":
                 with self.lock:
                     if (
-                        self._stopping_all.is_set()
+                        self.closed.is_set()
+                        or self._stopping_all.is_set()
                         or not self.auto_record
                         or (generation is not None and generation != self._stop_generation)
                         or self.require_application
@@ -3043,6 +3087,13 @@ class BrowserService:
                         action = packet.get("action")
                         if action == "status":
                             result = self.snapshot()
+                        elif action == "shutdown":
+                            _, uid, _ = struct.unpack(
+                                "3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
+                            )
+                            if uid != os.getuid():
+                                raise PermissionError("Browser service belongs to another user")
+                            result = self.shutdown_idle(packet.get("identity"))
                         elif action == "start-all":
                             result = self.start_all(
                                 microphone=packet.get("microphone", True),
@@ -3310,7 +3361,11 @@ def main():
     args = parser.parse_args()
     if args.idle_timeout is not None and args.idle_timeout <= 0:
         parser.error("idle timeout must be positive")
-    BrowserService(require_application=True).serve(args.serve, idle_timeout=args.idle_timeout)
+    service = BrowserService(require_application=True)
+    signal.signal(signal.SIGTERM, lambda *_: service.closed.set())
+    # serve's finally performs the same cleanup for SIGINT as SIGTERM.
+    with contextlib.suppress(KeyboardInterrupt):
+        service.serve(args.serve, idle_timeout=args.idle_timeout)
 
 
 if __name__ == "__main__":

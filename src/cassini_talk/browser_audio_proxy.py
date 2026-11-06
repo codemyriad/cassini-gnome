@@ -21,8 +21,13 @@ class BrowserAudioProxy:
         try:
             browser_service.send_packet(self.stream, dict(role="audio"))
             ready = browser_service.read_packet(self.stream)
-            if ready != dict(ready=True, protocol=2):
+            if not isinstance(ready, dict) or ready.get("ready") is not True or ready.get("protocol") != 2:
                 raise OSError("Independent browser capture is unavailable")
+            from .broker_identity import matches
+
+            self.identity = ready.get("identity")
+            self.legacy = self.identity is None
+            self.broker_stale = not matches(self.identity)
         except Exception:
             self.close()
             raise

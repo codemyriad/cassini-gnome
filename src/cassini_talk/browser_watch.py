@@ -4,6 +4,7 @@
 import contextlib
 import json
 import logging
+import select
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -63,6 +64,12 @@ class BrowserWatch:
                 LOG.debug("Could not inspect browser profiles", exc_info=True)
         target = self.path or browser_service.ensure_service(cancelled=self.closed, absent=self._found_absent)
         with self.lock:
+            if self.lease is not None:
+                poller = select.poll()
+                poller.register(self.lease.fileno(), select.POLLRDHUP | select.POLLHUP | select.POLLERR)
+                if poller.poll(0):
+                    self.lease.close()
+                    self.lease = None
             missing = self.lease is None
         if missing:
             lease = browser_service.connect(target, timeout=0.8)
@@ -93,6 +100,9 @@ class BrowserWatch:
             value = browser_service.read_packet(stream)
             if value is None or value.get("error"):
                 raise OSError("Browser inventory unavailable")
+            from .broker_identity import matches
+
+            value["brokerStale"] = not matches(value.get("identity"))
             return value
 
     def _found_absent(self, _error):
