@@ -1,3 +1,19 @@
+Version 0.4.1
+~~~~~~~~~~~~~
+Released: 2026-11-06
+
+After upgrading, log out and back in so the new version takes effect.
+
+- Speaker names wrap correctly, including in wide windows.
+- Play buttons in Search stay usable with a screen reader when results refresh.
+- Stopping a browser recording stays stopped until you choose to record again
+  or turn automatic recording back on. Starting the next recording works
+  reliably while the previous one finishes saving.
+- Browser recordings keep up to ten seconds of incoming sound while the
+  computer is busy, and Stop stays responsive during saving.
+- The browser companion is now version 0.2.15, with more accurate timing
+  through brief browser stalls.
+
 Version 0.4.0
 ~~~~~~~~~~~~~
 Released: 2026-11-05

@@ -70,6 +70,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.4.1" date="2026-11-06">
+      <description>
+        <p>After upgrading, log out and back in so the new version takes effect.</p>
+        <ul>
+          <li>Speaker names wrap correctly, including in wide windows</li>
+          <li>Search playback stays usable with a screen reader when results refresh</li>
+          <li>Browser Stop and automatic-recording choices are kept while recordings save</li>
+          <li>Browser audio is buffered through brief computer stalls, and Stop stays responsive</li>
+          <li>Browser companion 0.2.15 keeps more accurate timing through brief browser stalls</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-11-05">
       <description>
         <p>Cassini is now called Cassini talk. Recording starts reliably on a silent computer,

@@ -2,7 +2,7 @@
 # which makes the source tarball from the working tree and puts Source1-5
 # (from .whistle-cache) next to it.
 Name:           cassini-talk
-Version:        0.4.0
+Version:        0.4.1
 Release:        1%{?dist}
 Summary:        Record meetings and read along with their transcripts
 License:        GPL-3.0-or-later AND Apache-2.0 AND MIT AND Unicode-3.0
@@ -233,6 +233,13 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/ca
 %{_mandir}/man1/cassini-talk.1*
 
 %changelog
+* Fri Nov 06 2026 Silvio Tomatis <silviot@gmail.com> - 0.4.1-1
+- Fix wrapping speaker names and screen-reader playback in Search.
+- Keep browser Stop and automatic-recording choices through saving.
+- Buffer browser audio through brief computer stalls; keep Stop responsive.
+- Update the browser companion to 0.2.15 for steadier recording timing.
+- After upgrading, log out and back in so the new version takes effect.
+
 * Thu Nov 05 2026 Silvio Tomatis <silviot@gmail.com> - 0.4.0-1
 - First release as Cassini talk.
 - Recording starts reliably on a silent computer; sources that cannot open say why.
