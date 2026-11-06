@@ -24,7 +24,7 @@ import gi  # noqa: E402
 
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
-from readiness import wait_until  # noqa: E402
+from readiness import capture_files, wait_until  # noqa: E402
 
 from cassini_talk.native_recorder import NativeRecorder  # noqa: E402
 
@@ -108,7 +108,7 @@ try:
             diagnostics=capture.snapshot,
         )
         events = list(capture.host.session.manifest["events"])
-        files = {p.name for p in capture.directory.iterdir()}
+        files = capture_files(capture)
         parse = Gst.parse_launch
         failed_taps = []
 
@@ -135,7 +135,7 @@ try:
         assert (capture.me, capture.others) == (False, True)
         assert capture.host.session.manifest["events"] == events
         assert list(capture.host.session.writers) == [original_id]
-        assert {p.name for p in capture.directory.iterdir()} == files
+        assert capture_files(capture) == files
         assert not original_tap.closed.is_set()
         assert failed_taps and all(tap.closed.is_set() for tap in failed_taps)
         before = capture.host.session.writers[original_id].frames
