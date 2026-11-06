@@ -1,5 +1,6 @@
 """D52.2 (P7) gap ranges and presence: literal vectors, oracle and mutation guards."""
 import copy
+from fractions import Fraction
 import importlib.util
 import json
 from pathlib import Path
@@ -17,6 +18,10 @@ PRESENCE = json.loads((ROOT / 'conformance/gaps/presence.json').read_text())['ca
 def matches(actual, expected):
     if (actual['state'], actual['problemKind']) != (expected['state'], expected['problemKind']):
         return False
+    if actual['endReason'] != expected.get('endReason', 'user'):
+        return False
+    if 'problem' in expected and actual.get('problem') != expected['problem']:
+        return False
     if len(actual['tracks']) != len(expected['tracks']):
         return False
     for track, wanted in zip(actual['tracks'], expected['tracks']):
@@ -31,7 +36,7 @@ def matches(actual, expected):
 
 
 def replay(case, writer=None):
-    writer = (writer or gaps.Writer)(case.get('features', ()), **case.get('selection', {}))
+    writer = (writer or gaps.Writer)(case.get('features', ()), problem=case.get('problem'), **case.get('selection', {}))
     for step in case['steps']:
         writer.step(step)
     return writer.result()
@@ -81,6 +86,104 @@ class FlagFromStoredRanges(gaps.Writer):
         return dict(result, state='interrupted' if long else 'completed', problemKind='gap' if long else None)
 
 
+class WriterLossAsGap(gaps.Writer):
+    """Host writer loss counted as missing input (the pre-D2 GNOME reading)."""
+    def _pad(self, span, frames, kind):
+        super()._pad(span, frames, 'input' if kind == 'writer' else kind)
+
+
+class WriterLossKeepsUserEnd(gaps.Writer):
+    def result(self):
+        return dict(super().result(), endReason='user')
+
+
+class WriterLossCoversNoHostTime(gaps.Writer):
+    """Pads the lost frames on top of the whole host-time gap."""
+    def input(self, id, hostMs, frames, writerFrames=0, inferredFrames=0):
+        writerFrames += inferredFrames
+        super().input(id, hostMs, frames)
+        if writerFrames:
+            span = self.native[id]['span']
+            span['frames'] -= frames
+            self._pad(span, writerFrames, 'writer')
+            span['frames'] += frames
+
+
+class InferredLossUnbounded(gaps.Writer):
+    """Treats an estimate as an exact queue-dropped callback count."""
+    def input(self, id, hostMs, frames, writerFrames=0, inferredFrames=0):
+        super().input(id, hostMs, frames, writerFrames=writerFrames + inferredFrames)
+
+
+class InferredTailUnbounded(gaps.Writer):
+    def writerTail(self, id, untilMs, resumeMs=None, writerFrames=None, inferredFrames=None):
+        super().writerTail(id, untilMs, resumeMs, writerFrames=inferredFrames if inferredFrames is not None else writerFrames)
+
+
+class KnownLossCapped(gaps.Writer):
+    """The f52f0e1 oracle shortens known lost callback frames to host time."""
+    def input(self, id, hostMs, frames, writerFrames=0, inferredFrames=0):
+        super().input(id, hostMs, frames, inferredFrames=writerFrames + inferredFrames)
+
+    def writerTail(self, id, untilMs, resumeMs=None, writerFrames=None, inferredFrames=None):
+        super().writerTail(id, untilMs, resumeMs, inferredFrames=writerFrames if writerFrames is not None else inferredFrames)
+
+
+class WriterTailFromLastFrame(gaps.Writer):
+    """Pads a tail loss from the last written frame, ignoring where the loss lies."""
+    def writerTail(self, id, untilMs, resumeMs=None, writerFrames=None, inferredFrames=None):
+        super().writerTail(id, untilMs)
+
+
+class TailFromFilePosition(gaps.Writer):
+    """#62 review: old oracle resurrects clock divergence absorbed between inputs."""
+    def writerTail(self, id, untilMs, resumeMs=None, writerFrames=None, inferredFrames=None):
+        span = self.native[id]['span']
+        start, rate = Fraction(str(span['startOffsetMs'])), span['rate']
+        until = gaps._half_up((Fraction(str(untilMs)) - start) * rate / 1000)
+        frames = max(0, until - span['frames'])
+        if resumeMs is not None:
+            lost_from = gaps._half_up((Fraction(str(resumeMs)) - start) * rate / 1000) - (writerFrames if writerFrames is not None else inferredFrames)
+            frames = min(frames, max(0, until - lost_from), writerFrames if writerFrames is not None else inferredFrames)
+            if frames and lost_from - span['frames'] >= rate:
+                self._pad(span, lost_from - span['frames'], 'input')
+        if frames:
+            self._pad(span, frames, 'writer')
+
+
+class TailNeedsWriterOverlap(gaps.Writer):
+    """#62 review: input before Stop disappears if writer loss is all after it."""
+    def writerTail(self, id, untilMs, resumeMs=None, writerFrames=None, inferredFrames=None):
+        rate = self.native[id]['span']['rate']
+        if resumeMs is not None and Fraction(str(resumeMs)) - Fraction((writerFrames if writerFrames is not None else inferredFrames) * 1000, rate) >= Fraction(str(untilMs)):
+            return
+        super().writerTail(id, untilMs, resumeMs, writerFrames, inferredFrames)
+
+
+class OldWriterProblem(gaps.Writer):
+    def _loss_message(self, kind, milliseconds):
+        return f"Recording saved with {gaps._half_up(milliseconds)} ms of audio lost during a disk stall."
+
+
+class HalfEvenWriterProblem(gaps.Writer):
+    def _loss_message(self, kind, milliseconds):
+        return super()._loss_message(kind, Fraction(round(milliseconds)))
+
+
+class PerRangeWriterProblem(gaps.Writer):
+    def _writer_problems(self):
+        return [self._loss_message(span['kind'], Fraction(gap['frames'] * 1000, span['rate']))
+                for span in self.spans for gap in span['gaps'] if gap['kind'] == 'writer']
+
+
+class LostEarlierProblem(gaps.Writer):
+    def result(self):
+        result = super().result()
+        if self.problem:
+            result['problem'] = result['problem'].removeprefix(self.problem + ' ')
+        return result
+
+
 class GapTests(unittest.TestCase):
     def test_oracle_reproduces_every_hand_written_writer_case(self):
         for case in WRITER:
@@ -94,9 +197,49 @@ class GapTests(unittest.TestCase):
 
     def test_mutations_fail_the_vectors(self):
         for name, mutant in (('coalesce', Coalescing), ('truncate', Truncating), ('current-span-drops', CurrentSpanOnly),
-                             ('flag-any-gap', AnyGapFlags), ('flag-from-stored-ranges', FlagFromStoredRanges)):
+                             ('flag-any-gap', AnyGapFlags), ('flag-from-stored-ranges', FlagFromStoredRanges),
+                             ('writer-loss-as-gap', WriterLossAsGap), ('writer-loss-user-end', WriterLossKeepsUserEnd),
+                             ('writer-loss-covers-no-host-time', WriterLossCoversNoHostTime),
+                             ('inferred-loss-unbounded', InferredLossUnbounded), ('known-loss-capped', KnownLossCapped),
+                             ('writer-tail-from-last-frame', WriterTailFromLastFrame)):
             with self.subTest(mutation=name):
                 self.assertTrue(any(not matches(replay(c, mutant), c['expected']) for c in WRITER))
+
+    def test_review_tail_vectors_reject_previous_accounting(self):
+        cases = {case['name']: case for case in WRITER}
+        for name, mutant in (
+            ('native-writer-tail-keeps-absorbed-positive-clock-divergence', TailFromFilePosition),
+            ('native-writer-tail-keeps-absorbed-negative-clock-divergence', TailFromFilePosition),
+            ('native-writer-tail-before-resume-keeps-absorbed-clock-divergence', TailFromFilePosition),
+            ('native-writer-loss-starts-after-stop-but-input-gap-remains', TailNeedsWriterOverlap),
+            ('native-writer-loss-starts-at-stop-but-input-gap-remains', TailNeedsWriterOverlap),
+        ):
+            with self.subTest(case=name, mutation=mutant.__name__):
+                self.assertFalse(matches(replay(cases[name], mutant), cases[name]['expected']))
+
+    def test_d69_1_known_and_inferred_loss_are_distinct(self):
+        cases = {case['name']: case for case in WRITER}
+        for name in ('mac-known-dropped-callback-keeps-all-frames-under-host-divergence',
+                     'mac-known-dropped-tail-keeps-all-frames-past-stop',
+                     'known-dropped-tail-without-following-buffer-is-exact'):
+            with self.subTest(case=name):
+                self.assertFalse(matches(replay(cases[name], KnownLossCapped), cases[name]['expected']))
+        name = 'inferred-loss-under-the-same-host-divergence-is-clipped'
+        self.assertFalse(matches(replay(cases[name], InferredLossUnbounded), cases[name]['expected']))
+        name = 'inferred-tail-under-the-same-host-divergence-is-clipped'
+        self.assertFalse(matches(replay(cases[name], InferredTailUnbounded), cases[name]['expected']))
+
+    def test_shared_problem_literals_reject_incorrect_copy_rounding_and_aggregation(self):
+        cases = {case['name']: case for case in WRITER}
+        for name, mutant in (
+            ('native-writer-loss-is-io-and-ends-in-error', OldWriterProblem),
+            ('native-writer-problem-rounds-the-source-total-half-up-once', HalfEvenWriterProblem),
+            ('native-writer-problem-rounds-the-source-total-half-up-once', PerRangeWriterProblem),
+            ('repeated-native-writer-loss-reports-once-and-keeps-earlier-problem', PerRangeWriterProblem),
+            ('repeated-native-writer-loss-reports-once-and-keeps-earlier-problem', LostEarlierProblem),
+        ):
+            with self.subTest(case=name, mutation=mutant.__name__):
+                self.assertFalse(matches(replay(cases[name], mutant), cases[name]['expected']))
 
     def test_presence_starts_at_the_d55_placement(self):
         # R88 (D67 item 7): the raw fractional offset, or any other rounding of it, fails a literal.
@@ -138,7 +281,9 @@ class GapTests(unittest.TestCase):
             for wanted in expected['tracks']:
                 document = copy.deepcopy(base)
                 track = document['tracks'][0]
-                track.update(sampleRate=48000, channels=1, frames=wanted['frames'], startOffsetMs=wanted['startOffsetMs'],
+                rate = next(s.get('rate', 48000) for s in case['steps']
+                            if s['op'] in ('track', 'nativeTrack') and s['id'] == wanted['wire'])
+                track.update(sampleRate=rate, channels=1, frames=wanted['frames'], startOffsetMs=wanted['startOffsetMs'],
                              gapFrames=wanted['gapFrames'], droppedFrames=wanted['droppedFrames'],
                              gaps=wanted.get('gaps', wanted.get('gapsHead', []) + wanted.get('gapsTail', [])))
                 track.pop('endOffsetMs', None)
