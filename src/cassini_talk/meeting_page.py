@@ -263,7 +263,9 @@ class MeetingPage(Adw.NavigationPage):
         speaker = next(s for s in self.meeting.speakers if s.id == turn.speaker)
         row = Gtk.Box(spacing=16, margin_bottom=24)
         names = box(5, width_request=120, valign=Gtk.Align.START)
-        name = label("", "heading", xalign=0, wrap=True)
+        name = label(
+            "", "heading", xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=16, tooltip_text=speaker.name
+        )
         name.set_markup(f'<span foreground="{self._colour(speaker)}">{GLib.markup_escape_text(speaker.name)}</span>')
         names.append(name)
         if speaker.provenance == "recognised" and self.window.get_application().voice_store.has_match(
@@ -387,7 +389,9 @@ class MeetingPage(Adw.NavigationPage):
             dot = label("●", accessible_role=Gtk.AccessibleRole.PRESENTATION)
             dot.set_markup(f'<span foreground="{self._colour(speaker)}">●</span>')
             top.append(dot)
-            top.append(label(speaker.name, "heading", xalign=0, hexpand=True, wrap=True))
+            top.append(
+                label(speaker.name, "heading", xalign=0, hexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+            )
             top.append(label(text("meeting.speakerShare", percent=shares[speaker.id]), "small", "dim-label"))
             row.append(top)
             caption = {"user": "namedByYou", "recognised": "recognised"}.get(speaker.provenance, "notNamed")

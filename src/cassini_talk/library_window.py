@@ -1103,7 +1103,15 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _speaker(self, speaker, *, chip=False, meeting=None):
         meeting = self.selected if meeting is None else meeting
         box = Gtk.Box(spacing=6, css_classes=["speaker-chip"] if chip else [])
-        box.append(label(speaker.name, "speaker-name"))
+        box.append(
+            label(
+                speaker.name,
+                "speaker-name",
+                ellipsize=Pango.EllipsizeMode.END,
+                max_width_chars=24,
+                tooltip_text=speaker.name,
+            )
+        )
         if (
             speaker.provenance == "recognised"
             and meeting
@@ -1190,7 +1198,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             )
         elif meeting.transcript == "damaged":
             self.preview.append(InlineLine("errors.transcriptDamaged.line"))
-        chips = Gtk.Box(spacing=8)
+        chips = Adw.WrapBox(child_spacing=8, line_spacing=8)
         for speaker in meeting.speakers:
             chips.append(self._speaker(speaker, chip=True))
         self.preview.append(chips)
