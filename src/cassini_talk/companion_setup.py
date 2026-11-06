@@ -9,6 +9,7 @@ from gi.repository import Adw, GLib, Gtk
 
 from . import browser_service, companion, companion_bundle
 from .browser_connection import add_text, classify, state_text
+from .browser_health import can_reload, older, reload_tabs, setup_complete
 from .strings import text
 
 LOG = logging.getLogger(__name__)
@@ -16,7 +17,9 @@ LOG = logging.getLogger(__name__)
 
 class CompanionSetup(Adw.Dialog):
     def __init__(self, app, *, service_path=None):
-        super().__init__(title=text("companion.title"), content_width=540, css_classes=["companion-setup"])
+        super().__init__(
+            title=text("companion.title"), content_width=540, follows_content_size=True, css_classes=["companion-setup"]
+        )
         self.app, self.service_path = app, service_path
         self.closed = False
         self.cancelled = Event()
@@ -30,6 +33,8 @@ class CompanionSetup(Adw.Dialog):
         self.local_dialog = None
         self.browser_names = []
         self.connected = False
+        self.complete = False
+        self.reload_error = None
         content = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=20,
@@ -38,7 +43,18 @@ class CompanionSetup(Adw.Dialog):
             margin_top=26,
             margin_bottom=22,
         )
-        self.set_child(content)
+        self.set_child(
+            Gtk.ScrolledWindow(
+                child=content,
+                width_request=540,
+                hscrollbar_policy=Gtk.PolicyType.NEVER,
+                propagate_natural_height=True,
+                propagate_natural_width=False,
+                min_content_width=540,
+                max_content_width=540,
+                max_content_height=760,
+            )
+        )
         heading = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         heading.append(Gtk.Label(label=text("companion.title"), wrap=True, css_classes=["title-2"]))
         heading.append(
@@ -71,6 +87,15 @@ class CompanionSetup(Adw.Dialog):
         self.prepare_retry.connect("clicked", lambda *_: self._add(local=True))
         self.prepare_problem.append(self.prepare_retry)
         content.append(self.prepare_problem)
+        self.health_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.health_rows = []
+        self.health_scroller = Gtk.ScrolledWindow(
+            child=self.health_box,
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+            propagate_natural_height=True,
+            max_content_height=220,
+        )
+        content.append(self.health_scroller)
         privacy = Gtk.Box(spacing=10)
         privacy.append(
             Gtk.Image(
@@ -193,7 +218,7 @@ class CompanionSetup(Adw.Dialog):
             return False
         try:
             value = future.result()
-            if action == "status" and self.app.browser_connection:
+            if action in ("status", "reload") and self.app.browser_connection:
                 self.app.browser_connection.observe(value)
             elif action == "local":
                 from .companion_local_dialog import LocalCompanionDialog
@@ -208,6 +233,8 @@ class CompanionSetup(Adw.Dialog):
             LOG.exception("Companion %s failed", action)
             if action == "local":
                 self.prepare_error = True
+            elif action == "reload":
+                self.reload_error = (*self._reload_target, " ".join(str(error).split())[:500])
             elif action != "status":
                 self.local_error = classify(error)
         self.render()
@@ -232,6 +259,7 @@ class CompanionSetup(Adw.Dialog):
             self.future is not None,
             self.app.browser_companion_available,
             self.prepare_error,
+            self.reload_error,
             self.prefer_local,
             companion_bundle.store_listing_public(),
         )
@@ -239,6 +267,8 @@ class CompanionSetup(Adw.Dialog):
             return
         self._render_signature = signature
         self.connected = state["phase"] == "connected"
+        self.complete = self.connected and setup_complete(state.get("peers", ()))
+        self._render_health(state)
         self.local_add.set_visible(
             not self.prefer_local
             and (
@@ -279,12 +309,12 @@ class CompanionSetup(Adw.Dialog):
         self.connect_button.set_visible(added and self.failed and self.app.browser_companion_available)
         self.connect_button.set_sensitive(not self.working)
         self.connect_button.set_label(text("common.tryAgain"))
-        self.done.set_sensitive(self.connected)
+        self.done.set_sensitive(self.complete)
         self.set_default_widget(
             self.add_button
             if self.prefer_local and self.add_button.get_visible()
             else self.done
-            if self.connected
+            if self.complete
             else self.connect_button
             if self.connect_button.get_visible()
             else self.add_retry
@@ -295,12 +325,90 @@ class CompanionSetup(Adw.Dialog):
         )
         for n, row, badge, done, working in (
             (1, self.add_row, self.add_badge, added, self._future_action in ("local", "store")),
-            (2, self.connect_row, self.connect_badge, self.connected, added and self.working),
+            (2, self.connect_row, self.connect_badge, self.complete, added and self.working),
         ):
             badge.set_label("✓" if done else str(n))
             badge.set_css_classes(["companion-step-badge"] + (["done"] if done else []))
             state = "done" if done else "working" if working else "pending"
             row.update_property([Gtk.AccessibleProperty.LABEL], [text("companion.step.a11y." + state, n=n)])
+
+    def _render_health(self, state):
+        while child := self.health_box.get_first_child():
+            self.health_box.remove(child)
+        self.health_rows = []
+        live_errors = set()
+        if state["phase"] == "connected" and not state.get("peers"):
+            repair = Gtk.Button(
+                label=text("setup.companion.setUpAgain"),
+                halign=Gtk.Align.START,
+                sensitive=self.future is None and state["browser"] is not None and self.app.browser_companion_available,
+            )
+            repair.connect("clicked", lambda *_: self._add(local=True))
+            self.health_box.append(repair)
+        for peer in state.get("peers", ()):
+            diagnostic = peer["diagnostics"]
+            outdated = older(diagnostic.get("extensionVersion"), state.get("bundledVersion"))
+            again = diagnostic.get("filesOk") is not True or outdated or "multi-stream-v1" not in peer["capabilities"]
+            tabs = reload_tabs(peer)
+            if (again or tabs) and peer["browser"]:
+                self.health_box.append(Gtk.Label(label=peer["browser"], xalign=0, css_classes=["heading"]))
+            if diagnostic.get("filesOk") is False:
+                self.health_box.append(Gtk.Label(label=text("setup.companion.filesMissing"), wrap=True, xalign=0))
+            if outdated:
+                self.health_box.append(
+                    Gtk.Label(
+                        label=text("setup.companion.outdated", version=diagnostic["extensionVersion"]),
+                        wrap=True,
+                        xalign=0,
+                    )
+                )
+            if again:
+                repair = Gtk.Button(
+                    label=text("setup.companion.setUpAgain"),
+                    halign=Gtk.Align.START,
+                    sensitive=self.future is None
+                    and state["browser"] is not None
+                    and self.app.browser_companion_available,
+                )
+                repair.connect("clicked", lambda *_: self._add(local=True))
+                self.health_box.append(repair)
+            for tab in tabs:
+                line = Gtk.Box(spacing=12)
+                caption = Gtk.Label(label=text("setup.companion.reloadTab"), wrap=True, xalign=0, hexpand=True)
+                button = Gtk.Button(
+                    label=text("setup.companion.reloadTab.action"),
+                    valign=Gtk.Align.CENTER,
+                    sensitive=can_reload(peer, tab) and self.future is None,
+                )
+                button.connect(
+                    "clicked", lambda *_args, browser=peer["id"], tab_id=tab["tabId"]: self._reload_tab(browser, tab_id)
+                )
+                line.append(caption)
+                line.append(button)
+                self.health_box.append(line)
+                self.health_rows.append((peer["id"], tab["tabId"], caption, button))
+                key = peer["id"], tab["tabId"]
+                live_errors.add(key)
+                if self.reload_error and self.reload_error[:2] == key:
+                    self.health_box.append(
+                        Gtk.Label(label=self.reload_error[2], wrap=True, xalign=0, css_classes=["dim-label"])
+                    )
+        if self.reload_error and self.reload_error[:2] not in live_errors:
+            self.reload_error = None
+        self.health_scroller.set_visible(self.health_box.get_first_child() is not None)
+
+    def _reload_tab(self, browser, tab):
+        if self.future is not None or self.closed:
+            return
+        self.reload_error = None
+        self._reload_target = browser, tab
+
+        def reload():
+            target = browser_service.ensure_service(self.service_path, cancelled=self.cancelled)
+            return browser_service.request("reload-tab", path=target, browserId=browser, tabId=tab)
+
+        self._submit(reload, "reload")
+        self.render()
 
     def discard(self):
         self.force_close()

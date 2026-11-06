@@ -2,6 +2,7 @@
 """D31 quiet single-flight setup, shared retry policy for native and Flatpak."""
 
 import errno
+import json
 import logging
 import os
 import random
@@ -146,6 +147,8 @@ class BrowserConnection:
         self.future = None
         self.timer = 0
         self.revision = 0
+        self.peers = ()
+        self.bundled_version = None
 
     def snapshot(self):
         phase = (
@@ -171,17 +174,22 @@ class BrowserConnection:
             browser=browser,
             reason=self.error.reason if self.error else None,
             everConnected=self.ever_connected,
+            peers=self.peers,
+            bundledVersion=self.bundled_version,
         )
 
     def observe(self, snapshot):
         if self.closed:
             return
-        before = self.connected, self.names, self.app_too_old
+        from .browser_health import read_peers
+
+        before = self.connected, self.names, self.app_too_old, self.peers
+        self.peers = read_peers(snapshot.get("browserPeers"))
         self.connected = bool(snapshot.get("connectedBrowsers", snapshot.get("browsers")))
         self.ever_connected |= self.connected
         self.names = tuple(snapshot.get("browserNames", []))
         self.app_too_old = bool(snapshot.get("appTooOld")) and not self.connected
-        if before != (self.connected, self.names, self.app_too_old):
+        if before != (self.connected, self.names, self.app_too_old, self.peers):
             self.changed()
         if not self.connected and self.succeeded and self.browsers and not self.future and not self.timer:
             self._check_health()
@@ -246,6 +254,13 @@ class BrowserConnection:
                 # Linux task priority applies to this worker, never GTK.
                 tid = threading.get_native_id()
                 os.setpriority(os.PRIO_PROCESS, tid, max(10, os.getpriority(os.PRIO_PROCESS, tid)))
+                from .companion_bundle import bundle_directory
+
+                try:
+                    manifest = bundle_directory() / "manifest.json"
+                    self.bundled_version = json.loads(manifest.read_text())["version"]
+                except (OSError, ValueError, KeyError):
+                    self.bundled_version = None
                 result = self.attempt(force=True) if force else self.attempt()
             except Exception as error:
                 future.set_exception(error)

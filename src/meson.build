@@ -90,6 +90,7 @@ talk_sources = files(
   'cassini_talk/voice_models.py',
   'cassini_talk/voice_backfill.py',
   'cassini_talk/browser_connection.py',
+  'cassini_talk/browser_health.py',
   'cassini_talk/browser_status.py',
   'cassini_talk/voice_store.py',
   'cassini_talk/voice_board.py',

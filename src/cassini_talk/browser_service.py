@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
+from . import browser_health
 from .call_lifecycle import (
     BROWSER_RETURN_GRACE,
     CALL_END_GRACE,
@@ -331,6 +332,9 @@ class BrowserConnection(Transport):
         self.meetings = {}
         self.status = {"recording": False}
         self.status_seen = self.hello_seen = False
+        self.diagnostics = {}
+        self.browser_health = None
+        self.reloads = {}
         self.notifications = {}
         self.pending = {}
         self.commands = {}  # bounded correlation history for late results
@@ -606,6 +610,13 @@ class BrowserService:
 
     def _command_result(self, browser, packet):
         request_id = packet.get("requestId")
+        reload = browser.reloads.get(request_id) if isinstance(request_id, str) else None
+        if reload is not None:
+            # A reload result cannot overwrite a newer status or capture policy.
+            # Fresh extension status is the only evidence of recovered health.
+            reload["result"] = packet
+            reload["event"].set()
+            return
         asked = browser.resumes.pop(request_id, None) if isinstance(request_id, str) else None
         if asked is not None:
             # D52.5: a resume result is informational. Success is only ever the
@@ -944,6 +955,11 @@ class BrowserService:
                 idleShutdown=True,
                 brokerBusy=self._busy_locked(),
                 browsers=len(self.browsers),
+                browserPeers=[
+                    self._health_peer(b)
+                    for b in self.browsers.values()
+                    if b.hello_seen and b.status_seen and not b.closed
+                ],
                 protocol=2,
                 connectedBrowsers=sum(b.hello_seen and b.status_seen for b in self.browsers.values()),
                 appTooOld=self.app_too_old is not None and self.clock() - self.app_too_old <= APP_TOO_OLD_S,
@@ -961,6 +977,53 @@ class BrowserService:
                 statuses=statuses,
             )
 
+    @staticmethod
+    def _health_peer(browser):
+        busy = set(browser.busy)
+        busy.update(tab for tab, value in browser.states.items() if value.get("recording") or value.get("stopping"))
+        busy.update(p["tabId"] for p in browser.pending.values())
+        busy.update(p["tabId"] for p in browser.reloads.values())
+        return dict(
+            id=browser.id,
+            browser=browser.browser_name,
+            capabilities=sorted(browser.capabilities),
+            diagnostics=dict(browser.diagnostics),
+            browserHealth=browser.browser_health,
+            busyTabs=sorted(busy),
+        )
+
+    def reload_tab(self, identifier, tab):
+        if not isinstance(identifier, str) or type(tab) is not int or not 0 <= tab <= 9007199254740991:
+            raise ValueError("Invalid browser tab")
+        with self.lock:
+            browser = self.browsers.get(identifier)
+            if browser is None or browser.closed or not browser.hello_seen or not browser.status_seen:
+                raise ValueError("The browser disconnected")
+            peer = self._health_peer(browser)
+            target = next((r for r in browser_health.reload_tabs(peer) if r["tabId"] == tab), None)
+            if target is None or not browser_health.can_reload(peer, target):
+                raise ValueError("The meeting tab cannot be reloaded now")
+            if len(browser.reloads) >= 16 or any(r["tabId"] == tab for r in browser.reloads.values()):
+                raise ValueError("A browser tab reload is already pending")
+            request_id = str(uuid4())
+            pending = browser.reloads[request_id] = dict(tabId=tab, event=threading.Event(), result=None)
+        try:
+            with browser.order_lock:
+                if browser.closed:
+                    raise ValueError("The browser disconnected")
+                browser.send(
+                    dict(type="command", requestId=request_id, action="reloadTab", tabId=tab, independent=True)
+                )
+            if not pending["event"].wait(self.command_timeout):
+                raise TimeoutError("The browser did not finish reloading the tab")
+            result = pending["result"]
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                raise ValueError(str((result or {}).get("error", "The browser disconnected"))[:500])
+            return self.snapshot()
+        finally:
+            with self.lock:
+                browser.reloads.pop(request_id, None)
+
     def _busy_locked(self):
         return bool(
             any(not capture.finished for capture in self.captures.values())
@@ -970,7 +1033,10 @@ class BrowserService:
             or self._stopping_all.is_set()
             or self._capture_policy_pending
             or any(
-                browser.busy or browser.pending or any(state.get("recording") for state in browser.states.values())
+                browser.busy
+                or browser.pending
+                or browser.reloads
+                or any(state.get("recording") for state in browser.states.values())
                 for browser in self.browsers.values()
             )
         )
@@ -1250,6 +1316,8 @@ class BrowserService:
         if type(value.get("recording")) is not bool:
             return
         browser.status_seen = True
+        browser.diagnostics = browser_health.diagnostics(browser.diagnostics, value.get("browserHealth"))
+        browser.browser_health = browser_health.health(value.get("browserHealth"))
         previous = browser.states
         received_pages = {}
         received_documents = {}
@@ -1714,6 +1782,7 @@ class BrowserService:
                     raise ValueError("Unsupported browser control version")
                 self.app_too_old = None
                 browser.hello_seen = True
+                browser.diagnostics = browser_health.diagnostics(browser.diagnostics, packet)
                 capabilities = packet.get("capabilities", [])
                 browser.capabilities = (
                     {c for c in capabilities if isinstance(c, str)}
@@ -3118,6 +3187,8 @@ class BrowserService:
                             if uid != os.getuid():
                                 raise PermissionError("Browser service belongs to another user")
                             result = self.shutdown_idle(packet.get("identity"))
+                        elif action == "reload-tab":
+                            result = self.reload_tab(packet.get("browserId"), packet.get("tabId"))
                         elif action == "start-all":
                             result = self.start_all(
                                 microphone=packet.get("microphone", True),
@@ -3190,7 +3261,7 @@ class BrowserService:
                     self._restore_stopped(browser, browser.meetings)
                     browser.closed = True
                     self.browsers.pop(browser.id, None)
-                    for pending in browser.pending.values():
+                    for pending in (*browser.pending.values(), *browser.reloads.values()):
                         pending["event"].set()
 
     def _remember_control_loss(self, browser):
