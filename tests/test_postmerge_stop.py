@@ -572,8 +572,10 @@ def test_auto_opt_in_racing_a_capture_stop_orders_after_its_whole_intent(tmp_pat
             opt_in.append(in_thread("opt-in", lambda: (service.configure(True), configured.set())))
 
     def remember_after_opt_in(owner):
-        # Anything still left after the admission runs only once the opt-in is done.
-        assert configured.wait(BOUND)
+        # Under the admission's lock it is part of the admission. Deferred past
+        # it, it runs only once the queued opt-in is done (the race, made certain).
+        if not service.lock._is_owned():
+            assert configured.wait(BOUND)
         remember(owner)
 
     monkeypatch.setattr(capture, "request_stop", admitted)

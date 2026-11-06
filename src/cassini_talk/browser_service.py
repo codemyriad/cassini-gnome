@@ -1730,8 +1730,10 @@ class BrowserService:
                 if identity is not None:
                     self._cancel_call(self._logical_id(identity))
                 capture.request_stop(reason=reason, user_stopped=user and reason == "user")
-            if user:
-                self._remember_capture_stop(capture)
+                if user:
+                    # In the same admission: an opt-in queued on the lock then
+                    # orders after the whole Stop intent and supersedes it.
+                    self._remember_capture_stop(capture)
             capture.stop(reason=reason, user_stopped=user and reason == "user")
             return self.snapshot()
         with self.lock:
