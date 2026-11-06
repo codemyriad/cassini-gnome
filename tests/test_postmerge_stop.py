@@ -468,6 +468,8 @@ def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, mon
     )
     tap, _ = record_live(capture, clock)
     service, browser, identity, logical, finished = bound_broker(tmp_path, capture)
+    # The call has a generation (D52.5), so the generation guard is exercised too.
+    browser.meetings[identity[1]]["callGeneration"] = capture.call_generation = 7
     tap.drained.set()
     automatic, sent = [], []
     submit, send = service.workers.submit, browser.send

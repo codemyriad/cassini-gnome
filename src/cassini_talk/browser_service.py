@@ -1316,8 +1316,7 @@ class BrowserService:
                 if (
                     instance == browser.browser_instance
                     and tab in (browser.meetings.keys() | states.keys() | previous.keys())
-                    and owner is not None
-                    and not owner.finished
+                    and self._still_recording(owner)
                 ):
                     state = states.setdefault(
                         tab, dict(recording=True, tabId=tab, captureId=capture_id, path=str(owner.directory))
@@ -1396,7 +1395,7 @@ class BrowserService:
             if (
                 tab is None
                 or generation is None
-                or capture.finished
+                or not self._still_recording(capture)
                 or capture.directory is None
                 or key in self._cancelled_captures
                 or browser.meetings.get(tab, {}).get("callGeneration") != generation
@@ -1424,6 +1423,21 @@ class BrowserService:
         retired = owner.observe_document(document, navigating=page == "navigating", present=page == "present")
         if retired:
             logging.getLogger(__name__).debug("Retired %d spans of a gone document from the PCM watchdog", retired)
+
+    @staticmethod
+    def _still_recording(capture):
+        """An owned capture still recording, not one stopped and only saving.
+
+        A stopped managed capture publishes in the background (stopping, not
+        finished), as BrowserCapture.snapshot reports: it must not be shown
+        or treated as recording its call (#237).
+        """
+        return (
+            capture is not None
+            and not capture.finished
+            and not getattr(capture, "stopping", False)
+            and not (getattr(capture, "stop_requested", None) is not None and capture.stop_requested.is_set())
+        )
 
     def _generation_recording(self, tab, meeting, *, active=False):
         """Whether an unfinished capture already records this row's call.
@@ -1596,8 +1610,7 @@ class BrowserService:
                         if (
                             instance == browser.browser_instance
                             and tab in meetings
-                            and owner is not None
-                            and not owner.finished
+                            and self._still_recording(owner)
                         ):
                             browser.states.setdefault(
                                 tab, dict(recording=True, tabId=tab, captureId=capture_id, path=str(owner.directory))
@@ -2668,7 +2681,9 @@ class BrowserService:
                             and self._meeting_id(browser, tab) not in self._scheduled_calls
                             and self._auto_start_ready(browser, meeting)
                             and not browser.states.get(tab, {}).get("recording")
-                            and not self._generation_recording(tab, meeting)
+                            # A capture the user stopped, only saving, does not block
+                            # a start the policy is otherwise allowed (#237).
+                            and not self._generation_recording(tab, meeting, active=True)
                         ):
                             browser.attempted.add(tab)
                             browser.scheduled.add(tab)
@@ -2864,7 +2879,7 @@ class BrowserService:
                         "call-evidence-v1" in browser.capabilities
                         and not self._auto_start_ready(browser, meeting)
                         # The call may have gained a capture while this task waited.
-                        or self._generation_recording(int(raw_tab), meeting)
+                        or self._generation_recording(int(raw_tab), meeting, active=True)
                     ):
                         # Evidence may disappear while this task waits for a worker.
                         if browser is not None:
