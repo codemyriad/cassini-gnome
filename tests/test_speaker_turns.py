@@ -43,7 +43,9 @@ def test_overlap_aside_is_its_own_turn_and_keeps_original_indices():
     words = (Word("a", 700, 1000, "Continue."), Word("a", 0, 900, "Hello."), Word("b", 300, 600, "Yes."))
     turns = speaker_turns(words)
     assert [(t.speaker, t.start_ms, t.end_ms, t.word_indices) for t in turns] == [
-        ("a", 0, 900, (1,)), ("b", 300, 600, (2,)), ("a", 700, 1000, (0,))
+        ("a", 0, 900, (1,)),
+        ("b", 300, 600, (2,)),
+        ("a", 700, 1000, (0,)),
     ]
     assert all(t.words[0] is words[t.word_indices[0]] for t in turns)
 
@@ -56,6 +58,6 @@ def test_equal_starts_keep_transcript_order_and_empty_is_empty():
 
 def test_overlapping_same_speaker_words_preserve_longest_end():
     words = (Word("a", 0, 1000, 'He said "hello'), Word("a", 100, 200, 'world".'))
-    turn, = speaker_turns(words)
+    (turn,) = speaker_turns(words)
     assert turn.end_ms == 1000 and turn.text == "He said “hello world”."
     assert turn.words == words

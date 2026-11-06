@@ -74,7 +74,9 @@
     "library-vectors/expected/t8-retry-failed-stale-silent.json": "ux/library-vectors/expected/t8-retry-failed-stale-silent.json",
     "library-vectors/expected/t8-silent-per-source.json": "ux/library-vectors/expected/t8-silent-per-source.json",
     "library-vectors/expected/t8-none-referenced-words.json": "ux/library-vectors/expected/t8-none-referenced-words.json",
-    "library-vectors/expected/t8-low-audio-silent.json": "ux/library-vectors/expected/t8-low-audio-silent.json"
+    "library-vectors/expected/t8-low-audio-silent.json": "ux/library-vectors/expected/t8-low-audio-silent.json",
+    "listen-by-speaker/turns.json": "tests/ux/listen-by-speaker/turns.json",
+    "listen-by-speaker/README.md": "tests/ux/listen-by-speaker/README.md"
   },
   "sha256": {
     "format-vectors.json": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",
@@ -149,6 +151,8 @@
     "library-vectors/expected/t8-retry-failed-stale-silent.json": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b",
     "library-vectors/expected/t8-silent-per-source.json": "87e2d5b35a7eb25181830289d8b8029a17c3fab877f100949a96dabe41a7770d",
     "library-vectors/expected/t8-none-referenced-words.json": "111f5a44d2db94a8faaefd635b5c3f6520af0d9280839e90a327c62493ae6c56",
-    "library-vectors/expected/t8-low-audio-silent.json": "234fc68f9a0c7867be33d06573d7f8b78921ece10effc4d345c8b682addbddab"
+    "library-vectors/expected/t8-low-audio-silent.json": "234fc68f9a0c7867be33d06573d7f8b78921ece10effc4d345c8b682addbddab",
+    "listen-by-speaker/turns.json": "0c0d49a7f1d57f97b243d08c0558ab13506a39a93316a2e7506d228f21d75e29",
+    "listen-by-speaker/README.md": "499612b72cee5c64cb449f1797d3932a19c44e32a94711ebd8eb25a8d76c354b"
   }
 }
