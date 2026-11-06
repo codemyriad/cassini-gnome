@@ -770,7 +770,6 @@ class NativeRecorder(GObject.Object):
                 if attempt["error"]:
                     raise OSError(attempt["error"])
             opening = None
-            elapsed = self._elapsed_ms(pipeline)
             with self._lock:
                 # _discard: an armed refusal on this worker found nothing open
                 # and queued the finish to the main loop; nothing commits now.
@@ -786,7 +785,7 @@ class NativeRecorder(GObject.Object):
                     if attempt["error"]:
                         opening = kind
                         raise OSError(attempt["error"])
-                at = change_time(self.session, elapsed)
+                at = change_time(self.session, self._elapsed_ms(pipeline))
                 # A selection is written only when it changes (R82 1c): Try again
                 # on a side refused at start reopens it under the start selection.
                 changed = (me, others) != (current.me, current.others)
@@ -823,6 +822,11 @@ class NativeRecorder(GObject.Object):
                     if admission is not None and admission.last_end_ms is not None:
                         retiring[kind] = attempt["branch"]
                         self._retired_branches.add(attempt["branch"])
+                        # A post-cut first buffer will not commit the side,
+                        # so _commit_side cannot release its held EOS for us.
+                        if "hold" in attempt:
+                            pad, probe = attempt.pop("hold")
+                            pad.remove_probe(probe)
                     else:
                         self._retire_attempt(kind, attempt)
                 for branch in retiring.values():
