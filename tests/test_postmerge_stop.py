@@ -346,3 +346,87 @@ def test_native_eos_keeps_its_full_drain_budget_after_a_checkpoint_stall(tmp_pat
         recorder._executor.shutdown(wait=True)
         recorder.pipeline = None
         recorder.session.finish()
+
+
+def bound_broker(tmp_path, capture):
+    service, identity, finished = broker(tmp_path, capture)
+    browser = BrowserConnection(None, browser_instance=identity[0])
+    browser.hello_seen = browser.status_seen = True
+    browser.capabilities.add("independent-sessions-v1")
+    browser.meetings[identity[1]] = dict(tabId=identity[1], title="Bound call", url=identity[2], sourceCount=1)
+    browser.states[identity[1]] = dict(tabId=identity[1], recording=True, captureId=capture.capture_id)
+    service.browsers[browser.id] = browser
+    capture.call_identity = identity
+    identifier = service._meeting_id(browser, identity[1])
+
+    def reply(packet):
+        with service.lock:
+            service._command_result(
+                browser,
+                dict(
+                    type="result",
+                    requestId=packet["requestId"],
+                    ok=True,
+                    status=dict(recording=False, tabId=identity[1]),
+                ),
+            )
+
+    browser.send = reply
+    return service, browser, identity, identifier, finished
+
+
+@pytest.mark.parametrize("user", [False, True])
+@pytest.mark.parametrize("target", ["call", "capture", "expected-capture"])
+def test_bound_broker_stop_keeps_explicit_user_intent(tmp_path, user, target):
+    taps = DrainingTaps()
+    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
+    tap, _ = record_live(capture, clock)
+    service, browser, identity, identifier, finished = bound_broker(tmp_path, capture)
+    tap.drained.set()
+    try:
+        assert browser.browser_instance == identity[0]
+        assert service._bound_capture(identity) is capture
+        selected = "capture:" + capture.capture_id if target == "capture" else identifier
+        options = dict(expected_capture=capture.capture_id) if target == "expected-capture" else {}
+        service.command(selected, "stop", user=user, **options)
+        assert finished.wait(BOUND)
+        assert capture.user_stopped is user
+        assert service._stopped_identity(identity) is user
+    finally:
+        service.workers.shutdown(wait=True)
+        capture.stop()
+
+
+@pytest.mark.parametrize("superseded", ["newer-command", "call-version"])
+def test_superseded_bound_start_cancel_does_not_invent_a_user_stop(tmp_path, superseded):
+    taps = DrainingTaps()
+    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
+    tap, _ = record_live(capture, clock)
+    service, browser, identity, logical, finished = bound_broker(tmp_path, capture)
+    tap.drained.set()
+    browser.commands["start"] = dict(
+        action="start", tabId=identity[1], serial=1, expected=identity, logical=logical, version=0
+    )
+    if superseded == "newer-command":
+        browser.commands["newer"] = dict(action="stop", tabId=identity[1], serial=2)
+    else:
+        service._call_versions[logical] = 1
+    try:
+        assert service._bound_capture(identity) is capture
+        assert not service._stopped_identity(identity)
+        with service.lock:
+            service._command_result(
+                browser,
+                dict(
+                    type="result",
+                    requestId="start",
+                    ok=True,
+                    status=dict(recording=True, tabId=identity[1], captureId=capture.capture_id),
+                ),
+            )
+        assert finished.wait(BOUND)
+        assert capture.user_stopped is False
+        assert service._stopped_identity(identity) is False
+    finally:
+        service.workers.shutdown(wait=True)
+        capture.stop()
