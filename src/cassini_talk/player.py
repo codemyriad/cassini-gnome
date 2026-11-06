@@ -50,6 +50,20 @@ class Player(GObject.Object):
         self._pending_seek: int | None = None
         self._at_end = False
         self._range_end = None
+        # A flushing seek re-prerolls and posts ASYNC_DONE, and the bus keeps
+        # its order: an EOS dispatched before that ASYNC_DONE belongs to the
+        # segment the seek replaced (still queued when it was issued), not to
+        # the new one. (playbin also keeps the seek seqnum on its EOS, but the
+        # FolderPlayer's audiomixer posts EOS with a fresh one.)
+        self._seeking = False
+        # D70 listening: (end_ms, on_done) of the span in progress.
+        self._span = None
+        # The pipeline's segment no longer matches what play() should do (drained at a
+        # span's stop, or a stop that was cleared while paused): play() seeks first.
+        self._stale_segment = False
+        # While listening, called with every seek target; returns the (end_ms, on_done) that
+        # target plays to, or None to play freely. A dialog sample (play_range) takes precedence.
+        self.span_follow = None
         # Why play() cannot start, or None once a file is loaded.
         self._load_error: str | None = _("No recording is loaded.")
 
@@ -62,6 +76,7 @@ class Player(GObject.Object):
         self._prerolled = False
         self._pending_seek = None
         self._at_end = False
+        self._seeking = False
         self.position = 0
         missing = runtime.missing_gst_elements(Gst.ElementFactory.find, runtime.playback_elements(uri))
         if missing:
@@ -85,6 +100,9 @@ class Player(GObject.Object):
             return
         if self._at_end:
             self.seek(0)
+        elif self._stale_segment:
+            # Continue from the position, under the stop span_follow decides (if any).
+            self.seek(self.position)
         if self._pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             # The bus usually holds the reason; take it so it is reported once.
             message = self._pipeline.get_bus().pop_filtered(Gst.MessageType.ERROR)
@@ -115,6 +133,49 @@ class Player(GObject.Object):
     def clear_range(self):
         self._range_end = None
 
+    def play_span(self, start_ms, end_ms, on_done=None):
+        """D70: play [start, end] and pause exactly at end; on_done(end_ms) follows.
+
+        Unlike play_range there is no length cap and no position restore: the
+        position stays at end. The stop is the seek's segment stop; the EOS it
+        produces is posted only after the sink has rendered the last sample, so
+        a 0.3 s turn needs no position polling. (SEGMENT_DONE would arrive when
+        the source has merely pushed the span, long before it is heard.)
+        """
+        start_ms = max(0, int(start_ms))
+        end_ms = int(end_ms)
+        if self.duration:
+            end_ms = min(end_ms, self.duration)
+        if not self.loaded:
+            self.emit("error", self._load_error)
+            return False
+        if end_ms <= start_ms:
+            return False
+        self.clear_range()
+        self._span = (end_ms, on_done)
+        self._stale_segment = False
+        self._at_end = False
+        self.position = start_ms
+        if not self._prerolled:
+            self._pending_seek = start_ms
+        elif not self._do_seek(start_ms):
+            self.clear_span()
+            self.emit("error", _("The audio could not be played."))
+            return False
+        self.play()
+        return self.playing
+
+    def clear_span(self):
+        """Forget the span and listening follow; playing on, if playing, without a stop."""
+        had_stop = self._span is not None
+        self._span = None
+        self.span_follow = None
+        if had_stop and self._range_end is None and self._prerolled:
+            if self.playing:
+                self._do_seek(self._query_position() or self.position)
+            else:
+                self._stale_segment = True
+
     def pause(self):
         if not self.loaded:
             return
@@ -131,6 +192,9 @@ class Player(GObject.Object):
 
     def stop(self):
         self.clear_range()
+        self._span = None
+        self._stale_segment = False
+        self.span_follow = None
         self._stop_tick()
         self._pipeline.set_state(Gst.State.NULL)
         self.playing = False
@@ -141,6 +205,12 @@ class Player(GObject.Object):
             ms = min(ms, self.duration)
         self._at_end = False
         self.position = ms
+        self._stale_segment = False
+        if self._range_end is None:
+            if self.span_follow is not None:
+                self._span = self.span_follow(ms)
+            elif self._span is not None and ms >= self._span[0]:
+                self._span = None
         if not self._prerolled:
             self._pending_seek = ms
             return True
@@ -154,17 +224,30 @@ class Player(GObject.Object):
         if self._prerolled:
             self._do_seek(self._query_position() or self.position)
 
+    def _stop_ms(self):
+        if self._range_end is not None:
+            return self._range_end
+        return self._span[0] if self._span is not None else None
+
     def _do_seek(self, ms: int):
         flags = Gst.SeekFlags.FLUSH | Gst.SeekFlags.ACCURATE
-        return self._pipeline.seek(
+        stop = self._stop_ms()
+        if stop is not None and stop <= ms:
+            # A stop at or before the start is an invalid segment: already there, so it is done.
+            stop = None
+        event = Gst.Event.new_seek(
             self.rate,
             Gst.Format.TIME,
             flags,
             Gst.SeekType.SET,
             ms * Gst.MSECOND,
             Gst.SeekType.SET,
-            self._range_end * Gst.MSECOND if self._range_end is not None else -1,
+            stop * Gst.MSECOND if stop is not None else -1,
         )
+        sent = self._pipeline.send_event(event)
+        if sent:
+            self._seeking = True
+        return sent
 
     def shutdown(self):
         self.stop()
@@ -196,6 +279,7 @@ class Player(GObject.Object):
 
     def _on_message(self, _bus, message):
         if message.type == Gst.MessageType.ASYNC_DONE:
+            self._seeking = False
             if not self._prerolled:
                 self._prerolled = True
                 if not self.duration:
@@ -210,9 +294,19 @@ class Player(GObject.Object):
             if ok and dur > 0 and not self.duration:
                 self.duration = dur // Gst.MSECOND
         elif message.type == Gst.MessageType.EOS:
+            if self._seeking:
+                return
             self._pipeline.set_state(Gst.State.PAUSED)
             self.playing = False
             self._stop_tick()
+            if self._range_end is None and self._span is not None:
+                end_ms, on_done = self._span
+                self._stale_segment = True
+                self._at_end = bool(self.duration) and end_ms >= self.duration
+                self.position = end_ms
+                if on_done is not None:
+                    on_done(end_ms)
+                return
             self._at_end = True
             if self.duration:
                 self.position = self._range_end if self._range_end is not None else self.duration

@@ -324,6 +324,7 @@ class FolderPlayer(Player):
         self._pending_seek = None
         self._prerolled = False
         self._at_end = False
+        self._seeking = False
         bus = pipeline.get_bus()
         bus.add_signal_watch()
         self._bus_handler = bus.connect("message", self._on_message)
