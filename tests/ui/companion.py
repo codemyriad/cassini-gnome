@@ -247,7 +247,12 @@ with tempfile.TemporaryDirectory() as temporary:
         dialog.poll()
         until(lambda: dialog.future is None)
         assert not dialog.done.get_sensitive()
-        send_packet(stream, dict(type="hello", version=1))
+        send_packet(stream, dict(type="hello", version=1, capabilities=["multi-stream-v1"], filesOk=False))
+        send_packet(stream, dict(type="status", recording=False))
+        until(lambda: app.browser_connection.connected)
+        dialog.render()
+        assert not dialog.done.get_sensitive(), "A connection without valid extension files is not Done"
+        send_packet(stream, dict(type="hello", version=1, capabilities=["multi-stream-v1"], filesOk=True))
         send_packet(stream, dict(type="status", recording=False))
         until(lambda: dialog.done.get_sensitive())
         assert app.recording_settings.get_boolean("browser-ever-connected")
