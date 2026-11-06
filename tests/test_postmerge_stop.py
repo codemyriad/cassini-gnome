@@ -432,14 +432,17 @@ def test_superseded_bound_start_cancel_does_not_invent_a_user_stop(tmp_path, sup
         capture.stop()
 
 
+@pytest.mark.parametrize("route", ["plain", "browser-lost", "interrupted"])
 @pytest.mark.parametrize("target", ["call", "capture"])
-def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, monkeypatch, target):
+def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, monkeypatch, target, route):
     """Opt-in while a stopped managed capture still publishes starts the call at once.
 
     The capture records into a managed Library session, so Stop returns while
     publication runs (stopping, not finished). The publication is gated on an
     event: the companion's stopped status and the opt-in arrive in that window,
-    and the old save's completion only afterwards.
+    and the old save's completion only afterwards. `browser-lost`: a fallback
+    capture whose browser was lost; `interrupted`: the companion lists the
+    publishing capture among its interrupted sessions.
     """
     from concurrent.futures import Future
 
@@ -470,6 +473,8 @@ def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, mon
     service, browser, identity, logical, finished = bound_broker(tmp_path, capture)
     # The call has a generation (D52.5), so the generation guard is exercised too.
     browser.meetings[identity[1]]["callGeneration"] = capture.call_generation = 7
+    if route == "browser-lost":
+        capture.browser_lost = True
     tap.drained.set()
     automatic, sent = [], []
     submit, send = service.workers.submit, browser.send
@@ -491,10 +496,15 @@ def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, mon
         assert capture.stopping and not capture.finished and not finished.is_set(), "Stop must leave it publishing"
         assert service._stopped_identity(identity)
         assert capture.host.session.manifest["events"][-1]["reason"] == "user"
-        if target == "capture":
+        if target == "capture" or route != "plain":
             # The companion reports its stopped session independently of the
             # native owner's publication and completion callback.
-            service.update(browser, dict(type="status", recording=False, tabId=identity[1]))
+            status = dict(type="status", recording=False, tabId=identity[1])
+            if route == "interrupted":
+                status["interrupted"] = [
+                    dict(tabId=identity[1], captureId=capture.capture_id, path=str(capture.directory))
+                ]
+            service.update(browser, status)
         # A publishing capture is not recording its call: no synthesized state.
         assert not browser.states.get(identity[1], {}).get("recording"), browser.states
         service.policy()
