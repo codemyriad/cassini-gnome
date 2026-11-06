@@ -163,3 +163,48 @@ def test_try_again_and_the_shortcut_also_start_while_a_capture_only_saves(applic
     # Windowless shortcut with Record-first skipped: starts at once, as when idle.
     app.on_global_record()
     assert events == ["start"] and not app._shortcut_saved_pending
+
+
+def test_a_held_activity_reply_stamped_after_the_stopping_reply_never_revives_the_capture(
+    application_class,  # noqa: F811
+    monkeypatch,
+):
+    """The Desktop job's silent Stop (#237): an activity poll sampled before Stop
+    is received after Watch's stopping reply, so its stamp is newer and the app's
+    snapshot no longer stands. A capture never goes back from stopping to
+    recording, so the known stopping state still wins."""
+    from cassini_talk import capture_activity
+
+    identifier = str(uuid4())
+    path = "/library/Recording-" + identifier
+    replies, now = queue.Queue(), [0.0]
+    monkeypatch.setattr(capture_activity, "read_browser_activity", lambda *_, **__: replies.get())
+    changes = []
+    activity = capture_activity.BrowserActivity(
+        lambda: changes.append(1), interval_ms=3_600_000, clock=lambda: now[0]
+    )
+    try:
+        replies.put(({identifier: "recording"}, False, {identifier: path}))
+        pump(lambda: activity.answered_at == 0.0, "first activity poll")
+        library = window()
+        library._activity_source = activity
+        app, events = app_with(application_class, windows=[library])
+        app._browser_answered_at = 0.0
+        app._browser_snapshot = dict(statuses=[dict(recording=True, path=path)])
+        # The poll is sent while it still records; Stop is then pressed.
+        activity.poll()
+        now[0] = 10.0  # Watch's stopping reply arrives first...
+        app._browser_answered_at = 10.0
+        app._browser_snapshot = dict(statuses=[dict(recording=False, stopping=True, path=path)])
+        library._browser_snapshot = app._browser_snapshot
+        now[0] = 11.0  # ...then the held activity reply, sampled before Stop.
+        replies.put(({identifier: "recording"}, False, {identifier: path}))
+        pump(lambda: activity.answered_at == 11.0, "held activity reply")
+        assert activity.snapshot == {identifier: "recording"}
+        app_stands, sources = capture_activity.standing_broker_caches(app)
+        assert not app_stands and sources == [activity], "the stale reply is the newest"
+        app.on_record()
+        assert events == ["activate", "record"], "Record starts, never a silent Stop"
+    finally:
+        replies.put(({}, False, {}))
+        activity.close()
