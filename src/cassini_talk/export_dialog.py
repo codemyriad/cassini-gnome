@@ -7,7 +7,7 @@ import threading
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
 from .export_model import encode_choice
@@ -103,7 +103,7 @@ class ExportDialog(Adw.Dialog):
         outer.append(choices)
         names = vertical(8)
         names.append(label(text("export.speakerNames.heading"), "small", "heading", "dim-label", xalign=0))
-        self.names = label("", wrap=True, xalign=0)
+        self.names = label("", wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, xalign=0)
         self.names.set_markup(speaker_names_markup(meeting))
         names.append(self.names)
         outer.append(names)
