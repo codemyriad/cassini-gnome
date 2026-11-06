@@ -28,7 +28,7 @@ def test_fallback_streams_are_audio_not_people_and_do_not_invent_page_reasons(me
         ("Computer sound", 1870000, 2825000),
     ]
     assert others[0].method == "3 audio streams"
-    assert others[1].reason == "The browser audio connection was lost"
+    assert others[1].reason == "Separate voices stopped unexpectedly. Cassini recorded all computer sound instead."
     assert report.ended == UNKNOWN
     copied = report.plain_text()
     assert "participants" not in copied and "reloaded" not in copied and "tab was closed" not in copied
@@ -314,3 +314,38 @@ def test_only_observed_output_mute_facts_appear_in_details(meetings):
     report = read_details(replace(meeting, metadata=metadata))
     assert text("details.health.outputMuted") in report.plain_text()
     assert text("details.health.outputMuted") not in read_details(meeting).plain_text()
+
+
+@pytest.mark.parametrize(
+    "cause",
+    [
+        "frameError",
+        "frameClosed",
+        "tabClosed",
+        "nativeHostError",
+        "startupError",
+        "transportClosed",
+        "lifecycle",
+        "future.reason",
+        None,
+    ],
+)
+def test_details_saved_loss_cause_explains_only_committed_computer_fallback(meetings, cause):
+    from cassini_talk.strings import text
+
+    meeting = meetings["fallback"]
+    session = json.loads((meeting.directory / "session.json").read_text())
+    event = next(e for e in session["events"] if e.get("reason") == "lost")
+    if cause is not None:
+        event["cause"] = cause
+    known = (
+        cause
+        if cause in {"frameError", "frameClosed", "tabClosed", "nativeHostError", "startupError", "transportClosed"}
+        else "other"
+    )
+    rows = timeline(meeting, session)
+    expected = text("details.othersFallback.cause." + known)
+    assert [s.reason for s in rows if s.side == "The others" and s.source == "Computer sound"] == [expected]
+    assert all(s.reason != expected for s in rows if s.side == "The others" and s.source == "Browser audio")
+    native = replace(meeting, capture_source="gnome")
+    assert all(s.reason != expected for s in timeline(native, session))

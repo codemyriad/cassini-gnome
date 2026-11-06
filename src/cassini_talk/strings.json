@@ -20507,6 +20507,369 @@
      "text": "{source}: faltam cerca de {duration} porque o computador estava demasiado ocupado. Esse excerto está em silêncio."
     }
    }
+  },
+  {
+   "id": "setup.companion.reloadTab",
+   "en": "Reload the meeting tab so Cassini can record it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Shown only when status.browserHealth has a detected meeting tab in reloadRequired. Same wording as the extension popup. Never for an idle browser.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Ricarica la scheda della riunione così Cassini può registrarla."
+    },
+    "fr": {
+     "text": "Rechargez l’onglet de la réunion pour que Cassini puisse l’enregistrer."
+    },
+    "es": {
+     "text": "Vuelve a cargar la pestaña de la reunión para que Cassini pueda grabarla."
+    },
+    "pt-BR": {
+     "text": "Recarregue a aba da reunião para que o Cassini possa gravá-la."
+    },
+    "pt-PT": {
+     "text": "Recarregue o separador da reunião para que o Cassini o possa gravar."
+    }
+   }
+  },
+  {
+   "id": "setup.companion.reloadTab.action",
+   "en": "Reload tab",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Sends the reloadMeetingTab action for that tab (SPEC-CONTROL).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Ricarica scheda"
+    },
+    "fr": {
+     "text": "Recharger l’onglet"
+    },
+    "es": {
+     "text": "Recargar pestaña"
+    },
+    "pt-BR": {
+     "text": "Recarregar aba"
+    },
+    "pt-PT": {
+     "text": "Recarregar separador"
+    }
+   }
+  },
+  {
+   "id": "setup.companion.filesMissing",
+   "en": "The Cassini Recorder extension’s files are missing. Set up the extension again.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). hello filesOk is false. Setup is not Done.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Mancano i file dell’estensione Cassini Recorder. Configura di nuovo l’estensione."
+    },
+    "fr": {
+     "text": "Les fichiers de l’extension Cassini Recorder sont introuvables. Configurez à nouveau l’extension."
+    },
+    "es": {
+     "text": "Faltan los archivos de la extensión Cassini Recorder. Vuelve a configurar la extensión."
+    },
+    "pt-BR": {
+     "text": "Os arquivos da extensão Cassini Recorder estão faltando. Configure a extensão novamente."
+    },
+    "pt-PT": {
+     "text": "Faltam os ficheiros da extensão Cassini Recorder. Configure novamente a extensão."
+    }
+   }
+  },
+  {
+   "id": "setup.companion.outdated",
+   "en": "The Cassini Recorder extension is older than this version of Cassini ({version}). Set up the extension again to update it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D72",
+   "placeholders": {
+    "version": "the extension version the browser reports, e.g. 0.2.13"
+   },
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Wording only: the hello extensionVersion is older than the bundled companion. Feature gating stays on capabilities.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "L’estensione Cassini Recorder è più vecchia di questa versione di Cassini ({version}). Configura di nuovo l’estensione per aggiornarla."
+    },
+    "fr": {
+     "text": "L’extension Cassini Recorder est plus ancienne que cette version de Cassini ({version}). Configurez à nouveau l’extension pour la mettre à jour."
+    },
+    "es": {
+     "text": "La extensión Cassini Recorder es más antigua que esta versión de Cassini ({version}). Vuelve a configurar la extensión para actualizarla."
+    },
+    "pt-BR": {
+     "text": "A extensão Cassini Recorder é mais antiga que esta versão do Cassini ({version}). Configure a extensão novamente para atualizá-la."
+    },
+    "pt-PT": {
+     "text": "A extensão Cassini Recorder é mais antiga do que esta versão do Cassini ({version}). Configure novamente a extensão para a atualizar."
+    }
+   }
+  },
+  {
+   "id": "setup.companion.setUpAgain",
+   "en": "Set up again",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Opens the companion setup flow.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Configura di nuovo"
+    },
+    "fr": {
+     "text": "Configurer à nouveau"
+    },
+    "es": {
+     "text": "Volver a configurar"
+    },
+    "pt-BR": {
+     "text": "Configurar novamente"
+    },
+    "pt-PT": {
+     "text": "Configurar novamente"
+    }
+   }
+  },
+  {
+   "id": "details.othersFallback.cause.frameError",
+   "en": "Separate voices stopped because the meeting page reported an error. Cassini recorded all computer sound instead.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Recording details line when the lost stop carried cause frameError.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le voci separate si sono interrotte perché la pagina della riunione ha segnalato un errore. Cassini ha registrato tutto l’audio del computer."
+    },
+    "fr": {
+     "text": "Les voix séparées se sont arrêtées, car la page de la réunion a signalé une erreur. Cassini a enregistré tout le son de l’ordinateur."
+    },
+    "es": {
+     "text": "Las voces separadas se detuvieron porque la página de la reunión informó de un error. Cassini grabó todo el sonido del ordenador."
+    },
+    "pt-BR": {
+     "text": "As vozes separadas pararam porque a página da reunião informou um erro. O Cassini gravou todo o som do computador."
+    },
+    "pt-PT": {
+     "text": "As vozes separadas pararam porque a página da reunião comunicou um erro. O Cassini gravou todo o som do computador."
+    }
+   }
+  },
+  {
+   "id": "details.othersFallback.cause.frameClosed",
+   "en": "Separate voices stopped because the meeting page closed or reloaded. Cassini recorded all computer sound instead.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Recording details line when the lost stop carried cause frameClosed.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le voci separate si sono interrotte perché la pagina della riunione è stata chiusa o ricaricata. Cassini ha registrato tutto l’audio del computer."
+    },
+    "fr": {
+     "text": "Les voix séparées se sont arrêtées, car la page de la réunion a été fermée ou rechargée. Cassini a enregistré tout le son de l’ordinateur."
+    },
+    "es": {
+     "text": "Las voces separadas se detuvieron porque la página de la reunión se cerró o se volvió a cargar. Cassini grabó todo el sonido del ordenador."
+    },
+    "pt-BR": {
+     "text": "As vozes separadas pararam porque a página da reunião foi fechada ou recarregada. O Cassini gravou todo o som do computador."
+    },
+    "pt-PT": {
+     "text": "As vozes separadas pararam porque a página da reunião foi fechada ou recarregada. O Cassini gravou todo o som do computador."
+    }
+   }
+  },
+  {
+   "id": "details.othersFallback.cause.tabClosed",
+   "en": "Separate voices stopped because the meeting tab was closed. Cassini recorded all computer sound instead.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Recording details line when the lost stop carried cause tabClosed.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le voci separate si sono interrotte perché la scheda della riunione è stata chiusa. Cassini ha registrato tutto l’audio del computer."
+    },
+    "fr": {
+     "text": "Les voix séparées se sont arrêtées, car l’onglet de la réunion a été fermé. Cassini a enregistré tout le son de l’ordinateur."
+    },
+    "es": {
+     "text": "Las voces separadas se detuvieron porque se cerró la pestaña de la reunión. Cassini grabó todo el sonido del ordenador."
+    },
+    "pt-BR": {
+     "text": "As vozes separadas pararam porque a aba da reunião foi fechada. O Cassini gravou todo o som do computador."
+    },
+    "pt-PT": {
+     "text": "As vozes separadas pararam porque o separador da reunião foi fechado. O Cassini gravou todo o som do computador."
+    }
+   }
+  },
+  {
+   "id": "details.othersFallback.cause.nativeHostError",
+   "en": "Separate voices stopped because Cassini could not receive the browser’s audio. Cassini recorded all computer sound instead.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Recording details line when the lost stop carried cause nativeHostError.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le voci separate si sono interrotte perché Cassini non riusciva a ricevere l’audio del browser. Cassini ha registrato tutto l’audio del computer."
+    },
+    "fr": {
+     "text": "Les voix séparées se sont arrêtées, car Cassini ne recevait plus le son du navigateur. Cassini a enregistré tout le son de l’ordinateur."
+    },
+    "es": {
+     "text": "Las voces separadas se detuvieron porque Cassini no podía recibir el audio del navegador. Cassini grabó todo el sonido del ordenador."
+    },
+    "pt-BR": {
+     "text": "As vozes separadas pararam porque o Cassini não conseguia receber o áudio do navegador. O Cassini gravou todo o som do computador."
+    },
+    "pt-PT": {
+     "text": "As vozes separadas pararam porque o Cassini não conseguia receber o áudio do navegador. O Cassini gravou todo o som do computador."
+    }
+   }
+  },
+  {
+   "id": "details.othersFallback.cause.startupError",
+   "en": "Separate voices could not start. Cassini recorded all computer sound instead.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Recording details line when the lost stop carried cause startupError.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Non è stato possibile avviare le voci separate. Cassini ha registrato tutto l’audio del computer."
+    },
+    "fr": {
+     "text": "Les voix séparées n’ont pas pu démarrer. Cassini a enregistré tout le son de l’ordinateur."
+    },
+    "es": {
+     "text": "No se pudieron iniciar las voces separadas. Cassini grabó todo el sonido del ordenador."
+    },
+    "pt-BR": {
+     "text": "Não foi possível iniciar as vozes separadas. O Cassini gravou todo o som do computador."
+    },
+    "pt-PT": {
+     "text": "Não foi possível iniciar as vozes separadas. O Cassini gravou todo o som do computador."
+    }
+   }
+  },
+  {
+   "id": "details.othersFallback.cause.transportClosed",
+   "en": "Separate voices stopped because the connection between the browser and Cassini closed. Cassini recorded all computer sound instead.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Recording details line when the lost stop carried cause transportClosed.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le voci separate si sono interrotte perché il collegamento tra il browser e Cassini si è chiuso. Cassini ha registrato tutto l’audio del computer."
+    },
+    "fr": {
+     "text": "Les voix séparées se sont arrêtées, car la connexion entre le navigateur et Cassini s’est fermée. Cassini a enregistré tout le son de l’ordinateur."
+    },
+    "es": {
+     "text": "Las voces separadas se detuvieron porque se cerró la conexión entre el navegador y Cassini. Cassini grabó todo el sonido del ordenador."
+    },
+    "pt-BR": {
+     "text": "As vozes separadas pararam porque a conexão entre o navegador e o Cassini foi encerrada. O Cassini gravou todo o som do computador."
+    },
+    "pt-PT": {
+     "text": "As vozes separadas pararam porque a ligação entre o navegador e o Cassini foi fechada. O Cassini gravou todo o som do computador."
+    }
+   }
+  },
+  {
+   "id": "details.othersFallback.cause.other",
+   "en": "Separate voices stopped unexpectedly. Cassini recorded all computer sound instead.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D72",
+   "note": "Coordinator (D72 extension health; protocol #64/#65/#67). Recording details line when othersSource switched to system with reason lost. 'other' covers lifecycle, unknown future codes and an absent legacy cause.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le voci separate si sono interrotte inaspettatamente. Cassini ha registrato tutto l’audio del computer."
+    },
+    "fr": {
+     "text": "Les voix séparées se sont arrêtées de façon inattendue. Cassini a enregistré tout le son de l’ordinateur."
+    },
+    "es": {
+     "text": "Las voces separadas se detuvieron de forma inesperada. Cassini grabó todo el sonido del ordenador."
+    },
+    "pt-BR": {
+     "text": "As vozes separadas pararam inesperadamente. O Cassini gravou todo o som do computador."
+    },
+    "pt-PT": {
+     "text": "As vozes separadas pararam inesperadamente. O Cassini gravou todo o som do computador."
+    }
+   }
   }
  ]
 }

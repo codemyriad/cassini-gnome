@@ -29,14 +29,17 @@ TRACK_FIELDS = (
 def from_session(session):
     """Copy facts, never infer missing audio from levels, labels or silence.
 
-    D58: `refusals` is copied verbatim. A session without captureOutcome (native
-    and fallback paths) gets a record only for its refusals, with `sources: []`:
-    unknown inventory, as `details.sources.empty` says.
+    D58: `refusals` is copied verbatim. Without captureOutcome, source events
+    and refusals still travel with the file, with `sources: []`: unknown
+    inventory, as `details.sources.empty` says.
     """
     outcome = session.get("captureOutcome")
     refusals = session.get("refusals")
     if not isinstance(outcome, dict) or not isinstance(outcome.get("sources"), list):
-        if "refusals" not in session:
+        from .session_events import read_events
+
+        source_events = any(event["type"] != "end" for event in read_events(session.get("events")))
+        if "refusals" not in session and not source_events:
             return None
         outcome = dict(sources=[])
     result = dict(
