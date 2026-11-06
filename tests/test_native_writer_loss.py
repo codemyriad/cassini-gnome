@@ -280,3 +280,24 @@ def test_browser_capture_stop_flushes_known_tail_and_never_counts_post_stop_call
         tap.drained.set()
         stopper.join(BOUND)
         capture.close()
+
+
+def test_writer_loss_is_one_sentence_per_source_summed_across_its_spans(tmp_path):
+    """D69: turning a native source off and on opens a new span (a fresh track id,
+    no sourceTrackId); its writer loss is summed exactly per source and rounded
+    half-up once, not once per span (Mac #154)."""
+    session = RecordingSession(tmp_path)
+    for kind in ("microphone", "system"):
+        for span, start in ((kind, 0), (f"{kind}-second-span", 100)):
+            session.add_track(span, "Me" if kind == "microphone" else "The others", kind, 8000, 1)
+            session.append_native(span, b"\x01\x00" * 80, start)
+            # 2 frames at 8 kHz: 0.25 ms in each span, 0.5 ms per source.
+            session.pad_native(span, writer_frames=2)
+            if start == 0:
+                session.end_track(span)
+    session.finish("The tab was closed.", reason="error")
+    sentence = "1 ms of {} audio was lost because the computer could not keep up; the gaps contain silence."
+    assert session.manifest["problem"] == " ".join(
+        ["The tab was closed.", sentence.format("microphone"), sentence.format("system")]
+    )
+    assert session.manifest["problemKind"] == "io"
