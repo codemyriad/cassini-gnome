@@ -434,22 +434,43 @@ def test_superseded_bound_start_cancel_does_not_invent_a_user_stop(tmp_path, sup
 
 @pytest.mark.parametrize("target", ["call", "capture"])
 def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, monkeypatch, target):
-    """Opt-in can overtake a completed save's broker callback after metadata is durable."""
+    """Opt-in while a stopped managed capture still publishes starts the call at once.
+
+    The capture records into a managed Library session, so Stop returns while
+    publication runs (stopping, not finished). The publication is gated on an
+    event: the companion's stopped status and the opt-in arrive in that window,
+    and the old save's completion only afterwards.
+    """
     from concurrent.futures import Future
 
+    from cassini_talk import library_publication
+    from cassini_talk.library_publication import capture_parent, publish_stopped
+
+    published = threading.Event()
+
+    def gated_submit(session, *, cancel=None):
+        future = Future()
+
+        def run():
+            published.wait(BOUND)
+            try:
+                future.set_result(publish_stopped(session, cancel=cancel))
+            except Exception as error:  # noqa: BLE001 - delivered through the future
+                future.set_exception(error)
+
+        threading.Thread(target=run, daemon=True).start()
+        return future
+
+    monkeypatch.setattr(library_publication, "submit_stopped", gated_submit)
     taps = DrainingTaps()
-    capture, clock = start_capture(tmp_path, taps, microphone=True, others_source="browser")
+    capture, clock = start_capture(
+        capture_parent(tmp_path / "Library"), taps, microphone=True, others_source="browser"
+    )
     tap, _ = record_live(capture, clock)
     service, browser, identity, logical, finished = bound_broker(tmp_path, capture)
     tap.drained.set()
-    completed, automatic, sent = [], [], []
-    changed, submit, send = capture.changed, service.workers.submit, browser.send
-
-    def delay_finished(owner, event):
-        if event == "finished":
-            completed.append(lambda: changed(owner, event))
-        else:
-            changed(owner, event)
+    automatic, sent = [], []
+    submit, send = service.workers.submit, browser.send
 
     def hold_automatic(function, *args, **kwargs):
         if function == service._automatic:
@@ -461,20 +482,24 @@ def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, mon
         sent.append(packet)
         return send(packet)
 
-    capture.changed = delay_finished
     monkeypatch.setattr(service.workers, "submit", hold_automatic)
     monkeypatch.setattr(browser, "send", observe_send)
     try:
         service.command("capture:" + capture.capture_id if target == "capture" else logical, "stop", user=True)
-        assert capture.finished and completed and not finished.is_set()
+        assert capture.stopping and not capture.finished and not finished.is_set(), "Stop must leave it publishing"
         assert service._stopped_identity(identity)
         assert capture.host.session.manifest["events"][-1]["reason"] == "user"
         if target == "capture":
             # The companion reports its stopped session independently of the
-            # native owner's delayed publication/completion callback.
+            # native owner's publication and completion callback.
             service.update(browser, dict(type="status", recording=False, tabId=identity[1]))
+        # A publishing capture is not recording its call: no synthesized state.
+        assert not browser.states.get(identity[1], {}).get("recording"), browser.states
+        service.policy()
+        assert automatic == [], "Without opt-in the user's Stop still suppresses a restart while saving"
         service.configure(True)  # Explicit opt-in resets the previous Stop.
         assert not service._stopped_identity(identity)
+        assert capture.stopping and not capture.finished
         assert len(automatic) == 1, (
             browser.states,
             browser.meetings,
@@ -482,13 +507,15 @@ def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, mon
             service._scheduled_calls,
             service._stopping_all.is_set(),
         )
-        completed.pop()()  # The old save's broker callback arrives afterward.
+        published.set()  # The old save's completion arrives afterwards.
         assert finished.wait(BOUND)
+        assert capture.publication is not None and capture.error is None
         function, args, kwargs = automatic.pop(0)
         function(*args, **kwargs)
         actual = (service._stopped_identity(identity), [p["action"] for p in sent])
         assert actual == (False, ["stop", "start"] if target == "call" else ["start"]), actual
     finally:
+        published.set()
         service.workers.shutdown(wait=True)
         capture.stop()
 
