@@ -298,6 +298,12 @@ def recording_utc_offset(instant):
     return minutes if -720 <= minutes <= 840 else None
 
 
+def writer_loss_sentence(milliseconds, kind):
+    """The shared D69 problem sentence for one source's writer loss. Kept in one
+    place: how this loss is presented may still change (Silvio)."""
+    return f"{milliseconds} ms of {kind} audio was lost because the computer could not keep up; the gaps contain silence."
+
+
 class RecordingSession:
     def __init__(
         self,
@@ -734,17 +740,24 @@ class RecordingSession:
                 track["frames"] = writer.frames
 
     def _writer_problems(self):
-        result = []
+        """D69: one sentence per source, its spans' exact writer loss summed and
+        rounded half-up once. A native source reopened by a selection change
+        or fallback gets a fresh track id and no sourceTrackId, so native spans
+        group by kind; identified sources by sourceTrackId; the rest by id."""
+        totals = {}
         for track in self.manifest["tracks"]:
             frames = self._writer_losses.get(track["id"], 0)
-            if frames:
-                duration = Fraction(frames * 1000, track["sampleRate"])
-                milliseconds = math.floor(duration + Fraction(1, 2))
-                result.append(
-                    f"{milliseconds} ms of {track['kind']} audio was lost because the computer "
-                    "could not keep up; the gaps contain silence."
-                )
-        return result
+            if not frames:
+                continue
+            if track["kind"] in ("microphone", "system"):
+                key = ("native", track["kind"])
+            elif track.get("sourceTrackId") is not None:
+                key = ("source", track["sourceTrackId"])
+            else:
+                key = ("track", track["id"])
+            kind, duration = totals.get(key, (track["kind"], Fraction(0)))
+            totals[key] = kind, duration + Fraction(frames * 1000, track["sampleRate"])
+        return [writer_loss_sentence(math.floor(duration + Fraction(1, 2)), kind) for kind, duration in totals.values()]
 
     def finish(self, problem=None, *, problem_kind=None, reason=None, at_ms=None, retain_lease=False):
         from .capture_sources import change_time
