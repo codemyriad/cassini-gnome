@@ -48,7 +48,11 @@ def selected_pcm(data, offset, rate, channels, start):
 def pcm_before(data, offset, rate, channels, end):
     """Keep only the frames captured before `end` (selected_pcm's tail): a Stop
     boundary inside a queued buffer cuts it there (R93-2)."""
-    keep = max(0, math.ceil((end - offset) * rate / 1000))
+    # Native stamps originate in integer nanoseconds. Subtract there: binary
+    # float cancellation at an exact sample boundary can otherwise turn 240
+    # frames into 240.00000000000546 and ceil would retain an extra frame.
+    duration_ns = round(end * 1_000_000) - round(offset * 1_000_000)
+    keep = max(0, -(-duration_ns * rate // 1_000_000_000))
     return data[: keep * channels * 2]
 
 
