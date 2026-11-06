@@ -9,7 +9,9 @@ is only a bound. Sample speakers are English (D70.1).
 
 import array
 import pathlib
+import threading
 import wave
+from dataclasses import replace
 
 import pytest
 
@@ -57,17 +59,37 @@ def wav(path, seconds=DURATION_MS // 1000):
 
 
 class Rendered:
-    """Contiguous stretches the sink rendered, in media milliseconds."""
+    """Contiguous stretches the sink rendered, in media milliseconds.
+
+    clear() also drops whatever the sink still renders until the next flush:
+    an unsynced sink can be ahead of a pause, so buffers of the old segment
+    may still arrive before the seek that starts the stretch under test."""
 
     def __init__(self, sink):
         self.buffers = []
+        self.waiting = False
+        self.lock = threading.Lock()
         sink.set_property("sync", False)
         sink.set_property("signal-handoffs", True)
-        sink.connect("handoff", lambda _sink, buffer, _pad: self.buffers.append((buffer.pts, buffer.duration)))
+        sink.connect("handoff", self._handoff)
+        sink.get_static_pad("sink").add_probe(Gst.PadProbeType.EVENT_FLUSH, self._flushed)
+
+    def _handoff(self, _sink, buffer, _pad):
+        with self.lock:
+            if not self.waiting:
+                self.buffers.append((buffer.pts, buffer.duration))
+
+    def _flushed(self, _pad, info):
+        with self.lock:
+            if info.get_event().type == Gst.EventType.FLUSH_STOP:
+                self.waiting = False
+        return Gst.PadProbeReturn.OK
 
     def spans(self):
         spans = []
-        for pts, duration in self.buffers:
+        with self.lock:
+            buffers = tuple(self.buffers)
+        for pts, duration in buffers:
             start, end = pts / Gst.MSECOND, (pts + duration) / Gst.MSECOND
             if spans and abs(spans[-1][1] - start) < 1:
                 spans[-1][1] = end
@@ -76,7 +98,9 @@ class Rendered:
         return [(round(a), round(b)) for a, b in spans]
 
     def clear(self):
-        self.buffers.clear()
+        with self.lock:
+            self.waiting = True
+            self.buffers.clear()
 
 
 @pytest.fixture
@@ -185,8 +209,8 @@ def test_a_seek_inside_a_span_keeps_its_stop_and_one_past_it_plays_freely(player
     player.play()
     until(lambda: done, "the span's EOS")
     assert player.rendered.spans()[-1] == (1200, 1500)
-    player.seek(3000)
     player.rendered.clear()
+    player.seek(3000)
     player.play()
     until(lambda: player._at_end, "the file's EOS")
     assert player.rendered.spans() == [(3000, DURATION_MS)]
@@ -226,11 +250,17 @@ def test_an_eos_still_queued_from_a_replaced_span_does_not_end_the_next(tmp_path
         done = []
         player.play_span(1000, 1100, done.append)
         bus = player._pipeline.get_bus()
-        # Wait for the EOS without dispatching it, and queue it again: it is still
-        # pending on the bus when the next span's seek is issued.
-        stale = bus.timed_pop_filtered(10 * Gst.SECOND, Gst.MessageType.EOS)
-        assert stale is not None
-        bus.post(stale)
+        # Take every message up to the EOS without dispatching any, and queue
+        # them all again, the span's own ASYNC_DONE included: they are still
+        # pending, in order, when the next span's seek is issued.
+        pending = []
+        while not pending or pending[-1].type != Gst.MessageType.EOS:
+            message = bus.timed_pop(10 * Gst.SECOND)
+            assert message is not None, "the first span's EOS"
+            pending.append(message)
+        assert any(m.type == Gst.MessageType.ASYNC_DONE for m in pending)
+        for message in pending:
+            bus.post(message)
         rendered.clear()
         player.play_span(5000, 5400, done.append)
         until(lambda: done or errors, "the new span's EOS")
@@ -250,9 +280,9 @@ def test_play_range_keeps_its_cap_and_wins_over_a_span_then_hands_back(player):
     assert calls == []
     player.pause()
     player.clear_range()
+    player.rendered.clear()
     player.seek(5000)
     assert calls == [5000]
-    player.rendered.clear()
     player.play()
     until(lambda: not player.playing and player.position == 5300, "the followed span's EOS")
     assert player.rendered.spans() == [(5000, 5300)]
@@ -311,11 +341,18 @@ def test_starting_mid_meeting_begins_at_the_first_turn_not_yet_over(player):
 def test_next_and_previous_turn_work_relative_to_the_playhead(player):
     controller = listening(player)
     controller.start("ada", 0)
-    player.pause()
-    # In the lead-in of turn 0, Next goes to turn 1, not turn 0 again.
-    player.seek(2000)
+    # While turn 0's lead-in plays, Next goes to turn 1, not turn 0 again.
+    assert player.position == 3000 - LEAD_IN_MS
     assert controller.step_target(1) == 1
     assert controller.step_target(-1) is None
+    player.pause()
+    # A seek into the gap before a turn has not reached it: Next plays it,
+    # also from that turn's lead-in window (a word clicked 1 s before it).
+    player.seek(2000)
+    assert controller.step_target(1) == 0
+    player.seek(6000)
+    assert controller.index == 1 and controller.step_target(1) == 1
+    assert controller.step_target(-1) == 0
     # A playhead in Ben's long turn: the turns around it.
     player.seek(16000)
     assert controller.index == 5
@@ -341,21 +378,39 @@ def test_a_seek_into_a_turn_stops_at_its_end_and_into_a_gap_plays_through_the_ne
     until(lambda: controller.finished, "the turn's end")
     assert player.rendered.spans() == [(19800, DURATION_MS)]
     # Inside Ben's long turn: plays freely until Ada's next turn, then through it.
+    player.rendered.clear()
     player.seek(16000)
     assert not controller.finished
-    player.rendered.clear()
     player.play()
     until(lambda: controller.finished, "the next turn's end")
     assert player.rendered.spans() == [(16000, DURATION_MS)]
     assert controller.index == 5
 
 
+def test_a_seek_into_a_middle_turn_stops_at_its_end_and_a_gap_seek_plays_through_the_next(player):
+    controller = listening(player)
+    controller.start("ada", 0)
+    player.pause()
+    player.rendered.clear()
+    player.seek(3100)  # Inside turn 0: its end, then the next chain with its lead-in.
+    player.play()
+    until(lambda: controller.index >= 2 or controller.finished, "the next chain")
+    spans = player.rendered.spans()
+    assert spans[0] == (3100, 3300 + TAIL_MS) and spans[1][0] == 7000 - LEAD_IN_MS
+    player.pause()
+    player.rendered.clear()
+    player.seek(5000)  # In Ben's turn: freely up to Ada's 7000 chain, then through it.
+    player.play()
+    until(lambda: controller.index >= 4 or controller.finished, "the turn after the chain")
+    assert player.rendered.spans()[0] == (5000, 11300 + TAIL_MS)
+
+
 def test_a_seek_past_the_last_turn_plays_freely(player):
     controller = listening(player)
     controller.start("cleo")
     player.pause()
-    player.seek(5000)
     player.rendered.clear()
+    player.seek(5000)
     player.play()
     until(lambda: player._at_end, "the file's EOS")
     assert player.rendered.spans() == [(5000, DURATION_MS)]
@@ -412,6 +467,48 @@ def test_stop_listening_keeps_the_position_and_plays_on_freely(player):
     player.play()
     until(lambda: player._at_end, "the file's EOS")
     assert player.rendered.spans() == [(position, DURATION_MS)]
+
+
+def test_play_again_survives_a_recompute_and_a_dialog_sample_restore(player):
+    controller = listening(player)
+    controller.start("ada", 5)
+    until(lambda: controller.finished, "Ada's last turn")
+    assert controller.set_turns(TURNS) and controller.finished
+    merged = tuple(replace(t, speaker="ben") if t.speaker == "cleo" else t for t in TURNS)
+    assert controller.set_turns(merged) and controller.finished
+    restore = player.position
+    assert player.play_range(1000, 1500)
+    until(lambda: not player.playing, "the dialog sample")
+    player.pause()
+    player.clear_range()
+    player.seek(restore)
+    assert controller.finished and controller.index == 5
+
+
+@pytest.mark.parametrize("mode", ["span", "sample"])
+def test_a_rate_change_at_a_drained_span_end_keeps_the_stop(player, mode):
+    done = []
+    if mode == "span":
+        player.play_span(1000, 1100, done.append)
+    else:
+        assert player.play_range(1000, 1100)
+    bus = player._pipeline.get_bus()
+    # The span has rendered to its stop; its EOS is still waiting to be dispatched.
+    eos = bus.timed_pop_filtered(10 * Gst.SECOND, Gst.MessageType.EOS)
+    assert eos is not None
+    bus.post(eos)
+    player.set_rate(1.5)
+    until(lambda: done if mode == "span" else player._at_end, "the span's EOS")
+    assert done == ([1100] if mode == "span" else [])
+    assert player.rendered.spans() == [(1000, 1100)]
+    assert player.position == 1100 and not player.playing
+    player.rendered.clear()
+    if mode == "sample":
+        player.clear_range()
+        player.seek(1100)
+    player.play()  # Continues from the stop, at the new rate.
+    until(lambda: player._at_end, "the file's EOS")
+    assert player.rendered.spans()[0][0] == 1100
 
 
 def test_player_stop_and_errors_end_listening(player):
