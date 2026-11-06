@@ -3,9 +3,11 @@
 
 import base64
 import hashlib
+import importlib.util
 import json
 import locale
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -326,11 +328,41 @@ def test_capture_facts_and_another_library_writer_share_one_lock_order(tmp_path,
 
 @pytest.mark.parametrize("initial_event", [True, False])
 @pytest.mark.parametrize("cause", ["frameError", "lifecycle", "future.cause", None])
-def test_legacy_fallback_cause_survives_real_publication_without_session_cache(tmp_path, cause, initial_event):
+def test_legacy_fallback_cause_survives_portable_publication_without_session_cache(
+    tmp_path, monkeypatch, cause, initial_event
+):
     from cassini_talk.capture_details import read_details
+
+    # This regression judges facts crossing the real portable-file publisher,
+    # not the NumPy/GStreamer mixer. Supply its known one-second silent codec
+    # output while leaving tagging, journal commit and cache-free reading real.
+    from cassini_talk.library_v2 import mixdown
     from cassini_talk.recording_session import RecordingSession
     from cassini_talk.strings import text
 
+    spec = importlib.util.spec_from_file_location(
+        "silent_opus_fixture", Path(__file__).parents[1] / "ux/library-vectors/assets/build.py"
+    )
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    generator.ROOT = tmp_path
+    generator.build("encoded.opus", 1000)
+    encoded = tmp_path / "encoded.opus"
+
+    def sample_count(spans):
+        assert [(s.start_ms, s.length, s.info.sample_rate, s.anchors) for s in spans] == [
+            (0.0, 24000, 48000, ()),
+            (500.0, 24000, 48000, ()),
+        ]
+        return 48000
+
+    def encode(spans, output, choice, cancel=None):
+        count = sample_count(spans)
+        shutil.copyfile(encoded, output)
+        return count
+
+    monkeypatch.setattr(mixdown, "total_samples", sample_count)
+    monkeypatch.setattr(mixdown, "encode", encode)
     root = tmp_path / "Library"
     session = RecordingSession(capture_parent(root), source="chromium")
     session.add_track("remote", "Voice", "remote", 48000, 1)
