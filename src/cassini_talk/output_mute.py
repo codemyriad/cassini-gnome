@@ -3,6 +3,7 @@
 
 import json
 import logging
+import os
 import subprocess
 import threading
 from dataclasses import dataclass
@@ -33,19 +34,7 @@ def read_output_state(monitor):
     """
     if not isinstance(monitor, str) or not monitor or len(monitor.encode()) > 4096:
         return None
-    try:
-        response = subprocess.run(
-            ["pactl", "--format=json", "list", "sinks"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=1,
-        )
-        if len(response.stdout) > 4 * 1024 * 1024:
-            return None
-        sinks = json.loads(response.stdout)
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return None
+    sinks = _pulse_list("sinks")
     if not isinstance(sinks, list):
         return None
     matches = [s for s in sinks if isinstance(s, dict) and s.get("monitor_source") == monitor]
@@ -55,6 +44,20 @@ def read_output_state(monitor):
     if not isinstance(sink.get("name"), str) or not sink["name"] or type(sink.get("mute")) is not bool:
         return None
     return OutputState(monitor, sink["name"], sink["mute"])
+
+
+def _pulse_list(kind=None):
+    """A bounded child owns its Pulse context; none is shared with GStreamer."""
+    command = ["pactl", "--format=json", "list"]
+    if kind is not None:
+        command.append(kind)
+    try:
+        response = subprocess.run(command, check=True, capture_output=True, text=True, timeout=1)
+        if len(response.stdout) > 4 * 1024 * 1024:
+            return None
+        return json.loads(response.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def intervals(metadata):
@@ -190,6 +193,42 @@ class OutputMuteObserver:
 
 
 def monitor_device(branch):
-    """The running pulsesrc's selected device, not today's default output."""
+    """Resolve the live stream externally, never through pulsesrc.current-device.
+
+    That getter queries pulsesrc's pa_context after dropping its mainloop lock;
+    concurrent NULL/close can clear it and libpulse aborts on the NULL context.
+    source-output-index only copies a cached integer. A separate pactl process
+    owns and tears down its own context, so source teardown cannot invalidate
+    the query. Recheck the cached index after IO; retirement/reconnect is unknown.
+    """
     source = branch.get_by_name("capture-source") if branch is not None else None
-    return source.get_property("current-device") if source is not None else None
+    if source is None:
+        return None
+    index = source.get_property("source-output-index")
+    if type(index) is not int or not 0 <= index < 0xFFFFFFFF:
+        return None
+    snapshot = _pulse_list()
+    if not isinstance(snapshot, dict):
+        return None
+    outputs, sources = snapshot.get("source_outputs"), snapshot.get("sources")
+    if not isinstance(outputs, list) or not isinstance(sources, list):
+        return None
+    streams = [
+        row for row in outputs if isinstance(row, dict) and type(row.get("index")) is int and row["index"] == index
+    ]
+    if len(streams) != 1:
+        return None
+    stream = streams[0]
+    properties = stream.get("properties")
+    if not isinstance(properties, dict) or properties.get("application.process.id") != str(os.getpid()):
+        return None  # A restarted server may have reused another client's index.
+    device = stream.get("source")
+    if type(device) is not int:
+        return None
+    matches = [
+        row for row in sources if isinstance(row, dict) and type(row.get("index")) is int and row["index"] == device
+    ]
+    if len(matches) != 1 or source.get_property("source-output-index") != index:
+        return None
+    name = matches[0].get("name")
+    return name if isinstance(name, str) and name and len(name.encode()) <= 4096 else None
