@@ -13,7 +13,7 @@ import uuid
 import wave
 from pathlib import Path
 
-from gi.repository import GLib
+from gi.repository import Gio, GLib
 from windowless import (
     HOME,
     OUT,
@@ -50,6 +50,70 @@ def indicator(appid):
         "title:a._indicator.title,status:a._indicator.status,icon:!!a._icon,label:a._label?.text??'',"
         "menu:a.menu._getMenuItems().filter(i=>i.visible).map(i=>i.label?.text??'')};})()"
     )
+
+
+def assert_one_indicator(appid):
+    actors = shell(
+        "Object.values(Main.panel.statusArea).filter(a=>a?._indicator?.id===" + json.dumps(appid) + ").length"
+    )
+    assert actors == 1, (appid, actors)
+    unique = call(
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "GetNameOwner",
+        GLib.Variant("(s)", (appid,)),
+    )[0]
+    items = call(
+        "org.kde.StatusNotifierWatcher",
+        "/StatusNotifierWatcher",
+        "org.freedesktop.DBus.Properties",
+        "Get",
+        GLib.Variant("(ss)", ("org.kde.StatusNotifierWatcher", "RegisteredStatusNotifierItems")),
+    )[0]
+    matching = [item for item in items if item.split("@", 1)[0].split("/", 1)[0] in (appid, unique)]
+    assert len(matching) == 1 and matching[0].startswith(appid), (appid, items)
+    return matching
+
+
+def wait_for_bus_change(action, check, description):
+    """Observe private-bus activity; the timer only bounds failure (E1)."""
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    subscription = bus.signal_subscribe(None, None, None, None, None, Gio.DBusSignalFlags.NONE, lambda *_: None)
+    expired = False
+
+    def timeout():
+        nonlocal expired
+        expired = True
+        return GLib.SOURCE_REMOVE
+
+    timer = GLib.timeout_add_seconds(10, timeout)
+    try:
+        action()
+        context = GLib.MainContext.default()
+        while not check() and not expired:
+            context.iteration(True)
+        assert not expired and check(), description
+    finally:
+        if not expired:
+            GLib.source_remove(timer)
+        bus.signal_unsubscribe(subscription)
+
+
+def restart_indicator_host(appid):
+    # This compositor and all of its buses belong to the test container.
+    extension = "ubuntu-appindicators@ubuntu.com"
+    wait_for_bus_change(
+        lambda: shell("Main.extensionManager.disableExtension(" + json.dumps(extension) + "); true"),
+        lambda: not owner("org.kde.StatusNotifierWatcher"),
+        "AppIndicator watcher disabled",
+    )
+    wait_for_bus_change(
+        lambda: shell("Main.extensionManager.enableExtension(" + json.dumps(extension) + "); true"),
+        lambda: (indicator(appid) or {}).get("visible"),
+        "AppIndicator returns after enable",
+    )
+    assert_one_indicator(appid)
 
 
 def wait_for_recording(root, appid, description):
@@ -412,6 +476,9 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
         lambda appid=appid, first=first: (indicator(appid) or {}).get("label") not in ("", None, first),
         "rendered panel timer advances",
     )
+    assert_one_indicator(appid)
+    restart_indicator_host(appid)
+    assert pid(appid) == initial_pid
     screenshot("indicator-recording-" + appid + ".png")
     privacy = []
     # D41.1: GNOME's own top-bar microphone privacy indicator, per capture path.
