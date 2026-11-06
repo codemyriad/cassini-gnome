@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import Future
 from dataclasses import replace
 from pathlib import Path
 
@@ -127,6 +128,36 @@ with tempfile.TemporaryDirectory() as temporary:
     window.player = FolderPlayer(audio_sink=sink)
     window._connect_player()
     meeting = window.snapshot.meetings[0]
+    # A direct Open File result can be newer than the last full Library scan.
+    # Exercise its real completion path before freezing background IO.
+    scanned_snapshot = window._source_snapshot
+    fresh = replace(meeting, metadata_editable=False, title="Fresh direct-open metadata")
+    opened = Future()
+    opened.set_result((fresh, False))
+    window._opening_files += 1
+    window.set_visible(False)
+    window._opened_file(opened, Gio.File.new_for_path(str(meeting.directory / "session.json")))
+    assert window.meeting_page and not window._external_meeting
+    assert window.meeting_page.meeting is fresh
+    window.monitor.close()
+    direct_page = window.meeting_page
+    direct_ready = []
+    direct_page.connect("rows-rebuilt", lambda *_: direct_ready.append(True))
+    window.present()
+    until(window, lambda: direct_ready and window.player._prerolled)
+    direct_play = direct_page._speaker_rows["voice-0"][1]
+    assert direct_play.activate()
+    window._activity_tick()
+    assert window.meeting_page is direct_page
+    assert not direct_page.meeting.metadata_editable, "The tick reapplied metadata older than the direct Open result"
+    assert direct_page.meeting.title == fresh.title
+    assert direct_page._speaker_rows["voice-0"][1] is direct_play and direct_play.get_realized()
+    until(window, lambda: window.listen.active)
+    assert window.listen.speaker == "voice-0"
+    window.player.pause()
+    window.listen.stop()
+    # Independent row/layout cases below start from the editable fixture.
+    window._library_scanned(scanned_snapshot)
     # Also cover activation before GTK realizes the row: audio/row data
     # can already be ready. Gtk.Button.activate() still returns True then, but
     # schedules no click at all (gtk_real_button_activate checks realized).

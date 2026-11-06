@@ -4,6 +4,7 @@
 import contextlib
 import os
 import time
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from . import ux_formats as fmt
 from .capture_activity import BrowserActivity, application_activity
 from .folder_player import FolderPlayer
 from .i18n import gettext as _
-from .library import meeting_id
+from .library import LibrarySnapshot, _sort, meeting_id
 from .library_monitor import LibraryMonitor
 from .listen import ListenController
 from .player import Player
@@ -229,6 +230,21 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._source_snapshot = snapshot
         self.get_application().meeting_trash.scanned(snapshot, self.monitor.scan_started)
         self._updated(snapshot)
+
+    def _library_loaded(self, meeting):
+        # A direct Open result is a newer observation than the cached scan.
+        # Promote it before opening its page so activity/trash reprojection
+        # cannot restore older metadata while the next full scan is pending.
+        source = self._source_snapshot or self.snapshot or LibrarySnapshot()
+        meetings = {row.key: row for row in source.meetings}
+        meetings[meeting.key] = meeting
+        source = replace(
+            source,
+            meetings=tuple(sorted(meetings.values(), key=_sort)),
+            directories=tuple(sorted(set(source.directories) | {meeting.directory})),
+        )
+        self._source_snapshot = source
+        self._updated(source)
 
     def move_to_trash(self):
         meeting = self.meeting_page.meeting if self.meeting_page else self.selected
@@ -1478,6 +1494,8 @@ class LibraryWindow(Adw.ApplicationWindow):
                 except ValueError:
                     inside = False
                 watched = inside and meeting.id == meeting_id(meeting.directory)
+                if watched:
+                    self._library_loaded(meeting)
                 self.open_meeting(meeting, external=not watched)
         except (OSError, ValueError) as error:
             # Import failed: retain the Library and show its diagnostic. Opening
