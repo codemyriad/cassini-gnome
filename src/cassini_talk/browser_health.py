@@ -117,8 +117,10 @@ def read_peers(value):
 
 
 def setup_complete(peers):
-    return bool(peers) and all(
-        peer["diagnostics"].get("filesOk") is True and "multi-stream-v1" in peer["capabilities"] for peer in peers
+    # Optional diagnostics: only an observed failure requires file repair.
+    # The caller still requires a live, reconciled control connection.
+    return all(
+        peer["diagnostics"].get("filesOk") is not False and "multi-stream-v1" in peer["capabilities"] for peer in peers
     )
 
 

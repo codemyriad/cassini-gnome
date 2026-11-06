@@ -43,12 +43,21 @@ def test_diagnostics_reset_self_check_on_a_new_version_or_extension_instance():
     assert H.diagnostics(before, dict(filesOk=1))["filesOk"] is None
 
 
-@pytest.mark.parametrize("check", [False, None, 1, "true"])
-def test_unknown_missing_or_malformed_files_are_not_done(check):
+@pytest.mark.parametrize("check", [True, None, 0, 1, "true", "absent"])
+def test_unknown_missing_or_malformed_diagnostics_do_not_block_done(check):
     raw = peer()
-    raw["diagnostics"]["filesOk"] = check
+    if check == "absent":
+        raw["diagnostics"].pop("filesOk")
+    else:
+        raw["diagnostics"]["filesOk"] = check
+    assert H.setup_complete(H.read_peers([raw]))
+    assert H.setup_complete(())  # A connected legacy broker can omit peer diagnostics.
+
+
+def test_only_an_explicit_failed_file_check_blocks_done():
+    raw = peer()
+    raw["diagnostics"]["filesOk"] = False
     assert not H.setup_complete(H.read_peers([raw]))
-    assert not H.setup_complete(())
 
 
 def test_every_connected_profile_must_pass_and_version_is_not_feature_gating():

@@ -139,8 +139,11 @@ replace that loss's evidence, and a normal explicit Stop adds no loss evidence.
 
 The broker projects each reconciled control peer’s optional hello diagnostics and
 `status.browserHealth` without inferring meeting readiness. Setup completes only
-when every connected profile supports multi-stream capture and reports `filesOk`
-true. Version comparison is diagnostic wording; recording remains capability-gated.
+when connected profiles support multi-stream capture and none explicitly reports
+`filesOk: false`. Missing, pending or malformed self-check diagnostics remain
+unknown and do not block Done or request file repair. Only explicit false shows
+the files-missing line. Version comparison is diagnostic wording; recording
+remains capability-gated.
 Only an extension-reported, non-idle `reloadRequired` tab gets reload guidance.
 The explicit app `reload-tab` request is scoped by `browserId` and `tabId`; the
 broker rechecks capability, health and busy state before sending `reloadTab`.

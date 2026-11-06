@@ -337,18 +337,10 @@ class CompanionSetup(Adw.Dialog):
             self.health_box.remove(child)
         self.health_rows = []
         live_errors = set()
-        if state["phase"] == "connected" and not state.get("peers"):
-            repair = Gtk.Button(
-                label=text("setup.companion.setUpAgain"),
-                halign=Gtk.Align.START,
-                sensitive=self.future is None and state["browser"] is not None and self.app.browser_companion_available,
-            )
-            repair.connect("clicked", lambda *_: self._add(local=True))
-            self.health_box.append(repair)
         for peer in state.get("peers", ()):
             diagnostic = peer["diagnostics"]
             outdated = older(diagnostic.get("extensionVersion"), state.get("bundledVersion"))
-            again = diagnostic.get("filesOk") is not True or outdated or "multi-stream-v1" not in peer["capabilities"]
+            again = diagnostic.get("filesOk") is False or outdated or "multi-stream-v1" not in peer["capabilities"]
             tabs = reload_tabs(peer)
             if (again or tabs) and peer["browser"]:
                 self.health_box.append(Gtk.Label(label=peer["browser"], xalign=0, css_classes=["heading"]))

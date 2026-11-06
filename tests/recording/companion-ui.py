@@ -104,6 +104,7 @@ def dispatch(packet):
             guide=bool(guide and not guide.closed),
             setupReady=bool(setup and not setup.closed and setup.get_mapped()),
             done=bool(guide and guide.done.get_sensitive()),
+            peers=state.get("peers", ()) if state else (),
             folder=str(guide.folder) if guide else None,
             primary=setup.add_button.get_label() if setup else None,
             browserName=guide.browser.name if guide else None,
