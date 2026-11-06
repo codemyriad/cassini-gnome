@@ -17840,6 +17840,40 @@
    }
   },
   {
+   "id": "details.sources.computerBusy",
+   "en": "{source}: about {duration} is missing because the computer was too busy. That part is silent.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D69.2",
+   "placeholders": {
+    "source": "source display name (Microphone, This computer, a person)",
+    "duration": "the source's summed writer loss, rounded, in the D58.4 short-duration format (seconds under a minute)"
+   },
+   "note": "Coordinator (D69.2). A quiet, neutral line in Recording details, shown only when one source's summed D69 writer loss is at least 1 s. No amber or red, no badge, no banner. It replaces any display of the stored D69 problem sentence, which stays in the file for diagnostics and is never shown.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{source}: mancano circa {duration} perché il computer era troppo occupato. Quel tratto è silenzioso."
+    },
+    "fr": {
+     "text": "{source} : environ {duration} manquent, car l’ordinateur était trop occupé. Ce passage est silencieux."
+    },
+    "es": {
+     "text": "{source}: faltan unos {duration} porque el ordenador estaba demasiado ocupado. Esa parte está en silencio."
+    },
+    "pt-BR": {
+     "text": "{source}: faltam cerca de {duration} porque o computador estava ocupado demais. Esse trecho está em silêncio."
+    },
+    "pt-PT": {
+     "text": "{source}: faltam cerca de {duration} porque o computador estava demasiado ocupado. Esse excerto está em silêncio."
+    }
+   }
+  },
+  {
    "id": "details.sources.empty",
    "en": "No audio sources were reported.",
    "platforms": [

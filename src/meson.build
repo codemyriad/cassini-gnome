@@ -190,6 +190,7 @@ talk_sources = files(
   'cassini_talk/library_relocator.py',
   'cassini_talk/record_first.py',
   'cassini_talk/recording_session.py',
+  'cassini_talk/writer_loss.py',
   'cassini_talk/refusals.py',
   'cassini_talk/browser_host.py',
   'cassini_talk/browser_audio_proxy.py',

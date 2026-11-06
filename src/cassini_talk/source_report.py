@@ -9,6 +9,29 @@ from .strings import text
 from .ux_formats import details_duration
 
 
+def source_name(kind, label):
+    """The display name a source's lines use: your microphone, this computer, or its label."""
+    if kind in ("microphone", "local"):
+        return text("common.yourMicrophone")
+    if kind == "system":
+        return text("recordFirst.sound.title")
+    return label or text("details.source.unknown")
+
+
+def computer_busy_lines(tracks):
+    """D69.2: one quiet line per source whose summed writer loss is at least 1 s."""
+    from .writer_loss import shown_losses
+
+    return tuple(
+        text(
+            "details.sources.computerBusy",
+            source=source_name(track.get("kind"), " ".join(str(track.get("label") or "").split())[:180]),
+            duration=details_duration(milliseconds),
+        )
+        for track, milliseconds in shown_losses(tracks)
+    )
+
+
 @dataclass(frozen=True)
 class SourceFact:
     identity: str
@@ -30,11 +53,7 @@ class SourceFact:
 
     @property
     def name(self):
-        if self.kind in ("microphone", "local"):
-            return text("common.yourMicrophone")
-        if self.kind == "system":
-            return text("recordFirst.sound.title")
-        return self.label or text("details.source.unknown")
+        return source_name(self.kind, self.label)
 
     @property
     def under_second(self):
