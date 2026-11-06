@@ -1286,12 +1286,12 @@ class BrowserService:
                 if not isinstance(item, dict) or type(item.get("tabId")) is not int:
                     continue
                 owner = self.captures.get(item.get("captureId"))
-                if owner is not None and not owner.finished and str(owner.directory) == item.get("path"):
+                if self._still_recording(owner) and str(owner.directory) == item.get("path"):
                     states.setdefault(item["tabId"], dict(item, recording=True))
                     browser.attempted.add(item["tabId"])
         for tab, old in previous.items():
             owner = self.captures.get(old.get("captureId"))
-            if owner is not None and not owner.finished and owner.browser_lost:
+            if self._still_recording(owner) and owner.browser_lost:
                 states.setdefault(tab, old)
             state = states.get(tab, {})
             capture_id = old.get("captureId")
