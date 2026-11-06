@@ -47,7 +47,7 @@
   },
   "evidence": {
     "file": "evidence.json, written by the driver after Stop and before check.py runs",
-    "times": "Session-timeline milliseconds on the monotonic clock (scenarios/session-clock.mjs): the origin, timelineOriginMs from the extension's service worker, is a wall-clock Date.now() mapped onto the monotonic clock once, as SPEC requires of capturing documents; the wall clock is never read again. May be negative before the folder exists (record).",
+    "times": "Session-timeline milliseconds on the monotonic clock (scenarios/session-clock.mjs): the origin, timelineOriginMs from the extension's service worker, is a wall-clock Date.now() mapped onto the monotonic clock once, at its own instant (between the (monotonic, wall) readings the driver takes from before Record until it learns the origin), as SPEC requires of capturing documents; the wall clock is never read again. May be negative before the folder exists (record).",
     "required": {
       "scenario": "\"live-folder/1\"",
       "app": "lowercase name of the writer under test: gnome, macos (synthetic for make.py)",

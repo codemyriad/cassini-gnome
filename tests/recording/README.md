@@ -144,6 +144,15 @@ extension's page/relay traffic (track, trackEnd, sources, warnings, errors, fail
 and, every 2 s per track, the newest chunk's `offsetMs` against wall time, all in wall ms
 comparable with `evidence.json` `timelineOriginMs`. `pressure.log` samples host and cgroup
 CPU, IO and memory pressure each second, to tell a stalled machine from a product fault.
+Since companion 0.2.14 (D61.1) a Chromium render stall is no longer hidden: the stalled
+context's spans re-anchor forward, the host writes the lost time as a `jump` gap, and a gap
+of 1 s or more on any track finishes the folder `interrupted` (`problemKind` `gap`). Every
+browser job that requires `completed` (this oracle's `state` rule, `browser.mjs`,
+`app-control.mjs`, `flatpak-companion.mjs`) therefore fails on a runner that stalls Chromium
+for a second or more, where 0.2.13 placed the later chunks early and nothing noticed. That
+failure is real and is not retried or tolerated (D66): the folder's `session.json` names the
+track and gap (`tracks[].gaps[]` with `kind` `jump`, `atMs`, `durationMs`), and
+`pressure.log` here shows whether the machine stalled.
 The control host is registered through the shared observing launcher
 (`writeNativeHost({observe})`): it stays the browser's child, and a relay copies its
 stdout to the browser and logs every frame, so the driver writes each resume request into

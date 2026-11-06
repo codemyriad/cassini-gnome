@@ -697,7 +697,7 @@ This is an open vocabulary, separate from and unrelated to the closed audio-plan
 native host's error code as a result code. Apps do not wait for it: they classify what they
 know locally and record a code-less `startRejected` otherwise.
 
-| code | Set by extension 0.2.13 when |
+| code | Set by extension 0.2.15 when |
 | --- | --- |
 | `busy` | a recording is already running or starting, in that tab or (legacy) anywhere; also a legacy Stop for another tab |
 | `limit` | 128 requests are pending, or 100 recordings are running or starting |

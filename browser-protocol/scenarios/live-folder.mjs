@@ -40,7 +40,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { connectReceiveSlots, muteSlot, switchReceiveSlot } from './product-topologies.mjs';
 import { eventsOf, extent, folderClock, poll, tracksOf } from './folder-clock.mjs';
-import { monotonic, sessionClock } from './session-clock.mjs';
+import { monotonic, sessionClock, wallPair } from './session-clock.mjs';
 import { controlConnections, RELAY_START_MS, resumeRequests, stopLaunchers, stopRelays, verifyControlPipe } from './native-launcher.mjs';
 
 const ORACLE = path.resolve(import.meta.dirname, '../conformance/live-folder');
@@ -48,6 +48,10 @@ const ORACLE = path.resolve(import.meta.dirname, '../conformance/live-folder');
 export const CLEANUP_MS = 60000;
 // Bound on check.py: one that does not finish is killed and fails the run (then torn down).
 export const CHECK_MS = 300000;
+// While Record runs, the wall clock is read this often (a reading, never a wait), so the origin the
+// extension takes then lies between two readings this close: a wall-clock step there is told from
+// a slew, and never interpolated across (scenarios/session-clock.mjs).
+export const ORIGIN_SAMPLE_MS = 10;
 
 // promise, or a rejection naming label once ms pass (the timer never outlives it).
 function bounded(promise, ms, label) {
@@ -96,8 +100,14 @@ export function runOracle({ python = 'python3', oracle = ORACLE, folder, evidenc
 
 // relayStartMs, cleanupMs and checkMs are the control relay's start bound, cleanup()'s bound
 // and check.py's (tests shorten them).
+// muteHold: the spans of `key` that were open when the mute began and have ended since. A span
+// that had already ended before the mute (an earlier interruption, which the oracle judges) is
+// not one: Mac #153 reported such a span as "A ended during the mute".
+export const endedDuringMute = (manifest, key, openAtMute) =>
+  tracksOf(manifest, key).filter(t => t.ended === true && openAtMute.has(t.id)).map(t => t.id);
+
 export async function runLiveFolder({ meeting, remote, app, worker, out, log = console.log, python = 'python3',
-  relayStartMs = RELAY_START_MS, cleanupMs = CLEANUP_MS, checkMs = CHECK_MS }) {
+  relayStartMs = RELAY_START_MS, cleanupMs = CLEANUP_MS, checkMs = CHECK_MS, clocks = {} }) {
   let failed = true, recordAsked = false, stopAsked = false;
   try {
     const value = await scenario();
@@ -134,7 +144,13 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
     const { constants: C, bounds, pollMs, oracle } = await loadScenario();
     // Every requested and observed time is a monotonic reading (scenarios/session-clock.mjs), mapped
     // onto the session timeline once the extension's origin is known: the apps' timeline too.
-    const now = monotonic;
+    // clocks ({mono, wall}) replaces both readings in the driver's tests only.
+    const now = clocks.mono ?? monotonic;
+    // Where the wall clock stood, read from before Record until the extension reports the origin,
+    // so sessionClock maps the origin at its own instant (scenarios/session-clock.mjs).
+    const pairs = [], sample = () => { pairs.push(wallPair(clocks)); };
+    let sampling = null;
+    const stopSampling = () => { clearInterval(sampling); sampling = null; };
     const actions = {}, notes = { steps: [] };
     let origin = null, timeline = null, clock = null, captureId = null, maxSourceCount = 0, slotC = null, before = null, newFolders = null;
     let requests = null, browserPid = null;
@@ -193,31 +209,38 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
         'setup: the browser started a control host through the observing launcher', bounds.setup, { pollMs });
 
       // 1. Record.
+      sample();
+      sampling = setInterval(sample, ORIGIN_SAMPLE_MS);
       let requested = now();
       recordAsked = true;
       await app.record();
-      const status = await poll(async () => { const value = await app.snapshot(); return value?.path && value.captureId ? value : null; },
+      sample();
+      const status = await poll(async () => { sample(); const value = await app.snapshot(); return value?.path && value.captureId ? value : null; },
         'record: the app reports the recording folder and capture id', bounds.record, { pollMs });
       notes.appCaptureId = status.captureId;
       clock = folderClock(status.path, { pollMs });
       const keyA = await clock.waitFolder(manifest => {
+        sample();
         const track = remoteTracks(manifest).find(t => lengthMs(t) >= 1000);
         return track?.sourceTrackId;
       }, 'record: A has 1000 ms of frames', bounds.record);
       const recorded = now();
       // The recording's identity and timeline origin, as the extension's service worker holds
       // them for the meeting tab: app-neutral, and what a resume request must name.
-      const entry = await poll(() => worker.evaluate(async tab => {
+      const entry = await poll(() => { sample(); return worker.evaluate(async tab => {
         const { cassiniSessions = [] } = await chrome.storage.session.get('cassiniSessions');
         const found = cassiniSessions.filter(s => s.tabId === tab);
         return found.length ? found : null;
-      }, meetingTab), 'record: the extension holds a cassiniSessions entry for the meeting tab', bounds.record, { pollMs });
+      }, meetingTab); }, 'record: the extension holds a cassiniSessions entry for the meeting tab', bounds.record, { pollMs });
       assert.equal(entry.length, 1, `record: one cassiniSessions entry for the meeting tab, found ${JSON.stringify(entry)}`);
       assert.ok(typeof entry[0].captureId === 'string' && entry[0].captureId, `record: the entry's captureId ${JSON.stringify(entry[0])}`);
       assert.ok(Number.isSafeInteger(entry[0].startedAt) && entry[0].startedAt >= 0, `record: the entry's startedAt ${JSON.stringify(entry[0])}`);
       ({ captureId, startedAt: origin } = entry[0]);
-      // SPEC: the wall-clock origin is mapped onto the monotonic clock once; never the wall clock again.
-      timeline = sessionClock(origin);
+      // SPEC: the wall-clock origin is mapped onto the monotonic clock once, at its own instant
+      // (the pairs read since before Record bracket it); never the wall clock again.
+      stopSampling();
+      timeline = sessionClock(origin, { pairs, ...clocks });
+      notes.originPairs = pairs.length;
       if (notes.appCaptureId !== captureId) log(`live-folder: the app reports captureId ${notes.appCaptureId}, the extension ${captureId}`);
       step('record', requested, recorded);
       await pipe('record');
@@ -241,6 +264,8 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       await clock.waitFolder(() => clock.F(keyA) >= C.MUTE_START_MS && timeline.now() >= C.MUTE_START_MS,
         `mute: F(A) and the session clock reach ${C.MUTE_START_MS} ms`, C.MUTE_START_MS + bounds.record);
       const spansA = new Set(tracksOf(clock.manifest, keyA).map(t => t.id)), othersBefore = others(clock.manifest).length;
+      const openA = new Set(tracksOf(clock.manifest, keyA).filter(t => t.ended !== true).map(t => t.id));
+      notes.endedBeforeMute = [...spansA].filter(id => !openA.has(id));
       const receiverAtMute = await receiverStats(meeting, 0);
       notes.receiverA = { atRecord: receiverAtRecord, atMute: receiverAtMute, playoutMsBeforeMute: playoutMs(receiverAtRecord, receiverAtMute) };
       requested = now();
@@ -255,7 +280,7 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
         const ids = tracksOf(manifest, keyA).map(t => t.id);
         assert.deepEqual(ids.filter(id => !spansA.has(id)), [], `muteHold: A opened a new span during the mute`);
         assert.equal(others(manifest).length, othersBefore, `muteHold: an othersSource event during the mute: ${JSON.stringify(others(manifest).at(-1))}`);
-        assert.ok(!tracksOf(manifest, keyA).some(t => t.ended === true), 'muteHold: A ended during the mute');
+        assert.deepEqual(endedDuringMute(manifest, keyA, openA), [], 'muteHold: A ended during the mute');
         return clock.F(keyA) >= muteAt + C.MUTE_MS && timeline.now() >= muteAt + C.MUTE_MS;
       }, `muteHold: F(A) and the session clock reach mute + ${C.MUTE_MS} ms`, bounds.muteHold);
       requested = now();
@@ -353,6 +378,7 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       try { result = JSON.parse(await readFile(resultFile, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
       return { code: run.code, result, folder: status.path, evidence: evidenceFile, stdout: run.stdout, stderr: run.stderr };
     } catch (error) {
+      stopSampling();
       // Whatever was reached, for the failure's evidence; check.py never sees a partial run.
       notes.failure = error.stack;
       notes.folder = clock?.describe();
