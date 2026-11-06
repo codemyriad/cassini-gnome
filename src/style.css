@@ -231,3 +231,8 @@
 .library-window .spectro-stopping { opacity: 0.45; transition: opacity 220ms ease-out; }
 
 .library-window .spectro-check { padding: 0 8px; min-width: 0; }
+
+/* D70: reserve the accent edge so choosing a target never shifts a row. */
+.speaker-row { border-left: 3px solid transparent; border-radius: 6px; }
+.speaker-row.listening { border-left-color: @accent_color; background: alpha(@accent_color, 0.08); }
+.speaker-caption { font-feature-settings: "tnum"; font-weight: 400; }

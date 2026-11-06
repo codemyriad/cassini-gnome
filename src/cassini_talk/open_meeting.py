@@ -7,7 +7,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from . import portable
 from .library import LibraryScanner, Meeting, _date, _opus, _speakers, library_root, turn_gaps
-from .meeting_text import reading_turns
+from .meeting_text import reading_turns, speaker_turns
 from .portable_context import embedded_notes, empty_word_transcripts
 
 
@@ -70,6 +70,7 @@ def load_open_meeting(path, root=None):
         has_audio=duration is not None,
         words=words,
         turns=reading_turns(sorted(words, key=lambda w: w.start_ms), gaps=gaps),
+        listening_turns=speaker_turns(words),
         turn_gaps=gaps,
         speakers=_speakers(words, [], embedded, stored_labels=True),
         metadata_editable=False,
