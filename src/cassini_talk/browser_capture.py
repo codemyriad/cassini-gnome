@@ -443,7 +443,7 @@ class BrowserCapture:
         with self.lock:
             self._tap_states[identifier] = state
 
-        def append(data, offset, *, host_ns=None):
+        def append(data, offset, *, host_ns=None, writer_frames=0):
             picture = None
             opened = False
             with self.lock:
@@ -465,6 +465,11 @@ class BrowserCapture:
                     state["track"] = opened = True
                     self._sync_spectrogram()
                 track = next(t for t in self.host.session.manifest["tracks"] if t["id"] == identifier)
+                if cut is not None and offset >= cut and writer_frames and not track.get("ended"):
+                    # The following callback is excluded by Stop, but the known
+                    # drops it carries were already admitted before that Stop.
+                    gap, lost = state["timeline"].tail(cut, resume_ms=offset, writer_frames=writer_frames)
+                    self.host.session.pad_native(identifier, gap_frames=gap, writer_frames=lost)
                 if (cut is None or offset < cut) and not track.get("ended"):
                     original_offset = offset
                     selected, offset = selected_pcm(data, offset, 48000, 1, state["at"])
@@ -475,12 +480,15 @@ class BrowserCapture:
                         selected = pcm_before(selected, offset, 48000, 1, cut)
                     if selected:
                         stamp = round(original_offset * 1_000_000) if host_ns is None else host_ns
-                        offset, gap = state["timeline"].map(stamp + skipped * NS // 48000, len(selected) // 2, offset)
+                        offset, gap = state["timeline"].map(
+                            stamp + skipped * NS // 48000, len(selected) // 2, offset, writer_frames=writer_frames
+                        )
                         self.host.session.append_native(
                             identifier,
                             selected,
                             offset,
                             gap_frames=gap,
+                            writer_frames=state["timeline"].writer_frames,
                             host_ns=host_ns + skipped * NS // 48000 if host_ns is not None else None,
                         )
                         start = self._spectro_starts.get(identifier)
@@ -562,6 +570,9 @@ class BrowserCapture:
                 self.changed(self, "error")
 
         tap = factory(kind, self.session_clock, append, failed, level=level)
+        # Read the leaf Stop marker before queue admission, even while Stop's
+        # worker is waiting for a stalled writer lock before it can drain taps.
+        tap.stop_boundary = lambda: self._native_cut()
         state["tap"] = tap
         return tap, state
 
@@ -1262,11 +1273,25 @@ class BrowserCapture:
                     self._mute_observer.close(self._end_ms())
                     self._mute_observer = None
                 for _identifier, tap in tuple(self.native_taps.values()):
+                    if hasattr(tap, "seal"):
+                        tap.seal(self._end_ms())
                     try:
                         tap.stop()
                     except Exception as error:
                         problem = problem or str(error)
                         self.end_reason = "error"
+                    finally:
+                        admission = getattr(tap, "writer_queue", None)
+                        state = self._tap_states.get(_identifier)
+                        if admission is not None and state is not None and state["track"]:
+                            with self.lock:
+                                state["timeline"].flush_loss(
+                                    self.host.session,
+                                    _identifier,
+                                    admission,
+                                    self._end_ms(),
+                                    inferred=getattr(tap, "timed_out", False),
+                                )
                 with self.lock:
                     if discard is None and self._armed_once and not self.host.session.manifest["tracks"]:
                         # D58.1: an armed side never heard a buffer and no side

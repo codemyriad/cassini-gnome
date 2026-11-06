@@ -14,12 +14,10 @@ from .i18n import gettext as _
 # of the samples), so every capture tap converts without dither, as export does.
 CAPTURE_CONVERT = "audioconvert dithering=0 noise-shaping=0"
 
-# R93-2: each native tap's queue holds up to 10 s ahead of the synchronous
-# appsink writer, as Mac's per-source writer queue does (capacitySeconds = 10).
-# A capture.lock hold, a slow checkpoint fsync or a stalled tap thread is
-# absorbed in C instead of overrunning pulsesrc's 200 ms ring. Both size caps
-# are 0: the 200-buffer and 10 MB defaults would cut it to about 2 s.
-TAP_QUEUE = "queue name=tap-queue max-size-time=10000000000 max-size-buffers=0 max-size-bytes=0"
+# R93-2 D69: NativeQueue admits ten seconds of converted PCM ahead of
+# the writer. Its sink probe drops excess callback buffers and counts their
+# exact frames. The C queue itself must not block before that admission rule.
+TAP_QUEUE = "queue name=tap-queue max-size-time=0 max-size-buffers=0 max-size-bytes=0"
 
 
 def capture_pipeline(microphone=True, desktop=True, test=False):

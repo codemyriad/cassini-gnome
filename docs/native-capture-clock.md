@@ -54,15 +54,19 @@ as interrupted with `problemKind: gap`; a writer failure takes precedence as
 `io`.
 
 Native writes are synchronous on the tap's streaming thread, under the capture
-lock, and a checkpoint can run there. Each tap therefore holds up to 10 s of
-audio in a GStreamer queue ahead of that writer (`TAP_QUEUE`, the same capacity
-as Mac's per-source writer queue), so a lock hold, a slow fsync or a stalled
-tap thread delays the audio without losing it (R93-2). The queue keeps each
-buffer's timestamp, so gap detection and clock anchors are unchanged. A stall
-longer than 10 s still overruns pulsesrc's ring buffer. Under the gap rule
-above, a loss of at least one second is saved as an `input` gap, which is
-truthful but mislabels host-side loss until it is recorded as `writer` loss; a
-shorter loss is diagnostic only, as host time the frames do not cover. A
+lock, and a checkpoint can run there. After conversion to PCM16 mono at 48 kHz,
+`NativeQueue` admits at most ten seconds of frames ahead of the writer, including
+its in-flight callback. A short leaf lock protects admission metadata; a full
+queue drops incoming callbacks without blocking pulsesrc. Their exact known
+frame counts are preserved as `writer` silence on the sample timeline, even if
+host stamps diverged or a known tail extends past Stop (D69.1). They increment
+`droppedFrames`, never `gapFrames`, and any writer loss saves interrupted/io with
+end reason error, even after an explicit user Stop. Remaining host time where
+no buffer was observed is inferred separately, clipped to host time and Stop.
+The shared problem sentence is written once per source, after earlier problems;
+its total is rounded half up only after summing that source's exact durations.
+The C queue retains timestamps and never adds another blocking limit ahead of
+admission. A
 checkpoint fsyncs only the WAVs written since the last one, so ended tracks
 cost nothing. Stop drains each tap (bounded at 10 s) and records the queued
 audio captured before the Stop moment, cutting the buffer that straddles it;

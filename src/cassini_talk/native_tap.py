@@ -10,6 +10,7 @@ import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 
+from .native_queue import NativeQueue  # noqa: E402
 from .recorder import CAPTURE_CONVERT, TAP_QUEUE  # noqa: E402
 from .recording_details import ACMeter  # noqa: E402
 from .refusals import gst_code  # noqa: E402
@@ -60,6 +61,9 @@ class NativeTap:
         self.refusal_code = "deviceUnavailable"
         self.thread = None
         self._ac_meter = ACMeter()
+        self.writer_queue = NativeQueue()
+        self.timed_out = False
+        self.stop_boundary = lambda: None
 
     def start(self):
         device = "@DEFAULT_SOURCE@" if self.kind == "microphone" else "@DEFAULT_MONITOR@"
@@ -69,8 +73,8 @@ class NativeTap:
             else f'pulsesrc name=capture-source device={device} provide-clock=false client-name="Cassini Recording"'
         )
         self.pipeline = Gst.parse_launch(
-            source + " ! " + TAP_QUEUE + " ! " + CAPTURE_CONVERT + " ! audioresample ! "
-            "audio/x-raw,format=S16LE,rate=48000,channels=1 ! "
+            source + " ! " + CAPTURE_CONVERT + " ! audioresample ! "
+            "audio/x-raw,format=S16LE,rate=48000,channels=1 ! " + TAP_QUEUE + " ! "
             "appsink name=pcm emit-signals=true sync=false max-buffers=8 drop=false"
         )
         self.clock = Gst.SystemClock.obtain()
@@ -81,9 +85,7 @@ class NativeTap:
         self.anchor_clock = self.clock.get_time()
         self.anchor_session = self.session_clock.at((before + time.monotonic_ns()) // 2)
         self.pipeline.get_by_name("pcm").connect("new-sample", self._sample)
-        self.pipeline.get_by_name("tap-queue").get_static_pad("sink").add_probe(
-            Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST, self._entered
-        )
+        self.pipeline.get_by_name("tap-queue").get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, self._entered)
         self.thread = threading.Thread(target=self._messages, name="cassini-" + self.kind, daemon=True)
         self.thread.start()
         try:
@@ -108,18 +110,29 @@ class NativeTap:
             self.ready.set()
             self.failed(self.error)
 
-    def _entered(self, _pad, _info):
+    def seal(self, at_ms):
+        self.writer_queue.seal(at_ms)
+
+    def _entered(self, _pad, info):
         with self._input:
             if self._sealed:
                 return Gst.PadProbeReturn.DROP
             self.received = True
-        return Gst.PadProbeReturn.OK
+        buffer = info.get_buffer()
+        base = self.pipeline.get_base_time()
+        offset = self.anchor_session + (base + buffer.pts - self.anchor_clock) / Gst.MSECOND
+        cut = self.stop_boundary()
+        if cut is not None:
+            self.writer_queue.seal(cut)
+        admitted = self.writer_queue.enter(buffer.pts, buffer.get_size() // 2, offset)
+        return Gst.PadProbeReturn.OK if admitted else Gst.PadProbeReturn.DROP
 
     def _sample(self, sink):
         sample = sink.emit("pull-sample")
         if sample is None:
             return Gst.FlowReturn.EOS
         buffer = sample.get_buffer()
+        queued, lost = self.writer_queue.take(buffer.pts)
         try:
             base = self.pipeline.get_base_time()
             if buffer.pts == Gst.CLOCK_TIME_NONE or base == Gst.CLOCK_TIME_NONE:
@@ -128,12 +141,15 @@ class NativeTap:
             data = buffer.extract_dup(0, buffer.get_size())
             if self._ac_meter.feed(data):
                 self.level(self._ac_meter.level)
-            self.append(data, offset, host_ns=base + buffer.pts)
+            loss = dict(writer_frames=lost) if lost else {}
+            self.append(data, offset, host_ns=base + buffer.pts, **loss)
             self.heard.set()
             self.ready.set()
         except Exception as error:
             self._fail(error)
             return Gst.FlowReturn.ERROR
+        finally:
+            self.writer_queue.done(queued)
         return Gst.FlowReturn.OK
 
     def _messages(self):
@@ -182,6 +198,7 @@ class NativeTap:
             sender = threading.Thread(target=eos, name="cassini-source-eos", daemon=True)
             sender.start()
         complete = self.ended.wait(DRAIN_TIMEOUT_S)
+        self.timed_out = not complete
         if not complete:
             queue = pipeline.get_by_name("tap-queue")
             LOG.warning(

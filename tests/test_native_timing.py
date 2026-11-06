@@ -110,6 +110,7 @@ def test_browser_native_tap_measures_ac_without_replacing_pcm():
     pcm = (-2060).to_bytes(2, "little", signed=True) * 4800
     buffer = SimpleNamespace(pts=0, get_size=lambda: len(pcm), extract_dup=lambda *_: pcm)
     sample = SimpleNamespace(get_buffer=lambda: buffer)
+    assert tap.writer_queue.enter(0, len(pcm) // 2, 0)
     assert tap._sample(SimpleNamespace(emit=lambda _: sample)) == Gst.FlowReturn.OK
     assert tap._ac_meter.level == 0 and received == [pcm]
 

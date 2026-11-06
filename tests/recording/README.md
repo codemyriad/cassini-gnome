@@ -16,7 +16,9 @@ proves native stream release/restart and asynchronous Stop during a source chang
 `stall.py` holds the capture lock or slows checkpoint fsyncs under real pulsesrc
 taps (R93-2): stalls up to 8 s must lose no input and save completed, Stop during
 a stall keeps the audio captured before it, and a stall past the 10 s tap queue
-is still saved as an input gap.
+is saved as exact writer loss with interrupted/io status and an error end event
+(D69/D69.1). Admission drops incoming callback frames rather than blocking Pulse;
+its bounded queue and loss counters are observed directly, without sleeps.
 
 | Layer | Checks |
 |---|---|

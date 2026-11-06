@@ -12,6 +12,7 @@ from uuid import uuid4
 from gi.repository import GLib, GObject, Gst
 
 from .capture_sources import canonical_order, change_time, pcm_before, selected_pcm
+from .native_queue import NativeQueue
 from .native_timing import NS, NativeTimeline
 from .recorder import CAPTURE_CONVERT, TAP_QUEUE, request_eos
 from .recording_details import ACMeter, space_left
@@ -88,6 +89,7 @@ class NativeRecorder(GObject.Object):
         # by the drain; audio after it is not, and the end event is stamped
         # there, not when the drain ends (D4).
         self._stop_at_ms = None
+        self._drain_timed_out = False
         # R93-2: an armed side Stop kept to drain (its input reached its queue first).
         self._drain_armed = False
         self.line = None
@@ -161,6 +163,7 @@ class NativeRecorder(GObject.Object):
         self._start_us = GLib.get_monotonic_time()
         self._stop_requested = False
         self._stop_at_ms = None
+        self._drain_timed_out = False
         self._drain_armed = False
         self.session = None
         self.stopping = self._finishing = False
@@ -649,12 +652,25 @@ class NativeRecorder(GObject.Object):
         # A staged live sink must not start a new pipeline-wide preroll: that
         # would pause the confirmed sources while the replacement is tested.
         branch = Gst.parse_bin_from_description(
-            source + " ! " + TAP_QUEUE + " ! " + CAPTURE_CONVERT + " ! audioresample ! "
-            "audio/x-raw,format=S16LE,rate=48000,channels=1 ! "
+            source + " ! " + CAPTURE_CONVERT + " ! audioresample ! "
+            "audio/x-raw,format=S16LE,rate=48000,channels=1 ! " + TAP_QUEUE + " ! "
             f"appsink name={kind} emit-signals=true sync=false async=false max-buffers=8 drop=false",
             False,
         )
-        branch.get_by_name(kind).connect("new-sample", self._sample, kind)
+        branch._writer_queue = admission = NativeQueue()
+        sink = branch.get_by_name(kind)
+
+        def entered(_pad, info):
+            buffer = info.get_buffer()
+            frames = buffer.get_size() // 2
+            pts, _shift, _path = self._input_pts(sink, kind, buffer.pts, frames)
+            if self._stop_at_ms is not None:
+                admission.seal(self._stop_at_ms)
+            accepted = admission.enter(buffer.pts, frames, pts / Gst.MSECOND)
+            return Gst.PadProbeReturn.OK if accepted else Gst.PadProbeReturn.DROP
+
+        branch.get_by_name("tap-queue").get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, entered)
+        sink.connect("new-sample", self._sample, kind)
         return branch
 
     def _output_sample(self):
@@ -938,6 +954,8 @@ class NativeRecorder(GObject.Object):
         buffer = sample.get_buffer()
         raw, shift, path = buffer.pts, 0, None
         branch = sink.get_parent() if isinstance(sink, Gst.Element) else None
+        admission = getattr(branch, "_writer_queue", None)
+        queued, lost = admission.take(raw) if admission is not None else (0, 0)
         try:
             if raw == Gst.CLOCK_TIME_NONE:
                 raise ValueError("Audio source has no clock timestamp")
@@ -965,18 +983,23 @@ class NativeRecorder(GObject.Object):
                     if cut is not None:
                         # Queued across Stop's moment: only what was captured before it.
                         data = pcm_before(data, offset, rate, channels, cut)
+                    if not data and cut is not None and lost and stored in self._timelines:
+                        gap, lost = self._timelines[stored].tail(cut, resume_ms=offset, writer_frames=lost)
+                        self.session.pad_native(stored, gap_frames=gap, writer_frames=lost)
                     if data:
                         frames = len(data) // (channels * 2)
                         host_ns = pts + skipped * NS // rate
                         timeline = self._timelines.setdefault(stored, NativeTimeline(rate))
-                        offset, gap = timeline.map(host_ns, frames, offset)
+                        offset, gap = timeline.map(host_ns, frames, offset, writer_frames=lost)
                         # A shifted source has no clock observations (see _pts_shift).
                         absolute = None
                         if path is not None:
                             self.session.clock_slaving_lost(stored, path, shift)
                         elif self.pipeline is not None:
                             absolute = self.pipeline.get_base_time() + host_ns
-                        self.session.append_native(stored, data, offset, gap_frames=gap, host_ns=absolute)
+                        self.session.append_native(
+                            stored, data, offset, gap_frames=gap, writer_frames=timeline.writer_frames, host_ns=absolute
+                        )
                         start = self._spectro_starts.get(stored)
                         if start is None:
                             record = next(t for t in self.session.manifest["tracks"] if t["id"] == stored)
@@ -1017,6 +1040,9 @@ class NativeRecorder(GObject.Object):
                 else:
                     GLib.idle_add(self._begin_finish, str(error))
             return Gst.FlowReturn.ERROR
+        finally:
+            if admission is not None:
+                admission.done(queued)
         return Gst.FlowReturn.OK
 
     def _owns(self, kind, attempt, branch):
@@ -1148,6 +1174,7 @@ class NativeRecorder(GObject.Object):
         return False
 
     def _timed_out(self):
+        self._drain_timed_out = True
         self._timeout = 0
         self._begin_finish("Timed out while saving the recording.")
         return False
@@ -1198,6 +1225,13 @@ class NativeRecorder(GObject.Object):
                         return
                 try:
                     with self._lock:
+                        for kind, branch in self._branches.items():
+                            admission = getattr(branch, "_writer_queue", None)
+                            identifier = self._track_ids.get(kind)
+                            if admission is not None and identifier in self._timelines:
+                                self._timelines[identifier].flush_loss(
+                                    session, identifier, admission, at_ms, inferred=self._drain_timed_out
+                                )
                         session.finish(problem, reason=reason, at_ms=at_ms, retain_lease=True)
                 finally:
                     self.spectrogram.finish()

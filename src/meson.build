@@ -196,6 +196,7 @@ talk_sources = files(
   'cassini_talk/browser_capture.py',
   'cassini_talk/browser_watch.py',
   'cassini_talk/native_tap.py',
+  'cassini_talk/native_queue.py',
   'cassini_talk/native_timing.py',
   'cassini_talk/capture_clock.py',
   'cassini_talk/rotating_wav.py',
