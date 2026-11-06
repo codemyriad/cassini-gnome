@@ -1,26 +1,26 @@
-tree eda2773b27f5179200373a2418b9e415b0a1f946
-parent d288865799ae61a2a7bdec18406b70f63acda951
-parent fe826aa833d2ca0e5f795c7ecd7007835d78cc99
-author Silvio Tomatis <silviot@gmail.com> 1793989469 +0100
-committer GitHub <noreply@github.com> 1793989469 +0100
+tree 97235a82020a3917b7c443fa5307297b23708569
+parent 6d139e3d79613711b7cf84cbbcac67c7650c50ab
+parent 4904a26526c0ed267feb3c7d3124d6c4f7ca7795
+author Silvio Tomatis <silviot@gmail.com> 1793996073 +0100
+committer GitHub <noreply@github.com> 1793996073 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq7htdCRC1aQ7uu5UhlAAAtb8QAB/aABIDJFRKstcR7R1ihMr3
- KGdKPL0KZ69nnLnoTlvQUgEF7YbPuCuvc/DZqmAvKmVWTaRbyyJTc7pGxQSJ5G3n
- pAh8beN5H4JcdEk8mdJr61pS8lO2NH7yZknKfewc8ozGaoYYBGJyrhRZDuMudJLY
- AiWYXL4MPKFO/rHBvaU9ROK6pz+xx1wBa8FZx+NksaQ50Kr2gtLKp5HakANGpaNt
- QQmaRkFIM1HNFkzjPvqz5nrSIrje8bz3ZaY2gMDoyAsBbUxv7JyeB+6PILv7YDZD
- 2kXyrluo3Nnv/CUHt8nhmUzTDCnY3YCPLVeD6hMqmGSFtWgLelXkkWQTVXS1IAhg
- iey0/a+c3E5WwXYtpi8pyCEeqKq6GLUySWFmhd/eEOwFE30PvaI2TW2KjHucguhm
- kqrrczGOUQstmRUJZoFT620iOf9Tz5x6mkbzgSVG4t3Eo4iSm2MA6Aj125atWhkS
- QWT4FjpwuJ436B5HKBMZR/NWgW2aBA5u+HF8r7Sx3daGpg41u06qQ/YnC+UchUv3
- v7sJQCJm0LTse4845H1ikGVf9b/YJ79QLuhIr8iB2yDJz2axMpbHsXBcLqrYU6mU
- CfdL/dNRwvonJHgg6KiYdnG/2sqSYr4yPAZbPAOnSnTN3ERtYibwyohUFGjjWPGe
- Kl1Dfi1P1E5RjWr26vO6
- =XZyI
+ wsFcBAABCAAQBQJq7jUpCRC1aQ7uu5UhlAAAGkEQAESVuJkQKZSzODpNjw/QNPXa
+ hX7m29hezTRQejEAJMc8jj2aViQqdbUZBijqSwRSVWbofbt2Q/8f97zAp+ppZGmA
+ i4ur3VrYviZnMNT6E3YZpg9Cx5DrGhQo0vbyNqYjVGzLUWPmEhrqjlzwqTh5qftY
+ M9ZfK6WAamuobgEYEVeIT3GZnbuWJhoS5Ad15K5rTZGGm6bb9Efghekp+ndp5xg2
+ cHlQhNBD+reR/+L3pscpsvbSPVmuO758OGONko7eJkNNzNrm/B6q9BLeQoTkJrAd
+ BMnVb+3d9dsYNOLzInEVGwlAjypeR7QvJyIz4C0OA7KE62VJPprZL8GPf+X1OCY5
+ 712PWYOfoRl6feYYwSMzTiQIJCQPitJW9XU70qG2zwpBDE9a+m69e8GWbyMDA4Is
+ 8oC879y2h+y5ycug7MEMLaY+Xc3B2ZML1KWRzQvnxDmVTuPGOlMGt6xZ6jlJdadQ
+ ZQp7+sfXwEUNMZbDDjifQlZQV6GGf/2kHVWodKbOiM7dcE5a7MIj2Tvi/CsZP3ja
+ cXFt5k3DhwlphKt0tCVmoIkkqB3lYzdWaaqr67nOPylTaGXy6eIBDTTClayNQEeh
+ dyMMU71yTP/rT+CWrRxSO+v8P+eKTKtoxFJTuMBZAmoF11CFg28NTfdOKfODlLwl
+ 7Nv4Bquugc3tWN07ut3O
+ =XhlP
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #66 from codemyriad/chore/english-frame-sample
+Merge pull request #67 from codemyriad/feat/companion-status-popup
 
-Use English sample in UTF-8 frame-reader fixture
+feat: replace recording popup with current-tab companion status

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {generateKeyPairSync, createHash} from 'node:crypto';
 import { createServer } from 'node:http';
-import { mkdtemp, rm, cp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, cp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -75,12 +75,12 @@ try {
     })),id);
     const page = await context.newPage();
     await page.goto(`chrome-extension://${id}/popup.html`);
-    await page.locator('#status').filter({hasText:/Ready/}).waitFor();
+    await page.locator('main[aria-busy="false"]').waitFor();
     return page;
   }
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${id}/popup.html`);
-  await popup.locator('#status').filter({hasText:/Ready/}).waitFor();
+  await popup.locator('main[aria-busy="false"]').waitFor();
   // Playwright retains the Worker object across an MV3 context restart.
   // Observe the new JS realm rather than waiting for a second worker event.
   const deadline = Date.now() + 15000;
@@ -149,6 +149,13 @@ try {
         captureLifecycle.push({type,token,instanceId});
     });
   });
+  // This fixture opens the popup as a full extension page. Supply the meeting
+  // as the browser-owned active tab that an actual toolbar popup would see.
+  await popup.evaluate(tabId => {
+    const query = chrome.tabs.query.bind(chrome.tabs);
+    chrome.tabs.query = async options => options.active ? [await chrome.tabs.get(tabId)] : query(options);
+  }, tabId);
+  await popup.getByRole('heading',{name:'Meeting sources detected',exact:true}).waitFor();
   const started = await popup.evaluate(() => chrome.runtime.sendMessage({target:'background',type:'start',mode:'tracks'}));
   assert.equal(started.recording, true, JSON.stringify(started));
   const audioDeadline = Date.now() + 15000;
@@ -163,6 +170,11 @@ try {
   let power = 0;
   for (let i=0;i<pcm.length;i+=2) power += (pcm.readInt16LE(i)/32768)**2;
   assert.ok(power/(pcm.length/2) > 0.001, 'reconnected worker must receive non-silent remote audio');
+  await popup.getByRole('heading',{name:'Browser capture is active',exact:true}).waitFor();
+  assert.equal(await popup.locator('#reload').isVisible(),false);
+  assert.equal(await popup.getByRole('button',{name:/record|stop/i}).count(),0);
+  await mkdir(path.join(root,'artifacts'),{recursive:true});
+  await popup.locator('body').screenshot({path:path.join(root,'artifacts/popup-loaded-extension.png')});
   // Reload while production capture is active and the generated peer keeps
   // sending. The old relay must drain once before the same tab records again.
   const departingToken = await meeting.evaluate(() => captureLifecycle.find(m=>m.type==='start').token);

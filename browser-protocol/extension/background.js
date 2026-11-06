@@ -365,6 +365,16 @@ function status(session = firstSession()) {
   return session ? { recording: true, captureId: session.token, timelineOriginMs: session.origin, documentGeneration: documentFor(session.tabId), callGeneration: session.callGeneration, stopping: session.stopping, tracks: session.tracks, tabId: session.tabId, mode: session.mode,
     pageState: pageState(session.tabId), failedSources: [...new Set([...session.discoveredSources].filter(([,s])=>s.failed).map(([id])=>id).concat([...(session.sourceWarnings?.keys() || [])]))], message: session.sourceWarnings?.values().next().value || session.warning || (!session.tracks ? "Waiting for audio. Join the call, or record the whole tab instead." : `${session.stopping ? "Saving" : "Recording"} ${session.mode === "tracks" ? "separate tracks" : "the whole tab"} · ${session.tracks} ${session.tracks === 1 ? "recorded track" : "recorded tracks"}`), path: session.path } : lastStatus;
 }
+// The trusted popup may select a browser-owned tab. Keep the legacy scalar
+// status() unchanged for omitted-ID callers and native control consumers.
+function popupTabStatus(tabId) {
+  const session = sessions.get(tabId);
+  const pending = [...pendingStarts].some(([key,request]) => key === tabId || request.tabId === tabId);
+  const starting = pending || (!!session && !session.ready);
+  const value = session ? status(session) : {tabId, path:null, tracks:0, stopping:false, failedSources:[],
+    message:starting ? "Preparing browser capture." : "No browser capture is active for this tab."};
+  return {...value, tabId, starting, recording:!!session?.ready && !starting};
+}
 function failure(message, session = firstSession(), cause = "lifecycle") {
   if (session) { session.problem ??= message; session.loss = true; session.lossCause ??= cause; notifyControl(); void stop(session); }
 }
@@ -435,6 +445,7 @@ async function start(mode, tabId = null, options = {}) {
     if (request.cancelled || options.resumeIntent?.cancelled) throw new Error("Recording could not start.");
     if (!Number.isSafeInteger(tab?.id) || tab.id < 0 || !/^https?:/.test(tab.url || "")) throw refused("Open the meeting tab first. Recording works on web pages only.", "notWebPage");
     if (sessions.has(tab.id)) throw refused("A recording is already running. Stop it before starting another.", "busy");
+    request.tabId = tab.id; // A popup's Symbol reservation now has a browser-owned identity.
     if (mode === "tracks") requireTrackReadiness(tab.id);
     const identity = callInfo(tab.id);
     if (options.expectedCallGeneration !== undefined && options.expectedCallGeneration !== identity.generation)
@@ -741,6 +752,13 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   const offscreen = sender.url === chrome.runtime.getURL("offscreen.html");
   (async () => {
     await recovery;
+    if (message.type === "status") {
+      if (!popup) throw new Error("Only the extension popup can read recording status.");
+      const scoped = Object.prototype.hasOwnProperty.call(message, "tabId");
+      if (scoped && (!Number.isSafeInteger(message.tabId) || message.tabId < 0))
+        return {error:"Choose a valid browser tab.", code:"invalid"};
+      return {...(scoped ? popupTabStatus(message.tabId) : status()), browserHealth:browserHealth()};
+    }
     if (offscreen) {
       const active = [...sessions.values()].find(s => s.mode === "tab");
       if (message.type === "warning" && active?.tabSourceId && typeof message.sourceTrackId === "string" && message.sourceTrackId !== active.tabSourceId) return {};
@@ -764,7 +782,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (message.type === "start") await start(message.mode);
     else if (message.type === "stop") await stop();
     else if (message.type === "reloadMeetingTab") await reloadMeetingTab(message.tabId);
-    else if (message.type !== "status") throw new Error("Unknown control message.");
+    else throw new Error("Unknown control message.");
     return {...status(), browserHealth:browserHealth()};
   })().then(respond, error => respond({ error: error.message, code: error.code, scope: error.scope, ...(error.retired === true ? {retired:true} : {}) }));
   return true;

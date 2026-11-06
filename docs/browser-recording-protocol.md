@@ -3,10 +3,10 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `f537d9ce`, is protocol main after #66: companion 0.2.18 includes
-invalidated-relay recovery (#64), extension-owned health and loss-cause diagnostics
+The current pin, `85ce233`, ships companion 0.2.20 with the tab-scoped status popup
+(#67/#68). It retains invalidated-relay recovery (#64), extension-owned health and loss-cause diagnostics
 (#65), and the English UTF-8 relay sample (#66). It also includes the committed
-Stop clock placement fix (#63). Native D69 writer adoption comes from base PR #239;
+Stop clock placement fix (#63). Native D69 writer adoption is merged in main;
 app-side health presentation remains separate work. The previous pin, `8a3f856c` (protocol main with PR #61, D61.1: steady drift follows the capture clock; on #56: a capture context re-anchors after a render stall; on #55, D68: the live-folder driver's monotonic session clock; on #54, D68.1: every capture AudioContext keeps real time; on #45 and #44: a return before the fallback commits restores at once; either writer form, with the absence in the file), shipped companion 0.2.15, whose capture contexts feed an inaudible constant (6e-8) to their output so Chromium never moves a silent capture graph onto a slow timer, re-anchor forward after a render stall so later chunks are not placed early, and whose browser `track` packets carry
 the D61 clock facts (copied into session.json and x["codemyriad.io"].tracks, record-only)
 and the span's `documentGeneration` (a live watchdog hint, never written to files). Its
@@ -53,7 +53,8 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is protocol main f537d9ce (#64–#66, companion 0.2.18), on cf9beaa (#63,
+The pin is protocol main 85ce233 (#67/#68, companion 0.2.20), on f537d9ce
+(#64–#66, companion 0.2.18), on cf9beaa (#63,
 committed Stop clock placement), on b8a493a (#62, D69/D69.1 contract), on 8a3f856c (PR #61, D61.1: steady capture-clock drift is followed
 without spurious gap steps, while confirmed stalls re-anchor forward; companion 0.2.15),
 on e3724c6 (PR #60: a failed/retired span releases its mute hold), on 4451bf0 (PR #58:
