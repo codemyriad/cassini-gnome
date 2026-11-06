@@ -20,7 +20,9 @@ NATIVE_KINDS = ("microphone", "system")
 
 def sentence(milliseconds, kind):
     """The shared D69 problem sentence stored for one source (never shown, D69.2)."""
-    return f"{milliseconds} ms of {kind} audio was lost because the computer could not keep up; the gaps contain silence."
+    return (
+        f"{milliseconds} ms of {kind} audio was lost because the computer could not keep up; the gaps contain silence."
+    )
 
 
 STORED = re.compile(
