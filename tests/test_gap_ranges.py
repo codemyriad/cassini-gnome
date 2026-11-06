@@ -150,6 +150,34 @@ def test_ranges_reach_the_capture_record_and_short_jumps_do_not_mark_the_library
     assert meeting.interrupted_at_ms is None, "a 25 ms jump is recorded but does not mark the meeting"
 
 
+def test_a_render_stall_reanchor_reaches_every_span_of_its_context_as_a_jump(tmp_path):
+    """D61.1 (companion 0.2.14): a stalled context re-anchors all its spans forward at once.
+
+    The extension sends no warning and no zeros; the host sees only each span's offset jump
+    (its held chunks arrive back to back) and writes a `jump` gap at that span's own file position.
+    """
+    replay = Replay(tmp_path, dict(features=[NEGOTIATED]))
+    try:
+        replay.track("a")
+        replay.track("b")
+        # Both spans share one context; b opened 250 ms after a. Render frames space the chunks.
+        for index in range(4):
+            replay.audio("a", index * 250, 12000)
+            replay.audio("b", 250 + index * 250, 12000)
+        # A 320 ms render stall: every later chunk of both spans moves forward by the same step.
+        replay.audio("a", 1000 + 320, 12000)
+        replay.audio("b", 1250 + 320, 12000)
+        saved = replay.stop()
+    finally:
+        replay.host.close()
+    by_wire = {wire(track): track for track in saved["tracks"]}
+    assert by_wire["a"]["gaps"] == [dict(atMs=1000, durationMs=320, frames=15360, kind="jump")]
+    assert by_wire["b"]["gaps"] == [dict(atMs=1250, durationMs=320, frames=15360, kind="jump")]
+    assert [by_wire[name]["gapFrames"] for name in "ab"] == [15360, 15360]
+    assert [by_wire[name]["frames"] for name in "ab"] == [5 * 12000 + 15360] * 2
+    assert (saved["state"], saved.get("problemKind")) == ("completed", None), "a stall under 1 s marks nothing"
+
+
 def test_native_gap_position_follows_the_host_clock_under_drift(tmp_path):
     from cassini_talk.capture_clock import mapped_end_sample
     from cassini_talk.recording_session import RecordingSession

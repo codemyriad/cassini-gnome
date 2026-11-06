@@ -3,7 +3,7 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `ab2823c2` (protocol main with PR #55, D68: the live-folder driver's monotonic session clock; on #54, D68.1: every capture AudioContext keeps real time; on #45 and #44: a return before the fallback commits restores at once; either writer form, with the absence in the file), ships companion 0.2.13, whose capture contexts feed an inaudible constant (6e-8) to their output so Chromium never moves a silent capture graph onto a slow timer, and whose browser `track` packets carry
+The current pin, `8a3f856c` (protocol main with PR #61, D61.1: steady drift follows the capture clock; on #56: a capture context re-anchors after a render stall; on #55, D68: the live-folder driver's monotonic session clock; on #54, D68.1: every capture AudioContext keeps real time; on #45 and #44: a return before the fallback commits restores at once; either writer form, with the absence in the file), ships companion 0.2.15, whose capture contexts feed an inaudible constant (6e-8) to their output so Chromium never moves a silent capture graph onto a slow timer, re-anchor forward after a render stall so later chunks are not placed early, and whose browser `track` packets carry
 the D61 clock facts (copied into session.json and x["codemyriad.io"].tracks, record-only)
 and the span's `documentGeneration` (a live watchdog hint, never written to files). Its
 `ok:false` results carry a D58 result `code`, and its native resume packet carries the
@@ -49,10 +49,15 @@ An active capture's ended physical span returns `state/source/retired:true`;
 its cleanup and in-flight chunks cannot mean the whole capture was saved.
 Capture finalization returns `state/command`. Failed spans are fenced locally,
 healthy sources and the microphone continue, and a live source retries a new ID.
-The pin is protocol main ab2823c2 (PR #55, D68: the live-folder driver times every request and
-observation on the monotonic clock, its session origin mapped once, and the control relay stamps
-each frame on it too), on 54e0006b (PR #54, D68.1: an inaudible 6e-8 ConstantSource feeds each
-capture AudioContext's output, so Chromium's silent-sink suspender never moves it onto a slow timer;
+The pin is protocol main 8a3f856c (PR #61, D61.1: steady capture-clock drift is followed
+without spurious gap steps, while confirmed stalls re-anchor forward; companion 0.2.15),
+on e3724c6 (PR #60: a failed/retired span releases its mute hold), on 4451bf0 (PR #58:
+the live-folder driver maps the session origin at its own instant), on cf04e024 (PR #56, D61.1: a render stall re-anchors every span of its
+capture context forward from the stalled frame, judged on fresh getOutputTimestamp levels; the
+host sees only an offset jump and writes its `jump` gap; companion 0.2.14), on ab2823c2 (PR #55,
+D68: the live-folder driver times every request and observation on the monotonic clock, its
+session origin mapped once, and the control relay stamps each frame on it too), on 54e0006b (PR
+#54, D68.1: an inaudible 6e-8 ConstantSource feeds each capture AudioContext's output, so Chromium's silent-sink suspender never moves it onto a slow timer;
 captured PCM is unchanged; companion 0.2.13), on e68ebca (PR #53: the live-folder driver reads a
 process's exact argv, `/proc` on Linux and `KERN_PROCARGS2` on macOS, and a host runs its whole
 command as consecutive arguments), on 98b3513 (PR #52, the shared test 2 live-folder driver, with
@@ -84,9 +89,10 @@ protocol PR #33, 941a82cb, which adds vectors
 only (a frame arriving at the 45 s deadline is too late; other-generation rows
 drive a lost recording's grace timers) to #32's D52.5 rules (ask-once resume, no
 second recording, the 45 s PCM_STALE_AFTER and its watchdog vectors), on top of #31's
-heartbeat-v1 and audio transport liveness (D52.4). Companion 0.2.13 answers the
+heartbeat-v1 and audio transport liveness (D52.4). Companion 0.2.15 answers the
 app's control pings (0.2.9), adds the result codes (0.2.10), the resume `requestId` (0.2.11),
-the D61 track fields (0.2.12) and real-time capture contexts (D68.1); see
+the D61 track fields (0.2.12), real-time capture contexts (D68.1, 0.2.13) and the render-stall
+re-anchor (D61.1, 0.2.14) and steady-drift handling (D61.1, 0.2.15); see
 [call-lifecycle.md](call-lifecycle.md). Conformance
 runs give every case a private CASSINI_LIBRARY_DIR, which
 tests/conformance_host.py requires.

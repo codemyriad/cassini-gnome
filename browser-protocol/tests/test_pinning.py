@@ -13,6 +13,18 @@ sys.path.insert(0, str(ROOT))
 from verify import verify
 
 class PinningTests(unittest.TestCase):
+    def test_steady_drift_can_replace_an_installed_0214_companion(self):
+        manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
+        parts = tuple(int(part) for part in manifest['version'].split('.'))
+        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 14, 0),
+                           'D61.1 lets steady drift follow the capture clock: local installers never replace equal 0.2.14')
+
+    def test_render_stall_reanchor_can_replace_an_installed_0213_companion(self):
+        manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
+        parts = tuple(int(part) for part in manifest['version'].split('.'))
+        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 13, 0),
+                           'D61.1 re-anchors a stalled capture clock: local installers never replace equal 0.2.13')
+
     def test_real_time_capture_can_replace_an_installed_0212_companion(self):
         manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
         parts = tuple(int(part) for part in manifest['version'].split('.'))

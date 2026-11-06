@@ -91,7 +91,7 @@ preceding version. Vectors deliberately isolate other errors; wording is not con
 | WAV data | at most 2^32-1-36 bytes |
 | Extension page packet | 400000 JSON characters |
 | Extension native requests | at most 512 in flight, 10-second response timeout |
-| Extension source buffer | 10 seconds, four pipelined requests per source |
+| Extension source buffer | 10 seconds, held chunks included (0.2.14), four pipelined requests per source |
 | Extension worklet batch | 8192 frames, partial tail flushed at stop |
 
 The last four are snapshot resource policies, not requirements on third-party hosts.
@@ -114,9 +114,140 @@ that base with getOutputTimestamp (`outputTimestamp`), or, when no positive stam
 worklet round trip that reads the render frame between two performance.now() readings
 (`roundTrip`). Both place a render frame at the instant the browser says it reaches the output
 device, so roundTrip adds the context's outputLatency to the time it read the frame. Calibration
-happens before the track is declared. Later offsets come only from
-render frames. Different frames/devices remain approximately aligned, not sample-accurate
-conference clocks. Local sender mute/suspension produces silence.
+happens before the track is declared. Render frames space every chunk. Different
+frames/devices remain approximately aligned, not sample-accurate conference clocks. Local sender
+mute/suspension produces silence.
+
+Since extension 0.2.14 (D61.1) a render stall re-anchors its context. While rendering stalls,
+the frames it never renders are never counted, so render frames alone would place every later
+chunk early by the stall, on every span of that context. The extension tracks the level
+performanceTime - contextTime*1000 - outputLatency*1000 of each fresh getOutputTimestamp (one
+whose contextTime moved) as a line: a level and a slope per rendered millisecond.
+Since extension 0.2.15 a steady rate is clock drift, not lost audio (the coordinator's decision on #56: "a
+steady slow rate is clock drift, not lost audio. The audio is continuous, so stamps follow the
+capture clock. Only discontinuities (stalls) re-anchor or count as gaps. Bounded drift is
+accepted."). So offsets follow render frames at any steady rate, faster or slower than real
+time (a device 1.2% slow, as Apple's virtual sound device runs, gets no jump), and only a
+discontinuity re-anchors. While the readings within 50 ms of the line are steady, the line is
+the least-squares line of the last 24 of them (about four seconds; from five readings on), so
+it learns the rate as the readings come, steady drift stays within 50 ms of it, and a rate that
+changes with no jump is followed within seconds (a stall soon after is measured from the new
+rate); otherwise the line keeps its slope and is re-centred on the readings no faster than 2 ms
+per rendered second. The line takes a fitted slope only once its standard error is within 0.01
+(20 ms over two seconds); until then it keeps the slope it has (none at first) and is re-centred
+on the readings, so a slope fitted to a few jittered readings is not extrapolated over the frames
+a renderer catch-up returns. Steadiness is judged over the last 64 readings, so a discontinuity keeps
+the line from following while it is among them. Readings are steady when
+no consecutive pair's move off the slope stands out from the others': farther from their median
+move than 25 ms or six times the median distance from it, whichever is larger. A discontinuity
+stands out; jitter of any size moves every pair alike. So a loss is seen only above the jitter:
+losses that form a steady rate, or that the jitter hides, are drift and follow the capture
+clock, while small stalls that stand out (45 ms ones under 3 ms of jitter) still add up to a
+step. A reading within 50 ms that stands out from the last 24 readings' distances to the line
+is suspect: the line does not follow
+it, and a hold that opens next starts at it. Within two seconds of a re-anchor the line does
+not follow the readings (rendering returning part of a stall is credit, not a rate). A reading
+more than 50 ms from the line opens a hold. It is drift when it continues the trend of the
+readings before it (their least-squares line, from at least four of the last 64 readings,
+extended over the held readings, agrees with them within 20 ms on average) or, once at least
+four readings are held, when their own line meets the last reading before them within 20 ms plus
+twice the jitter (a rate that changed with no jump); and, either way, when the readings of that
+line are steady and its slope is a rate: at most 0.2 ms per rendered millisecond (rendering at
+85% of real time is 0.18) beyond twice the standard error the jitter gives it. The line then
+takes that slope and nothing re-anchors. The jitter is the scatter of the steady in-band readings
+about their own least-squares line, measured once 24 of them are in the trail and kept across
+re-anchors (a stall does not change the device); until then it is the held readings' own scatter
+about their line. Held readings that scatter about their own line by more than twice the jitter
+and more than 10 ms are no rate: a train of stalls a few batches apart makes such a staircase,
+and it settles as steps. Stalls on consecutive batches (a stutter)
+make a staircase that a line fits as well as a rate: a staircase steeper than that settles as
+steps. A rate that changed by more than 0.05 is provisional for two seconds of rendering: a hold
+that opens then, whose readings' own line keeps nearer to the slope before the change than to
+the changed one, is rendering going back to its rate at once, so the change was a stutter. When
+its readings sit more than 50 ms from the line before the change on average, the context
+re-anchors by that mean, and the line goes back to the earlier slope. Such a hold settles only
+once four readings are held. Anything else is a step. When the level rises by more
+than 50 ms against its tracked value (or, for the first fresh stamp, against the calibration
+seed plus the roundTrip uncertainty) and a fresh stamp read at least 100 ms later agrees within
+20 ms, the context re-anchors forward by the smaller agreeing step (while fewer than four
+readings are held, only when the pair sits more than 50 ms beyond the mean of the last four
+readings before the hold, from the line: a rate that changed with no jump creeps up to 50 ms, so
+its last readings sit near the held ones and the hold runs on); a rise that neither confirms
+nor reverts within one second of opening settles at its smallest reading, and one whose readings
+keep crossing the level settles at no step then. The line moves to the reading the step was
+taken at, so a rise that continues past it is judged again: when the latest reading of the
+settled hold sits beyond the step by more than 20 ms (a second stall one batch after the first,
+or a stutter going on), it opens a new hold at once, judged from the reading the step was taken
+at, and held chunks rendered before that reading are sent. (After a renderer
+stall the page reads a backlog of chunks within a millisecond while rendering catches up, so
+stamps read together are no confirmation.) A span that stops during an unsettled rise places
+its own held chunks at the rise's smallest reading and leaves the rise open for the context's
+other and later spans. The re-anchor
+applies from the stalled frame (the frame of the last fresh stamp before the rise, or the first
+chunk still held, whichever is later) for every span on the context, current and later.
+Offsets never move backward: a confirmed fall that is not drift is never applied; it is credit
+that offsets a later rise. A fall that opens within two seconds of a re-anchor or of such a fall
+(rendering returning part of what a stall lost, not a rate) offsets the next rise whenever it
+comes; any other fall offsets only a rise that settles within two seconds of it.
+The origin mapping is never re-read, and the clock facts are unchanged, so all spans still
+repeat the same values. Chunks that arrive while a rise is unsettled are held, and so are a
+span's first chunks (up to four, or one second) while its context has no positive output stamp
+yet; a chunk is never moved after it is sent. A resumed suspension re-anchors by its wall estimate from the frame it began at
+and reseeds the level; a rise still unsettled then is kept, moved by the same estimate. The lost time reaches the host as an offset jump (see Gap ranges); the
+extension never fills it with zeros and sends no warning for it.
+
+Known limits of the D61.1 detector (0.2.15; measured on the extension's scripted device, uniform
+stamp jitter, Mac's review of #61 and the GNOME explorations):
+- A loss is seen only above the jitter. A 60 ms stall in the first half second, or under ±12–20 ms
+  of jitter, can be missed (about one in five 60 ms stalls 0.5–5 s into drift). With ±15–20 ms of jitter a
+  stall early in a session gets a second jump of 50–90 ms 1.5–5 s later in 1–6% of runs, and a
+  100 ms stall is occasionally missed.
+- Session start: with ±20 ms of jitter 1–2% of sessions get a jump of 60–85 ms within about
+  3.5 s, with no stall.
+- Rendering at 85% from the start under ±15 or ±20 ms of jitter: 4% or 8% of sessions get
+  jumps of 50–240 ms in their first 3 s while the line learns the rate.
+- A renderer catch-up 1 s into a session under ±15–20 ms of jitter is mis-sized by more than
+  50 ms in up to 10% of sessions; 2 s or later, in up to 2%.
+- A rate swinging ±20000 ppm every few seconds under 8–20 ms of jitter gets forward jumps of
+  50–77 ms with no stall (3–13% of 10-minute runs for a sine, more for a square wave). A
+  ±20000 ppm reversal followed by a stall 2 s later misses the 50 ms bound in 2–9% of cases at
+  5–10 ms of jitter. Real clocks do not swing like this; ±12000 ppm reversals stay within it.
+- Stutters of stalls above the step (60 ms and more on consecutive batches) are re-anchored in
+  full. One gentler than 0.2 (steps of up to about 30 ms per batch) is re-anchored only when
+  rendering goes back to its rate, so the chunks rendered during it are placed early by up to its
+  loss, and only while that return comes within two seconds of the line taking the new rate,
+  which is about three seconds of stutter: 15 × 30 ms (2.6 s) is re-anchored in full, 20 × 30 ms
+  (3.4 s) and 30 × 30 ms lose all of it (600 and 900 ms), as a rate change, which is drift.
+  Stutters of stalls below the step are mostly lost even when short, at any jitter: 4 × 15 and
+  8 × 15 ms re-anchor nothing, 4 × 20 and 6 × 20 ms re-anchor 56 ms of 80 and 120, and
+  10 × 20 ms re-anchors 194 of 200 ms (0.2.14 re-anchored these).
+- A train of stalls above the step a few batches apart (100 ms every two or three batches) is
+  re-anchored stall by stall however long it lasts, once the jitter is known (24 steady readings,
+  about four seconds into the session or after a rate change; before that a train of more than
+  about three seconds can pass as a rate change and be lost, as in ec2343c). Trains of 60 ms
+  stalls three batches apart under ±10 ms of jitter, near the steadiness bound, are lost after
+  some seconds in some runs (900 of 1200 ms for 20 × 60 ms), as in d9691ea.
+- Steady rendering slower than about 83% (a slope above 0.2) is no clock rate: it re-anchors as
+  steps, a jump of about 215–340 ms every second for as long as it lasts (rendering at 75–82%
+  for 60 s: 58–60 jumps, 12.9–19.9 s in all, at ±0–10 ms of jitter). Near the bound the jitter
+  decides: at ±20 ms, rendering at 82% gets 1 jump and at 80% 17 jumps in 60 s. d9691ea took any
+  steady rate as drift. Faster rendering (a negative slope) never jumps, as a fall never moves
+  offsets back.
+- A genuine temporary rate change of 0.1–0.19 that returns to the old rate within 0.7–3 s is
+  taken for a stutter: the context re-anchors forward by the drift it built up (slope 0.1 for
+  1–2 s: 97–199 ms; 0.15 for 0.7–3 s: 102–461 ms; 0.19 for 0.7–3 s: 129–583 ms; d9691ea: no jump).
+  One that lasts 5 s or returns more slowly than 0.05 off the old slope is drift. The two shapes
+  are the same readings until rendering returns; this detector reads them as a stutter.
+- A stall within about 1.5 s of a sharp rate change (0.1–0.18), before or after it, is mis-sized
+  by 50–500 ms. At no jitter a slope of 0.15 or 0.18 with a stall 0.5–1 s later gets +179 or
+  +215 ms (d9691ea −275 or −270 ms); under ±10–15 ms of jitter, a stall followed by a change of
+  0.13–0.18 from the next batch is off in 4–9 of 10 runs (as in d9691ea), and over all such
+  cases about half are off by more than 50 ms in both versions. A stutter followed by sustained
+  85% rendering over-anchors (4 × 100 ms: +60 ms at no jitter, +153 ms at ±10 ms; 2 × 200 ms:
+  +120 ms and +36 ms), where d9691ea under-anchored the first (−300 and −308 ms) and gave
+  −200 and +36 ms for the second.
+- Periodic small losses near the steadiness bound (about 30 ms every 2–3 s) are re-anchored in
+  a share that depends on the jitter, never more than what was lost.
 
 Since extension 0.2.13 (D68.1) every capture context keeps real time. A browser moves an
 AudioContext whose output has been all zeros for about 30 s onto a timer, which can run far
@@ -439,7 +570,9 @@ New writers always write the key, so `gaps: []` means no gaps and a missing key 
 - Ranges are half-open, sorted and never coalesced: one entry per padding write, even when
   only a little received audio separates two of them.
 - `kind` is diagnostic and open. Host-derived kinds: `jump` (browser offset jump; overflow,
-  suspension and stalls look the same on the wire), `input` (native host-time gap), `prefix`
+  suspension and stalls look the same on the wire; since extension 0.2.14 a browser render
+  stall reaches the host as a `jump` too, with no producer tag; since 0.2.15 steady clock drift
+  never does), `input` (native host-time gap), `prefix`
   (selection boundary to the first frame, browser or native, never in gapFrames), `writer` (below). `dropped` and `suspended` are
   reserved for a later producer tag. Readers treat every kind as absence.
 - Budget: at most 1000 ranges per track, then one `{atMs, kind:"overflow"}` at the next gap,
