@@ -245,16 +245,19 @@ def test_audio_peer_eof_falls_back_only_its_own_capture_and_keeps_the_microphone
         remote(one, "remote-one")
         remote(two, "remote-two")
         one.close()
-        end = time.monotonic() + 2
-        while time.monotonic() < end and not service.captures["first"].browser_lost:
-            time.sleep(0.01)
+        service.changes.wait(lambda: service.captures["first"].browser_lost, "EOF fallback was not committed")
         assert [s["captureId"] for s in request(path=path)["statuses"] if s["recording"]] == ["first", "second"]
         from pathlib import Path
 
         value = json.loads((Path(first["path"]) / "session.json").read_text())
         assert value["state"] == "recording"
         assert value["events"][-1] == dict(
-            atMs=value["events"][-1]["atMs"], type="othersSource", source="system", reason="lost"
+            atMs=value["events"][-1]["atMs"],
+            type="othersSource",
+            source="system",
+            reason="lost",
+            cause="transportClosed",
+            detail="Browser disconnected before recording was stopped.",
         )
         assert value["tracks"][-1]["kind"] == "system"
         assert value["tracks"][-1]["startOffsetMs"] == value["events"][-1]["atMs"]
