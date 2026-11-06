@@ -70,6 +70,8 @@ class HitModel(GObject.Object, Gio.ListModel):
 
 
 class SearchPage(Adw.NavigationPage):
+    __gsignals__ = {"results-updated": (GObject.SignalFlags.RUN_LAST, None, ())}
+
     def __init__(self, window):
         super().__init__(title=text("search.title"))
         self.window = window
@@ -88,6 +90,7 @@ class SearchPage(Adw.NavigationPage):
         self._meetings = {}
         self._turns = {}
         self.hit = None
+        self._context_signature = None
         self.hits = ()
         self.names = ()
         split = Adw.NavigationSplitView(min_sidebar_width=460, max_sidebar_width=460, sidebar_width_fraction=0.41)
@@ -289,9 +292,13 @@ class SearchPage(Adw.NavigationPage):
         if self.closed:
             return GLib.SOURCE_REMOVE
         if generation != self._generation:
+            # Dispatch the newest query now, consuming its debounce. Leaving
+            # that timer armed can dispatch the same generation a second time.
+            if self._timer:
+                GLib.source_remove(self._timer)
+                self._timer = 0
             self._dispatch()
             return GLib.SOURCE_REMOVE
-        self.pending = False
         try:
             hits, names, self._meetings, self._turns = future.result()
         except Exception:
@@ -309,6 +316,8 @@ class SearchPage(Adw.NavigationPage):
         self.selection.set_selected(selected if hits else Gtk.INVALID_LIST_POSITION)
         self.selection.handler_unblock(self._selection_handler)
         self._selected()
+        self.pending = False
+        self.emit("results-updated")
         return GLib.SOURCE_REMOVE
 
     def _bind(self, _factory, item):
@@ -372,6 +381,36 @@ class SearchPage(Adw.NavigationPage):
         ):
             self.window._stop_playback()
         self.hit = hit
+        meeting = self._meetings[hit.key] if hit else None
+        context_text = (
+            fmt.search_context(
+                meeting.started_at_ms,
+                meeting.duration_ms,
+                hit.position_ms,
+                now_ms=self.window.now_ms,
+                tz=self.window.tz,
+            )
+            if hit
+            else None
+        )
+        signature = (
+            (
+                hit,
+                meeting.title,
+                meeting.has_audio,
+                meeting.speakers,
+                self._turns[hit.key][max(0, hit.turn - 1) : hit.turn + 2],
+                self.window.get_application().voice_store.match_signature(),
+                context_text,
+            )
+            if hit
+            else None
+        )
+        # Preserve focused/AT-SPI controls when a refresh leaves the displayed
+        # result unchanged. Removing an activating button can cancel its click.
+        if signature == self._context_signature:
+            return
+        self._context_signature = signature
         child = self.context.get_first_child()
         while child:
             following = child.get_next_sibling()
@@ -384,13 +423,7 @@ class SearchPage(Adw.NavigationPage):
         heading.append(label(meeting.title, "library-title", xalign=0, wrap=True))
         heading.append(
             label(
-                fmt.search_context(
-                    meeting.started_at_ms,
-                    meeting.duration_ms,
-                    hit.position_ms,
-                    now_ms=self.window.now_ms,
-                    tz=self.window.tz,
-                ),
+                context_text,
                 "dim-label",
                 xalign=0,
                 wrap=True,

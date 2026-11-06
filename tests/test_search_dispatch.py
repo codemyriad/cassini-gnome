@@ -5,7 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-pytest.importorskip("gi")
+gi = pytest.importorskip("gi")
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
 from cassini_talk import search_page  # noqa: E402
 
 
