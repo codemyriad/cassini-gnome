@@ -181,7 +181,7 @@ or a stutter going on), it opens a new hold at once, judged from the reading the
 at, and held chunks rendered before that reading are sent. (After a renderer
 stall the page reads a backlog of chunks within a millisecond while rendering catches up, so
 stamps read together are no confirmation.) A span that stops during an unsettled rise places
-its own held chunks at the rise's smallest reading and leaves the rise open for the context's
+its own held chunks on the committed mapping (since extension 0.2.16) and leaves the rise open for the context's
 other and later spans. The re-anchor
 applies from the stalled frame (the frame of the last fresh stamp before the rise, or the first
 chunk still held, whichever is later) for every span on the context, current and later.

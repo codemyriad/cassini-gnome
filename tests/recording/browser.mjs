@@ -9,6 +9,7 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright';
 import {energy} from './signal.mjs';
+import {replacementSpan} from './replacement-span.mjs';
 if (!process.env.CASSINI_ISOLATED_AUDIO || process.env.WAYLAND_DISPLAY) throw new Error('Run through tests/recording/run.sh to isolate desktop and audio.');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifacts = path.resolve(process.env.CASSINI_TEST_ARTIFACTS || path.join(root, 'tests/recording/artifacts/browser'));
@@ -126,18 +127,19 @@ try {
   let state=await command('status');
   assert.equal(state.tracks,2,JSON.stringify(state));
   const muteEpoch=await meeting.evaluate(()=>{meeting.mute(true);return Date.now();});
-  async function localWithDuration(index, seconds) {
+  async function localWithDuration(id, seconds) {
     return poll(async()=>{
       const captured=await snapshot(started.path);
-      const track=captured.tracks.filter(t=>t.kind==='local')[index];
+      const track=captured.tracks.find(t=>t.id===id);
       return track && track.audio.bytes.length/(2*track.channels*track.sampleRate)>=seconds && track;
-    },`local source ${index} reaches ${seconds}s`);
+    },`local span ${id} reaches ${seconds}s`);
   }
-  await localWithDuration(0,muteFrame/48000+.8);
+  await localWithDuration(initialLocal.id,muteFrame/48000+.8);
   await meeting.evaluate(()=>meeting.mute(false));
-  await localWithDuration(0,muteFrame/48000+1.5);
+  await localWithDuration(initialLocal.id,muteFrame/48000+1.5);
   await meeting.evaluate(()=>meeting.replace(660));
-  await localWithDuration(1,1.8);
+  let replacement=await poll(async()=>replacementSpan((await snapshot(started.path)).tracks,initialLocal,1.8),
+    'replacement span reaches 1.8s');
   const removeEpoch=Date.now();
   await meeting.evaluate(()=>{
     const preview=document.createElement('audio');preview.muted=true;
@@ -155,23 +157,35 @@ try {
   const stopped=await stop();
   const first=await snapshot(stopped.path,true);
   assert.equal(first.manifest.state,'completed',JSON.stringify(first.manifest));
-  assert.equal(first.tracks.length,3,'replacement creates a distinct source, not a participant identity');
+  assert.equal(first.tracks.length,3,'replacement creates a new span of the same sender source');
   const local=first.tracks.filter(t=>t.kind==='local'), received=first.tracks.find(t=>t.kind==='remote');
   assert.equal(local.length,2); assert.ok(received);
-  assert.ok(energy(local[0].audio,0.5,1.5,440).tone > .1,'local 440 Hz source');
-  assert.ok(energy(local[0].audio,0.5,1.5,880).tone < .01,'no remote bleed into local source');
+  assert.ok(!(first.manifest.captureOutcome?.sources || []).some(source=>source.captureOutcome==='failed'),
+    JSON.stringify(first.manifest.captureOutcome));
+  assert.deepEqual(local.map(track=>track.id),[initialLocal.id,replacement.id]);
+  const original=local.find(track=>track.id===initialLocal.id);
+  replacement=local.find(track=>track.id===replacement.id);
+  assert.ok(replacement.startOffsetMs>=original.endOffsetMs,
+    `replacement span overlaps predecessor: ${JSON.stringify({original,replacement},(key,value)=>key==='audio'?undefined:value)}`);
+  const tailStart=original.endOffsetMs-8192*1000/original.sampleRate;
+  assert.ok(!(original.gaps || []).some(gap=>gap.kind==='jump' && gap.atMs+gap.durationMs>tailStart),
+    `predecessor tail jumped: ${JSON.stringify(original.gaps)}`);
+  evidence.replacementJunction={initialId:original.id,replacementId:replacement.id,
+    gapMs:replacement.startOffsetMs-original.endOffsetMs};
+  assert.ok(energy(original.audio,0.5,1.5,440).tone > .1,'local 440 Hz source');
+  assert.ok(energy(original.audio,0.5,1.5,880).tone < .01,'no remote bleed into local source');
   assert.ok(energy(received.audio,0.5,1.5,880).tone > .08,'remote 880 Hz source');
   assert.ok(energy(received.audio,0.5,1.5,440).tone < .01,'no local bleed into remote source');
   const mutePosition=muteFrame/48000;
   const wallMutePosition=(muteEpoch-startEpoch)/1000;
-  assert.ok(Math.abs(mutePosition+local[0].startOffsetMs/1000-wallMutePosition)<.4,
-    `render timeline follows real elapsed time: samples=${mutePosition}, offset=${local[0].startOffsetMs}, wall=${wallMutePosition}`);
-  assert.ok(energy(local[0].audio,mutePosition+.2,mutePosition+.5,440).rms < .005,'meeting mute becomes silence after the measured sample position');
-  assert.ok([.3,.4,.5,.6,.7,.8].reduce((sum,start)=>sum+energy(local[1].audio,start,start+.1,660).tone,0)/6 > .1,'replacement source contains new tone');
-  assert.ok(local[1].startOffsetMs > 3000,'replacement is positioned on the shared session timeline');
+  assert.ok(Math.abs(mutePosition+original.startOffsetMs/1000-wallMutePosition)<.4,
+    `render timeline follows real elapsed time: samples=${mutePosition}, offset=${original.startOffsetMs}, wall=${wallMutePosition}`);
+  assert.ok(energy(original.audio,mutePosition+.2,mutePosition+.5,440).rms < .005,'meeting mute becomes silence after the measured sample position');
+  assert.ok([.3,.4,.5,.6,.7,.8].reduce((sum,start)=>sum+energy(replacement.audio,start,start+.1,660).tone,0)/6 > .1,'replacement source contains new tone');
+  assert.ok(replacement.startOffsetMs > 3000,'replacement is positioned on the shared session timeline');
   // The remote and replacement sources remain alive through Stop (removed senders retain silence).
   // The original sender ends on an asynchronous discovery scan, so its wall end is not replaceEpoch.
-  const continuity=[{track:local[1],end:stopEpoch},{track:received,end:stopEpoch}].map(({track,end})=>{
+  const continuity=[{track:replacement,end:stopEpoch},{track:received,end:stopEpoch}].map(({track,end})=>{
     const seconds=track.frames/track.sampleRate;
     const wallSeconds=(end-startEpoch-track.startOffsetMs)/1000;
     return {id:track.id,seconds,wallSeconds,error:seconds-wallSeconds};

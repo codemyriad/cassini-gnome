@@ -332,13 +332,14 @@ async function device(run, { stamps = true, outputLatency = 0, retries = [] } = 
     const rig = {
       dev, nodes, packets, warnings, failures, timers, tick, contexts,
       get now() { return now; },
-      async start(id, { own = false } = {}) {
+      async start(id, { own = false, sourceTrackId } = {}) {
         shared ??= new Context();
-        const recorder = await capture({ stream: {}, id, label: id, kind: 'local', origin: 100000, workletURL: '', reportOutcomes: true,
+        const recorder = await capture({ stream: {}, id, sourceTrackId, label: id, kind: 'local', origin: 100000, workletURL: '', reportOutcomes: true,
           sharedContext: own ? undefined : shared, send: async packet => {
             // These long clock simulations assert placement and ordering, not PCM contents.
             // Release the encoded silence once sent instead of retaining hours of audio.
             const { pcm, ...metadata } = packet;
+            if (pcm) metadata.frames = Buffer.byteLength(pcm, 'base64') / 2;
             packets.push(metadata);
           },
           fail: message => failures.push(message), warn: (message, details) => warnings.push(details?.kind ?? message),
@@ -627,7 +628,9 @@ test('D61.1: Stop during an unsettled rise sends the held chunks, placed, before
     assert.equal(rig.audio('A').length, 5);
     const end = rig.packets.findIndex(packet => packet.type === 'trackEnd');
     assert.ok(end > rig.packets.lastIndexOf(rig.audio('A').at(-1)), 'audio before trackEnd');
-    exact(placement(rig, a, 'A'), 'settled at its one reading');
+    const placed = rig.audio('A');
+    close(placed.at(-1).offsetMs, placed[0].offsetMs + 4 * 8192 / 48, 'held tail uses committed render continuity');
+    assert.deepEqual(rig.jumps('A'), [], 'the unsettled 500 ms rise is not a span-local step');
   });
 });
 
@@ -684,7 +687,7 @@ test('D61.1: a re-anchor of more than 60 s retires the span and the retry starts
 });
 
 // R93 review: one span's Stop is no evidence about its context's clock. A rise still unsettled
-// then places only that span's held chunks; the other spans keep judging it.
+// then places that span's held chunks on the committed clock; other spans keep judging it.
 test('D61.1: a Stop during a one-stamp transient leaves the other spans on the context unmoved', async () => {
   await device(async rig => {
     const a = await rig.start('A'), b = await rig.start('B');
@@ -692,12 +695,50 @@ test('D61.1: a Stop during a one-stamp transient leaves the other spans on the c
     rig.dev.extra = 300; await rig.render();          // one stamp 300 ms high, back on the next
     await a.stop();
     assert.equal(rig.audio('A').length, 5, 'A sends what it held before its end');
+    exact(placement(rig, a, 'A'), 'A also stays on its committed clock');
+    assert.deepEqual(rig.jumps('A'), []);
     for (let i = 0; i < 6; i++) await rig.render();
     await b.stop();
     assert.deepEqual(rig.jumps('B'), []);
     exact(placement(rig, b, 'B'), 'B after A stopped at the transient');
   });
 });
+
+for (const realStall of [false, true]) {
+  test(`D61.1: a successor never overlaps a stopped span during ${realStall ? 'a later-confirmed stall' : 'a transient rise'}`, async () => {
+    await device(async rig => {
+      const a = await rig.start('A', { sourceTrackId: 'S' }), r = await rig.start('R');
+      for (let i = 0; i < 4; i++) await rig.render();
+      if (realStall) rig.stall(500); else rig.dev.extra = 60;
+      await rig.render();
+      assert.equal(rig.audio('A').length, 4, 'A holds the unsettled chunk');
+      await a.stop();
+      const lastA = rig.audio('A').at(-1), firstA = rig.audio('A')[0];
+      const endA = lastA.offsetMs + lastA.frames * 1000 / 48000;
+      // The committed mapping is unchanged: render-frame continuity from A's first batch.
+      const committedA = firstA.offsetMs + (a.node.chunks.at(-1).frame - a.node.chunks[0].frame) / 48;
+      rig.dev.extra = 0;
+      const a2 = await rig.start('A2', { sourceTrackId: 'S' });
+      for (let i = 0; i < 6; i++) await rig.render();
+      await a2.stop(); await r.stop();
+      const firstA2 = rig.audio('A2')[0];
+      assert.ok(firstA2.offsetMs >= endA, `successor starts ${firstA2.offsetMs} before predecessor end ${endA}`);
+      close(lastA.offsetMs, committedA, 'A stops on its committed mapping');
+      assert.deepEqual(rig.packets.filter(p => p.type === 'track' && p.sourceTrackId === 'S').map(p => p.id), ['A', 'A2']);
+      assert.deepEqual(rig.jumps('A'), [], 'Stop invents no span-local jump');
+      assert.deepEqual(rig.jumps('A2'), [], 'the confirmed junction is before its first sample');
+      if (realStall) {
+        close(firstA2.offsetMs - endA, 500, 'the confirmed stall is a 500 ms gap at the successor junction');
+        exact(rig.jumps('R').map(step => step - 500), 'R commits the same stall');
+        assert.equal(rig.jumps('R').length, 1);
+      } else {
+        close(firstA2.offsetMs, endA, 'the transient leaves a contiguous successor');
+        assert.deepEqual(rig.jumps('R'), [], 'a transient moves neither remote nor successor');
+      }
+      exact(placement(rig, a2, 'A2'), 'successor stays on the shared committed clock');
+    });
+  });
+}
 
 test('D61.1: a Stop on the first stamp of a renderer catch-up leaves B to confirm the real loss', async () => {
   await device(async rig => {

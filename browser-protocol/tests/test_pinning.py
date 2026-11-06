@@ -13,6 +13,12 @@ sys.path.insert(0, str(ROOT))
 from verify import verify
 
 class PinningTests(unittest.TestCase):
+    def test_committed_stop_mapping_can_replace_an_installed_0215_companion(self):
+        manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
+        parts = tuple(int(part) for part in manifest['version'].split('.'))
+        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 15, 0),
+                           'D61.1 Stop uses the committed clock: installers never replace equal 0.2.15')
+
     def test_steady_drift_can_replace_an_installed_0214_companion(self):
         manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
         parts = tuple(int(part) for part in manifest['version'].split('.'))
