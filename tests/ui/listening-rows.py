@@ -137,6 +137,7 @@ with tempfile.TemporaryDirectory() as temporary:
     # Play is an overlay sibling of the naming button, never nested in it.
     assert isinstance(row.get_child(), Gtk.Button) and play.get_parent() is row
     play.grab_focus()
+    until(window, lambda: play.get_mapped() and play.get_sensitive() and play.get_width() > 0)
     assert play.activate()
     until(window, lambda: window.listen.active)
     assert window.listen.speaker == "voice-12" and page.speakers_dialog is None
