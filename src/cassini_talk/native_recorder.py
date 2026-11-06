@@ -547,6 +547,9 @@ class NativeRecorder(GObject.Object):
             return False
         if attempt["error"] or attempt["retired"]:
             return False
+        cut = getattr(attempt["branch"], "_selection_cut_ms", None)
+        if cut is not None and pts_ms >= cut:
+            return False
         if self.stopping:
             at = max([pts_ms, *(e["atMs"] for e in self.session.manifest.get("events", []))])
             heard = attempt.get("armed") and self._stop_at_ms is not None and at < self._stop_at_ms
@@ -769,6 +772,40 @@ class NativeRecorder(GObject.Object):
             opening = None
             elapsed = self._elapsed_ms(pipeline)
             with self._lock:
+                if (
+                    self.pipeline is not pipeline
+                    or self.stopping
+                    or self._finishing
+                    or self._stop_requested
+                    or self._discard
+                ):
+                    raise ValueError("No source change is available")
+                for kind, attempt in prepared.items():
+                    if attempt["error"]:
+                        opening = kind
+                        raise OSError(attempt["error"])
+                at = change_time(self.session, elapsed)
+                retiring = {
+                    kind: self._branches.get(kind) or self._pending_sources[kind]["branch"]
+                    for kind in removed
+                    if kind in self._branches or self._pending_sources.get(kind, {}).get("armed")
+                }
+                for branch in retiring.values():
+                    branch._selection_cut_ms = at
+                    admission = getattr(branch, "_writer_queue", None)
+                    if admission is not None:
+                        admission.seal(at)
+            # Do not hold the PCM lock while EOS drains the retiring branch.
+            # Its callbacks still own the track until loss is flushed below.
+            drained = {kind: self._drain_branch(kind, branch) for kind, branch in retiring.items()}
+            with self._lock:
+                for kind, branch in retiring.items():
+                    identifier = self._track_ids.get(kind)
+                    admission = getattr(branch, "_writer_queue", None)
+                    if admission is not None and identifier in self._timelines:
+                        self._timelines[identifier].flush_loss(
+                            self.session, identifier, admission, at, inferred=not drained[kind]
+                        )
                 # _discard: an armed refusal on this worker found nothing open
                 # and queued the finish to the main loop; nothing commits now.
                 if (
@@ -783,7 +820,6 @@ class NativeRecorder(GObject.Object):
                     if attempt["error"]:
                         opening = kind
                         raise OSError(attempt["error"])
-                at = change_time(self.session, elapsed)
                 # A selection is written only when it changes (R82 1c): Try again
                 # on a side refused at start reopens it under the start selection.
                 changed = (me, others) != (current.me, current.others)
@@ -891,6 +927,21 @@ class NativeRecorder(GObject.Object):
             self.stop()
         return False
 
+    def _drain_branch(self, kind, branch):
+        """Finish a deselected source before retiring its queue and track."""
+        ended = threading.Event()
+        sink = branch.get_by_name(kind)
+        handler = sink.connect("eos", lambda *_: ended.set())
+        try:
+            admission = getattr(branch, "_writer_queue", None)
+            if admission is not None and admission.last_end_ms is None:
+                return True  # An armed source heard nothing; EOS may wait forever.
+            request_eos(branch, lambda *_: False)
+            return ended.wait(10)
+        finally:
+            branch.set_state(Gst.State.NULL)
+            sink.disconnect(handler)
+
     def _input_pts(self, sink, identifier, pts, frames):
         """(stamp in pipeline running time, shift removed) on one per-branch timeline.
 
@@ -980,6 +1031,9 @@ class NativeRecorder(GObject.Object):
                     data, offset = selected_pcm(data, pts / Gst.MSECOND, rate, channels, self._boundaries[identifier])
                     skipped = original_frames - len(data) // (channels * 2)
                     cut = self._stop_at_ms
+                    selection_cut = getattr(branch, "_selection_cut_ms", None)
+                    if selection_cut is not None:
+                        cut = selection_cut if cut is None else min(cut, selection_cut)
                     if cut is not None:
                         # Queued across Stop's moment: only what was captured before it.
                         data = pcm_before(data, offset, rate, channels, cut)

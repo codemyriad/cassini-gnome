@@ -25,7 +25,7 @@ class NativeQueue:
 
     def seal(self, at_ms):
         with self._lock:
-            self._cut = at_ms
+            self._cut = at_ms if self._cut is None else min(self._cut, at_ms)
 
     def enter(self, stamp, frames, offset_ms):
         with self._lock:

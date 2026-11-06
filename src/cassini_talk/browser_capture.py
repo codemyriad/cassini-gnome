@@ -454,6 +454,8 @@ class BrowserCapture:
                     # stops it) opens no track after its side was turned off.
                     return
                 cut = self._native_cut()
+                if state.get("until") is not None:
+                    cut = state["until"] if cut is None else min(cut, state["until"])
                 if not state["track"]:
                     # D58.1: an armed tap opens on its first buffer, however late,
                     # if that buffer was captured before Stop (R93-2).
@@ -1069,8 +1071,47 @@ class BrowserCapture:
                     if self.finished or self.stopping or self.stop_requested.is_set():
                         raise ProtocolError("state", "No active recording")
                     if self.tab_closed and (fallback is not None or restore):
-                        return self.snapshot()  # A tab may close while a fallback device gets ready.
+                        return self.snapshot()
                     if pending and self._fallback_cancelled:
+                        return self.snapshot()
+                    for kind, (_identifier, _tap, state) in prepared.items():
+                        if state["error"]:
+                            opening = kind
+                            raise OSError(state["error"])
+                    needed = self.streams.additions(me, others, browser=not lost) + len(prepared)
+                    if len(self.host.session.writers) + needed > 64:
+                        raise ProtocolError("limit", "A session supports at most 64 sources")
+                    at = change_time(self.host.session, self.elapsed_ms())
+                    removed = {kind: value for kind, value in self.native_taps.items() if kind not in desired}
+                    # Keep ownership until pre-deselection PCM has drained. A
+                    # retired queue can still carry known drops with its tail.
+                    for identifier, tap in removed.values():
+                        self._tap_states[identifier]["until"] = at
+                        if hasattr(tap, "seal"):
+                            tap.seal(at)
+                for identifier, tap in removed.values():
+                    try:
+                        tap.stop()
+                    except Exception:
+                        logging.getLogger(__name__).exception("Could not finish a deselected source")
+                    finally:
+                        with self.lock:
+                            state = self._tap_states[identifier]
+                            admission = getattr(tap, "writer_queue", None)
+                            if admission is not None and state["track"]:
+                                state["timeline"].flush_loss(
+                                    self.host.session,
+                                    identifier,
+                                    admission,
+                                    at,
+                                    inferred=getattr(tap, "timed_out", False),
+                                )
+                with self.lock:
+                    if self.finished or self.stopping or self.stop_requested.is_set():
+                        raise ProtocolError("state", "No active recording")
+                    if not removed and self.tab_closed and (fallback is not None or restore):
+                        return self.snapshot()  # A tab may close while a fallback device gets ready.
+                    if not removed and pending and self._fallback_cancelled:
                         return self.snapshot()  # The call returned first: nothing is committed.
                     for kind, (_identifier, _tap, state) in prepared.items():
                         if state["error"]:
@@ -1080,8 +1121,6 @@ class BrowserCapture:
                     needed = self.streams.additions(me, others, browser=not lost) + len(prepared)
                     if len(self.host.session.writers) + needed > 64:
                         raise ProtocolError("limit", "A session supports at most 64 sources")
-                    at = change_time(self.host.session, self.elapsed_ms())
-                    removed = {kind: value for kind, value in self.native_taps.items() if kind not in desired}
                     # D58.1: an armed tap (no first buffer yet) has no track to end.
                     ending = {kind: value for kind, value in removed.items() if self._has_track(value[0])}
                     with (
@@ -1122,11 +1161,6 @@ class BrowserCapture:
                     committed = True
                 if "system" in ending and self._mute_observer:
                     self._mute_observer.retire(ending["system"][0], at)
-                for _identifier, tap in removed.values():
-                    try:
-                        tap.stop()
-                    except Exception:
-                        logging.getLogger(__name__).exception("Could not finish a deselected source")
                 if self._mute_observer:
                     self._mute_observer.refresh()
                 self.changed(self, "sources")
