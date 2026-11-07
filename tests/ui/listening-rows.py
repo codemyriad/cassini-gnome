@@ -615,15 +615,17 @@ with tempfile.TemporaryDirectory() as temporary:
             any(value.get_text() == "Dana" for value in labels(row)) for _turn, _words, row in page.bound.values()
         ),
     )
+    # Preview refresh can arrive after transcript rows in a later loop turn.
+    until(window, lambda: any(value.get_text() == "Dana" for value in labels(window.preview)))
     assert any(value.get_text() == "Dana" for value in labels(window.preview))
 
     def preview_chip_names():
         child = window.preview.get_first_child()
         while child is not None and not isinstance(child, Adw.WrapBox):
             child = child.get_next_sibling()
-        assert child is not None
-        return [value.get_text() for value in labels(child)]
+        return [value.get_text() for value in labels(child)] if child is not None else None
 
+    until(window, lambda: preview_chip_names() == ["Dana"])
     assert preview_chip_names() == ["Dana"]
     # A separate fixture retains both listed ids for the overlay-only check.
     listed_merge = replace(
@@ -635,6 +637,7 @@ with tempfile.TemporaryDirectory() as temporary:
             meetings=tuple(listed_merge if m.key == meeting.key else m for m in original_snapshot.meetings),
         )
     )
+    until(window, lambda: preview_chip_names() == ["Dana"])
     assert preview_chip_names() == ["Dana"]
     assert not bar.merge.get_sensitive() and not bar.actions.lookup_action("merge").get_enabled()
     # Only the overlay changes: raw speakers, words and preview turns stay equal.
@@ -648,6 +651,7 @@ with tempfile.TemporaryDirectory() as temporary:
             meetings=tuple(unmerged_preview if m.key == meeting.key else m for m in original_snapshot.meetings),
         )
     )
+    until(window, lambda: preview_chip_names() == ["Claire Lee", "Dana"])
     assert preview_chip_names() == ["Claire Lee", "Dana"]
     until(
         window,
