@@ -238,6 +238,15 @@ class Meeting(MeetingState):
         rank = len(speakers)
         return LibrarySpeaker(resolved, text("common.speaker.unnamed", n=rank + 1), "unnamed", 0, rank)
 
+    @property
+    def preview_speakers(self):
+        """One chip per resolved speaker, including otherwise unlisted preview ids."""
+        resolved = {}
+        for identifier in [s.id for s in self.speakers] + [t.speaker for t in self.preview_turns]:
+            speaker = self.speaker_for(identifier)
+            resolved.setdefault(speaker.id, speaker)
+        return tuple(resolved.values())
+
     def row_texts(self):
         """R11 state-specific meta and second line; no capture labels become names."""
         if self.publication_notice and self.lifecycle == "saved":

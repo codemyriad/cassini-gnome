@@ -918,6 +918,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         return retry
 
     def _preview_signature(self, meeting):
+        speakers = meeting.preview_speakers
         return (
             meeting.key,
             meeting.title,
@@ -928,8 +929,9 @@ class LibraryWindow(Adw.ApplicationWindow):
                 tz=self.tz,
                 received=meeting.origin == "received",
             ),
-            meeting.speakers,
-            tuple(self.get_application().voice_store.has_match(meeting.directory, s.id) for s in meeting.speakers)
+            speakers,
+            tuple(meeting.speaker_for(turn.speaker) for turn in meeting.preview_turns),
+            tuple(self.get_application().voice_store.has_match(meeting.directory, s.id) for s in speakers)
             if meeting.metadata_editable
             else (),
             meeting.preview_turns,
@@ -1220,8 +1222,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         elif meeting.transcript == "damaged":
             self.preview.append(InlineLine("errors.transcriptDamaged.line"))
         chips = Adw.WrapBox(child_spacing=8, line_spacing=8)
-        for speaker in meeting.speakers:
-            chips.append(self._speaker(speaker, chip=True))
+        for speaker in meeting.preview_speakers:
+            chips.append(self._speaker(speaker, chip=True, meeting=meeting))
         self.preview.append(chips)
         actions = Gtk.Box(spacing=10)
         self.play_button = Gtk.Button(
@@ -1260,7 +1262,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         for turn in meeting.preview_turns:
             line = Gtk.Box(spacing=16)
             name = vertical(3, width_request=110, valign=Gtk.Align.START)
-            name.append(self._speaker(meeting.speaker_for(turn.speaker)))
+            name.append(self._speaker(meeting.speaker_for(turn.speaker), meeting=meeting))
             name.append(label(fmt.position(turn.start_ms), "small", "dim-label", xalign=0))
             line.append(name)
             line.append(

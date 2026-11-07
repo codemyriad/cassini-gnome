@@ -172,3 +172,31 @@ def test_cached_turn_speaker_resolves_merge_chain_and_safe_missing_label(tmp_pat
         fallback = replace(meeting, metadata={"speakerMerges": entries}).speaker_for("host")
         assert fallback.name == missing.name
     assert meeting.speakers == (dana,)  # Resolution never mutates the source model.
+
+
+def test_preview_chips_resolve_and_deduplicate_stale_and_unlisted_speakers(tmp_path):
+    from dataclasses import replace
+
+    from cassini_talk.library import LibrarySpeaker, Meeting, PreviewTurn
+    from cassini_talk.strings import text
+
+    old = LibrarySpeaker("host", "Old host", "user", 0, 0)
+    dana = LibrarySpeaker("dana", "Dana", "user", 100, 1)
+    ben = LibrarySpeaker("ben", "Ben", "user", 200, 2)
+    meeting = Meeting(
+        id="preview",
+        directory=tmp_path,
+        title="Meeting",
+        started_at_ms=None,
+        duration_ms=1000,
+        speakers=(old, dana, ben),
+        preview_turns=(PreviewTurn("host", 0, "Hello"), PreviewTurn("missing", 300, "Yes")),
+        metadata={"speakerMerges": [{"from": "host", "into": "dana"}]},
+    )
+    chips = meeting.preview_speakers
+    assert [s.id for s in chips] == ["dana", "ben", "missing"]
+    assert chips[0] is dana and chips[1] is ben
+    assert chips[2].name == text("common.speaker.unnamed", n=4)
+    changed = replace(meeting, metadata={"speakerMerges": [{"from": "host", "into": "ben"}]})
+    assert changed.preview_speakers[0] is ben
+    assert meeting.speakers == (old, dana, ben)

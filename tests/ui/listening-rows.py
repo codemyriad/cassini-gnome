@@ -532,6 +532,18 @@ with tempfile.TemporaryDirectory() as temporary:
     assert announcements[-1] == f"Unidentified voice, {page._speaker_rows['voice-0'][2]}"
     announcements.clear()
     original_snapshot = window._source_snapshot
+    other_row = window.rows.get_first_child()
+    while other_row is not None and (not hasattr(other_row, "meeting") or other_row.meeting.key == meeting.key):
+        other_row = other_row.get_next_sibling()
+    assert other_row is not None
+    window.rows.select_row(other_row)
+    assert window.selected.key != meeting.key
+    library_row = window.rows.get_first_child()
+    while library_row is not None and getattr(getattr(library_row, "meeting", None), "key", None) != meeting.key:
+        library_row = library_row.get_next_sibling()
+    assert library_row is not None
+    window.rows.select_row(library_row)
+    assert window.selected.key == meeting.key
     renamed_meeting = replace(
         meeting,
         speakers=tuple(
@@ -552,7 +564,7 @@ with tempfile.TemporaryDirectory() as temporary:
     # preview and virtualized transcript must resolve them without exceptions.
     stale_merged = replace(
         renamed_meeting,
-        speakers=tuple(s for s in renamed_meeting.speakers if s.id == "voice-0"),
+        speakers=tuple(s for s in renamed_meeting.speakers if s.id in ("host", "voice-0")),
         metadata=merged_metadata,
     )
     window._library_scanned(
@@ -567,11 +579,33 @@ with tempfile.TemporaryDirectory() as temporary:
     assert "Dana" in page.timeline.readout_at(host_turn.start_ms)
     assert all(any(value.get_text() == "Dana" for value in labels(row)) for _turn, _words, row in page.bound.values())
     assert any(value.get_text() == "Dana" for value in labels(window.preview))
+
+    def preview_chip_names():
+        child = window.preview.get_first_child()
+        while child is not None and not isinstance(child, Adw.WrapBox):
+            child = child.get_next_sibling()
+        assert child is not None
+        return [value.get_text() for value in labels(child)]
+
+    assert preview_chip_names() == ["Dana"]
+    # Only the overlay changes: raw speakers, words and preview turns stay equal.
+    # The preview cache must invalidate despite identical raw speaker entries.
+    unmerged_preview = replace(
+        stale_merged, metadata=dict(merged_metadata, speakerMerges=[m for m in merges if m["from"] != "host"])
+    )
+    window._library_scanned(
+        replace(
+            original_snapshot,
+            meetings=tuple(unmerged_preview if m.key == meeting.key else m for m in original_snapshot.meetings),
+        )
+    )
+    assert preview_chip_names() == ["Claire Lee", "Dana"]
     # The single-speaker fixture itself uses the merged words and rebuilt turns.
     merged_words = apply_merges(renamed_meeting.words, merges)
     merged_turns = reading_turns(merged_words)
     one_speaker = replace(
         stale_merged,
+        speakers=tuple(s for s in stale_merged.speakers if s.id == "voice-0"),
         words=merged_words,
         turns=merged_turns,
         listening_turns=speaker_turns(merged_words),
