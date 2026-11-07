@@ -33,6 +33,7 @@ class ListenController(GObject.Object):
         # Target, index or finished changed (not emitted for position ticks).
         "changed": (GObject.SignalFlags.RUN_LAST, None, ()),
         "stopped": (GObject.SignalFlags.RUN_LAST, None, ()),
+        "requested": (GObject.SignalFlags.RUN_LAST, None, ()),
     }
 
     speaker = GObject.Property(type=str, default=None)
@@ -116,7 +117,7 @@ class ListenController(GObject.Object):
                 turn_index = 0
         turn_index = max(0, min(len(self._targets) - 1, turn_index))
         if play:
-            return self._play(turn_index)
+            return self._request(turn_index)
         player.pause()
         self.cued = True
         self._started = turn_index
@@ -124,6 +125,7 @@ class ListenController(GObject.Object):
         player.span_follow = self._follow
         player.seek(self._listening_position)
         self._update(turn_index, finished=False, force=True)
+        self.emit("requested")
         return True
 
     def stop(self):
@@ -165,14 +167,14 @@ class ListenController(GObject.Object):
 
     def next_turn(self):
         target = self.step_target(1)
-        return target is not None and self._play(target)
+        return target is not None and self._request(target)
 
     def previous_turn(self):
         target = self.step_target(-1)
-        return target is not None and self._play(target)
+        return target is not None and self._request(target)
 
     def play_again(self):
-        return self.active and self._play(0)
+        return self.active and self._request(0)
 
     def speaker_step_target(self, order, direction):
         """The speaker Previous (-1) or Next (+1) speaker would play, in pane *order*."""
@@ -222,6 +224,12 @@ class ListenController(GObject.Object):
             self.speaker = speaker
         self.count = len(self._targets)
         self.thaw_notify()
+
+    def _request(self, index):
+        played = self._play(index)
+        if played:
+            self.emit("requested")
+        return played
 
     def _play(self, index):
         self.cued = False
