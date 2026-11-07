@@ -141,13 +141,6 @@ class SignalCalls:
             row = snapshot.get(key[1])
             evidence = row["callEvidence"] if row else {}
             same = row is not None and (row["documentGeneration"], evidence.get("callGeneration")) == key[2:]
-            if (
-                not same
-                and evidence.get("state") == "inactive"
-                and evidence.get("reason") == "callEnded"
-                and evidence.get("callGeneration") is not None
-            ):
-                continue  # An old generation's end cannot change this owner's loss clock.
             if same and evidence.get("state") == "inactive" and evidence.get("reason") == "callEnded":
                 self._drop(key, "callEnded")
             elif row is not None and evidence.get("state") == "active" and not same:
@@ -155,6 +148,9 @@ class SignalCalls:
             elif same and evidence.get("state") == "active":
                 call.lost_at = None  # Route fixed: remoteAudio cannot hand this owner to RTP.
             elif call.lost_at is None:
+                # A full replacement, including another generation's end,
+                # withdraws this association's evidence. It cannot end this
+                # call immediately or extend a grace that has already begun.
                 call.lost_at = now
 
     def advance(self, now, *, enabled):
@@ -178,6 +174,14 @@ class SignalCalls:
                         self.calls.setdefault(key, Association(evidence["adapter"]["name"]))
 
     def suppress(self):
+        # Snapshot storage and policy admission use separate lock holds. Stop
+        # also fences eligible facts committed before that admission, including
+        # while the previous shared capture is retiring.
+        for instance, snapshot in self.snapshots.items():
+            for tab, row in snapshot.items():
+                evidence = row["callEvidence"]
+                if evidence["state"] == "active" and row["remoteAudio"] == "mixed":
+                    self.suppressed.add((instance, tab, evidence["callGeneration"]))
         for instance, tab, _document, generation in self.calls:
             self.suppressed.add((instance, tab, generation))
         self.calls.clear()

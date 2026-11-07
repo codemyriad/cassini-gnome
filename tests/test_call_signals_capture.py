@@ -529,3 +529,78 @@ def test_evidence_lost_during_route_checkpoint_is_revalidated_before_inputs(sign
         assert capture.directory is None and not capture.native_taps and not d.commands
     finally:
         release.set()
+
+
+@pytest.mark.parametrize(
+    "ended",
+    [call(generation="call-B", state="inactive"), call(document="document-reloaded", state="inactive")],
+    ids=["coalesced-other-call-end", "reloaded-document-end"],
+)
+def test_different_generation_end_starts_bounded_loss_without_extending_it(signals, ended):
+    d = signals
+    p = d.open()
+    request("configure", path=d.path, autoRecord=True)
+    d.report(p, [call()])
+    capture = d.started()
+    d.clock[0] = 10
+    d.report(p, [ended])
+    association = next(iter(d.service.signal_calls.calls.values()))
+    assert association.lost_at == 10, "A replacement snapshot must withdraw the absent association's evidence"
+    assert not capture.stop_requested.is_set(), "A different generation's end is not this call's positive end"
+    for now in (40, 90, 129):
+        d.clock[0] = now
+        d.report(p, [ended])
+        stream(capture, "system")
+        assert association.lost_at == 10 and not capture.stop_requested.is_set()
+    d.clock[0] = 130
+    d.service.policy()
+    saved(capture)
+    assert capture.host.session.manifest["state"] == "completed"
+    assert capture.host.session.manifest["events"][-1]["reason"] == "pageGone"
+    assert not d.commands
+
+
+@pytest.mark.parametrize("stage", ["no-owner", "recording", "retiring"])
+def test_stop_all_suppresses_current_mixed_snapshot_before_policy_admission(signals, monkeypatch, stage):
+    d = signals
+    p = d.open()
+    request("configure", path=d.path, autoRecord=True)
+    capture = None
+    if stage != "no-owner":
+        d.report(p, [call()])
+        capture = d.started()
+    # update() commits the full snapshot before calling policy(). Hold only
+    # policy dispatch, so Stop All orders between those real broker operations.
+    blocked, release = threading.Event(), threading.Event()
+    original = d.service.policy
+
+    def deferred():
+        if release.is_set():
+            return original()
+        blocked.set()
+
+    monkeypatch.setattr(d.service, "policy", deferred)
+    try:
+        first = [] if stage == "no-owner" else [call(state="inactive" if stage == "retiring" else "active")]
+        d.report(p, [*first, call(tab=4, generation="call-B")])
+        durable(blocked, "updated snapshot did not reach policy dispatch")
+        assert all(key[1] != 4 for key in d.service.signal_calls.calls), "B must still be waiting for admission"
+        if stage == "retiring":
+            assert d.service.signal_calls.retiring == "callEnded"
+        before = len(d.service.captures)
+        request("stop-all", path=d.path)
+        if capture is not None:
+            saved(capture)
+        release.set()
+        d.service.policy()
+        assert len(d.service.captures) == before, "The user's Stop must fence the not-yet-admitted current call"
+        assert not d.service.signal_calls.calls
+        d.closed(p)
+        replacement = d.open()
+        d.report(replacement, [call(tab=4, generation="call-B")])
+        assert len(d.service.captures) == before, "Pending-call Stop suppression must survive a control reconnect"
+        d.report(replacement, [call(tab=4, generation="call-C")])
+        next_capture = d.started()
+        assert next_capture is not capture and len(d.service.captures) == before + 1
+    finally:
+        release.set()

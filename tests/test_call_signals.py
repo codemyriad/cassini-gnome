@@ -144,17 +144,22 @@ def test_invalid_evidence_cannot_become_a_candidate(change):
         rows(dict(browserInstance="private-profile", sequence=0, tabs=[row]))
 
 
-def test_superseded_generation_end_does_not_change_current_owner_or_loss_deadline():
+def test_superseded_generation_end_starts_grace_without_replacing_or_extending_it():
     model, owner = SignalCalls(), peer()
     model.claim(owner, 0)
     update(model, owner, [call(generation="call-B")])
     model.reserve("current")
     model.started()
     update(model, owner, [call(state="inactive")], 1)
-    assert model.retiring is None and next(iter(model.calls.values())).lost_at is None
+    assert model.retiring is None and next(iter(model.calls.values())).lost_at == 1
+    assert next(iter(model.calls))[3] == "call-B" and model.capture_id == "current"
     update(model, owner, [call(generation="call-B", state="unknown")], 2)
     update(model, owner, [call(state="inactive")], 3)
-    assert next(iter(model.calls.values())).lost_at == 2
+    assert next(iter(model.calls.values())).lost_at == 1
+    model.advance(120, enabled=True)
+    assert model.retiring is None
+    model.advance(121, enabled=True)
+    assert model.retiring == "pageGone" and not model.calls
 
 
 # The merged contract is replayed through GNOME's parser and association policy,

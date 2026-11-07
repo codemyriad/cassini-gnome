@@ -2581,8 +2581,11 @@ class BrowserService:
                 if (
                     quitting_pid is None
                     and reason == "user"
-                    and any(key == self.signal_calls.capture_id for key, _capture in captures)
+                    and (directory is None or any(key == self.signal_calls.capture_id for key, _capture in captures))
                 ):
+                    # Global Stop owns current eligible snapshots even when no
+                    # capture has been admitted yet. A selected unrelated Stop
+                    # must leave those signal associations alone.
                     self.signal_calls.suppress()
 
                 for _key, capture in captures:
