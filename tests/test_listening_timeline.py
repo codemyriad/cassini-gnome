@@ -75,9 +75,26 @@ def test_real_gtk_ticks_do_not_change_scale_height_and_surface_pointer_snaps():
         assert timeline._event(None, event)
         assert seeks == [2000]
         assert timeline._dragging and timeline._snapped
+        # Starting a drag at a tick must not leave the scale stuck at the snap.
+        local.init(left + width * 0.5, 10)
+        ok, surface = scale.compute_point(window, local)
+        assert ok
+        motion = SimpleNamespace(
+            get_event_type=lambda: Gdk.EventType.MOTION_NOTIFY,
+            get_position=lambda: (True, surface.x - dx, surface.y - dy),
+        )
+        timeline._event(None, motion)
+        assert seeks[-1] == 10000
+        assert timeline._dragged
         timeline.set_target(())
         assert not timeline._event(None, event)
-        assert seeks == [2000]
+        assert seeks == [2000, 10000]
     finally:
         timeline.close()
         window.destroy()
+
+
+def test_snap_uses_the_drawn_pixel_center_at_fractional_offsets():
+    turns = (turn(0, "ada", 1290, 1400),)
+    assert snap_start(turns, 19, 0, 100, 10000) == 1290  # drawn center = 13
+    assert snap_start(turns, 19.01, 0, 100, 10000) is None

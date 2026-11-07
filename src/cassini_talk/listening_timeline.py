@@ -36,7 +36,7 @@ def snap_start(turns, x, left, width, duration):
     if not turns or width <= 0 or duration <= 0:
         return None
     closest = min(turns, key=lambda turn: abs(left + turn.start_ms * width / duration - x))
-    distance = abs(left + closest.start_ms * width / duration - x)
+    distance = abs(round(left + closest.start_ms * width / duration) - x)
     return closest.start_ms if distance <= 6 else None
 
 
@@ -61,7 +61,9 @@ class ListeningTimeline(Gtk.Overlay):
         self._turns = None
         self._target = ()
         self._positions, self._speakers = (), ()
-        self._dragging = self._snapped = False
+        self._dragging = self._snapped = self._dragged = False
+        self._press_x = self._press_y = 0
+        self._snap_position = None
         self._x = 0
         scale.update_property([Gtk.AccessibleProperty.LABEL], [text("player.position")])
         scale.set_has_tooltip(True)
@@ -95,7 +97,9 @@ class ListeningTimeline(Gtk.Overlay):
 
     def _geometry(self):
         rect = self.scale.get_range_rect()
-        return rect.x, rect.width
+        start, end = self.scale.get_slider_range()
+        half = (end - start) / 2
+        return rect.x + half, max(0, rect.width - 2 * half)
 
     def position_at(self, x):
         left, width = self._geometry()
@@ -108,7 +112,8 @@ class ListeningTimeline(Gtk.Overlay):
         return True
 
     def _show_drag(self, x):
-        self.readout.set_text(self.readout_at(self.position_at(x)))
+        position = self._snap_position if self._snapped and not self._dragged else self.position_at(x)
+        self.readout.set_text(self.readout_at(position))
         rect = Gdk.Rectangle()
         rect.x, rect.y, rect.width, rect.height = round(x), 0, 1, 1
         self.drag_popup.set_pointing_to(rect)
@@ -128,19 +133,31 @@ class ListeningTimeline(Gtk.Overlay):
             if not ok:
                 return False
             self._x = local.x
+            y = local.y
         if kind == Gdk.EventType.BUTTON_PRESS and event.get_button() == 1:
             self._dragging = True
+            self._dragged = False
+            self._press_x, self._press_y = self._x, y
             left, width = self._geometry()
             start = snap_start(self._target, self._x, left, width, self.scale.get_adjustment().get_upper())
             self._snapped = start is not None
+            self._snap_position = start
             if self._snapped:
                 self.page.player.seek(start)
             self._show_drag(self._x)
             return self._snapped
         if kind == Gdk.EventType.MOTION_NOTIFY and self._dragging:
+            if self._snapped:
+                self._dragged |= self.scale.drag_check_threshold(
+                    round(self._press_x), round(self._press_y), round(self._x), round(y)
+                )
+                if self._dragged:
+                    self.page.player.seek(self.position_at(self._x))
             self._show_drag(self._x)
         if kind == Gdk.EventType.BUTTON_RELEASE and event.get_button() == 1:
             self._dragging = False
+            if self._snapped and self._dragged:
+                self.page.player.seek(self.position_at(self._x))
             self.drag_popup.popdown()
             snapped, self._snapped = self._snapped, False
             return snapped
