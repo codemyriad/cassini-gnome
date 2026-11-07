@@ -202,7 +202,7 @@ with tempfile.TemporaryDirectory() as temporary:
         # Growing transcripts splice stable rows and never drag a paused reader back.
         from dataclasses import replace
 
-        from cassini_talk.meeting_text import DARK_COLOURS, reading_turns
+        from cassini_talk.meeting_text import COLOURS, DARK_COLOURS, reading_turns
         from cassini_talk.portable import Word
 
         timed = tuple(
@@ -266,11 +266,23 @@ with tempfile.TemporaryDirectory() as temporary:
         page.play.emit("clicked")
         style = Adw.StyleManager.get_default()
         style.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-        until(lambda: page._theme is True)
+
+        def transcript_colours(palette):
+            if not page.bound:
+                return False
+            for turn, _words, row in page.bound.values():
+                name = row.get_first_child().get_first_child()
+                caption = name.get_child() if isinstance(name, Gtk.Button) else name
+                expected = palette[page.meeting.speaker_for(turn.speaker).colour_index % len(palette)]
+                if expected not in caption.get_label():
+                    return False
+            return True
+
+        until(lambda: style.get_dark() and transcript_colours(DARK_COLOURS))
         assert page._colour(meeting.speakers[0]) == DARK_COLOURS[0]
         assert any(DARK_COLOURS[0] in value for value in labels(page.speakers))
         style.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
-        until(lambda: page._theme is False)
+        until(lambda: not style.get_dark() and transcript_colours(COLOURS))
     page.update(meeting)
     assert page._companion.get_visible()
     page.set_connected(True)

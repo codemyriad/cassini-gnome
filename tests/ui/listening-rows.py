@@ -20,7 +20,9 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
+gi.require_version("GdkX11", "4.0")
+gi.require_version("Graphene", "1.0")
+from gi.repository import Adw, GdkX11, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
@@ -263,6 +265,16 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, lambda: rebuilt and window.player._prerolled and len(page._speaker_rows) == 14)
     # Widget assertions belong in this initialized, display-backed journey.
     bar = page.listening_bar
+    before_ticks = page.timeline.measure(Gtk.Orientation.VERTICAL, -1)
+    assert window.listen.start("host", 0, play=False)
+    assert len(page.timeline._target) == 127
+    assert page.timeline.measure(Gtk.Orientation.VERTICAL, -1) == before_ticks
+    marks = Gtk.Snapshot.new()
+    page.timeline.draw_ticks(marks, page.seek.get_height())
+    nodes = marks.to_node()
+    assert nodes.get_n_children() == 127
+    assert all(nodes.get_child(i).get_bounds().get_width() == 3 for i in range(127))
+    assert all(nodes.get_child(i).get_bounds().get_height() == 8 for i in range(127))
     count = len(window.listen.turns_of("voice-0"))
     assert window.listen.start("voice-0", 0, play=False)
     until(window, lambda: bar.get_child_revealed())
@@ -344,7 +356,8 @@ with tempfile.TemporaryDirectory() as temporary:
         lambda: "voice-10" in page._speaker_rows and page._speaker_future is None and not page.split.get_collapsed(),
     )
     assert window.listen.start("voice-10", 0, play=False)
-    page.merge_speaker("voice-10", "host")
+    page.listening_bar.stop.grab_focus()
+    focus_event(window, lambda: page.listening_bar.buttons["again"], lambda: page.merge_speaker("voice-10", "host"))
     until(
         window,
         lambda: "voice-10" not in page._speaker_rows and window.listen.speaker == "voice-11" and window.listen.cued,
@@ -395,6 +408,101 @@ with tempfile.TemporaryDirectory() as temporary:
     assert play.get_realized()
     until(window, lambda: window.listen.active)
     assert window.listen.speaker == "voice-12" and page.speakers_dialog is dialog and dialog.closed
+    timeline = page.timeline
+    assert timeline.readout_at(34150) == "00:00:34"
+    assert timeline.readout_at(34050) == text("player.timeline.tooltip", position="00:00:34", name="Unidentified voice")
+    assert len(timeline._target) == 1 and timeline._target[0].start_ms == 34000
+    assert window.get_focus() is play
+    window.player.pause()
+    left, track_width = timeline._geometry()
+    point = Graphene.Point()
+    point.init(round(left + 34000 * track_width / 40000) + 4, page.seek.get_height() / 2)
+    ok, pointer = page.seek.compute_point(window, point)
+    assert ok
+    dx, dy = window.get_surface_transform()
+    xid = str(GdkX11.X11Surface.get_xid(window.get_surface()))
+    pointer_events = []
+    for signal in ("drag-begin", "drag-update", "drag-end", "cancel"):
+        timeline.gesture.connect(
+            signal, lambda _g, *args, signal=signal: pointer_events.append((signal, args, timeline._dragging))
+        )
+    # Real GDK pointer delivery, four pixels from the drawn tick. Without the
+    # capture handler a normal range click would seek beyond this exact start.
+    subprocess.run(
+        [
+            "xdotool",
+            "mousemove",
+            "--window",
+            xid,
+            str(round(pointer.x + dx)),
+            str(round(pointer.y + dy)),
+            "click",
+            "1",
+        ],
+        check=True,
+        timeout=5,
+    )
+    until(window, lambda: window.player.position == 34000 and not timeline._dragging)
+    assert window.listen.active and not window.player.playing
+    # Complete the timestamp/slider allocation before constructing a second
+    # native sequence. Frame notifications, not a delay, establish readiness.
+    frames = []
+    window.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
+    until(window, lambda: len(frames) >= 2)
+    left, track_width = timeline._geometry()
+    point.init(round(left + 34000 * track_width / 40000) + 4, page.seek.get_height() / 2)
+    ok, pointer = page.seek.compute_point(window, point)
+    assert ok
+    end_x = round(left + track_width / 2)
+    end = Graphene.Point()
+    end.init(end_x, page.seek.get_height() / 2)
+    ok, endpoint = page.seek.compute_point(window, end)
+    assert ok
+    subprocess.run(
+        [
+            "xdotool",
+            "mousemove",
+            "--window",
+            xid,
+            str(round(pointer.x + dx)),
+            str(round(pointer.y + dy)),
+            "mousedown",
+            "1",
+            "mousemove",
+            "--window",
+            xid,
+            str(round(endpoint.x + dx)),
+            str(round(endpoint.y + dy)),
+            "mouseup",
+            "1",
+        ],
+        check=True,
+        timeout=5,
+    )
+    expected = round((end_x - left) * 40000 / track_width)
+    try:
+        until(window, lambda: window.player.position == expected and not timeline._dragging)
+    except AssertionError:
+        print(
+            dict(
+                expected=expected,
+                position=window.player.position,
+                dragging=timeline._dragging,
+                dragged=timeline._dragged,
+                press=timeline._press_x,
+                x=timeline._x,
+                endpoint=end_x,
+                geometry=timeline._geometry(),
+                events=pointer_events,
+            ),
+            flush=True,
+        )
+        raise
+    assert window.listen.active and not window.player.playing
+    assert not timeline.drag_popup.get_visible()
+    window.player.seek(34000)
+    assert window.get_focus() is page.seek
+    play.grab_focus()
     bar = page.listening_bar
     until(window, lambda: bar.get_child_revealed())
     assert bar.name.get_text() == "Unidentified voice"
@@ -425,18 +533,54 @@ with tempfile.TemporaryDirectory() as temporary:
     assert announcements[-1] == f"Unidentified voice, {page._speaker_rows['voice-0'][2]}"
     announcements.clear()
     original_snapshot = window._source_snapshot
+    other_row = window.rows.get_first_child()
+    while other_row is not None and (not hasattr(other_row, "meeting") or other_row.meeting.key == meeting.key):
+        other_row = other_row.get_next_sibling()
+    assert other_row is not None
+    window.rows.select_row(other_row)
+    assert window.selected.key != meeting.key
+    library_row = window.rows.get_first_child()
+    while library_row is not None and getattr(getattr(library_row, "meeting", None), "key", None) != meeting.key:
+        library_row = library_row.get_next_sibling()
+    assert library_row is not None
+    window.rows.select_row(library_row)
+    assert window.selected.key == meeting.key
     renamed_meeting = replace(
         meeting,
         speakers=tuple(
             replace(speaker, name="Dana") if speaker.id == "voice-0" else speaker for speaker in meeting.speakers
         ),
     )
+    # Renaming must preserve transcript model items and focused header widgets.
+    splices, headers, input_seen = [], [], []
+    model_item = page.store.get_item(0)
+    splice_handler = page.store.connect("items-changed", lambda *_: splices.append(True))
+    refresh_header = page._refresh_header
+
+    def observed_header(turn, row):
+        headers.append(turn.index)
+        if len(headers) == 1:
+            GLib.idle_add(lambda: input_seen.append(len(headers)) or False, priority=GLib.PRIORITY_DEFAULT)
+        return refresh_header(turn, row)
+
+    page._refresh_header = observed_header
     window._library_scanned(
         replace(
             original_snapshot,
             meetings=tuple(renamed_meeting if m.key == meeting.key else m for m in original_snapshot.meetings),
         )
     )
+    until(
+        window,
+        lambda: all(
+            any(value.get_text() == "Dana" for value in labels(row))
+            for turn, _words, row in page.bound.values()
+            if turn.speaker == "voice-0"
+        ),
+    )
+    assert input_seen and 0 < input_seen[0] < len(headers), "Header refresh monopolized the main loop"
+    assert not splices and page.store.get_item(0) is model_item
+    page._refresh_header = refresh_header
     assert bar.name.get_text() == "Dana" and not announcements
     # A single-speaker meeting exposes Name but never an empty Merge menu.
     merges = [{"from": s.id, "into": "voice-0"} for s in renamed_meeting.speakers if s.id != "voice-0"]
@@ -454,15 +598,85 @@ with tempfile.TemporaryDirectory() as temporary:
             meetings=tuple(stale_merged if m.key == meeting.key else m for m in original_snapshot.meetings),
         )
     )
-    until(window, lambda: page.bound and not page._rows_rebuilt_tick)
+    assert "host" not in {speaker.id for speaker in stale_merged.speakers}
+    assert any(turn.speaker == "host" for turn in stale_merged.preview_turns)
+    # Exercise a fresh real GTK bind with a genuinely absent speaker id.
+    # This is separate from the rescan's no-splice/widget-retention guarantee.
+    factory = page.list.get_factory()
+    page.list.set_factory(None)
+    page.list.set_factory(factory)
+    until(window, lambda: page.bound and any(turn.speaker == "host" for turn, _words, _row in page.bound.values()))
     assert any(turn.speaker == "host" for turn, _words, _row in page.bound.values())
-    assert all(any(value.get_text() == "Dana" for value in labels(row)) for _turn, _words, row in page.bound.values())
+    host_turn = next(t for t in stale_merged.listening_turns if t.speaker == "host")
+    assert "Dana" in page.timeline.readout_at(host_turn.start_ms)
+    until(
+        window,
+        lambda: all(
+            any(value.get_text() == "Dana" for value in labels(row)) for _turn, _words, row in page.bound.values()
+        ),
+    )
+    # Preview refresh can arrive after transcript rows in a later loop turn.
+    until(window, lambda: any(value.get_text() == "Dana" for value in labels(window.preview)))
     assert any(value.get_text() == "Dana" for value in labels(window.preview))
+
+    def preview_chip_names():
+        child = window.preview.get_first_child()
+        while child is not None and not isinstance(child, Adw.WrapBox):
+            child = child.get_next_sibling()
+        return [value.get_text() for value in labels(child)] if child is not None else None
+
+    until(window, lambda: preview_chip_names() == ["Dana"])
+    assert preview_chip_names() == ["Dana"]
+    # A separate fixture retains both listed ids for the overlay-only check.
+    listed_merge = replace(
+        stale_merged, speakers=tuple(s for s in renamed_meeting.speakers if s.id in ("host", "voice-0"))
+    )
+    window._library_scanned(
+        replace(
+            original_snapshot,
+            meetings=tuple(listed_merge if m.key == meeting.key else m for m in original_snapshot.meetings),
+        )
+    )
+    until(window, lambda: preview_chip_names() == ["Dana"])
+    assert preview_chip_names() == ["Dana"]
+    assert not bar.merge.get_sensitive() and not bar.actions.lookup_action("merge").get_enabled()
+    # Only the overlay changes: raw speakers, words and preview turns stay equal.
+    # Both preview and retained transcript headers must invalidate.
+    unmerged_preview = replace(
+        listed_merge, metadata=dict(merged_metadata, speakerMerges=[m for m in merges if m["from"] != "host"])
+    )
+    window._library_scanned(
+        replace(
+            original_snapshot,
+            meetings=tuple(unmerged_preview if m.key == meeting.key else m for m in original_snapshot.meetings),
+        )
+    )
+    until(window, lambda: preview_chip_names() == ["Claire Lee", "Dana"])
+    assert preview_chip_names() == ["Claire Lee", "Dana"]
+    until(
+        window,
+        lambda: all(
+            any(value.get_text() == "Claire Lee" for value in labels(row))
+            for turn, _words, row in page.bound.values()
+            if turn.speaker == "host"
+        ),
+    )
+    assert not splices and page.store.get_item(0) is model_item
+    page.store.disconnect(splice_handler)
+    section = bar.merge_model.get_item_link(0, Gio.MENU_LINK_SECTION)
+    assert section is not None and section.get_n_items() == 1
+    assert (
+        section.get_item_attribute_value(0, "label", None).unpack()
+        == f"Claire Lee, {text('speakers.mergeInto.speaksBefore')}"
+    )
+    assert bar.merge.get_sensitive() and bar.actions.lookup_action("merge").get_enabled()
+
     # The single-speaker fixture itself uses the merged words and rebuilt turns.
     merged_words = apply_merges(renamed_meeting.words, merges)
     merged_turns = reading_turns(merged_words)
     one_speaker = replace(
         stale_merged,
+        speakers=tuple(s for s in stale_merged.speakers if s.id == "voice-0"),
         words=merged_words,
         turns=merged_turns,
         listening_turns=speaker_turns(merged_words),
@@ -485,6 +699,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not bar.excerpt.has_css_class("dim-label")
     assert bar.excerpt.get_use_markup()
     window.listen.stop()
+    assert page.timeline._target == ()
     # Read-only rows retain Play, but have no naming action.
     old_play = page._speaker_rows["voice-0"][1]
     generation = len(rebuilt)
