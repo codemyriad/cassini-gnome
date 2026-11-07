@@ -241,6 +241,8 @@ def broker_command(socket_path):
     """
     target = deployment()
     _, _, flatpak, _ = host_info()
+    # D45.4: no Flatpak ships. This inner broker still discards stderr;
+    # wiring a sink inside its detached sandbox is separate work.
     return detached_command(
         [
             flatpak,

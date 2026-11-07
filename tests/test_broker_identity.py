@@ -30,10 +30,14 @@ def private(tmp_path, monkeypatch):
         HOME=tmp_path / "home",
         XDG_CONFIG_HOME=tmp_path / "config",
         XDG_DATA_HOME=tmp_path / "data",
+        XDG_STATE_HOME=tmp_path / "state",
         XDG_RUNTIME_DIR=tmp_path / "run",
         CASSINI_LIBRARY_DIR=tmp_path / "Library",
     ).items():
         monkeypatch.setenv(key, str(value))
+    from cassini_talk import broker_logging
+
+    monkeypatch.setattr(broker_logging, "journal_stream", lambda: None)
     return tmp_path / "b.sock"
 
 
@@ -122,12 +126,12 @@ def test_recording_legacy_or_unrelated_socket_owner_is_never_signalled(private, 
         assert status["brokerStale"] and status["statuses"][0]["recording"] is active
 
 
-def test_newer_idle_protocol_retires_a_stale_payload_without_signals(tmp_path, monkeypatch):
+def test_newer_idle_protocol_retires_a_stale_payload_without_signals(private, monkeypatch):
     from test_browser_service import stop_broker
 
-    service = browser_service.BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
+    service = browser_service.BrowserService(private.with_suffix(".json"), notifier=lambda *_: None)
     service.identity["buildId"] = "old-build"
-    path, ready = tmp_path / "b.sock", threading.Event()
+    path, ready = private, threading.Event()
     thread = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
     thread.start()
     assert ready.wait(BOUND)

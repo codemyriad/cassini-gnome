@@ -402,6 +402,8 @@ def test_a_broker_that_is_there_but_silent_keeps_the_capture_until_the_bound(bro
     reply is a broker that did not answer, not one that is gone: both caches
     keep the live answer, and Library, Record and Quit with them, until the
     bound from that answer, then read idle."""
+    import subprocess
+
     from cassini_talk import browser_service
     from cassini_talk.capture_activity import UNANSWERED_BOUND
 
@@ -419,7 +421,7 @@ def test_a_broker_that_is_there_but_silent_keeps_the_capture_until_the_bound(bro
         # The app's own read ensures the broker first: EAGAIN is no absence, so
         # it spawns one, which cannot take over (here: cannot be spawned).
         monkeypatch.setattr(browser_service, "service_path", lambda: stalled)
-        monkeypatch.setattr(browser_service.subprocess, "Popen", no_spawn)
+        monkeypatch.setattr(subprocess, "Popen", no_spawn)
         for at, watch_failure in (
             (1, frozen),
             (2, b.silent),
