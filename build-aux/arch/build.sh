@@ -73,7 +73,7 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
   fi
 
   # Install and smoke-test.
-  retry pacman -U --noconfirm "$pkg"
+  CASSINI_TEST_PACKAGE_MIGRATION=1 python3 -I /in/build-aux/ci/package_migration.py arch "$pkg"
   test -x /usr/bin/cassini-talk
   cassini-talk --help >/dev/null   # runs the installed launcher headless
   python3 -I /in/build-aux/smoke-installed.py

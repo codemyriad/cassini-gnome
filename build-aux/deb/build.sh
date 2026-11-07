@@ -56,7 +56,7 @@ container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/log
   test -f "../$DEB"
   lintian --info --fail-on error "../$DEB"
   retry apt-get update -qq
-  retry apt-get install -y --no-install-recommends "../$DEB"
+  CASSINI_TEST_PACKAGE_MIGRATION=1 python3 -I /in/build-aux/ci/package_migration.py deb "../$DEB"
   cassini-talk --help >/dev/null
   python3 -I /in/build-aux/smoke-installed.py
   python3 -I /in/build-aux/ci/validate_installed.py "$1"
