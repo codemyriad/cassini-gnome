@@ -1190,3 +1190,62 @@ def test_announced_page_microphone_never_interrupts_a_native_me_recording(server
         assert saved["state"] == "completed" and "problemKind" not in saved
     finally:
         client.close()
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+@pytest.mark.parametrize("audio_first", [False, True])
+@pytest.mark.parametrize("acknowledged", [False, True])
+def test_snapshot_keeps_host_start_origin_after_toggle_and_control_disconnect(
+    server, automatic, audio_first, acknowledged
+):
+    from test_browser_service import browser, wait_for
+
+    from cassini_talk.browser_service import read_packet, send_packet
+
+    service, path, _root = server
+    connection, control = browser(path, "origin-test")
+    client = BrowserAudioProxy(path=path)
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            if automatic:
+                request("configure", path=path, autoRecord=True)
+                future = None
+            else:
+                identifier = request(path=path)["meetings"][0]["id"]
+                future = pool.submit(request, "start", path=path, id=identifier)
+            command = read_packet(control)
+            assert command["action"] == "start"
+            if audio_first:
+                start(client, "origin")
+            status = dict(recording=True, tabId=3, captureId="origin", automatic=not automatic)
+            if acknowledged:
+                send_packet(control, dict(type="result", requestId=command["requestId"], ok=True, status=status))
+                if future:
+                    future.result(2)
+            else:
+                send_packet(control, dict(type="status", **status))
+            if not audio_first:
+                start(client, "origin")
+            wait_for(lambda: service._capture_automatic.get("origin") is automatic)
+            request("configure", path=path, autoRecord=not automatic)
+            assert (
+                next(s for s in request(path=path)["statuses"] if s.get("captureId") == "origin")["automatic"]
+                is automatic
+            )
+            if not acknowledged:
+                # Release the held response only after proving origin is
+                # available without it (including after the toggle).
+                send_packet(control, dict(type="result", requestId=command["requestId"], ok=True, status=status))
+                if future:
+                    future.result(2)
+            control.close()
+            connection.close()
+        wait_for(lambda: not service.browsers)
+        assert (
+            next(s for s in service.snapshot()["statuses"] if s.get("captureId") == "origin")["automatic"] is automatic
+        )
+        client.handle(dict(type="stop", captureId="origin"))
+    finally:
+        client.close()
+        control.close()
+        connection.close()

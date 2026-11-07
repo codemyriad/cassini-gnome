@@ -163,3 +163,128 @@ def test_stopping_browser_capture_stays_active_while_publication_finishes(tmp_pa
     finally:
         close(comfort)
         capture.finish()
+
+
+@pytest.mark.parametrize("visible", [False, True])
+@pytest.mark.parametrize("automatic", [False, True])
+def test_committed_browser_loss_alerts_once_and_saved_details_keep_the_cause(tmp_path, monkeypatch, visible, automatic):
+    from test_browser_capture import Tap
+
+    from cassini_talk.browser_capture import BrowserCapture
+    from cassini_talk.capture_details import read_details
+    from cassini_talk.strings import text
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Tap)
+    now = [1000]
+    capture.elapsed_ms = lambda: now[0]
+    capture.start(dict(type="start", captureId="alert", timelineOriginMs=1, microphone=True))
+    capture.handle(dict(type="track", id="voice", kind="remote", sampleRate=48000, channels=1))
+    capture.handle(dict(type="audio", id="voice", sequence=0, offsetMs=0, pcm="AQACAA=="))
+    status = dict(recording=True, automatic=automatic, path=str(capture.directory))
+    app = application({}, browser=dict(statuses=[status]))
+    app.get_windows = lambda: [SimpleNamespace(get_visible=lambda: visible)]
+    comfort = RecordingComfort(app, automatic=False)
+    alert = "recording-fallback-" + capture.directory.name
+
+    def observe():
+        current = live_meeting(capture.directory)
+        comfort.known[current.key] = current
+        comfort.tick()
+        return current
+
+    try:
+        observe()
+        assert alert not in app.notifications
+        # The actual producer Stop commits a live fallback, rather than ending
+        # the recording. The notification reads that checkpoint from disk.
+        capture.handle(dict(type="stop", failureReason="lost", cause="frameError", captureId="alert"))
+        identifier, tap = capture.native_taps["system"]
+        track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
+        tap.append(bytes(9600), track["startOffsetMs"])
+        meeting = observe()
+        assert comfort.sources(meeting).fallback
+        assert not capture.finished
+        assert app.notifications.count(alert) == int(automatic)
+        observe()
+        comfort._fallback_notification(meeting)
+        assert app.notifications.count(alert) == int(automatic)
+        # A restored capture can lose the browser again: alert once for each
+        # committed event rather than only once during the whole recording.
+        now[0] = 1200
+        capture.handle(dict(type="audio", id="voice", sequence=1, offsetMs=1200, pcm="AQACAA=="))
+        capture.restore()
+        assert not comfort.sources(observe()).fallback
+        now[0] = 1300
+        capture.handle(dict(type="stop", failureReason="lost", cause="frameClosed", captureId="alert"))
+        identifier, tap = capture.native_taps["system"]
+        track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
+        tap.append(bytes(9600), track["startOffsetMs"])
+        meeting = observe()
+        assert app.notifications.count(alert) == 2 * int(automatic)
+        # Saved Details already has the cause-specific copy; normal Stop does
+        # not produce another loss notification.
+        now[0] = 1500
+        capture.handle(dict(type="stop", reason="user", captureId="alert"))
+        saved = live_meeting(capture.directory, "saved")
+        status["recording"] = False
+        comfort._fallback_notification(saved)
+        assert app.notifications.count(alert) == 2 * int(automatic)
+        assert text("details.othersFallback.cause.frameError") in read_details(saved).plain_text()
+        assert text("details.othersFallback.cause.frameClosed") in read_details(saved).plain_text()
+    finally:
+        close(comfort)
+        capture.stop()
+
+
+@pytest.mark.parametrize("source,reason", [("browser", "start"), ("system", "missing"), ("system", "user")])
+def test_automatic_capture_without_committed_loss_never_alerts(tmp_path, monkeypatch, source, reason):
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    capture = session(tmp_path, "No browser loss", "chromium")
+    with capture.change([dict(type="othersSource", source=source, reason=reason, atMs=0)]):
+        pass
+    app = application({}, browser=dict(statuses=[dict(recording=True, automatic=True, path=str(capture.directory))]))
+    comfort = RecordingComfort(app, automatic=False)
+    try:
+        comfort._fallback_notification(live_meeting(capture.directory))
+        capture.finish(reason="user")
+        comfort._fallback_notification(live_meeting(capture.directory, "saved"))
+        assert app.notifications == []
+    finally:
+        close(comfort)
+        if not capture.finished:
+            capture.finish()
+
+
+@pytest.mark.parametrize("commit", [False, True])
+def test_loss_alert_waits_for_checkpoint_and_failed_change_stays_quiet(tmp_path, monkeypatch, commit):
+    from contextlib import nullcontext
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    capture = session(tmp_path, "Checkpointed loss", "chromium")
+    with capture.change([dict(type="selection", me=True, others=True, reason="start", atMs=0)]):
+        pass
+    app = application({}, browser=dict(statuses=[dict(recording=True, automatic=True, path=str(capture.directory))]))
+    comfort = RecordingComfort(app, automatic=False)
+    try:
+        with (
+            nullcontext() if commit else pytest.raises(OSError, match="checkpoint refused"),
+            capture.change([dict(type="othersSource", source="system", reason="lost", atMs=100)]),
+        ):
+            # The proposed in-memory event is not the on-disk checkpoint.
+            comfort._fallback_notification(live_meeting(capture.directory))
+            assert app.notifications == []
+            if not commit:
+                raise OSError("checkpoint refused")
+        comfort._fallback_notification(live_meeting(capture.directory))
+        assert len(app.notifications) == int(commit)
+        if commit:
+            with capture.change([dict(type="othersSource", source="browser", reason="restored", atMs=100)]):
+                pass
+            with capture.change([dict(type="othersSource", source="system", reason="lost", atMs=100)]):
+                pass
+            comfort._fallback_notification(live_meeting(capture.directory))
+            assert len(app.notifications) == 2, "Equal event timestamps must not collapse two losses"
+    finally:
+        close(comfort)
+        capture.finish()

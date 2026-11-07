@@ -209,6 +209,13 @@ with tempfile.TemporaryDirectory() as tmp:
             child = child.get_next_sibling()
         return result
 
+    assert text("errors.othersFallback.line") in texts(page.lines), "Persistent fallback info missing"
+    fallback_line = next(
+        child
+        for child in (page.lines.get_first_child(), page.lines.get_last_child())
+        if text("errors.othersFallback.line") in texts(child)
+    )
+    assert fallback_line.has_css_class("info-line"), "Fallback is information, not an amber refusal"
     assert text("recording.systemMuted") in texts(page.lines), "Muted output warning missing on Recording page"
     assert any(c["muted"].get_visible() for c in window._capture_headers), "Muted output warning missing on live pill"
     unchanged = page.lines.get_first_child()
@@ -217,6 +224,7 @@ with tempfile.TemporaryDirectory() as tmp:
     app.comfort.sources = original_sources
     page.update_status()
     window._update_live()
+    assert text("errors.othersFallback.line") not in texts(page.lines), "Restored browser kept stale fallback info"
     assert text("recording.systemMuted") not in texts(page.lines), "Browser capture inherited system mute"
     assert not any(c["muted"].get_visible() for c in window._capture_headers)
     # Closing/switching flushes a pending keystroke edit before debounce.
@@ -291,6 +299,52 @@ with tempfile.TemporaryDirectory() as tmp:
     window.monitor.capture_activity = lambda: {}
     window.monitor.refresh_now()
     until(lambda: not window._pending)
+    # A producer's lost Stop reaches the real persistent info line and desktop
+    # notification over the private bus, even with the Recording page visible.
+    from test_browser_capture import Tap
+
+    from cassini_talk.browser_capture import BrowserCapture
+    from cassini_talk.recording_details import live_meeting
+
+    window.monitor.close()
+    capture = BrowserCapture(lambda *_: None, parent=Path(os.environ["CASSINI_LIBRARY_DIR"]), tap_factory=Tap)
+    capture.elapsed_ms = lambda: 1000
+    capture.start(dict(type="start", captureId="visible-loss", timelineOriginMs=1, microphone=True))
+    capture.handle(dict(type="track", id="voice", kind="remote", sampleRate=48000, channels=1))
+    capture.handle(dict(type="audio", id="voice", sequence=0, offsetMs=0, pcm="AQACAA=="))
+    app._browser_snapshot = dict(statuses=[dict(recording=True, automatic=True, path=str(capture.directory))])
+    current = live_meeting(capture.directory)
+    app.comfort.known[current.key] = current
+    window.open_meeting(current)
+    page = window.recording_page
+    alert = "recording-fallback-" + current.key
+    assert text("errors.othersFallback.line") not in texts(page.lines)
+    assert alert not in services.notifications
+    capture.handle(dict(type="stop", failureReason="lost", cause="frameError", captureId="visible-loss"))
+    identifier, tap = capture.native_taps["system"]
+    track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
+    tap.append(bytes(9600), track["startOffsetMs"])
+    app.comfort.tick()
+    until(lambda: text("errors.othersFallback.line") in texts(page.lines) and alert in services.notifications)
+    assert window.get_visible()
+    assert services.notifications[alert]["title"] == text("errors.othersFallback.line")
+    assert services.notifications[alert]["body"] == current.title
+    info = page.lines.get_last_child()
+    page.update_status()
+    app.comfort.tick()
+    assert page.lines.get_last_child() is info, "Fallback info must persist across unchanged observations"
+    current = live_meeting(capture.directory)
+    page.update(current)
+    window.show_recording_details()
+    dialog = window.recording_details_dialog
+    expected = text("details.othersFallback.cause.frameError")
+    until(lambda: dialog.report and expected in dialog.report.plain_text())
+    dialog.close()
+    assert sum(item["id"] == alert for item in services.history) == 1, "Polling repeated the loss alert"
+    capture.stop(at_ms=1500)
+    app._browser_snapshot = dict(statuses=[])
+    app.comfort._fallback_notification(live_meeting(capture.directory, "saved"))
+    assert sum(item["id"] == alert for item in services.history) == 1, "Normal Stop sent another loss alert"
     window.close()
     app.comfort.close()
     # No Library window is required for the Browser window's controller state
@@ -364,5 +418,5 @@ with tempfile.TemporaryDirectory() as tmp:
 
 services.close()
 print(
-    "PASS portal binding/denial/activation, GNotification/Open, Recording page without notes, title edit/flush/retry, preserved old notes, silence and disk line"
+    "PASS portal binding/denial/activation, GNotification/Open, Recording page without notes, title edit/flush/retry, preserved old notes, silence/disk, committed fallback info/one-shot notification/Details"
 )
