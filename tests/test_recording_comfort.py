@@ -15,6 +15,7 @@ except ValueError:
 from durable import durable  # noqa: E402
 from gi.repository import GLib  # noqa: E402
 from test_browser_capture import pending_automatic_reconnect, server  # noqa: E402, F401
+from test_call_signals_capture import signals  # noqa: E402, F401
 
 from cassini_talk.recording_comfort import RecordingComfort  # noqa: E402
 from cassini_talk.recording_details import live_meeting  # noqa: E402
@@ -312,3 +313,70 @@ def test_recovered_automatic_start_still_alerts_when_browser_audio_is_lost(
         assert app.notifications == ["recording-fallback-" + meeting.key]
     finally:
         close(comfort)
+
+
+def test_signal_owned_native_broker_capture_is_visible_without_browser_loss_alert(
+    signals,  # noqa: F811
+):
+    from test_call_signals import call
+
+    from cassini_talk.browser_service import request
+
+    d = signals
+    p = d.open()
+    request("configure", path=d.path, autoRecord=True)
+    d.report(p, [call()])
+    capture = d.started()
+    app = application({}, browser=d.service.snapshot())
+    comfort = RecordingComfort(app, automatic=False)
+    meeting = live_meeting(capture.directory)
+    comfort.known[meeting.key] = meeting
+    try:
+        assert meeting.capture_source == "gnome"
+        assert meeting.key in comfort.active()
+        assert comfort.sources(meeting).source == "system" and not comfort.sources(meeting).fallback
+        comfort._fallback_notification(meeting)
+        assert not app.notifications
+    finally:
+        close(comfort)
+
+
+def test_pending_signal_start_is_visible_to_capture_controls_before_its_folder_exists(
+    signals,  # noqa: F811
+    monkeypatch,
+):
+    import threading
+
+    from test_call_signals import call
+
+    from cassini_talk.browser_service import request
+    from cassini_talk.capture_guard import capture_targets
+
+    d = signals
+    entered, release, finished = (threading.Event() for _ in range(3))
+    original = d.service._start_signal
+
+    def held(*args):
+        entered.set()
+        durable(release, "test did not release pending input startup")
+        try:
+            return original(*args)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(d.service, "_start_signal", held)
+    p = d.open()
+    request("configure", path=d.path, autoRecord=True)
+    try:
+        d.report(p, [call()])
+        durable(entered, "signal Start did not reserve its owner")
+        app = application({}, browser=d.service.snapshot())
+        assert capture_targets(app) == ([], True)
+        request("stop-all", path=d.path)
+        capture = next(iter(d.service.captures.values()))
+        assert capture.stop_requested.is_set()
+        release.set()
+        durable(finished, "globally stopped signal Start did not finish")
+        assert not capture.native_taps and capture.directory is None
+    finally:
+        release.set()

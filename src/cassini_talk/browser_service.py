@@ -333,6 +333,11 @@ class BrowserConnection(Transport):
         self.pending = {}
         self.commands = {}  # bounded correlation history for late results
         self.command_serial = 0
+        self.signals_instance = None
+        self.signals_configured = False
+        self.signals_waiting = False
+        self.signals_sequence = -1
+        self.signal_rows = {}
         self.stop_attempted = set()
         self.attempted = set()
         self.connected_at = time.monotonic()
@@ -433,6 +438,10 @@ class BrowserService:
         self._audio_transports = set()
         self.recordings = []
         self.captures = {}
+        from .call_signals import SignalCalls
+
+        self.signal_calls = SignalCalls()
+        self._signal_condition = threading.Condition(self.lock)
         # Capture origin belongs to the host command, not extension status or
         # the current auto-record toggle. Keep it across control reconnects.
         self._capture_automatic = {}
@@ -937,6 +946,15 @@ class BrowserService:
             captures = list(self.captures.values())
         owned = {c.capture_id: c.snapshot() for c in captures if c.directory is not None}
         with self.lock:
+            identifier = self.signal_calls.capture_id
+            reserved = self.captures.get(identifier)
+            if reserved is not None and not reserved.finished and identifier not in owned:
+                # A reservation already owns Stop/quit semantics, even before
+                # its private folder exists. Never hide this startup from app controls.
+                retiring = bool(self.signal_calls.retiring or reserved.stop_requested.is_set())
+                owned[identifier] = dict(
+                    captureId=identifier, path=None, recording=not retiring, stopping=retiring, starting=True
+                )
             for identifier, capture in owned.items():
                 capture["automatic"] = self._capture_automatic.get(identifier, False)
             meetings, statuses, seen = [], [], set()
@@ -955,6 +973,8 @@ class BrowserService:
                     statuses.append(value)
                 for meeting in browser.meetings.values():
                     if owners[(browser.browser_instance or browser.id, meeting["tabId"])] is not browser:
+                        continue
+                    if browser.signal_rows.get(meeting["tabId"], {}).get("remoteAudio") == "mixed":
                         continue
                     value = next((v for v in statuses if v["id"] == self._meeting_id(browser, meeting["tabId"])), {})
                     meetings.append(
@@ -984,6 +1004,16 @@ class BrowserService:
                 protocol=2,
                 connectedBrowsers=sum(b.hello_seen and b.status_seen for b in self.browsers.values()),
                 appTooOld=self.app_too_old is not None and self.clock() - self.app_too_old <= APP_TOO_OLD_S,
+                callSignals=[
+                    dict(
+                        browserInstance=b.signals_instance,
+                        peer=b.id,
+                        sequence=b.signals_sequence,
+                        tabs=list(b.signal_rows.values()),
+                    )
+                    for b in self.browsers.values()
+                    if b.signals_configured and self.signal_calls.current(b)
+                ],
                 browserNames=sorted(
                     {
                         b.browser_name
@@ -1784,6 +1814,32 @@ class BrowserService:
                 self._status(browser, packet)
             elif kind == "result":
                 self._command_result(browser, packet)
+            elif kind == "configured":
+                from .call_signals import CAPABILITY
+
+                if not browser.signals_waiting:
+                    return  # A repeated ack cannot reset this connection's sequence fence.
+                browser.signals_waiting = False
+                accepted = packet.get("capabilities")
+                browser.signals_configured = CAPABILITY in browser.capabilities and accepted == [CAPABILITY]
+                browser.signals_sequence = -1
+                browser.signal_rows = {}
+                self.signal_calls.disconnect(browser, self.clock())
+            elif kind == "callSignals":
+                from .call_signals import rows
+
+                if browser.signals_configured:
+                    sequence, snapshot = rows(packet)
+                    instance = packet["browserInstance"]
+                    if browser.signals_instance is None:
+                        browser.signals_instance = instance
+                    elif instance != browser.signals_instance:
+                        raise ValueError("Control connection changed browser profile identity")
+                    if sequence > browser.signals_sequence:
+                        self.signal_calls.claim(browser, self.clock())
+                        browser.signals_sequence = sequence
+                        browser.signal_rows = snapshot
+                        self.signal_calls.update(browser, snapshot, self.clock())
             elif kind == "pong":
                 pass  # Liveness only, recorded above; seq needs no correlation.
             elif kind == "hello":
@@ -1812,6 +1868,16 @@ class BrowserService:
                     else set()
                 )
                 browser.last_ping, browser.ping_seq = None, 0
+                from .call_signals import CAPABILITY
+
+                self.signal_calls.disconnect(browser, self.clock())
+                browser.signals_configured = False
+                browser.signals_sequence = -1
+                browser.signal_rows = {}
+                self.signal_calls.claim(browser, self.clock())
+                if CAPABILITY in browser.capabilities:
+                    browser.signals_waiting = True
+                    browser.send(dict(type="configure", capabilities=[CAPABILITY]))
             else:
                 # Forward compatible: a newer companion's message is not a
                 # broken link. Log each new type once per connection.
@@ -1985,6 +2051,9 @@ class BrowserService:
                     and not pending_start
                 ):
                     raise ValueError("This meeting is not recording")
+                if action == "start" and self._signal_blocks_browser(browser, tab, browser.meetings.get(tab, {})):
+                    refusal = StartRejected("Browser audio is unavailable for this call", dict(code="unsupported"))
+                    raise StartRefused(str(refusal), [refusal.refusal])
                 if action == "start" and user:
                     self._cancel_call(logical)
                 if action == "stop" and browser.states.get(tab, {}).get("recording"):
@@ -2509,6 +2578,13 @@ class BrowserService:
                     for key, c in self.captures.items()
                     if not c.finished and (directory is None or c.directory is not None and matches(str(c.directory)))
                 ]
+                if (
+                    quitting_pid is None
+                    and reason == "user"
+                    and any(key == self.signal_calls.capture_id for key, _capture in captures)
+                ):
+                    self.signal_calls.suppress()
+
                 for _key, capture in captures:
                     if quitting_pid is None:
                         self._remember_capture_stop(capture)
@@ -2621,6 +2697,7 @@ class BrowserService:
             for key, capture in self.captures.items():
                 if (
                     capture.finished
+                    or getattr(capture, "signal_owned", False)
                     or capture.starting
                     or capture.stopping
                     or capture.stop_requested.is_set()
@@ -2838,6 +2915,7 @@ class BrowserService:
                             and tab not in browser.attempted
                             and self._meeting_id(browser, tab) not in self._scheduled_calls
                             and self._auto_start_ready(browser, meeting)
+                            and not self._signal_blocks_browser(browser, tab, meeting)
                             and not browser.states.get(tab, {}).get("recording")
                             # A capture the user stopped, only saving, does not block
                             # a start the policy is otherwise allowed (#237).
@@ -2852,12 +2930,138 @@ class BrowserService:
                             tasks.append((identifier, "start", self._call_versions.get(identifier, 0)))
                             if not independent:
                                 break
+        self._signal_policy()
         for identifier, action, version in tasks:
             self.workers.submit(self._automatic, identifier, action, generation, version)
         for key, capture in cancels:
             self._cancel_fallback(key, capture)
         for key, capture, identifier, action in capture_tasks:
             self.workers.submit(self._capture_lifecycle, key, capture, identifier, action)
+
+    def _signal_blocks_browser(self, browser, tab, meeting):
+        row = browser.signal_rows.get(tab, {})
+        return row.get("remoteAudio") == "mixed" or self.signal_calls.owns_call(
+            browser, tab, meeting.get("callGeneration")
+        )
+
+    def _signal_policy(self):
+        """Reserve under the inventory lock, do input/disk work on workers."""
+        from .browser_capture import BrowserCapture
+
+        with self.lock:
+            state = self.signal_calls
+            enabled = (
+                self.auto_record
+                and not self.closed.is_set()
+                and not self._stopping_all.is_set()
+                and (not self.require_application or any(self.applications.values()))
+            )
+            state.advance(self.clock(), enabled=enabled)
+            self._signal_condition.notify_all()
+            capture = self.captures.get(state.capture_id)
+            if capture is not None and capture.finished:
+                state.released(failed=state.retiring is None)
+                capture = None
+            if capture is not None and state.retiring and not state.stopping:
+                state.stopping = True
+                capture.request_stop(reason=state.retiring, user_stopped=state.retiring == "user")
+                self.workers.submit(self._stop_signal, state.capture_id, capture, state.retiring)
+            elif (
+                capture is None
+                and any(call.lost_at is None for call in state.calls.values())
+                and not state.retiring
+                and enabled
+            ):
+                identifier = str(uuid4())
+                capture = BrowserCapture(
+                    self._capture_changed, parent=self.capture_parent, tap_factory=self.tap_factory
+                )
+                capture.signal_owned = True
+                self.captures[identifier] = capture
+                self._set_capture_origin(identifier, True)
+                state.reserve(identifier)
+                site = next(iter(state.calls.values())).site
+                self.workers.submit(self._start_signal, identifier, capture, site)
+
+    def _admit_signal(self, identifier):
+        # A short control reconnect withdraws eligibility, not the stable
+        # reservation. Wait without opening inputs; end/Stop/lease loss wakes
+        # this wait immediately. Audio never enters this policy or its clock.
+        with self._signal_condition:
+            while True:
+                state = self.signal_calls
+                enabled = (
+                    self.auto_record
+                    and not self.closed.is_set()
+                    and not self._stopping_all.is_set()
+                    and (not self.require_application or any(self.applications.values()))
+                )
+                state.advance(self.clock(), enabled=enabled)
+                if state.capture_id != identifier or state.retiring or not enabled:
+                    return None
+                site = next((call.site for call in state.calls.values() if call.lost_at is None), None)
+                if site is not None:
+                    return site
+                self._signal_condition.wait(0.5)  # Also evaluate the monotonic loss deadline.
+
+    def _start_signal(self, identifier, capture, site):
+        route = dict(source="system", reason="mixedSiteSignal", site=site)
+        canceled = False
+
+        def admit():
+            nonlocal canceled
+            current_site = self._admit_signal(identifier)
+            canceled = current_site is None
+            if not canceled:
+                route["site"] = current_site
+            return not canceled
+
+        try:
+            clock = SessionClock()
+            capture.start(
+                dict(
+                    type="start",
+                    version=1,
+                    captureId=identifier,
+                    timelineOriginMs=clock.origin_ms,
+                    title="",
+                    microphone=True,
+                ),
+                others_source="system",
+                reason="start",
+                session_clock=clock,
+                others_route=route,
+                admit=admit,
+            )
+            with self.lock:
+                if self.signal_calls.capture_id == identifier:
+                    self.signal_calls.started()
+        except Exception:
+            with self.lock:
+                canceled = (
+                    canceled
+                    or self.signal_calls.retiring is not None
+                    or self.signal_calls.capture_id != identifier
+                    or capture.end_reason in ("user", "callEnded", "pageGone", "appQuit")
+                )
+            if not canceled:
+                logging.getLogger(__name__).exception("Could not start signal-owned computer recording")
+            with contextlib.suppress(Exception):
+                capture.stop(user_stopped=False)
+            with self.lock:
+                if self.signal_calls.capture_id == identifier:
+                    self.signal_calls.released(failed=not canceled)
+        finally:
+            self.policy()
+
+    def _stop_signal(self, identifier, capture, reason):
+        try:
+            capture.stop(reason=reason, user_stopped=reason == "user")
+        finally:
+            with self.lock:
+                if self.signal_calls.capture_id == identifier:
+                    self.signal_calls.released()
+            self.policy()
 
     def _cancel_fallback(self, key, capture):
         """D52: the call returned before its fallback committed; write nothing.
@@ -3308,6 +3512,8 @@ class BrowserService:
                             self._clear_attempt(browser, tab)
                     self._remember_control_loss(browser)
                     self._restore_stopped(browser, browser.meetings)
+                    self.signal_calls.disconnect(browser, self.clock())
+                    self._signal_condition.notify_all()
                     browser.closed = True
                     self.browsers.pop(browser.id, None)
                     for pending in (*browser.pending.values(), *browser.reloads.values()):
@@ -3415,6 +3621,11 @@ class BrowserService:
     def _remember_capture_stop(self, capture):
         """Remember the original call even when its browser link is down."""
         with self.lock:
+            if self.captures.get(self.signal_calls.capture_id) is capture:
+                # An individual recording Stop owns the same generation fence
+                # as Stop All, before inputs/finalization can yield to a report.
+                self.signal_calls.suppress()
+                self._signal_condition.notify_all()
             for key, (capture_id, url) in self.call_captures.items():
                 if capture_id == capture.capture_id:
                     self._store_stop(key, url)

@@ -91,7 +91,7 @@ class RecordingComfort:
         from .library import meeting_id
         from .library_location import owned_directory
 
-        controllers, native_directories = {}, set()
+        controllers, native_directories, broker_directories = {}, set(), set()
 
         def load(directory, lifecycle="recording"):
             identifier = meeting_id(directory)
@@ -122,6 +122,7 @@ class RecordingComfort:
                     directory = owned_directory(Path(status["path"]))
                 except ValueError:
                     continue
+                broker_directories.add(directory)
                 load(directory, "saving" if status.get("stopping") else "recording")
         self.known = {
             key: (
@@ -131,7 +132,7 @@ class RecordingComfort:
             )
             for key, meeting in self.known.items()
             if meeting.id in controllers
-            and (meeting.capture_source != "gnome" or meeting.directory in native_directories)
+            and (meeting.capture_source != "gnome" or meeting.directory in native_directories | broker_directories)
         }
         return self.known
 

@@ -293,7 +293,8 @@ def test_native_recording_of_float_silence_saves_only_zeros(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize("rate", RATES)
-def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, caplog, rate):
+@pytest.mark.parametrize("signal_owned", [False, True])
+def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, caplog, rate, signal_owned):
     """browser_capture's NativeTap sides (Me, and computer sound with no browser
     audio), stopped by BrowserCapture.stop after their sources ended."""
     root = library(tmp_path, monkeypatch)
@@ -334,6 +335,7 @@ def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, c
         return taps[kind]
 
     capture = BrowserCapture(lambda *_: None, tap_factory=factory)
+    capture.signal_owned = signal_owned
     try:
         capture.start(
             dict(
@@ -346,7 +348,10 @@ def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, c
                 title="Silence",
             ),
             others_source="system",
-            reason="missing",
+            reason="start" if signal_owned else "missing",
+            others_route=dict(source="system", reason="mixedSiteSignal", site="Synthetic meeting")
+            if signal_owned
+            else None,
         )
         assert sorted(capture.native_taps) == ["microphone", "system"]
         for tap in taps.values():
@@ -355,6 +360,12 @@ def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, c
         assert capture.stopped.wait(BOUND_S) and capture.publication is not None
         assert not capture.error and not failures and not logged_warnings(caplog)
         buffers = feed.check()
+        if signal_owned:
+            from cassini_talk.capture_details import read_details
+            from cassini_talk.strings import text
+
+            (meeting,) = LibraryScanner(root).scan().meetings
+            assert text("details.othersRoute.mixedSite", site="Synthetic meeting") in read_details(meeting).notes
         tracks = saved_tracks(root)
         assert sorted(tracks) == ["microphone", "system"]
         for kind, track in tracks.items():

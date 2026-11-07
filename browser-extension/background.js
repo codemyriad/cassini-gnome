@@ -761,6 +761,9 @@ chrome.runtime.onConnect.addListener(port => {
     try { port.postMessage({ type: "ack", token: session.token, request: message.request }); } catch {}
   });
   port.onDisconnect.addListener(() => {
+    // Chrome closes this channel when a page enters BFCache. Consume the
+    // callback error before the existing cleanup/loss handling below.
+    void chrome.runtime.lastError;
     if (frame.sourceCount > 0 && !frame.obsolete && pageState(frame.tabId) === "present") {
       lostMeetings.set(`${frame.tabId}:${frame.frameId}`, {tabId:frame.tabId,frameId:frame.frameId});
       if (lostMeetings.size > 100) lostMeetings.delete(lostMeetings.keys().next().value);

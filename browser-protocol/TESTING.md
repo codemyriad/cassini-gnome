@@ -427,3 +427,66 @@ is refused. Real Talk CI requires the Hypatia label on the isolated440Hz source 
 Ibn al-Haytham on880Hz, with dom provenance on both tracks and source outcomes. It uses
 #70's locked Nextcloud34/fullHPB disposable-VM harness and private browser/native fixtures;
 it does not establish either product app's host adoption or verified speaker identity.
+
+
+## BFCache port lifecycle
+
+`tests/bfcache.mjs` runs the shipped extension under a disposable ID/profile,
+removes Playwright's --disable-back-forward-cache default, and navigates a real
+local page away and back. It requires actual pageshow.persisted=true, identical
+page/browser document identity and hook constructor, a browser-observed closed
+old port, and a new handshaken relay BEFORE making a readiness probe. No fake
+lifecycle events, RTC/discovery mocks, native user host or real devices are used. Worker CDP diagnostics must contain no unchecked lastError;
+the observer does not consume that property. A negative control with only the
+background read removed restores successfully but emits the exact BFCache warning.
+The portable case verifies an idle cached document. On Linux, a second case uses
+profile-scoped private native hosts and an explicit retained Start on a real
+connected receive slot. It closes page WebRTC before caching, preserves the same
+normalized call URL through a POST/COOP document transition, and requires a real
+persisted restore. No cache safety reason or call-change fence is bypassed. The
+capture ID, origin, call generation, folder, one native connection and one native
+Start survive while cached, with no Stop/lost packet. After restore, actual
+generated WebRTC PCM reaches the same recording; explicit Stop finalizes it.
+This proves retained native-session continuity and post-restore PCM, not
+uninterrupted page PCM while JavaScript is frozen. The case runs automatically
+on Linux; Mac retains the idle browser proof plus lifecycle/drain VM coverage.
+
+Focused VM getter tests check synchronous callback consumption, frame cleanup,
+retained session/navigation and genuine frameClosed capture-loss handling for
+BFCache, unrelated errors and no-error disconnects. Relay tests cover both queued
+disconnect/pageshow orders, stale-port replacement and one old-token flush before
+new Start. The real browser uses commit/state waits because BFCache emits no new
+load event. Existing reload/active-PCM cases remain separate required coverage.
+
+Chrome's primary guidance: https://developer.chrome.com/blog/bfcache-extension-messaging-changes
+and https://developer.chrome.com/docs/extensions/reference/api/runtime#property-lastError.
+Graph capture/admission and WhatsApp remain separate follow-ups; this change adds
+no new call evidence, source kind or automatic recording policy.
+
+## D74 call-signal contract (SPEC/schema only)
+
+`tests/test_call_signals_contract.py` validates literal message shapes and routing/
+lifecycle expectations in conformance/control/call-signals-vectors.json. State
+unknown/inactive/active is independent of remoteAudio separated/mixed/unknown.
+Mixed active calls route ONLY to app-owned system audio under auto-record opt-in;
+separated streams retain existing RTP evidence, while passive media never causes
+an automatic meeting/Start. Positive end stops the associated automatic system
+recording even with audio continuing. Generation/peer/sequence/reconnect and
+opt-out literals guard against stale or unrelated lifecycle actions.
+
+This replaces PR76's superseded graph transport and format proposal. No graph tap,
+AudioNode hooks, page-audio-mix capture/native endpoint/probe, graph format fields
+or capture code. D74.1 app-owned recordingDetails routing provenance is separate. Native/session schemas and RTP vectors remain unchanged; PR75 is
+untouched and remains real-browser negative-only. Fixtures are contract checks,
+not actual WhatsApp markers, graph recording or app system-capture implementation.
+WhatsApp stays unknown until coordinator authorizes disposable-account evidence.
+
+
+D74.1 literals extend the contract checks: browserInstance is a stable profile key,
+not hello.extensionInstance or a connection incarnation; same-call replacement
+reconciles an existing owner and superseded connection/generation ends are ignored.
+The120s loss grace, fixed-at-start route, shared system owner/reference counts,
+manual Stop suppression and durable open othersRoute metadata are APP policy,
+not extension timers or capture code. These are literal/schema checks; consumer
+adoption still needs actual held-start, reconnect, monotonic deadline, overlapping
+calls, route suppression and cache/export/import E1 tests through app code.

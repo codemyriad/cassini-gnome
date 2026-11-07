@@ -19,7 +19,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Adw, Gio, GLib  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 sys.path.insert(0, str(ROOT / "tests"))
@@ -357,6 +357,84 @@ with tempfile.TemporaryDirectory() as tmp:
     app._browser_snapshot = dict(statuses=[])
     app.comfort._fallback_notification(live_meeting(capture.directory, "saved"))
     assert sum(item["id"] == alert for item in services.history) == 1, "Normal Stop sent another loss alert"
+    # The real global Stop action sees a broker reservation before a session
+    # folder exists. The headless broker regression orders Stop against input
+    # startup; here the actual GAction must dispatch it from the desktop.
+    app._browser_snapshot = dict(
+        statuses=[
+            dict(
+                id="capture:signal-pending",
+                captureId="signal-pending",
+                path=None,
+                recording=True,
+                starting=True,
+            )
+        ]
+    )
+    stop_calls = []
+    original_stop = app.stop_browser_recordings
+    app.stop_browser_recordings = lambda: stop_calls.append(True)
+    try:
+        app.activate_action("stop-recording", None)
+        assert stop_calls == [True], "Global Stop missed the pending signal recording"
+    finally:
+        app.stop_browser_recordings = original_stop
+        app._browser_snapshot = dict(statuses=[])
+
+    # D74 is a system route from the start, with quiet persisted provenance;
+    # it must never display the browser-loss info or send its warning alert.
+    signal = BrowserCapture(lambda *_: None, parent=Path(os.environ["CASSINI_LIBRARY_DIR"]), tap_factory=ReadyNativeTap)
+    signal.signal_owned = True
+    signal.elapsed_ms = lambda: 1000
+    signal.start(
+        dict(type="start", captureId="visible-signal", timelineOriginMs=1, microphone=True),
+        others_source="system",
+        reason="start",
+        others_route=dict(source="system", reason="mixedSiteSignal", site="Synthetic meeting"),
+    )
+    for identifier, tap in signal.native_taps.values():
+        track = next(t for t in signal.host.session.manifest["tracks"] if t["id"] == identifier)
+        tap.append(bytes(96000), track["startOffsetMs"])
+    app._browser_snapshot = dict(statuses=[dict(recording=True, automatic=True, path=str(signal.directory))])
+    current = live_meeting(signal.directory)
+    app.comfort.known[current.key] = current
+    window.open_meeting(current)
+    app.comfort.tick()
+    assert current.capture_source == "gnome" and current.key in app.comfort.active()
+    assert text("errors.othersFallback.line") not in texts(window.recording_page.lines)
+    assert "recording-fallback-" + current.key not in services.notifications
+    window.show_recording_details()
+    dialog = window.recording_details_dialog
+    expected = text("details.othersRoute.mixedSite", site="Synthetic meeting")
+    until(
+        lambda: dialog.report and expected in dialog.report.notes and dialog.get_mapped() and expected in texts(dialog)
+    )
+    if output := os.environ.get("CASSINI_SCREENSHOT_OUT"):
+        painted = []
+        frame_clock = window.get_frame_clock()
+        handler = frame_clock.connect("after-paint", lambda *_: painted.append(True))
+        try:
+            window.queue_draw()
+            until(lambda: painted)
+        finally:
+            frame_clock.disconnect(handler)
+        pictures = []
+
+        def snapshot():
+            image = Gtk.Snapshot.new()
+            Gtk.WidgetPaintable.new(window).snapshot(image, window.get_width(), window.get_height())
+            node = image.to_node()
+            if node is None:
+                return False
+            pictures.append(node)
+            return True
+
+        until(snapshot)
+        node = pictures[-1]
+        assert window.get_renderer().render_texture(node, node.get_bounds()).save_to_png(output)
+    dialog.close()
+    signal.stop(at_ms=2500)
+    app._browser_snapshot = dict(statuses=[])
     window.close()
     app.comfort.close()
     # No Library window is required for the Browser window's controller state

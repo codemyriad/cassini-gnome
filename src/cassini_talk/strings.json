@@ -20870,6 +20870,39 @@
      "text": "As vozes separadas pararam inesperadamente. O Cassini gravou todo o som do computador."
     }
    }
+  },
+  {
+   "id": "details.othersRoute.mixedSite",
+   "en": "{site} mixes all remote voices into one stream, so Cassini recorded them from the computer’s audio.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D74.1",
+   "placeholders": {
+    "site": "the call site's display name from the adapter (e.g. Microsoft Teams, WhatsApp)"
+   },
+   "note": "Coordinator (D74.1). A quiet line in Recording details, shown when recordingDetails.othersRoute.reason is mixedSiteSignal. Not an error, no badge.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "{site} unisce tutte le voci remote in un unico flusso, quindi Cassini le ha registrate dall’audio del computer."
+    },
+    "fr": {
+     "text": "{site} mélange toutes les voix distantes en un seul flux, donc Cassini les a enregistrées depuis le son de l’ordinateur."
+    },
+    "es": {
+     "text": "{site} mezcla todas las voces remotas en una sola señal, así que Cassini las grabó desde el audio del ordenador."
+    },
+    "pt-BR": {
+     "text": "{site} mistura todas as vozes remotas em um único fluxo, então o Cassini as gravou pelo áudio do computador."
+    },
+    "pt-PT": {
+     "text": "{site} mistura todas as vozes remotas num único fluxo, por isso o Cassini gravou-as a partir do áudio do computador."
+    }
+   }
   }
  ]
 }

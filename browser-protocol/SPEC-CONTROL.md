@@ -1029,3 +1029,209 @@ proposed provenance contract. Ambiguous/missing mappings keep browser-origin lab
 DOM names do not change call/RTP/admission gates or any control/status/health fields.
 Product hosts must adopt provenance persistence with the bundled extension; the
 private browser-test writer does not establish Swift/Python product adoption.
+
+
+### Frame-port disconnect diagnostics (extension 0.2.24)
+
+The background frame-port onDisconnect callback reads runtime.lastError before
+its existing cleanup/loss handling. Chrome closes extension ports when pages enter
+back/forward cache; reading the callback error avoids an unchecked API warning.
+This does not classify errors by message text or waive failures: frame removal,
+retained-session navigation, ordinary capture loss and fresh relay readiness
+continue through their existing paths. No control or native wire fields change.
+
+
+On a persisted pageshow, the relay replaces any stale cached port through the
+same disconnect/drain routine before opening a fresh connection. The content
+realm can thaw before its queued disconnect callback; that late callback cannot
+stop or retire the replacement port. Pending capture requests still fail/drain,
+and a new Start still waits for the old hook's stopped/flush acknowledgement.
+
+## D74 draft: call signals and remote-audio classification (not implemented)
+
+D74 supersedes D73's graph-capture proposal. A site with one mixed remote feed
+(D74 examples: Teams and WhatsApp Web Audio) is SIGNAL-ONLY: the extension records
+no audio from that site. It reports positive call lifecycle evidence; the app
+records Others from system audio and its own independently selected microphone.
+Sites exposing separate remote streams keep the existing browser RTP capture and
+packet/heard policy. No AudioNode hooks, graph observation/tap, mixed browser
+capture, new native endpoint/probe or persisted-format amendment is introduced.
+D73.12's general open-file-value rule is not reversed. Signal fields are control
+metadata; D74.1's app-owned recordingDetails provenance is separate below.
+Existing native and session schemas remain unchanged.
+
+### Capability and per-connection snapshots
+
+Proposed capability: `call-signals-v1`, advertised in extension hello only AFTER
+implementation. Before consuming new signals, an adopting authenticated control
+consumer sends `{"type":"configure","capabilities":["call-signals-v1"]}`.
+The extension acknowledges `{"type":"configured","capabilities":["call-signals-v1"]}`
+if supported (empty accepted list otherwise). Empty configure revokes that
+connection's opt-in. Reconnect begins unconfigured with no replayed eligibility.
+This does not change existing heartbeat, status or RTP messages. An old consumer
+never receives a new signal-only row through legacy meetings as a shortcut.
+
+Configured consumers receive full replacement snapshots, initially possibly empty:
+
+```json
+{"type":"callSignals","browserInstance":"profile-A","sequence":0,"tabs":[{"tabId":2,"url":"https://web.whatsapp.com/","documentGeneration":"document-A","remoteAudio":"mixed","callEvidence":{"state":"unknown","reason":"unverified","adapter":{"name":"whatsapp-signal","version":"fixture-1"},"callGeneration":null}}]}
+```
+
+This example is an UNVERIFIED fixture, not a shipped adapter or WhatsApp support.
+Sequence is a nonnegative safe integer, strictly increasing per configured control
+connection; broker uses that connection only to validate snapshot freshness.
+Ignore stale snapshots/frames from superseded connections, reject duplicate tab
+rows, and reset sequence on a fresh configured connection. Sequence or transport
+incarnation MUST NOT become part of a recording's stable association identity.
+
+`browserInstance` is the stable opaque identity of the browser instance/profile
+that owns the tab, at most200 UTF-8 bytes. It must survive control reconnect,
+extension worker replacement and updates for the same profile. Use an established
+trusted broker profile identity or a profile-local persistent opaque ID, never a
+socket/peer handle, connection counter, worker hello.extensionInstance, filesystem
+path or page-provided value. Missing/unverifiable identity prevents signal-driven
+admission; do not substitute a connection ID. The authenticated current connection
+and its sequence establish freshness separately from this stable ownership key.
+At most100 tab rows. Titles/URLs/tab IDs are browser-owned; URLs at most2048
+characters. Document/call generations are opaque at most200 UTF-8 bytes (schema
+characters are an outer bound). Rows are scoped to current browser-verified
+documents, never aggregated from an obsolete frame. Subframes cannot override a
+top-level site's classification or lend lifecycle proof to another document.
+
+Each row keeps TWO independent facts:
+
+- `remoteAudio`: separated/mixed/unknown. This is a reviewed/versioned site
+  adapter's classification of the remote audio design, not inferred from energy,
+  hostname alone, receiver count, labels or a single observed track. Known
+  classification requires a named/versioned adapter. Unknown makes no claim that
+  a stream is separated or mixed. Classification alone never proves a call.
+- `callEvidence`: state unknown/inactive/active, reason, nullable adapter
+  `{name,version}` and nullable callGeneration. Active requires positive site-
+  specific call/lifecycle evidence, a named/versioned adapter and current call
+  generation. Inactive requires affirmative callEnded/nonCall evidence; callEnded
+  retains the ended generation so apps stop the correct call. Missing/conflicting/
+  unsupported evidence is unknown (unverified/unsupported/evidenceConflict), never
+  falsely inactive or healthy. A known mixed design may coexist with unknown call
+  state and must remain non-admissible for signal-driven automatic recording.
+
+Known inactive requires an adapter; reason nonCall may have no prior generation.
+Document generation changes fence prior evidence. A new call in the same SPA gets
+a new call generation; title, audio or unchanged URL cannot preserve the old call.
+The schema is site-neutral, not permission to invent/add production site adapters.
+New adapters need their own reviewed evidence/classification definition. Actual
+WhatsApp markers remain UNKNOWN until coordinator approves a disposable test
+account/profile study; never inspect the user's account/browser or reload a call.
+
+### Positive evidence and routing
+
+Page playback, graph presence/energy, a WhatsApp/Teams hostname, voice messages,
+status/video/music and their combinations never report active or cause a new
+automatic meeting/Start. No PCM, AudioContext, analyser/worklet, graph hook,
+getUserMedia/device access, native session or app launch is used to discover calls.
+Site adapter evaluation and relay hints are bounded, scoped and explicitly
+validated; page data remains advisory, never management authority. The allowlisted
+new hint interface extends only lifecycle/classification evidence, never page
+start/stop commands, paths, browser identity or arbitrary page fields.
+
+Routing and admission are separate from recording state:
+
+| Evidence/classification | App behavior |
+| --- | --- |
+| active + mixed | Signal-only candidate; app may automatically start system-audio Others ONLY under its existing auto-record opt-in, permission/readiness and duplicate/Stop suppression rules |
+| inactive or unknown + mixed | No new automatic recording; positive callEnded ends that association and stops the shared automatic recording when its last association ends, even if media still plays |
+| separated | Browser capture remains the existing RTP sourceCount/heard/readiness/auto-opt-in path; a call signal alone cannot supply RTP proof or start browser capture |
+| unknown classification | No signal-driven route or automatic Start; never guess browser or system from page audio |
+
+A reviewed known-mixed site is excluded from browser-recordable legacy inventory;
+its browser Start is refused with existing result code unsupported before any
+browser capture/native session or audio opens, even if the site also exposes one
+mixed RTP receiver. Never fabricate zero RTP counters to implement this distinction.
+Underlying sourceCount/heard keep their meanings and separate-stream thresholds.
+Unclassified sites on the existing RTP path are not silently reclassified by this
+SPEC. Adopting apps never use a signal-only row as a legacy browser meeting.
+An older app gets neither a new mixed row nor a browser capture silently changed
+to system audio. User intent/system capture is owned by the adopting app.
+
+The app owns system capture authorization, source/microphone selection, input
+readiness, timeline, loss/gap handling and save confirmation. System audio is a
+computer-output mix, not a remote participant stream; no per-person isolation or
+mic subtraction promise. App Me stays separately selected under existing policy,
+never opened by a browser probe or silently disabled/merged. This draft adds no
+new user page-media action, popup controls, graph fields or native protocol.
+D74.1 app-owned recordingDetails routing provenance is specified below.
+Recording details will explain system routing in one quiet line; exact shared
+copy is a separate design task, not implementation text in product UI here.
+
+### Call end, reconnect and app ownership
+
+**D74.1: stable association, transient transport.** Bind pending and running
+automatic system recording associations to the EXACT tuple
+(browserInstance/profile, tabId, documentGeneration, callGeneration) BEFORE Start
+dispatch and revalidate before opening inputs. The control-connection incarnation
+is NOT part of this identity. A configured replacement connection with fresh
+same-document/same-call evidence reconciles the existing owner; it never creates
+a duplicate Start. Late end/active frames from a superseded connection are ignored
+before association handling. An end for a superseded document/call generation
+cannot end its replacement. Never match by tab alone, title, audio or hostname.
+
+The extension publishes facts, not app timers or capture commands. **App policy**
+withdraws eligibility immediately on unknown, row removal, control loss or
+navigation, and starts a 120-second monotonic evidence-loss grace for each affected
+association whose recording is already running. The grace never authorizes a pending Start after eligibility
+is lost: held permission/input completion must revalidate active same-call evidence
+and Stop intent before opening inputs. Repeated unknown/removal/loss and
+system/microphone audio never reset or extend that deadline. Fresh affirmative active evidence for that SAME stable
+association before expiry clears the loss grace and reconciles its owner without
+duplicate recording. At expiry the association ends; never resurrect it from
+cached active state. Positive current callEnded ends the matching association
+AT ONCE, even with media continuing and regardless of the grace. Unknown/loss is
+not fabricated positive callEnded. A new call generation fences the old one and
+is evaluated as a different call, not an implicit resume/handoff.
+
+**App policy fixes the recording route at Start.** A remoteAudio change within
+that call generation (including unknown) cannot switch an existing system owner
+to browser capture, create a second automatic recording, or trigger RTP resume/
+takeover. Check the existing stable owner BEFORE either signal or RTP admission,
+so a newly visible RTP row cannot create a second recording of that same call.
+Fresh active same-call evidence can maintain/reconcile the running
+association independently of a changed classification; admission of a NEW call
+still needs active+mixed and the existing auto-record opt-in. Separate-stream RTP
+policy/recovery remains unchanged for RTP owners. The extension never implements
+a 120-second timer, decides microphone policy or commands a system capture here.
+
+**Overlapping mixed calls share ONE signal-owned system recording.** The app
+reference-counts stable call associations (including their bounded loss grace).
+Ending/expiring one association cannot stop another; finalize when the LAST
+association ends/expires, or when the user chooses Stop. No second simultaneous
+signal-owned system recording or participant-isolation claim. User Stop suppresses
+automatic restart for those associated call generations across reconnect, not a
+future genuinely new generation. Unrelated manual recordings/sources keep their
+own policies. Existing permission/Stop/shutdown races must cancel pending Starts
+before an ended call can open inputs. This intentional system route is neither a
+browser-rejected fallback nor a browser loss; browser-loss alerts do not apply.
+
+**App-owned Details provenance (D74.1):** write the ACTUAL Start routing decision
+into the recording, not a cache or live-tab inference:
+`recordingDetails.othersRoute = {"source":"system","reason":"mixedSiteSignal","site":"<adapter id>"}`.
+These are additive OPEN, bounded non-empty strings (1–200 Unicode code points);
+preserve unknown values unchanged per D73.12 across cache removal/export/import.
+Producers use the defined source/reason and actual adapter id; unknown values
+must not fabricate a mixed-site/participant/RTP claim. Show stored provenance using
+shared key details.othersRoute.mixedSite as one quiet Details line. Native/session
+schemas stay unchanged; this uses the app-owned recordingDetails extension and
+is not the superseded page-audio-mix amendment. Adoption includes durable routing
+provenance, reference counting, loss grace, fixed route, race handling and shared
+copy; a protocol pin alone does not implement these rules.
+
+### Conformance and delivery limits
+
+conformance/control/call-signals-vectors.json contains shape acceptance/refusal,
+remote-audio routing, passive-media and synthetic independent call lifecycle
+literals. Call end with continued media expects system Stop when the LAST
+association ends; opt-out never starts. These are SPEC/schema fixtures, not a
+site detector, live WhatsApp claim or implemented app policy. PR75 retains its
+real Chromium passive-media negatives unchanged. Future adapter/app PRs need E1
+state/event proofs of actual start/end, generation/reconnect/Stop suppression,
+no media-only admission, system-source selection and unchanged real RTP/Talk CI.
+GNOME/Mac adoption requires deliberate broker/policy/renderer tests, not just a pin.
+No extension/native runtime or capability advertisement changes in this draft.
