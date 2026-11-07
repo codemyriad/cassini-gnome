@@ -301,13 +301,25 @@ with tempfile.TemporaryDirectory() as tmp:
     until(lambda: not window._pending)
     # A producer's lost Stop reaches the real persistent info line and desktop
     # notification over the private bus, even with the Recording page visible.
-    from test_browser_capture import Tap
-
     from cassini_talk.browser_capture import BrowserCapture
     from cassini_talk.recording_details import live_meeting
 
+    class ReadyNativeTap:
+        # This display fixture owns synthetic readiness PCM. Importing the unit
+        # suite for its Tap would also load unrelated shared-vector fixtures.
+        def __init__(self, kind, origin, append, failed, *, level):
+            self.append = append
+
+        def start(self):
+            self.append(b"\x01\x00" * 4, 100)
+
+        def stop(self):
+            pass
+
     window.monitor.close()
-    capture = BrowserCapture(lambda *_: None, parent=Path(os.environ["CASSINI_LIBRARY_DIR"]), tap_factory=Tap)
+    capture = BrowserCapture(
+        lambda *_: None, parent=Path(os.environ["CASSINI_LIBRARY_DIR"]), tap_factory=ReadyNativeTap
+    )
     capture.elapsed_ms = lambda: 1000
     capture.start(dict(type="start", captureId="visible-loss", timelineOriginMs=1, microphone=True))
     capture.handle(dict(type="track", id="voice", kind="remote", sampleRate=48000, channels=1))
