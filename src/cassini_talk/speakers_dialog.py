@@ -61,6 +61,8 @@ class SpeakersDialog(Adw.Dialog):
         self.talk = Gtk.Label(xalign=0, wrap=True, css_classes=["small", "dim-label"])
         details.append(self.heading)
         details.append(self.talk)
+        self.sample_from = Gtk.Label(xalign=0, css_classes=["small", "dim-label"])
+        details.append(self.sample_from)
         header.append(details)
         self.play = Gtk.Button(
             icon_name="media-playback-start-symbolic",
@@ -172,6 +174,9 @@ class SpeakersDialog(Adw.Dialog):
         colour = palette[speaker.colour_index % len(palette)]
         self.avatar.set_markup(f'<span foreground="{colour}">{speaker.colour_index + 1}</span>')
         self.sample = speaker.sample_span
+        self.sample_from.set_label(
+            text("speakers.sampleFrom", position=ux_formats.position(self.sample[0])) if self.sample else ""
+        )
         self.merge_menu.remove_all()
         for target in meeting.speakers:
             if target.id != self.identifier:
@@ -373,6 +378,8 @@ class SpeakersDialog(Adw.Dialog):
         self._submit(operation)
 
     def _merge(self, target):
+        self._listening_merge = self.page.prepare_speaker_merge(self.identifier, target)
+
         def operation():
             result = speaker_edits.merge_into(
                 self.meeting.directory, self.identifier, target, scanner=self.window.monitor.scanner
@@ -423,6 +430,7 @@ class SpeakersDialog(Adw.Dialog):
                 self._validate()
         else:
             if getattr(self, "_recompute", None):
+                self.page.speaker_merged(*self._recompute, transition=self._listening_merge)
                 self.window.get_application().recompute_voices(self.meeting.directory, self._recompute)
             if not self.window.monitor._closed:
                 self.window.monitor.refresh_now()
@@ -464,10 +472,10 @@ class SpeakersDialog(Adw.Dialog):
             self._finish_sample()
         self.play.set_sensitive(not self.busy and self.sample is not None and self._can_play())
         self.play.set_icon_name(
-            "media-playback-pause-symbolic" if self.sample_active else "media-playback-start-symbolic"
+            "media-playback-stop-symbolic" if self.sample_active else "media-playback-start-symbolic"
         )
         self.play.update_property(
-            [Gtk.AccessibleProperty.LABEL], [text("player.pause" if self.sample_active else "speakers.playSample")]
+            [Gtk.AccessibleProperty.LABEL], [text("common.stop" if self.sample_active else "speakers.playSample")]
         )
         return GLib.SOURCE_CONTINUE
 
