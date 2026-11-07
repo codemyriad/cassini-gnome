@@ -49,8 +49,8 @@ async function setup(sourceCount = 3, previous = {}, hostFeatures = [], nativeFa
   vm.runInContext(background + '\nglobalThis.api={status,controlStatus,appControl,frames,start,stop,meetings,callInfo,sessionTimers,repairTab,repairOpenTabs,browserHealth,relayTimers,checkCompanion,failure,NativeHost};', context);
   beforeReady?.({chrome, api:context.api, frame, tabs});
   await until(() => ports.length && ports[0].sent.some(m => m.type === 'status'));
-  function frame(tabId = 2, count = sourceCount, frameId = 0) {
-    const port = { name: 'cassini-frame', sender: { id: 'extension', tab: { id: tabId }, frameId }, onMessage: event(), onDisconnect: event(), sent: [],
+  function frame(tabId = 2, count = sourceCount, frameId = 0, documentId) {
+    const port = { name: 'cassini-frame', sender: { id: 'extension', tab: { id: tabId }, frameId, ...(documentId ? {documentId} : {}) }, onMessage: event(), onDisconnect: event(), sent: [],
       postMessage(message) { this.sent.push(message); if (message.type === 'relayHello') { this.onMessage.emit({...message}); this.onMessage.emit({...message,type:'relayReady'}); } if (message.type === 'stop') queueMicrotask(() => this.onMessage.emit({ type: 'stopped' })); } };
     chrome.runtime.onConnect.emit(port); port.onMessage.emit({ type: 'discovery', sourceCount: count, title: 'Spoofed title', url: 'https://spoofed.invalid/' }); pages.push(port); return port;
   }

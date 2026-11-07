@@ -73,9 +73,9 @@ Node:
 node --test extension/tests/*.test.cjs
 ```
 
-Browser-level tests (real Chromium, real WebRTC, real native messaging) live in each app
-for now, because launching a browser with an extension and an audio device is where the
-platforms differ. `TESTING.md` describes the layers and what each one does and does not
+Browser-level tests cover real Chromium, WebRTC, native messaging, and a required
+real Nextcloud Talk stack. Apps additionally test their platform-specific native
+recorders and devices. `TESTING.md` describes the layers and what each one does and does not
 prove.
 
 ## browser companion popup

@@ -1,26 +1,26 @@
-tree 97235a82020a3917b7c443fa5307297b23708569
-parent 6d139e3d79613711b7cf84cbbcac67c7650c50ab
-parent 4904a26526c0ed267feb3c7d3124d6c4f7ca7795
-author Silvio Tomatis <silviot@gmail.com> 1793996073 +0100
-committer GitHub <noreply@github.com> 1793996073 +0100
+tree 0071b0b3f3bc9e9b0fa58b570c4e84fea3a3703a
+parent 96342170016c307c194e40275cc7f630075869ad
+parent fe1cd0a7d571eb1dbc5aa068418b788db6979216
+author Silvio Tomatis <silviot@gmail.com> 1794062422 +0100
+committer GitHub <noreply@github.com> 1794062422 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq7jUpCRC1aQ7uu5UhlAAAGkEQAESVuJkQKZSzODpNjw/QNPXa
- hX7m29hezTRQejEAJMc8jj2aViQqdbUZBijqSwRSVWbofbt2Q/8f97zAp+ppZGmA
- i4ur3VrYviZnMNT6E3YZpg9Cx5DrGhQo0vbyNqYjVGzLUWPmEhrqjlzwqTh5qftY
- M9ZfK6WAamuobgEYEVeIT3GZnbuWJhoS5Ad15K5rTZGGm6bb9Efghekp+ndp5xg2
- cHlQhNBD+reR/+L3pscpsvbSPVmuO758OGONko7eJkNNzNrm/B6q9BLeQoTkJrAd
- BMnVb+3d9dsYNOLzInEVGwlAjypeR7QvJyIz4C0OA7KE62VJPprZL8GPf+X1OCY5
- 712PWYOfoRl6feYYwSMzTiQIJCQPitJW9XU70qG2zwpBDE9a+m69e8GWbyMDA4Is
- 8oC879y2h+y5ycug7MEMLaY+Xc3B2ZML1KWRzQvnxDmVTuPGOlMGt6xZ6jlJdadQ
- ZQp7+sfXwEUNMZbDDjifQlZQV6GGf/2kHVWodKbOiM7dcE5a7MIj2Tvi/CsZP3ja
- cXFt5k3DhwlphKt0tCVmoIkkqB3lYzdWaaqr67nOPylTaGXy6eIBDTTClayNQEeh
- dyMMU71yTP/rT+CWrRxSO+v8P+eKTKtoxFJTuMBZAmoF11CFg28NTfdOKfODlLwl
- 7Nv4Bquugc3tWN07ut3O
- =XhlP
+ wsFcBAABCAAQBQJq7zhWCRC1aQ7uu5UhlAAACLYQAD5Q7IrJTNm12QDQz40uGPHm
+ /VDf+CfqjAVTks2L6d+SrRE/BfZ7u7aRY+5pJ+RPVQ11/LBIWRQ2W/cg7h3HVblm
+ rAI0NOh3npaQAtpJQnoN2AT5Pj+FAUbu9YQvUIxefNNqS2/TlnrhnPmA0VBJUu+m
+ TGqw/5/quHBaiNRKfxFnMo+RhW9Q1YFC1KXQdnxjk05QTUhVJMpj9hs9MD/K78KC
+ /gA+gpjqSdipfZLxEe+VvloKan5edzWvDI/XIlqpf3wGO74MYDTOKOouPBWXPsZ0
+ 55P6SR/7d0N+qZDd3kdpVRgt9vULwysMxST9QTzXUR2+SntTEHEuqEPsLqA/IvU/
+ yHZUSi2jRhYe9kXFQ6+Hb1KnjWMQwQdt/7BPnGDBDSjDf+mAd1YKXI6PilWdSRG7
+ XpT5SP3M1GImqHs6wtvlJyZrIx9cS8jjVw86iNfouEWYkvLKOodj3TbB9eahm4uM
+ 4FMO2HOingCPHBYXK7mIrnEDYe+pRlHtU62q9d1AKGDuRUl97/7jc9SPK/Xi8VWJ
+ M2CB1DhEkiTOu2zIqWvOXMUHMlc66eYIXGT6foBQUOzGP15GJSE0mJYj9MpokyU5
+ JqtRd2EXQwBL6tXCWl+SDqjeOkx8DPFBmmzvon7XwDu0SzViVJPQ0rVL3m9T/CFF
+ BRtlP5G7N3m8OCJIxbOp
+ =YDpV
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #67 from codemyriad/feat/companion-status-popup
+Merge pull request #70 from codemyriad/test/nextcloud-companion
 
-feat: replace recording popup with current-tab companion status
+test: require real Nextcloud Talk discovery and separate audio in CI
