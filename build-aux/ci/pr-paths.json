@@ -39,6 +39,7 @@
       "tests/durable.py",
       "tests/harness-image.sh",
       "tests/library_v2_support.py",
+      "tests/published_listening_support.py",
       "tests/recording/readiness.py",
       "tests/shard-durations.json",
       "tests/shard_plan.py",
