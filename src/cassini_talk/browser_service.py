@@ -13,7 +13,6 @@ import os
 import signal
 import socket
 import struct
-import subprocess
 import sys
 import threading
 import time
@@ -213,14 +212,9 @@ def _ensure_service(path=None, *, cancelled=None, absent=None):
         from .flatpak_bridge import broker_command
 
         command = broker_command(target)
-    subprocess.Popen(
-        command,
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    from .broker_logging import launch
+
+    launch(command, env=env)
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
         if cancelled is not None and cancelled.is_set():
@@ -3483,7 +3477,9 @@ def main():
     args = parser.parse_args()
     if args.idle_timeout is not None and args.idle_timeout <= 0:
         parser.error("idle timeout must be positive")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     service = BrowserService(require_application=True)
+    logging.getLogger(__name__).info("Browser service started: %s", service.identity)
     signal.signal(signal.SIGTERM, lambda *_: service.close())
     # serve's finally performs the same cleanup for SIGINT as SIGTERM.
     with contextlib.suppress(KeyboardInterrupt):
