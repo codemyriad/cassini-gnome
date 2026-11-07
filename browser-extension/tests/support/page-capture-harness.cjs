@@ -25,7 +25,7 @@ module.exports = async function fixture(run, settings={}) {
   const item={...options,stopped:false};captures.push(item);
   if(settings.capture){item.recorder=await settings.capture(options);return item.recorder;}
   options.getSharedContext?.();
-  await options.send({type:'track',id:options.id,label:options.label,kind:options.kind,sampleRate:48000,channels:1,sourceTrackId:options.sourceTrackId,clockMethod:'roundTrip',clockUncertaintyMs:9,clockClampMs:3});
+  await options.send({type:'track',id:options.id,label:options.label,...(options.labelSource?{labelSource:options.labelSource}:{}),kind:options.kind,sampleRate:48000,channels:1,sourceTrackId:options.sourceTrackId,clockMethod:'roundTrip',clockUncertaintyMs:9,clockClampMs:3});
   return {failed:false,async stop(){item.stopped=true}};
  };
  const ContextClass=settings.Context || Context;
@@ -43,7 +43,7 @@ module.exports = async function fixture(run, settings={}) {
  const tick=async()=>{now+=1000;await timers[0]();};
  const scan=async()=>{assert.ok(timers[1],'capture scan exists');await timers.at(-1)();};
  let activeToken='recording';
- try {await run({peer,window,remote,tick,scan,captures,messages,cachedPeer:()=>new Peer(),receive(data){if(data.type==="start")activeToken=data.token;return control(data)},render(track){media.push({srcObject:new Stream([track])})},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
+ try {await run({peer,window,remote,tick,scan,captures,messages,cachedPeer:()=>new Peer(),receive(data){if(data.type==="start")activeToken=data.token;return control(data)},render(track,card){const element={srcObject:new Stream([track]),closest:()=>card};media.push(element);return element},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
  finally {await control({type:'stop',token:activeToken});delete globalThis.__cassiniPageCapture;}
 }
 ;

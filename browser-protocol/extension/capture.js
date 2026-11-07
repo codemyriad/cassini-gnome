@@ -426,7 +426,7 @@ function calibrate(context, node, origin, wait) {
   return Promise.resolve(clocks.get(context));
 }
 
-async function captureOnce({ stream, id, label, kind, origin, workletURL, send, fail, audible = false, enabled = () => true, channels = 1, sharedContext, getSharedContext, warn = () => {}, sourceTrackId, reportOutcomes = false, onAudio = () => {}, schedule, cancel }) {
+async function captureOnce({ stream, id, label, labelSource, kind, origin, workletURL, send, fail, audible = false, enabled = () => true, channels = 1, sharedContext, getSharedContext, warn = () => {}, sourceTrackId, reportOutcomes = false, onAudio = () => {}, schedule, cancel }) {
   sharedContext ||= getSharedContext?.();
   const context = sharedContext || new AudioContext({ sampleRate: 48000 });
   const wait = (promise, message) => bounded(promise, message, schedule, cancel);
@@ -529,7 +529,7 @@ async function captureOnce({ stream, id, label, kind, origin, workletURL, send, 
     clock.spans.add(span);
     // A later span takes its own reading, so it never starts on a mapping a stall made stale.
     if (cached) observe(context, clock);
-    await send({ type: "track", id, label, kind, sampleRate: context.sampleRate, channels,
+    await send({ type: "track", id, label, ...(labelSource ? {labelSource} : {}), kind, sampleRate: context.sampleRate, channels,
       ...(sourceTrackId ? { sourceTrackId } : {}), clockMethod: clock.clockMethod, clockUncertaintyMs: clock.clockUncertaintyMs,
       ...(clock.clockClampMs ? { clockClampMs: clock.clockClampMs } : {}) });
     announced = true;

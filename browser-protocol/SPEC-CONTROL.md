@@ -995,3 +995,14 @@ fences, create a recording or send another native Start. Repair also performs th
 check before accepting a connected relay. An unverified old document remains
 obsolete; the extension retains its existing fail-closed health/admission policy.
 No new browser permission, app wire capability or status API is introduced.
+
+
+### Talk display-label snapshots (extension 0.2.23)
+
+Eligible Talk receiver tracks may use an untrusted DOM participant-card name,
+matched by exact audio-track object identity, as their static registration label.
+The native track declaration and source ledger retain labelSource:dom under SPEC's
+proposed provenance contract. Ambiguous/missing mappings keep browser-origin labels;
+DOM names do not change call/RTP/admission gates or any control/status/health fields.
+Product hosts must adopt provenance persistence with the bundled extension; the
+private browser-test writer does not establish Swift/Python product adoption.

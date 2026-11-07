@@ -88,7 +88,7 @@ try{
  assert.equal(await popup.getByRole('button',{name:/record|stop/i}).count(),0);
  const stopId='nextcloud-stop';control.write(JSON.stringify({type:'command',requestId:stopId,action:'stop',tabId:row.tabId,independent:true})+'\n');
  const stopped=await until(()=>events.find(e=>e.type==='result'&&e.requestId===stopId),'native Stop result');assert.equal(stopped.ok,true,JSON.stringify(stopped));
- const final=JSON.parse(await readFile(path.join(directory,'session.json'),'utf8'));
+ const final=JSON.parse(await readFile(path.join(directory,'session.json'),'utf8'));report.manifest=final;
  assert.equal(final.state,'completed');assert.ok(!final.tracks.some(t=>t.kind==='local'||t.kind==='microphone'));
  const remoteTracks=final.tracks.filter(t=>t.kind==='remote');
  assert.equal(remoteTracks.length,2,'each of the two incoming peers must have its own track');
@@ -107,11 +107,17 @@ try{
   function power(f){let re=0,im=0;for(let i=0;i<frames;i++){const sample=pcm.readInt16LE(pcm.length-frames*2+i*2)/32768;re+=sample*Math.cos(2*Math.PI*f*i/track.sampleRate);im+=sample*Math.sin(2*Math.PI*f*i/track.sampleRate);}return(re*re+im*im)/(frames*frames);}
   const a=power(440),b=power(880);
   assert.ok(Math.max(a,b)>1e-7&&Math.max(a,b)>Math.min(a,b)*10,'every remote track must contain one isolated test tone');
-  peaks.push(a>b?440:880);
+  const frequency=a>b?440:880,expectedName=frequency===440?'Hypatia':'Ibn al-Haytham';
+  assert.equal(track.label,expectedName,'Talk participant name must match the isolated peer tone');
+  assert.equal(track.labelSource,'dom','Talk participant labels must retain DOM provenance');
+  const source=final.captureOutcome.sources.find(s=>s.sourceTrackId===track.sourceTrackId);
+  assert.ok(source,'named audio track must have its own source ledger entry');
+  assert.equal(source.label,expectedName);assert.equal(source.labelSource,'dom');
+  peaks.push(frequency);
  }
  assert.deepEqual([...new Set(peaks)].sort((a,b)=>a-b),[440,880],'remote tracks must carry separate known peer tones without cross-mixing');
- assert.deepEqual(pageErrors,[]);report.cases.push('separate remote PCM captured, no microphone, no tone cross-mixing');report.manifest=final;
- console.log('PASS real Nextcloud Talk: discovery/RTP, native control Start, separate 440/880 Hz remote WAVs and finalization');success=true;
+ assert.deepEqual(pageErrors,[]);report.cases.push('DOM participant names match isolated remote PCM and persisted provenance, no microphone or tone cross-mixing');report.manifest=final;
+ console.log('PASS real Nextcloud Talk: Hypatia=440Hz and Ibn al-Haytham=880Hz, distinct sources, DOM provenance, separate remote WAVs and finalization');success=true;
 }finally{
  report.browserEvents=await worker?.evaluate(()=>nextcloudBrowserEvents).catch(error=>({error:error.message}));
  report.events=events;report.pageErrors=pageErrors;

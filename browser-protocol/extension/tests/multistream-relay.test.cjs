@@ -25,10 +25,10 @@ test('seventy sources cross the production relay and worker into a framed native
   assert.equal((await command('start','start')).ok,true);
   const token=controls.find(p=>p.type==='start').token;
   async function packet(request,p){page({type:'packet',token,request,packet:p});await until(()=>controls.some(m=>m.type==='ack'&&m.request===request));return controls.find(m=>m.type==='ack'&&m.request===request)}
-  const sources=Array.from({length:70},(_,i)=>({sourceTrackId:`receiver-${i}`,kind:'remote',label:`Voice ${i}`,failed:false}));
+  const sources=Array.from({length:70},(_,i)=>({sourceTrackId:`receiver-${i}`,kind:'remote',label:`Voice ${i}`,...(i%2===0?{labelSource:"dom"}:{}),failed:false}));
   assert.equal((await packet(1,{type:'sources',discoveredSources:sources})).error,undefined);
   for(let i=0;i<70;i++){
-   const ack=await packet(i+2,{type:'track',id:`span-${i}`,sourceTrackId:sources[i].sourceTrackId,kind:'remote',label:sources[i].label,sampleRate:48000,channels:1});
+   const ack=await packet(i+2,{type:'track',id:`span-${i}`,sourceTrackId:sources[i].sourceTrackId,kind:'remote',label:sources[i].label,...(sources[i].labelSource?{labelSource:sources[i].labelSource}:{}),sampleRate:48000,channels:1});
    assert.equal(Boolean(ack.error),i>=64);if(i>=64)assert.equal(ack.scope,'source');
   }
   assert.equal((await command('stop','stop')).ok,true);
@@ -36,6 +36,8 @@ test('seventy sources cross the production relay and worker into a framed native
   const folder=path.join(root,directories[0]),session=JSON.parse(fs.readFileSync(path.join(folder,'session.json')));
   assert.equal(session.tracks.length,64);assert.equal(fs.readdirSync(folder).filter(p=>p.endsWith('.wav')).length,64);
   assert.equal(session.captureOutcome.sources.length,70);
+  assert.equal(session.tracks[0].labelSource,'dom');assert.equal(session.tracks[1].labelSource,'browser');
+  assert.ok(session.captureOutcome.sources.filter((s,i)=>i%2===0).every(s=>s.labelSource==='dom'),'DOM provenance survives source batches, failures and Stop');
   assert.deepEqual(session.captureOutcome.sources.filter(s=>s.captureOutcome==='failed').map(s=>s.sourceTrackId),sources.slice(64).map(s=>s.sourceTrackId));
   const [code]=await exited;assert.equal(code,0,stderr);
  }finally{app?.close();native.disconnect();if(child.exitCode===null){child.kill();await exited}fs.rmSync(root,{recursive:true,force:true})}

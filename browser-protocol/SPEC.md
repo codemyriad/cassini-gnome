@@ -1,4 +1,27 @@
-# Browser recording protocol — SPEC v1.1
+# Browser recording protocol — SPEC v1.2 draft
+
+## Proposed changelog — v1.2 (requires both host consumers)
+
+Wire and session version remain 1. Browser `track` registrations and `sources` /
+`stop.discoveredSources` entries gain optional `labelSource`: `browser` or `dom`;
+omitted/null means browser-origin metadata. Explicit reserved provenance (`user`,
+`device`, `recovered`) or other values fail with code `source`. Hosts persist the
+provenance on tracks and, when known, corresponding captureOutcome source entries.
+Saved metadata still supports device/user/recovered and omission means unknown.
+These are the additive provenance semantics drafted in PR #1, now exercised by
+Talk participant-name capture. Both Swift and Python consumers must adopt the
+contract and shared vectors with the matching extension before product rollout;
+there is no new capability negotiation, and older hosts may ignore optional fields.
+
+`dom` is untrusted page display text, not verified participant identity. Strip
+controls and limit it to 200 Unicode code points. Labels are static registration
+snapshots; no rename, participant-update or speaker-attribution message is added.
+The Talk adapter uses exact audio-track object equality between an eligible receiver
+and a participant card's single-audio-track srcObject. Distinct participant-card IDs
+or conflicting names for that track keep the generic browser label. Duplicate Janus
+labels/track IDs, element order and participant-list names are never identity proof.
+Names do not grant discovery, call admission, RTP evidence or capture permissions.
+A source retains its first registration label across retry/replacement spans.
 
 ## Changelog — v1.1 (2026-10-27)
 
@@ -40,7 +63,7 @@ exponents are permitted for offsetMs; NaN and Infinity tokens are invalid JSON.
 | Request | Required fields | Optional fields | Response |
 | --- | --- | --- | --- |
 | start | type="start" | version integer 1, title string | started, path string |
-| track | type="track", id string, kind string, sampleRate integer, channels integer | label string; clock facts and documentGeneration (see Page trust and browser clocks) | ack |
+| track | type="track", id string, kind string, sampleRate integer, channels integer | label string, labelSource string; clock facts and documentGeneration (see Page trust and browser clocks) | ack |
 | audio | type="audio", id string, sequence integer, offsetMs number, pcm base64 string | none | ack |
 | stop | type="stop" | problem string | stopped, path string, optional problem string |
 
@@ -306,7 +329,7 @@ Tracks contain id, label, kind, generated safe WAV basename file, sampleRate, ch
 frames, optional startOffsetMs, endOffsetMs, ended, labelSource. Frame count is per channel
 and includes inserted silence. ended=true means the writer finalized the source; it does
 not establish participant departure. endOffsetMs=startOffsetMs+frames/rate*1000 when known.
-labelSource optionally identifies browser, device, user, or recovered; omission means unknown.
+labelSource optionally identifies browser, dom, device, user, or recovered; omission means unknown.
 
 WAVs use a 44-byte PCM16 RIFF header. Complete PCM frames on disk are authoritative over
 periodically checkpointed frame counts, including a header one append behind after a crash.

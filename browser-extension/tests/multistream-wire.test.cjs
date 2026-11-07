@@ -461,3 +461,21 @@ test('a generation status reports is the generation its spans carry, counted in 
   assert.equal(app.api.status().documentGeneration,'\u00e9'.repeat(100));
  }finally{app.close()}
 });
+
+
+test('DOM provenance reaches source records and tracks; reserved provenance is refused',async()=>{
+ const app=await setup(3,{},['source-outcomes-v1']);
+ try {
+  await app.command(command('names','start'));
+  const source={sourceTrackId:'named',kind:'remote',label:'Hypatia',labelSource:'dom'};
+  assert.equal((await packet(app,{type:'sources',discoveredSources:[source]},'source')).error,undefined);
+  assert.equal(app.audio[0].sent.find(p=>p.type==='sources').discoveredSources[0].labelSource,'dom');
+  assert.equal((await packet(app,{type:'track',id:'named-span',...source,sampleRate:48000,channels:1},'track')).error,undefined);
+  assert.equal(app.audio[0].sent.find(p=>p.type==='track').labelSource,'dom');
+  for(const labelSource of ['user','device','recovered',false,{}]) {
+   assert.equal((await packet(app,{type:'sources',discoveredSources:[{...source,labelSource}]},'bad-source-'+JSON.stringify(labelSource))).code,'source');
+   assert.equal((await packet(app,{type:'track',id:'bad-span',...source,labelSource,sampleRate:48000,channels:1},'bad-track-'+JSON.stringify(labelSource))).code,'source');
+  }
+  assert.equal(app.audio[0].sent.filter(p=>p.type==='track').length,1,'invalid metadata never reaches an older host');
+ } finally {await app.api.stop();app.close()}
+});
