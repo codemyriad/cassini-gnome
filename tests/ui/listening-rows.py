@@ -25,6 +25,8 @@ gi.require_version("Graphene", "1.0")
 from gi.repository import Adw, GdkX11, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from listening_input import key  # noqa: E402
+
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
 from cassini_talk.i18n import LANGUAGES, using_language  # noqa: E402
 from cassini_talk.library import PreviewTurn  # noqa: E402
@@ -515,6 +517,22 @@ with tempfile.TemporaryDirectory() as temporary:
     window.player.pause()
     transcript_row.get_first_child().get_last_child().emit("clicked")
     assert window.player.playing and window.player.position == target.start_ms
+    assert window.get_focus() is play
+    window.player.pause()
+    starts = []
+    playing = window.player.connect(
+        "notify::playing", lambda player, _p: starts.append(player.position) if player.playing else None
+    )
+    transcript_row.grab_focus()
+    key(window, "shift+Return", until)
+    until(window, lambda: starts)
+    window.player.disconnect(playing)
+    assert starts[0] == target.start_ms
+    window.player.pause()
+    name_button.emit("clicked")
+    assert window.listen.active and window.listen.speaker == "voice-12"
+    assert window.listen.index == 0
+    play.grab_focus()
     page._hand_scroll()
     assert page._follow_until > GLib.get_monotonic_time()
     page._listening_requested()
