@@ -327,28 +327,16 @@ class MeetingPage(Adw.NavigationPage):
 
     def _bind(self, _factory, item):
         turn = item.get_item().turn
-        speaker = self.meeting.speaker_for(turn.speaker)
         row = Gtk.Box(spacing=16, margin_bottom=24)
         names = box(5, width_request=120, valign=Gtk.Align.START)
         caption = label("", "heading", xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=16)
-        caption.set_markup(f'<span foreground="{self._colour(speaker)}">{GLib.markup_escape_text(speaker.name)}</span>')
         name = Gtk.Button(
             child=caption,
             css_classes=["flat", "link", "transcript-name"],
-            tooltip_text=text("listen.speakerName.tooltip", name=speaker.name),
             sensitive=self._can_listen,
         )
-        name.update_property([Gtk.AccessibleProperty.LABEL], [text("listen.speakerName.tooltip", name=speaker.name)])
         name.connect("clicked", lambda button: self.listen_from_row(turn, button))
         names.append(name)
-        if speaker.provenance == "recognised" and self.window.get_application().voice_store.has_match(
-            self.meeting.directory, speaker.id
-        ):
-            tag = label(
-                text("common.autoTag"), "auto-tag", halign=Gtk.Align.START, tooltip_text=text("common.autoTag.tooltip")
-            )
-            tag.update_property([Gtk.AccessibleProperty.DESCRIPTION], [text("common.autoTag.tooltip")])
-            names.append(tag)
         time = Gtk.Button(
             label=fmt.position(turn.start_ms),
             css_classes=["flat", "link", "small", "transcript-time"],

@@ -679,6 +679,7 @@ with tempfile.TemporaryDirectory() as temporary:
         ),
     )
     # Renaming must preserve transcript model items and focused header widgets.
+    until(window, reading_visible)
     splices, headers, input_seen = [], [], []
     model_item = page.store.get_item(0)
     splice_handler = page.store.connect("items-changed", lambda *_: splices.append(True))
@@ -913,6 +914,9 @@ with tempfile.TemporaryDirectory() as temporary:
             timed = caption.get_last_child()
             until(window, lambda timed=timed: timed.get_width() >= timed.measure(Gtk.Orientation.HORIZONTAL, -1)[1])
             assert when in timed.get_text()
+            # Header batches retain this locale even after an idle boundary.
+            header = next(iter(page.bound.values()))[2].get_first_child().get_last_child()
+            until(window, lambda header=header: header.get_tooltip_text() == text("player.playFromHere"))
     with using_language("en"):
         page._signature = None
         page.update(meeting)
