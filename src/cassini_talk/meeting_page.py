@@ -514,7 +514,11 @@ class MeetingPage(Adw.NavigationPage):
         )
         if speaker.provenance == "recognised" and speaker.id not in matches:
             provenance = ""
-        description = text("speakers.row.a11y", name=speaker.name, provenance=provenance, when=when)
+        description = (
+            text("speakers.row.a11y", name=speaker.name, provenance=provenance, when=when)
+            if provenance and when
+            else ", ".join(part for part in (speaker.name, provenance, when) if part)
+        )
         row = Gtk.Overlay(css_classes=["speaker-row"])
         focus = Gtk.EventControllerFocus()
         focus.connect("enter", lambda *_: self._scroll_speaker(row))

@@ -39,6 +39,12 @@ def child():
     from cassini_talk.main import CassiniApplication
     from cassini_talk.player import Player
 
+    sys.path.insert(0, str(ROOT / "tests"))
+    from published_listening_support import published_opus
+
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.strings import text
+
     events = []
 
     def until(check):
@@ -186,6 +192,23 @@ def child():
         until(lambda: "speaker" in events and window.player.playing and window.player.position >= 4000)
         record_event("search-play")
         window.player.pause()
+        published_root = tmp / "Published"
+        published_opus(published_root)
+        (published,) = LibraryScanner(published_root).scan().meetings
+        assert published.published_file and published.listening_turns
+        window.open_meeting(published, external=True)
+        page = window.meeting_page
+        rebuilt = []
+        page.connect("rows-rebuilt", lambda *_: rebuilt.append(True))
+        until(lambda: rebuilt and window.player._prerolled)
+        for identifier, position in (("silvio", "00:00:02"), ("guest", "00:00:09")):
+            _row, play, caption = page._speaker_rows[identifier]
+            assert caption == text("speakers.when.once", position=position)
+            assert play.get_visible() and play.get_mapped() and play.get_sensitive()
+        record_event("published-ready")
+        until(lambda: window.listen.active and window.listen.speaker == "guest")
+        record_event("published-play")
+        window.player.pause()
         app.on_quit()
         app.do_shutdown()
 
@@ -317,6 +340,12 @@ def parent():
             wait_event("search-ready")
             activate("Play from 00:00:04", "search-play", refresh_after_lookup=True)
             wait_event("activation-refreshed")
+            wait_event("published-ready")
+            # Recognised-but-unmatched has no provenance: exact row naming
+            # omits the empty item, and cannot accidentally match its Play.
+            when = text("speakers.when.once", position="00:00:09")
+            find_button("Dario, " + when)
+            activate(text("speakers.listen.a11y", name="Dario", when=when), "published-play")
             assert process.wait(10) == 0
             assert not any(value in log_path.read_text() for value in ("Gtk-WARNING", "Gtk-CRITICAL"))
         finally:
