@@ -2831,6 +2831,10 @@ class BrowserService:
             and lifecycle.heard
             and tab not in browser.reported  # the extension released the tab
             and resumable(current, capture)
+            # The committed seam follows all accepted PCM. A packet's end
+            # may lead the clock: do not ask before that loss actually starts.
+            and current.since_ms is not None
+            and capture.elapsed_ms() >= current.since_ms
             and capture.browser_lost
             and capture.others
             and not (capture.finished or capture.stopping or capture.stop_requested.is_set())

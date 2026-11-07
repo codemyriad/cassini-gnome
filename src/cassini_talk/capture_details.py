@@ -333,6 +333,16 @@ def _captured_spans(record):
 def timeline(meeting, session, *, tracks=None):
     """Track evidence sets intervals; known events explain source/selection changes."""
     events = read_events(session.get("events"))
+    # Portable files can lack the cache's capture-source marker. A recorded
+    # browser source or browser-fallback event is still explicit evidence; a native capture
+    # never acquires browser reasons from a conflicting event history.
+    browser_capture = meeting.capture_source in BROWSER_SOURCES or (
+        meeting.capture_source is None
+        and any(
+            event["type"] == "othersSource" and (event["source"] == "browser" or event["reason"] in ("missing", "lost"))
+            for event in events
+        )
+    )
     raw_tracks = session.get("tracks", [])
     raw_tracks = raw_tracks[:64] if isinstance(raw_tracks, list) else []
     raw = {t.get("id"): t for t in raw_tracks if isinstance(t, dict) and isinstance(t.get("id"), str)}
@@ -371,8 +381,22 @@ def timeline(meeting, session, *, tracks=None):
                             event["source"] == "browser" and all(t.kind in ("remote", "tab", "media") for t in active)
                         )
                         browser_reason = event["reason"] in ("missing", "lost", "restored")
-                        if matches and (not browser_reason or meeting.capture_source in BROWSER_SOURCES):
+                        if matches and (not browser_reason or browser_capture):
                             reason = REASONS.get(event["reason"], "")
+                            if event["source"] == "system" and event["reason"] == "lost":
+                                cause = event.get("cause")
+                                known = {
+                                    "frameError",
+                                    "frameClosed",
+                                    "tabClosed",
+                                    "nativeHostError",
+                                    "startupError",
+                                    "transportClosed",
+                                }
+                                reason = text(
+                                    "details.othersFallback.cause."
+                                    + (cause if isinstance(cause, str) and cause in known else "other")
+                                )
             elif off:
                 source = text("details.source.none")
                 if selections[-1]["reason"] == "start":

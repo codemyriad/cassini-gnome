@@ -243,7 +243,7 @@ def test_unanswered_polls_keep_the_live_capture_only_up_to_the_bound(tmp_path, m
 
         # An answer received before the one held never replaces it, whenever it lands.
         older = Future()
-        older.set_result((41.5, ({}, False, {})))
+        older.set_result((41.5, ({}, False, {}), {}))
         watcher._complete(older)
         assert holds_live() and watcher.answered_at == 42 and len(changes) == 5
     finally:
@@ -374,3 +374,65 @@ def test_desktop_probe_failure_preserves_watch_lease_and_status_polling(service,
         assert profiles[-1] == "unavailable"
     finally:
         watcher.close()
+
+
+def test_terminal_capture_phases_survive_cache_replacement_without_retiring_a_new_session():
+    from uuid import uuid4
+
+    from cassini_talk.capture_activity import advance_capture_snapshot, retired_captures
+
+    old, new = str(uuid4()), str(uuid4())
+    app = SimpleNamespace(get_windows=lambda: [])
+
+    def reply(identifier, **state):
+        return dict(statuses=[dict(path="/tmp/Recording-" + identifier, phase="recording", **state)])
+
+    saving = advance_capture_snapshot(app, reply(old, recording=False, stopping=True))
+    assert saving["statuses"][0]["stopping"] is True
+    delayed = advance_capture_snapshot(app, reply(old, recording=True, stopping=False))
+    assert delayed["statuses"][0]["phase"] == "stopping"
+    advance_capture_snapshot(app, reply(old, recording=False, stopping=False))
+    advance_capture_snapshot(app, dict(statuses=[]))
+    stale_saving = advance_capture_snapshot(app, reply(old, recording=False, stopping=True))
+    assert stale_saving["statuses"][0]["stopping"] is False
+    assert stale_saving["statuses"][0]["phase"] is None
+    fresh = advance_capture_snapshot(app, reply(new, recording=True, stopping=False))
+    assert fresh["statuses"][0]["recording"] is True
+    assert retired_captures(app) == {old}
+
+
+def test_broker_silence_does_not_establish_a_terminal_capture_phase():
+    from uuid import uuid4
+
+    from cassini_talk.capture_activity import advance_capture_snapshot
+
+    app = SimpleNamespace(get_windows=lambda: [])
+    status = dict(path="/tmp/Recording-" + str(uuid4()), recording=True, stopping=False)
+    advance_capture_snapshot(app, dict(statuses=[status]))
+    advance_capture_snapshot(app, dict(statuses=[]))
+    answered_again = advance_capture_snapshot(app, dict(statuses=[status]))
+    assert answered_again["statuses"][0]["recording"] is True
+
+
+def test_an_older_activity_callback_still_advances_a_terminal_capture_fact():
+    from concurrent.futures import Future
+    from uuid import uuid4
+
+    identifier = str(uuid4())
+    changes = []
+    activity = BrowserActivity.__new__(BrowserActivity)
+    activity.closed = False
+    activity.future = None
+    activity.answered_at = 2
+    activity.snapshot = {identifier: "recording"}
+    activity.paths = {identifier: "/tmp/Recording-" + identifier}
+    activity.connected = True
+    activity._browser_capture_phases = {}
+    activity.changed = lambda: changes.append(dict(activity.snapshot))
+    older = Future()
+    older.set_result((1, ({}, False, {}), {identifier: "finished"}))
+    activity._complete(older)
+    assert activity.answered_at == 2 and activity.connected is True
+    assert activity.snapshot == {} and activity.paths == {}
+    assert activity._browser_capture_phases == {identifier: "finished"}
+    assert changes == [{}]

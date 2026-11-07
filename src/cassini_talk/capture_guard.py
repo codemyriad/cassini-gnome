@@ -34,8 +34,11 @@ def native_recorders(target):
 def capture_targets(app):
     from types import SimpleNamespace
 
-    from .capture_activity import standing_broker_caches
+    from .capture_activity import advance_capture_snapshot, standing_broker_caches
 
+    # Promote terminal facts before a Library observer can close, and project
+    # every cache against the same knowledge for Quit and the panel indicator.
+    advance_capture_snapshot(app, getattr(app, "_browser_snapshot", {}))
     native = [w for w in app.get_windows() if recorder_busy(getattr(w, "recorder", None))]
     native.extend(
         SimpleNamespace(recorder=recorder, open_result=False)
@@ -49,9 +52,12 @@ def capture_targets(app):
     browser = bool(getattr(app, "_record_start_future", None)) or any(
         browser_capture_busy(s)
         for target in snapshots
-        for s in getattr(target, "_browser_snapshot", {}).get("statuses", [])
+        for s in advance_capture_snapshot(app, getattr(target, "_browser_snapshot", {})).get("statuses", [])
     )
-    browser = browser or any(source.snapshot for source in sources)
+    phases = app._browser_capture_phases
+    browser = browser or any(
+        any(phases.get(identifier) != "finished" for identifier in (source.snapshot or {})) for source in sources
+    )
     return native, bool(browser)
 
 

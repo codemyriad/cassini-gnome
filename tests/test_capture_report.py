@@ -3,9 +3,11 @@
 
 import base64
 import hashlib
+import importlib.util
 import json
 import locale
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -322,3 +324,96 @@ def test_capture_facts_and_another_library_writer_share_one_lock_order(tmp_path,
             if process.is_alive():
                 process.kill()
                 process.join(3)
+
+
+@pytest.mark.parametrize("initial_event", [True, False])
+@pytest.mark.parametrize("cause", ["frameError", "lifecycle", "future.cause", None])
+def test_legacy_fallback_cause_survives_portable_publication_without_session_cache(
+    tmp_path, monkeypatch, cause, initial_event
+):
+    from cassini_talk.capture_details import read_details
+
+    # This regression judges facts crossing the real portable-file publisher,
+    # not the NumPy/GStreamer mixer. Supply its known one-second silent codec
+    # output while leaving tagging, journal commit and cache-free reading real.
+    from cassini_talk.library_v2 import mixdown
+    from cassini_talk.recording_session import RecordingSession
+    from cassini_talk.strings import text
+
+    spec = importlib.util.spec_from_file_location(
+        "silent_opus_fixture", Path(__file__).parents[1] / "ux/library-vectors/assets/build.py"
+    )
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    generator.ROOT = tmp_path
+    generator.build("encoded.opus", 1000)
+    encoded = tmp_path / "encoded.opus"
+
+    def sample_count(spans):
+        assert [(s.start_ms, s.length, s.info.sample_rate, s.anchors) for s in spans] == [
+            (0.0, 24000, 48000, ()),
+            (500.0, 24000, 48000, ()),
+        ]
+        return 48000
+
+    def encode(spans, output, choice, cancel=None):
+        count = sample_count(spans)
+        shutil.copyfile(encoded, output)
+        return count
+
+    monkeypatch.setattr(mixdown, "total_samples", sample_count)
+    monkeypatch.setattr(mixdown, "encode", encode)
+    root = tmp_path / "Library"
+    session = RecordingSession(capture_parent(root), source="chromium")
+    session.add_track("remote", "Voice", "remote", 48000, 1)
+    if initial_event:
+        with session.change([dict(type="othersSource", source="browser", reason="start", atMs=0)]):
+            pass
+    session.append("remote", bytes(48000), 0)
+    session.end_track("remote")
+    loss = dict(type="othersSource", source="system", reason="lost", atMs=500)
+    if cause is not None:
+        loss.update(cause=cause, detail="bounded saved producer explanation")
+    with session.change([loss]):
+        session.add_track("system", "Computer sound", "system", 48000, 1, label_source="device")
+    session.append("system", bytes(48000), 500)
+    session.finish(reason="user", at_ms=1000)
+    assert "captureOutcome" not in session.manifest and "refusals" not in session.manifest
+    before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in session.directory.glob("*.wav")}
+    published = publish_stopped(session)
+    (meeting,) = LibraryScanner(root).scan().meetings
+    record = stored(meeting.metadata)
+    assert record is not None and record["sources"] == []
+    assert next(e for e in record["events"] if e.get("reason") == "lost") == loss
+    expected = text("details.othersFallback.cause." + (cause if cause == "frameError" else "other"))
+    cached = read_details(meeting)
+    assert expected in cached.plain_text()
+    assert {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in session.directory.glob("*.wav")} == before
+    shutil.rmtree(session.directory)
+    (file_only,) = LibraryScanner(root).scan().meetings
+    assert file_only.audio_file.name == published.name
+    assert not (file_only.directory / "session.json").exists()
+    assert stored(file_only.metadata) == record
+    report = read_details(file_only)
+    assert report.spans == cached.spans
+    assert expected in report.plain_text()
+    assert text("details.timelineUnknown") not in report.notes
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        dict(type="othersSource", source="system", reason="lost", atMs=0, cause="transportClosed"),
+        dict(type="selection", me=True, others=False, reason="user", atMs=1),
+    ],
+)
+def test_source_events_are_portable_without_an_announced_source_inventory(event):
+    record = from_session(dict(tracks=[], events=[event]))
+    assert record is not None and record["sources"] == [] and record["events"] == [event]
+    record["events"][0]["atMs"] = 999
+    assert event["atMs"] != 999
+
+
+def test_terminal_or_malformed_event_alone_does_not_invent_a_capture_inventory():
+    assert from_session(dict(tracks=[], events=[dict(type="end", reason="user", atMs=10)])) is None
+    assert from_session(dict(tracks=[], events=[dict(type="othersSource", atMs=-1)])) is None

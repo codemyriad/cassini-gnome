@@ -250,7 +250,7 @@ def test_a_silent_broker_reads_idle_in_library_record_and_quit_and_the_newest_re
     assert app._browser_snapshot["autoRecord"] is True, "Its preference still lands, ordered by its revision"
     # Nor does a Library answer received before the one it holds.
     older = Future()
-    older.set_result((101.5, b.live_activity))
+    older.set_result((101.5, b.live_activity, {}))
     b.activity._complete(older)
     assert b.activity.answered_at == 102 and b.readings() == b.idle
     assert not b.watch_replies and not b.activity_replies

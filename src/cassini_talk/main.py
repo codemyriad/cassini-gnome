@@ -648,6 +648,11 @@ class CassiniApplication(Adw.Application):
         """A broker reply (BrowserWatch's poll, Settings' configure or Record's
         start-all), stamped with its monotonic receive time, or this snapshot
         expired (no stamp)."""
+        from .capture_activity import advance_capture_snapshot
+
+        # Terminal facts remain valid even when this callback's receive stamp
+        # is older. Only preference/connection metadata follows receive order.
+        snapshot = advance_capture_snapshot(self, snapshot)
         # BrowserActivity can lag Watch by a tick. Its stale window snapshot
         # must not hide the broker's recording -> idle transition.
         was_recording = any(s.get("recording") for s in self._browser_snapshot.get("statuses", ()))
@@ -669,6 +674,7 @@ class CassiniApplication(Adw.Application):
             snapshot["autoRecord"] = self._browser_snapshot.get("autoRecord", False)
         else:
             self._auto_recording_revision = revision
+        snapshot = advance_capture_snapshot(self, snapshot)
         self._browser_snapshot = snapshot
         if getattr(self, "recording_failures", None):
             self._prune_recording_failures(snapshot)

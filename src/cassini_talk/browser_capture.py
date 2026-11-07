@@ -658,10 +658,23 @@ class BrowserCapture:
             raise ValueError("Select at least one recording source")
         return self._change(me, others, retry=retry)
 
-    def fallback(self, reason="lost"):
+    def fallback(self, reason="lost", *, cause=None, detail=None):
         if reason not in ("missing", "lost"):
             raise ValueError("Invalid fallback reason")
-        return self._change(self.me, self.others, fallback=reason)
+        loss = {}
+        if reason == "lost":
+            # Optional diagnostics never classify the failure or change policy.
+            # Keep unknown future identifiers, ignore malformed diagnostics.
+            if (
+                isinstance(cause, str)
+                and 1 <= len(cause) <= 80
+                and cause.isascii()
+                and all(33 <= ord(character) <= 126 for character in cause)
+            ):
+                loss["cause"] = cause
+            if isinstance(detail, str) and detail:
+                loss["detail"] = detail[:1000]
+        return self._change(self.me, self.others, fallback=reason, loss=loss or None)
 
     @property
     def browser_ready(self):
@@ -995,8 +1008,8 @@ class BrowserCapture:
         """Whether this loss's restore already failed on the track limit."""
         return self.restore_refused is not None and self.restore_refused == self.loss_serial
 
-    def _change(self, me, others, *, fallback=None, retry=False):
-        return self._apply_change(me, others, fallback=fallback, retry=retry)
+    def _change(self, me, others, *, fallback=None, retry=False, loss=None):
+        return self._apply_change(me, others, fallback=fallback, retry=retry, loss=loss)
 
     def _events(self, me, others, lost, fallback, at):
         old = source_state(self.host.session.manifest.get("events"))
@@ -1026,7 +1039,7 @@ class BrowserCapture:
             )
         return events
 
-    def _apply_change(self, me, others, *, fallback=None, restore=False, retry=False):
+    def _apply_change(self, me, others, *, fallback=None, restore=False, retry=False, loss=None):
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.transition:
@@ -1086,9 +1099,14 @@ class BrowserCapture:
                     removed = {kind: value for kind, value in self.native_taps.items() if kind not in desired}
                     # D58.1: an armed tap (no first buffer yet) has no track to end.
                     ending = {kind: value for kind, value in removed.items() if self._has_track(value[0])}
+                    events = self._events(me, others, lost, fallback, at)
+                    if loss:
+                        for event in events:
+                            if event["type"] == "othersSource" and event["reason"] == "lost":
+                                event.update(loss)
                     with (
                         self.streams.change(),
-                        self.host.session.change(self._events(me, others, lost, fallback, at)),
+                        self.host.session.change(events),
                     ):
                         self.streams.select(me, others, at, browser=not lost)
                         for kind, (identifier, _tap, state) in prepared.items():
@@ -1226,7 +1244,7 @@ class BrowserCapture:
                 return refused
             if not marked:
                 if not self.stop_requested.is_set():
-                    self.fallback()
+                    self.fallback(cause=message.get("cause"), detail=message.get("problem"))
                     return dict(type="stopped", path=str(self.directory))
                 return self.stop(user_stopped=False)  # A lost packet joins the Stop that superseded it.
             return self.stop(at_ms=arrived, user_stopped=False)
@@ -1377,7 +1395,7 @@ class BrowserCapture:
                 self.stop(user_stopped=False)
             else:
                 try:
-                    self.fallback()
+                    self.fallback(cause="transportClosed", detail=problem)
                 except Exception as error:
                     # Loss cannot leave an unowned microphone/session alive if
                     # limits, durability or the replacement device reject Q4.
