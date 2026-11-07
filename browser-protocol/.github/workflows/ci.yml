@@ -104,3 +104,70 @@ jobs:
         with:
           name: topology-results
           path: artifacts/
+  nextcloud-talk:
+    name: Real Nextcloud Talk and separate browser audio
+    needs: contract
+    # This stack owns host-network signaling ports; use a disposable VM rather
+    # than sharing them with persistent developer/self-hosted stacks.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PROJECT_NAME: cassini-extension-nextcloud
+      CASSINI_COMPAT_FIXTURE: '1'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: protocol
+      - name: Checkout the pinned Talk harness
+        uses: actions/checkout@v5
+        with:
+          repository: codemyriad/gocassini
+          ref: 1111155cb0017b47c072a8662c54f28ad7c44223
+          path: talk-harness
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: talk-harness/cassini-go-recorder/go.mod
+          cache-dependency-path: talk-harness/cassini-go-recorder/go.sum
+      - name: Install the browser
+        working-directory: protocol
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Start a locked Nextcloud 34 and Talk 24 stack
+        run: |
+          set -euo pipefail
+          python3 talk-harness/scripts/nextcloud_compatibility.py prepare --baseline nc34 --out "$RUNNER_TEMP/nextcloud-lock"
+          source "$RUNNER_TEMP/nextcloud-lock/env.sh"
+          timeout 900 talk-harness/bin/cassini dev stack up --services full --recording-backend none --cassini none --debug-skip-storage-scaffold --reset
+          # Cassini mode none skips AppAPI setup; verify/enable its locked bundled bytes
+          # explicitly so the stack observation validates every locked app.
+          python3 talk-harness/scripts/nextcloud_compatibility.py install-app --stack "$RUNNER_TEMP/nextcloud-lock/stack.json" --project "$PROJECT_NAME" app_api
+          mkdir -p protocol/artifacts
+          python3 talk-harness/scripts/nextcloud_compatibility.py observe --stack "$RUNNER_TEMP/nextcloud-lock/stack.json" --project "$PROJECT_NAME" --image "$NEXTCLOUD_IMAGE" --out protocol/artifacts/nextcloud-stack.json
+          call_url=$(talk-harness/bin/cassini dev room create --name 'Cassini extension regression' | tail -n1)
+          echo "NEXTCLOUD_TEST_CALL_URL=$call_url" >> "$GITHUB_ENV"
+      - name: Detect the real call and preserve separate incoming PCM
+        working-directory: protocol
+        run: timeout 240 node tests/nextcloud-talk.mjs
+      - name: Preserve Talk service logs
+        if: always()
+        run: |
+          mkdir -p protocol/artifacts/nextcloud-services
+          for service in nextcloud signaling janus; do
+            docker compose -p "$PROJECT_NAME" -f talk-harness/harness/compose.yml logs --no-color "$service" > "protocol/artifacts/nextcloud-services/$service.log" 2>&1 || true
+          done
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: nextcloud-talk-evidence
+          path: protocol/artifacts/
+      - name: Stop only this disposable Talk stack
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/nextcloud-lock/env.sh" ]; then
+            source "$RUNNER_TEMP/nextcloud-lock/env.sh"
+            timeout 180 talk-harness/bin/cassini dev stack down --volumes --services full --recording-backend none --cassini none
+          fi
