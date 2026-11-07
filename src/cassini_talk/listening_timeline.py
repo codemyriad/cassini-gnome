@@ -64,13 +64,18 @@ class ListeningTimeline(Gtk.Overlay):
         self._dragging = self._snapped = self._dragged = False
         self._press_x = self._press_y = 0
         self._snap_position = None
+        self._drag_geometry = None
         self._x = 0
         scale.update_property([Gtk.AccessibleProperty.LABEL], [text("player.position")])
         scale.set_has_tooltip(True)
         scale.connect("query-tooltip", self._tooltip)
-        events = Gtk.EventControllerLegacy(propagation_phase=Gtk.PropagationPhase.CAPTURE)
-        events.connect("event", self._event)
-        scale.add_controller(events)
+        self.gesture = Gtk.GestureDrag(button=1, propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        self.gesture.connect("drag-begin", self._begin)
+        self.gesture.connect("drag-update", self._drag)
+        self.gesture.connect("drag-end", self._end)
+        self.gesture.connect("cancel", self._cancel)
+        scale.add_controller(self.gesture)
+        self._closed = False
         self.readout = Gtk.Label(margin_top=6, margin_bottom=6, margin_start=8, margin_end=8)
         self.drag_popup = Gtk.Popover(child=self.readout, autohide=False, focusable=False, can_target=False)
         self.drag_popup.set_parent(scale)
@@ -102,7 +107,7 @@ class ListeningTimeline(Gtk.Overlay):
         return rect.x + half, max(0, rect.width - 2 * half)
 
     def position_at(self, x):
-        left, width = self._geometry()
+        left, width = self._drag_geometry if self._dragging else self._geometry()
         duration = self.scale.get_adjustment().get_upper()
         return round(max(0, min(1, (x - left) / max(1, width))) * duration)
 
@@ -119,49 +124,44 @@ class ListeningTimeline(Gtk.Overlay):
         self.drag_popup.set_pointing_to(rect)
         self.drag_popup.popup()
 
-    def _event(self, _controller, event):
-        kind = event.get_event_type()
-        if kind in (Gdk.EventType.BUTTON_PRESS, Gdk.EventType.BUTTON_RELEASE, Gdk.EventType.MOTION_NOTIFY):
-            ok, x, y = event.get_position()
-            if not ok:
-                return False
-            native = self.scale.get_native()
-            dx, dy = native.get_surface_transform()
-            point = Graphene.Point()
-            point.init(x + dx, y + dy)
-            ok, local = native.compute_point(self.scale, point)
-            if not ok:
-                return False
-            self._x = local.x
-            y = local.y
-        if kind == Gdk.EventType.BUTTON_PRESS and event.get_button() == 1:
-            self._dragging = True
-            self._dragged = False
-            self._press_x, self._press_y = self._x, y
-            left, width = self._geometry()
-            start = snap_start(self._target, self._x, left, width, self.scale.get_adjustment().get_upper())
-            self._snapped = start is not None
-            self._snap_position = start
-            if self._snapped:
-                self.page.player.seek(start)
-            self._show_drag(self._x)
-            return self._snapped
-        if kind == Gdk.EventType.MOTION_NOTIFY and self._dragging:
-            if self._snapped:
-                self._dragged |= self.scale.drag_check_threshold(
-                    round(self._press_x), round(self._press_y), round(self._x), round(y)
-                )
-                if self._dragged:
-                    self.page.player.seek(self.position_at(self._x))
-            self._show_drag(self._x)
-        if kind == Gdk.EventType.BUTTON_RELEASE and event.get_button() == 1:
+    def _begin(self, gesture, x, y):
+        if self._closed:
+            return
+        # Typed gesture coordinates are already local to the scale. The
+        # legacy Gdk.Event signal is not marshalled on all supported GI builds.
+        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+        self.scale.grab_focus()
+        self._drag_geometry = self._geometry()
+        self._dragging, self._dragged = True, False
+        self._press_x, self._press_y = x, y
+        left, width = self._drag_geometry
+        start = snap_start(self._target, x, left, width, self.scale.get_adjustment().get_upper())
+        self._snapped = start is not None
+        self._snap_position = start
+        self.page.player.seek(start if self._snapped else self.position_at(x))
+        self._show_drag(x)
+
+    def _drag(self, _gesture, dx, dy):
+        if self._closed or not self._dragging:
+            return
+        self._x = self._press_x + dx
+        self._dragged |= self.scale.drag_check_threshold(
+            round(self._press_x), round(self._press_y), round(self._x), round(self._press_y + dy)
+        )
+        if not self._snapped or self._dragged:
+            self.page.player.seek(self.position_at(self._x))
+        self._show_drag(self._x)
+
+    def _end(self, gesture, dx, dy):
+        if not self._closed and self._dragging:
+            self._drag(gesture, dx, dy)
             self._dragging = False
-            if self._snapped and self._dragged:
-                self.page.player.seek(self.position_at(self._x))
             self.drag_popup.popdown()
-            snapped, self._snapped = self._snapped, False
-            return snapped
-        return False
+
+    def _cancel(self, *_):
+        self._dragging = False
+        if not self._closed:
+            self.drag_popup.popdown()
 
     def draw_ticks(self, snapshot, height):
         duration = self.scale.get_adjustment().get_upper()
@@ -184,5 +184,8 @@ class ListeningTimeline(Gtk.Overlay):
         )
 
     def close(self):
+        if self._closed:
+            return
+        self._closed = True
         self.drag_popup.popdown()
         self.drag_popup.unparent()

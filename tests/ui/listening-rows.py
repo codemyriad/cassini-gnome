@@ -20,7 +20,9 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
+gi.require_version("GdkX11", "4.0")
+gi.require_version("Graphene", "1.0")
+from gi.repository import Adw, GdkX11, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
@@ -399,6 +401,97 @@ with tempfile.TemporaryDirectory() as temporary:
     assert timeline.readout_at(34150) == "00:00:34"
     assert timeline.readout_at(34050) == text("player.timeline.tooltip", position="00:00:34", name="Unidentified voice")
     assert len(timeline._target) == 1 and timeline._target[0].start_ms == 34000
+    assert window.get_focus() is play
+    window.player.pause()
+    left, track_width = timeline._geometry()
+    point = Graphene.Point()
+    point.init(round(left + 34000 * track_width / 40000) + 4, page.seek.get_height() / 2)
+    ok, pointer = page.seek.compute_point(window, point)
+    assert ok
+    dx, dy = window.get_surface_transform()
+    xid = str(GdkX11.X11Surface.get_xid(window.get_surface()))
+    pointer_events = []
+    for signal in ("drag-begin", "drag-update", "drag-end", "cancel"):
+        timeline.gesture.connect(
+            signal, lambda _g, *args, signal=signal: pointer_events.append((signal, args, timeline._dragging))
+        )
+    # Real GDK pointer delivery, four pixels from the drawn tick. Without the
+    # capture handler a normal range click would seek beyond this exact start.
+    subprocess.run(
+        [
+            "xdotool",
+            "mousemove",
+            "--window",
+            xid,
+            str(round(pointer.x + dx)),
+            str(round(pointer.y + dy)),
+            "click",
+            "1",
+        ],
+        check=True,
+        timeout=5,
+    )
+    until(window, lambda: window.player.position == 34000 and not timeline._dragging)
+    assert window.listen.active and not window.player.playing
+    # Complete the timestamp/slider allocation before constructing a second
+    # native sequence. Frame notifications, not a delay, establish readiness.
+    frames = []
+    window.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
+    until(window, lambda: len(frames) >= 2)
+    left, track_width = timeline._geometry()
+    point.init(round(left + 34000 * track_width / 40000) + 4, page.seek.get_height() / 2)
+    ok, pointer = page.seek.compute_point(window, point)
+    assert ok
+    end_x = round(left + track_width / 2)
+    end = Graphene.Point()
+    end.init(end_x, page.seek.get_height() / 2)
+    ok, endpoint = page.seek.compute_point(window, end)
+    assert ok
+    subprocess.run(
+        [
+            "xdotool",
+            "mousemove",
+            "--window",
+            xid,
+            str(round(pointer.x + dx)),
+            str(round(pointer.y + dy)),
+            "mousedown",
+            "1",
+            "mousemove",
+            "--window",
+            xid,
+            str(round(endpoint.x + dx)),
+            str(round(endpoint.y + dy)),
+            "mouseup",
+            "1",
+        ],
+        check=True,
+        timeout=5,
+    )
+    expected = round((end_x - left) * 40000 / track_width)
+    try:
+        until(window, lambda: window.player.position == expected and not timeline._dragging)
+    except AssertionError:
+        print(
+            dict(
+                expected=expected,
+                position=window.player.position,
+                dragging=timeline._dragging,
+                dragged=timeline._dragged,
+                press=timeline._press_x,
+                x=timeline._x,
+                endpoint=end_x,
+                geometry=timeline._geometry(),
+                events=pointer_events,
+            ),
+            flush=True,
+        )
+        raise
+    assert window.listen.active and not window.player.playing
+    assert not timeline.drag_popup.get_visible()
+    window.player.seek(34000)
+    assert window.get_focus() is page.seek
+    play.grab_focus()
     bar = page.listening_bar
     until(window, lambda: bar.get_child_revealed())
     assert bar.name.get_text() == "Unidentified voice"

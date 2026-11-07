@@ -29,10 +29,10 @@ def test_dense_ticks_keep_the_exact_list_and_nearest_turn():
     assert snap_start(turns, 100, 0, 0, 10000) is None
 
 
-def test_real_gtk_ticks_do_not_change_scale_height_and_surface_pointer_snaps():
+def test_real_gtk_ticks_keep_scale_height_and_gesture_dragging_from_a_snap():
     from types import SimpleNamespace
 
-    from gi.repository import Gdk, Graphene, Gtk
+    from gi.repository import Gtk
     from test_listen import until
 
     from cassini_talk.listening_timeline import ListeningTimeline
@@ -62,33 +62,21 @@ def test_real_gtk_ticks_do_not_change_scale_height_and_surface_pointer_snaps():
         assert all(node.get_child(i).get_bounds().get_width() == 3 for i in range(127))
         assert all(node.get_child(i).get_bounds().get_height() == 8 for i in range(127))
         left, width = timeline._geometry()
-        local = Graphene.Point()
-        local.init(left + width * 0.1, 10)
-        ok, surface = scale.compute_point(window, local)
-        assert ok
-        dx, dy = window.get_surface_transform()
-        event = SimpleNamespace(
-            get_event_type=lambda: Gdk.EventType.BUTTON_PRESS,
-            get_button=lambda: 1,
-            get_position=lambda: (True, surface.x - dx, surface.y - dy),
-        )
-        assert timeline._event(None, event)
+        gesture = SimpleNamespace(set_state=lambda _state: None)
+        timeline._begin(gesture, left + width * 0.1, 10)
         assert seeks == [2000]
         assert timeline._dragging and timeline._snapped
-        # Starting a drag at a tick must not leave the scale stuck at the snap.
-        local.init(left + width * 0.5, 10)
-        ok, surface = scale.compute_point(window, local)
-        assert ok
-        motion = SimpleNamespace(
-            get_event_type=lambda: Gdk.EventType.MOTION_NOTIFY,
-            get_position=lambda: (True, surface.x - dx, surface.y - dy),
-        )
-        timeline._event(None, motion)
+        timeline._drag(gesture, width * 0.4, 0)
         assert seeks[-1] == 10000
         assert timeline._dragged
+        timeline._end(gesture, width * 0.4, 0)
+        assert not timeline._dragging
         timeline.set_target(())
-        assert not timeline._event(None, event)
-        assert seeks == [2000, 10000]
+        timeline._begin(gesture, left + width * 0.7, 10)
+        assert seeks[-1] == 14000
+        assert not timeline._snapped
+        timeline._cancel()
+        assert not timeline._dragging
     finally:
         timeline.close()
         window.destroy()
