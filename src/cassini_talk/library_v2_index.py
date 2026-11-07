@@ -163,6 +163,7 @@ class PublishedIndex:
                     words=(),
                     preview_turns=(),
                     turns=(),
+                    listening_turns=(),
                     quote_line=None,
                     diagnostics=(*meeting.diagnostics, Diagnostic(meeting.directory, "published-file-missing")),
                 )
@@ -302,6 +303,7 @@ class PublishedIndex:
                 speakers=_speakers(words, metadata.get("speakers", []), embedded, stored_labels=True),
                 preview_turns=preview,
                 turns=self.scanner._preview_cache.get(preview_key, (None, None, ()))[2],
+                listening_turns=self.scanner._preview_cache[preview_key][4] if words else (),
                 turn_gaps=gaps,
                 quote_line=_quote(words, metadata.get("quoteOverride"))
                 if transcript in ("done", "queued", "running")

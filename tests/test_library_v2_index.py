@@ -80,8 +80,11 @@ def test_missing_published_file_is_not_an_interrupted_recording(tmp_path):
         ),
     )
     update_metadata(_directory, transient=True, transcript=dict(status="queued", reference=None))
+    (before,) = LibraryScanner(tmp_path).scan().meetings
+    assert before.listening_turns
     (tmp_path / result.name).unlink()
     (meeting,) = LibraryScanner(tmp_path).scan().meetings
+    assert not meeting.listening_turns
     assert meeting.id == sid and meeting.published_missing
     assert meeting.interrupted_at_ms is None and not meeting.can_write_down
     assert meeting.publication_notice == "library.publishedMissing" and not meeting.has_audio
