@@ -71,8 +71,11 @@ class ResumeTests(unittest.TestCase):
 
     def test_resume_start_and_explicit_proof_validate_without_changing_legacy_start(self):
         target = VECTORS['initial']
+        # R94: the ask names the committed seam it resumes; for the initial stand-in, its system/missing.
+        missing = next(e['atMs'] for e in VECTORS['seam']['events'] if e['type'] == 'othersSource' and e['reason'] == 'missing')
         request = dict(type='command',requestId='resume',action='start',mode='tracks',tabId=2,independent=True,
-                       callGeneration=target['callGeneration'],resumeCapture={k:target[k] for k in ('captureId','timelineOriginMs')})
+                       callGeneration=target['callGeneration'],
+                       resumeCapture=dict({k:target[k] for k in ('captureId','timelineOriginMs')},lostAtMs=missing))
         schema('control-host').validate(request)
         for change in (dict(independent=False),dict(action='stop'),dict(callGeneration=None),dict(resumeCapture={})):
             self.assertFalse(schema('control-host').is_valid(dict(request,**change)))
@@ -90,6 +93,25 @@ class ResumeTests(unittest.TestCase):
             self.assertFalse(schema('response').is_valid(invalid),field)
         schema('request').validate(dict(type='start',version=1))
         schema('response').validate(dict(type='started',path='/fresh'))
+
+    def test_resume_ask_names_the_committed_loss(self):
+        # R94: hosts MUST send resumeCapture.lostAtMs, the atMs of the committed seam as written
+        # (fractional where the writer's clock is); the extension ignores it (extension test
+        # resume-capture.test.cjs), so it is never part of the native resume packet.
+        target = VECTORS['initial']
+        lost = next(e['atMs'] for e in VECTORS['lostSeam']['events'] if e.get('source') == 'system' and e['reason'] == 'lost')
+        request = dict(type='command',requestId='resume',action='start',mode='tracks',tabId=2,independent=True,
+                       callGeneration=target['callGeneration'],
+                       resumeCapture=dict(captureId=target['captureId'],timelineOriginMs=target['timelineOriginMs'],lostAtMs=lost))
+        for value in (lost, 0, 96027.15, 95912.5):
+            schema('control-host').validate(dict(request,resumeCapture=dict(request['resumeCapture'],lostAtMs=value)))
+        absent = dict(request['resumeCapture']); absent.pop('lostAtMs')
+        self.assertFalse(schema('control-host').is_valid(dict(request,resumeCapture=absent)))
+        for value in (-1, -0.5, '3000', None, True, [], {}):
+            self.assertFalse(schema('control-host').is_valid(dict(request,resumeCapture=dict(request['resumeCapture'],lostAtMs=value))),repr(value))
+        text = (ROOT/'SPEC-CONTROL.md').read_text()
+        self.assertIn('`resumeCapture.lostAtMs` (R94): the host MUST send it', text)
+        self.assertIn('does not forward it in\nthe native `resume` packet', text)
 
     def test_resume_packet_may_carry_the_control_request_id(self):
         # 0.2.11: the ask's requestId, same domain as the control requestId.

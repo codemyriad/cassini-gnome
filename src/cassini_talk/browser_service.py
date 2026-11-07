@@ -2900,10 +2900,9 @@ class BrowserService:
             and lifecycle.heard
             and tab not in browser.reported  # the extension released the tab
             and resumable(current, capture)
-            # The committed seam follows all accepted PCM. A packet's end
-            # may lead the clock: do not ask before that loss actually starts.
+            # R94: an output-time seam may lead the request clock. Its exact
+            # committed reference, not request-vs-seam ordering, identifies it.
             and current.since_ms is not None
-            and capture.elapsed_ms() >= current.since_ms
             and capture.browser_lost
             and capture.others
             and not (capture.finished or capture.stopping or capture.stop_requested.is_set())
@@ -2930,42 +2929,64 @@ class BrowserService:
         """
         browser_id, _, raw_tab = (identifier or "").partition(":")
         with self.lock:
-            browser = self.browsers.get(browser_id)
-            if (
-                browser is None
-                or not raw_tab.isdecimal()
-                or not self._resume_still_eligible(key, capture, browser, int(raw_tab))
-            ):
+            # A source transaction exposes working events before its durable
+            # checkpoint. Do not read them or spend this connection's ask while
+            # that lock is held. Policy will decide again on its next tick.
+            if not capture.lock.acquire(blocking=False):
                 lifecycle = self._capture_lifecycles.get(key)
                 if lifecycle is not None:
                     lifecycle.asked_on.discard(browser_id)
                 return
-            request_id = str(uuid4())
-            packet = dict(
-                type="command",
-                requestId=request_id,
-                action="start",
-                mode="tracks",
-                tabId=int(raw_tab),
-                independent=True,
-                captureLocal=False,
-                callGeneration=capture.call_generation,
-                resumeCapture=dict(captureId=key, timelineOriginMs=capture.origin_ms),
-            )
-            if "page-state-v1" in browser.capabilities:
-                # As for any GNOME Start: a reload must not end the resumed session.
-                packet["keepOnNavigation"] = True
-            browser.resumes[request_id] = key
-            while len(browser.resumes) > RESUME_HISTORY:
-                browser.resumes.pop(next(iter(browser.resumes)))
-            # R82 1b: one refusal entry per ask, from whichever answer comes first.
-            capture.mark_resume_ask(request_id)
             try:
-                browser.send(packet)
-            except (OSError, ValueError) as error:
-                browser.resumes.pop(request_id, None)
-                capture.clear_resume_ask(request_id)
-                logging.getLogger(__name__).info("Could not ask the browser to resume recording %s: %s", key, error)
+                # Stop can be marked without capture.lock during a checkpoint.
+                # Serialize that mark with the final eligibility check and queue.
+                with capture._stop_mark:
+                    self._dispatch_resume(key, capture, browser_id, raw_tab)
+            finally:
+                capture.lock.release()
+
+    def _dispatch_resume(self, key, capture, browser_id, raw_tab):
+        """Inventory, capture and Stop-mark locks held; queueing does no socket I/O."""
+        browser = self.browsers.get(browser_id)
+        if (
+            browser is None
+            or not raw_tab.isdecimal()
+            or not self._resume_still_eligible(key, capture, browser, int(raw_tab))
+        ):
+            lifecycle = self._capture_lifecycles.get(key)
+            if lifecycle is not None:
+                lifecycle.asked_on.discard(browser_id)
+            return
+        request_id = str(uuid4())
+        packet = dict(
+            type="command",
+            requestId=request_id,
+            action="start",
+            mode="tracks",
+            tabId=int(raw_tab),
+            independent=True,
+            captureLocal=False,
+            callGeneration=capture.call_generation,
+            resumeCapture=dict(
+                captureId=key,
+                timelineOriginMs=capture.origin_ms,
+                lostAtMs=source_state(capture.host.session.manifest.get("events")).since_ms,
+            ),
+        )
+        if "page-state-v1" in browser.capabilities:
+            # As for any GNOME Start: a reload must not end the resumed session.
+            packet["keepOnNavigation"] = True
+        browser.resumes[request_id] = key
+        while len(browser.resumes) > RESUME_HISTORY:
+            browser.resumes.pop(next(iter(browser.resumes)))
+        # R82 1b: one refusal entry per ask, from whichever answer comes first.
+        capture.mark_resume_ask(request_id)
+        try:
+            browser.send(packet)
+        except (OSError, ValueError) as error:
+            browser.resumes.pop(request_id, None)
+            capture.clear_resume_ask(request_id)
+            logging.getLogger(__name__).info("Could not ask the browser to resume recording %s: %s", key, error)
 
     def _fallback(self, identifier, capture):
         try:

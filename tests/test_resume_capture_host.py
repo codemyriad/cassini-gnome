@@ -18,6 +18,7 @@ from test_capture_record import declare, pcm
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
 from cassini_talk.browser_capture import BrowserCapture
 from cassini_talk.browser_service import AudioTransport, BrowserService, connect, read_packet, send_packet
+from cassini_talk.session_events import source_state
 
 ACK = dict(type="ack")
 ROOT = Path(__file__).resolve().parents[1]
@@ -676,7 +677,11 @@ def test_end_to_end_a_watchdog_close_is_asked_once_and_resumed_on_the_same_folde
             captureLocal=False,
             callGeneration="call-A",
             keepOnNavigation=True,
-            resumeCapture=dict(captureId="F", timelineOriginMs=origin),
+            resumeCapture=dict(
+                captureId="F",
+                timelineOriginMs=origin,
+                lostAtMs=source_state(capture.host.session.manifest["events"]).since_ms,
+            ),
         )
         # The extension's new native port carries the resume.
         resumed = proxy(broker)

@@ -49,7 +49,13 @@ real retained microphone/system capture (private generated audio):
   is written once the fallback device delivers audio (its first buffer is admitted),
   not when the transport closes. An app MUST wait for that commit before it sends
   the resume; one sent earlier is refused and uses up the only ask for that loss on
-  that connection.
+  that connection. The ask names the commit it follows: `resumeCapture.lostAtMs`, the
+  `atMs` of that system/lost (or of the system/missing stand-in) as the app wrote it
+  (R94, SPEC-CONTROL.md); the live-folder oracle's O3.resumeAt checks it exactly.
+  At dispatch, copy it only after the durable checkpoint, while serialized with
+  capture transitions and Stop; equality identifies the loss but does not prove durable-write order.
+  Each product host must test at its real writer boundary that a held or failed
+  checkpoint sends no ask and that release sends exactly the committed float.
   `D52.5-ask-waits-for-the-committed-fallback` and
   `D52.5-a-new-hello-before-the-commit-waits-for-it` in
   `../multistream/lifecycle.json` pin the order (`fallbackCommitted`).

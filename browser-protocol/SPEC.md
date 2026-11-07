@@ -768,7 +768,10 @@ The host joins only a committed fallback: the recording's othersSource system/lo
 is written once the fallback device delivers audio (its first buffer is admitted),
 not when the transport closes. An app MUST wait for that commit before it sends the
 resume; one sent earlier is refused and uses up the only ask for that loss on that
-connection.
+connection. The app's control command names that commit: `resumeCapture.lostAtMs` is
+the `atMs` of the committed othersSource seam it asks to resume (the newest system/lost,
+or the system/missing stand-in), exactly as the app wrote it in session.json (R94,
+SPEC-CONTROL.md). The extension ignores it and the native `resume` packet does not carry it.
 Explicit successful proof is a `started` response with resumed:true, the exact
 captureId/timelineOriginMs/callGeneration, path and resume-capture-v1 feature.
 See SPEC-CONTROL.md and conformance/control/RESUME-CAPTURE.md for cancellation,

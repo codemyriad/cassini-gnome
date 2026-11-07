@@ -467,7 +467,7 @@ how often an app may ask to resume a system/lost fallback (once per loss and
 control connection, D52.5) is under "Control heartbeat" below.
 
 ```json
-{"type":"command","requestId":"join-stand-in","action":"start","mode":"tracks","tabId":2,"independent":true,"callGeneration":"call-A","captureLocal":false,"keepOnNavigation":true,"resumeCapture":{"captureId":"stand-in-F","timelineOriginMs":1793500000000}}
+{"type":"command","requestId":"join-stand-in","action":"start","mode":"tracks","tabId":2,"independent":true,"callGeneration":"call-A","captureLocal":false,"keepOnNavigation":true,"resumeCapture":{"captureId":"stand-in-F","timelineOriginMs":1793500000000,"lostAtMs":0}}
 ```
 
 `keepOnNavigation:true` (page-state-v1) applies to a resume Start as to any
@@ -480,6 +480,26 @@ is this recording operation, not merely a call address/generation. The extension
 uses its captureId and exact origin from session construction, including status
 before the native ACK and every scoped Stop. It does not invent an alias token
 or shift timestamps. After asynchronous lookup it checks the selected generation.
+
+`resumeCapture.lostAtMs` (R94): the host MUST send it, a finite nonnegative
+number, the `atMs` of the committed othersSource seam it asks to resume: the newest
+system/lost (D52.4), or the system/missing stand-in (D49, D58 #2) when that is what
+it resumes (`0` in the example above). At send time, after the durable checkpoint completes,
+the host MUST copy the value exactly from its committed session state while
+holding the capture lock (or equivalent serialization of dispatch with Stop and
+capture transitions).
+It MUST NOT round it, recompute it from a request/transport timestamp, or guess
+an event that is not yet committed. A host without that commit does not ask.
+
+The value identifies which committed loss the ask answers. The live-folder
+oracle's O3.resumeAt checks exact reference equality without comparing the request
+stamp with the placed loss timestamp: accepted output-time frames can place that
+seam later than the commit instant. Equality alone does not independently prove
+fsync-before-send ordering; both hosts must test that ordering at their actual
+writer boundary (D52.5). The extension does not read it: it neither requires nor
+validates `lostAtMs`, ignores it like any unknown member and does not forward it in
+the native `resume` packet. Extension 0.2.13 already behaves so; no companion
+version change is required by R94.
 
 The first native packet is deliberately a distinct `type:"resume"`, version1,
 with independent:true, captureId, timelineOriginMs, callGeneration and features
@@ -614,7 +634,8 @@ the Others absent over the loss (SPEC.md, session-events `uncommitted-return` an
 `uncommitted-return-kept`).
 
 **Resuming a lost recording: ask once, never a second recording (D52.5).**
-These are app-side rules; the extension and the wire are unchanged.
+These are app-side rules; the extension is unchanged, and the wire gains only
+`resumeCapture.lostAtMs` (R94), which the extension ignores.
 
 - *Ask once.* For a recording on a `system/lost` fallback whose browser's
   hello lists `resume-capture-v1`, the app MUST send one resume-capture-v1
@@ -633,7 +654,9 @@ These are app-side rules; the extension and the wire are unchanged.
   not when the transport closes. The app MUST wait for that commit before it sends
   the resume; one sent earlier is refused and uses up the only ask for that loss on
   that connection. A fallback that fails before it commits writes no system/lost,
-  so the app never asks to resume it.
+  so the app never asks to resume it. The ask names that commit: its
+  `resumeCapture.lostAtMs` is the `atMs` of the system/lost it resumes, exactly as
+  the app wrote it (R94, above).
   After that resume is
   refused or fails (error result, refused native resume, missing or
   mismatched proof), and while it is still pending, the app MUST NOT ask
