@@ -247,7 +247,18 @@ with tempfile.TemporaryDirectory() as temporary:
         dialog.poll()
         until(lambda: dialog.future is None)
         assert not dialog.done.get_sensitive()
-        send_packet(stream, dict(type="hello", version=1))
+        # A real legacy hello has no self-check; absence is unknown and must
+        # preserve completion through the existing capability contract.
+        send_packet(stream, dict(type="hello", version=1, capabilities=["multi-stream-v1"]))
+        send_packet(stream, dict(type="status", recording=False))
+        until(lambda: app.browser_connection.connected)
+        dialog.render()
+        assert dialog.done.get_sensitive(), "An absent diagnostic must not block Done"
+        send_packet(stream, dict(type="hello", version=1, capabilities=["multi-stream-v1"], filesOk=False))
+        send_packet(stream, dict(type="status", recording=False))
+        until(lambda: not dialog.done.get_sensitive())
+        assert not dialog.done.get_sensitive(), "Explicitly missing extension files require repair"
+        send_packet(stream, dict(type="hello", version=1, capabilities=["multi-stream-v1"], filesOk=True))
         send_packet(stream, dict(type="status", recording=False))
         until(lambda: dialog.done.get_sensitive())
         assert app.recording_settings.get_boolean("browser-ever-connected")

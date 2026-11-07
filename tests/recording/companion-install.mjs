@@ -209,7 +209,7 @@ try {
  evidence.stages.push({loaded});
  await poll(async()=>(await call()).connected,'real companion handshake');
  assert.equal((await call()).done,true);
- evidence.stages.push({stage:'installed',id,version:installed.version,path:state.folder,connected:true});
+ evidence.stages.push({stage:'installed',id,version:installed.version,path:state.folder,connected:true,peers:(await call()).peers});
  await call('done');
  await stopApp();
  await context.close(); context=null;

@@ -8,6 +8,7 @@ from gi.repository import Adw, GLib, Gtk
 
 from . import companion
 from .browser_connection import state_text
+from .browser_health import setup_complete
 from .strings import text
 
 LOG = logging.getLogger(__name__)
@@ -122,7 +123,7 @@ class LocalCompanionDialog(Adw.Dialog):
         controller = self.app.browser_connection
         state = controller.snapshot() if controller else None
         connected = bool(state and state["phase"] == "connected")
-        self.done.set_sensitive(connected)
+        self.done.set_sensitive(connected and setup_complete(state.get("peers", ())))
         self.status.set_label(state_text(state))
         self.address_button.set_sensitive(not self.opening and bool(state and state["browser"]))
         self.address_button.set_label(

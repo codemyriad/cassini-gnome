@@ -134,3 +134,19 @@ characters of its `problem` on the committed `othersSource` event as `cause` and
 are ignored. The fields do not alter fallback, selection or Stop policy. An audio
 transport EOF records `transportClosed`. Cleanup after an earlier loss does not
 replace that loss's evidence, and a normal explicit Stop adds no loss evidence.
+
+## Extension health in GNOME (D72)
+
+The broker projects each reconciled control peer’s optional hello diagnostics and
+`status.browserHealth` without inferring meeting readiness. Setup completes only
+when connected profiles support multi-stream capture and none explicitly reports
+`filesOk: false`. Missing, pending or malformed self-check diagnostics remain
+unknown and do not block Done or request file repair. Only explicit false shows
+the files-missing line. Version comparison is diagnostic wording; recording
+remains capability-gated.
+Only an extension-reported, non-idle `reloadRequired` tab gets reload guidance.
+The explicit app `reload-tab` request is scoped by `browserId` and `tabId`; the
+broker rechecks capability, health and busy state before sending `reloadTab`.
+Acknowledgement does not mark a tab healthy: fresh extension status must do that.
+Details renders a saved loss cause only for a committed browser-to-system fallback;
+legacy, unknown and lifecycle causes use the catalog’s neutral `other` wording.
