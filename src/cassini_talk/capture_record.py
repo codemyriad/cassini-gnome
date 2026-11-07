@@ -4,7 +4,14 @@
 import threading
 from fractions import Fraction
 
-from .recording_session import KINDS, ProtocolError, label_text, optional_string, source_track_identity
+from .recording_session import (
+    KINDS,
+    ProtocolError,
+    browser_label_source,
+    label_text,
+    optional_string,
+    source_track_identity,
+)
 
 
 class CaptureRecord:
@@ -34,15 +41,25 @@ class CaptureRecord:
     def _expectable(self, kind):
         return not (self.native_me and kind == "local")
 
-    def observe(self, identity, kind, label, *, failed=False, expected=True):
+    def observe(self, identity, kind, label, *, label_source=None, failed=False, expected=True):
         identity = source_track_identity(identity)
         if identity is None or not isinstance(kind, str) or kind not in KINDS or type(failed) is not bool:
             raise ProtocolError("source", "Invalid discovered audio source")
+        browser_label_source(label_source)
         label = label_text(optional_string(label, kind, "source"))
         with self._identities:
             if self.sealed and identity not in self.seen:
                 raise ProtocolError("state", "No active recording")  # It came after an admitted Stop.
-            source = self.seen.setdefault(identity, dict(kind=kind, label=label, failed=False, expected=False))
+            source = self.seen.setdefault(
+                identity,
+                dict(
+                    kind=kind,
+                    label=label,
+                    failed=False,
+                    expected=False,
+                    **({"labelSource": label_source} if label_source is not None else {}),
+                ),
+            )
         if source["kind"] != kind:
             raise ProtocolError("source", "Conflicting source kind")
         source["failed"] |= failed
@@ -131,6 +148,7 @@ class CaptureRecord:
                 source.get("sourceTrackId"),
                 source.get("kind"),
                 source.get("label"),
+                label_source=source.get("labelSource"),
                 failed=source.get("failed", False),
                 expected=expected(source["kind"]),
             )
@@ -207,6 +225,7 @@ class CaptureRecord:
                     captureOutcome=self.outcome(duration, failed),
                     audioMs=float(duration),
                     trackIds=[t["id"] for t in tracks],
+                    **({"labelSource": source["labelSource"]} if "labelSource" in source else {}),
                     **({"captureExpected": False} if not source.get("expected", True) else {}),
                 )
             )

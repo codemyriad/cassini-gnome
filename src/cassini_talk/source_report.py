@@ -44,6 +44,7 @@ class SourceFact:
     final: bool
     expected: bool = True
     track_ids: tuple[str, ...] = ()
+    label_source: str | None = None
 
     @property
     def problem(self):
@@ -185,6 +186,7 @@ def sources(session, metadata, *, live):
                 not live,
                 expected=row.get("captureExpected", True),
                 track_ids=tuple(row["trackIds"]),
+                label_source=row.get("labelSource"),
             )
         )
     # These two counters may describe the same missing interval; they are not

@@ -70,6 +70,15 @@ def label_text(value):
     return "".join(c for c in value if unicodedata.category(c) not in ("Cc", "Cf"))[:200]
 
 
+def browser_label_source(value):
+    """Browser labels are untrusted snapshots, never device/user attribution."""
+    if value is None:
+        return "browser"
+    if not isinstance(value, str) or value not in ("browser", "dom"):
+        raise ProtocolError("source", "Invalid audio source label provenance")
+    return value
+
+
 def source_track_identity(value):
     """Validate the opaque browser identity independently of its wire span ID."""
     if value is None:
@@ -507,7 +516,7 @@ class RecordingSession:
             raise ProtocolError("source", "Invalid or duplicate audio source")
         label = source_parameters(identifier, label, kind, rate, channels, self.writers)
         source_track_id = source_track_identity(source_track_id)
-        if label_source is not None and label_source not in ("browser", "device"):
+        if label_source is not None and label_source not in ("browser", "dom", "device"):
             raise ProtocolError("source", "Invalid audio source label provenance")
         if filename is not None and filename not in ("track-microphone.wav", "track-system.wav"):
             raise ProtocolError("source", "Invalid native track filename")
@@ -539,7 +548,7 @@ class RecordingSession:
         if source_track_id is not None:
             self.manifest["tracks"][-1]["sourceTrackId"] = source_track_id
         self.manifest["tracks"][-1].update(clock or {})
-        if self.capture_record is not None and self.manifest["tracks"][-1]["labelSource"] == "browser":
+        if self.capture_record is not None and self.manifest["tracks"][-1]["labelSource"] in ("browser", "dom"):
             self.capture_record.bind(identifier, source_track_id or identifier)
         self.checkpoint()
 
@@ -1060,6 +1069,7 @@ class BrowserHost:
             self.session.capture_record.discover(sources, expected=self._source_selected)
             self.session.checkpoint()
         elif kind == "track":
+            label_source = browser_label_source(message.get("labelSource"))
             identifier = message.get("id")
             if self.source_outcomes and isinstance(identifier, str) and identifier in self.ended:
                 raise ProtocolError("state", "Audio source has ended")
@@ -1081,7 +1091,11 @@ class BrowserHost:
                         raise ProtocolError("source", "Source declaration was refused")
                     return dict(type="ack")
                 self.session.capture_record.observe(
-                    root or identifier, message["kind"], label, expected=self._source_selected(message["kind"])
+                    root or identifier,
+                    message["kind"],
+                    label,
+                    label_source=message.get("labelSource"),
+                    expected=self._source_selected(message["kind"]),
                 )
                 self.declarations[identifier] = declaration
                 if any(
@@ -1103,10 +1117,14 @@ class BrowserHost:
                     source_track_id=message.get("sourceTrackId"),
                     clock=clock_facts(message),
                     document=document_generation(message.get("documentGeneration")),
+                    label_source=label_source,
                 )
             else:
                 self.session.add_track(
-                    *declared, source_track_id=message.get("sourceTrackId"), clock=clock_facts(message)
+                    *declared,
+                    source_track_id=message.get("sourceTrackId"),
+                    clock=clock_facts(message),
+                    label_source=label_source,
                 )
             self.sequences[identifier] = 0
         elif kind == "audio":

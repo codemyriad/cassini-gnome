@@ -7,7 +7,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from uuid import uuid4
 
-from .recording_session import ProtocolError, chunk_plan, source_parameters, source_track_identity
+from .recording_session import ProtocolError, browser_label_source, chunk_plan, source_parameters, source_track_identity
 
 ME_KINDS = {"microphone", "local"}
 
@@ -72,6 +72,7 @@ class WireTrack:
     rate: int
     channels: int
     source_track_id: str | None = None
+    label_source: str = "browser"
     ended: bool = False
     start: float | None = None
     frames: int = 0
@@ -137,7 +138,7 @@ class BrowserStreams:
             track.kind,
             track.rate,
             track.channels,
-            label_source="browser",
+            label_source=track.label_source,
             source_track_id=source_track_id,
             clock=track.clock,
         )
@@ -148,7 +149,19 @@ class BrowserStreams:
             self.session.manifest["tracks"][-1]["startOffsetMs"] = boundary
         self.session.checkpoint()
 
-    def add_track(self, identifier, label, kind, rate, channels, *, source_track_id=None, clock=None, document=None):
+    def add_track(
+        self,
+        identifier,
+        label,
+        kind,
+        rate,
+        channels,
+        *,
+        source_track_id=None,
+        clock=None,
+        document=None,
+        label_source=None,
+    ):
         if identifier in self.tracks:
             raise ProtocolError("source", "Invalid or duplicate audio source")
         # Ended spans (trackEnd, refusal, or a closed transport's retirement)
@@ -158,12 +171,14 @@ class BrowserStreams:
         live = {key: track for key, track in self.tracks.items() if not track.ended}
         label = source_parameters(identifier, label, kind, rate, channels, live)
         source_track_id = source_track_identity(source_track_id)
+        label_source = browser_label_source(label_source)
         track = WireTrack(
             label,
             kind,
             rate,
             channels,
             source_track_id=source_track_id,
+            label_source=label_source,
             available=self.browser,
             dormant=self.departing and kind not in ME_KINDS and document is None,
             clock=clock,
