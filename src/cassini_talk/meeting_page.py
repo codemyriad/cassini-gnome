@@ -9,7 +9,7 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 from . import ux_formats as fmt
 from .inline_line import InlineLine
 from .meeting_text import COLOURS, DARK_COLOURS, item_markup, speaking_shares
-from .strings import text
+from .strings import plural, text
 
 
 def box(spacing=0, **kwargs):
@@ -27,6 +27,8 @@ class TurnItem(GObject.Object):
 
 
 class MeetingPage(Adw.NavigationPage):
+    __gsignals__ = {"rows-rebuilt": (GObject.SignalFlags.RUN_LAST, None, ())}
+
     def __init__(self, window, meeting):
         super().__init__(title=meeting.title)
         self.window, self.meeting = window, meeting
@@ -44,6 +46,12 @@ class MeetingPage(Adw.NavigationPage):
         self._theme = None
         self._speaker_signature = None
         self._match_signature = None
+        self._listening_turns = None
+        self._speaker_rows = {}
+        self._rows_rebuilt_tick = 0
+        self._can_listen = False
+        self._scroll_target = None
+        self._listening_target = None
         self.settings = Gio.Settings.new(window.get_application().settings_schema)
         outer = box()
         self.set_child(outer)
@@ -79,6 +87,9 @@ class MeetingPage(Adw.NavigationPage):
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
             vexpand=True,
         )
+        # GTK's automatic focus scrolling would pull an old focused row back
+        # over a newly selected listening target. Scroll on focus entry below.
+        self.speakers_scroller.get_child().set_scroll_to_focus(False)
         sidebar.set_content(self.speakers_scroller)
         split.set_sidebar(Adw.NavigationPage.new(sidebar, text("common.speakers")))
         content = Adw.ToolbarView()
@@ -138,6 +149,9 @@ class MeetingPage(Adw.NavigationPage):
             self.player.connect("notify::" + name, self._position) for name in ("position", "playing", "duration")
         ]
         self._signals.append(self.player.connect("error", self._error))
+        self._listen_signals = [
+            window.listen.connect(signal, self._listening_changed) for signal in ("changed", "stopped")
+        ]
         self.update(meeting)
         self._position()
 
@@ -340,6 +354,11 @@ class MeetingPage(Adw.NavigationPage):
         for button in self.transport_buttons:
             button.set_sensitive(can_play)
         self.seek.set_sensitive(can_play)
+        self._can_listen = can_play
+        if self._listening_turns is not meeting.listening_turns:
+            self._listening_turns = meeting.listening_turns
+            self.window.listen.set_turns(meeting.listening_turns)
+        self._listening_changed()
         source = self.window._activity_source
         self.set_connected(source.connected if source else False)
         if self.speakers_dialog and not self.speakers_dialog.closed:
@@ -357,13 +376,17 @@ class MeetingPage(Adw.NavigationPage):
             undo,
             self.window.get_application().meeting_trash.allowed(meeting, self.window),
             matches,
-            id(meeting.words),
+            # Library scans reparse the same words. Identity would rebuild the
+            # rows and unrealize a button during GTK's delayed activation,
+            # cancelling its pending click (and losing keyboard focus).
+            meeting.words,
             meeting.speakers,
             meeting.transcript,
             meeting.eta_minutes,
             meeting.error,
             meeting.publication_notice,
             meeting.metadata_editable,
+            meeting.has_audio,
             dark,
         )
         if signature == self._signature:
@@ -387,44 +410,10 @@ class MeetingPage(Adw.NavigationPage):
             self.speakers.remove(child)
         self.speakers.append(label(text("common.speakers"), "small", "heading", "dim-label", xalign=0))
         shares = speaking_shares(meeting.words, [s.id for s in meeting.speakers])
+        self._speaker_rows.clear()
         for speaker in meeting.speakers:
-            row = box(4)
-            top = Gtk.Box(spacing=8)
-            dot = label("●", accessible_role=Gtk.AccessibleRole.PRESENTATION)
-            dot.set_markup(f'<span foreground="{self._colour(speaker)}">●</span>')
-            top.append(dot)
-            top.append(
-                label(speaker.name, "heading", xalign=0, hexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
-            )
-            top.append(label(text("meeting.speakerShare", percent=shares[speaker.id]), "small", "dim-label"))
-            row.append(top)
-            caption = {"user": "namedByYou", "recognised": "recognised"}.get(speaker.provenance, "notNamed")
-            caption_text = (
-                (text("common.yourMicrophone") if speaker.id == "me" else text("recordFirst.sound.title"))
-                if speaker.provenance == "source"
-                else text("meeting.speakerCaption." + caption)
-            )
-            if speaker.provenance != "recognised" or speaker.id in matches:
-                row.append(
-                    label(
-                        caption_text,
-                        "small",
-                        "dim-label",
-                        xalign=0,
-                        wrap=True,
-                        margin_start=18,
-                    )
-                )
-            if meeting.metadata_editable:
-                edit = Gtk.Button(child=row, css_classes=["flat", "speaker-edit"])
-                edit.update_property(
-                    [Gtk.AccessibleProperty.LABEL, Gtk.AccessibleProperty.DESCRIPTION],
-                    [speaker.name, text("meeting.nameSpeakers")],
-                )
-                edit.connect("clicked", lambda _button, identifier=speaker.id: self.name_speakers(identifier))
-                self.speakers.append(edit)
-            else:
-                self.speakers.append(row)
+            self.speakers.append(self._speaker_row(speaker, shares[speaker.id], matches))
+        self._listening_changed()
         if meeting.speakers and (meeting.metadata_editable or meeting.published_file is not None):
             self.name_speakers_button = Gtk.Button(
                 label=text("meeting.nameSpeakers"), sensitive=meeting.metadata_editable
@@ -486,6 +475,161 @@ class MeetingPage(Adw.NavigationPage):
         self._match_signature = matches
         self._starts = [turn.start_ms for turn in meeting.turns]
         self._position()
+        if not self._rows_rebuilt_tick:
+            self._rows_rebuilt_tick = self.add_tick_callback(self._rows_ready)
+
+    def _rows_ready(self, _page, _clock):
+        # Allocation alone can survive unmapping. Announce only the current
+        # installed rows, wired, mapped and allocated for GTK activation.
+        if self._closed:
+            self._rows_rebuilt_tick = 0
+            return GLib.SOURCE_REMOVE
+        if not self.get_mapped() or any(
+            not row.get_mapped()
+            or not row.get_realized()
+            or row.get_width() <= 0
+            or (play.get_visible() and (not play.get_mapped() or not play.get_realized() or play.get_width() <= 0))
+            for row, play, _when in self._speaker_rows.values()
+        ):
+            return GLib.SOURCE_CONTINUE
+        self._rows_rebuilt_tick = 0
+        self.emit("rows-rebuilt")
+        return GLib.SOURCE_REMOVE
+
+    def _speaker_row(self, speaker, share, matches):
+        turns = self.window.listen.turns_of(speaker.id)
+        when = ""
+        if turns:
+            position = fmt.position(turns[0].start_ms)
+            when = (
+                text("speakers.when.once", position=position)
+                if len(turns) == 1
+                else plural("speakers.when.times", len(turns), count=len(turns), position=position)
+            )
+        caption = {"user": "namedByYou", "recognised": "recognised"}.get(speaker.provenance, "notNamed")
+        provenance = (
+            (text("common.yourMicrophone") if speaker.id == "me" else text("recordFirst.sound.title"))
+            if speaker.provenance == "source"
+            else text("meeting.speakerCaption." + caption)
+        )
+        if speaker.provenance == "recognised" and speaker.id not in matches:
+            provenance = ""
+        description = (
+            text("speakers.row.a11y", name=speaker.name, provenance=provenance, when=when)
+            if provenance and when
+            else ", ".join(part for part in (speaker.name, provenance, when) if part)
+        )
+        row = Gtk.Overlay(css_classes=["speaker-row"])
+        focus = Gtk.EventControllerFocus()
+        focus.connect("enter", lambda *_: self._scroll_speaker(row))
+        row.add_controller(focus)
+        body = box(4)
+        top = Gtk.Box(spacing=8)
+        dot = label("●", accessible_role=Gtk.AccessibleRole.PRESENTATION)
+        dot.set_markup(f'<span foreground="{self._colour(speaker)}">●</span>')
+        top.append(dot)
+        top.append(
+            label(speaker.name, "heading", xalign=0, hexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        )
+        top.append(
+            label(
+                text("meeting.speakerShare", percent=share) if share else text("meeting.speakerShare.underOne"),
+                "small",
+                "dim-label",
+            )
+        )
+        playable = bool(turns and self.meeting.has_audio)
+        if playable:
+            top.append(Gtk.Box(width_request=34, height_request=34))
+        body.append(top)
+        if when or provenance:
+            caption_row = Gtk.Box(css_classes=["small", "dim-label", "speaker-caption"], margin_start=18)
+            caption_row.set_tooltip_text(
+                text("speakers.row.caption", provenance=provenance, when=when)
+                if provenance and when
+                else provenance or when
+            )
+            if provenance:
+                caption_row.append(label(provenance, xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True))
+            if when:
+                caption_row.append(
+                    label(text("speakers.row.caption", provenance="", when=when) if provenance else when, xalign=0)
+                )
+            body.append(caption_row)
+        if self.meeting.metadata_editable:
+            edit = Gtk.Button(child=body, css_classes=["flat", "speaker-edit"])
+            edit.update_property(
+                [Gtk.AccessibleProperty.LABEL, Gtk.AccessibleProperty.DESCRIPTION],
+                [description, text("meeting.nameSpeakers")],
+            )
+            edit.connect("clicked", lambda *_: self.name_speakers(speaker.id))
+            row.set_child(edit)
+        else:
+            body.update_property([Gtk.AccessibleProperty.LABEL], [description])
+            row.set_child(body)
+        # Sibling of the activatable row: Play never propagates to its button.
+        play = Gtk.Button(
+            icon_name="media-playback-start-symbolic",
+            css_classes=["circular", "flat"],
+            width_request=34,
+            height_request=34,
+            halign=Gtk.Align.END,
+            valign=Gtk.Align.START,
+            visible=playable,
+        )
+        play.connect("clicked", lambda *_: self._listen_speaker(speaker.id))
+        row.add_overlay(play)
+        self._speaker_rows[speaker.id] = row, play, when
+        return row
+
+    def _listen_speaker(self, identifier):
+        listen = self.window.listen
+        if listen.active and listen.speaker == identifier:
+            self.player.pause()
+            listen.stop()
+        else:
+            listen.start(identifier)
+
+    def _listening_changed(self, *_):
+        listen = self.window.listen
+        names = {speaker.id: speaker.name for speaker in self.meeting.speakers}
+        for identifier, (row, play, when) in self._speaker_rows.items():
+            active = listen.active and listen.speaker == identifier
+            (row.add_css_class if active else row.remove_css_class)("listening")
+            play.set_sensitive(self._can_listen)
+            play.set_visible(self.meeting.has_audio and bool(listen.turns_of(identifier)))
+            play.set_icon_name("media-playback-stop-symbolic" if active else "media-playback-start-symbolic")
+            play.set_tooltip_text(text("common.stop") if active else text("speakers.listen"))
+            play.update_property(
+                [Gtk.AccessibleProperty.LABEL],
+                [
+                    text("common.stop")
+                    if active
+                    else text("speakers.listen.a11y", name=names.get(identifier, ""), when=when)
+                ],
+            )
+            if active and self._listening_target != (identifier, row):
+                self._listening_target = identifier, row
+                self._scroll_speaker(row)
+        if not listen.active:
+            self._listening_target = None
+
+    def _scroll_speaker(self, row):
+        self._scroll_target = row
+        row.add_tick_callback(self._scroll_listening)
+
+    def _scroll_listening(self, row, _clock):
+        if self._closed or self._scroll_target is not row:
+            return GLib.SOURCE_REMOVE
+        if not row.get_height():
+            return GLib.SOURCE_CONTINUE
+        ok, bounds = row.compute_bounds(self.speakers_scroller)
+        if ok:
+            # Include the pane's margins in the adjustment's coordinate space.
+            adjustment = self.speakers_scroller.get_vadjustment()
+            top = adjustment.get_value() + bounds.get_y()
+            adjustment.clamp_page(top, top + bounds.get_height())
+        return GLib.SOURCE_REMOVE
 
     def name_speakers(self, identifier=None):
         if not self.meeting.metadata_editable or not self.meeting.speakers:
@@ -585,9 +729,14 @@ class MeetingPage(Adw.NavigationPage):
 
     def _error(self, *_):
         self.play.set_sensitive(False)
+        self._can_listen = False
+        self._listening_changed()
 
     def close(self):
         self._closed = True
+        if self._rows_rebuilt_tick:
+            self.remove_tick_callback(self._rows_rebuilt_tick)
+            self._rows_rebuilt_tick = 0
         if self.speakers_dialog and not self.speakers_dialog.closed:
             self.speakers_dialog.close()
         if self._speaker_future is not None:
@@ -600,3 +749,6 @@ class MeetingPage(Adw.NavigationPage):
         for handler in self._signals:
             self.player.disconnect(handler)
         self._signals.clear()
+        for handler in self._listen_signals:
+            self.window.listen.disconnect(handler)
+        self._listen_signals.clear()

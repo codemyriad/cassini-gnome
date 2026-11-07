@@ -7,11 +7,11 @@ from uuid import NAMESPACE_URL, uuid5
 
 from . import portable
 from .library import LibraryScanner, Meeting, _date, _opus, _speakers, library_root, turn_gaps
-from .meeting_text import reading_turns
+from .meeting_text import reading_turns, speaker_turns
 from .portable_context import embedded_notes, empty_word_transcripts
 
 
-def load_open_meeting(path, root=None):
+def load_open_meeting(path, root=None, *, scanner=None, capture_activity=None):
     path = Path(path).resolve()
     directory = path if path.is_dir() else path.parent
     root = library_root(root).resolve()
@@ -24,7 +24,8 @@ def load_open_meeting(path, root=None):
     except ValueError:
         owned = False
     if path.name == "session.json" or path.is_dir() or owned and directory.name.startswith("Received-"):
-        snapshot = LibraryScanner.for_meeting(directory).scan(changed_directories={directory})
+        reader = scanner if owned and scanner is not None else LibraryScanner.for_meeting(directory)
+        snapshot = reader.scan(capture_activity=capture_activity if owned else None, changed_directories={directory})
         meeting = next((m for m in snapshot.meetings if m.directory == directory), None)
         if meeting is not None and (path.is_dir() or path.name == "session.json" or meeting.audio_file == path):
             return replace(meeting, metadata_editable=meeting.metadata_editable and owned)
@@ -70,6 +71,7 @@ def load_open_meeting(path, root=None):
         has_audio=duration is not None,
         words=words,
         turns=reading_turns(sorted(words, key=lambda w: w.start_ms), gaps=gaps),
+        listening_turns=speaker_turns(words),
         turn_gaps=gaps,
         speakers=_speakers(words, [], embedded, stored_labels=True),
         metadata_editable=False,
