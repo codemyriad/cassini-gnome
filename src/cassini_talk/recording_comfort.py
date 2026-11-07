@@ -12,7 +12,7 @@ from . import ux_formats as fmt
 from .capture_guard import browser_capture_busy, capture_targets, native_recorders, recorder_busy
 from .i18n import gettext as _
 from .recording_details import SilenceClock, edit_recording, live_meeting, live_observation
-from .session_events import meeting_sources, source_state
+from .session_events import meeting_sources, read_events, source_state
 from .strings import text
 
 LOG = logging.getLogger(__name__)
@@ -55,6 +55,7 @@ class RecordingComfort:
         self.timer = GLib.timeout_add_seconds(1, self.tick) if automatic else 0
         self.closed = False
         self.warning_shown = set()
+        self.fallback_shown = set()
         self.notification_visible = False
         self.last_payload = None
         self.browser_cookie = 0
@@ -215,6 +216,7 @@ class RecordingComfort:
                 state["silent"] = False
             if state["line"]:
                 self._disk_notification(meeting, state["line"], state["minutes"])
+            self._fallback_notification(meeting)
         # Native stopped-at-reserve remains visible after finalization.
         if native and native.session and native.line == "errors.diskStopped.line":
             key = native.session.directory.name
@@ -317,8 +319,41 @@ class RecordingComfort:
             state["line"] = None
         if state["line"]:
             self._disk_notification(meeting, state["line"], state["minutes"])
+        self._fallback_notification(current)
         self._refresh_pages()
         return False
+
+    def _fallback_notification(self, meeting):
+        """Alert once for each committed automatic-capture loss, even with a window.
+
+        Reading the session events rather than browser liveness also excludes
+        pending/failed fallbacks and ordinary user Stop. An event's position
+        distinguishes losses that share the same timestamp after a restore.
+        """
+        if meeting.lifecycle != "recording":
+            return
+        state = meeting_sources(meeting)
+        if not (state.others and state.source == "system" and state.reason == "lost"):
+            return
+        if not any(
+            status.get("automatic") is True
+            and status.get("recording") is True
+            and status.get("path") == str(meeting.directory)
+            for status in (self.app._browser_snapshot or {}).get("statuses", [])
+        ):
+            return
+        events = read_events(meeting.capture_events)
+        index = max(i for i, event in enumerate(events) if event["type"] == "othersSource")
+        key = (meeting.key, index)
+        if key in self.fallback_shown:
+            return
+        notification = Gio.Notification.new(text("errors.othersFallback.line"))
+        notification.set_body(meeting.title)
+        notification.set_icon(Gio.ThemedIcon.new("audio-card-symbolic"))
+        notification.set_default_action("app.open-recording")
+        notification.add_button(text("common.show"), "app.open-recording")
+        self.app.send_notification("recording-fallback-" + meeting.key, notification)
+        self.fallback_shown.add(key)
 
     def _refresh_pages(self):
         for window in self.app.get_windows():
@@ -376,6 +411,7 @@ class RecordingComfort:
             if hasattr(value, "cancel"):
                 value.cancel()
         self.warning_shown.discard(key)
+        self.fallback_shown = {entry for entry in self.fallback_shown if entry[0] != key}
 
     def close(self):
         self.closed = True

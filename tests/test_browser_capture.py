@@ -1190,3 +1190,238 @@ def test_announced_page_microphone_never_interrupts_a_native_me_recording(server
         assert saved["state"] == "completed" and "problemKind" not in saved
     finally:
         client.close()
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+@pytest.mark.parametrize("audio_first", [False, True])
+@pytest.mark.parametrize("acknowledged", [False, True])
+def test_snapshot_keeps_host_start_origin_after_toggle_and_control_disconnect(
+    server, automatic, audio_first, acknowledged
+):
+    from test_browser_service import browser, wait_for
+
+    from cassini_talk.browser_service import read_packet, send_packet
+
+    service, path, _root = server
+    connection, control = browser(path, "origin-test")
+    client = BrowserAudioProxy(path=path)
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            if automatic:
+                request("configure", path=path, autoRecord=True)
+                future = None
+            else:
+                identifier = request(path=path)["meetings"][0]["id"]
+                future = pool.submit(request, "start", path=path, id=identifier)
+            command = read_packet(control)
+            assert command["action"] == "start"
+            if audio_first:
+                start(client, "origin")
+            status = dict(recording=True, tabId=3, captureId="origin", automatic=not automatic)
+            if acknowledged:
+                send_packet(control, dict(type="result", requestId=command["requestId"], ok=True, status=status))
+                if future:
+                    future.result(2)
+            else:
+                send_packet(control, dict(type="status", **status))
+            if not audio_first:
+                start(client, "origin")
+            wait_for(lambda: service._capture_automatic.get("origin") is automatic)
+            request("configure", path=path, autoRecord=not automatic)
+            assert (
+                next(s for s in request(path=path)["statuses"] if s.get("captureId") == "origin")["automatic"]
+                is automatic
+            )
+            if not acknowledged:
+                # Release the held response only after proving origin is
+                # available without it (including after the toggle).
+                send_packet(control, dict(type="result", requestId=command["requestId"], ok=True, status=status))
+                if future:
+                    future.result(2)
+            control.close()
+            connection.close()
+        wait_for(lambda: not service.browsers)
+        assert (
+            next(s for s in service.snapshot()["statuses"] if s.get("captureId") == "origin")["automatic"] is automatic
+        )
+        client.handle(dict(type="stop", captureId="origin"))
+    finally:
+        client.close()
+        control.close()
+        connection.close()
+
+
+@pytest.fixture
+def pending_automatic_reconnect(server, monkeypatch):
+    """A real automatic Start loses control before status/ack; hold recovery
+    until the test has inspected binding on the replacement connection (E1)."""
+    from types import SimpleNamespace
+
+    from test_browser_service import browser
+
+    from cassini_talk.browser_service import send_packet
+
+    service, path, _root = server
+    entered, release, completed, reported = (threading.Event() for _ in range(4))
+    recovered, remembered, errors = [], [], []
+    original_recover, original_command = service._recover_command, service.command
+    original_update, original_remember = service.update, service._remember_capture_origin
+
+    def recover(*args):
+        entered.set()
+        durable(release, "test did not release Start recovery")
+        result = original_recover(*args)
+        recovered.append(result)
+        return result
+
+    def command(*args, **kwargs):
+        try:
+            return original_command(*args, **kwargs)
+        except BaseException as error:
+            errors.append(error)
+            raise
+        finally:
+            completed.set()
+
+    def update(peer, packet):
+        original_update(peer, packet)
+        if packet.get("type") == "status" and packet.get("captureId") == "recovered-origin":
+            reported.set()
+
+    def remember(pending, target, packet):
+        remembered.append((pending["automatic"], target, packet, service.lock._is_owned()))
+        return original_remember(pending, target, packet)
+
+    monkeypatch.setattr(service, "_recover_command", recover)
+    monkeypatch.setattr(service, "command", command)
+    monkeypatch.setattr(service, "update", update)
+    monkeypatch.setattr(service, "_remember_capture_origin", remember)
+    connection, control = browser(path, "pending-origin")
+    replacement = replacement_control = client = capture = None
+    try:
+        from cassini_talk.browser_service import read_packet
+
+        request("configure", path=path, autoRecord=True)
+        asked = read_packet(control)
+        assert asked["action"] == "start"
+        with service.lock:
+            original_peer = next(iter(service.browsers.values()))
+            logical = service._meeting_id(original_peer, 3)
+            pending = original_peer.pending[asked["requestId"]]
+            assert pending["automatic"] and pending["result"] is None
+        client = BrowserAudioProxy(path=path)
+        start(client, "recovered-origin")
+        remote(client, "voice")
+        capture = service.captures["recovered-origin"]
+        # No status or result is sent on this socket. Its pending command
+        # survives only on the retired peer and in _pending_calls[logical].
+        control.close()
+        connection.close()
+        durable(entered, "automatic Start did not enter reconnect recovery")
+        replacement, replacement_control = browser(path, "pending-origin")
+        send_packet(
+            replacement_control,
+            dict(type="status", recording=True, tabId=3, captureId="recovered-origin", automatic=False),
+        )
+        durable(reported, "replacement recording status was not processed")
+        with service.lock:
+            peer = next(iter(service.browsers.values()))
+            assert not peer.pending and pending is service._pending_calls[logical][asked["requestId"]]
+        yield SimpleNamespace(
+            service=service,
+            path=path,
+            client=client,
+            capture=capture,
+            pending=pending,
+            logical=logical,
+            release=release,
+            completed=completed,
+            recovered=recovered,
+            remembered=remembered,
+            errors=errors,
+        )
+    finally:
+        release.set()
+        if entered.is_set():
+            durable(completed, "recovered automatic Start did not finish")
+        if capture is not None:
+            capture.stop()
+        if client is not None:
+            client.close()
+        if replacement_control is not None:
+            replacement_control.close()
+            replacement.close()
+        control.close()
+        connection.close()
+
+
+def test_automatic_origin_binds_before_and_is_remembered_after_start_recovery(pending_automatic_reconnect):
+    case = pending_automatic_reconnect
+    assert not case.completed.is_set(), "Start recovery must remain held while binding is checked"
+    status = next(s for s in case.service.snapshot()["statuses"] if s.get("captureId") == "recovered-origin")
+    assert status["automatic"] is True, "replacement must bind origin from the logical pending call"
+    case.release.set()
+    durable(case.completed, "automatic Start recovery did not finish")
+    assert not case.errors and len(case.recovered) == 1 and case.recovered[0]["ok"]
+    assert case.pending["result"] is None, "no original Start acknowledgement was delivered"
+    assert len(case.remembered) == 1, "successful command recovery must remember origin explicitly"
+    automatic, target, packet, under_lock = case.remembered[0]
+    assert automatic and under_lock and target["captureId"] == "recovered-origin" and packet["ok"]
+    assert case.logical not in case.service._pending_calls
+    status = next(s for s in case.service.snapshot()["statuses"] if s.get("captureId") == "recovered-origin")
+    assert status["automatic"] is True
+
+
+@pytest.mark.parametrize("audio_first", [False, True])
+def test_automatic_status_without_browser_instance_binds_origin_before_start_ack(server, monkeypatch, audio_first):
+    from test_browser_service import browser
+
+    from cassini_talk.browser_service import read_packet, send_packet
+
+    service, path, _root = server
+    reported = threading.Event()
+    original_update = service.update
+
+    def update(peer, packet):
+        original_update(peer, packet)
+        if packet.get("type") == "status" and packet.get("captureId") == "unidentified-origin":
+            reported.set()
+
+    monkeypatch.setattr(service, "update", update)
+    connection, control = browser(path, instance=None)
+    client = BrowserAudioProxy(path=path)
+    capture = None
+    try:
+        request("configure", path=path, autoRecord=True)
+        asked = read_packet(control)
+        assert asked["action"] == "start"
+        if audio_first:
+            start(client, "unidentified-origin")
+            capture = service.captures["unidentified-origin"]
+        send_packet(control, dict(type="status", recording=True, tabId=3, captureId="unidentified-origin"))
+        durable(reported, "unidentified peer's recording status was not processed")
+        with service.lock:
+            peer = next(iter(service.browsers.values()))
+            assert peer.browser_instance is None and peer.pending[asked["requestId"]]["result"] is None
+            assert service._capture_automatic.get("unidentified-origin") is True
+        if not audio_first:
+            start(client, "unidentified-origin")
+            capture = service.captures["unidentified-origin"]
+        status = next(s for s in service.snapshot()["statuses"] if s.get("captureId") == "unidentified-origin")
+        assert status["automatic"] is True
+        # Retire the request only after checking status-before-ack behavior.
+        send_packet(
+            control,
+            dict(
+                type="result",
+                requestId=asked["requestId"],
+                ok=True,
+                status=dict(recording=True, tabId=3, captureId="unidentified-origin"),
+            ),
+        )
+    finally:
+        control.close()
+        connection.close()
+        if capture is not None:
+            capture.stop()
+        client.close()

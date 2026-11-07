@@ -433,6 +433,9 @@ class BrowserService:
         self._audio_transports = set()
         self.recordings = []
         self.captures = {}
+        # Capture origin belongs to the host command, not extension status or
+        # the current auto-record toggle. Keep it across control reconnects.
+        self._capture_automatic = {}
         self.call_captures = {}
         self.stopped_calls = {}
         self._capture_missing_since = {}
@@ -661,6 +664,7 @@ class BrowserService:
                 ):
                     self._cancel_capture(target["captureId"], identity)
             elif pending is not None:
+                self._remember_capture_origin(metadata, target, packet)
                 self._status(browser, status)
             elif target is not None:
                 # A retired response is authoritative for its own tab only.
@@ -677,10 +681,31 @@ class BrowserService:
                         state["pageState"] = browser.page_states[other_tab]
                     preserved.append(state)
                 # GNOME's own retained rows: not the extension's inventory.
+                self._remember_capture_origin(metadata, target, packet)
                 self._status(browser, dict(status, sessions=[*preserved, target]), inventory=False)
         if pending is not None:
             pending["result"] = packet
             pending["event"].set()
+
+    def _remember_capture_origin(self, command, target, packet):
+        if (
+            command["action"] == "start"
+            and packet.get("ok") is True
+            and target is not None
+            and target.get("recording")
+            and isinstance(target.get("captureId"), str)
+        ):
+            self._set_capture_origin(target["captureId"], command.get("automatic") is True)
+
+    def _set_capture_origin(self, capture_id, automatic):
+        self._capture_automatic.setdefault(capture_id, automatic)
+        # A response can announce audio which never connects. Bound those
+        # unowned entries without evicting any live capture's provenance.
+        for identifier in tuple(self._capture_automatic):
+            if len(self._capture_automatic) <= 1024:
+                break
+            if identifier not in self.captures:
+                self._capture_automatic.pop(identifier)
 
     def _cancel_call(self, logical):
         self._call_versions[logical] = self._call_versions.get(logical, 0) + 1
@@ -912,6 +937,8 @@ class BrowserService:
             captures = list(self.captures.values())
         owned = {c.capture_id: c.snapshot() for c in captures if c.directory is not None}
         with self.lock:
+            for identifier, capture in owned.items():
+                capture["automatic"] = self._capture_automatic.get(identifier, False)
             meetings, statuses, seen = [], [], set()
             owners = self._owners()
             for browser in self.browsers.values():
@@ -1081,6 +1108,7 @@ class BrowserService:
                 finished = [key for key, owner in self.captures.items() if owner.finished]
                 for key in finished[:-19]:
                     self.captures.pop(key, None)
+                    self._capture_automatic.pop(key, None)
                     self._superseded_user_stops.discard(key)
             if capture.directory is not None:
                 self._remember_saved(str(capture.directory), capture.host.session.manifest["title"])
@@ -1448,19 +1476,19 @@ class BrowserService:
                         # Preserve the independently owned audio association.
                         state.update(captureId=capture_id, path=str(owner.directory))
                     browser.attempted.add(tab)
-            for tab, state in states.items():
-                capture_id = state.get("captureId")
-                owner = self.captures.get(capture_id)
-                if (
-                    isinstance(capture_id, str)
-                    and capture_id
-                    and state.get("recording")
-                    and (owner is None or not owner.finished)
-                ):
-                    # The extension announces the identity before opening its
-                    # audio socket. Preserve that association across an early
-                    # control disconnect, including the original call address.
-                    self._bind_capture(browser, tab, capture_id)
+        for tab, state in states.items():
+            capture_id = state.get("captureId")
+            owner = self.captures.get(capture_id)
+            if (
+                isinstance(capture_id, str)
+                and capture_id
+                and state.get("recording")
+                and (owner is None or not owner.finished)
+            ):
+                # The extension announces the identity before opening its
+                # audio socket. Record origin even without a browser instance;
+                # logical ownership across reconnects also needs the instance.
+                self._bind_capture(browser, tab, capture_id)
         self._adopt_by_call(browser, states)
         for tab, state in states.items():
             owner = self.captures.get(state.get("captureId"))
@@ -1805,6 +1833,7 @@ class BrowserService:
         microphone=True,
         preserve_capture=False,
         user=False,
+        automatic=False,
         reason="user",
         deadline=None,
         cancelled=None,
@@ -1978,6 +2007,7 @@ class BrowserService:
                     expected=expected,
                     reason=reason,
                     user_stopped=user and reason == "user",
+                    automatic=automatic,
                     preserve_capture=preserve_capture,
                     captures=set(),
                     captureId=browser.states.get(tab, {}).get("captureId"),
@@ -2066,6 +2096,9 @@ class BrowserService:
                 raise ValueError("Recording start was cancelled")
             if result is None and browser.closed:
                 result = self._recover_command(browser, tab, action, pending, deadline)
+                if result is not None:
+                    with self.lock:
+                        self._remember_capture_origin(pending, result.get("status"), result)
             if result is None or result.get("ok") is not True:
                 message = str((result or {}).get("error", "The browser disconnected"))[:500]
                 if result is not None and action == "start" and not pending.get("cancelled"):
@@ -2360,6 +2393,7 @@ class BrowserService:
                 capture_generation = browser.meetings.get(tab, {}).get("callGeneration")
                 capture.call_tab = tab
                 self.captures[capture_id] = capture
+                self._set_capture_origin(capture_id, automatic_generation is not None)
                 browser.states[tab] = dict(recording=True, captureId=capture_id, tabId=tab)
                 if browser.browser_instance is not None:
                     self._bind_capture(browser, tab, capture_id)
@@ -3042,7 +3076,7 @@ class BrowserService:
                     if browser is None:
                         return
                     self._validate_call(browser, int(raw_tab), expected, version=call_version)
-                self.command(logical_identifier, action, call_version=call_version)
+                self.command(logical_identifier, action, call_version=call_version, automatic=True)
             else:
                 self.command(logical_identifier, action)
             if action == "start":
@@ -3316,6 +3350,24 @@ class BrowserService:
             self._control_reconnects.pop(oldest)
 
     def _bind_capture(self, browser, tab, capture_id):
+        # Recording status can announce this Start before its acknowledgement
+        # (which may be lost). Only the current host request supplies origin;
+        # neither an extension's `automatic` field nor old command history can.
+        starts = [
+            pending
+            for pending in (
+                *browser.pending.values(),
+                *self._pending_calls.get(self._meeting_id(browser, tab), {}).values(),
+            )
+            if pending["tabId"] == tab
+            and pending["action"] == "start"
+            and not pending.get("cancelled")
+            and pending.get("generation") == self._stop_generation
+            and pending.get("version") == self._call_versions.get(pending.get("logical"), 0)
+        ]
+        if starts:
+            latest = max(starts, key=lambda pending: pending["serial"])
+            self._set_capture_origin(capture_id, latest.get("automatic") is True)
         if browser.browser_instance is None:
             return
         key = (browser.browser_instance, tab)
