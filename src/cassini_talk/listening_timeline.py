@@ -40,19 +40,30 @@ def snap_start(turns, x, left, width, duration):
     return closest.start_ms if distance <= 6 else None
 
 
+class TurnTicks(Gtk.Widget):
+    """GSK rectangles avoid adding a Cairo runtime dependency for tiny marks."""
+
+    def __init__(self, timeline):
+        super().__init__(can_target=False)
+        self.timeline = timeline
+
+    def do_snapshot(self, snapshot):
+        self.timeline.draw_ticks(snapshot, self.get_height())
+
+
 class ListeningTimeline(Gtk.Overlay):
     def __init__(self, page, scale):
         super().__init__(hexpand=True)
         self.page, self.scale = page, scale
         self.set_child(scale)
-        self.ticks = Gtk.DrawingArea(can_target=False)
-        self.ticks.set_draw_func(self._draw)
+        self.ticks = TurnTicks(self)
         self.add_overlay(self.ticks)
         self._turns = None
         self._target = ()
         self._positions, self._speakers = (), ()
         self._dragging = self._snapped = False
         self._x = 0
+        scale.update_property([Gtk.AccessibleProperty.LABEL], [text("player.position")])
         scale.set_has_tooltip(True)
         scale.connect("query-tooltip", self._tooltip)
         events = Gtk.EventControllerLegacy(propagation_phase=Gtk.PropagationPhase.CAPTURE)
@@ -135,7 +146,7 @@ class ListeningTimeline(Gtk.Overlay):
             return snapped
         return False
 
-    def _draw(self, _area, cr, _width, height):
+    def draw_ticks(self, snapshot, height):
         duration = self.scale.get_adjustment().get_upper()
         if not duration or not self._target:
             return
@@ -143,11 +154,11 @@ class ListeningTimeline(Gtk.Overlay):
         found, colour = self.scale.get_style_context().lookup_color("accent_color")
         if not found:
             colour = self.scale.get_color()
-        cr.set_source_rgba(colour.red, colour.green, colour.blue, colour.alpha)
         for turn in self._target:
             x = left + turn.start_ms * width / duration
-            cr.rectangle(round(x) - 1, height / 2 - 4, 3, 8)
-        cr.fill()
+            rect = Graphene.Rect()
+            rect.init(round(x) - 1, height / 2 - 4, 3, 8)
+            snapshot.append_color(colour, rect)
 
     def position_changed(self):
         self.scale.update_property(
