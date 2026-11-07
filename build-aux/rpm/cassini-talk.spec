@@ -4,6 +4,8 @@
 Name:           cassini-talk
 Version:        0.4.1
 Release:        1%{?dist}
+# The package rename must remove the legacy files through the package manager.
+Obsoletes:      cassini-viewer < 0.4.0
 Summary:        Record meetings and read along with their transcripts
 License:        GPL-3.0-or-later AND Apache-2.0 AND MIT AND Unicode-3.0
 URL:            https://github.com/codemyriad/cassini-gnome

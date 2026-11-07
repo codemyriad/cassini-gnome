@@ -50,7 +50,6 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
     retry dnf -y install rpm-build tar xz "dnf-command(builddep)"
     retry dnf -y --setopt=install_weak_deps=False builddep "$spec"
     retry dnf -y install rpmlint || true
-    install_rpm() { retry dnf -y --setopt=install_weak_deps=False install "$@"; }
   elif command -v zypper >/dev/null 2>&1; then
     retry sh /in/build-aux/ci/prepare_tumbleweed.sh
     retry zypper -n install rpm-build tar xz
@@ -58,7 +57,6 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
     # Word splitting is wanted: one argument per BuildRequires.
     retry zypper -n install $requires
     retry zypper -n install rpmlint || true
-    install_rpm() { retry zypper -n install --allow-unsigned-rpm "$@"; }
   else
     echo "error: no dnf or zypper in this image" >&2; exit 1
   fi
@@ -96,7 +94,7 @@ for info in pins[\"onnxruntime\"][\"wheels\"].values():
     rpmlint -r /in/build-aux/rpm/cassini-talk-rpmlintrc $top/RPMS/x86_64/*.rpm $top/SRPMS/*.rpm || true
   fi
 
-  install_rpm $top/RPMS/x86_64/*.rpm
+  CASSINI_TEST_PACKAGE_MIGRATION=1 python3 -I /in/build-aux/ci/package_migration.py rpm $top/RPMS/x86_64/*.rpm
   test -x /usr/bin/cassini-talk
   head -n1 /usr/bin/cassini-talk | grep -qx "#!/usr/bin/python3"
   python3 -I /in/build-aux/smoke-installed.py

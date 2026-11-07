@@ -28,6 +28,9 @@ Vcs-Git: https://github.com/codemyriad/cassini-gnome.git
 Rules-Requires-Root: no
 
 Package: cassini-talk
+Replaces: cassini-viewer (<< 0.4.0~)
+Breaks: cassini-viewer (<< 0.4.0~)
+Conflicts: cassini-viewer (<< 0.4.0~)
 Architecture: amd64
 Depends: ${misc:Depends},
          ${shlibs:Depends},
