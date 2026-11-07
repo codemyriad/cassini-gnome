@@ -265,6 +265,16 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, lambda: rebuilt and window.player._prerolled and len(page._speaker_rows) == 14)
     # Widget assertions belong in this initialized, display-backed journey.
     bar = page.listening_bar
+    before_ticks = page.timeline.measure(Gtk.Orientation.VERTICAL, -1)
+    assert window.listen.start("host", 0, play=False)
+    assert len(page.timeline._target) == 127
+    assert page.timeline.measure(Gtk.Orientation.VERTICAL, -1) == before_ticks
+    marks = Gtk.Snapshot.new()
+    page.timeline.draw_ticks(marks, page.seek.get_height())
+    nodes = marks.to_node()
+    assert nodes.get_n_children() == 127
+    assert all(nodes.get_child(i).get_bounds().get_width() == 3 for i in range(127))
+    assert all(nodes.get_child(i).get_bounds().get_height() == 8 for i in range(127))
     count = len(window.listen.turns_of("voice-0"))
     assert window.listen.start("voice-0", 0, play=False)
     until(window, lambda: bar.get_child_revealed())
