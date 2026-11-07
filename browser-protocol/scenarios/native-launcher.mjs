@@ -269,6 +269,9 @@ export async function verifyControlPipe(host, browserPid, label,
 // with delivered (false: the relay's forward of it to the browser failed).
 // Times are the relay's monotonic stamps (atMono) on the session timeline: originMono is the
 // driver's session clock origin on the same clock (scenarios/session-clock.mjs).
+// lostAtMs is the frame's resumeCapture.lostAtMs as written, null when absent (R94: the atMs
+// of the committed seam the host asks to resume, not compared with the request's atMs). Unlike a missing stamp it never stops the run: a request without a finite lostAtMs is
+// still a request (the host asked), and the oracle fails it (check.py O3.resumeAt).
 export function resumeRequests(connections, originMono, untilMono) {
   // Every stamp is validated before any filtering or sorting: a missing one would drop the request
   // (undefined <= n is false) and a null one would place it at time zero.
@@ -279,7 +282,8 @@ export function resumeRequests(connections, originMono, untilMono) {
   return connections.flatMap(c => c.resumes.filter(r => r.atMono <= untilMono).map(r => ({ c, r })))
     .sort((x, y) => x.r.atMono - y.r.atMono || x.c.connection - y.c.connection || x.r.frame - y.r.frame)
     .map(({ c, r }) => ({ atMs: r.atMono - originMono, via: 'control-pipe', connection: c.connection, requestId: r.requestId,
-      captureId: r.resumeCapture.captureId, timelineOriginMs: r.resumeCapture.timelineOriginMs, delivered: r.delivered !== false }));
+      captureId: r.resumeCapture.captureId, timelineOriginMs: r.resumeCapture.timelineOriginMs,
+      lostAtMs: r.resumeCapture.lostAtMs ?? null, delivered: r.delivered !== false }));
 }
 
 // A logged frame's evidence time is its monotonic stamp (scenarios/session-clock.mjs): a finite

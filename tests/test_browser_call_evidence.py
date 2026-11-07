@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from cassini_talk.browser_service import BrowserConnection, BrowserService
+from cassini_talk.session_events import source_state
 
 SHARED_AUTO_START_CASES = json.loads(
     (Path(__file__).parents[1] / "browser-protocol/conformance/control/auto-start-vectors.json").read_text()
@@ -315,7 +316,11 @@ def test_shared_auto_start_vectors_resume_a_lost_recording_once(policy, command_
             captureLocal=False,
             callGeneration=vector["meeting"]["callGeneration"],
             keepOnNavigation=True,
-            resumeCapture=dict(captureId=capture.capture_id, timelineOriginMs=capture.origin_ms),
+            resumeCapture=dict(
+                captureId=capture.capture_id,
+                timelineOriginMs=capture.origin_ms,
+                lostAtMs=source_state(capture.host.session.manifest["events"]).since_ms,
+            ),
         )
         assert capture.browser_lost and not capture.finished
 

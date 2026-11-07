@@ -353,7 +353,11 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                     captureLocal=False,
                     callGeneration=case["callGeneration"],
                     keepOnNavigation=True,
-                    resumeCapture=dict(captureId="call", timelineOriginMs=capture.origin_ms),
+                    resumeCapture=dict(
+                        captureId="call",
+                        timelineOriginMs=capture.origin_ms,
+                        lostAtMs=source_state(capture.host.session.manifest["events"]).since_ms,
+                    ),
                 )
             assert capture.directory == folder and capture.microphone is microphone
             if not capture.finished:

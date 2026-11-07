@@ -122,7 +122,11 @@ def test_ask_waits_until_the_extension_releases_the_tab(policy):
             captureLocal=False,
             callGeneration="call-A",
             keepOnNavigation=True,
-            resumeCapture=dict(captureId="F", timelineOriginMs=capture.origin_ms),
+            resumeCapture=dict(
+                captureId="F",
+                timelineOriginMs=capture.origin_ms,
+                lostAtMs=source_state(capture.host.session.manifest["events"]).since_ms,
+            ),
         )
         assert "microphone" not in packet
         for _ in range(3):
@@ -498,7 +502,11 @@ def test_once_eligible_again_the_same_connection_asks_exactly_once(policy, chang
             run(tasks)
         (packet,) = asks(sent)
         assert sent[-1][0] is browser
-        assert packet["resumeCapture"] == dict(captureId="F", timelineOriginMs=capture.origin_ms)
+        assert packet["resumeCapture"] == dict(
+            captureId="F",
+            timelineOriginMs=capture.origin_ms,
+            lostAtMs=source_state(capture.host.session.manifest["events"]).since_ms,
+        )
     finally:
         capture.stop()
 
@@ -583,7 +591,7 @@ def test_no_ask_before_the_fallback_commits_or_after_it_fails(policy, instance, 
         capture.stop()
 
 
-def test_resume_waits_for_the_committed_loss_boundary_on_the_session_clock(policy, monkeypatch):
+def test_resume_names_the_exact_committed_seam_even_when_output_time_leads_request(policy, monkeypatch):
     service, tasks, sent, parent = policy
     browser = peer(service)
     capture = recording(service, parent, browser)
@@ -599,12 +607,9 @@ def test_resume_waits_for_the_committed_loss_boundary_on_the_session_clock(polic
         assert cut > now[0]
         released(service, browser)
         run(tasks)
-        assert not asks(sent), "a resume must not precede the recorded loss boundary"
-        assert not service._capture_lifecycles["F"].asked_on, "the future boundary must not consume the ask"
-        now[0] = cut
-        service.policy()
-        run(tasks)
-        assert len(asks(sent)) == 1
+        (packet,) = asks(sent)
+        assert packet["resumeCapture"]["lostAtMs"] == cut
+        assert packet["resumeCapture"]["lostAtMs"] > now[0], "the committed seam is not the request clock"
         service.policy()
         run(tasks)
         assert len(asks(sent)) == 1, "the same loss still asks exactly once"

@@ -38,8 +38,10 @@ function frame(value, { text = JSON.stringify(value), endianness = os.endianness
   endianness === 'LE' ? head.writeUInt32LE(body.length) : head.writeUInt32BE(body.length);
   return Buffer.concat([head, body]);
 }
-const resume = (requestId, captureId = 'capture-1', timelineOriginMs = 1793880000000) =>
-  ({ type: 'command', requestId, action: 'start', mode: 'tracks', tabId: 7, resumeCapture: { captureId, timelineOriginMs } });
+// lostAtMs (R94): the committed loss the ask names, on the folder's clock; null writes it as null.
+const LOST = 96027.15;
+const resume = (requestId, captureId = 'capture-1', timelineOriginMs = 1793880000000, lostAtMs = LOST) =>
+  ({ type: 'command', requestId, action: 'start', mode: 'tracks', tabId: 7, resumeCapture: { captureId, timelineOriginMs, lostAtMs } });
 const exited = child => new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
 function collect(stream) {
   const chunks = [];
@@ -95,9 +97,13 @@ test('a resume request is a start command with a resumeCapture member, logged as
     { type: 'event', action: 'start', resumeCapture: {} }, [1], null, 'start'])
     assert.equal(isResumeRequest(other), false, JSON.stringify(other));
   assert.deepEqual(frameRecord({ index: 4, atWall: 9, atMono: 19, bytes: 99, message: resume('r-4', 'c', 5) }),
-    { frame: 4, atWall: 9, atMono: 19, bytes: 99, type: 'command', action: 'start', requestId: 'r-4', resumeCapture: { captureId: 'c', timelineOriginMs: 5 } });
+    { frame: 4, atWall: 9, atMono: 19, bytes: 99, type: 'command', action: 'start', requestId: 'r-4', resumeCapture: { captureId: 'c', timelineOriginMs: 5, lostAtMs: LOST } });
+  // lostAtMs as written, any JSON value, null when absent.
+  assert.equal(frameRecord({ index: 0, atWall: 1, bytes: 2, message: resume('r', 'c', 5, '96027.15') }).resumeCapture.lostAtMs, '96027.15');
+  assert.deepEqual(frameRecord({ index: 0, atWall: 1, bytes: 2, message: { type: 'command', action: 'start', resumeCapture: { captureId: 'c', timelineOriginMs: 5 } } }).resumeCapture,
+    { captureId: 'c', timelineOriginMs: 5, lostAtMs: null });
   assert.deepEqual(frameRecord({ index: 0, atWall: 1, bytes: 2, message: { type: 'command', action: 'start', resumeCapture: 'odd' } }).resumeCapture,
-    { captureId: null, timelineOriginMs: null });
+    { captureId: null, timelineOriginMs: null, lostAtMs: null });
   assert.deepEqual(frameRecord({ index: 0, atWall: 1, bytes: 2, message: [3] }),
     { frame: 0, atWall: 1, atMono: null, bytes: 2, type: null, action: null, requestId: null });
 });
@@ -118,7 +124,7 @@ async function relayRun(name, input, chunk) {
 test('the relay copies its input byte for byte, logs every frame and exits at the end of input', async () => {
   const filler = randomBytes(300000).toString('base64');  // frames larger than a pipe buffer
   const input = Buffer.concat([frame({ type: 'hello', filler }), frame(resume('r-1')), frame({ type: 'command', action: 'stop', requestId: 's' }),
-    frame(resume('r-2', 'other', 'not a number'))]);
+    frame(resume('r-2', 'other', 'not a number', 'later'))]);
   const started = Date.now(), startedMono = monotonic();
   const { result, bytes, entries } = await relayRun('passthrough', input, 4093);
   assert.deepEqual(result, { code: 0, signal: null });
@@ -126,8 +132,8 @@ test('the relay copies its input byte for byte, logs every frame and exits at th
   assert.equal(entries[0].relay > 0 && entries[0].endianness, os.endianness());
   const frames = entries.filter(e => 'frame' in e);
   assert.deepEqual(frames.map(f => [f.frame, f.type, f.action, f.requestId, f.resumeCapture ?? null]), [
-    [0, 'hello', null, null, null], [1, 'command', 'start', 'r-1', { captureId: 'capture-1', timelineOriginMs: 1793880000000 }],
-    [2, 'command', 'stop', 's', null], [3, 'command', 'start', 'r-2', { captureId: 'other', timelineOriginMs: 'not a number' }]]);
+    [0, 'hello', null, null, null], [1, 'command', 'start', 'r-1', { captureId: 'capture-1', timelineOriginMs: 1793880000000, lostAtMs: LOST }],
+    [2, 'command', 'stop', 's', null], [3, 'command', 'start', 'r-2', { captureId: 'other', timelineOriginMs: 'not a number', lostAtMs: 'later' }]]);
   assert.ok(frames.every(f => f.atWall >= started && f.atWall <= Date.now()));
   // The evidence stamp: the shared monotonic clock, read by the relay in its own process.
   assert.ok(frames.every(f => f.atMono >= startedMono && f.atMono <= monotonic()), 'every frame carries its monotonic stamp');
@@ -179,7 +185,7 @@ test('the observing launcher execs the host as the browser\'s child, numbers con
   const manifest = JSON.parse(await readFile(host.manifest, 'utf8'));
   assert.equal(manifest.path, host.launcher);
   const first = await launch(host, path.join(scratch, 'first.json'), [frame({ type: 'hello' }), frame(resume('r-1'))]);
-  const second = await launch(host, path.join(scratch, 'second.json'), [frame({ type: 'hello' }), frame(resume('r-2')), frame(resume('r-3', 'old', 1))]);
+  const second = await launch(host, path.join(scratch, 'second.json'), [frame({ type: 'hello' }), frame(resume('r-2')), frame(resume('r-3', 'old', 1, null))]);
   for (const run of [first, second]) {
     assert.equal(run.report.pid, run.child.pid, 'exec keeps the launcher\'s pid');
     assert.equal(run.report.ppid, process.pid, 'the host is the browser\'s direct child');
@@ -201,8 +207,9 @@ test('the observing launcher execs the host as the browser\'s child, numbers con
   await assert.rejects(verifyControlPipe(host, process.pid + 100000, 'kill'), /kill: control host \d+ \(connection 1\) is not the browser's child/);
   const origin = connections[0].resumes[0].atMono - 1000;
   const requests = resumeRequests(connections, origin, monotonic());
-  assert.deepEqual(requests.map(r => [r.via, r.connection, r.requestId, r.captureId, r.timelineOriginMs]), [
-    ['control-pipe', 1, 'r-1', 'capture-1', 1793880000000], ['control-pipe', 2, 'r-2', 'capture-1', 1793880000000], ['control-pipe', 2, 'r-3', 'old', 1]]);
+  assert.deepEqual(requests.map(r => [r.via, r.connection, r.requestId, r.captureId, r.timelineOriginMs, r.lostAtMs]), [
+    ['control-pipe', 1, 'r-1', 'capture-1', 1793880000000, LOST], ['control-pipe', 2, 'r-2', 'capture-1', 1793880000000, LOST],
+    ['control-pipe', 2, 'r-3', 'old', 1, null]]);
   assert.equal(requests[0].atMs, 1000);
   assert.ok(requests.every((r, i) => i === 0 || r.atMs >= requests[i - 1].atMs), 'pipe order');
   assert.deepEqual(resumeRequests(connections, origin, origin), [], 'nothing before the window ends: []');
@@ -330,6 +337,22 @@ test('a frame without a finite monotonic stamp fails the run, resume request or 
   }
   // A stamped resume request still counts.
   assert.deepEqual(resumeRequests([{ connection: 1, resumes: [{ frame: 0, atMono: 1500, ...resume }] }], 1000, 2000).map(r => r.atMs), [500]);
+});
+
+// R94: lostAtMs is carried as written. Unlike a missing stamp it never stops the run: a resume
+// request without a finite lostAtMs (absent, null, a string) is still a request (the host asked),
+// and the oracle fails it (check.py O3.resumeAt).
+test('a resume request without a finite lostAtMs is still recorded, lostAtMs as written', async () => {
+  const observe = path.join(scratch, 'lost-at'), host = { observe, command: ['/nonexistent/host'] };
+  await mkdir(path.join(observe, '1'), { recursive: true });
+  await writeFile(path.join(observe, '1', 'host'), `999999 ${process.pid}\n`);
+  const r = (frame, requestId, capture) => ({ frame, atWall: 1000 + frame, atMono: 1000 + frame, bytes: 9, type: 'command', action: 'start', requestId,
+    resumeCapture: { captureId: 'c', timelineOriginMs: 1, ...capture } });
+  const frames = [r(0, 'a', { lostAtMs: LOST }), r(1, 'b', { lostAtMs: null }), r(2, 'c', {}), r(3, 'd', { lostAtMs: '96027.15' }), r(4, 'e', { lostAtMs: 0 }), r(5, 'f', { lostAtMs: false }), r(6, 'g', { lostAtMs: -1 })];
+  await writeFile(path.join(observe, '1', 'frames.jsonl'), [{ relay: 999998, startedWall: 1 }, ...frames, { end: true, bytes: 63, frames: 7 }].map(e => JSON.stringify(e) + '\n').join(''));
+  const connections = await verifyControlPipe(host, process.pid, 'stop');
+  assert.deepEqual(resumeRequests(connections, 1000, 2000).map(q => [q.atMs, q.requestId, q.lostAtMs]),
+    [[0, 'a', LOST], [1, 'b', null], [2, 'c', null], [3, 'd', '96027.15'], [4, 'e', 0], [5, 'f', false], [6, 'g', -1]]);
 });
 
 test('an input error fails the run; a resume request a failed forward never delivered is kept, marked undelivered', async () => {

@@ -149,7 +149,8 @@ audio host: system/lost, one `resume-capture-v1`, browser/restored with new span
 under the same keys). The driver reads each resume request off the app's control
 pipe itself, copying the host's stdout through a relay while the launcher execs the
 host, which stays the browser's direct child, and records each request with the recording
-identity it names and its time (`scenario.json` `resumeObservation`).
+identity it names, the committed loss it names (`lostAtMs`, R94) and its time
+(`scenario.json` `resumeObservation`).
 `check.py check` then checks the folder against the evidence brackets and those
 requests, the scenario and corpus constants and PCM it measures itself, never
 through an app reader; `check.py compare` lines two apps' results up.

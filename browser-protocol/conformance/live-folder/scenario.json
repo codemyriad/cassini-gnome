@@ -60,7 +60,7 @@
       "nativeTones": "{microphone: Hz}: the tone the app's test microphone plays",
       "captureId": "the recording's captureId as the extension's service worker holds it (chrome.storage.session cassiniSessions[] entry of the meeting tab, read at record): the identity a resume must name",
       "timelineOriginMs": "that entry's startedAt, an integer: the origin of every time above and the other half of the recording's identity",
-      "resumeRequests": "every resume request the app sent during the run, in pipe order, as resumeObservation below defines it: [{atMs, via, connection, requestId, captureId, timelineOriginMs}]; [] when there was none"
+      "resumeRequests": "every resume request the app sent during the run, in pipe order, as resumeObservation below defines it: [{atMs, via, connection, requestId, captureId, timelineOriginMs, lostAtMs}]; [] when there was none"
     },
     "resumeObservation": {
       "via": "control-pipe",
@@ -74,6 +74,7 @@
         "requestId": "the frame's requestId, as written",
         "captureId": "the frame's resumeCapture.captureId, as written (any JSON value)",
         "timelineOriginMs": "the frame's resumeCapture.timelineOriginMs, as written (any JSON value)",
+        "lostAtMs": "the frame's resumeCapture.lostAtMs, as written (any JSON value), null when the frame has none: the atMs of the committed loss the host asks to resume, copied from its own session.json (SPEC-CONTROL R94). Its exact equality identifies the committed system/lost; it is not compared with the request stamp. Hosts must test commit-before-send ordering: a matching reference alone is not independent durable-write proof. A request without a finite lostAtMs is still a request; the oracle fails it",
         "delivered": "optional boolean, the driver writes it: false when the relay's forward of this frame to the browser failed (the browser had closed its end), so the extension never read it. The request still counts: the host asked"
       },
       "unusable": "A host-to-browser frame the relay cannot read as JSON fails the run: the driver writes no evidence.",

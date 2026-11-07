@@ -18,6 +18,7 @@ from test_voice_application import application_class  # noqa: F401
 from cassini_talk import refusals
 from cassini_talk.browser_capture import ResumeRefused
 from cassini_talk.browser_service import AudioTransport
+from cassini_talk.session_events import source_state
 
 NO_SOURCES = dict(ok=False, error="No audio is available from that meeting yet.", code="noSources")
 
@@ -73,7 +74,11 @@ def test_the_stand_in_asks_once_on_a_connection_once_the_call_is_heard(policy): 
             captureLocal=False,
             callGeneration="call-A",
             keepOnNavigation=True,
-            resumeCapture=dict(captureId=capture.capture_id, timelineOriginMs=capture.origin_ms),
+            resumeCapture=dict(
+                captureId=capture.capture_id,
+                timelineOriginMs=capture.origin_ms,
+                lostAtMs=source_state(capture.host.session.manifest["events"]).since_ms,
+            ),
         )
         ticks(service, tasks, browser, count=5)
         assert len(asks(sent)) == 1, "once per stand-in and connection"

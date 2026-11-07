@@ -44,6 +44,7 @@ ACTIONS = {
     'restore': [96680, 102380], 'stop': [109500, 110310],
 }
 END_MS = 109625
+LOST_MS = 95912.5  # the committed loss: system/lost, the seam a resume names (lostAtMs, R94)
 CAPTURE_ID, ORIGIN = 'live-folder-synthetic', 1793880000000
 
 
@@ -120,14 +121,15 @@ def base():
                        dict(atMs=0, type='selection', me=True, others=True, reason='start'),
                        dict(atMs=2100, type='selection', me=False, others=True, reason='user'),
                        dict(atMs=90250, type='selection', me=True, others=True, reason='user'),
-                       dict(atMs=95912.5, type='othersSource', source='system', reason='lost'),
+                       dict(atMs=LOST_MS, type='othersSource', source='system', reason='lost'),
                        dict(atMs=99500, type='othersSource', source='browser', reason='restored'),
                        dict(atMs=END_MS, type='end', reason='user'),
                    ])
     evidence = dict(scenario='live-folder/1', app='synthetic', protocolCommit='0' * 40, extensionVersion='0.2.12',
                     captureId=CAPTURE_ID, timelineOriginMs=ORIGIN,
                     newFolders=[f'Recording-{SESSION}'],
-                    # The app's one ask, read off the control pipe between system/lost and browser/restored.
+                    # The app's one ask, read off the control pipe before browser/restored, naming
+                    # the committed system/lost as the app wrote it.
                     resumeRequests=[resume_request(97210.5, 'resume-1')],
                     actions={k: dict(requestedAtMs=a, observedAtMs=b) for k, (a, b) in ACTIONS.items()},
                     slotC=dict(connectionState='connected', packetsReceived=0), maxSourceCount=3,
@@ -135,9 +137,9 @@ def base():
     return session, tracks, evidence
 
 
-def resume_request(at, request_id, capture_id=CAPTURE_ID, connection=1):
+def resume_request(at, request_id, capture_id=CAPTURE_ID, connection=1, lost_at=LOST_MS):
     return dict(atMs=at, via='control-pipe', connection=connection, requestId=request_id, captureId=capture_id,
-                timelineOriginMs=ORIGIN)
+                timelineOriginMs=ORIGIN, lostAtMs=lost_at)
 
 
 def _track(plans, identifier):
@@ -346,8 +348,16 @@ def wrong_capture_resume(session, tracks, evidence):
 
 
 def early_resume(session, tracks, evidence):
-    # Asked after the kill and before the fallback committed system/lost (D52.5: wait for the commit).
-    evidence['resumeRequests'] = [resume_request(95600, 'resume-1')]
+    # Asked after the kill and before the fallback committed system/lost (D52.5: wait for the commit):
+    # no seam was written yet, so the ask names none (resumeCapture without lostAtMs, R94). Its pipe
+    # time alone would not show it: the writer places the loss after accepted media frames.
+    evidence['resumeRequests'] = [resume_request(95600, 'resume-1', lost_at=None)]
+
+
+def wrong_lost_resume(session, tracks, evidence):
+    # The ask names the transport loss (95400, where Mac writes none/lost), not the committed
+    # system/lost at LOST_MS: a seam the host had not committed, though asked in time on the pipe.
+    evidence['resumeRequests'] = [resume_request(97210.5, 'resume-1', lost_at=95400)]
 
 
 def rotate(plan, *cuts):
@@ -471,6 +481,7 @@ MUTANTS = {
     'duplicate-resume': (duplicate_resume, ['O3.resumeOnce']),
     'wrong-capture-resume': (wrong_capture_resume, ['O3.resumeOnce', 'O3.resumeAt']),
     'early-resume': (early_resume, ['O3.resumeAt']),
+    'wrong-lost-resume': (wrong_lost_resume, ['O3.resumeAt']),
     'shifted-piece': (shifted_piece, ['O0.pieces']),
     'overlapping-piece': (overlapping_piece, ['O0.pieces']),
     'pre-restore-declaration': (pre_restore_declaration, ['O0.offsets', 'O4.outcomeRows']),

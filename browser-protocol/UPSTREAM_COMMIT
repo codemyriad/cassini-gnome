@@ -1,26 +1,26 @@
-tree 020b676cf02ccb9f68abf86f91e67e18d3572c66
-parent bcb7ec7d8ef4306d1e49b4642a374d7f407c32a7
+tree be67e8c68ed305ca302543ee0ab3ff4d2a9c264e
 parent a800ecc8ce9637ea4974c6c6e3aafcf93f2c6fe2
-author Silvio Tomatis <silviot@gmail.com> 1794066505 +0100
-committer GitHub <noreply@github.com> 1794066505 +0100
+parent d0fe0b2a80628415d64d596b8004a89a5d1bb125
+author Silvio Tomatis <silviot@gmail.com> 1794066896 +0100
+committer GitHub <noreply@github.com> 1794066896 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq70hJCRC1aQ7uu5UhlAAAI4sQACMn83/OWtzVla4oeoBi+zw4
- 0g7c+b7ba6RcmmGnjlsDBTVxkM/zVvlTV7BH+ExsJC0O1zxGeTMf6p8Vxw6IbTqv
- cejmvpeMGKoAh0++AFnl/ZPMLXIYEzm0VnF1XU/7Rr8fLLZcZbSeyTOlW6S7mzcz
- XIPBrQV+lGkY++UKs6l5buxV2Ea/2LIJUqKyFPPzRdEDRCl60wXgSklYo3RohYcI
- LnM1+jztdDQU31IbohEzpgMs4hHIpSAZ0lke5WJWypCqA0UEkq3K/0ZhNHX2cKNQ
- hU3PB9mPYHl/BEmk8pdzDcF38sCk8enPwDnXQLFuT2M6v/SZ+Jqiw0hbPHHEnw+E
- QAdxCMi3rXd7/d4OOwBH4XaX2TkGs2H2ZHPqelWkoshT2JOv57vsLsn2sZH1tL2t
- XlHrtqcbntual2vIMgf80VVCjLl3k6Yju2o4efe8td8KQjK2OXbm0FKT71F0qH+S
- x76SLa0S99VcegLBnvwF02VpMCiz/8gvWm1l72s+rG00FDdpNoBvqeFLjC/S7IW0
- sZJyu2+3qHmaVqqeWEUXA5Pc14KdLnFI/7vX0oQxirrBHH5wel6MhJ4s6QWUt9LI
- JpJTSQNkB+086a2zmLBQdKqnnXhoPTER6VYrpm5s0qKUb+mrUe4V8MlJqAhtFPae
- UFC+PaNILQfp9f5I6lj7
- =QRBo
+ wsFcBAABCAAQBQJq70nQCRC1aQ7uu5UhlAAAoXwQAKvgqUiC+xrf5jbTtzShxTm2
+ of7H0lDJAIt+sXijt4XNcMGXzqmoisKMriH/JIten9D4xaLF2biorxv1mN65goPQ
+ P8X2NIqo1Pf0G9cWBTMWaIVLw82v5k3I43eoExzEzNaODEbQR+hfPJKFYVYda+tp
+ Oue65DUlxoteqJH/8KD8MDfJO53ea63+0EAZoy4t/MVtOfUhDQWZ8WlgTrwzabtU
+ bKnuet/35cGsXM+maHfNHvt5rpd30IlFEHBTpiXcU7lDZ2+dr0gDF8cFHAenokBj
+ kafk/jqnS15EWYcvVvez1LvRl5SfI5wm7BMuBEnB1sXu50IIBlendmGFdtnSeEou
+ +NJPbCUkoniztARjwmj0ECPwXSf96YLVCDtEgTwMHClskTBrGF/Z2mQwCDdPYLjA
+ 3XbNzfE2fHxocluGc0B0UXwSWRfM1rNxUCTKZevwZLxQavMjoTDka6UfiLRMLX7e
+ yVYbAnypirmdXRaHXh9EG4wLfW+MH2pLnPdag01JprStqtTzbPKYCZP1KZFqHvEV
+ fuSBVOCpA+YOpUHJrxTqr1QRb1pvfwLzYNBe+t+V3Je9wPdNgR7pMsm91FNWeyYW
+ xoR03DuuGehofR1/J2YMvZ1NtAissbF5fcCIxhEiwKRxGmBeajr14vyzJtGpQoJH
+ ZxCD9WnwDlZNseRNx2VC
+ =k3L6
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #72 from codemyriad/feat/talk-participant-names
+Merge pull request #57 from codemyriad/feat/resume-lost-at
 
-Attribute Nextcloud Talk audio labels to matching participant cards
+R94: a resume ask names its committed loss (resumeCapture.lostAtMs); O3.resumeAt checks causal order

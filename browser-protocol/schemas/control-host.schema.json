@@ -94,7 +94,8 @@
           "type": "object",
           "required": [
             "captureId",
-            "timelineOriginMs"
+            "timelineOriginMs",
+            "lostAtMs"
           ],
           "properties": {
             "captureId": {
@@ -107,6 +108,11 @@
               "type": "integer",
               "minimum": 0,
               "maximum": 253402300799000
+            },
+            "lostAtMs": {
+              "type": "number",
+              "minimum": 0,
+              "$comment": "R94: hosts MUST send this finite nonnegative number, copied after the durable checkpoint under the capture lock: the atMs of the committed othersSource seam the ask resumes (newest system/lost, or the system/missing stand-in), exactly as the host wrote it in session.json. The extension does not read it: it accepts a resumeCapture without it and never forwards it to the native resume packet."
             }
           },
           "additionalProperties": true

@@ -85,6 +85,24 @@ test('resume uses the original identity/origin in early status, native request a
   } finally {f.deferred.splice(0).forEach(fn=>fn());await f.close();}
 });
 
+// R94: hosts send resumeCapture.lostAtMs (the committed seam they ask to resume). The extension
+// does not read it: any value, or none, resumes the same way and never reaches the native packet.
+for (const lostAtMs of [undefined, 0, 96027.15, null, '96027.15', -1])
+  test('resumeCapture.lostAtMs is ignored: '+JSON.stringify(lostAtMs ?? 'absent'), async () => {
+    const f = await fixture();
+    try {
+      const command = f.start('lost-at');
+      if (lostAtMs !== undefined) command.resumeCapture.lostAtMs = lostAtMs;
+      assert.equal((await f.app.command(command)).ok, true);
+      assert.deepEqual(f.packets.map(p=>p.type), ['resume']);
+      assert.equal(Object.hasOwn(f.packets[0], 'lostAtMs'), false);
+      assert.deepEqual(Object.keys(f.packets[0]).sort(),
+        ['callGeneration','captureId','documentGeneration','features','independent','requestId','timelineOriginMs','title','type','version']);
+      assert.equal(f.app.api.status().captureId, 'stand-in-F');
+      assert.equal((await f.app.command(f.stop('stop'))).ok, true);
+    } finally {await f.close();}
+  });
+
 for(const scoped of [false,true]) test('Stop cancels a resume queued before construction; fresh Record remains allowed (scoped='+scoped+')', async () => {
   const f = await fixture();
   try {

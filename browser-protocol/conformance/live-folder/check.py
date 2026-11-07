@@ -79,6 +79,17 @@ def _number(value):
     return type(value) in (int, float) and math.isfinite(value)
 
 
+def reference_fact(value):
+    # Evidence may contain an exponent that overflows binary64, including inside
+    # an invalid reference object. Keep the failed request visible without writing
+    # Infinity/NaN tokens into the oracle's own strict-JSON diagnostics.
+    try:
+        json.dumps(value, allow_nan=False)
+    except ValueError:
+        return repr(value)
+    return value
+
+
 def load_evidence(path):
     value = _strict(Path(path).read_text(encoding='utf-8'), 'evidence')
     problems = []
@@ -124,7 +135,7 @@ def load_evidence(path):
         for index, request in enumerate(requests):
             if not (isinstance(request, dict) and _number(request.get('atMs')) and request.get('via') == VIA and
                     type(request.get('connection')) is int and request['connection'] >= 1 and
-                    {'requestId', 'captureId', 'timelineOriginMs'} <= set(request) and
+                    {'requestId', 'captureId', 'timelineOriginMs', 'lostAtMs'} <= set(request) and
                     type(request.get('delivered', True)) is bool):
                 problems.append(f'resumeRequests[{index}]')
     if problems:
@@ -585,9 +596,18 @@ class Run:
         connections = [r['connection'] for r in every]
         rule('resumeOnce', bool(every) and len(mine) == len(every) and len(set(connections)) == len(connections),
              dict(requests=observed, recording=[self.e['captureId'], self.e['timelineOriginMs']]))
+        # R94 identifies the committed loss, not the commit instant. The host must copy its
+        # exact placed atMs only after the durable checkpoint, under the capture lock. Matching
+        # that reference alone is not independent fsync-order proof; host writer tests cover it.
+        # A request's monotonic stamp can precede the loss's placed time because accepted frames
+        # carry output-time lead (D61), even when both clocks map to the same session timeline.
+        # Keep the scenario's upper-bound sanity check: restoration follows the ask through
+        # native resume/first PCM, and output-time lead moves its placement later, not earlier.
+        # This is not a general proof for comparing timestamps from independent producers.
         seam = self.resume_seam()
-        rule('resumeAt', seam is not None and bool(mine) and all(seam[0] <= r['atMs'] <= seam[1] for r in mine),
-             dict(atMs=[r['atMs'] for r in mine], lostAndRestoredMs=seam))
+        rule('resumeAt', seam is not None and bool(mine) and all(
+            _number(r['lostAtMs']) and r['lostAtMs'] == seam[0] and r['atMs'] <= seam[1] for r in mine),
+             dict(atMs=[r['atMs'] for r in mine], lostAtMs=[reference_fact(r['lostAtMs']) for r in mine], lostAndRestoredMs=seam))
 
     # O4 remote with no packets ---------------------------------------------------------------
     def o4(self, rule):

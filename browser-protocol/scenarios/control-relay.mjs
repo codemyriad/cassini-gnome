@@ -89,7 +89,7 @@ export const isResumeRequest = message => message !== null && typeof message ===
   message.type === 'command' && message.action === 'start' && Object.hasOwn(message, 'resumeCapture');
 
 // One log line per frame: type, action and requestId as written, and for a resume request
-// resumeCapture's captureId and timelineOriginMs as written (null when absent).
+// resumeCapture's captureId, timelineOriginMs and lostAtMs as written (null when absent).
 export function frameRecord({ index, atWall, atMono = null, bytes, message }) {
   const object = message !== null && typeof message === 'object' && !Array.isArray(message);
   const record = { frame: index, atWall, atMono, bytes, type: object ? message.type ?? null : null,
@@ -97,7 +97,7 @@ export function frameRecord({ index, atWall, atMono = null, bytes, message }) {
   if (isResumeRequest(message)) {
     const target = message.resumeCapture;
     const field = name => (target !== null && typeof target === 'object' && Object.hasOwn(target, name) ? target[name] : null);
-    record.resumeCapture = { captureId: field('captureId'), timelineOriginMs: field('timelineOriginMs') };
+    record.resumeCapture = { captureId: field('captureId'), timelineOriginMs: field('timelineOriginMs'), lostAtMs: field('lostAtMs') };
   }
   return record;
 }
