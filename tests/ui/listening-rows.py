@@ -546,11 +546,16 @@ with tempfile.TemporaryDirectory() as temporary:
     assert starts[0] == keyboard_turn.start_ms
     window.player.pause()
     starts.clear()
-    before = window.get_focus()
-    key(window, "Tab", until)
-    until(window, lambda: window.get_focus() is not before)
+    assert window.get_focus() is focused
+    # A different focus widget can be an intermediate GTK list transition.
+    # Observe entry into the intended header, rather than any focus change.
+    focus_event(
+        window,
+        lambda: page.bound[keyboard_turn.index][2].get_first_child().get_first_child(),
+        lambda: key(window, "Tab", until),
+    )
     focus = window.get_focus()
-    inside_turn = next(t for t, _w, row in page.bound.values() if focus.is_ancestor(row))
+    inside_turn = keyboard_turn
     key(window, "shift+KP_Enter", until)
     until(window, lambda: starts)
     assert starts[0] == inside_turn.start_ms
