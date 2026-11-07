@@ -105,6 +105,32 @@ def verified(value, root, launcher):
         return False
 
 
+def host_identity():
+    """Current immutable Flatpak deployment, even from an old /app mount."""
+    from .flatpak_bridge import deployment, host_command, host_info
+
+    try:
+        target = deployment()
+        _, _, flatpak, _ = host_info()
+        command = [flatpak, "info", "--show-location", "--arch=" + target.arch, target.application, target.branch]
+        result = subprocess.run(host_command(command, watch=True), capture_output=True, check=True, timeout=5)
+        location = result.stdout.decode().strip()
+        if len(result.stdout) > 4096 or not location.startswith("/") or any(c in location for c in "\r\n\\\0"):
+            raise OSError("Invalid installed application location")
+        root = Path(location) / "files/share/cassini-talk"
+        identity = root / "build-info.json"
+        result = subprocess.run(
+            host_command(["head", "-c", str(LIMIT + 1), "--", str(identity)], watch=True),
+            capture_output=True,
+            check=True,
+            timeout=5,
+        )
+        value = decode(result.stdout)
+        return value, Path(location)
+    except (subprocess.SubprocessError, UnicodeError, ValueError) as error:
+        raise OSError("Could not inspect installed Flatpak identity") from error
+
+
 class InstalledBuild:
     def __init__(self, root, launcher, version, *, flatpak=False):
         self.root, self.launcher = Path(root), Path(launcher)
@@ -134,25 +160,13 @@ class InstalledBuild:
         return read(self.root / "build-info.json") == value
 
     def _host_changed(self):
-        from .flatpak_bridge import deployment, host_command, host_info
+        from .broker_identity import remember_host_identity
+        from .flatpak_bridge import host_command
 
-        target = deployment()
-        _, _, flatpak, _ = host_info()
-        command = [flatpak, "info", "--show-location", "--arch=" + target.arch, target.application, target.branch]
-        result = subprocess.run(host_command(command, watch=True), capture_output=True, check=True, timeout=5)
-        location = result.stdout.decode().strip()
-        if len(result.stdout) > 4096 or not location.startswith("/") or any(c in location for c in "\r\n\\\0"):
-            raise OSError("Invalid installed application location")
-        root = Path(location) / "files/share/cassini-talk"
-        identity = root / "build-info.json"
-        result = subprocess.run(
-            host_command(["head", "-c", str(LIMIT + 1), "--", str(identity)], watch=True),
-            capture_output=True,
-            check=True,
-            timeout=5,
-        )
-        value = decode(result.stdout)
+        value, location = host_identity()
+        root = location / "files/share/cassini-talk"
         if (value["version"], value["buildId"]) == (self.running_version, self.running["buildId"]):
+            remember_host_identity(value)
             return False
         pairs = [(str(root / name), digest) for name, digest in value["files"].items()]
         pairs.extend(
@@ -168,6 +182,7 @@ class InstalledBuild:
             check=True,
             timeout=5,
         )
+        remember_host_identity(value)
         return True
 
     def reexec(self, *, show, automatic, files=(), writing=False, record=False):

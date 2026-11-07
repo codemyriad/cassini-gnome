@@ -83,9 +83,16 @@ class BuildRefresh:
                 browser = False
                 if changed and self.app.browser_watch is not None:
                     from . import browser_service
+                    from .broker_lifecycle import busy, retire_idle
 
-                    value = browser_service.request()
-                    browser = any(s.get("recording") for s in value.get("statuses", ()))
+                    try:
+                        value = browser_service.request()
+                    except browser_service.BROKER_ABSENT:
+                        browser = False  # Retirement/idle exit needs no replacement for refresh.
+                    else:
+                        browser = busy(value)
+                        if not browser:
+                            browser = retire_idle()
                 future.set_result((changed, browser))
             except Exception as error:
                 future.set_exception(error)

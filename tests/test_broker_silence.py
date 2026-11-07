@@ -334,15 +334,12 @@ def no_spawn(*_args, **_kwargs):
 
 @pytest.mark.parametrize("respawn", ["blocked by the exiting broker's lock", "fails"])
 def test_the_apps_own_watch_reads_idle_at_once_while_it_respawns_the_broker(broker, exited, monkeypatch, respawn):
-    """The app's BrowserWatch has no path: each poll first ensures the broker
-    (ensure_service), which on a missing or refused socket spawns one and waits
-    up to 5 s for it. The exiting broker stops its captures still holding its
-    lock (serve()'s finally, after it unlinked its socket), so the new one
-    cannot take over and the wait ends in a generic error (or the spawn fails
-    at once): the finding of no broker never reached BrowserWatch, and Library,
-    Record and Quit read the app's snapshot "recording" until the bound (#217
-    review). It is delivered at once, stamped when found, before the wait. Both
-    caches start live at 0, as in production with a Library window open."""
+    """Publish absence before ownership release, without a premature spawn.
+
+    The exiting broker unlinked its socket but still owns the capture/lock.
+    Both caches must read idle immediately while replacement waits; closing
+    the watcher cancels that wait without launching or touching the old path.
+    """
     import fcntl
     import subprocess
 
@@ -360,10 +357,21 @@ def test_the_apps_own_watch_reads_idle_at_once_while_it_respawns_the_broker(brok
         assert app._browser_answered_at == 1 and b.activity.answered_at == 0
         assert not b.watch_replies
         return
-    spawned, spawn, started = [], subprocess.Popen, threading.Event()
-    monkeypatch.setattr(
-        subprocess, "Popen", lambda *args, **kwargs: spawned.append(spawn(*args, **kwargs)) or started.set()
-    )
+    from cassini_talk import broker_lifecycle
+
+    spawned, waiting = [], threading.Event()
+    released = broker_lifecycle._released
+
+    def wait_for_release(path, cancelled):
+        waiting.set()
+        return released(path, cancelled)
+
+    def premature_spawn(*_args, **_kwargs):
+        spawned.append(True)
+        pytest.fail("Never spawn while the exiting broker still owns its lock")
+
+    monkeypatch.setattr(broker_lifecycle, "_released", wait_for_release)
+    monkeypatch.setattr(subprocess, "Popen", premature_spawn)
     with exited.with_suffix(".lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # The exiting broker's.
         b.now[0] = 1
@@ -375,9 +383,10 @@ def test_the_apps_own_watch_reads_idle_at_once_while_it_respawns_the_broker(brok
         assert b.readings() == b.idle
         assert app._browser_answered_at == 1 and b.activity.answered_at == 0
         assert b.published and b.published[-1] == {}, "The Library hears of it at once"
-        # The spawned broker found the lock held and gave up: nothing listens.
-        assert started.wait(timeout=30)
-        assert len(spawned) == 1 and spawned[0].wait(timeout=30) == 0
+        # Discovery still publishes absence immediately, but spawning must
+        # wait for ownership release rather than launch a child doomed to exit.
+        assert waiting.wait(timeout=5)
+        assert not spawned
         assert exited.exists() == was_there
         assert b.readings() == b.idle
         # The app quits: closing the watch ends the wait.

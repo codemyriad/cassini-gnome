@@ -31,6 +31,7 @@ def child():
     import shutil
     import stat
     from functools import partial
+    from threading import Event
     from uuid import uuid4
 
     import gi
@@ -45,6 +46,7 @@ def child():
     Gio.resources_register(
         Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource"))
     )
+    from cassini_talk import browser_service
     from cassini_talk.capture_guard import recorder_busy
     from cassini_talk.folder_player import FolderPlayer
     from cassini_talk.main import CassiniApplication
@@ -211,11 +213,39 @@ def child():
         dialog, folder = app.sound_check_dialog, check.folder
         app.recording_settings.set_boolean("skip-record-first", True)
         app.start_native = lambda: real_native(test=True)
-        app.on_record()
-        until(lambda: dialog.closed and not folder.exists() and not check.busy)
-        assert check.state == "idle" and check.outcomes is None
-        native = app.recorder
-        until(lambda: native is not None and recorder_busy(native) and native.session is not None)
+        # Record's broker reply is asynchronous. Hold it until test cleanup
+        # finishes so this always exercises a start after the old recorder was
+        # retired, rather than depending on the runner's broker startup speed.
+        previous_native = app.recorder
+        release_reply, requested = Event(), Event()
+        request = browser_service.request
+
+        def deferred_reply(*args, **kwargs):
+            reply = request(*args, **kwargs)
+            if args and args[0] == "start-all":
+                requested.set()
+                assert release_reply.wait(40), "Test did not release the Record reply"
+            return reply
+
+        browser_service.request = deferred_reply
+        try:
+            app.on_record()
+            until(lambda: dialog.closed and not folder.exists() and not check.busy and requested.is_set())
+            assert check.state == "idle" and check.outcomes is None
+            assert app.recorder is previous_native, "The held reply cannot start a replacement yet"
+            release_reply.set()
+            until(
+                lambda: (
+                    (native := app.recorder) is not None
+                    and native is not previous_native
+                    and recorder_busy(native)
+                    and native.session is not None
+                )
+            )
+            native = app.recorder
+        finally:
+            release_reply.set()
+            browser_service.request = request
         assert not native.session.directory.is_relative_to(root)
         app.start_native = real_native
         app.stop_native()

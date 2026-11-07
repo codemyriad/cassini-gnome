@@ -12,11 +12,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.parametrize("layout", ["direct", "mirror-list"])
 @pytest.mark.parametrize(
     "mode,success,downloads,installs",
     [("ok", True, 1, 1), ("network-once", True, 2, 1), ("network-always", False, 2, 0), ("install-fails", False, 1, 1)],
 )
-def test_network_retry_is_bounded_and_never_repeats_package_configuration(tmp_path, mode, success, downloads, installs):
+def test_network_retry_is_bounded_and_never_repeats_package_configuration(
+    tmp_path, mode, success, downloads, installs, layout
+):
     binaries = tmp_path / "bin"
     binaries.mkdir()
     apt = binaries / "apt-get"
@@ -36,8 +39,16 @@ def test_network_retry_is_bounded_and_never_repeats_package_configuration(tmp_pa
     apt.chmod(0o755)
     sources = tmp_path / "apt/sources.list.d"
     sources.mkdir(parents=True)
-    source = sources / "ubuntu.sources"
-    source.write_text("URIs: http://azure.archive.ubuntu.com/ubuntu\nSuites: resolute\n")
+    config = sources / "ubuntu.sources"
+    if layout == "mirror-list":
+        source = sources.parent / "apt-mirrors.txt"
+        source.write_text("http://azure.archive.ubuntu.com/ubuntu\n")
+        config.write_text("URIs: mirror+file:" + str(source) + "\nSuites: resolute\n")
+    else:
+        source = config
+        source.write_text("URIs: http://azure.archive.ubuntu.com/ubuntu\nSuites: resolute\n")
+    original = source.read_text()
+    configured = config.read_text()
     third_party = sources / "other.list"
     third_party.write_text("deb https://example.invalid/other stable main\n")
     log = tmp_path / "calls.json"
@@ -62,7 +73,12 @@ def test_network_retry_is_bounded_and_never_repeats_package_configuration(tmp_pa
     assert third_party.read_text() == "deb https://example.invalid/other stable main\n"
     if mode.startswith("network"):
         assert "network retry 2/2" in result.stderr
-        assert source.read_text() == "URIs: http://archive.ubuntu.com/ubuntu\nSuites: resolute\n"
+        assert source.read_text() == original.replace(
+            "://azure.archive.ubuntu.com/ubuntu", "://archive.ubuntu.com/ubuntu"
+        )
+        assert str(source) in result.stdout
+        if layout == "mirror-list":
+            assert config.read_text() == configured
     else:
         assert "network retry" not in result.stderr
     if mode == "install-fails":

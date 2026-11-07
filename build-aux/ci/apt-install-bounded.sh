@@ -19,7 +19,8 @@ for attempt in 1 2; do
 import os
 from pathlib import Path
 root = Path(os.environ.get('CASSINI_APT_SOURCES_DIR', '/etc/apt'))
-paths = [root / 'sources.list', *(root / 'sources.list.d').glob('*.list'), *(root / 'sources.list.d').glob('*.sources')]
+# GitHub's Ubuntu images use mirror+file: references to these mirror lists.
+paths = [root / 'sources.list', *(root / 'sources.list.d').glob('*.list'), *(root / 'sources.list.d').glob('*.sources'), *root.glob('apt-mirrors*.txt')]
 for path in paths:
     if path.is_file():
         before = path.read_text()
