@@ -164,7 +164,7 @@
       if (Array.isArray(event.data.discoveredSources)) details.discoveredSources = event.data.discoveredSources.filter(s =>
         s && typeof s.sourceTrackId === "string" && s.sourceTrackId.length > 0 && s.sourceTrackId.length <= 200 &&
         ["local", "remote", "media", "tab"].includes(s.kind)).map(s => ({ sourceTrackId: s.sourceTrackId, kind: s.kind,
-          label: typeof s.label === "string" ? [...s.label.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0, 200).join("") : s.kind, failed: s.failed === true }));
+          label: typeof s.label === "string" ? [...s.label.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0, 200).join("") : s.kind, ...(s.labelSource != null ? {labelSource:s.labelSource} : {}), failed: s.failed === true }));
       send({ type, ...details });
       if (type === "stopped") { token = null; pending.clear(); }
     }

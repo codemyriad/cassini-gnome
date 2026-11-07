@@ -69,6 +69,7 @@ def source_summary():
         failed = source.get('failed') or any(t.get('problemKind') for t in tracks)
         state = 'failed' if failed else 'neverAudio' if not milliseconds else 'lowAudio' if milliseconds < 1000 else 'captured'
         result.append(dict(sourceTrackId=key, kind=source['kind'], label=source.get('label', source['kind']),
+                           **({'labelSource': source['labelSource']} if source.get('labelSource') is not None else {}),
                            captureOutcome=state, audioMs=milliseconds, trackIds=[t['id'] for t in tracks]))
     return dict(sources=result)
 
@@ -85,8 +86,11 @@ def observe_sources(sources):
         if type(source.get('failed', False)) is not bool: raise ValueError('Invalid failure flag')
         label = source.get('label', source['kind'])
         if not isinstance(label, str) or len(label) > 200: raise ValueError('Invalid source label')
+        if source.get('labelSource') is not None and source['labelSource'] not in ('browser', 'dom'):
+            raise ValueError('Invalid label provenance')
         previous = proposed.get(key, {})
         proposed[key] = dict(sourceTrackId=key, kind=source['kind'], label=source.get('label', source['kind'])[:200],
+                             **({'labelSource': source['labelSource']} if source.get('labelSource') is not None else {}),
                              failed=source.get('failed', False) or previous.get('failed', False))
     seen.update(proposed)
 
@@ -158,6 +162,10 @@ try:
                 refused('source', str(error), scope='command'); continue
             checkpoint(); reply(dict(type='ack'))
         elif kind == 'track':
+            label_source = request.get('labelSource')
+            if label_source is None: label_source = 'browser'
+            if label_source not in ('browser', 'dom'):
+                refused('source', 'Invalid label provenance', request.get('id')); continue
             existing = next((t for t in manifest['tracks'] if t['id'] == request['id']), None)
             if 'source-outcomes-v1' in features:
                 if existing:
@@ -174,10 +182,10 @@ try:
                 if key and any(t.get('sourceTrackId') == key and not t.get('ended') for t in manifest['tracks']):
                     refused('source', 'Overlapping live source span', request['id']); continue
             label = ''.join(c for c in request.get('label', kind) if unicodedata.category(c) not in ['Cc', 'Cf'])[:200]
-            track = dict(id=request['id'], label=label, kind=request['kind'], sampleRate=request['sampleRate'], channels=request['channels'], frames=0, file='track-' + str(uuid.uuid4()) + '.wav', labelSource='browser', gaps=[])
+            track = dict(id=request['id'], label=label, kind=request['kind'], sampleRate=request['sampleRate'], channels=request['channels'], frames=0, file='track-' + str(uuid.uuid4()) + '.wav', labelSource=label_source, gaps=[])
             if request.get('sourceTrackId') is not None:
                 track['sourceTrackId'] = request['sourceTrackId']
-            seen.setdefault(track.get('sourceTrackId') or track['id'], dict(kind=track['kind'], label=label))
+            seen.setdefault(track.get('sourceTrackId') or track['id'], dict(kind=track['kind'], label=label, **({'labelSource': label_source} if request.get('labelSource') is not None else {})))
             received[track['id']] = 0
             manifest['tracks'].append(track)
             audio[track['id']] = bytearray()

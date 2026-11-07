@@ -264,11 +264,12 @@ function sourceRecords(values) {
     if (!source || typeof source.sourceTrackId !== "string" || !source.sourceTrackId.length ||
         sourceEncoder.encode(source.sourceTrackId).length > 200 ||
         !["local", "remote", "media", "tab", "application"].includes(source.kind) ||
-        (source.failed !== undefined && typeof source.failed !== "boolean"))
+        (source.failed !== undefined && typeof source.failed !== "boolean") ||
+        (source.labelSource != null && !["browser", "dom"].includes(source.labelSource)))
       throw Object.assign(new Error("Invalid audio source record."), {scope: "command", code: "source"});
     return {sourceTrackId: source.sourceTrackId, kind: source.kind,
       label: typeof source.label === "string" ? [...source.label.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0, 200).join("") : source.kind,
-      failed: source.failed === true};
+      ...(source.labelSource != null ? {labelSource:source.labelSource} : {}), failed: source.failed === true};
   });
 }
 async function recordSources(session, values) {
@@ -611,6 +612,8 @@ function stampDocument(packet, documentGeneration) {
 // span is fenced locally: its late packets are not a failure of the live root.
 async function forwardPacket(session, packet, documentGeneration) {
   packet = stampDocument(packet, documentGeneration);
+  if (packet.type === "track" && packet.labelSource != null && !["browser", "dom"].includes(packet.labelSource))
+    throw Object.assign(new Error("Invalid label provenance."), {scope:"source", code:"source"});
   if (session.callChanged && packet.type !== "trackEnd")
     throw Object.assign(new Error("This audio belongs to a different call."), { scope: "source", code: "callChanged" });
   if (["track", "audio", "trackEnd"].includes(packet.type) &&
@@ -745,7 +748,7 @@ chrome.runtime.onConnect.addListener(port => {
         const key = message.packet.sourceTrackId || session.trackSources.get(message.packet.id);
         if (session.sourceOutcomes && typeof key === "string") {
           const previous = session.discoveredSources.get(key);
-          try { await recordSources(session, [{sourceTrackId:key,kind:previous?.kind || message.packet.kind || "remote",label:previous?.label || message.packet.label || "Audio",failed:true}]); }
+          try { await recordSources(session, [{sourceTrackId:key,kind:previous?.kind || message.packet.kind || "remote",label:previous?.label || message.packet.label || "Audio",...(previous?.labelSource ? {labelSource:previous.labelSource} : {}),failed:true}]); }
           catch (recordError) { failure(recordError.message, session, recordError.lossCause || "nativeHostError"); }
         }
         session.warning = "One track was interrupted and has a gap. The other tracks continue."; session.problem ??= session.warning; notifyControl(); }

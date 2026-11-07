@@ -51,6 +51,28 @@
       receiverGeneration(receiver, pc);
     }
   }
+  // Talk's participant videos carry the receiver's actual track objects, even
+  // when every Janus track has the same label/id. DOM text is an untrusted,
+  // registration-time display snapshot; it never grants capture eligibility.
+  function talkLabel(track) {
+    const participants = new Set(), names = new Set();
+    for (const media of document.querySelectorAll("audio,video")) {
+      if (!(media.srcObject instanceof MediaStream)) continue;
+      const tracks = media.srcObject.getAudioTracks();
+      if (tracks.length !== 1 || tracks[0] !== track) continue;
+      const card = media.closest?.(".video-container[id]");
+      const participant = card?.id?.match(/^(?:placeholder-)?container_(.+)_video_incoming$/)?.[1];
+      if (!participant) continue;
+      participants.add(participant);
+      for (const node of card.querySelectorAll(".participant-name")) {
+        if (node.closest(".video-container[id]") !== card) continue;
+        const name = node.textContent.replace(/\s+/gu, " ").replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
+        if (name) names.add(name);
+      }
+    }
+    if (participants.size !== 1 || names.size !== 1) return null;
+    return {label:[...names.values().next().value].slice(0, 200).join(""), labelSource:"dom"};
+  }
   // Remember microphone origins before they become senders, including local previews.
   const devices = navigator.mediaDevices;
   if (devices?.getUserMedia) {
@@ -365,7 +387,8 @@
               };
               const sourceTrackId = sourceKey(metadata.root || sourceRoot(track));
               const record = state.sources.get(sourceTrackId) || { sourceTrackId, kind: metadata.kind,
-                label: `${metadata.kind}: ${track.label || track.id}`, failed: false };
+                label: `${metadata.kind}: ${track.label || track.id}`,
+                ...(metadata.kind === "remote" ? talkLabel(track) : null), failed: false };
               state.sources.set(sourceTrackId, record);
               state.recordsByTrack.set(track, record);
               const nextSpanId = () => state.spanIds.size < 64 ? crypto.randomUUID() : null;
@@ -376,7 +399,7 @@
               if (!id) { state.refusedTracks.add(track); if (!record.failed) sourceFailed(record); continue; }
               const recorder = await capture({ stream: new MediaStream([track]), id, sourceTrackId,
                 reportOutcomes: message.sourceOutcomes === true, nextSpanId, live: () => track.readyState === "live",
-                label: `${metadata.kind}: ${track.label || track.id}`, kind: metadata.kind, enabled,
+                label: record.label, labelSource: record.labelSource, kind: metadata.kind, enabled,
                 origin: message.origin, workletURL: message.workletURL, send, getSharedContext: () => state.context ??= new AudioContext({ sampleRate: 48000 }), warn: (message, details) => details?.kind === "recovered" ? recovered(record.sourceTrackId) : warn(details?.kind === "retry", record.sourceTrackId, message),
                 fail: message => sourceFailed(record, message) });
               state.tracks.set(track, recorder);

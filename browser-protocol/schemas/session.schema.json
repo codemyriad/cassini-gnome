@@ -140,6 +140,7 @@
           "labelSource": {
             "enum": [
               "browser",
+              "dom",
               "device",
               "user",
               "recovered",
@@ -395,6 +396,16 @@
                   "maxLength": 200,
                   "$comment": "At most 200 UTF-8 bytes, independently of this character bound."
                 }
+              },
+              "labelSource": {
+                "enum": [
+                  "browser",
+                  "dom",
+                  "device",
+                  "user",
+                  "recovered",
+                  null
+                ]
               }
             },
             "additionalProperties": true

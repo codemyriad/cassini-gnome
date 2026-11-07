@@ -35,6 +35,20 @@ class SchemaTests(unittest.TestCase):
                     elif key in value: rest[key] = value[key]
                 request.validate(rest)
 
+    def test_browser_label_provenance_and_saved_dom(self):
+        request, session = schema('request'), schema('session')
+        track = dict(type='track', id='named', kind='remote', sampleRate=48000, channels=1)
+        source = dict(sourceTrackId='named', kind='remote', label='Hypatia')
+        for value in ['browser', 'dom', None]:
+            request.validate(dict(track, labelSource=value))
+            request.validate(dict(type='sources', discoveredSources=[dict(source, labelSource=value)]))
+        for value in ['user', 'device', 'recovered', '', 1, False, {}, []]:
+            self.assertFalse(request.is_valid(dict(track, labelSource=value)), value)
+            self.assertFalse(request.is_valid(dict(type='sources', discoveredSources=[dict(source, labelSource=value)])), value)
+        saved = json.loads((ROOT/'conformance/examples/session.json').read_text())
+        saved['tracks'][0]['labelSource'] = 'dom'
+        session.validate(saved)
+
     def test_incomplete_responses_and_overlong_metadata_fail(self):
         response, session = schema('response'), schema('session')
         for kind in ['started','stopped','error']: self.assertFalse(response.is_valid(dict(type=kind)))

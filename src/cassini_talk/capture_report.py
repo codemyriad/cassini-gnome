@@ -11,6 +11,7 @@ TRACK_FIELDS = (
     "id",
     "kind",
     "label",
+    "labelSource",
     "sourceTrackId",
     "frames",
     "sampleRate",

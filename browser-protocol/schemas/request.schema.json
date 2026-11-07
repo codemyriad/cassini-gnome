@@ -130,6 +130,13 @@
           "minLength": 1,
           "maxLength": 200,
           "$comment": "Since extension 0.2.12 (D61): the opaque generation of the document the span came from, the same value status reports, compared only for equality. Written by the extension's background, never taken from the page. Absent for whole-tab spans and when unknown. At most 200 UTF-8 bytes, independently of this character bound: the receiver checks the bytes and treats a longer value as absent. A live liveness hint, never written to session.json."
+        },
+        "labelSource": {
+          "enum": [
+            "browser",
+            "dom",
+            null
+          ]
         }
       },
       "additionalProperties": true
@@ -407,6 +414,13 @@
         },
         "failed": {
           "type": "boolean"
+        },
+        "labelSource": {
+          "enum": [
+            "browser",
+            "dom",
+            null
+          ]
         }
       },
       "additionalProperties": true

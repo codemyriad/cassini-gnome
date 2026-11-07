@@ -1,26 +1,26 @@
-tree 0071b0b3f3bc9e9b0fa58b570c4e84fea3a3703a
-parent 96342170016c307c194e40275cc7f630075869ad
-parent fe1cd0a7d571eb1dbc5aa068418b788db6979216
-author Silvio Tomatis <silviot@gmail.com> 1794062422 +0100
-committer GitHub <noreply@github.com> 1794062422 +0100
+tree 020b676cf02ccb9f68abf86f91e67e18d3572c66
+parent bcb7ec7d8ef4306d1e49b4642a374d7f407c32a7
+parent a800ecc8ce9637ea4974c6c6e3aafcf93f2c6fe2
+author Silvio Tomatis <silviot@gmail.com> 1794066505 +0100
+committer GitHub <noreply@github.com> 1794066505 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq7zhWCRC1aQ7uu5UhlAAACLYQAD5Q7IrJTNm12QDQz40uGPHm
- /VDf+CfqjAVTks2L6d+SrRE/BfZ7u7aRY+5pJ+RPVQ11/LBIWRQ2W/cg7h3HVblm
- rAI0NOh3npaQAtpJQnoN2AT5Pj+FAUbu9YQvUIxefNNqS2/TlnrhnPmA0VBJUu+m
- TGqw/5/quHBaiNRKfxFnMo+RhW9Q1YFC1KXQdnxjk05QTUhVJMpj9hs9MD/K78KC
- /gA+gpjqSdipfZLxEe+VvloKan5edzWvDI/XIlqpf3wGO74MYDTOKOouPBWXPsZ0
- 55P6SR/7d0N+qZDd3kdpVRgt9vULwysMxST9QTzXUR2+SntTEHEuqEPsLqA/IvU/
- yHZUSi2jRhYe9kXFQ6+Hb1KnjWMQwQdt/7BPnGDBDSjDf+mAd1YKXI6PilWdSRG7
- XpT5SP3M1GImqHs6wtvlJyZrIx9cS8jjVw86iNfouEWYkvLKOodj3TbB9eahm4uM
- 4FMO2HOingCPHBYXK7mIrnEDYe+pRlHtU62q9d1AKGDuRUl97/7jc9SPK/Xi8VWJ
- M2CB1DhEkiTOu2zIqWvOXMUHMlc66eYIXGT6foBQUOzGP15GJSE0mJYj9MpokyU5
- JqtRd2EXQwBL6tXCWl+SDqjeOkx8DPFBmmzvon7XwDu0SzViVJPQ0rVL3m9T/CFF
- BRtlP5G7N3m8OCJIxbOp
- =YDpV
+ wsFcBAABCAAQBQJq70hJCRC1aQ7uu5UhlAAAI4sQACMn83/OWtzVla4oeoBi+zw4
+ 0g7c+b7ba6RcmmGnjlsDBTVxkM/zVvlTV7BH+ExsJC0O1zxGeTMf6p8Vxw6IbTqv
+ cejmvpeMGKoAh0++AFnl/ZPMLXIYEzm0VnF1XU/7Rr8fLLZcZbSeyTOlW6S7mzcz
+ XIPBrQV+lGkY++UKs6l5buxV2Ea/2LIJUqKyFPPzRdEDRCl60wXgSklYo3RohYcI
+ LnM1+jztdDQU31IbohEzpgMs4hHIpSAZ0lke5WJWypCqA0UEkq3K/0ZhNHX2cKNQ
+ hU3PB9mPYHl/BEmk8pdzDcF38sCk8enPwDnXQLFuT2M6v/SZ+Jqiw0hbPHHEnw+E
+ QAdxCMi3rXd7/d4OOwBH4XaX2TkGs2H2ZHPqelWkoshT2JOv57vsLsn2sZH1tL2t
+ XlHrtqcbntual2vIMgf80VVCjLl3k6Yju2o4efe8td8KQjK2OXbm0FKT71F0qH+S
+ x76SLa0S99VcegLBnvwF02VpMCiz/8gvWm1l72s+rG00FDdpNoBvqeFLjC/S7IW0
+ sZJyu2+3qHmaVqqeWEUXA5Pc14KdLnFI/7vX0oQxirrBHH5wel6MhJ4s6QWUt9LI
+ JpJTSQNkB+086a2zmLBQdKqnnXhoPTER6VYrpm5s0qKUb+mrUe4V8MlJqAhtFPae
+ UFC+PaNILQfp9f5I6lj7
+ =QRBo
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #70 from codemyriad/test/nextcloud-companion
+Merge pull request #72 from codemyriad/feat/talk-participant-names
 
-test: require real Nextcloud Talk discovery and separate audio in CI
+Attribute Nextcloud Talk audio labels to matching participant cards
