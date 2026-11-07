@@ -287,3 +287,19 @@ def test_rotation_budget_counts_utf8_bytes_instead_of_characters(tmp_path):
     assert path.read_text() == "漢" * 30 + "\n"
     assert path.with_suffix(".log.1").read_text() == "A" * 200 + "\n"
     assert path.stat().st_size <= 256 and path.with_suffix(".log.1").stat().st_size <= 256
+
+
+def test_pytest_defaults_keep_broker_state_private_and_never_probe_the_journal(tmp_path, monkeypatch):
+    assert os.environ["XDG_STATE_HOME"] == str(tmp_path / "state")
+    assert broker_logging.journal_stream() is None
+
+    def forbidden_journal(*_args, **_kwargs):
+        pytest.fail("unit tests must not open the caller's system journal")
+
+    monkeypatch.setattr(broker_logging.ctypes, "CDLL", forbidden_journal)
+    env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"))
+    process = broker_logging.launch(
+        [sys.executable, "-c", "import os;os.write(2,b'Private pytest diagnostic\\n')"], env=env
+    )
+    assert process.wait(BOUND) == 0
+    assert "Private pytest diagnostic" in (tmp_path / "state/cassini/browser-service.log").read_text()

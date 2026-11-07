@@ -45,6 +45,7 @@ def _isolate(root):
         "XDG_CONFIG_HOME": home / ".config",
         "XDG_CACHE_HOME": home / ".cache",
         "XDG_DATA_HOME": home / ".local/share",
+        "XDG_STATE_HOME": home / ".local/state",
         "XDG_RUNTIME_DIR": root / "run",
     }
     display = os.environ.get("WAYLAND_DISPLAY")
@@ -169,3 +170,12 @@ def ample_scratch_space(monkeypatch):
 
     ample = SimpleNamespace(f_bavail=1 << 50, f_frsize=1, f_blocks=1 << 51)
     monkeypatch.setattr(scratch_budget, "volume_usage", lambda _path: ample)
+
+
+@pytest.fixture(autouse=True)
+def private_broker_diagnostics(tmp_path, monkeypatch):
+    """Never send test broker diagnostics to the caller's state or journal."""
+    from cassini_talk import broker_logging
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setattr(broker_logging, "journal_stream", lambda: None)

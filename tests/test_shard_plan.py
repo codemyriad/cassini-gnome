@@ -260,3 +260,21 @@ def test_a_shard_has_a_private_home_xdg_dirs_and_basetemp(tmp_path):
     for name in ("HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR"):
         assert Path(os.environ[name]).is_relative_to(root), name
     assert Path(os.environ["XDG_RUNTIME_DIR"]).stat().st_mode & 0o777 == 0o700
+
+
+def test_shard_state_directory_overrides_an_exported_external_location(tmp_path, monkeypatch):
+    import conftest
+
+    outside = tmp_path / "outside-state"
+    outside.mkdir()
+    sentinel = outside / "keep"
+    sentinel.write_bytes(b"unchanged caller state")
+    environment = {"XDG_STATE_HOME": str(outside)}
+    with monkeypatch.context() as patch:
+        patch.setattr(conftest, "os", SimpleNamespace(environ=environment, path=os.path))
+        conftest._isolate(tmp_path / "shard")
+    state = tmp_path / "shard/home/.local/state"
+    assert environment["XDG_STATE_HOME"] == str(state)
+    assert state.is_dir() and state.stat().st_mode & 0o777 == 0o700
+    assert sentinel.read_bytes() == b"unchanged caller state"
+    assert list(outside.iterdir()) == [sentinel]
