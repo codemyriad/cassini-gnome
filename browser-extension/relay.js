@@ -72,6 +72,17 @@
     if (message.type === "ack") pending.delete(message.request);
     control(message);
   }
+  function disconnected(connected) {
+    if (port !== connected) return;
+    if (token) {
+      drainingToken = token;
+      for (const request of pending) control({ type: "ack", token, request, error: "Cassini disconnected. Audio recorded so far was saved." });
+      control({ type: "stop", token });
+    }
+    pending.clear(); pendingStart = null; token = null; port = null;
+    hookReady = false; handshakeComplete = false; instanceId = null;
+    if (!valid()) retire();
+  }
   function connect() {
     if (port || retired) return;
     let connected;
@@ -83,15 +94,7 @@
     control({ type: "discover" });
     connected.onDisconnect.addListener(() => {
       try { void chrome.runtime.lastError; } catch {}
-      if (port !== connected) return;
-      if (token) {
-        drainingToken = token;
-        for (const request of pending) control({ type: "ack", token, request, error: "Cassini disconnected. Audio recorded so far was saved." });
-        control({ type: "stop", token });
-      }
-      pending.clear(); pendingStart = null; token = null; port = null;
-      hookReady = false; handshakeComplete = false; instanceId = null;
-      if (!valid()) retire();
+      disconnected(connected);
     });
   }
   function runtimeMessage(message, _sender, respond) {
@@ -108,8 +111,16 @@
     send({ type: "pageState", state: "navigating" });
     send({ type: "discovery", sourceCount, heard });
   });
-  listen("pageshow", () => {
-    hidden = false; connect();
+  listen("pageshow", event => {
+    hidden = false;
+    // The cached realm may thaw before its queued onDisconnect runs. Never
+    // send through that stale port or retire an otherwise valid relay for it.
+    if (event?.persisted && port) {
+      const stale = port;
+      disconnected(stale);
+      try { stale.disconnect(); } catch {}
+    }
+    connect();
     send({ type: "pageState", state: "present" });
     control({ type: "discover" });
   });

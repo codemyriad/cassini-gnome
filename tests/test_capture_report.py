@@ -417,3 +417,60 @@ def test_source_events_are_portable_without_an_announced_source_inventory(event)
 def test_terminal_or_malformed_event_alone_does_not_invent_a_capture_inventory():
     assert from_session(dict(tracks=[], events=[dict(type="end", reason="user", atMs=10)])) is None
     assert from_session(dict(tracks=[], events=[dict(type="othersSource", atMs=-1)])) is None
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
+        dict(source="system", reason="mixedSiteSignal", site="Synthetic meeting"),
+        dict(source="future-source", reason="future-reason", site="future-site"),
+    ],
+)
+def test_signal_system_route_survives_publication_cache_removal_and_metadata_edit(tmp_path, monkeypatch, route):
+    from cassini_talk.capture_details import read_details
+    from cassini_talk.library_v2 import edit, mixdown
+    from cassini_talk.recording_session import RecordingSession
+    from cassini_talk.strings import text
+
+    # Controlled codec output, as the cause-provenance regression above; the
+    # publisher, tags, journal, portable reader and edit remain production code.
+    spec = importlib.util.spec_from_file_location(
+        "route_codec_fixture", Path(__file__).parents[1] / "ux/library-vectors/assets/build.py"
+    )
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    generator.ROOT = tmp_path
+    generator.build("encoded.opus", 1000)
+
+    def count(spans):
+        assert [(s.length, s.info.sample_rate) for s in spans] == [(48000, 48000)]
+        return 48000
+
+    def encode(spans, output, choice, cancel=None):
+        total = count(spans)
+        shutil.copyfile(tmp_path / "encoded.opus", output)
+        return total
+
+    monkeypatch.setattr(mixdown, "total_samples", count)
+    monkeypatch.setattr(mixdown, "encode", encode)
+    root = tmp_path / "Library"
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
+    session = RecordingSession(capture_parent(root), source="gnome")
+    session.add_track("system", "Computer sound", "system", 48000, 1, label_source="device")
+    session.append("system", bytes(96000), 0)
+    with session.change([dict(type="othersSource", source="system", reason="start", atMs=0)]):
+        pass
+    update_metadata(session.directory, recordingDetails=dict(othersRoute=route))
+    session.finish(reason="callEnded", at_ms=1000)
+    published = publish_stopped(session)
+    shutil.rmtree(session.directory)
+    (meeting,) = LibraryScanner(root).scan().meetings
+    assert meeting.audio_file.name == published.name and meeting.metadata["recordingDetails"]["othersRoute"] == route
+    expected = text("details.othersRoute.mixedSite", site="Synthetic meeting")
+    assert (expected in read_details(meeting).notes) == (route["reason"] == "mixedSiteSignal")
+    edit.edit_meeting(
+        root, "Recording", session.manifest["id"], dict(title="Renamed synthetic signal call", titleSource="user")
+    )
+    (after,) = LibraryScanner(root).scan().meetings
+    assert after.metadata["recordingDetails"]["othersRoute"] == route
+    assert (expected in read_details(after).plain_text()) == (route["reason"] == "mixedSiteSignal")

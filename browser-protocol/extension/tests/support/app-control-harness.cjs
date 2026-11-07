@@ -13,6 +13,7 @@ async function until(check) {
 }
 async function setup(sourceCount = 3, previous = {}, hostFeatures = [], nativeFactory = null, uuidPrefix = "token-", beforeReady = null, diagnostics = {}) {
   const ports = [], audio = [], alarms = new Map(), timers = new Map(), pages = [];
+  const localStore = diagnostics.localStore || {};
   const stored = { ...previous }; let timerID = 0, uuid = 0;
   const tabs = new Map([[2, { id: 2, title: 'Meeting B', url: 'https://meet.example/call' }], [99, { id: 99, title: 'Active unrelated page', url: 'https://other.example/' }]]);
   const getCalls = [], queries = [];
@@ -31,7 +32,7 @@ async function setup(sourceCount = 3, previous = {}, hostFeatures = [], nativeFa
     },
     management: diagnostics.management || {async getSelf(){return {installType:'development'}}},
     alarms: { onAlarm: event(), async create(name, value) { alarms.set(name, value); }, async clear(name) { alarms.delete(name); } },
-    storage: { session: { async get() { return { ...stored }; }, async set(value) { Object.assign(stored, value); }, async remove(key) { delete stored[key]; } } },
+    storage: { local:diagnostics.localStorage || {async get(){return {...localStore}},async set(value){Object.assign(localStore,value)}}, session: { async get() { return { ...stored }; }, async set(value) { Object.assign(stored, value); }, async remove(key) { delete stored[key]; } } },
     tabs: { onRemoved: event(), onUpdated: event(), async get(id) { getCalls.push(id); if (!tabs.has(id)) throw Error('Missing tab'); return { ...tabs.get(id) }; },
       async query(query) { queries.push(query); return query.active ? [tabs.get(99)] : [...tabs.values()]; }, async sendMessage() { return {}; }
     },
@@ -45,12 +46,13 @@ async function setup(sourceCount = 3, previous = {}, hostFeatures = [], nativeFa
   const extension = path.resolve(__dirname, '../..');
   vm.runInContext(fs.readFileSync(path.join(extension, 'app-control.js'), 'utf8').replace('export class AppControl', 'class AppControl'), context);
   context.controlLater = later; context.controlCancel = cancel;
-  const background = fs.readFileSync(path.join(extension, 'background.js'), 'utf8').replace(/^import .*\n/, '').replace('runtime: chrome.runtime, alarms: chrome.alarms,', 'runtime: chrome.runtime, alarms: chrome.alarms, later: controlLater, cancel: controlCancel,');
-  vm.runInContext(background + '\nglobalThis.api={status,controlStatus,appControl,frames,start,stop,meetings,callInfo,sessionTimers,repairTab,repairOpenTabs,browserHealth,relayTimers,checkCompanion,failure,NativeHost};', context);
+  vm.runInContext(fs.readFileSync(path.join(extension, 'call-signals.js'), 'utf8').replace(/^export /gm, ''), context);
+  const background = fs.readFileSync(path.join(extension, 'background.js'), 'utf8').replace(/^import .*\n/gm, '').replace('runtime: chrome.runtime, alarms: chrome.alarms,', 'runtime: chrome.runtime, alarms: chrome.alarms, later: controlLater, cancel: controlCancel,');
+  vm.runInContext(background + '\nglobalThis.api={status,controlStatus,appControl,frames,start,stop,meetings,callInfo,sessionTimers,repairTab,repairOpenTabs,browserHealth,relayTimers,checkCompanion,failure,NativeHost,signalProducer,signalAdapters};', context);
   beforeReady?.({chrome, api:context.api, frame, tabs});
   await until(() => ports.length && ports[0].sent.some(m => m.type === 'status'));
   function frame(tabId = 2, count = sourceCount, frameId = 0, documentId) {
-    const port = { name: 'cassini-frame', sender: { id: 'extension', tab: { id: tabId }, frameId, ...(documentId ? {documentId} : {}) }, onMessage: event(), onDisconnect: event(), sent: [],
+    const port = { name: 'cassini-frame', sender: { id: 'extension', tab: { id: tabId }, frameId, ...(documentId ? {documentId,url:tabs.get(tabId)?.url} : {}) }, onMessage: event(), onDisconnect: event(), sent: [],
       postMessage(message) { this.sent.push(message); if (message.type === 'relayHello') { this.onMessage.emit({...message}); this.onMessage.emit({...message,type:'relayReady'}); } if (message.type === 'stop') queueMicrotask(() => this.onMessage.emit({ type: 'stopped' })); } };
     chrome.runtime.onConnect.emit(port); port.onMessage.emit({ type: 'discovery', sourceCount: count, title: 'Spoofed title', url: 'https://spoofed.invalid/' }); pages.push(port); return port;
   }
@@ -63,7 +65,7 @@ async function setup(sourceCount = 3, previous = {}, hostFeatures = [], nativeFa
     await until(() => port.sent.slice(before).some(m => m.type === 'result' && m.requestId === message.requestId));
     return port.sent.slice(before).find(m => m.type === 'result' && m.requestId === message.requestId);
   }
-  return { api: context.api, chrome, ports, audio, timers, alarms, pages, tabs, getCalls, queries, command, frame,
+  return { api: context.api, localStore, chrome, ports, audio, timers, alarms, pages, tabs, getCalls, queries, command, frame,
     async reconnect() { const before = ports.length; ports.at(-1).disconnect(); const timer = [...timers.values()][0]; assert.ok(timer); timers.clear(); timer.fn(); await until(() => ports.length > before && ports.at(-1).sent.some(m => m.type === 'status')); return ports.at(-1); },
     close() { context.api.appControl.close(); }
   };

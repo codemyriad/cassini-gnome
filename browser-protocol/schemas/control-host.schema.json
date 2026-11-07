@@ -21,6 +21,27 @@
       ],
       "additionalProperties": true,
       "$comment": "heartbeat-v1: sent only to a peer whose hello lists heartbeat-v1, after its first status."
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "configure"
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "const": "call-signals-v1"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "capabilities"
+      ],
+      "additionalProperties": false
     }
   ],
   "$defs": {

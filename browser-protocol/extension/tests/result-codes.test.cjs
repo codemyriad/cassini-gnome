@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { setup, event, until } = require('./support/app-control-harness.cjs');
 
-const KNOWN = ['busy', 'limit', 'noSources', 'gone', 'notWebPage', 'pageUnreachable', 'invalid', 'resumeRefused', 'workletBlocked', 'audioBlocked'];
+const KNOWN = ['busy', 'limit', 'noSources', 'gone', 'notWebPage', 'pageUnreachable', 'invalid', 'resumeRefused', 'workletBlocked', 'audioBlocked', 'unsupported'];
 const BUSY = 'A recording is already running. Stop it before starting another.';
 const start = (requestId, extra = {}) => ({ type: 'command', requestId, action: 'start', tabId: 2, mode: 'tracks', ...extra });
 

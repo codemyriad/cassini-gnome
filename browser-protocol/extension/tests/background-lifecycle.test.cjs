@@ -19,7 +19,8 @@ async function setup({delay,previous,grantError,grantDelay=0,startDelay=0,storag
   }},tabCapture:{async getMediaStreamId(){phase='grant';await wait(grantDelay);if(grantError)throw Error('No invocation');return 'stream'}},
   offscreen:{async closeDocument(){offscreen=false},async createDocument(){phase='offscreen-create';await wait(createDelay);offscreen=true}},action:{async setBadgeText(value){badge=value.text},async setBadgeBackgroundColor(){}}};
   const context=vm.createContext({AppControl:class {start(){} publish(){} publishStatus(){}},chrome,TextEncoder,setTimeout,clearTimeout,crypto:{randomUUID:()=> 'token',subtle:require('node:crypto').webcrypto.subtle},queueMicrotask});
-  vm.runInContext(fs.readFileSync(path.join(__dirname,'../background.js'),'utf8').replace(/^import .*\n/, '')+'\nglobalThis.api={start,stop,failure,status,recovery};',context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../call-signals.js'),'utf8').replace(/^export /gm,''),context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../background.js'),'utf8').replace(/^import .*\n/gm, '')+'\nglobalThis.api={start,stop,failure,status,recovery};',context);
   await context.api.recovery;
   return {api:context.api,stored,ports,get phase(){return phase},get offscreen(){return offscreen},get connections(){return nativeConnections},get badge(){return badge}};
 }

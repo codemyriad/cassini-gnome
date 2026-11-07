@@ -75,6 +75,8 @@ jobs:
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/comfort.py --build "$CASSINI_RECORDING_BUILD"
       - name: Library concurrent browser capture and native hidden controls
         run: CASSINI_TEST_BUILD="$CASSINI_RECORDING_BUILD" tests/recording/run.sh node tests/recording/app-control.mjs
+      - name: D74 real call-signal producer and system recording ownership
+        run: CASSINI_TEST_BUILD="$CASSINI_RECORDING_BUILD" tests/recording/run.sh node tests/recording/call-signals.mjs
       - name: Fresh Chromium companion installation and stable-folder update
         run: CASSINI_TEST_BUILD="$CASSINI_RECORDING_BUILD" tests/recording/run.sh node tests/recording/companion-install.mjs
       - name: Independent native microphone copies and per-session choice

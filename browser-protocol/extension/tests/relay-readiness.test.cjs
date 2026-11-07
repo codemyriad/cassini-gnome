@@ -259,3 +259,23 @@ test('an unready meeting in another tab does not block a healthy tab',async()=>{
   await app.api.stop();
  } finally {app.close()}
 });
+
+for(const order of ['disconnect before pageshow','disconnect after pageshow'])
+test('persisted restore replaces a frozen port and drains once: '+order,()=>{
+ const f=relay(),old=f.ports[0];old.onMessage.emit({type:'start',token:'old'});
+ f.page({type:'packet',token:'old',request:17,packet:{type:'audio'}});
+ for(const fn of f.handlers.get('pagehide'))fn({persisted:true});
+ old.postMessage=()=>{throw Error('Attempting to use a disconnected port object.')};
+ if(order==='disconnect before pageshow')old.onDisconnect.emit();
+ for(const fn of [...f.handlers.get('pageshow')])fn({persisted:true});
+ assert.equal(f.ports.length,2,'pageshow must not reuse the cached closed port');
+ assert.equal(f.context.__cassiniRelay.valid(),true,'a live extension realm must not retire on the stale port');
+ if(order==='disconnect after pageshow')old.onDisconnect.emit();
+ assert.equal(f.controls.filter(m=>m.type==='stop'&&m.token==='old').length,1);
+ assert.equal(f.controls.filter(m=>m.type==='ack'&&m.token==='old'&&m.request===17&&m.error).length,1);
+ const fresh=f.ports[1];fresh.onMessage.emit({type:'start',token:'new'});
+ assert.equal(f.controls.filter(m=>m.type==='start').length,1,'new session waits for old hook flush');
+ f.page({type:'stopped',token:'old'});
+ assert.equal(f.controls.filter(m=>m.type==='start').length,2);
+ assert.equal(f.controls.at(-1).token,'new');assert.equal(fresh.disconnected,undefined);
+});

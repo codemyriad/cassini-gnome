@@ -75,6 +75,7 @@ class BrowserCapture:
         self.transition = threading.RLock()
         self.capture_id = None
         self.call_generation = None
+        self.signal_owned = False
         # The tab a control status last bound this capture to, under any peer
         # (instance-less companions have no call_captures binding).
         self.call_tab = None
@@ -243,7 +244,17 @@ class BrowserCapture:
                 armed[kind] = state["at"] if state["refuse_at"] is None else state["refuse_at"]
         return armed
 
-    def start(self, message, *, others_source="browser", reason="start", refusals=(), session_clock=None):
+    def start(
+        self,
+        message,
+        *,
+        others_source="browser",
+        reason="start",
+        refusals=(),
+        session_clock=None,
+        others_route=None,
+        admit=None,
+    ):
         """Start this capture. `refusals` are start refusals made before the folder
         existed (a rejected browser Start): they are stored with the start events.
         `session_clock` is the mapping of an origin GNOME picked itself
@@ -277,6 +288,8 @@ class BrowserCapture:
                 self.starting = True
                 result = self.host.handle(message, started_at=instant)
                 self.host.session.manifest["createdAt"] = created
+                if self.signal_owned:
+                    self.host.session.manifest["source"] = "gnome"
                 self.me = microphone
                 self.browser_lost = others_source == "system"
                 self.browser_lost_since = time.monotonic() if self.browser_lost else None
@@ -297,6 +310,18 @@ class BrowserCapture:
                     for item in refusals:
                         append_refusal(self.host.session.manifest, item)
                 self._sync_spectrogram()
+            if admit is not None and not admit():
+                raise StartCancelled("The signalled call is no longer eligible")
+            if others_route is not None:
+                from .meeting_store import read_metadata, update_metadata
+
+                details = dict(read_metadata(self.directory).get("recordingDetails", {}))
+                details["othersRoute"] = dict(others_route)
+                update_metadata(self.directory, recordingDetails=details)
+                # The route checkpoint may stall while evidence is withdrawn.
+                # Revalidate after that IO, immediately before input dispatch.
+                if admit is not None and not admit():
+                    raise StartCancelled("The signalled call is no longer eligible")
             requested = [kind for kind, wanted in (("microphone", microphone), ("system", self.browser_lost)) if wanted]
             refused = self._open_natives(requested)
             items = [self._refusal(0, kind, refused[kind]) for kind in requested if kind in refused]

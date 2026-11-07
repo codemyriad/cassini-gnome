@@ -1,0 +1,1505 @@
+{
+  "status": "D74 draft contract only; not a runtime oracle, live markers or app capture proof",
+  "valid": [
+    {
+      "name": "consumer-opt-in",
+      "schema": "control-host",
+      "message": {
+        "type": "configure",
+        "capabilities": [
+          "call-signals-v1"
+        ]
+      }
+    },
+    {
+      "name": "accepted-opt-in",
+      "schema": "control-extension",
+      "message": {
+        "type": "configured",
+        "capabilities": [
+          "call-signals-v1"
+        ]
+      }
+    },
+    {
+      "name": "mixed-design-unknown-call",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "positive-mixed-call",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 1,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "positive-end-with-generation",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 2,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "inactive",
+              "reason": "callEnded",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "separated-independent-classification",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "unknown-classification",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "unknown",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "missing-positive-adapter",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": null,
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "no-positive-call-generation",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "energy-is-not-reason",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "audioPlaying",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "unknown-is-not-active",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "joining",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "inactive-unverified",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "inactive",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "unknown-ended",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "callEnded",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "end-without-generation",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "inactive",
+              "reason": "callEnded",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "invalid-remoteAudio",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "page-audio-mix",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "invalid-documentGeneration",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "invalid-sequence--1",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": -1,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "invalid-sequence-True",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": true,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "invalid-sequence-1",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": "1",
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "removed-graph-status",
+      "schema": "control-extension",
+      "message": {
+        "type": "graphStatus",
+        "tabs": []
+      }
+    },
+    {
+      "name": "removed-graph-capability",
+      "schema": "control-host",
+      "message": {
+        "type": "configure",
+        "capabilities": [
+          "page-audio-mix-v1"
+        ]
+      }
+    },
+    {
+      "name": "missing-stable-profile-identity",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 1,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid-stable-profile-15",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 1,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": ""
+      }
+    },
+    {
+      "name": "invalid-stable-profile-16",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 1,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": false
+      }
+    },
+    {
+      "name": "invalid-stable-profile-17",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 1,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": 42
+      }
+    },
+    {
+      "name": "invalid-stable-profile-18",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 1,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  ],
+  "passiveMediaNegatives": [
+    {
+      "name": "media-only-worklet",
+      "fixtureAudioPlaying": true,
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "expect": {
+        "signalAutoCandidate": false,
+        "appSystemStart": false,
+        "browserStart": false,
+        "legacySourceCount": 0,
+        "legacyHeard": false
+      }
+    },
+    {
+      "name": "youtube-like-playback",
+      "fixtureAudioPlaying": true,
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "expect": {
+        "signalAutoCandidate": false,
+        "appSystemStart": false,
+        "browserStart": false,
+        "legacySourceCount": 0,
+        "legacyHeard": false
+      }
+    },
+    {
+      "name": "whatsapp-voice-message",
+      "fixtureAudioPlaying": true,
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "expect": {
+        "signalAutoCandidate": false,
+        "appSystemStart": false,
+        "browserStart": false,
+        "legacySourceCount": 0,
+        "legacyHeard": false
+      }
+    },
+    {
+      "name": "whatsapp-status",
+      "fixtureAudioPlaying": true,
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "expect": {
+        "signalAutoCandidate": false,
+        "appSystemStart": false,
+        "browserStart": false,
+        "legacySourceCount": 0,
+        "legacyHeard": false
+      }
+    },
+    {
+      "name": "whatsapp-video",
+      "fixtureAudioPlaying": true,
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": null
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "expect": {
+        "signalAutoCandidate": false,
+        "appSystemStart": false,
+        "browserStart": false,
+        "legacySourceCount": 0,
+        "legacyHeard": false
+      }
+    }
+  ],
+  "routing": [
+    {
+      "name": "mixed-positive-opt-in",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": true,
+        "browserStart": false,
+        "others": "system",
+        "me": "existing-app-choice"
+      }
+    },
+    {
+      "name": "mixed-positive-opt-out",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": false,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false
+      }
+    },
+    {
+      "name": "mixed-with-one-rtp-still-not-browser",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 1,
+        "heard": true
+      },
+      "expect": {
+        "appSystemStart": true,
+        "browserStart": false,
+        "browserCommandRefused": "unsupported"
+      }
+    },
+    {
+      "name": "separated-existing-rtp-ready",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": true,
+        "policy": "existing-RTP"
+      }
+    },
+    {
+      "name": "separated-signal-without-rtp-is-insufficient",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false
+      }
+    },
+    {
+      "name": "active-call-unknown-design-no-guess",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://web.whatsapp.com/",
+            "documentGeneration": "document-A",
+            "remoteAudio": "unknown",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "synthetic-site-fixture",
+                "version": "1"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false
+      }
+    }
+  ],
+  "lifecycle": {
+    "name": "positive-call-end-with-passive-media-continuing",
+    "scope": "synthetic contract facts, not real site marker validation",
+    "autoRecordOptIn": true,
+    "steps": [
+      {
+        "signal": {
+          "type": "callSignals",
+          "sequence": 1,
+          "tabs": [
+            {
+              "tabId": 2,
+              "url": "https://web.whatsapp.com/",
+              "documentGeneration": "document-A",
+              "remoteAudio": "mixed",
+              "callEvidence": {
+                "state": "active",
+                "reason": "activeCall",
+                "adapter": {
+                  "name": "synthetic-site-fixture",
+                  "version": "1"
+                },
+                "callGeneration": "call-A"
+              }
+            }
+          ],
+          "browserInstance": "profile-A"
+        },
+        "fixtureAudioPlaying": true,
+        "expect": {
+          "appSystemStart": true,
+          "appStop": false,
+          "recording": "associated-auto-call"
+        }
+      },
+      {
+        "signal": {
+          "type": "callSignals",
+          "sequence": 2,
+          "tabs": [
+            {
+              "tabId": 2,
+              "url": "https://web.whatsapp.com/",
+              "documentGeneration": "document-A",
+              "remoteAudio": "mixed",
+              "callEvidence": {
+                "state": "inactive",
+                "reason": "callEnded",
+                "adapter": {
+                  "name": "synthetic-site-fixture",
+                  "version": "1"
+                },
+                "callGeneration": "call-A"
+              }
+            }
+          ],
+          "browserInstance": "profile-A"
+        },
+        "fixtureAudioPlaying": true,
+        "expect": {
+          "appSystemStart": false,
+          "appStop": true,
+          "stopAssociation": {
+            "browserInstance": "profile-A",
+            "tabId": 2,
+            "documentGeneration": "document-A",
+            "callGeneration": "call-A"
+          },
+          "afterStop": "completed"
+        }
+      },
+      {
+        "signal": {
+          "type": "callSignals",
+          "sequence": 3,
+          "tabs": [
+            {
+              "tabId": 2,
+              "url": "https://web.whatsapp.com/",
+              "documentGeneration": "document-A",
+              "remoteAudio": "mixed",
+              "callEvidence": {
+                "state": "unknown",
+                "reason": "unverified",
+                "adapter": {
+                  "name": "synthetic-site-fixture",
+                  "version": "1"
+                },
+                "callGeneration": null
+              }
+            }
+          ],
+          "browserInstance": "profile-A"
+        },
+        "fixtureAudioPlaying": true,
+        "expect": {
+          "appSystemStart": false,
+          "appStop": false
+        }
+      }
+    ]
+  },
+  "identityAndReconnect": [
+    {
+      "name": "stale-sequence",
+      "expect": {
+        "ignore": true,
+        "autoStart": false
+      }
+    },
+    {
+      "name": "ended-other-call-generation",
+      "expect": {
+        "stopUnrelatedRecording": false
+      }
+    },
+    {
+      "name": "new-document-fences-old-call",
+      "expect": {
+        "oldEligibility": false,
+        "requireFreshEvidence": true
+      }
+    },
+    {
+      "name": "reconnect-no-cached-active-replay",
+      "expect": {
+        "resetSequence": true,
+        "configured": false,
+        "autoStart": false
+      }
+    },
+    {
+      "name": "manual-stop-suppression",
+      "expect": {
+        "autoStart": false,
+        "policy": "existing-app"
+      }
+    },
+    {
+      "name": "unknown-call-loss-is-not-positive-end",
+      "expect": {
+        "autoStart": false,
+        "callEnded": false,
+        "recordingPolicy": "existing-bounded-loss-policy"
+      }
+    }
+  ],
+  "appPolicy": {
+    "identityFields": [
+      "browserInstance",
+      "tabId",
+      "documentGeneration",
+      "callGeneration"
+    ],
+    "evidenceLossGraceMs": 120000,
+    "ownerReconciliation": {
+      "name": "replacement-control-connection-same-call",
+      "originalConnection": "connection-1",
+      "replacementConnection": "connection-2",
+      "originalAssociation": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "documentGeneration": "document-A",
+        "callGeneration": "call-A"
+      },
+      "replacementAssociation": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "documentGeneration": "document-A",
+        "callGeneration": "call-A"
+      },
+      "sequenceBefore": 40,
+      "sequenceAfter": 0,
+      "expect": {
+        "reconcileExisting": true,
+        "newSystemStart": false,
+        "fixedRoute": "system",
+        "clearEvidenceLossGrace": true
+      }
+    },
+    "lateEnds": [
+      {
+        "name": "superseded-connection",
+        "endConnection": "connection-1",
+        "authoritativeConnection": "connection-2",
+        "endAssociation": {
+          "browserInstance": "profile-A",
+          "tabId": 2,
+          "documentGeneration": "document-A",
+          "callGeneration": "call-A"
+        },
+        "currentAssociation": {
+          "browserInstance": "profile-A",
+          "tabId": 2,
+          "documentGeneration": "document-A",
+          "callGeneration": "call-A"
+        },
+        "expect": {
+          "ignore": true,
+          "systemStop": false
+        }
+      },
+      {
+        "name": "superseded-generation",
+        "endConnection": "connection-2",
+        "authoritativeConnection": "connection-2",
+        "endAssociation": {
+          "browserInstance": "profile-A",
+          "tabId": 2,
+          "documentGeneration": "document-A",
+          "callGeneration": "call-A"
+        },
+        "currentAssociation": {
+          "browserInstance": "profile-A",
+          "tabId": 2,
+          "documentGeneration": "document-A",
+          "callGeneration": "call-B"
+        },
+        "expect": {
+          "ignore": true,
+          "systemStop": false
+        }
+      }
+    ],
+    "lossDeadline": {
+      "name": "audio-never-extends-120s-loss-grace",
+      "association": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "documentGeneration": "document-A",
+        "callGeneration": "call-A"
+      },
+      "steps": [
+        {
+          "atMs": 1000,
+          "event": "evidenceUnknown",
+          "systemAudio": true,
+          "microphoneAudio": true,
+          "expect": {
+            "newEligibility": false,
+            "stop": false,
+            "deadlineMs": 121000
+          }
+        },
+        {
+          "atMs": 60000,
+          "event": "rowRemoved",
+          "systemAudio": true,
+          "microphoneAudio": true,
+          "expect": {
+            "stop": false,
+            "deadlineMs": 121000
+          }
+        },
+        {
+          "atMs": 120999,
+          "event": "controlLost",
+          "systemAudio": true,
+          "microphoneAudio": true,
+          "expect": {
+            "stop": false,
+            "deadlineMs": 121000
+          }
+        },
+        {
+          "atMs": 121000,
+          "event": "deadline",
+          "systemAudio": true,
+          "microphoneAudio": true,
+          "expect": {
+            "stop": true,
+            "deadlineMs": 121000
+          }
+        }
+      ]
+    },
+    "sameCallReturn": {
+      "name": "fresh-same-call-before-deadline",
+      "association": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "documentGeneration": "document-A",
+        "callGeneration": "call-A"
+      },
+      "steps": [
+        {
+          "atMs": 1000,
+          "event": "controlLost",
+          "expect": {
+            "deadlineMs": 121000
+          }
+        },
+        {
+          "atMs": 120999,
+          "event": "freshActiveSameCall",
+          "connection": "connection-2",
+          "association": {
+            "browserInstance": "profile-A",
+            "tabId": 2,
+            "documentGeneration": "document-A",
+            "callGeneration": "call-A"
+          },
+          "expect": {
+            "reconcileExisting": true,
+            "newSystemStart": false,
+            "clearDeadline": true
+          }
+        }
+      ]
+    },
+    "immediateEnd": {
+      "name": "positive-end-bypasses-loss-grace",
+      "association": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "documentGeneration": "document-A",
+        "callGeneration": "call-A"
+      },
+      "priorDeadlineMs": 121000,
+      "atMs": 2000,
+      "fixtureMediaContinues": true,
+      "expect": {
+        "stopNow": true,
+        "waitForSilence": false
+      }
+    },
+    "fixedRoute": {
+      "name": "same-call-classification-change-does-not-handoff",
+      "association": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "documentGeneration": "document-A",
+        "callGeneration": "call-A"
+      },
+      "routeChosenAtStart": "system",
+      "steps": [
+        {
+          "remoteAudio": "mixed",
+          "callState": "active"
+        },
+        {
+          "remoteAudio": "separated",
+          "callState": "active",
+          "rtpReady": true
+        },
+        {
+          "remoteAudio": "unknown",
+          "callState": "active"
+        }
+      ],
+      "expect": {
+        "routeRemains": "system",
+        "browserStart": false,
+        "browserResume": false,
+        "newSystemStart": false,
+        "newRecording": false
+      }
+    },
+    "sharedOwner": {
+      "name": "overlapping-mixed-calls-share-one-system-recording",
+      "steps": [
+        {
+          "event": "active",
+          "association": {
+            "browserInstance": "profile-A",
+            "tabId": 2,
+            "documentGeneration": "document-A",
+            "callGeneration": "call-A"
+          },
+          "expect": {
+            "systemStarts": 1,
+            "associatedCalls": 1,
+            "stop": false
+          }
+        },
+        {
+          "event": "active",
+          "association": {
+            "browserInstance": "profile-A",
+            "tabId": 3,
+            "documentGeneration": "document-B",
+            "callGeneration": "call-B"
+          },
+          "expect": {
+            "systemStarts": 1,
+            "associatedCalls": 2,
+            "stop": false
+          }
+        },
+        {
+          "event": "callEnded",
+          "association": {
+            "browserInstance": "profile-A",
+            "tabId": 2,
+            "documentGeneration": "document-A",
+            "callGeneration": "call-A"
+          },
+          "expect": {
+            "systemStarts": 1,
+            "associatedCalls": 1,
+            "stop": false
+          }
+        },
+        {
+          "event": "callEnded",
+          "association": {
+            "browserInstance": "profile-A",
+            "tabId": 3,
+            "documentGeneration": "document-B",
+            "callGeneration": "call-B"
+          },
+          "expect": {
+            "systemStarts": 1,
+            "associatedCalls": 0,
+            "stop": true
+          }
+        }
+      ]
+    },
+    "manualStop": {
+      "name": "suppression-survives-reconnect-not-new-generation",
+      "suppressedAssociations": [
+        {
+          "browserInstance": "profile-A",
+          "tabId": 2,
+          "documentGeneration": "document-A",
+          "callGeneration": "call-A"
+        },
+        {
+          "browserInstance": "profile-A",
+          "tabId": 3,
+          "documentGeneration": "document-B",
+          "callGeneration": "call-B"
+        }
+      ],
+      "replacementConnection": "connection-2",
+      "freshSameCall": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "documentGeneration": "document-A",
+        "callGeneration": "call-A"
+      },
+      "newCall": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "documentGeneration": "document-A",
+        "callGeneration": "call-C"
+      },
+      "expect": {
+        "sameCallAutoRestart": false,
+        "newGenerationSuppressed": false
+      }
+    },
+    "detailsProvenance": {
+      "before": {
+        "recordingDetails": {
+          "othersRoute": {
+            "source": "system",
+            "reason": "mixedSiteSignal",
+            "site": "synthetic-site-fixture"
+          }
+        }
+      },
+      "afterCacheRemovalAndExportImport": {
+        "recordingDetails": {
+          "othersRoute": {
+            "source": "system",
+            "reason": "mixedSiteSignal",
+            "site": "synthetic-site-fixture"
+          }
+        }
+      },
+      "expect": {
+        "useStoredRoute": true,
+        "inferFromCurrentHostname": false,
+        "browserLossAlert": false
+      },
+      "futureOpenStrings": {
+        "source": "future-output",
+        "reason": "future-routing",
+        "site": "future-adapter"
+      }
+    },
+    "sharedOwnerGrace": {
+      "name": "one-expired-association-does-not-stop-another-call",
+      "steps": [
+        {
+          "event": "first-evidence-loss",
+          "expect": {
+            "associatedCalls": 2,
+            "stop": false
+          }
+        },
+        {
+          "event": "first-120s-grace-expires",
+          "expect": {
+            "associatedCalls": 1,
+            "stop": false
+          }
+        },
+        {
+          "event": "last-positive-end",
+          "expect": {
+            "associatedCalls": 0,
+            "stop": true
+          }
+        }
+      ]
+    }
+  }
+}
