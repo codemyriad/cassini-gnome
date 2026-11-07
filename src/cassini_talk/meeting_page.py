@@ -113,6 +113,11 @@ class MeetingPage(Adw.NavigationPage):
             decoration_layout=":close",
             css_classes=["library-header"],
         )
+        pane = Gtk.Button(icon_name="system-users-symbolic", tooltip_text=text("common.speakers"), css_classes=["flat"])
+        pane.connect("clicked", lambda *_: self.split.set_show_content(False) if self.split.get_collapsed() else None)
+        pane.set_visible(False)
+        split.connect("notify::collapsed", lambda *_: pane.set_visible(split.get_collapsed()))
+        header.pack_start(pane)
         self.headline = Adw.WindowTitle()
         header.set_title_widget(self.headline)
         self.export_button = Gtk.Button(label=text("common.exportEllipsis"), action_name="win.export")
@@ -196,6 +201,9 @@ class MeetingPage(Adw.NavigationPage):
             window.listen.connect(signal, self._listening_changed) for signal in ("changed", "stopped")
         ]
         self._listen_signals.append(window.listen.connect("requested", self._listening_requested))
+        from .listening_shortcuts import ListeningShortcuts
+
+        self.listening_keys = ListeningShortcuts(self)
         self.update(meeting)
         self._position()
 
@@ -864,6 +872,7 @@ class MeetingPage(Adw.NavigationPage):
         self._highlight_listening()
         self.listening_bar.update()
         self.timeline.set_target(listen.turns_of(listen.speaker) if listen.active else ())
+        self.listening_keys.refresh()
 
     def _scroll_speaker(self, row):
         self._scroll_target = row

@@ -155,16 +155,8 @@ class CassiniApplication(Adw.Application):
         self.set_accels_for_action("win.rate-up", ["<primary>bracketright"])
         self.set_accels_for_action("win.rate-down", ["<primary>bracketleft"])
         self.set_accels_for_action("win.back-library", ["<alt>Left"])
-        self.set_accels_for_action("win.nudge-forward", ["<alt>Right"])
         self.set_accels_for_action("win.rename", ["F2"])
         self.set_accels_for_action("win.search", ["<primary>f"])
-        self.set_accels_for_action("win.next-match", ["<primary>g"])
-        self.set_accels_for_action("win.previous-match", ["<primary><shift>g"])
-        self.set_accels_for_action("win.show-sidebar", ["F9"])
-        self.set_accels_for_action("win.show-properties", ["<primary>i"])
-        self.set_accels_for_action("win.follow-along", ["<primary>l"])
-        self.set_accels_for_action("win.show-transcript", ["<alt>1"])
-        self.set_accels_for_action("win.show-summary", ["<alt>2"])
         self.set_accels_for_action("win.export", ["<primary><shift>e"])
 
     def do_startup(self):
@@ -1622,6 +1614,15 @@ class CassiniApplication(Adw.Application):
         if window is None or self.shortcuts_dialog is not None:
             return
         builder = Gtk.Builder.new_from_resource(RESOURCE + "/shortcuts-dialog.ui")
+        local_titles = {
+            builder.get_object(name): identifier
+            for name, identifier in (
+                ("listen_turns", "shortcuts.listen.turns"),
+                ("listen_speakers", "shortcuts.listen.speakers"),
+                ("listen_stop", "listen.stop"),
+                ("play_turn", "shortcuts.playTurn"),
+            )
+        }
         for item in builder.get_objects():
             if isinstance(item, Adw.ShortcutsItem):
                 identifier = {
@@ -1632,7 +1633,7 @@ class CassiniApplication(Adw.Application):
                     "win.skip-forward": "player.forward10",
                     "win.rate-up": "player.speed.increase",
                     "win.rate-down": "player.speed.decrease",
-                }.get(item.get_action_name())
+                }.get(item.get_action_name()) or local_titles.get(item)
                 if identifier:
                     from .strings import text
 
