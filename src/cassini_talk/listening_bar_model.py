@@ -57,11 +57,17 @@ def bar_layout(stage, *, editable):
 
 def merge_choices(meeting, turn):
     """Neighbours first, with copy IDs for the view; then remaining talk time."""
-    others = {s.id: s for s in meeting.speakers if s.id != turn.speaker}
+    current = meeting.speaker_for(turn.speaker).id
+    others = {}
+    for value in meeting.speakers:
+        speaker = meeting.speaker_for(value.id)
+        if speaker.id != current:
+            others.setdefault(speaker.id, speaker)
     neighbours = []
     for index, suffix in ((turn.index - 1, "speaksBefore"), (turn.index + 1, "speaksAfter")):
         if 0 <= index < len(meeting.listening_turns):
-            speaker = others.pop(meeting.listening_turns[index].speaker, None)
+            identifier = meeting.speaker_for(meeting.listening_turns[index].speaker).id
+            speaker = others.pop(identifier, None)
             if speaker:
                 neighbours.append((speaker, "speakers.mergeInto." + suffix))
     return neighbours, sorted(others.values(), key=lambda s: -s.talk_ms)

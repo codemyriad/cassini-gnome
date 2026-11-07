@@ -187,7 +187,7 @@ class ListeningBar(Gtk.Revealer):
             text("listen.turn", index=listen.index + 1, count=listen.count, position=fmt.position(turn.start_ms))
         )
         self.excerpt.set_markup(excerpt(meeting, turn))
-        menu_key = meeting.speakers, meeting.listening_turns, turn.index
+        menu_key = meeting.speakers, meeting.listening_turns, turn.index, meeting.metadata.get("speakerMerges")
         if menu_key != self._menu_key:
             self._menu_key = menu_key
             self.merge_model.remove_all()
@@ -203,6 +203,9 @@ class ListeningBar(Gtk.Revealer):
                     section.append_item(item)
                 if section.get_n_items():
                     self.merge_model.append_section(None, section)
+        merge_enabled = state.merge_enabled and self.merge_model.get_n_items() > 0
+        self.merge.set_sensitive(merge_enabled)
+        self.actions.lookup_action("merge").set_enabled(merge_enabled)
         self._collapse(self._layout or 0)
         if self.page._updating_rows or speaker.id not in self.page._speaker_rows:
             return

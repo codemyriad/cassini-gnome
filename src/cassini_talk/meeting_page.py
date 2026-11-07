@@ -7,6 +7,7 @@ from decimal import Decimal
 from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 
 from . import ux_formats as fmt
+from .i18n import language, using_language
 from .inline_line import InlineLine
 from .meeting_text import COLOURS, DARK_COLOURS, item_markup, speaking_shares
 from .strings import plural, text
@@ -43,9 +44,9 @@ class MeetingPage(Adw.NavigationPage):
         self._reading_index = -1
         self._starts = []
         self._turns = ()
-        self._theme = None
-        self._speaker_signature = None
-        self._match_signature = None
+        self._header_signature = None
+        self._header_source = 0
+        self._header_pending = []
         self._listening_turns = None
         self._updating_rows = False
         self._speaker_rows = {}
@@ -299,22 +300,10 @@ class MeetingPage(Adw.NavigationPage):
 
     def _bind(self, _factory, item):
         turn = item.get_item().turn
-        speaker = self.meeting.speaker_for(turn.speaker)
         row = Gtk.Box(spacing=16, margin_bottom=24)
         names = box(5, width_request=120, valign=Gtk.Align.START)
-        name = label(
-            "", "heading", xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=16, tooltip_text=speaker.name
-        )
-        name.set_markup(f'<span foreground="{self._colour(speaker)}">{GLib.markup_escape_text(speaker.name)}</span>')
+        name = label("", "heading", xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=16)
         names.append(name)
-        if speaker.provenance == "recognised" and self.window.get_application().voice_store.has_match(
-            self.meeting.directory, speaker.id
-        ):
-            tag = label(
-                text("common.autoTag"), "auto-tag", halign=Gtk.Align.START, tooltip_text=text("common.autoTag.tooltip")
-            )
-            tag.update_property([Gtk.AccessibleProperty.DESCRIPTION], [text("common.autoTag.tooltip")])
-            names.append(tag)
         names.append(label(fmt.position(turn.start_ms), "small", "dim-label", xalign=0))
         words = Gtk.Label(
             xalign=0,
@@ -331,6 +320,69 @@ class MeetingPage(Adw.NavigationPage):
         row.append(words)
         item.set_child(row)
         self.bound[turn.index] = (turn, words, row)
+        self._refresh_header(turn, row)
+
+    def _refresh_header(self, turn, row):
+        # Idle callbacks run outside a caller's temporary locale context.
+        with using_language(self._header_signature[-1] if self._header_signature else language()):
+            self._render_header(turn, row)
+
+    def _render_header(self, turn, row):
+        speaker = self.meeting.speaker_for(turn.speaker)
+        recognised = speaker.provenance == "recognised" and self.window.get_application().voice_store.has_match(
+            self.meeting.directory, speaker.id
+        )
+        headers = row.get_first_child()
+        name, time = headers.get_first_child(), headers.get_last_child()
+        interactive = isinstance(name, Gtk.Button)
+        name_tip = text("listen.speakerName.tooltip", name=speaker.name) if interactive else speaker.name
+        time_tip = text("player.playFromHere") if isinstance(time, Gtk.Button) else None
+        tag_name, tag_tip = text("common.autoTag"), text("common.autoTag.tooltip")
+        state = speaker.name, self._colour(speaker), recognised, name_tip, time_tip, tag_name, tag_tip
+        if getattr(row, "_header_state", None) == state:
+            return
+        row._header_state = state
+        caption = name.get_child() if interactive else name
+        caption.set_markup(f'<span foreground="{state[1]}">{GLib.markup_escape_text(speaker.name)}</span>')
+        name.set_tooltip_text(name_tip)
+        if interactive:
+            name.update_property([Gtk.AccessibleProperty.LABEL], [name_tip])
+        tag = name.get_next_sibling()
+        if recognised:
+            if tag is time:
+                tag = label(tag_name, "auto-tag", halign=Gtk.Align.START)
+                headers.insert_child_after(tag, name)
+            tag.set_label(tag_name)
+            tag.set_tooltip_text(tag_tip)
+            tag.update_property([Gtk.AccessibleProperty.DESCRIPTION], [tag_tip])
+        elif tag is not time:
+            headers.remove(tag)
+        time.set_tooltip_text(time_tip)
+        if isinstance(time, Gtk.Button):
+            time.update_property([Gtk.AccessibleProperty.LABEL], [time_tip + ", " + fmt.position(turn.start_ms)])
+
+    def _queue_transcript_headers(self, signature):
+        if signature == self._header_signature:
+            return
+        self._header_signature = signature
+        # Coalesce rescans and keep the existing focused buttons/text widgets.
+        self._header_pending = list(self.bound.values())
+        if self._header_pending and not self._header_source:
+            self._header_source = GLib.idle_add(self._refresh_headers)
+
+    def _refresh_headers(self):
+        deadline = GLib.get_monotonic_time() + 4000
+        for _ in range(16):
+            if not self._header_pending:
+                self._header_source = 0
+                return GLib.SOURCE_REMOVE
+            turn, _words, row = self._header_pending.pop()
+            current = self.bound.get(turn.index)
+            if current is not None and current[2] is row:
+                self._refresh_header(turn, row)
+            if GLib.get_monotonic_time() >= deadline:
+                break
+        return GLib.SOURCE_CONTINUE
 
     def _unbind(self, _factory, item):
         turn = item.get_item().turn if item.get_item() else None
@@ -399,8 +451,12 @@ class MeetingPage(Adw.NavigationPage):
             if meeting.metadata_editable
             and self.window.get_application().voice_store.has_match(meeting.directory, s.id)
         )
+        self._queue_transcript_headers(
+            (dark, matches, meeting.speakers, meeting.metadata.get("speakerMerges"), language())
+        )
         signature = (
             undo,
+            meeting.metadata.get("speakerMerges"),
             self.window.get_application().meeting_trash.allowed(meeting, self.window),
             matches,
             # Library scans reparse the same words. Identity would rebuild the
@@ -490,20 +546,18 @@ class MeetingPage(Adw.NavigationPage):
                     callback=lambda: app.write_down(meeting),
                 )
             )
+        # Only changed timed text replaces transcript items. Metadata/theme
+        # updates preserve their focused widgets and refresh headers in batches.
         common = 0
-        if self._theme == dark and self._speaker_signature == meeting.speakers and self._match_signature == matches:
-            for before, after in zip(self._turns, meeting.turns, strict=False):
-                if before != after:
-                    break
-                common += 1
+        for before, after in zip(self._turns, meeting.turns, strict=False):
+            if before != after:
+                break
+            common += 1
         removed = len(self._turns) - common
         additions = [TurnItem(turn) for turn in meeting.turns[common:]]
         if removed or additions:
             self.store.splice(common, removed, additions)
         self._turns = meeting.turns
-        self._theme = dark
-        self._speaker_signature = meeting.speakers
-        self._match_signature = matches
         self._starts = [turn.start_ms for turn in meeting.turns]
         self._position()
         self._schedule_rows_ready()
@@ -923,6 +977,10 @@ class MeetingPage(Adw.NavigationPage):
 
     def close(self):
         self._closed = True
+        if self._header_source:
+            GLib.source_remove(self._header_source)
+            self._header_source = 0
+        self._header_pending.clear()
         self._clear_dialog_focus()
         self.timeline.close()
         if self._rows_rebuilt_tick:

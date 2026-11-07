@@ -356,7 +356,8 @@ with tempfile.TemporaryDirectory() as temporary:
         lambda: "voice-10" in page._speaker_rows and page._speaker_future is None and not page.split.get_collapsed(),
     )
     assert window.listen.start("voice-10", 0, play=False)
-    page.merge_speaker("voice-10", "host")
+    page.listening_bar.stop.grab_focus()
+    focus_event(window, lambda: page.listening_bar.buttons["again"], lambda: page.merge_speaker("voice-10", "host"))
     until(
         window,
         lambda: "voice-10" not in page._speaker_rows and window.listen.speaker == "voice-11" and window.listen.cued,
@@ -550,12 +551,36 @@ with tempfile.TemporaryDirectory() as temporary:
             replace(speaker, name="Dana") if speaker.id == "voice-0" else speaker for speaker in meeting.speakers
         ),
     )
+    # Renaming must preserve transcript model items and focused header widgets.
+    splices, headers, input_seen = [], [], []
+    model_item = page.store.get_item(0)
+    splice_handler = page.store.connect("items-changed", lambda *_: splices.append(True))
+    refresh_header = page._refresh_header
+
+    def observed_header(turn, row):
+        headers.append(turn.index)
+        if len(headers) == 1:
+            GLib.idle_add(lambda: input_seen.append(len(headers)) or False, priority=GLib.PRIORITY_DEFAULT)
+        return refresh_header(turn, row)
+
+    page._refresh_header = observed_header
     window._library_scanned(
         replace(
             original_snapshot,
             meetings=tuple(renamed_meeting if m.key == meeting.key else m for m in original_snapshot.meetings),
         )
     )
+    until(
+        window,
+        lambda: all(
+            any(value.get_text() == "Dana" for value in labels(row))
+            for turn, _words, row in page.bound.values()
+            if turn.speaker == "voice-0"
+        ),
+    )
+    assert input_seen and 0 < input_seen[0] < len(headers), "Header refresh monopolized the main loop"
+    assert not splices and page.store.get_item(0) is model_item
+    page._refresh_header = refresh_header
     assert bar.name.get_text() == "Dana" and not announcements
     # A single-speaker meeting exposes Name but never an empty Merge menu.
     merges = [{"from": s.id, "into": "voice-0"} for s in renamed_meeting.speakers if s.id != "voice-0"]
@@ -564,7 +589,7 @@ with tempfile.TemporaryDirectory() as temporary:
     # preview and virtualized transcript must resolve them without exceptions.
     stale_merged = replace(
         renamed_meeting,
-        speakers=tuple(s for s in renamed_meeting.speakers if s.id in ("host", "voice-0")),
+        speakers=tuple(s for s in renamed_meeting.speakers if s.id == "voice-0"),
         metadata=merged_metadata,
     )
     window._library_scanned(
@@ -573,11 +598,23 @@ with tempfile.TemporaryDirectory() as temporary:
             meetings=tuple(stale_merged if m.key == meeting.key else m for m in original_snapshot.meetings),
         )
     )
-    until(window, lambda: page.bound and not page._rows_rebuilt_tick)
+    assert "host" not in {speaker.id for speaker in stale_merged.speakers}
+    assert any(turn.speaker == "host" for turn in stale_merged.preview_turns)
+    # Exercise a fresh real GTK bind with a genuinely absent speaker id.
+    # This is separate from the rescan's no-splice/widget-retention guarantee.
+    factory = page.list.get_factory()
+    page.list.set_factory(None)
+    page.list.set_factory(factory)
+    until(window, lambda: page.bound and any(turn.speaker == "host" for turn, _words, _row in page.bound.values()))
     assert any(turn.speaker == "host" for turn, _words, _row in page.bound.values())
     host_turn = next(t for t in stale_merged.listening_turns if t.speaker == "host")
     assert "Dana" in page.timeline.readout_at(host_turn.start_ms)
-    assert all(any(value.get_text() == "Dana" for value in labels(row)) for _turn, _words, row in page.bound.values())
+    until(
+        window,
+        lambda: all(
+            any(value.get_text() == "Dana" for value in labels(row)) for _turn, _words, row in page.bound.values()
+        ),
+    )
     assert any(value.get_text() == "Dana" for value in labels(window.preview))
 
     def preview_chip_names():
@@ -588,10 +625,22 @@ with tempfile.TemporaryDirectory() as temporary:
         return [value.get_text() for value in labels(child)]
 
     assert preview_chip_names() == ["Dana"]
+    # A separate fixture retains both listed ids for the overlay-only check.
+    listed_merge = replace(
+        stale_merged, speakers=tuple(s for s in renamed_meeting.speakers if s.id in ("host", "voice-0"))
+    )
+    window._library_scanned(
+        replace(
+            original_snapshot,
+            meetings=tuple(listed_merge if m.key == meeting.key else m for m in original_snapshot.meetings),
+        )
+    )
+    assert preview_chip_names() == ["Dana"]
+    assert not bar.merge.get_sensitive() and not bar.actions.lookup_action("merge").get_enabled()
     # Only the overlay changes: raw speakers, words and preview turns stay equal.
-    # The preview cache must invalidate despite identical raw speaker entries.
+    # Both preview and retained transcript headers must invalidate.
     unmerged_preview = replace(
-        stale_merged, metadata=dict(merged_metadata, speakerMerges=[m for m in merges if m["from"] != "host"])
+        listed_merge, metadata=dict(merged_metadata, speakerMerges=[m for m in merges if m["from"] != "host"])
     )
     window._library_scanned(
         replace(
@@ -600,6 +649,24 @@ with tempfile.TemporaryDirectory() as temporary:
         )
     )
     assert preview_chip_names() == ["Claire Lee", "Dana"]
+    until(
+        window,
+        lambda: all(
+            any(value.get_text() == "Claire Lee" for value in labels(row))
+            for turn, _words, row in page.bound.values()
+            if turn.speaker == "host"
+        ),
+    )
+    assert not splices and page.store.get_item(0) is model_item
+    page.store.disconnect(splice_handler)
+    section = bar.merge_model.get_item_link(0, Gio.MENU_LINK_SECTION)
+    assert section is not None and section.get_n_items() == 1
+    assert (
+        section.get_item_attribute_value(0, "label", None).unpack()
+        == f"Claire Lee, {text('speakers.mergeInto.speaksBefore')}"
+    )
+    assert bar.merge.get_sensitive() and bar.actions.lookup_action("merge").get_enabled()
+
     # The single-speaker fixture itself uses the merged words and rebuilt turns.
     merged_words = apply_merges(renamed_meeting.words, merges)
     merged_turns = reading_turns(merged_words)

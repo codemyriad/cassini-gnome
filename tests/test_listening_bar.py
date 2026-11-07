@@ -93,9 +93,11 @@ def test_staged_collapse_preserves_speaker_navigation_on_readonly_meetings(stage
 
 
 def meeting():
+    from cassini_talk.library import LibrarySpeaker, Meeting
+
     speakers = tuple(
-        SimpleNamespace(id=s, name=s.title(), talk_ms=t)
-        for s, t in (("ben", 9000), ("ada", 3000), ("cleo", 700), ("dana", 5000))
+        LibrarySpeaker(s, s.title(), "user", 0, i, talk_ms=t)
+        for i, (s, t) in enumerate((("ben", 9000), ("ada", 3000), ("cleo", 700), ("dana", 5000)))
     )
     turns = tuple(
         SimpleNamespace(index=i, speaker=s, text=words)
@@ -109,7 +111,15 @@ def meeting():
             )
         )
     )
-    return SimpleNamespace(speakers=speakers, listening_turns=turns)
+    return Meeting(
+        id="choices",
+        directory=Path("."),
+        title="Meeting",
+        started_at_ms=None,
+        duration_ms=None,
+        speakers=speakers,
+        listening_turns=turns,
+    )
 
 
 def test_merge_choices_are_neighbour_first_then_talk_time_and_deduplicated():
@@ -123,6 +133,27 @@ def test_merge_choices_are_neighbour_first_then_talk_time_and_deduplicated():
     neighbours, rest = merge_choices(model, model.listening_turns[3])
     assert [s.id for s, _suffix in neighbours] == ["ben"]
     assert [s.id for s in rest] == ["dana", "cleo"]
+
+
+def test_merge_choices_resolve_cached_neighbours_and_exclude_current_target():
+    from dataclasses import replace
+
+    model = replace(meeting(), metadata={"speakerMerges": [{"from": "cleo", "into": "dana"}]})
+    neighbours, rest = merge_choices(model, model.listening_turns[1])
+    assert [(s.id, suffix) for s, suffix in neighbours] == [
+        ("dana", "speakers.mergeInto.speaksBefore"),
+        ("ben", "speakers.mergeInto.speaksAfter"),
+    ]
+    assert not rest
+    # The current turn itself can retain the retired id too.
+    neighbours, rest = merge_choices(model, model.listening_turns[0])
+    assert [s.id for s, _suffix in neighbours] == ["ada"]
+    assert [s.id for s in rest] == ["ben"]
+    assert not any(s.id in ("cleo", "dana") for s in [*(s for s, _suffix in neighbours), *rest])
+    changed = replace(model, metadata={"speakerMerges": [{"from": "cleo", "into": "ben"}]})
+    neighbours, rest = merge_choices(changed, changed.listening_turns[1])
+    assert [(s.id, suffix) for s, suffix in neighbours] == [("ben", "speakers.mergeInto.speaksBefore")]
+    assert [s.id for s in rest] == ["dana"]
 
 
 def test_excerpt_has_five_previous_words_and_eight_current_words():
