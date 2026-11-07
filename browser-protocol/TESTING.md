@@ -336,3 +336,48 @@ clear it on fresh evidence, and clear stale reload refusals on recovery or a
 worker error. The real DOM test checks the dark installation warning's computed
 foreground/background contrast, with a 4.5:1 floor. Poll-count and UI state waits
 are event/state-based; there are no fixed settling sleeps.
+
+
+`tests/popup-toolbar.mjs` opens the actual toolbar action through
+`chrome.action.openPopup` in a disposable extension identity/profile. It checks
+the popup target’s settled viewport and content geometry with a long tab title,
+without opening a meeting, using native hosts, or recording audio. The normal
+headless invocation is part of `npm test`; Linux CI also runs the real headed
+Chrome sizing path with `xvfb-run -a env POPUP_HEADED=1 node tests/popup-toolbar.mjs`.
+The headed Linux check requires Xvfb and xauth, installed explicitly by CI.
+The latter reproduces the viewport/preferred-width feedback that a normal
+`popup.html` tab at a preset viewport does not cover. Screenshot:
+`artifacts/popup-toolbar.png`. Linux headed runs explicitly use X11.
+
+The headed toolbar gate also runs with `POPUP_ZOOM=3`. It sets Chrome's actual
+default zoom through Settings only inside the disposable profile (per-tab zoom
+does not apply to action popups), verifies the popup device-pixel ratio, and waits
+for settled geometry. Default zoom must prefer 376px; 300% must exercise a smaller
+viewport and let body/content fit it without horizontal overflow. It saves the
+high-zoom screenshot as `artifacts/popup-toolbar-300.png`. No live profile,
+installed extension worktree or foreground user browser is modified.
+
+Nextcloud investigation regressions cover a receiving peer created through a
+cached constructor and observed through getters, while preserving prejoin/RTP
+and call-change exclusions; a rendered receiver is captured once only after
+packet progress. Browser-document tests reproduce a late status-only loading
+edge after a ready frame, then require Chrome-owned injection document metadata
+before fresh source inventory returns. They reject old/forged/missing metadata,
+stale epochs, closed/disconnected frames and hung checks; recovery of an existing
+capture must not create a duplicate native Start. The independent real Talk HPB
+harness owns the final inventory-before-Start and separate-input WAV proof.
+
+
+Closed-peer recovery regressions exercise post-close library getters, stats and repeated
+close calls after explicit close, a connection-state event, or state-based pruning.
+Closed peers remain terminal even with stale connected ICE; listener counts cannot grow,
+and capture spans stop without reopening through DOM aliases or delayed negotiation.
+Internal discovery, negotiation, scan and sender-enabled reads use the original captured
+peer methods rather than the library-facing observation wrappers.
+
+
+Current-document recovery also defers relay replies and the native Start acknowledgement
+independently. Matching hello/ready/unavailable state is retained during browser verification;
+wrong instance/protocol/document metadata cannot admit a frame. Both completion orders attach
+once only after document proof, handshake readiness and native setup, reusing the same capture.
+Tests wait on those states and deferred promises rather than the handshake deadline.

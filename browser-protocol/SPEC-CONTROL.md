@@ -956,3 +956,42 @@ may be copied without meeting titles,
 URLs, or recording paths. Confirmed app recording state, app auto-record policy,
 and launching the native app require additional explicit app-backed interfaces;
 the popup does not infer or fabricate them.
+
+### Toolbar popup sizing (extension 0.2.21)
+
+The action popup prefers 376 CSS pixels during intrinsic sizing. The root's
+percentage maximum and the body's inherited width let it shrink to Chrome's
+final containing block, including the smaller CSS viewport at high browser zoom.
+It uses no viewport-unit cap that feeds Chrome's provisional viewport back into
+its preferred-size calculation, and no hard minimum that overflows at 300% zoom.
+There are no protocol or capture-policy changes.
+
+
+## Peer observation and same-document loading (extension 0.2.22)
+
+Peer registration also observes `getReceivers`, `getSenders` and `getTransceivers`
+for libraries that retained a constructor reference. Those getters only register
+the peer; they do not create an AudioContext or admit audio. Connected state,
+receiving transceiver direction, live audio, inbound RTP progress, call generation
+and the existing two-of-three heard votes remain required. DOM streams and local
+preview senders do not become automatic call evidence. A previously unknown peer
+first observed after an in-page call change is not assigned to the new call by a
+read-only getter/stats call; an intercepted new constructor or fresh completed
+remote-description negotiation is required. Existing pages need a tab reload to
+load the changed MAIN-world observer.
+
+Chrome can emit status-only `tabs.onUpdated` loading events for the same document.
+Frames are still invalidated first. An obsolete frame may be restored only when
+`chrome.scripting.executeScript` returns current browser metadata matching both
+its frameId and its port sender's browser-owned documentId. The script's result,
+page-posted documentGeneration, and a connected relay's own claim are not proof.
+The check is bounded at 2.5 s and rejects missing/failed metadata, a changed loading
+epoch, a disconnected frame or a closed tab. A subsequent browser loading/complete
+event or explicit repair may make a new check; no polling retry conceals failure.
+
+After verification the worker requests fresh discovery from that port and restores
+main-frame present state. It does not replay cleared source counts, erase call
+fences, create a recording or send another native Start. Repair also performs this
+check before accepting a connected relay. An unverified old document remains
+obsolete; the extension retains its existing fail-closed health/admission policy.
+No new browser permission, app wire capability or status API is introduced.

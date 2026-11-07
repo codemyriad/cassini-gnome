@@ -9,7 +9,7 @@ module.exports = async function fixture(run, settings={}) {
  class Track {constructor(value){Object.assign(this,value)}clone(){return new Track({...this,id:this.id+'-clone'})}}
  class Peer {
   constructor(){this.connectionState='connected';this.iceConnectionState='connected';this.signalingState='stable';this.slots=[];this.senders=[]}
-  addEventListener(){}getTransceivers(){return this.slots}getSenders(){return this.senders}close(){this.signalingState='closed'}
+  addEventListener(){}getTransceivers(){return this.slots}getSenders(){return this.senders}getReceivers(){return this.slots.map(s=>s.receiver)}close(){this.signalingState='closed'}
  }
  for(const name of ['getStats','createOffer','createAnswer','setLocalDescription','setRemoteDescription','addTrack','addTransceiver'])Peer.prototype[name]=()=>{};
  Peer.prototype.setRemoteDescription=function(){return this.descriptionTask || Promise.resolve()};
@@ -43,7 +43,7 @@ module.exports = async function fixture(run, settings={}) {
  const tick=async()=>{now+=1000;await timers[0]();};
  const scan=async()=>{assert.ok(timers[1],'capture scan exists');await timers.at(-1)();};
  let activeToken='recording';
- try {await run({peer,window,remote,tick,scan,captures,messages,receive(data){if(data.type==="start")activeToken=data.token;return control(data)},render(track){media.push({srcObject:new Stream([track])})},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
+ try {await run({peer,window,remote,tick,scan,captures,messages,cachedPeer:()=>new Peer(),receive(data){if(data.type==="start")activeToken=data.token;return control(data)},render(track){media.push({srcObject:new Stream([track])})},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
  finally {await control({type:'stop',token:activeToken});delete globalThis.__cassiniPageCapture;}
 }
 ;

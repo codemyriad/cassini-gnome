@@ -182,3 +182,35 @@ test('duplicate stops during a flush cannot close the shared context or announce
   return {async stop(){stopCount++;if(ending)return;ending=true;entered();await flushing}};
  }});
 });
+
+
+test('a cached-constructor receiver observed through its getter is captured once after inbound progress',()=>fixture(async f=>{
+ const pc=f.cachedPeer(),remote=f.remote('Remote source',pc);f.render(remote.receiver.track);
+ pc.getReceivers();await f.tick();await f.start('getter-recovery');
+ assert.equal(f.captures.length,0,'a live rendered receiver without inbound progress is not admitted');
+ remote.packets=10;await f.tick();await f.scan();
+ assert.equal(f.captures.length,1);assert.equal(f.captures[0].kind,'remote');
+ await f.scan();assert.equal(f.captures.length,1,'DOM alias does not duplicate the receiver span');
+}));
+
+
+test('internal capture scans and sender checks use original getters',()=>fixture(async f=>{
+ const remote=f.remote();await f.tick();remote.packets=10;await f.tick();
+ const sender={track:{id:'mic',label:'Microphone',kind:'audio',readyState:'live',enabled:true,muted:false},getParameters:()=>({encodings:[]})};
+ f.peer.senders=[sender];
+ for(const name of ['getTransceivers','getSenders','getReceivers'])f.peer[name]=()=>{throw Error('library getter '+name+' must not be called internally');};
+ await f.start();assert.equal(f.captures.length,2);
+ assert.equal(f.captures.find(c=>c.kind==='local').enabled(),true);
+ await f.scan();assert.equal(f.captures.length,2);
+ f.peer.close();await f.scan();assert.ok(f.captures.every(c=>c.stopped));
+}));
+
+test('closed connection with stale connected ICE stops capture and cannot return through teardown',()=>fixture(async f=>{
+ const remote=f.remote();await f.tick();remote.packets=10;await f.tick();await f.start();
+ assert.equal(f.captures.length,1);f.render(remote.receiver.track);
+ f.peer.connectionState='closed';await f.scan();
+ assert.equal(f.captures[0].stopped,true);
+ for(const name of ['getReceivers','getSenders','getTransceivers','getStats','close'])f.peer[name]();
+ f.peer.connectionState='connected';f.peer.signalingState='stable';remote.packets=20;await f.tick();await f.scan();
+ assert.equal(f.captures.length,1,'terminal peer cannot open a replacement span');
+}));

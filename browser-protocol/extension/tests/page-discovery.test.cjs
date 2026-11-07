@@ -10,13 +10,16 @@ const cases=JSON.parse(fs.readFileSync(path.join(contract,'conformance/control/c
 
 function fixture() {
   class Peer {
-    constructor() { this.connectionState='new';this.iceConnectionState='new';this.signalingState='stable';this.senders=[];this.receivers=[]; }
-    addEventListener() {}
+    constructor() { this.connectionState='new';this.iceConnectionState='new';this.signalingState='stable';this.senders=[];this.receivers=[];this.listeners=new Map(); }
+    addEventListener(name,fn) { const list=this.listeners.get(name)||[];list.push(fn);this.listeners.set(name,list); }
+    emit(name){for(const fn of this.listeners.get(name)||[])fn();}
     getTransceivers(){return this.receivers;}
     getSenders(){return this.senders;}
+    getReceivers(){return this.receivers.map(slot=>slot.receiver);}
     close(){this.signalingState='closed';}
   }
   for(const method of ['getStats','createOffer','createAnswer','setLocalDescription','setRemoteDescription','addTrack','addTransceiver']) Peer.prototype[method]=()=>{};
+  Peer.prototype.setRemoteDescription=()=>Promise.resolve();
   const messages=[],listeners=[],timers=[],timeouts=new Map();let now=0,id=0;
   const window={RTCPeerConnection:Peer,postMessage:m=>messages.push(m),addEventListener:(_name,fn)=>listeners.push(fn)};
   const context=vm.createContext({window,navigator:{},performance:{now:()=>now},setInterval:fn=>timers.push(fn),
@@ -28,7 +31,7 @@ function fixture() {
   async function tick(){advance(1000);await timers[0]();}
   function peer(count=1){const pc=new window.RTCPeerConnection();pc.connectionState='connected';
     pc.receivers=Array.from({length:count},()=>receiver());return pc;}
-  return {window,messages,timers,discover,state,tick,peer,advance,timeouts};
+  return {window,messages,timers,discover,state,tick,peer,advance,timeouts,cachedPeer:()=>new Peer()};
 }
 const audio=()=>({kind:'audio',readyState:'live',enabled:true,muted:true});
 function receiver(){const slot={currentDirection:'recvonly',reports:[],calls:0};slot.receiver={track:audio(),getStats:async()=>{slot.calls++;return new Map(slot.reports.map(r=>[r.id,r]));}};return slot;}
@@ -147,4 +150,71 @@ test('owner reconnect '+name+' before the next discover requires fresh evidence'
   pc.receivers[0].reports=[report(1000)];await f.tick();assert.equal(f.state().heard,false,'new baseline');
   pc.receivers[0].reports=[report(1010)];await f.tick();assert.equal(f.state().heard,false,'one fresh vote');
   pc.receivers[0].reports=[report(1020)];await f.tick();assert.equal(f.state().heard,true,'two fresh votes');
+});
+
+
+for(const observe of ['getReceivers','getSenders','getTransceivers'])test('a connected cached-constructor peer is observed through '+observe+' without lending preview evidence',async()=>{
+ const f=fixture(),pc=f.cachedPeer();pc.receivers=[receiver()];pc.senders=[{track:audio()}];pc.receivers[0].reports=[report(0)];
+ pc[observe]();await f.tick();assert.equal(f.state().sourceCount,0,'prejoin getter access is not call evidence');
+ pc.connectionState='connected';await f.tick();
+ assert.equal(f.state().sourceCount,1,'the library getter should make this existing receiver discoverable');
+ assert.equal(f.state().heard,false,'discovery alone is not call evidence');
+ pc.receivers[0].reports=[report(10)];await f.tick();assert.equal(f.state().heard,false);
+ pc.receivers[0].reports=[report(20)];await f.tick();assert.equal(f.state().heard,true);
+});
+
+
+for(const observe of ['getStats','getReceivers','getSenders','getTransceivers'])test('late '+observe+' observation cannot import an unknown old peer into a new call',async()=>{
+ const f=fixture();f.window.location={href:'https://meeting.test/A'};f.discover();
+ const old=f.cachedPeer();old.connectionState='connected';old.receivers=[receiver()];old.receivers[0].reports=[report(100)];
+ f.window.location.href='https://meeting.test/B';f.discover();old[observe]();await f.tick();
+ assert.equal(f.state().sourceCount,0);assert.equal(f.state().heard,false);
+ old.receivers[0].reports=[report(200)];await f.tick();assert.equal(f.state().sourceCount,0);
+ await old.setRemoteDescription({type:'answer',sdp:'Fresh B negotiation'});await Promise.resolve();
+ await f.tick();assert.equal(f.state().sourceCount,1);assert.equal(f.state().heard,false);
+ old.receivers[0].reports=[report(210)];await f.tick();assert.equal(f.state().heard,false);
+ old.receivers[0].reports=[report(220)];await f.tick();assert.equal(f.state().heard,true);
+});
+
+for(const how of ['close','connection event','connection prune','signaling prune'])
+test('closed peer remains absent through library teardown: '+how,async()=>{
+ const f=fixture();f.window.location={href:'https://meeting.test/A'};f.discover();
+ f.window.location.href='https://meeting.test/B';f.discover();
+ const pc=f.peer();pc.iceConnectionState='connected';
+ pc.receivers[0].reports=[report(0)];await f.tick();
+ pc.receivers[0].reports=[report(10)];await f.tick();pc.receivers[0].reports=[report(20)];await f.tick();
+ assert.equal(f.state().heard,true);
+ const counts=[...pc.listeners.values()].map(list=>list.length);
+ if(how==='close')pc.close();
+ else if(how==='signaling prune')pc.signalingState='closed';
+ else {pc.connectionState='closed';if(how==='connection event')pc.emit('connectionstatechange');}
+ f.discover();assert.equal(f.state().sourceCount,0,'closed connection cannot use stale connected ICE');
+ for(const name of ['getReceivers','getSenders','getTransceivers','getStats','close']){
+  pc[name]();f.discover();await f.tick();
+  assert.equal(f.state().sourceCount,0,name+' cannot resurrect the source');
+  assert.equal(f.state().heard,false);
+  assert.deepEqual([...pc.listeners.values()].map(list=>list.length),counts,'no new listeners after '+name);
+ }
+ // Even a late negotiation or misleading later state cannot undo the tombstone.
+ pc.connectionState='connected';pc.signalingState='stable';
+ await pc.setRemoteDescription({type:'answer',sdp:'late teardown'});pc.getReceivers();
+ pc.receivers[0].reports=[report(100)];await f.tick();
+ assert.equal(f.state().sourceCount,0);assert.equal(f.state().heard,false);
+ assert.deepEqual([...pc.listeners.values()].map(list=>list.length),counts);
+});
+
+test('a closed cached-constructor peer is never registered',async()=>{
+ const f=fixture(),pc=f.cachedPeer();pc.receivers=[receiver()];pc.connectionState='closed';pc.iceConnectionState='connected';
+ for(const name of ['getReceivers','getSenders','getTransceivers','getStats','close'])pc[name]();
+ await f.tick();assert.equal(f.state().sourceCount,0);assert.equal(pc.listeners.size,0);
+});
+
+test('internal discovery and remote-description adoption use original getters',async()=>{
+ const f=fixture();f.window.location={href:'https://meeting.test/A'};f.discover();
+ f.window.location.href='https://meeting.test/B';f.discover();
+ const pc=f.cachedPeer();pc.connectionState='connected';pc.receivers=[receiver()];pc.getReceivers();
+ pc.getTransceivers=()=>{throw Error('library getter must not be called internally');};
+ await pc.setRemoteDescription({type:'answer',sdp:'B'});await f.tick();
+ assert.equal(f.state().sourceCount,1,'fresh B negotiation adopts the receiver through original getter');
+ pc.close();await f.tick();assert.equal(f.state().sourceCount,0);
 });

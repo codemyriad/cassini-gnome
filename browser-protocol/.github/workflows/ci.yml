@@ -80,7 +80,7 @@ jobs:
       - name: Isolated output device for generated tab tone
         run: |
           sudo apt-get update
-          sudo apt-get install -y pulseaudio
+          sudo apt-get install -y pulseaudio xvfb xauth
           private=$(mktemp -d /tmp/cassini-audio-ci-XXXXXXXX)
           mkdir -m 700 "$private/daemon"
           cat > "$private/server.pa" <<EOF
@@ -95,6 +95,10 @@ jobs:
           echo "CASSINI_ISOLATED_AUDIO=1" >> "$GITHUB_ENV"
           echo "PULSE_SERVER=unix:$private/pulse.sock" >> "$GITHUB_ENV"
       - run: npm test
+      - name: Real toolbar popup keeps its intended width
+        run: |
+          xvfb-run -a env POPUP_HEADED=1 node tests/popup-toolbar.mjs
+          xvfb-run -a env POPUP_HEADED=1 POPUP_ZOOM=3 node tests/popup-toolbar.mjs
       - uses: actions/upload-artifact@v5
         if: always()
         with:
