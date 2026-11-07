@@ -249,7 +249,13 @@ class MeetingPage(Adw.NavigationPage):
         self.rate_button.get_popover().connect("map", self._name_rate_items)
         self.rate_changed(self.window._rate)
         bar.append(self.rate_button)
-        outer.append(bar)
+        transport = Adw.BreakpointBin(child=bar, width_request=360, height_request=64)
+        compact = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 480sp"))
+        compact.add_setter(self.elapsed, "visible", False)
+        compact.add_setter(self.total, "visible", False)
+        compact.add_setter(bar, "spacing", 4)
+        transport.add_breakpoint(compact)
+        outer.append(transport)
 
     def _name_rate_items(self, widget, *_args):
         # GTK's model buttons do not consistently derive an AT-SPI name from
@@ -600,8 +606,11 @@ class MeetingPage(Adw.NavigationPage):
         return row
 
     def stop_listening(self):
+        speaker = self.window.listen.speaker
         self.window.listen.stop()
         origin = self._listen_origin
+        if (origin is None or not origin.get_mapped()) and speaker in self._speaker_rows:
+            origin = self._speaker_rows[speaker][1]
         if origin is not None and origin.get_mapped():
             origin.grab_focus()
 

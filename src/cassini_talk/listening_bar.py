@@ -68,6 +68,8 @@ class ListeningBar(Gtk.Revealer):
             button = Gtk.Button(icon_name=icon, tooltip_text=text("listen." + key), css_classes=["flat"])
             button.update_property([Gtk.AccessibleProperty.LABEL], [text("listen." + key)])
             button.connect("clicked", lambda _b, fn=callback: fn())
+            if key == "name":
+                button.set_label(text("listen.name"))
             self.buttons[key] = button
             self.body.append(button)
         self.merge_model = Gio.Menu()
@@ -161,6 +163,7 @@ class ListeningBar(Gtk.Revealer):
         self.update_navigation()
         self.buttons["again"].set_visible(listen.finished or listen.cued)
         again_label = text("listen.again" if listen.finished else "common.play")
+        self.buttons["again"].set_label(again_label)
         self.buttons["again"].set_tooltip_text(again_label)
         self.buttons["again"].update_property([Gtk.AccessibleProperty.LABEL], [again_label])
         editable = meeting.metadata_editable and self.page._speaker_future is None

@@ -389,6 +389,15 @@ with tempfile.TemporaryDirectory() as temporary:
     with using_language("en"):
         page._signature = None
         page.update(meeting)
+    page._listen_speaker("voice-12")
+    window.set_default_size(360, 650)
+    until(window, lambda: page.listening_bar.get_child_revealed() and page.listening_bar.get_width() == 360)
+    assert not page.listening_bar.buttons["nextSpeaker"].get_visible()
+    assert not page.listening_bar.buttons["name"].get_visible()
+    assert page.listening_bar.buttons["nextTurn"].get_mapped()
+    assert page.listening_bar.stop.get_mapped()
+    assert not page.elapsed.get_visible() and not page.total.get_visible()
+    page.stop_listening()
     window.set_default_size(900, 650)
     until(window, lambda: window.get_width() <= 900)
 
