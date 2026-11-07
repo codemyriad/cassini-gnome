@@ -57,6 +57,8 @@ def key(window, sequence, until):
             "Escape": Gdk.KEY_Escape,
             "F9": Gdk.KEY_F9,
             "Return": Gdk.KEY_Return,
+            "Tab": Gdk.KEY_Tab,
+            "KP_Enter": Gdk.KEY_KP_Enter,
         }
         codes = [x11.XKeysymToKeycode(display, symbols[part]) for part in sequence.split("+")]
         assert all(codes)

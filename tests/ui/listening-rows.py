@@ -137,6 +137,8 @@ with tempfile.TemporaryDirectory() as temporary:
                 dict(speaker="voice-0", startMs=index * 150 + 140, endMs=index * 150 + 141, text="Yes."),
             ]
         )
+    # An interjection separates the final voice-0 turn for real EOS auto-advance.
+    items.append(dict(speaker="voice-1", startMs=20500, endMs=20600, text="Ready."))
     items += [
         dict(speaker=f"voice-{i}", startMs=22000 + i * 1000, endMs=22100 + i * 1000, text="Yes.") for i in range(13)
     ]
@@ -523,20 +525,111 @@ with tempfile.TemporaryDirectory() as temporary:
     playing = window.player.connect(
         "notify::playing", lambda player, _p: starts.append(player.position) if player.playing else None
     )
-    transcript_row.grab_focus()
+    page.seek.grab_focus()  # Anchor outside the transcript; enter it using Tab.
+    for _ in range(24):
+        before = window.get_focus()
+        key(window, "shift+Tab", until)
+        until(window, lambda before=before: window.get_focus() is not before)
+        focused = window.get_focus()
+        if any(focused is row.get_parent() for _t, _w, row in page.bound.values()):
+            break
+    else:
+        raise AssertionError("Tab did not reach the transcript list item")
+    assert not any(row.get_focusable() for _t, _w, row in page.bound.values())
+    before = window.get_focus()
+    key(window, "Up", until)
+    until(window, lambda: window.get_focus() is not before)
+    focused = window.get_focus()
+    keyboard_turn = next(t for t, _w, row in page.bound.values() if focused is row.get_parent())
     key(window, "shift+Return", until)
     until(window, lambda: starts)
+    assert starts[0] == keyboard_turn.start_ms
+    window.player.pause()
+    starts.clear()
+    before = window.get_focus()
+    key(window, "Tab", until)
+    until(window, lambda: window.get_focus() is not before)
+    focus = window.get_focus()
+    inside_turn = next(t for t, _w, row in page.bound.values() if focus.is_ancestor(row))
+    key(window, "shift+KP_Enter", until)
+    until(window, lambda: starts)
+    assert starts[0] == inside_turn.start_ms
+    assert window.get_focus() is focus
     window.player.disconnect(playing)
-    assert starts[0] == target.start_ms
     window.player.pause()
     name_button.emit("clicked")
     assert window.listen.active and window.listen.speaker == "voice-12"
     assert window.listen.index == 0
     play.grab_focus()
-    page._hand_scroll()
-    assert page._follow_until > GLib.get_monotonic_time()
-    page._listening_requested()
-    assert page._follow_until == 0
+    # A real wheel event suspends transcript following, including auto-advance.
+    assert window.listen.start("voice-0", 126)
+
+    def span_started():
+        ok, position = window.player._pipeline.query_position(Gst.Format.TIME)
+        return ok and window.listen.lead_start(126) <= position // Gst.MSECOND < window.listen.span_end(126)
+
+    until(window, span_started)
+    window.player.pause()
+    scroll_calls = []
+    scroll_to = page.list.scroll_to
+
+    def observed_scroll(index, *args):
+        scroll_calls.append(index)
+        return scroll_to(index, *args)
+
+    page.list.scroll_to = observed_scroll
+    point = Graphene.Point()
+    point.init(page.scroller.get_width() / 2, page.scroller.get_height() / 2)
+    ok, pointer = page.scroller.compute_point(window, point)
+    assert ok
+    subprocess.run(
+        ["xdotool", "mousemove", "--window", xid, str(round(pointer.x + dx)), str(round(pointer.y + dy)), "click", "4"],
+        check=True,
+        timeout=5,
+    )
+    until(window, lambda: page._follow_until > GLib.get_monotonic_time())
+    scroll_calls.clear()
+    window.player.play()
+    try:
+        until(window, lambda: window.listen.index == 127)
+    except AssertionError:
+        print(
+            dict(
+                stage="auto advance",
+                index=window.listen.index,
+                count=window.listen.count,
+                speaker=window.listen.speaker,
+                position=window.player.position,
+                playing=window.player.playing,
+                span=window.player._span,
+                last=window.listen._span_last,
+            ),
+            flush=True,
+        )
+        raise
+    window.player.pause()
+    assert not scroll_calls and page._follow_until > GLib.get_monotonic_time()
+    focus = window.get_focus()
+    assert window.listen.previous_turn()
+    assert page._follow_until == 0 and window.get_focus() is focus
+    window.player.pause()
+
+    def reading_visible():
+        index = min(page._turn_rows[window.listen.turn.index])
+        if index not in page.bound:
+            return False
+        row = page.bound[index][2]
+        ok, bounds = row.compute_bounds(page.scroller)
+        return ok and bounds.get_y() >= 0 and bounds.get_y() + bounds.get_height() <= page.scroller.get_height()
+
+    until(window, reading_visible)
+    assert page._reading_index in page._turn_rows[window.listen.turn.index]
+    assert scroll_calls
+    page.list.scroll_to = scroll_to
+    assert window.listen.start("voice-12", 0)
+    window.player.pause()
+    until(window, reading_visible)
+    assert page._reading_index == target.index
     bar = page.listening_bar
     until(window, lambda: bar.get_child_revealed())
     assert bar.name.get_text() == "Unidentified voice"
@@ -724,6 +817,9 @@ with tempfile.TemporaryDirectory() as temporary:
     )
     assert bar.buttons["name"].get_sensitive()
     assert not bar.merge.get_sensitive() and not bar.actions.lookup_action("merge").get_enabled()
+    assert page._highlighted_rows == page._turn_rows[window.listen.turn.index]
+    assert page._highlighted_rows == frozenset(t.index for t in one_speaker.turns)
+    assert page.store.get_n_items() == len(one_speaker.turns)
     window._library_scanned(original_snapshot)
     bar.body.announce = announce
     window.listen.stop()
@@ -830,7 +926,9 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not page.elapsed.get_visible() and not page.total.get_visible()
     page.stop_listening()
     window.set_default_size(900, 650)
-    until(window, lambda: window.get_width() <= 900)
+    # Native size includes decorations: this GTK build allocates 890 px to
+    # GtkWindow inside a requested 900 px surface. Await the exact real resize.
+    until(window, lambda: window.get_surface().get_width() == 900 and not page.split.get_collapsed())
 
     def save_picture(path):
         painted = []
@@ -857,7 +955,8 @@ with tempfile.TemporaryDirectory() as temporary:
             ok and bounds.get_y() >= 0 and bounds.get_y() + bounds.get_height() <= page.speakers_scroller.get_height()
         )
 
-    until(window, lambda: page.listening_bar.get_child_revealed() and target_visible())
+    until(window, lambda: page.listening_bar.get_child_revealed() and target_visible() and reading_visible())
+    assert page._reading_index in page._turn_rows[window.listen.turn.index]
     window.player.pause()
     output = Path(os.environ["CASSINI_SCREENSHOT_OUT"])
     save_picture(output)
@@ -877,7 +976,20 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, focused_row_visible)
     assert window.listen.speaker == "voice-12" and page.speakers_dialog is dialog and dialog.closed
     page.update(replace(meeting, has_audio=False))
+    assert not window.listen.active and not page.listening_bar.get_reveal_child()
+    assert not any(words.has_css_class("listen-current") for _t, words, _row in page.bound.values())
+    for _turn, _words, bound_row in page.bound.values():
+        headers = bound_row.get_first_child()
+        assert not headers.get_first_child().get_sensitive() and not headers.get_last_child().get_sensitive()
     assert all(not button.get_visible() for _, button, _ in page._speaker_rows.values())
+    # A real player error disables existing header widgets without a rebind too.
+    page.update(meeting)
+    assert window.listen.start("voice-12", 0, play=False)
+    window.player.emit("error", "The fixture audio could not be played.")
+    assert not window.listen.active
+    for _turn, _words, bound_row in page.bound.values():
+        headers = bound_row.get_first_child()
+        assert not headers.get_first_child().get_sensitive() and not headers.get_last_child().get_sensitive()
     app.begin_exit()
     window.close()
     app.do_shutdown()

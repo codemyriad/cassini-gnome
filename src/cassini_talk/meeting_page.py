@@ -49,6 +49,7 @@ class MeetingPage(Adw.NavigationPage):
         self._header_pending = []
         self._listening_turns = None
         self._updating_rows = False
+        self._updating_transcript = False
         self._speaker_rows = {}
         self._rows_rebuilt_tick = 0
         self._can_listen = False
@@ -146,6 +147,15 @@ class MeetingPage(Adw.NavigationPage):
             model=Gtk.NoSelection.new(self.store), factory=factory, css_classes=["meeting-transcript"]
         )
         self.list.set_enable_rubberband(False)
+        shortcut = Gtk.ShortcutController(scope=Gtk.ShortcutScope.LOCAL)
+        for key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter):
+            shortcut.add_shortcut(
+                Gtk.Shortcut.new(
+                    Gtk.KeyvalTrigger.new(key, Gdk.ModifierType.SHIFT_MASK),
+                    Gtk.CallbackAction.new(lambda *_: self._play_focused_row()),
+                )
+            )
+        self.list.add_controller(shortcut)
         self.scroller = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.scroller.set_child(self.list)
         center.append(self.scroller)
@@ -155,7 +165,8 @@ class MeetingPage(Adw.NavigationPage):
         scroll.connect("scroll", self._hand_scroll)
         self.scroller.add_controller(scroll)
         drag = Gtk.GestureDrag(propagation_phase=Gtk.PropagationPhase.CAPTURE)
-        drag.connect("drag-begin", lambda *_: self._hand_scroll())
+        for signal in ("drag-begin", "drag-update", "drag-end"):
+            drag.connect(signal, self._hand_scroll)
         self.scroller.get_vscrollbar().add_controller(drag)
         content.set_content(center)
         split.set_content(Adw.NavigationPage.new(content, meeting.title))
@@ -172,6 +183,7 @@ class MeetingPage(Adw.NavigationPage):
         self._dialog_focus_idle = 0
         self._dialog_focus_signals = []
         self.listening_bar = ListeningBar(self)
+        self.listening_bar.connect("notify::child-revealed", self._listening_revealed)
         outer.append(self.listening_bar)
         self._build_player(outer)
         self._style_manager = Adw.StyleManager.get_default()
@@ -349,15 +361,6 @@ class MeetingPage(Adw.NavigationPage):
         )
         time.connect("clicked", lambda *_: self.play_from(turn.start_ms))
         names.append(time)
-        row.set_focusable(True)
-        shortcut = Gtk.ShortcutController(scope=Gtk.ShortcutScope.LOCAL)
-        shortcut.add_shortcut(
-            Gtk.Shortcut.new(
-                Gtk.KeyvalTrigger.new(Gdk.KEY_Return, Gdk.ModifierType.SHIFT_MASK),
-                Gtk.CallbackAction.new(lambda *_: self._play_focused_row(row, turn)),
-            )
-        )
-        row.add_controller(shortcut)
         words = Gtk.Label(
             xalign=0,
             yalign=0,
@@ -439,10 +442,13 @@ class MeetingPage(Adw.NavigationPage):
                 break
         return GLib.SOURCE_CONTINUE
 
-    def _play_focused_row(self, row, turn):
+    def _play_focused_row(self):
         focus = self.window.get_focus()
-        if focus is row or (focus is not None and focus.is_ancestor(row)):
-            return self.play_from(turn.start_ms)
+        for turn, _words, row in self.bound.values():
+            # Keyboard navigation focuses GtkListItemWidget. Descendant
+            # name/time controls share that same turn, without a second Box stop.
+            if focus is row.get_parent() or focus is row or (focus is not None and focus.is_ancestor(row)):
+                return self.play_from(turn.start_ms)
         return False
 
     def play_from(self, position):
@@ -469,6 +475,7 @@ class MeetingPage(Adw.NavigationPage):
             for index in range(offset, offset + len(row.words)):
                 rows[index] = row.index
             offset += len(row.words)
+        previous = getattr(self, "_turn_rows", {})
         self._turn_rows, self._row_listening, self._local_turn_index = {}, {}, {}
         counts = {}
         for turn in meeting.listening_turns:
@@ -478,18 +485,29 @@ class MeetingPage(Adw.NavigationPage):
                 self._row_listening[row_index] = turn.index
             self._local_turn_index[turn.index] = counts.get(turn.speaker, 0)
             counts[turn.speaker] = self._local_turn_index[turn.index] + 1
+        if previous != self._turn_rows:
+            self._highlight_target = None
 
     def _listening_requested(self, *_):
         self._follow_until = 0
         self._scroll_listening_turn()
 
+    def _listening_revealed(self, *_):
+        if self.listening_bar.get_child_revealed() and GLib.get_monotonic_time() >= self._follow_until:
+            self._scroll_listening_turn()
+
     def _scroll_listening_turn(self):
+        if self._updating_transcript:
+            return
         turn = self.window.listen.turn
         positions = self._turn_rows.get(turn.index, ()) if turn else ()
         if positions:
-            self.list.scroll_to(min(positions), Gtk.ListScrollFlags.NONE, None)
+            self._reading_index = min(positions)
+            self.list.scroll_to(self._reading_index, Gtk.ListScrollFlags.NONE, None)
 
     def _highlight_listening(self):
+        if self._updating_transcript:
+            return
         turn = self.window.listen.turn
         target = (turn.speaker, turn.index) if turn else None
         positions = self._turn_rows.get(turn.index, frozenset()) if turn else frozenset()
@@ -522,6 +540,7 @@ class MeetingPage(Adw.NavigationPage):
         return True
 
     def update(self, meeting):
+        self._updating_transcript = True
         self._updating_rows = True
         self.meeting = meeting
         self.headline.set_title(meeting.title)
@@ -551,6 +570,10 @@ class MeetingPage(Adw.NavigationPage):
             button.set_sensitive(can_play)
         self.seek.set_sensitive(can_play)
         self._can_listen = can_play
+        if self._turns != meeting.turns or self._listening_turns is not meeting.listening_turns:
+            self._index_listening_rows(meeting)
+        if not can_play and self.window.listen.active:
+            self.window.listen.stop()
         if self._listening_turns is not meeting.listening_turns:
             self._listening_turns = meeting.listening_turns
             self.timeline.set_turns(meeting.listening_turns)
@@ -581,6 +604,7 @@ class MeetingPage(Adw.NavigationPage):
             # rows and unrealize a button during GTK's delayed activation,
             # cancelling its pending click (and losing keyboard focus).
             meeting.words,
+            meeting.turns,
             meeting.speakers,
             meeting.transcript,
             meeting.eta_minutes,
@@ -591,6 +615,7 @@ class MeetingPage(Adw.NavigationPage):
             dark,
         )
         if signature == self._signature:
+            self._updating_transcript = False
             self._updating_rows = False
             self._listening_changed()
             return
@@ -675,9 +700,9 @@ class MeetingPage(Adw.NavigationPage):
         additions = [TurnItem(turn) for turn in meeting.turns[common:]]
         if removed or additions:
             self.store.splice(common, removed, additions)
-        self._index_listening_rows(meeting)
         self._turns = meeting.turns
         self._starts = [turn.start_ms for turn in meeting.turns]
+        self._updating_transcript = False
         self._highlight_listening()
         self._position()
         self._schedule_rows_ready()
@@ -822,6 +847,10 @@ class MeetingPage(Adw.NavigationPage):
                 self.split.set_show_content(True)
 
     def _listening_changed(self, *_):
+        for _turn, _words, row in self.bound.values():
+            headers = row.get_first_child()
+            headers.get_first_child().set_sensitive(self._can_listen)
+            headers.get_last_child().set_sensitive(self._can_listen)
         listen = self.window.listen
         names = {speaker.id: speaker.name for speaker in self.meeting.speakers}
         for identifier, (row, play, when) in self._speaker_rows.items():
@@ -1057,11 +1086,17 @@ class MeetingPage(Adw.NavigationPage):
         self.listening_bar.update_navigation()
         self.timeline.position_changed()
         index = bisect_right(self._starts, self.player.position) - 1
+        listen = self.window.listen
+        turn = listen.turn
+        positions = self._turn_rows.get(turn.index, ()) if turn else ()
+        if positions and listen._current(self.player.position) is not None:
+            index = max(min(positions), min(index, max(positions)))
         explicit_seek = property is not None and property.name == "position" and not self.player.playing
         resumed = self.player.playing and not getattr(self, "_was_playing", False)
         self._was_playing = self.player.playing
         if (
-            index >= 0
+            not self._updating_transcript
+            and index >= 0
             and GLib.get_monotonic_time() >= self._follow_until
             and (self.player.playing or explicit_seek)
             and (index != self._reading_index or explicit_seek or resumed)
@@ -1095,6 +1130,7 @@ class MeetingPage(Adw.NavigationPage):
     def _error(self, *_):
         self.play.set_sensitive(False)
         self._can_listen = False
+        self.window.listen.stop()
         self._listening_changed()
 
     def close(self):

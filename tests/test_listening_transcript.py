@@ -24,3 +24,15 @@ def test_one_listening_turn_highlights_every_split_reading_paragraph():
     assert page._turn_rows == {0: frozenset({0, 1, 2}), 1: frozenset({3})}
     assert page._row_listening == {0: 0, 1: 0, 2: 0, 3: 1}
     assert page._local_turn_index == {0: 0, 1: 0}
+
+
+def test_reindexed_long_turn_invalidates_previous_scroll_target():
+    words = tuple(Word("ada", i * 1000, i * 1000 + 400, "Hello") for i in range(140))
+    page = SimpleNamespace()
+    short = SimpleNamespace(turns=reading_turns(words[:70]), listening_turns=speaker_turns(words[:70]))
+    MeetingPage._index_listening_rows(page, short)
+    page._highlight_target = ("ada", 0)
+    long = SimpleNamespace(turns=reading_turns(words), listening_turns=speaker_turns(words))
+    MeetingPage._index_listening_rows(page, long)
+    assert page._turn_rows == {0: frozenset(range(5))}
+    assert page._highlight_target is None
