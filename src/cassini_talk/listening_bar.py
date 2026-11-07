@@ -101,17 +101,14 @@ class ListeningBar(Gtk.Revealer):
         fn = self.listen.next_speaker if direction > 0 else self.listen.previous_speaker
         return fn(self.order())
 
-    def focus_name(self):
-        target = (
+    def name_focus_target(self):
+        return (
             self.buttons["name"]
             if self.buttons["name"].get_visible()
             else self.more.get_first_child()
             if self.more.get_visible()
             else self.stop
         )
-        # GTK can queue focus before the Revealer's opening allocation. The
-        # dialog may close before that first frame; mapped-only drops it.
-        target.grab_focus()
 
     def name_speaker(self):
         if self.listen.active:

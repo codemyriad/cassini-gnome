@@ -60,6 +60,37 @@ def until(window, check):
     assert not expired and check(), "GTK row did not settle"
 
 
+def focus_event(window, target, action):
+    """Observe GTK focus entering the actual (possibly rebuilt) control."""
+    loop = GLib.MainLoop()
+    entered, controllers = [], []
+
+    def attach(*_):
+        widget = target()
+        if widget is None or any(w is widget for w, _c in controllers):
+            return
+        controller = Gtk.EventControllerFocus()
+        controller.connect("enter", lambda *_: (entered.append(widget), loop.quit()))
+        widget.add_controller(controller)
+        controllers.append((widget, controller))
+
+    attach()
+    rebuilt = window.meeting_page.connect("rows-rebuilt", attach)
+    expired = []
+    timer = GLib.timeout_add_seconds(8, lambda: (expired.append(True), loop.quit(), False)[-1])
+    try:
+        action()
+        if not entered:
+            loop.run()
+        assert not expired and entered and target().has_focus(), "Focus did not return to the invoking control"
+    finally:
+        if not expired:
+            GLib.source_remove(timer)
+        window.meeting_page.disconnect(rebuilt)
+        for widget, controller in controllers:
+            widget.remove_controller(controller)
+
+
 def dispatch_until(check):
     """Wait for a worker completion while the window is hidden, before mapping rows."""
     expired = []
@@ -254,8 +285,7 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, lambda: dialog.play.has_focus())
     assert not window.player.playing
     assert dialog.sample_from.get_text() == text("speakers.sampleFrom", position="00:00:32")
-    dialog.close()
-    until(window, lambda: page.listening_bar.buttons["name"].has_focus())
+    focus_event(window, lambda: page.listening_bar.buttons["name"], dialog.close)
     window.listen.stop()
     # Real merge, filesystem observation, paused next-unnamed cue and Undo.
     original_metadata = json.loads((meeting.directory / "meeting.json").read_text())
@@ -272,6 +302,19 @@ with tempfile.TemporaryDirectory() as temporary:
             and not page._rows_rebuilt_tick
         ),
     )
+    assert window.listen.start("voice-10", 0, play=False)
+    page.listening_bar.name_speaker()
+    dialog = page.speakers_dialog
+    until(window, lambda: dialog.play.has_focus())
+    focus_event(
+        window,
+        lambda: page._speaker_rows["host"][0].get_child(),
+        lambda: dialog._merge("host"),
+    )
+    assert "voice-10" not in page._speaker_rows
+    assert window.listen.speaker == "voice-11" and window.listen.cued and not window.player.playing
+    page.undo_speaker_merge()
+    until(window, lambda: "voice-10" in page._speaker_rows and page._speaker_future is None)
     assert window.listen.start("voice-10", 0, play=False)
     page.merge_speaker("voice-10", "host")
     until(

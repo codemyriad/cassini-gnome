@@ -151,6 +151,9 @@ class MeetingPage(Adw.NavigationPage):
 
         self._listen_origin = None
         self._merge_transition = None
+        self._dialog_focus = None
+        self._dialog_focus_idle = 0
+        self._dialog_focus_signals = []
         self.listening_bar = ListeningBar(self)
         outer.append(self.listening_bar)
         self._build_player(outer)
@@ -515,8 +518,10 @@ class MeetingPage(Adw.NavigationPage):
             self._merge_transition = None
             if following in self._speaker_rows:
                 self.window.listen.start(following, 0, play=False)
-                self.listening_bar.buttons["again"].grab_focus()
+                if self._dialog_focus is None:
+                    self.listening_bar.buttons["again"].grab_focus()
         self.emit("rows-rebuilt")
+        self._queue_dialog_focus()
         return GLib.SOURCE_REMOVE
 
     def _speaker_row(self, speaker, share, matches):
@@ -672,6 +677,7 @@ class MeetingPage(Adw.NavigationPage):
             return
         from .speakers_dialog import SpeakersDialog
 
+        self._clear_dialog_focus()
         if self.speakers_dialog and not self.speakers_dialog.closed:
             self.speakers_dialog.close()
         visible = {s.id for s in self.meeting.speakers}
@@ -681,11 +687,66 @@ class MeetingPage(Adw.NavigationPage):
         self.speakers_dialog.present(self.window)
         if from_listening:
             self.speakers_dialog.play.grab_focus()
-            self.speakers_dialog.connect(
-                "closed", lambda *_: self.listening_bar.focus_name() if not self._closed else None
-            )
+            self._dialog_focus = self.speakers_dialog
+            for obj, signal in (
+                (self.speakers_dialog, "closed"),
+                (self.speakers_dialog, "unmap"),
+                (self.window, "notify::visible-dialog"),
+                (self.listening_bar, "notify::child-revealed"),
+                (self, "map"),
+            ):
+                self._dialog_focus_signals.append((obj, obj.connect(signal, self._queue_dialog_focus)))
         else:
             self.speakers_dialog.entry.grab_focus()
+
+    def _clear_dialog_focus(self):
+        if self._dialog_focus_idle:
+            GLib.source_remove(self._dialog_focus_idle)
+            self._dialog_focus_idle = 0
+        for obj, signal in self._dialog_focus_signals:
+            obj.disconnect(signal)
+        self._dialog_focus_signals.clear()
+        self._dialog_focus = None
+
+    def _queue_dialog_focus(self, *_):
+        if not self._closed and self._dialog_focus is not None and not self._dialog_focus_idle:
+            self._dialog_focus_idle = GLib.idle_add(self._restore_dialog_focus)
+
+    def _restore_dialog_focus(self):
+        self._dialog_focus_idle = 0
+        dialog = self._dialog_focus
+        if dialog is None or not dialog.closed or dialog.get_mapped():
+            return GLib.SOURCE_REMOVE
+        visible = self.window.get_visible_dialog()
+        if visible is not None:
+            if visible is not dialog:
+                self._clear_dialog_focus()
+            return GLib.SOURCE_REMOVE
+        merged = getattr(dialog, "_recompute", None)
+        if merged:
+            source, destination = merged
+            if source in self._speaker_rows or self._rows_rebuilt_tick or self._merge_transition:
+                return GLib.SOURCE_REMOVE
+            if destination not in self._speaker_rows:
+                return GLib.SOURCE_REMOVE
+            row, play, _when = self._speaker_rows[destination]
+            target = row.get_child() if isinstance(row.get_child(), Gtk.Button) else play
+            if self.split.get_collapsed():
+                self.split.set_show_content(False)
+            self._scroll_speaker(row)
+        else:
+            if not self.listening_bar.get_child_revealed():
+                return GLib.SOURCE_REMOVE
+            target = self.listening_bar.name_focus_target()
+        if target.get_mapped() and target.is_sensitive() and target.grab_focus():
+            self._clear_dialog_focus()
+        else:
+            # Mapping and sensitivity can follow the dialog's modal teardown.
+            # Subscribe once to this control, rather than retrying on a timer.
+            if not any(obj is target for obj, _signal in self._dialog_focus_signals):
+                for signal in ("map", "state-flags-changed"):
+                    self._dialog_focus_signals.append((target, target.connect(signal, self._queue_dialog_focus)))
+        return GLib.SOURCE_REMOVE
 
     def prepare_speaker_merge(self, source, target):
         if not self.window.listen.active or self.window.listen.speaker != source:
@@ -844,6 +905,7 @@ class MeetingPage(Adw.NavigationPage):
 
     def close(self):
         self._closed = True
+        self._clear_dialog_focus()
         if self._rows_rebuilt_tick:
             self.remove_tick_callback(self._rows_rebuilt_tick)
             self._rows_rebuilt_tick = 0
