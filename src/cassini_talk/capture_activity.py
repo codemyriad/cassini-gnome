@@ -76,6 +76,18 @@ def standing_broker_caches(app, browser=None):
     return stands(app_at), [s for s in sources if stands(getattr(s, "answered_at", None))]
 
 
+def merge_capture_phases(current, *updates):
+    """A session's terminal facts advance even when status replies do not."""
+    phases = dict(current)
+    for update in updates:
+        for identifier, phase in update.items():
+            if phases.get(identifier) != "finished":
+                phases[identifier] = phase
+    while len(phases) > 512:
+        del phases[next(iter(phases))]
+    return phases
+
+
 def advance_capture_snapshot(app, snapshot):
     """A later-received status may have sampled PCM before an earlier reply.
 
@@ -84,7 +96,11 @@ def advance_capture_snapshot(app, snapshot):
     bounded history beyond the broker's own small finished-capture inventory.
     Expiry/absence without an explicit terminal status establishes no bound.
     """
-    phases = getattr(app, "_browser_capture_phases", {})
+    sources = [getattr(w, "_activity_source", None) for w in app.get_windows()]
+    phases = merge_capture_phases(
+        getattr(app, "_browser_capture_phases", {}),
+        *(getattr(source, "_browser_capture_phases", {}) for source in sources),
+    )
     statuses = []
     for status in snapshot.get("statuses", []):
         path = status.get("path") if isinstance(status, dict) else None
@@ -128,20 +144,22 @@ def retired_captures(app):
                 if identifier:
                     retired.add(identifier)
         source = getattr(target, "_activity_source", None)
+        retired.update(getattr(source, "_browser_capture_phases", {}))
         for identifier, state in (getattr(source, "snapshot", None) or {}).items():
             if state == "saving":
                 retired.add(identifier)
     return retired
 
 
-def read_browser_activity(path=None, with_connection=False, with_paths=False, *, unanswered=None):
+def read_browser_activity(path=None, with_connection=False, with_paths=False, *, unanswered=None, phases=None):
     """The broker's capture state. No broker (BROKER_ABSENT) reads as idle: an
     answer that nothing records. With `unanswered`, any other failure, from a
     broker that is there but did not answer (UNANSWERED: a timeout, a full
     backlog, an EOF, a malformed or error reply), returns `unanswered`, as
     BrowserWatch treats the same failures, so the caller keeps its last answer
     up to the bound (broker_silent). Without it, as before, every failure reads
-    as idle."""
+    as idle. With `phases`, also fill the explicit stopped/finished session
+    facts that the active-only mapping omits."""
     idle = ({}, False, {}) if with_paths else (({}, False) if with_connection else {})
     try:
         with socket.socket(socket.AF_UNIX) as connection:
@@ -154,12 +172,18 @@ def read_browser_activity(path=None, with_connection=False, with_paths=False, *,
             return unanswered
         result, paths = {}, {}
         for status in (value or {}).get("statuses", []):
-            if isinstance(status, dict) and browser_capture_busy(status) and isinstance(status.get("path"), str):
+            if isinstance(status, dict) and isinstance(status.get("path"), str):
                 directory = Path(status["path"])
                 identifier = meeting_id(directory) if directory.name.startswith("Recording-") else None
                 if identifier:
-                    result[identifier] = "saving" if status.get("stopping") else "recording"
-                    paths[identifier] = str(directory)
+                    if phases is not None:
+                        if status.get("stopping"):
+                            phases[identifier] = "stopping"
+                        elif status.get("recording") is False:
+                            phases[identifier] = "finished"
+                    if browser_capture_busy(status):
+                        result[identifier] = "saving" if status.get("stopping") else "recording"
+                        paths[identifier] = str(directory)
         connected = bool((value or {}).get("connectedBrowsers", (value or {}).get("browsers")))
         if with_paths:
             return result, connected, paths
@@ -193,16 +217,24 @@ def recorder_activity(windows):
 
 def application_activity(app, browser=None, fallback=()):
     """One controller projection for both immediate and periodic Library refresh."""
+    snapshot = advance_capture_snapshot(app, getattr(app, "_browser_snapshot", {}))
+    phases = app._browser_capture_phases
     app_stands, sources = standing_broker_caches(app, browser)
     activity = {}
     if browser is None:
         activity.update(fallback)
     for source in sources:
-        activity.update(source.snapshot)
+        activity.update(
+            {
+                identifier: "saving" if phases.get(identifier) == "stopping" else state
+                for identifier, state in source.snapshot.items()
+                if phases.get(identifier) != "finished"
+            }
+        )
     activity.update(recorder_activity(app.get_windows() + [app]))
     if recovery := getattr(app, "library_recovery", None):
         activity.update(recovery.activity)
-    for state in getattr(app, "_browser_snapshot", {}).get("statuses", []) if app_stands else ():
+    for state in snapshot.get("statuses", []) if app_stands else ():
         if browser_capture_busy(state) and isinstance(state.get("path"), str):
             identifier = meeting_id(Path(state["path"]))
             if identifier:
@@ -213,6 +245,7 @@ def application_activity(app, browser=None, fallback=()):
 class BrowserActivity:
     def __init__(self, changed, *, path=None, interval_ms=1000, clock=time.monotonic):
         self.snapshot = {}
+        self._browser_capture_phases = {}
         self.paths = {}
         self.connected = False
         self.changed = changed
@@ -231,8 +264,9 @@ class BrowserActivity:
         self.poll()
 
     def _read(self):
-        result = read_browser_activity(self.path, True, True, unanswered=UNANSWERED)
-        return self.clock(), result
+        phases = {}
+        result = read_browser_activity(self.path, True, True, unanswered=UNANSWERED, phases=phases)
+        return self.clock(), result, phases
 
     def poll(self):
         from gi.repository import GLib
@@ -261,17 +295,29 @@ class BrowserActivity:
         # app's live snapshot (standing_broker_caches). No broker at all is an
         # answer (BROKER_ABSENT): read_browser_activity returns idle for it,
         # stamped here like any reply, so it is the newest at once.
-        at, result = future.result()
+        at, result, phases = future.result()
         if result is UNANSWERED:
+            phases = {}
             if not broker_silent(self.answered_at, at):
                 return GLib.SOURCE_REMOVE
             result = ({}, False, {})
         elif self.answered_at is not None and at < self.answered_at:
-            return GLib.SOURCE_REMOVE  # An older answer never replaces a newer one.
+            # Keep the newer connection/activity metadata, but an explicit
+            # terminal phase remains true even when its callback arrives late.
+            result = (self.snapshot, self.connected, self.paths)
         else:
             self.answered_at = at
         value, connected, paths = result
-        if value != self.snapshot or connected != self.connected or paths != self.paths:
+        known = merge_capture_phases(self._browser_capture_phases, phases)
+        phase_changed = known != self._browser_capture_phases
+        self._browser_capture_phases = known
+        value = {
+            identifier: "saving" if known.get(identifier) == "stopping" else state
+            for identifier, state in value.items()
+            if known.get(identifier) != "finished"
+        }
+        paths = {identifier: path for identifier, path in paths.items() if identifier in value}
+        if value != self.snapshot or connected != self.connected or paths != self.paths or phase_changed:
             self.snapshot = value
             self.connected = connected
             self.paths = paths

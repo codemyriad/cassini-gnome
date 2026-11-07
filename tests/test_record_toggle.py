@@ -208,7 +208,8 @@ def test_a_held_activity_reply_stamped_after_the_stopping_reply_never_revives_th
         activity.close()
 
 
-def test_a_delayed_sample_cannot_resurrect_a_finished_capture(application_class, tmp_path):  # noqa: F811
+@pytest.mark.parametrize("terminal_observer", ["watch", "activity", "activity-window-closed", "watch-delayed-callback"])
+def test_a_delayed_sample_cannot_resurrect_a_finished_capture(application_class, tmp_path, terminal_observer):  # noqa: F811
     """Two real broker status reads: sampling order differs from receive order."""
     import threading
     from concurrent.futures import ThreadPoolExecutor
@@ -232,7 +233,10 @@ def test_a_delayed_sample_cannot_resurrect_a_finished_capture(application_class,
     second = SimpleNamespace(capture_id="second", directory=other_path, finished=True, snapshot=second_snapshot)
     service = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
     service.captures.update(first=first, second=second)
-    app, events = app_with(application_class)
+    observer_window = window()
+    observer_windows = [observer_window]
+    app, events = app_with(application_class, windows=observer_windows)
+    activity = listener = responder = None
     app._auto_recording_revision = 0
     app._permission_sources = set()
     app.browser_connection = None
@@ -249,16 +253,61 @@ def test_a_delayed_sample_cannot_resurrect_a_finished_capture(application_class,
                 assert sampled.wait(5), "older read sampled recording before Stop"
                 recording[0] = False
                 first.finished = True
-                app._browser_changed(service.snapshot(), 10)
+                if terminal_observer == "watch":
+                    app._browser_changed(service.snapshot(), 10)
+                elif terminal_observer == "watch-delayed-callback":
+                    terminal = service.snapshot()
+                else:
+                    import socket
+
+                    from cassini_talk.browser_service import read_packet, send_packet
+                    from cassini_talk.capture_activity import BrowserActivity, application_activity
+
+                    address = tmp_path / "activity.sock"
+                    listener = socket.socket(socket.AF_UNIX)
+                    listener.bind(str(address))
+                    listener.listen(1)
+                    listener.settimeout(5)
+
+                    def reply_to_activity():
+                        connection, _ = listener.accept()
+                        with connection, connection.makefile("rwb") as stream:
+                            assert read_packet(stream)["action"] == "status"
+                            send_packet(stream, service.snapshot())
+
+                    responder = threading.Thread(target=reply_to_activity)
+                    responder.start()
+                    projections = []
+                    activity = BrowserActivity(
+                        lambda: projections.append(application_activity(app, activity)),
+                        path=address,
+                        interval_ms=3_600_000,
+                        clock=lambda: 10,
+                    )
+                    observer_window._activity_source = activity
+                    pump(lambda: activity.answered_at == 10, "activity observed the completed captures")
+                    assert activity.snapshot == {} and projections == [{}]
+                    if terminal_observer == "activity-window-closed":
+                        observer_windows.clear()
+                        activity.close()
                 assert not app.recording_to_stop()
             finally:
                 release.set()
             # The old sample arrives last, after the app already showed Ready.
             app._browser_changed(delayed.result(timeout=5), 11)
+            if terminal_observer == "watch-delayed-callback":
+                app._browser_changed(terminal, 10)
         app.on_record()
         assert events == ["activate", "record"], "Record after Stop must start, not silently stop a stale capture"
         status = app._browser_snapshot["statuses"][0]
         assert status["recording"] is False and status["stopping"] is False
     finally:
         release.set()
+        if activity is not None:
+            activity.close()
+        if listener is not None:
+            listener.close()
+        if responder is not None:
+            responder.join(timeout=5)
+            assert not responder.is_alive()
         service.workers.shutdown(wait=True)

@@ -243,7 +243,7 @@ def test_unanswered_polls_keep_the_live_capture_only_up_to_the_bound(tmp_path, m
 
         # An answer received before the one held never replaces it, whenever it lands.
         older = Future()
-        older.set_result((41.5, ({}, False, {})))
+        older.set_result((41.5, ({}, False, {}), {}))
         watcher._complete(older)
         assert holds_live() and watcher.answered_at == 42 and len(changes) == 5
     finally:
@@ -406,9 +406,33 @@ def test_broker_silence_does_not_establish_a_terminal_capture_phase():
 
     from cassini_talk.capture_activity import advance_capture_snapshot
 
-    app = SimpleNamespace()
+    app = SimpleNamespace(get_windows=lambda: [])
     status = dict(path="/tmp/Recording-" + str(uuid4()), recording=True, stopping=False)
     advance_capture_snapshot(app, dict(statuses=[status]))
     advance_capture_snapshot(app, dict(statuses=[]))
     answered_again = advance_capture_snapshot(app, dict(statuses=[status]))
     assert answered_again["statuses"][0]["recording"] is True
+
+
+def test_an_older_activity_callback_still_advances_a_terminal_capture_fact():
+    from concurrent.futures import Future
+    from uuid import uuid4
+
+    identifier = str(uuid4())
+    changes = []
+    activity = BrowserActivity.__new__(BrowserActivity)
+    activity.closed = False
+    activity.future = None
+    activity.answered_at = 2
+    activity.snapshot = {identifier: "recording"}
+    activity.paths = {identifier: "/tmp/Recording-" + identifier}
+    activity.connected = True
+    activity._browser_capture_phases = {}
+    activity.changed = lambda: changes.append(dict(activity.snapshot))
+    older = Future()
+    older.set_result((1, ({}, False, {}), {identifier: "finished"}))
+    activity._complete(older)
+    assert activity.answered_at == 2 and activity.connected is True
+    assert activity.snapshot == {} and activity.paths == {}
+    assert activity._browser_capture_phases == {identifier: "finished"}
+    assert changes == [{}]
