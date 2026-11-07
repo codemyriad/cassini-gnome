@@ -581,3 +581,32 @@ def test_no_ask_before_the_fallback_commits_or_after_it_fails(policy, instance, 
         held.first_buffer.set()
         closer.join(10)
         capture.stop()
+
+
+def test_resume_waits_for_the_committed_loss_boundary_on_the_session_clock(policy, monkeypatch):
+    service, tasks, sent, parent = policy
+    browser = peer(service)
+    capture = recording(service, parent, browser)
+    now = [100.0]
+    monkeypatch.setattr(capture, "elapsed_ms", lambda: now[0])
+    try:
+        # A device packet is timestamped at its beginning. Its final frame can
+        # lead the clock while fallback commits at the accepted PCM boundary.
+        _identifier, microphone = capture.native_taps["microphone"]
+        microphone.append(b"\x01\x00" * 480, now[0])
+        capture.close()
+        cut = source_state(capture.host.session.manifest["events"]).since_ms
+        assert cut > now[0]
+        released(service, browser)
+        run(tasks)
+        assert not asks(sent), "a resume must not precede the recorded loss boundary"
+        assert not service._capture_lifecycles["F"].asked_on, "the future boundary must not consume the ask"
+        now[0] = cut
+        service.policy()
+        run(tasks)
+        assert len(asks(sent)) == 1
+        service.policy()
+        run(tasks)
+        assert len(asks(sent)) == 1, "the same loss still asks exactly once"
+    finally:
+        capture.stop()
