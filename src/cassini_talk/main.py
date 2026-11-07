@@ -1614,6 +1614,15 @@ class CassiniApplication(Adw.Application):
         if window is None or self.shortcuts_dialog is not None:
             return
         builder = Gtk.Builder.new_from_resource(RESOURCE + "/shortcuts-dialog.ui")
+        local_titles = {
+            builder.get_object(name): identifier
+            for name, identifier in (
+                ("listen_turns", "shortcuts.listen.turns"),
+                ("listen_speakers", "shortcuts.listen.speakers"),
+                ("listen_stop", "listen.stop"),
+                ("play_turn", "shortcuts.playTurn"),
+            )
+        }
         for item in builder.get_objects():
             if isinstance(item, Adw.ShortcutsItem):
                 identifier = {
@@ -1624,12 +1633,7 @@ class CassiniApplication(Adw.Application):
                     "win.skip-forward": "player.forward10",
                     "win.rate-up": "player.speed.increase",
                     "win.rate-down": "player.speed.decrease",
-                }.get(item.get_action_name()) or {
-                    "listen_turns": "shortcuts.listen.turns",
-                    "listen_speakers": "shortcuts.listen.speakers",
-                    "listen_stop": "listen.stop",
-                    "play_turn": "shortcuts.playTurn",
-                }.get(Gtk.Buildable.get_buildable_id(item))
+                }.get(item.get_action_name()) or local_titles.get(item)
                 if identifier:
                     from .strings import text
 
