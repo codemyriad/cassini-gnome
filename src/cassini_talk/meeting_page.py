@@ -47,6 +47,7 @@ class MeetingPage(Adw.NavigationPage):
         self._speaker_signature = None
         self._match_signature = None
         self._listening_turns = None
+        self._updating_rows = False
         self._speaker_rows = {}
         self._rows_rebuilt_tick = 0
         self._can_listen = False
@@ -150,6 +151,7 @@ class MeetingPage(Adw.NavigationPage):
         from .listening_bar import ListeningBar
 
         self._listen_origin = None
+        self.speakers.connect("map", self._schedule_rows_ready)
         self._merge_transition = None
         self._dialog_focus = None
         self._dialog_focus_idle = 0
@@ -347,6 +349,7 @@ class MeetingPage(Adw.NavigationPage):
         return True
 
     def update(self, meeting):
+        self._updating_rows = True
         self.meeting = meeting
         self.headline.set_title(meeting.title)
         self.window.set_title(meeting.title)
@@ -410,6 +413,8 @@ class MeetingPage(Adw.NavigationPage):
             dark,
         )
         if signature == self._signature:
+            self._updating_rows = False
+            self._listening_changed()
             return
         self._signature = signature
         self.more_menu.remove_all()
@@ -433,6 +438,8 @@ class MeetingPage(Adw.NavigationPage):
         self._speaker_rows.clear()
         for speaker in meeting.speakers:
             self.speakers.append(self._speaker_row(speaker, shares[speaker.id], matches))
+        self._updating_rows = False
+        self._finish_merge_transition()
         self._listening_changed()
         if meeting.speakers and (meeting.metadata_editable or meeting.published_file is not None):
             self.name_speakers_button = Gtk.Button(
@@ -495,13 +502,26 @@ class MeetingPage(Adw.NavigationPage):
         self._match_signature = matches
         self._starts = [turn.start_ms for turn in meeting.turns]
         self._position()
-        if not self._rows_rebuilt_tick:
+        self._schedule_rows_ready()
+
+    def _schedule_rows_ready(self, *_):
+        if not self._closed and self.speakers.get_mapped() and not self._rows_rebuilt_tick:
             self._rows_rebuilt_tick = self.add_tick_callback(self._rows_ready)
+
+    def _finish_merge_transition(self):
+        # The listening handoff depends on the new model, never sidebar layout.
+        if self._merge_transition and self._merge_transition[0] not in self._speaker_rows:
+            _source, following = self._merge_transition
+            self._merge_transition = None
+            if following in self._speaker_rows:
+                self.window.listen.start(following, 0, play=False)
+                if self._dialog_focus is None:
+                    self.listening_bar.focus_merge(following)
 
     def _rows_ready(self, _page, _clock):
         # Allocation alone can survive unmapping. Announce only the current
         # installed rows, wired, mapped and allocated for GTK activation.
-        if self._closed:
+        if self._closed or not self.speakers.get_mapped():
             self._rows_rebuilt_tick = 0
             return GLib.SOURCE_REMOVE
         if not self.get_mapped() or any(
@@ -513,13 +533,6 @@ class MeetingPage(Adw.NavigationPage):
         ):
             return GLib.SOURCE_CONTINUE
         self._rows_rebuilt_tick = 0
-        if self._merge_transition and self._merge_transition[0] not in self._speaker_rows:
-            _source, following = self._merge_transition
-            self._merge_transition = None
-            if following in self._speaker_rows:
-                self.window.listen.start(following, 0, play=False)
-                if self._dialog_focus is None:
-                    self.listening_bar.buttons["again"].grab_focus()
         self.emit("rows-rebuilt")
         self._queue_dialog_focus()
         return GLib.SOURCE_REMOVE
@@ -768,8 +781,7 @@ class MeetingPage(Adw.NavigationPage):
         # A filesystem notification may have delivered the merged model before
         # the worker's success callback. Keep the pre-edit pane order.
         self._merge_transition = transition
-        if transition and not self._rows_rebuilt_tick:
-            self._rows_rebuilt_tick = self.add_tick_callback(self._rows_ready)
+        self._finish_merge_transition()
         name = next((s.name for s in self.meeting.speakers if s.id == target), target)
         self.window.toasts.add_toast(
             Adw.Toast(

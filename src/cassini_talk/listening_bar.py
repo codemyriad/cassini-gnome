@@ -14,6 +14,7 @@ class ListeningBar(Gtk.Revealer):
         super().__init__(transition_type=Gtk.RevealerTransitionType.SLIDE_UP)
         self.page, self.listen = page, page.window.listen
         self._announcement = None
+        self._merge_focus = None
         self._layout = None
         self._menu_key = None
         self.body = Gtk.Box(spacing=4, css_classes=["listening-bar"], accessible_role=Gtk.AccessibleRole.GROUP)
@@ -34,9 +35,7 @@ class ListeningBar(Gtk.Revealer):
         info.append(title)
         info.append(self.turn)
         self.body.append(info)
-        self.excerpt = Gtk.Label(
-            ellipsize=Pango.EllipsizeMode.END, hexpand=True, max_width_chars=35, css_classes=["dim-label"]
-        )
+        self.excerpt = Gtk.Label(ellipsize=Pango.EllipsizeMode.END, hexpand=True, max_width_chars=35)
         self.body.append(self.excerpt)
         self.buttons = {}
         for key, icon, callback in (
@@ -54,6 +53,7 @@ class ListeningBar(Gtk.Revealer):
                 button.set_label(text("listen.name"))
             self.buttons[key] = button
             self.body.append(button)
+        self.buttons["again"].connect("map", self._focus_merge)
         self.merge_model = Gio.Menu()
         self.merge = Gtk.MenuButton(label=text("speakers.mergeInto"), menu_model=self.merge_model, css_classes=["flat"])
         self.body.append(self.merge)
@@ -91,8 +91,22 @@ class ListeningBar(Gtk.Revealer):
         self._collapse(layout)
 
     def _revealed(self, *_):
+        self._focus_merge()
         if self.get_child_revealed() and self.listen.speaker in self.page._speaker_rows:
             self.page._scroll_speaker(self.page._speaker_rows[self.listen.speaker][0])
+
+    def focus_merge(self, speaker):
+        self._merge_focus = speaker
+        self._focus_merge()
+
+    def _focus_merge(self, *_):
+        if self._merge_focus is None:
+            return
+        if not self.listen.cued or self.listen.speaker != self._merge_focus:
+            self._merge_focus = None
+            return
+        if self.get_child_revealed() and self.buttons["again"].get_mapped() and self.buttons["again"].grab_focus():
+            self._merge_focus = None
 
     def order(self):
         return [s.id for s in self.page.meeting.speakers]
@@ -148,14 +162,16 @@ class ListeningBar(Gtk.Revealer):
         state = self._state()
         self.set_reveal_child(state.visible)
         self.buttons["name"].set_sensitive(state.edits_enabled)
-        self.merge.set_sensitive(state.edits_enabled)
+        self.merge.set_sensitive(state.merge_enabled)
         self.actions.lookup_action("name").set_enabled(state.edits_enabled)
-        self.actions.lookup_action("merge").set_enabled(state.edits_enabled)
+        self.actions.lookup_action("merge").set_enabled(state.merge_enabled)
         self.buttons["again"].set_visible(state.again_visible)
         again_label = text(state.again_label)
         self.buttons["again"].set_label(again_label)
         self.buttons["again"].set_tooltip_text(again_label)
         self.buttons["again"].update_property([Gtk.AccessibleProperty.LABEL], [again_label])
+        self.update_navigation()
+        self._focus_merge()
         if not listen.active or listen.turn is None:
             self._announcement = None
             return
@@ -172,8 +188,7 @@ class ListeningBar(Gtk.Revealer):
         self.turn.set_label(
             text("listen.turn", index=listen.index + 1, count=listen.count, position=fmt.position(turn.start_ms))
         )
-        self.excerpt.set_label(excerpt(meeting, turn))
-        self.update_navigation()
+        self.excerpt.set_markup(excerpt(meeting, turn))
         menu_key = meeting.speakers, meeting.listening_turns, turn.index
         if menu_key != self._menu_key:
             self._menu_key = menu_key
@@ -191,7 +206,9 @@ class ListeningBar(Gtk.Revealer):
                 if section.get_n_items():
                     self.merge_model.append_section(None, section)
         self._collapse(self._layout or 0)
-        announcement = listen.speaker, listen.index, speaker.name
+        if self.page._updating_rows or speaker.id not in self.page._speaker_rows:
+            return
+        announcement = listen.speaker, listen.index
         if announcement != self._announcement:
             changed_speaker = self._announcement is None or self._announcement[0] != listen.speaker
             self._announcement = announcement

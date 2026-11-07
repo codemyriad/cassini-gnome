@@ -69,6 +69,7 @@ def test_stopping_clears_controls_without_asking_for_a_target():
             state.previous_speaker,
             state.next_speaker,
             state.edits_enabled,
+            state.merge_enabled,
             state.again_visible,
         )
     )
@@ -129,8 +130,26 @@ def test_excerpt_has_five_previous_words_and_eight_current_words():
     assert excerpt(model, model.listening_turns[0]) == "one two three four five six seven"
     assert (
         excerpt(model, model.listening_turns[1])
-        == "three four five six seven │ eight nine ten eleven twelve thirteen fourteen fifteen"
+        == '<span alpha="55%">three four five six seven │ </span>eight nine ten eleven twelve thirteen fourteen fifteen'
     )
+
+
+def test_excerpt_escapes_transcript_markup_in_both_speakers():
+    model = meeting()
+    model.listening_turns[0].text = "<b>one & two</b>"
+    model.listening_turns[1].text = '<span alpha="0">three & four</span>'
+    assert excerpt(model, model.listening_turns[0]) == "&lt;b&gt;one &amp; two&lt;/b&gt;"
+    assert excerpt(model, model.listening_turns[1]) == (
+        '<span alpha="55%">&lt;b&gt;one &amp; two&lt;/b&gt; │ </span>'
+        '&lt;span alpha="0"&gt;three &amp; four&lt;/span&gt;'
+    )
+
+
+def test_single_speaker_can_be_named_but_cannot_be_merged():
+    controller = listening()
+    controller.speaker_step_target = lambda *_: None
+    state = bar_state(controller, ("ada",), editable=True, busy=False)
+    assert state.edits_enabled and not state.merge_enabled
 
 
 def test_model_import_and_decisions_work_when_gi_is_forbidden():

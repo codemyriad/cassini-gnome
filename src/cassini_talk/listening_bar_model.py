@@ -2,6 +2,7 @@
 """Listening-bar decisions, independent of widgets, GI and a display server."""
 
 from dataclasses import dataclass
+from html import escape
 
 # Matches the approved staged collapse; the view supplies the toolkit units.
 BREAKPOINTS = ((720, 1), (600, 2), (480, 3))
@@ -15,6 +16,7 @@ class BarState:
     previous_speaker: bool
     next_speaker: bool
     edits_enabled: bool
+    merge_enabled: bool
     again_visible: bool
     again_label: str
 
@@ -29,6 +31,7 @@ def bar_state(listen, order, *, editable, busy):
         previous_speaker=active and listen.speaker_step_target(order, -1) is not None,
         next_speaker=active and listen.speaker_step_target(order, 1) is not None,
         edits_enabled=active and editable and not busy,
+        merge_enabled=active and editable and not busy and len(order) > 1,
         again_visible=active and (listen.finished or listen.cued),
         again_label="listen.again" if listen.finished else "common.play",
     )
@@ -65,7 +68,9 @@ def merge_choices(meeting, turn):
 
 
 def excerpt(meeting, turn):
+    """Escaped Pango text: dim lead-in words, then the current turn."""
     before = meeting.listening_turns[turn.index - 1] if turn.index else None
     previous = " ".join(before.text.split()[-5:]) if before else ""
     current = " ".join(turn.text.split()[:8])
-    return f"{previous} │ {current}" if previous else current
+    previous, current = escape(previous, quote=False), escape(current, quote=False)
+    return f'<span alpha="55%">{previous} │ </span>{current}' if previous else current

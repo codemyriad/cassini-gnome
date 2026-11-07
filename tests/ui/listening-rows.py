@@ -274,7 +274,15 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, lambda: window.listen.finished)
     assert bar.buttons["again"].get_visible()
     assert bar.buttons["again"].get_label() == text("listen.again")
+    # Paused Stop has no playback-position notification to refresh controls.
+    assert window.listen.start("voice-0", 1, play=False)
+    assert not window.player.playing and bar.buttons["previousTurn"].get_sensitive()
     window.listen.stop()
+    assert all(
+        not bar.buttons[key].get_sensitive() for key in ("previousTurn", "nextTurn", "previousSpeaker", "nextSpeaker")
+    )
+    assert not bar.actions.lookup_action("previous-speaker").get_enabled()
+    assert not bar.actions.lookup_action("next-speaker").get_enabled()
     until(window, lambda: not bar.get_child_revealed())
     assert not bar.actions.lookup_action("name").get_enabled()
     # Name from the bar pauses listening and focuses the sample, preserving
@@ -343,6 +351,23 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page.listening_bar.buttons["again"].has_focus()
     page.undo_speaker_merge()
     until(window, lambda: "voice-10" in page._speaker_rows and page._speaker_future is None)
+    # Direct bar merge must hand off with the collapsed sidebar still hidden.
+    window.set_default_size(360, 650)
+    until(window, lambda: page.split.get_collapsed() and page.listening_bar.get_width() == 360)
+    page._listen_speaker("voice-10")
+    until(window, lambda: page.split.get_show_content() and not page.speakers.get_mapped())
+    bar.stop.grab_focus()
+    focus_event(window, lambda: bar.buttons["again"], lambda: page.merge_speaker("voice-10", "host"))
+    assert "voice-10" not in page._speaker_rows
+    assert window.listen.speaker == "voice-11" and window.listen.cued and not window.player.playing
+    assert page.split.get_show_content() and not page.speakers.get_mapped()
+    assert page._merge_transition is None and not page._rows_rebuilt_tick
+    page.undo_speaker_merge()
+    window.set_default_size(900, 650)
+    until(
+        window,
+        lambda: "voice-10" in page._speaker_rows and page._speaker_future is None and not page._rows_rebuilt_tick,
+    )
     window.listen.stop()
     update_metadata(meeting.directory, speakers=original_metadata["speakers"])
     window.monitor.refresh_now()
@@ -389,6 +414,46 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, lambda: not window.listen.active)
     assert not window.player.playing and play.get_icon_name() == "media-playback-start-symbolic"
     assert not row.has_css_class("listening")
+    # Renaming updates the accessible name without announcing a turn step.
+    announcements = []
+    announce = bar.body.announce
+    bar.body.announce = lambda message, *_: announcements.append(message)
+    assert window.listen.start("voice-0", 0, play=False)
+    assert announcements[-1] == f"Unidentified voice, {page._speaker_rows['voice-0'][2]}"
+    announcements.clear()
+    original_snapshot = window._source_snapshot
+    renamed_meeting = replace(
+        meeting,
+        speakers=tuple(
+            replace(speaker, name="Dana") if speaker.id == "voice-0" else speaker for speaker in meeting.speakers
+        ),
+    )
+    window._library_scanned(
+        replace(
+            original_snapshot,
+            meetings=tuple(renamed_meeting if m.key == meeting.key else m for m in original_snapshot.meetings),
+        )
+    )
+    assert bar.name.get_text() == "Dana" and not announcements
+    # A single-speaker meeting exposes Name but never an empty Merge menu.
+    one_speaker = replace(renamed_meeting, speakers=tuple(s for s in renamed_meeting.speakers if s.id == "voice-0"))
+    window._library_scanned(
+        replace(
+            original_snapshot,
+            meetings=tuple(one_speaker if m.key == meeting.key else m for m in original_snapshot.meetings),
+        )
+    )
+    assert bar.buttons["name"].get_sensitive()
+    assert not bar.merge.get_sensitive() and not bar.actions.lookup_action("merge").get_enabled()
+    window._library_scanned(original_snapshot)
+    bar.body.announce = announce
+    window.listen.stop()
+    # Markup dims only the lead-in and preserves literal transcript characters.
+    assert window.listen.start("voice-10", 0, play=False)
+    assert '<span alpha="55%">' in bar.excerpt.get_label()
+    assert not bar.excerpt.has_css_class("dim-label")
+    assert bar.excerpt.get_use_markup()
+    window.listen.stop()
     # Read-only rows retain Play, but have no naming action.
     old_play = page._speaker_rows["voice-0"][1]
     generation = len(rebuilt)
