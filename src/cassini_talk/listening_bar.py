@@ -176,9 +176,7 @@ class ListeningBar(Gtk.Revealer):
             self._announcement = None
             return
         turn = listen.turn
-        speaker = next((s for s in meeting.speakers if s.id == listen.speaker), None)
-        if speaker is None:
-            return
+        speaker = meeting.speaker_for(listen.speaker)
         self.body.update_property([Gtk.AccessibleProperty.LABEL], [text("listen.bar.a11y", name=speaker.name)])
         palette = DARK_COLOURS if Adw.StyleManager.get_default().get_dark() else COLOURS
         colour = palette[getattr(speaker, "colour_index", 0) % len(palette)]

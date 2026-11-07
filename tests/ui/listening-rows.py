@@ -25,9 +25,12 @@ from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
 from cassini_talk.i18n import LANGUAGES, using_language  # noqa: E402
+from cassini_talk.library import PreviewTurn  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 from cassini_talk.meeting_store import atomic_json, update_metadata  # noqa: E402
+from cassini_talk.meeting_text import reading_turns, speaker_turns  # noqa: E402
 from cassini_talk.recording_session import RecordingSession  # noqa: E402
+from cassini_talk.speaker_merges import apply_merges  # noqa: E402
 from cassini_talk.strings import text  # noqa: E402
 
 
@@ -436,7 +439,35 @@ with tempfile.TemporaryDirectory() as temporary:
     )
     assert bar.name.get_text() == "Dana" and not announcements
     # A single-speaker meeting exposes Name but never an empty Merge menu.
-    one_speaker = replace(renamed_meeting, speakers=tuple(s for s in renamed_meeting.speakers if s.id == "voice-0"))
+    merges = [{"from": s.id, "into": "voice-0"} for s in renamed_meeting.speakers if s.id != "voice-0"]
+    merged_metadata = dict(renamed_meeting.metadata, speakerMerges=merges)
+    # A cached transcript can still reference merged-away ids. Both the real
+    # preview and virtualized transcript must resolve them without exceptions.
+    stale_merged = replace(
+        renamed_meeting,
+        speakers=tuple(s for s in renamed_meeting.speakers if s.id == "voice-0"),
+        metadata=merged_metadata,
+    )
+    window._library_scanned(
+        replace(
+            original_snapshot,
+            meetings=tuple(stale_merged if m.key == meeting.key else m for m in original_snapshot.meetings),
+        )
+    )
+    until(window, lambda: page.bound and not page._rows_rebuilt_tick)
+    assert any(turn.speaker == "host" for turn, _words, _row in page.bound.values())
+    assert all(any(value.get_text() == "Dana" for value in labels(row)) for _turn, _words, row in page.bound.values())
+    assert any(value.get_text() == "Dana" for value in labels(window.preview))
+    # The single-speaker fixture itself uses the merged words and rebuilt turns.
+    merged_words = apply_merges(renamed_meeting.words, merges)
+    merged_turns = reading_turns(merged_words)
+    one_speaker = replace(
+        stale_merged,
+        words=merged_words,
+        turns=merged_turns,
+        listening_turns=speaker_turns(merged_words),
+        preview_turns=tuple(PreviewTurn(t.speaker, t.start_ms, t.text) for t in merged_turns[:3]),
+    )
     window._library_scanned(
         replace(
             original_snapshot,

@@ -133,3 +133,42 @@ def test_d38_dropped_quote_with_whitespace_displays_nothing():
     assert turn_text(['" ', "Hello"]) == "Hello"
     words = [Word("a", 0, 10, "Hello"), Word("a", 10, 20, ' "'), Word("a", 20, 30, "world")]
     assert item_markup(words, 100) == '<a href="item:0">Hello</a> <a href="item:2">world</a>'
+
+
+@pytest.mark.parametrize("origin", ["own", "received"])
+def test_cached_turn_speaker_resolves_merge_chain_and_safe_missing_label(tmp_path, origin):
+    from dataclasses import replace
+
+    from cassini_talk.library import LibrarySpeaker, Meeting
+    from cassini_talk.strings import text
+
+    dana = LibrarySpeaker("dana", "Dana <&>", "user", 0, 2)
+    meeting = Meeting(
+        id="test",
+        directory=tmp_path,
+        title="Meeting",
+        started_at_ms=None,
+        duration_ms=1000,
+        origin=origin,
+        speakers=(dana,),
+        metadata={"speakerMerges": [{"from": "host", "into": "retired"}, {"from": "retired", "into": "dana"}]},
+    )
+    assert meeting.speaker_for("host") is dana
+    assert meeting.speaker_for("retired") is dana
+    assert meeting.speaker_for("dana") is dana
+    # A stale listed source must still use its final merge target.
+    stale = replace(meeting, speakers=(LibrarySpeaker("host", "Old name", "user", 0, 0), dana))
+    assert stale.speaker_for("host") is dana
+    missing = meeting.speaker_for("unlisted")
+    assert missing.id == "unlisted" and missing.provenance == "unnamed"
+    assert missing.name == text("common.speaker.unnamed", n=2)
+    # Broken/missing targets and invalid/cyclic overlays remain safe to render.
+    for entries in (
+        None,
+        [None],
+        [{"from": "host", "into": "absent"}],
+        [{"from": "host", "into": "retired"}, {"from": "retired", "into": "host"}],
+    ):
+        fallback = replace(meeting, metadata={"speakerMerges": entries}).speaker_for("host")
+        assert fallback.name == missing.name
+    assert meeting.speakers == (dana,)  # Resolution never mutates the source model.

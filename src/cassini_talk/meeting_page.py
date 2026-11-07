@@ -296,7 +296,7 @@ class MeetingPage(Adw.NavigationPage):
 
     def _bind(self, _factory, item):
         turn = item.get_item().turn
-        speaker = next(s for s in self.meeting.speakers if s.id == turn.speaker)
+        speaker = self.meeting.speaker_for(turn.speaker)
         row = Gtk.Box(spacing=16, margin_bottom=24)
         names = box(5, width_request=120, valign=Gtk.Align.START)
         name = label(
