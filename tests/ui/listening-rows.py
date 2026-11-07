@@ -227,6 +227,25 @@ with tempfile.TemporaryDirectory() as temporary:
     page.connect("rows-rebuilt", lambda *_: rebuilt.append(dict(page._speaker_rows)))
     window.present()
     until(window, lambda: rebuilt and window.player._prerolled and len(page._speaker_rows) == 14)
+    # Widget assertions belong in this initialized, display-backed journey.
+    bar = page.listening_bar
+    count = len(window.listen.turns_of("voice-0"))
+    assert window.listen.start("voice-0", 0, play=False)
+    until(window, lambda: bar.get_child_revealed())
+    assert bar.get_reveal_child() and bar.name.get_label() == "Unidentified voice"
+    assert not bar.buttons["previousTurn"].get_sensitive()
+    assert bar.buttons["nextTurn"].get_sensitive()
+    assert window.listen.start("voice-0", count - 1, play=False)
+    assert bar.buttons["previousTurn"].get_sensitive()
+    assert not bar.buttons["nextTurn"].get_sensitive()
+    window.player.seek(window.listen.span_end(count - 1) - 50)
+    window.player.play()
+    until(window, lambda: window.listen.finished)
+    assert bar.buttons["again"].get_visible()
+    assert bar.buttons["again"].get_label() == text("listen.again")
+    window.listen.stop()
+    until(window, lambda: not bar.get_child_revealed())
+    assert not bar.actions.lookup_action("name").get_enabled()
     # Name from the bar pauses listening and focuses the sample, preserving
     # the pane's original entry-first dialog path.
     window.listen.start("voice-10", 0, play=False)
@@ -371,6 +390,13 @@ with tempfile.TemporaryDirectory() as temporary:
         window.player.disconnect(error_handler)
     assert window.listen.speaker == "voice-0" and clicks == ["voice-0"]
     assert page.speakers_dialog is dialog and dialog.closed
+    assert not page.listening_bar.buttons["name"].get_visible()
+    assert not page.listening_bar.merge.get_visible()
+    assert not page.listening_bar.actions.lookup_action("name").get_enabled()
+    assert not page.listening_bar.actions.lookup_action("merge").get_enabled()
+    page.listening_bar._collapse(3)
+    assert page.listening_bar.more_model.get_n_items() == 2
+    page.listening_bar._collapse(page.listening_bar._layout or 0)
     page._listen_speaker("voice-0")
     generation = len(rebuilt)
     window._library_scanned(editable_snapshot)

@@ -4,27 +4,9 @@
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
+from .listening_bar_model import BREAKPOINTS, bar_layout, bar_state, excerpt, merge_choices
 from .meeting_text import COLOURS, DARK_COLOURS
 from .strings import text
-
-
-def merge_choices(meeting, turn):
-    """Neighbours of this listening turn first, then the pane's talk-time order."""
-    others = {s.id: s for s in meeting.speakers if s.id != turn.speaker}
-    neighbours = []
-    for index, suffix in ((turn.index - 1, "speaksBefore"), (turn.index + 1, "speaksAfter")):
-        if 0 <= index < len(meeting.listening_turns):
-            speaker = others.pop(meeting.listening_turns[index].speaker, None)
-            if speaker:
-                neighbours.append((speaker, text("speakers.mergeInto." + suffix)))
-    return neighbours, sorted(others.values(), key=lambda s: -s.talk_ms)
-
-
-def excerpt(meeting, turn):
-    before = meeting.listening_turns[turn.index - 1] if turn.index else None
-    previous = " ".join(before.text.split()[-5:]) if before else ""
-    current = " ".join(turn.text.split()[:8])
-    return f"{previous} │ {current}" if previous else current
 
 
 class ListeningBar(Gtk.Revealer):
@@ -37,7 +19,7 @@ class ListeningBar(Gtk.Revealer):
         self.body = Gtk.Box(spacing=4, css_classes=["listening-bar"], accessible_role=Gtk.AccessibleRole.GROUP)
         self.responsive = Adw.BreakpointBin(child=self.body, width_request=360, height_request=44)
         self.set_child(self.responsive)
-        for width, layout in ((720, 1), (600, 2), (480, 3)):
+        for width, layout in BREAKPOINTS:
             breakpoint = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(f"max-width: {width}sp"))
             breakpoint.connect("apply", lambda _b, layout=layout: self._apply_layout(layout))
             breakpoint.connect("unapply", lambda _b: self._apply_layout(0))
@@ -127,8 +109,9 @@ class ListeningBar(Gtk.Revealer):
             if self.more.get_visible()
             else self.stop
         )
-        if target.get_mapped():
-            target.grab_focus()
+        # GTK can queue focus before the Revealer's opening allocation. The
+        # dialog may close before that first frame; mapped-only drops it.
+        target.grab_focus()
 
     def name_speaker(self):
         if self.listen.active:
@@ -136,24 +119,46 @@ class ListeningBar(Gtk.Revealer):
             self.page.name_speakers(self.listen.speaker, from_listening=True)
 
     def _collapse(self, layout):
-        editable = self.page.meeting.metadata_editable
-        self.excerpt.set_visible(layout == 0)
-        self.buttons["name"].set_visible(editable and layout < 2)
-        self.merge.set_visible(editable and layout < 2)
-        self.buttons["previousSpeaker"].set_visible(layout < 3)
-        self.buttons["nextSpeaker"].set_visible(layout < 3)
+        layout = bar_layout(layout, editable=self.page.meeting.metadata_editable)
+        self.excerpt.set_visible(layout.excerpt)
+        self.buttons["name"].set_visible(layout.edit_buttons)
+        self.merge.set_visible(layout.edit_buttons)
+        self.buttons["previousSpeaker"].set_visible(layout.speaker_buttons)
+        self.buttons["nextSpeaker"].set_visible(layout.speaker_buttons)
         self.more_model.remove_all()
-        if layout >= 2 and editable:
-            self.more_model.append(text("listen.name"), "listening.name")
-            self.more_model.append_submenu(text("speakers.mergeInto"), self.merge_model)
-        if layout >= 3:
-            self.more_model.append(text("listen.previousSpeaker"), "listening.previous-speaker")
-            self.more_model.append(text("listen.nextSpeaker"), "listening.next-speaker")
-        self.more.set_visible(self.more_model.get_n_items() > 0)
+        for action in layout.menu_actions:
+            if action == "merge":
+                self.more_model.append_submenu(text("speakers.mergeInto"), self.merge_model)
+            else:
+                caption = {
+                    "name": "listen.name",
+                    "previous-speaker": "listen.previousSpeaker",
+                    "next-speaker": "listen.nextSpeaker",
+                }[action]
+                self.more_model.append(text(caption), "listening." + action)
+        self.more.set_visible(bool(layout.menu_actions))
+
+    def _state(self):
+        return bar_state(
+            self.listen,
+            self.order(),
+            editable=self.page.meeting.metadata_editable,
+            busy=self.page._speaker_future is not None,
+        )
 
     def update(self):
         listen, meeting = self.listen, self.page.meeting
-        self.set_reveal_child(listen.active)
+        state = self._state()
+        self.set_reveal_child(state.visible)
+        self.buttons["name"].set_sensitive(state.edits_enabled)
+        self.merge.set_sensitive(state.edits_enabled)
+        self.actions.lookup_action("name").set_enabled(state.edits_enabled)
+        self.actions.lookup_action("merge").set_enabled(state.edits_enabled)
+        self.buttons["again"].set_visible(state.again_visible)
+        again_label = text(state.again_label)
+        self.buttons["again"].set_label(again_label)
+        self.buttons["again"].set_tooltip_text(again_label)
+        self.buttons["again"].update_property([Gtk.AccessibleProperty.LABEL], [again_label])
         if not listen.active or listen.turn is None:
             self._announcement = None
             return
@@ -172,22 +177,15 @@ class ListeningBar(Gtk.Revealer):
         )
         self.excerpt.set_label(excerpt(meeting, turn))
         self.update_navigation()
-        self.buttons["again"].set_visible(listen.finished or listen.cued)
-        again_label = text("listen.again" if listen.finished else "common.play")
-        self.buttons["again"].set_label(again_label)
-        self.buttons["again"].set_tooltip_text(again_label)
-        self.buttons["again"].update_property([Gtk.AccessibleProperty.LABEL], [again_label])
-        editable = meeting.metadata_editable and self.page._speaker_future is None
-        self.buttons["name"].set_sensitive(editable)
-        self.merge.set_sensitive(editable)
-        self.actions.lookup_action("name").set_enabled(editable)
-        self.actions.lookup_action("merge").set_enabled(editable)
         menu_key = meeting.speakers, meeting.listening_turns, turn.index
         if menu_key != self._menu_key:
             self._menu_key = menu_key
             self.merge_model.remove_all()
             neighbours, remaining = merge_choices(meeting, turn)
-            for choices in ([(s, f"{s.name}, {suffix}") for s, suffix in neighbours], [(s, s.name) for s in remaining]):
+            for choices in (
+                [(s, f"{s.name}, {text(suffix)}") for s, suffix in neighbours],
+                [(s, s.name) for s in remaining],
+            ):
                 section = Gio.Menu()
                 for target, caption in choices:
                     item = Gio.MenuItem.new(caption, None)
@@ -213,10 +211,13 @@ class ListeningBar(Gtk.Revealer):
             self.body.announce(message, Gtk.AccessibleAnnouncementPriority.MEDIUM)
 
     def update_navigation(self):
-        listen = self.listen
-        for key, direction in (("previousTurn", -1), ("nextTurn", 1)):
-            self.buttons[key].set_sensitive(listen.step_target(direction) is not None)
-        for key, action, direction in (("previousSpeaker", "previous-speaker", -1), ("nextSpeaker", "next-speaker", 1)):
-            enabled = listen.speaker_step_target(self.order(), direction) is not None
+        state = self._state()
+        for key, enabled in (
+            ("previousTurn", state.previous_turn),
+            ("nextTurn", state.next_turn),
+            ("previousSpeaker", state.previous_speaker),
+            ("nextSpeaker", state.next_speaker),
+        ):
             self.buttons[key].set_sensitive(enabled)
-            self.actions.lookup_action(action).set_enabled(enabled)
+        self.actions.lookup_action("previous-speaker").set_enabled(state.previous_speaker)
+        self.actions.lookup_action("next-speaker").set_enabled(state.next_speaker)
