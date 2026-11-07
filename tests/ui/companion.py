@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Real setup dialog, per-user writes, pending/failure/retry and handshake gating."""
 
+import contextlib
 import os
 import re
 import shutil
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+from concurrent.futures import CancelledError
 from pathlib import Path
 from unittest.mock import patch
 
@@ -63,6 +65,15 @@ def until(check):
             return
         time.sleep(0.01)
     assert check(), "Companion GUI condition timed out"
+
+
+def finish_worker(future):
+    if future is not None:
+        # Native setup can run two bounded 10 s bundle transactions. This
+        # fixture owns their files even after nonblocking application exit.
+        with contextlib.suppress(CancelledError):
+            future.exception(timeout=25)
+        assert future.done(), "A fixture writer survived teardown"
 
 
 def shot(window, suffix):
@@ -135,6 +146,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert settings.browser.get_title() == "Waiting for the browser companion"
     assert settings.browser_add.get_visible() and not settings.browser_setup.get_visible()
     dialog = app.companion_setup = CompanionSetup(app, service_path=path)
+    setup_dialogs = [dialog]
     dialog.present(window)
     until(lambda: dialog.future is None)
     assert not dialog.done.get_sensitive() and not dialog.connect_button.get_visible()
@@ -279,6 +291,7 @@ with tempfile.TemporaryDirectory() as temporary:
         until(settings.get_mapped)
         settings.browser_add_local.emit("clicked")
         dialog = app.companion_setup
+        setup_dialogs.append(dialog)
         dialog.service_path = path
         until(dialog.get_mapped)
         assert dialog.local_dialog is None and dialog.future is None, "Outer Add only presents the setup sheet"
@@ -297,14 +310,49 @@ with tempfile.TemporaryDirectory() as temporary:
     settings.force_close()
     until(lambda: settings.closed)
     reopened = app.on_companion_setup(parent=window)
+    setup_dialogs.append(reopened)
     until(reopened.get_mapped)
     assert reopened.add_badge.get_label() == "✓" and not reopened.add_button.get_visible()
     assert reopened.add_caption.get_label() == "Done"
     assert reopened.connect_row.get_visible() and not reopened.done.get_sensitive()
     reopened.force_close()
     until(lambda: reopened.closed)
-    window.close()
-    app.do_shutdown()
+    # Reproduce the cleanup race by parking a real registration before its
+    # private writes. Future.cancel() cannot stop this already-running job.
+    connection = app.browser_connection
+    until(lambda: connection.future is None)
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+    attempt = connection.attempt
+
+    def late_setup(**kwargs):
+        entered.set()
+        assert release.wait(5), "Teardown did not release the registration worker"
+        try:
+            return attempt(**kwargs)
+        finally:
+            finished.set()
+
+    connection.attempt = late_setup
+    connection.trigger()
+    until(entered.is_set)
+    pending = connection.future
+    try:
+        window.close()
+        app.do_shutdown()
+        assert connection.closed
+        assert pending.running() and not pending.done(), "The controlled writer must still be in flight"
+    finally:
+        release.set()
+    # Drain every owner of private registration files or broker startup locks
+    # before stopping their service, and before TemporaryDirectory removes them.
+    for setup_dialog in setup_dialogs:
+        assert setup_dialog.closed
+        finish_worker(setup_dialog.future)
+    settings.executor.shutdown(wait=True)
+    finish_worker(settings._future)
+    finish_worker(connection.future)
+    finish_worker(connection.health_future)
+    assert pending.done() and finished.is_set(), "Registration writes must finish before fixture removal"
     service.closed.set()
     thread.join(2)
     assert not thread.is_alive()
