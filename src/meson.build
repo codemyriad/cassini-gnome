@@ -77,6 +77,8 @@ talk_sources = files(
   'cassini_talk/speakers_dialog.py',
   'cassini_talk/meeting_text.py',
   'cassini_talk/listen.py',
+  'cassini_talk/listening_bar.py',
+  'cassini_talk/listening_bar_model.py',
   'cassini_talk/meeting_store.py',
   'cassini_talk/meeting_rename.py',
   'cassini_talk/rename_dialog.py',

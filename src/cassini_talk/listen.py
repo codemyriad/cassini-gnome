@@ -40,6 +40,7 @@ class ListenController(GObject.Object):
     count = GObject.Property(type=int, default=0)
     # The last turn has ended and nothing is left to auto-advance to ("Play again").
     finished = GObject.Property(type=bool, default=False)
+    cued = GObject.Property(type=bool, default=False)
 
     def __init__(self, player_source):
         super().__init__()
@@ -92,7 +93,7 @@ class ListenController(GObject.Object):
 
     # Starting and stopping
 
-    def start(self, speaker, turn_index=None):
+    def start(self, speaker, turn_index=None, *, play=True):
         """Listen to *speaker*, from *turn_index* or from its first turn not over before the playhead."""
         if not self._by_speaker.get(speaker):
             return False
@@ -104,6 +105,7 @@ class ListenController(GObject.Object):
             self._player = player
             self._handlers = [
                 player.connect("notify::position", self._position_changed),
+                player.connect("notify::playing", self._playing_changed),
                 player.connect("error", lambda *_: self.stop()),
             ]
         self._set_target(speaker)
@@ -113,7 +115,16 @@ class ListenController(GObject.Object):
             if turn_index >= len(self._targets):
                 turn_index = 0
         turn_index = max(0, min(len(self._targets) - 1, turn_index))
-        return self._play(turn_index)
+        if play:
+            return self._play(turn_index)
+        player.pause()
+        self.cued = True
+        self._started = turn_index
+        self._listening_position = self.lead_start(turn_index)
+        player.span_follow = self._follow
+        player.seek(self._listening_position)
+        self._update(turn_index, finished=False, force=True)
+        return True
 
     def stop(self):
         """Stop listening; the position stays and playback (if any) goes on freely."""
@@ -126,6 +137,7 @@ class ListenController(GObject.Object):
         self._targets, self._starts, self._span_last, self._started = (), [], None, None
         self.freeze_notify()
         self.speaker, self.index, self.count, self.finished = None, -1, 0, False
+        self.cued = False
         self.thaw_notify()
         self.emit("stopped")
 
@@ -212,6 +224,7 @@ class ListenController(GObject.Object):
         self.thaw_notify()
 
     def _play(self, index):
+        self.cued = False
         last = self.chain_last(index)
         self._span_last = last
         self._started = index
@@ -281,6 +294,11 @@ class ListenController(GObject.Object):
         ):
             return self.index if position >= self._starts[self.index] else index
         return self._containing(position)
+
+    def _playing_changed(self, player, _pspec):
+        if player.playing and self.cued and player._range_end is None:
+            self.cued = False
+            self.emit("changed")
 
     def _position_changed(self, player, _pspec):
         # Within a chain played as one span, the index follows the playhead.

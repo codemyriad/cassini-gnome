@@ -25,9 +25,12 @@ from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
 from cassini_talk.i18n import LANGUAGES, using_language  # noqa: E402
+from cassini_talk.library import PreviewTurn  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 from cassini_talk.meeting_store import atomic_json, update_metadata  # noqa: E402
+from cassini_talk.meeting_text import reading_turns, speaker_turns  # noqa: E402
 from cassini_talk.recording_session import RecordingSession  # noqa: E402
+from cassini_talk.speaker_merges import apply_merges  # noqa: E402
 from cassini_talk.strings import text  # noqa: E402
 
 
@@ -58,6 +61,37 @@ def until(window, check):
     else:
         GLib.source_remove(timer)
     assert not expired and check(), "GTK row did not settle"
+
+
+def focus_event(window, target, action):
+    """Observe GTK focus entering the actual (possibly rebuilt) control."""
+    loop = GLib.MainLoop()
+    entered, controllers = [], []
+
+    def attach(*_):
+        widget = target()
+        if widget is None or any(w is widget for w, _c in controllers):
+            return
+        controller = Gtk.EventControllerFocus()
+        controller.connect("enter", lambda *_: (entered.append(widget), loop.quit()))
+        widget.add_controller(controller)
+        controllers.append((widget, controller))
+
+    attach()
+    rebuilt = window.meeting_page.connect("rows-rebuilt", attach)
+    expired = []
+    timer = GLib.timeout_add_seconds(8, lambda: (expired.append(True), loop.quit(), False)[-1])
+    try:
+        action()
+        if not entered:
+            loop.run()
+        assert not expired and entered and target().has_focus(), "Focus did not return to the invoking control"
+    finally:
+        if not expired:
+            GLib.source_remove(timer)
+        window.meeting_page.disconnect(rebuilt)
+        for widget, controller in controllers:
+            widget.remove_controller(controller)
 
 
 def dispatch_until(check):
@@ -227,6 +261,121 @@ with tempfile.TemporaryDirectory() as temporary:
     page.connect("rows-rebuilt", lambda *_: rebuilt.append(dict(page._speaker_rows)))
     window.present()
     until(window, lambda: rebuilt and window.player._prerolled and len(page._speaker_rows) == 14)
+    # Widget assertions belong in this initialized, display-backed journey.
+    bar = page.listening_bar
+    count = len(window.listen.turns_of("voice-0"))
+    assert window.listen.start("voice-0", 0, play=False)
+    until(window, lambda: bar.get_child_revealed())
+    assert bar.get_reveal_child() and bar.name.get_label() == "Unidentified voice"
+    assert not bar.buttons["previousTurn"].get_sensitive()
+    assert bar.buttons["nextTurn"].get_sensitive()
+    assert window.listen.start("voice-0", count - 1, play=False)
+    assert bar.buttons["previousTurn"].get_sensitive()
+    assert not bar.buttons["nextTurn"].get_sensitive()
+    window.player.seek(window.listen.span_end(count - 1) - 50)
+    window.player.play()
+    until(window, lambda: window.listen.finished)
+    assert bar.buttons["again"].get_visible()
+    assert bar.buttons["again"].get_label() == text("listen.again")
+    # Paused Stop has no playback-position notification to refresh controls.
+    assert window.listen.start("voice-0", 1, play=False)
+    assert not window.player.playing and bar.buttons["previousTurn"].get_sensitive()
+    window.listen.stop()
+    assert all(
+        not bar.buttons[key].get_sensitive() for key in ("previousTurn", "nextTurn", "previousSpeaker", "nextSpeaker")
+    )
+    assert not bar.actions.lookup_action("previous-speaker").get_enabled()
+    assert not bar.actions.lookup_action("next-speaker").get_enabled()
+    until(window, lambda: not bar.get_child_revealed())
+    assert not bar.actions.lookup_action("name").get_enabled()
+    # Name from the bar pauses listening and focuses the sample, preserving
+    # the pane's original entry-first dialog path.
+    window.listen.start("voice-10", 0, play=False)
+    page.listening_bar.name_speaker()
+    dialog = page.speakers_dialog
+    until(window, lambda: dialog.play.has_focus())
+    assert not window.player.playing
+    assert dialog.sample_from.get_text() == text("speakers.sampleFrom", position="00:00:32")
+    focus_event(window, lambda: page.listening_bar.buttons["name"], dialog.close)
+    window.listen.stop()
+    # Real merge, filesystem observation, paused next-unnamed cue and Undo.
+    original_metadata = json.loads((meeting.directory / "meeting.json").read_text())
+    updated_speakers = [
+        dict(s, name=None, provenance="unnamed") if s["id"] in ("voice-10", "voice-11") else s
+        for s in original_metadata["speakers"]
+    ]
+    update_metadata(meeting.directory, speakers=updated_speakers)
+    window.monitor.refresh_now()
+    until(
+        window,
+        lambda: (
+            any(s.id == "voice-11" and s.provenance == "unnamed" for s in page.meeting.speakers)
+            and not page._rows_rebuilt_tick
+        ),
+    )
+    assert window.listen.start("voice-10", 0, play=False)
+    page.listening_bar.name_speaker()
+    dialog = page.speakers_dialog
+    until(window, lambda: dialog.play.has_focus())
+    focus_event(
+        window,
+        lambda: page._speaker_rows["host"][0].get_child(),
+        lambda: dialog._merge("host"),
+    )
+    assert "voice-10" not in page._speaker_rows
+    assert window.listen.speaker == "voice-11" and window.listen.cued and not window.player.playing
+    page.undo_speaker_merge()
+    until(window, lambda: "voice-10" in page._speaker_rows and page._speaker_future is None)
+    # A collapsed sidebar must reopen before its replacement row can map.
+    window.set_default_size(360, 650)
+    until(window, lambda: page.split.get_collapsed() and page.listening_bar.get_width() == 360)
+    page.split.set_show_content(True)
+    assert window.listen.start("voice-10", 0, play=False)
+    page.listening_bar.name_speaker()
+    dialog = page.speakers_dialog
+    until(window, lambda: dialog.play.has_focus())
+    focus_event(window, lambda: page._speaker_rows["host"][0].get_child(), lambda: dialog._merge("host"))
+    assert not page.split.get_show_content()
+    assert window.listen.speaker == "voice-11" and window.listen.cued and not window.player.playing
+    page.undo_speaker_merge()
+    window.set_default_size(900, 650)
+    until(
+        window,
+        lambda: "voice-10" in page._speaker_rows and page._speaker_future is None and not page.split.get_collapsed(),
+    )
+    assert window.listen.start("voice-10", 0, play=False)
+    page.merge_speaker("voice-10", "host")
+    until(
+        window,
+        lambda: "voice-10" not in page._speaker_rows and window.listen.speaker == "voice-11" and window.listen.cued,
+    )
+    assert not window.player.playing
+    assert page.listening_bar.buttons["again"].get_visible()
+    assert page.listening_bar.buttons["again"].has_focus()
+    page.undo_speaker_merge()
+    until(window, lambda: "voice-10" in page._speaker_rows and page._speaker_future is None)
+    # Direct bar merge must hand off with the collapsed sidebar still hidden.
+    window.set_default_size(360, 650)
+    until(window, lambda: page.split.get_collapsed() and page.listening_bar.get_width() == 360)
+    page._listen_speaker("voice-10")
+    until(window, lambda: page.split.get_show_content() and not page.speakers.get_mapped())
+    bar.stop.grab_focus()
+    focus_event(window, lambda: bar.buttons["again"], lambda: page.merge_speaker("voice-10", "host"))
+    assert "voice-10" not in page._speaker_rows
+    assert window.listen.speaker == "voice-11" and window.listen.cued and not window.player.playing
+    assert page.split.get_show_content() and not page.speakers.get_mapped()
+    assert page._merge_transition is None and not page._rows_rebuilt_tick
+    page.undo_speaker_merge()
+    window.set_default_size(900, 650)
+    until(
+        window,
+        lambda: "voice-10" in page._speaker_rows and page._speaker_future is None and not page._rows_rebuilt_tick,
+    )
+    window.listen.stop()
+    update_metadata(meeting.directory, speakers=original_metadata["speakers"])
+    window.monitor.refresh_now()
+    until(window, lambda: all(s.provenance == "user" for s in page.meeting.speakers) and not page._rows_rebuilt_tick)
+    meeting = page.meeting
     window.monitor.close()
     row, play, when = page._speaker_rows["voice-12"]
     assert when.endswith("00:00:34")
@@ -245,7 +394,21 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page._speaker_rows["voice-12"][1] is play
     assert play.get_realized()
     until(window, lambda: window.listen.active)
-    assert window.listen.speaker == "voice-12" and page.speakers_dialog is None
+    assert window.listen.speaker == "voice-12" and page.speakers_dialog is dialog and dialog.closed
+    bar = page.listening_bar
+    until(window, lambda: bar.get_child_revealed())
+    assert bar.name.get_text() == "Unidentified voice"
+    assert bar.turn.get_text() == text("listen.turn", index=1, count=1, position="00:00:34")
+    assert not bar.buttons["nextTurn"].get_sensitive()
+    assert not bar.buttons["nextSpeaker"].get_sensitive()
+    assert bar.buttons["previousSpeaker"].get_sensitive()
+    # Allocate the same real widget at the narrow minimum and inspect collapse.
+    bar._collapse(3)
+    assert not bar.excerpt.get_visible() and not bar.merge.get_visible()
+    assert not bar.buttons["name"].get_visible()
+    assert bar.more.get_visible() and bar.stop.get_visible()
+    assert bar.buttons["previousTurn"].get_visible()
+    bar._collapse(0)
     assert play.get_icon_name() == "media-playback-stop-symbolic"
     assert row.has_css_class("listening")
     until(window, lambda: page.speakers_scroller.get_vadjustment().get_value() > 0)
@@ -254,6 +417,74 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, lambda: not window.listen.active)
     assert not window.player.playing and play.get_icon_name() == "media-playback-start-symbolic"
     assert not row.has_css_class("listening")
+    # Renaming updates the accessible name without announcing a turn step.
+    announcements = []
+    announce = bar.body.announce
+    bar.body.announce = lambda message, *_: announcements.append(message)
+    assert window.listen.start("voice-0", 0, play=False)
+    assert announcements[-1] == f"Unidentified voice, {page._speaker_rows['voice-0'][2]}"
+    announcements.clear()
+    original_snapshot = window._source_snapshot
+    renamed_meeting = replace(
+        meeting,
+        speakers=tuple(
+            replace(speaker, name="Dana") if speaker.id == "voice-0" else speaker for speaker in meeting.speakers
+        ),
+    )
+    window._library_scanned(
+        replace(
+            original_snapshot,
+            meetings=tuple(renamed_meeting if m.key == meeting.key else m for m in original_snapshot.meetings),
+        )
+    )
+    assert bar.name.get_text() == "Dana" and not announcements
+    # A single-speaker meeting exposes Name but never an empty Merge menu.
+    merges = [{"from": s.id, "into": "voice-0"} for s in renamed_meeting.speakers if s.id != "voice-0"]
+    merged_metadata = dict(renamed_meeting.metadata, speakerMerges=merges)
+    # A cached transcript can still reference merged-away ids. Both the real
+    # preview and virtualized transcript must resolve them without exceptions.
+    stale_merged = replace(
+        renamed_meeting,
+        speakers=tuple(s for s in renamed_meeting.speakers if s.id == "voice-0"),
+        metadata=merged_metadata,
+    )
+    window._library_scanned(
+        replace(
+            original_snapshot,
+            meetings=tuple(stale_merged if m.key == meeting.key else m for m in original_snapshot.meetings),
+        )
+    )
+    until(window, lambda: page.bound and not page._rows_rebuilt_tick)
+    assert any(turn.speaker == "host" for turn, _words, _row in page.bound.values())
+    assert all(any(value.get_text() == "Dana" for value in labels(row)) for _turn, _words, row in page.bound.values())
+    assert any(value.get_text() == "Dana" for value in labels(window.preview))
+    # The single-speaker fixture itself uses the merged words and rebuilt turns.
+    merged_words = apply_merges(renamed_meeting.words, merges)
+    merged_turns = reading_turns(merged_words)
+    one_speaker = replace(
+        stale_merged,
+        words=merged_words,
+        turns=merged_turns,
+        listening_turns=speaker_turns(merged_words),
+        preview_turns=tuple(PreviewTurn(t.speaker, t.start_ms, t.text) for t in merged_turns[:3]),
+    )
+    window._library_scanned(
+        replace(
+            original_snapshot,
+            meetings=tuple(one_speaker if m.key == meeting.key else m for m in original_snapshot.meetings),
+        )
+    )
+    assert bar.buttons["name"].get_sensitive()
+    assert not bar.merge.get_sensitive() and not bar.actions.lookup_action("merge").get_enabled()
+    window._library_scanned(original_snapshot)
+    bar.body.announce = announce
+    window.listen.stop()
+    # Markup dims only the lead-in and preserves literal transcript characters.
+    assert window.listen.start("voice-10", 0, play=False)
+    assert '<span alpha="55%">' in bar.excerpt.get_label()
+    assert not bar.excerpt.has_css_class("dim-label")
+    assert bar.excerpt.get_use_markup()
+    window.listen.stop()
     # Read-only rows retain Play, but have no naming action.
     old_play = page._speaker_rows["voice-0"][1]
     generation = len(rebuilt)
@@ -314,7 +545,14 @@ with tempfile.TemporaryDirectory() as temporary:
     finally:
         window.player.disconnect(error_handler)
     assert window.listen.speaker == "voice-0" and clicks == ["voice-0"]
-    assert page.speakers_dialog is None
+    assert page.speakers_dialog is dialog and dialog.closed
+    assert not page.listening_bar.buttons["name"].get_visible()
+    assert not page.listening_bar.merge.get_visible()
+    assert not page.listening_bar.actions.lookup_action("name").get_enabled()
+    assert not page.listening_bar.actions.lookup_action("merge").get_enabled()
+    page.listening_bar._collapse(3)
+    assert page.listening_bar.more_model.get_n_items() == 2
+    page.listening_bar._collapse(page.listening_bar._layout or 0)
     page._listen_speaker("voice-0")
     generation = len(rebuilt)
     window._library_scanned(editable_snapshot)
@@ -333,6 +571,15 @@ with tempfile.TemporaryDirectory() as temporary:
     with using_language("en"):
         page._signature = None
         page.update(meeting)
+    page._listen_speaker("voice-12")
+    window.set_default_size(360, 650)
+    until(window, lambda: page.listening_bar.get_child_revealed() and page.listening_bar.get_width() == 360)
+    assert not page.listening_bar.buttons["nextSpeaker"].get_visible()
+    assert not page.listening_bar.buttons["name"].get_visible()
+    assert page.listening_bar.buttons["nextTurn"].get_mapped()
+    assert page.listening_bar.stop.get_mapped()
+    assert not page.elapsed.get_visible() and not page.total.get_visible()
+    page.stop_listening()
     window.set_default_size(900, 650)
     until(window, lambda: window.get_width() <= 900)
 
@@ -361,7 +608,7 @@ with tempfile.TemporaryDirectory() as temporary:
             ok and bounds.get_y() >= 0 and bounds.get_y() + bounds.get_height() <= page.speakers_scroller.get_height()
         )
 
-    until(window, target_visible)
+    until(window, lambda: page.listening_bar.get_child_revealed() and target_visible())
     window.player.pause()
     output = Path(os.environ["CASSINI_SCREENSHOT_OUT"])
     save_picture(output)
@@ -379,7 +626,7 @@ with tempfile.TemporaryDirectory() as temporary:
         )
 
     until(window, focused_row_visible)
-    assert window.listen.speaker == "voice-12" and page.speakers_dialog is None
+    assert window.listen.speaker == "voice-12" and page.speakers_dialog is dialog and dialog.closed
     page.update(replace(meeting, has_audio=False))
     assert all(not button.get_visible() for _, button, _ in page._speaker_rows.values())
     app.begin_exit()

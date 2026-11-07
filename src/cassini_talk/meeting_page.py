@@ -47,6 +47,7 @@ class MeetingPage(Adw.NavigationPage):
         self._speaker_signature = None
         self._match_signature = None
         self._listening_turns = None
+        self._updating_rows = False
         self._speaker_rows = {}
         self._rows_rebuilt_tick = 0
         self._can_listen = False
@@ -55,10 +56,15 @@ class MeetingPage(Adw.NavigationPage):
         self.settings = Gio.Settings.new(window.get_application().settings_schema)
         outer = box()
         self.set_child(outer)
-        split = Adw.NavigationSplitView(
+        self.split = split = Adw.NavigationSplitView(
             min_sidebar_width=260, max_sidebar_width=260, sidebar_width_fraction=0.23, vexpand=True
         )
-        outer.append(split)
+        responsive = Adw.BreakpointBin(child=split, width_request=360, height_request=100)
+        narrow = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 720sp"))
+        narrow.add_setter(split, "collapsed", True)
+        narrow.add_setter(split, "show-content", True)
+        responsive.add_breakpoint(narrow)
+        outer.append(responsive)
         sidebar = Adw.ToolbarView(css_classes=["library-sidebar"])
         header = Adw.HeaderBar(
             show_start_title_buttons=False,
@@ -142,6 +148,16 @@ class MeetingPage(Adw.NavigationPage):
         self._companion.set_margin_start(48)
         self._companion.set_margin_end(48)
         center.insert_child_after(self._companion, self.lines)
+        from .listening_bar import ListeningBar
+
+        self._listen_origin = None
+        self.speakers.connect("map", self._schedule_rows_ready)
+        self._merge_transition = None
+        self._dialog_focus = None
+        self._dialog_focus_idle = 0
+        self._dialog_focus_signals = []
+        self.listening_bar = ListeningBar(self)
+        outer.append(self.listening_bar)
         self._build_player(outer)
         self._style_manager = Adw.StyleManager.get_default()
         self._style_signal = self._style_manager.connect("notify::dark", lambda *_: self.update(self.meeting))
@@ -238,7 +254,13 @@ class MeetingPage(Adw.NavigationPage):
         self.rate_button.get_popover().connect("map", self._name_rate_items)
         self.rate_changed(self.window._rate)
         bar.append(self.rate_button)
-        outer.append(bar)
+        transport = Adw.BreakpointBin(child=bar, width_request=360, height_request=64)
+        compact = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 480sp"))
+        compact.add_setter(self.elapsed, "visible", False)
+        compact.add_setter(self.total, "visible", False)
+        compact.add_setter(bar, "spacing", 4)
+        transport.add_breakpoint(compact)
+        outer.append(transport)
 
     def _name_rate_items(self, widget, *_args):
         # GTK's model buttons do not consistently derive an AT-SPI name from
@@ -274,7 +296,7 @@ class MeetingPage(Adw.NavigationPage):
 
     def _bind(self, _factory, item):
         turn = item.get_item().turn
-        speaker = next(s for s in self.meeting.speakers if s.id == turn.speaker)
+        speaker = self.meeting.speaker_for(turn.speaker)
         row = Gtk.Box(spacing=16, margin_bottom=24)
         names = box(5, width_request=120, valign=Gtk.Align.START)
         name = label(
@@ -327,6 +349,7 @@ class MeetingPage(Adw.NavigationPage):
         return True
 
     def update(self, meeting):
+        self._updating_rows = True
         self.meeting = meeting
         self.headline.set_title(meeting.title)
         self.window.set_title(meeting.title)
@@ -390,6 +413,8 @@ class MeetingPage(Adw.NavigationPage):
             dark,
         )
         if signature == self._signature:
+            self._updating_rows = False
+            self._listening_changed()
             return
         self._signature = signature
         self.more_menu.remove_all()
@@ -413,6 +438,8 @@ class MeetingPage(Adw.NavigationPage):
         self._speaker_rows.clear()
         for speaker in meeting.speakers:
             self.speakers.append(self._speaker_row(speaker, shares[speaker.id], matches))
+        self._updating_rows = False
+        self._finish_merge_transition()
         self._listening_changed()
         if meeting.speakers and (meeting.metadata_editable or meeting.published_file is not None):
             self.name_speakers_button = Gtk.Button(
@@ -475,13 +502,26 @@ class MeetingPage(Adw.NavigationPage):
         self._match_signature = matches
         self._starts = [turn.start_ms for turn in meeting.turns]
         self._position()
-        if not self._rows_rebuilt_tick:
+        self._schedule_rows_ready()
+
+    def _schedule_rows_ready(self, *_):
+        if not self._closed and self.speakers.get_mapped() and not self._rows_rebuilt_tick:
             self._rows_rebuilt_tick = self.add_tick_callback(self._rows_ready)
+
+    def _finish_merge_transition(self):
+        # The listening handoff depends on the new model, never sidebar layout.
+        if self._merge_transition and self._merge_transition[0] not in self._speaker_rows:
+            _source, following = self._merge_transition
+            self._merge_transition = None
+            if following in self._speaker_rows:
+                self.window.listen.start(following, 0, play=False)
+                if self._dialog_focus is None:
+                    self.listening_bar.focus_merge(following)
 
     def _rows_ready(self, _page, _clock):
         # Allocation alone can survive unmapping. Announce only the current
         # installed rows, wired, mapped and allocated for GTK activation.
-        if self._closed:
+        if self._closed or not self.speakers.get_mapped():
             self._rows_rebuilt_tick = 0
             return GLib.SOURCE_REMOVE
         if not self.get_mapped() or any(
@@ -494,6 +534,7 @@ class MeetingPage(Adw.NavigationPage):
             return GLib.SOURCE_CONTINUE
         self._rows_rebuilt_tick = 0
         self.emit("rows-rebuilt")
+        self._queue_dialog_focus()
         return GLib.SOURCE_REMOVE
 
     def _speaker_row(self, speaker, share, matches):
@@ -582,13 +623,25 @@ class MeetingPage(Adw.NavigationPage):
         self._speaker_rows[speaker.id] = row, play, when
         return row
 
+    def stop_listening(self):
+        speaker = self.window.listen.speaker
+        self.window.listen.stop()
+        origin = self._listen_origin
+        if (origin is None or not origin.get_mapped()) and speaker in self._speaker_rows:
+            origin = self._speaker_rows[speaker][1]
+        if origin is not None and origin.get_mapped():
+            origin.grab_focus()
+
     def _listen_speaker(self, identifier):
+        self._listen_origin = self._speaker_rows[identifier][1]
         listen = self.window.listen
         if listen.active and listen.speaker == identifier:
             self.player.pause()
             listen.stop()
         else:
             listen.start(identifier)
+            if self.split.get_collapsed():
+                self.split.set_show_content(True)
 
     def _listening_changed(self, *_):
         listen = self.window.listen
@@ -613,6 +666,7 @@ class MeetingPage(Adw.NavigationPage):
                 self._scroll_speaker(row)
         if not listen.active:
             self._listening_target = None
+        self.listening_bar.update()
 
     def _scroll_speaker(self, row):
         self._scroll_target = row
@@ -631,11 +685,12 @@ class MeetingPage(Adw.NavigationPage):
             adjustment.clamp_page(top, top + bounds.get_height())
         return GLib.SOURCE_REMOVE
 
-    def name_speakers(self, identifier=None):
+    def name_speakers(self, identifier=None, *, from_listening=False):
         if not self.meeting.metadata_editable or not self.meeting.speakers:
             return
         from .speakers_dialog import SpeakersDialog
 
+        self._clear_dialog_focus()
         if self.speakers_dialog and not self.speakers_dialog.closed:
             self.speakers_dialog.close()
         visible = {s.id for s in self.meeting.speakers}
@@ -643,7 +698,134 @@ class MeetingPage(Adw.NavigationPage):
         self._selected_speaker = selected if selected in visible else self.meeting.speakers[0].id
         self.speakers_dialog = SpeakersDialog(self, self._selected_speaker)
         self.speakers_dialog.present(self.window)
-        self.speakers_dialog.entry.grab_focus()
+        if from_listening:
+            self.speakers_dialog.play.grab_focus()
+            self._dialog_focus = self.speakers_dialog
+            for obj, signal in (
+                (self.speakers_dialog, "closed"),
+                (self.speakers_dialog, "unmap"),
+                (self.window, "notify::visible-dialog"),
+                (self.listening_bar, "notify::child-revealed"),
+                (self, "map"),
+            ):
+                self._dialog_focus_signals.append((obj, obj.connect(signal, self._queue_dialog_focus)))
+        else:
+            self.speakers_dialog.entry.grab_focus()
+
+    def _clear_dialog_focus(self):
+        if self._dialog_focus_idle:
+            GLib.source_remove(self._dialog_focus_idle)
+            self._dialog_focus_idle = 0
+        for obj, signal in self._dialog_focus_signals:
+            obj.disconnect(signal)
+        self._dialog_focus_signals.clear()
+        self._dialog_focus = None
+
+    def _queue_dialog_focus(self, *_):
+        if not self._closed and self._dialog_focus is not None and not self._dialog_focus_idle:
+            self._dialog_focus_idle = GLib.idle_add(self._restore_dialog_focus)
+
+    def _restore_dialog_focus(self):
+        self._dialog_focus_idle = 0
+        dialog = self._dialog_focus
+        if dialog is None or not dialog.closed or dialog.get_mapped():
+            return GLib.SOURCE_REMOVE
+        visible = self.window.get_visible_dialog()
+        if visible is not None:
+            if visible is not dialog:
+                self._clear_dialog_focus()
+            return GLib.SOURCE_REMOVE
+        merged = getattr(dialog, "_recompute", None)
+        if merged:
+            source, destination = merged
+            if self.split.get_collapsed():
+                self.split.set_show_content(False)
+            if source in self._speaker_rows or self._rows_rebuilt_tick or self._merge_transition:
+                return GLib.SOURCE_REMOVE
+            if destination not in self._speaker_rows:
+                return GLib.SOURCE_REMOVE
+            row, play, _when = self._speaker_rows[destination]
+            target = row.get_child() if isinstance(row.get_child(), Gtk.Button) else play
+            self._scroll_speaker(row)
+        else:
+            if not self.listening_bar.get_child_revealed():
+                return GLib.SOURCE_REMOVE
+            target = self.listening_bar.name_focus_target()
+        if target.get_mapped() and target.is_sensitive() and target.grab_focus():
+            self._clear_dialog_focus()
+        else:
+            # Mapping and sensitivity can follow the dialog's modal teardown.
+            # Subscribe once to this control, rather than retrying on a timer.
+            if not any(obj is target for obj, _signal in self._dialog_focus_signals):
+                for signal in ("map", "state-flags-changed"):
+                    self._dialog_focus_signals.append((target, target.connect(signal, self._queue_dialog_focus)))
+        return GLib.SOURCE_REMOVE
+
+    def prepare_speaker_merge(self, source, target):
+        if not self.window.listen.active or self.window.listen.speaker != source:
+            return None
+        order = list(self.meeting.speakers)
+        index = next((i for i, s in enumerate(order) if s.id == source), len(order))
+        following = next(
+            (
+                s.id
+                for s in order[index + 1 :]
+                if s.id != target and s.provenance == "unnamed" and self.window.listen.turns_of(s.id)
+            ),
+            None,
+        )
+        self.player.pause()
+        return source, following
+
+    def speaker_merged(self, source, target, transition=None):
+        # A filesystem notification may have delivered the merged model before
+        # the worker's success callback. Keep the pre-edit pane order.
+        self._merge_transition = transition
+        self._finish_merge_transition()
+        name = next((s.name for s in self.meeting.speakers if s.id == target), target)
+        self.window.toasts.add_toast(
+            Adw.Toast(
+                title=GLib.markup_escape_text(text("speakers.mergedToast", name=name)),
+                button_label=text("common.undo"),
+                action_name="win.undo-speaker-merge",
+            )
+        )
+
+    def merge_speaker(self, source, target):
+        if not self.meeting.metadata_editable or self._speaker_future is not None or self.window.monitor._closed:
+            return
+        from .speaker_edits import merge_into
+
+        transition = self.prepare_speaker_merge(source, target)
+        directory = self.meeting.directory
+        self._speaker_future = self.window.monitor._executor.submit(
+            merge_into, directory, source, target, scanner=self.window.monitor.scanner
+        )
+        self.listening_bar.update()
+        self._speaker_future.add_done_callback(
+            lambda f: GLib.idle_add(self._speaker_merged, f, source, target, transition)
+        )
+
+    def _speaker_merged(self, future, source, target, transition):
+        from concurrent.futures import CancelledError
+
+        self._speaker_future = None
+        try:
+            future.result()
+        except CancelledError:
+            return False
+        except (OSError, ValueError):
+            if not self._closed:
+                self.window.toast(text("speakers.changeFailed"))
+        else:
+            self.window.get_application().recompute_voices(self.meeting.directory, (source, target))
+            if not self._closed:
+                self.speaker_merged(source, target, transition)
+            if not self.window.monitor._closed:
+                self.window.monitor.refresh_now()
+        if not self._closed:
+            self.listening_bar.update()
+        return False
 
     def undo_speaker_merge(self):
         if self._closed or self._speaker_future is not None or not self.meeting.metadata_editable:
@@ -692,6 +874,7 @@ class MeetingPage(Adw.NavigationPage):
         return False
 
     def _position(self, _player=None, property=None):
+        self.listening_bar.update_navigation()
         index = bisect_right(self._starts, self.player.position) - 1
         explicit_seek = property is not None and property.name == "position" and not self.player.playing
         resumed = self.player.playing and not getattr(self, "_was_playing", False)
@@ -734,6 +917,7 @@ class MeetingPage(Adw.NavigationPage):
 
     def close(self):
         self._closed = True
+        self._clear_dialog_focus()
         if self._rows_rebuilt_tick:
             self.remove_tick_callback(self._rows_rebuilt_tick)
             self._rows_rebuilt_tick = 0

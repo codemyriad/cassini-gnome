@@ -221,6 +221,23 @@ class Meeting(MeetingState):
     def speaker_names(self):
         return tuple(s.name for s in self.speakers)
 
+    def speaker_for(self, identifier):
+        """Resolve a cached turn's speaker through merges, without repairing data."""
+        from .speaker_merges import resolve_merges
+
+        speakers = {speaker.id: speaker for speaker in self.speakers}
+        entries = self.metadata.get("speakerMerges", [])
+        known = set(speakers) | {identifier}
+        if isinstance(entries, list):
+            for entry in entries:
+                if isinstance(entry, dict):
+                    known.update(value for key in ("from", "into") if isinstance(value := entry.get(key), str))
+        resolved = resolve_merges(entries, known).get(identifier, identifier)
+        if resolved in speakers:
+            return speakers[resolved]
+        rank = len(speakers)
+        return LibrarySpeaker(resolved, text("common.speaker.unnamed", n=rank + 1), "unnamed", 0, rank)
+
     def row_texts(self):
         """R11 state-specific meta and second line; no capture labels become names."""
         if self.publication_notice and self.lifecycle == "saved":

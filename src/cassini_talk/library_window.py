@@ -1257,11 +1257,10 @@ class LibraryWindow(Adw.ApplicationWindow):
                     callback=lambda: self.get_application().write_down(meeting),
                 )
             )
-        speakers = {s.id: s for s in meeting.speakers}
         for turn in meeting.preview_turns:
             line = Gtk.Box(spacing=16)
             name = vertical(3, width_request=110, valign=Gtk.Align.START)
-            name.append(self._speaker(speakers[turn.speaker]))
+            name.append(self._speaker(meeting.speaker_for(turn.speaker)))
             name.append(label(fmt.position(turn.start_ms), "small", "dim-label", xalign=0))
             line.append(name)
             line.append(

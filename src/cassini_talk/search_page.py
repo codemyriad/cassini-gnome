@@ -369,9 +369,7 @@ class SearchPage(Adw.NavigationPage):
         item.set_child(None)
 
     def _speaker(self, hit):
-        return next(
-            (s for s in self._meetings[hit.key].speakers if s.id == self._turns[hit.key][hit.turn].speaker), None
-        )
+        return self._meetings[hit.key].speaker_for(self._turns[hit.key][hit.turn].speaker)
 
     def _selected(self, *_):
         chosen = self.selection.get_selected_item()
@@ -434,7 +432,7 @@ class SearchPage(Adw.NavigationPage):
         excerpt = box(22, margin_top=8)
         for index in range(max(0, hit.turn - 1), min(len(turns), hit.turn + 2)):
             turn = turns[index]
-            speaker = next((s for s in meeting.speakers if s.id == turn.speaker), None)
+            speaker = meeting.speaker_for(turn.speaker)
             row = Gtk.Box(spacing=16, css_classes=[] if index == hit.turn else ["dim-label"])
             name = box(6, width_request=110, valign=Gtk.Align.START)
             if speaker:

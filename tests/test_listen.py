@@ -660,3 +660,35 @@ def test_speed_change_after_seeking_away_from_finished_span_applies_to_new_segme
     player.play()
     until(lambda: player._at_end, "file EOS")
     assert done == [1500]
+
+
+def test_cue_after_merge_never_starts_audio(player):
+    controller = ListenController(lambda: player)
+    controller.set_turns(TURNS)
+    assert controller.start("ada", 1, play=False)
+    assert controller.active and controller.index == 1
+    assert not player.playing
+    assert player.position == 5500
+    assert controller.step_target(1) == 2
+    assert controller.step_target(-1) == 0
+    player.rendered.clear()
+    player.play()
+    until(lambda: controller.finished, "cue then play")
+    assert player.position == 20000
+    controller.stop()
+
+
+def test_dialog_sample_preserves_the_paused_cue_and_restores_its_position(player):
+    controller = ListenController(lambda: player)
+    controller.set_turns(TURNS)
+    assert controller.start("ada", 1, play=False)
+    saved = player.position
+    assert controller.cued
+    assert player.play_range(100, 800)
+    until(lambda: not player.playing, "dialog sample end")
+    assert controller.cued and controller.index == 1
+    player.clear_range()
+    player.seek(saved)
+    assert not player.playing and player.position == saved
+    assert controller.cued and controller.step_target(1) == 2
+    controller.stop()
