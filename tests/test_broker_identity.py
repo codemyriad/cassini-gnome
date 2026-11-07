@@ -248,6 +248,7 @@ def test_installed_identity_reads_the_generated_manifest_and_source_patch_change
 def test_old_flatpak_client_targets_current_host_but_reports_its_own_loaded_build(monkeypatch):
     from cassini_talk import broker_identity, installed_build
 
+    monkeypatch.setattr(broker_identity, "_host_targets", {})
     loaded = broker_identity.expected()
     current = dict(version="next", buildId="f" * 64)
     monkeypatch.setenv("FLATPAK_ID", "io.codemyriad.CassiniTalk")

@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Retire only an identified idle broker, off GTK and without touching captures."""
 
+import contextlib
 import fcntl
 import logging
 import os
 import re
 import signal
 import socket
+import stat
 import struct
 import threading
 import time
@@ -18,6 +20,34 @@ from . import broker_identity
 LOG = logging.getLogger(__name__)
 
 
+@contextlib.contextmanager
+def handover(path, cancelled=None):
+    """Serialize clients across retirement, lock release and replacement readiness."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if path.parent.stat().st_uid != os.getuid() or path.parent.stat().st_mode & 0o077:
+        raise PermissionError("Browser service directory must be private to this user")
+    descriptor = os.open(
+        path.with_suffix(".startup.lock"), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600
+    )
+    try:
+        if os.fstat(descriptor).st_uid != os.getuid() or not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise PermissionError("Browser startup lock must be an owned regular file")
+        deadline = time.monotonic() + 15
+        while True:
+            if cancelled is not None and cancelled.is_set():
+                raise CancelledError()
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Browser service handover is still in progress") from None
+                (cancelled or threading.Event()).wait(0.025)
+        yield
+    finally:
+        os.close(descriptor)
+
+
 def busy(status):
     if status.get("brokerBusy") is True:
         return True
@@ -27,6 +57,8 @@ def busy(status):
     return any(
         not isinstance(row, dict)
         or row.get("recording")
+        or row.get("stopping")
+        or row.get("starting")
         or row.get("busy")
         or row.get("browserRecording")
         or row.get("phase") in ("starting", "recording", "saving")
@@ -72,7 +104,11 @@ def _released(path, cancelled):
     deadline = time.monotonic() + 5
     from .installed_build import _open_regular
 
-    with _open_regular(path.with_suffix(".lock")) as lock:
+    try:
+        lock = _open_regular(path.with_suffix(".lock"))
+    except FileNotFoundError:
+        return  # No lock inode exists for a previous listener.
+    with lock:
         if os.fstat(lock.fileno()).st_uid != os.getuid():
             raise PermissionError("Browser service lock belongs to another user")
         while True:
@@ -95,14 +131,24 @@ def reusable(connection, path, *, cancelled=None):
     """True: retain this listener; False: it retired and released its lock."""
     from .browser_service import connect, request
 
-    status, (pid, uid, _gid) = inspect(connection)
+    try:
+        status, (pid, uid, _gid) = inspect(connection)
+    except OSError:
+        _released(path, cancelled)
+        return False
+    if busy(status):
+        return True  # Active audio never waits for optional installed-build discovery.
     local = broker_identity.target()
-    if broker_identity.matches(status.get("identity"), local) or busy(status):
+    if broker_identity.matches(status.get("identity"), local):
         return True
     if cancelled is not None and cancelled.is_set():
         raise CancelledError()
     if status.get("idleShutdown") is True:
-        result = request("shutdown", path=path, identity=status.get("identity"))
+        try:
+            result = request("shutdown", path=path, identity=status.get("identity"))
+        except OSError:
+            _released(path, cancelled)
+            return False
         if result.get("shutdown") is not True:
             return True  # A capture started, or a different broker took over.
     else:
@@ -115,8 +161,12 @@ def reusable(connection, path, *, cancelled=None):
         try:
             if not _legacy_process(pid, uid, path):
                 return True
-            with connect(path, timeout=0.5) as again:
-                latest, peer = inspect(again)
+            try:
+                with connect(path, timeout=0.5) as again:
+                    latest, peer = inspect(again)
+            except OSError:
+                _released(path, cancelled)
+                return False
             if peer[:2] != (pid, uid) or busy(latest) or broker_identity.matches(latest.get("identity"), local):
                 return True
             if cancelled is not None and cancelled.is_set():
@@ -131,12 +181,20 @@ def reusable(connection, path, *, cancelled=None):
 
 def retire_idle(path=None):
     """BuildRefresh retires an old idle service without spawning a replacement."""
-    from .browser_service import BROKER_ABSENT, connect, service_path
+    from .browser_service import service_path
 
     target = Path(path or service_path())
+    with handover(target):
+        return _retire_idle(target)
+
+
+def _retire_idle(target):
+    from .browser_service import BROKER_ABSENT, connect
+
     try:
         with connect(target, timeout=0.5) as connection:
-            reusable(connection, target)
+            if not reusable(connection, target):
+                return False
         with connect(target, timeout=0.5) as connection:
             status, _peer = inspect(connection)
         return busy(status)

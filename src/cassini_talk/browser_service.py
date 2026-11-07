@@ -172,6 +172,14 @@ BROKER_ABSENT = (FileNotFoundError, ConnectionRefusedError)
 
 
 def ensure_service(path=None, *, cancelled=None, absent=None):
+    from .broker_lifecycle import handover
+
+    target = Path(path or service_path())
+    with handover(target, cancelled):
+        return _ensure_service(target, cancelled=cancelled, absent=absent)
+
+
+def _ensure_service(path=None, *, cancelled=None, absent=None):
     """The broker's socket, spawning a broker if none answers. absent(error),
     if given, hears at once that the first connect found no broker
     (BROKER_ABSENT), before the spawn and its wait of up to 5 s: an exiting
@@ -187,8 +195,13 @@ def ensure_service(path=None, *, cancelled=None, absent=None):
     except BROKER_ABSENT as error:
         if absent is not None:
             absent(error)
+    except TimeoutError:
+        raise  # Never report a dead socket as ready after a handover timeout.
     except (OSError, ValueError):
         return target
+    from .broker_lifecycle import _released
+
+    _released(target, cancelled)
     if cancelled is not None and cancelled.is_set():
         raise CancelledError()
     # A filesystem lock in serve() elects one process if browser and app start together.
@@ -968,8 +981,15 @@ class BrowserService:
                 return dict(shutdown=False, reason="changed")
             if self._busy_locked():
                 return dict(shutdown=False, reason="busy")
-            self.closed.set()
+            self.close()
             return dict(shutdown=True)
+
+    def close(self):
+        self.closed.set()
+        listener = getattr(self, "_listener", None)
+        if listener is not None:
+            with contextlib.suppress(OSError):
+                listener.shutdown(socket.SHUT_RDWR)
 
     def _capture_changed(self, capture, event):
         if event == "error":
@@ -3310,6 +3330,7 @@ class BrowserService:
                 path.chmod(0o600)
                 server.listen(16)
                 server.settimeout(0.5)
+                self._listener = server
                 if ready:
                     ready.set()
                 idle_since = time.monotonic()
@@ -3327,6 +3348,10 @@ class BrowserService:
                             threading.Thread(target=self.handle, args=(connection,), daemon=True).start()
                         except TimeoutError:
                             pass
+                        except OSError:
+                            if self.closed.is_set():
+                                break
+                            raise
                         # UI/PCM traffic may keep accept() busy indefinitely;
                         # call-end, return and transport deadlines must still advance.
                         self.tick()
@@ -3342,6 +3367,7 @@ class BrowserService:
                             elif time.monotonic() - idle_since >= idle_timeout:
                                 break
                 finally:
+                    self._listener = None
                     path.unlink(missing_ok=True)
                     with self.lock:
                         captures = list(self.captures.values())
@@ -3362,7 +3388,7 @@ def main():
     if args.idle_timeout is not None and args.idle_timeout <= 0:
         parser.error("idle timeout must be positive")
     service = BrowserService(require_application=True)
-    signal.signal(signal.SIGTERM, lambda *_: service.closed.set())
+    signal.signal(signal.SIGTERM, lambda *_: service.close())
     # serve's finally performs the same cleanup for SIGINT as SIGTERM.
     with contextlib.suppress(KeyboardInterrupt):
         service.serve(args.serve, idle_timeout=args.idle_timeout)
