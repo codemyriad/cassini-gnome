@@ -507,13 +507,13 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, lambda: any(words.has_css_class("listen-current") for _t, words, _r in page.bound.values()))
     target = next(t for t in page.meeting.turns if t.speaker == "voice-12")
     until(window, lambda: target.index in page.bound)
-    _turn, words, row = page.bound[target.index]
+    _turn, words, transcript_row = page.bound[target.index]
     assert words.has_css_class("listen-current")
-    name_button = row.get_first_child().get_first_child()
+    name_button = transcript_row.get_first_child().get_first_child()
     assert isinstance(name_button, Gtk.Button)
     assert name_button.get_tooltip_text() == text("listen.speakerName.tooltip", name="Unidentified voice")
     window.player.pause()
-    row.get_first_child().get_last_child().emit("clicked")
+    transcript_row.get_first_child().get_last_child().emit("clicked")
     assert window.player.playing and window.player.position == target.start_ms
     page._hand_scroll()
     assert page._follow_until > GLib.get_monotonic_time()
