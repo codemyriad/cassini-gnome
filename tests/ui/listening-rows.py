@@ -393,6 +393,119 @@ with tempfile.TemporaryDirectory() as temporary:
     window.monitor.refresh_now()
     until(window, lambda: all(s.provenance == "user" for s in page.meeting.speakers) and not page._rows_rebuilt_tick)
     meeting = page.meeting
+
+    # Deliver actual X11 keys in the private display; observe controller
+    # requests instead of racing the short turns' automatic playback ticks.
+    def press(sequence):
+        key(window, sequence, until)
+
+    def drained():
+        done = []
+        GLib.idle_add(lambda: done.append(True) or False)
+        until(window, lambda: done)
+
+    requests = []
+    handler = window.listen.connect(
+        "requested", lambda *_: requests.append((window.listen.speaker, window.listen.index))
+    )
+    window.listen.start("voice-0", 0, play=False)
+    page.listening_bar.stop.grab_focus()
+    requests.clear()
+    press("alt+Down")
+    until(window, lambda: requests)
+    window.player.pause()
+    assert requests[0] == ("voice-0", 1)
+    requests.clear()
+    press("alt+Up")
+    until(window, lambda: requests)
+    window.player.pause()
+    assert requests[0] == ("voice-0", 0)
+    window.listen.start("voice-10", 0, play=False)
+    requests.clear()
+    press("alt+shift+Down")
+    until(window, lambda: requests)
+    window.player.pause()
+    assert requests[0] == ("voice-11", 0)
+    requests.clear()
+    press("alt+shift+Up")
+    until(window, lambda: requests)
+    window.player.pause()
+    assert requests[0] == ("voice-10", 0)
+    entry = Gtk.Entry()
+    page.get_child().prepend(entry)
+    window.protect_text_input(entry)
+    entry.grab_focus()
+    until(window, lambda: window._text_focused())
+    requests.clear()
+    assert not page.listening_keys.actions.lookup_action("next-turn").get_enabled()
+    press("alt+Down")
+    drained()
+    assert not requests and window.listen.active
+    # GTK may use Alt+Down for normal focus traversal. Test Esc with the
+    # entry focused, independently of that platform navigation behaviour.
+    entry.grab_focus()
+    until(window, lambda: window._text_focused())
+    press("Escape")
+    drained()
+    assert not requests and window.listen.active, (
+        requests,
+        window.listen.active,
+        type(window.get_focus()).__name__,
+        entry.get_mapped(),
+        entry.get_parent(),
+    )
+    page.get_child().remove(entry)
+    page.listening_bar.stop.grab_focus()
+    page.listening_bar.name_speaker()
+    until(window, lambda: page.speakers_dialog.play.has_focus())
+    press("Escape")
+    until(window, lambda: page.speakers_dialog.closed and window.get_visible_dialog() is None)
+    assert window.listen.active
+    page.listening_bar.merge.popup()
+    until(window, lambda: page.listening_bar.merge.get_popover().get_mapped())
+    press("Escape")
+    until(window, lambda: not page.listening_bar.merge.get_popover().get_mapped())
+    assert window.listen.active
+    window.set_default_size(600, 650)
+    until(window, lambda: page.split.get_collapsed() and page.split.get_show_content())
+    press("F9")
+    until(window, lambda: not page.split.get_show_content())
+    press("Escape")
+    until(window, lambda: page.split.get_show_content())
+    assert window.listen.active
+    press("Escape")
+    until(window, lambda: not window.listen.active)
+    assert window.meeting_page is page
+    for dead in (
+        "nudge-forward",
+        "next-match",
+        "previous-match",
+        "show-sidebar",
+        "show-properties",
+        "follow-along",
+        "show-transcript",
+        "show-summary",
+    ):
+        assert not app.get_accels_for_action("win." + dead)
+    window.listen.disconnect(handler)
+    window.set_default_size(1120, 720)
+    until(window, lambda: not page.split.get_collapsed())
+    app.on_shortcuts()
+    shortcut_dialog = app.shortcuts_dialog
+    expected_shortcuts = {
+        text("shortcuts.listen.turns"),
+        text("shortcuts.listen.speakers"),
+        text("shortcuts.playTurn"),
+        text("listen.stop"),
+        text("player.back10"),
+        text("player.forward10"),
+    }
+    until(window, lambda: expected_shortcuts <= {value.get_text() for value in labels(shortcut_dialog)})
+    shortcut_dialog.close()
+    until(window, lambda: app.shortcuts_dialog is None and window.get_visible_dialog() is None)
+    # The source-row click assertions below require the previously closed dialog
+    # identity, so retain the latest dialog produced by the key journey.
+    dialog = page.speakers_dialog
     window.monitor.close()
     row, play, when = page._speaker_rows["voice-12"]
     assert when.endswith("00:00:34")

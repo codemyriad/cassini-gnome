@@ -68,16 +68,20 @@
         </child>
         <child>
           <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Back 15 Seconds</property>
+            <property name="title" translatable="yes">Back 10 Seconds</property>
             <property name="action-name">win.skip-back</property>
           </object>
         </child>
         <child>
           <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Forward 15 Seconds</property>
+            <property name="title" translatable="yes">Forward 10 Seconds</property>
             <property name="action-name">win.skip-forward</property>
           </object>
         </child>
+        <child><object class="AdwShortcutsItem" id="listen_turns"><property name="title">Next or previous turn of this speaker</property><property name="accelerator">&lt;Alt&gt;Down &lt;Alt&gt;Up</property></object></child>
+        <child><object class="AdwShortcutsItem" id="listen_speakers"><property name="title">Next or previous speaker</property><property name="accelerator">&lt;Alt&gt;&lt;Shift&gt;Down &lt;Alt&gt;&lt;Shift&gt;Up</property></object></child>
+        <child><object class="AdwShortcutsItem" id="listen_stop"><property name="title">Stop listening</property><property name="accelerator">Escape</property></object></child>
+        <child><object class="AdwShortcutsItem" id="play_turn"><property name="title">Play this turn</property><property name="accelerator">&lt;Shift&gt;Return</property></object></child>
         <child><object class="AdwShortcutsItem"><property name="action-name">win.rate-up</property></object></child>
         <child><object class="AdwShortcutsItem"><property name="action-name">win.rate-down</property></object></child>
       </object>

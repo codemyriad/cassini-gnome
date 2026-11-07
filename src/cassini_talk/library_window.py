@@ -399,6 +399,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             if action:
                 action.set_enabled(not self._focused_editors)
         self._refresh_export()
+        if self.meeting_page:
+            self.meeting_page.listening_keys.refresh()
 
     @property
     def now_ms(self):

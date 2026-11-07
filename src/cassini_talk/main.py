@@ -155,16 +155,8 @@ class CassiniApplication(Adw.Application):
         self.set_accels_for_action("win.rate-up", ["<primary>bracketright"])
         self.set_accels_for_action("win.rate-down", ["<primary>bracketleft"])
         self.set_accels_for_action("win.back-library", ["<alt>Left"])
-        self.set_accels_for_action("win.nudge-forward", ["<alt>Right"])
         self.set_accels_for_action("win.rename", ["F2"])
         self.set_accels_for_action("win.search", ["<primary>f"])
-        self.set_accels_for_action("win.next-match", ["<primary>g"])
-        self.set_accels_for_action("win.previous-match", ["<primary><shift>g"])
-        self.set_accels_for_action("win.show-sidebar", ["F9"])
-        self.set_accels_for_action("win.show-properties", ["<primary>i"])
-        self.set_accels_for_action("win.follow-along", ["<primary>l"])
-        self.set_accels_for_action("win.show-transcript", ["<alt>1"])
-        self.set_accels_for_action("win.show-summary", ["<alt>2"])
         self.set_accels_for_action("win.export", ["<primary><shift>e"])
 
     def do_startup(self):
@@ -1632,7 +1624,12 @@ class CassiniApplication(Adw.Application):
                     "win.skip-forward": "player.forward10",
                     "win.rate-up": "player.speed.increase",
                     "win.rate-down": "player.speed.decrease",
-                }.get(item.get_action_name())
+                }.get(item.get_action_name()) or {
+                    "listen_turns": "shortcuts.listen.turns",
+                    "listen_speakers": "shortcuts.listen.speakers",
+                    "listen_stop": "listen.stop",
+                    "play_turn": "shortcuts.playTurn",
+                }.get(Gtk.Buildable.get_buildable_id(item))
                 if identifier:
                     from .strings import text
 
