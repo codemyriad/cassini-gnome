@@ -12,7 +12,9 @@ try:
     gi.require_version("Gtk", "4.0")
 except ValueError:
     pytest.skip("Recording observations run in the GTK-enabled Recording and distro jobs", allow_module_level=True)
+from durable import durable  # noqa: E402
 from gi.repository import GLib  # noqa: E402
+from test_browser_capture import pending_automatic_reconnect, server  # noqa: E402, F401
 
 from cassini_talk.recording_comfort import RecordingComfort  # noqa: E402
 from cassini_talk.recording_details import live_meeting  # noqa: E402
@@ -288,3 +290,25 @@ def test_loss_alert_waits_for_checkpoint_and_failed_change_stays_quiet(tmp_path,
     finally:
         close(comfort)
         capture.finish()
+
+
+def test_recovered_automatic_start_still_alerts_when_browser_audio_is_lost(
+    pending_automatic_reconnect,  # noqa: F811
+    monkeypatch,
+):
+    case = pending_automatic_reconnect
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(case.capture.directory.parent))
+    case.release.set()
+    durable(case.completed, "automatic Start recovery did not finish")
+    assert not case.errors
+    case.client.handle(dict(type="stop", captureId="recovered-origin", failureReason="lost", cause="frameClosed"))
+    assert case.capture.browser_lost and not case.capture.finished
+    app = application({}, browser=case.service.snapshot())
+    comfort = RecordingComfort(app, automatic=False)
+    try:
+        meeting = live_meeting(case.capture.directory)
+        comfort._fallback_notification(meeting)
+        comfort._fallback_notification(meeting)
+        assert app.notifications == ["recording-fallback-" + meeting.key]
+    finally:
+        close(comfort)

@@ -1476,19 +1476,19 @@ class BrowserService:
                         # Preserve the independently owned audio association.
                         state.update(captureId=capture_id, path=str(owner.directory))
                     browser.attempted.add(tab)
-            for tab, state in states.items():
-                capture_id = state.get("captureId")
-                owner = self.captures.get(capture_id)
-                if (
-                    isinstance(capture_id, str)
-                    and capture_id
-                    and state.get("recording")
-                    and (owner is None or not owner.finished)
-                ):
-                    # The extension announces the identity before opening its
-                    # audio socket. Preserve that association across an early
-                    # control disconnect, including the original call address.
-                    self._bind_capture(browser, tab, capture_id)
+        for tab, state in states.items():
+            capture_id = state.get("captureId")
+            owner = self.captures.get(capture_id)
+            if (
+                isinstance(capture_id, str)
+                and capture_id
+                and state.get("recording")
+                and (owner is None or not owner.finished)
+            ):
+                # The extension announces the identity before opening its
+                # audio socket. Record origin even without a browser instance;
+                # logical ownership across reconnects also needs the instance.
+                self._bind_capture(browser, tab, capture_id)
         self._adopt_by_call(browser, states)
         for tab, state in states.items():
             owner = self.captures.get(state.get("captureId"))
@@ -2096,6 +2096,9 @@ class BrowserService:
                 raise ValueError("Recording start was cancelled")
             if result is None and browser.closed:
                 result = self._recover_command(browser, tab, action, pending, deadline)
+                if result is not None:
+                    with self.lock:
+                        self._remember_capture_origin(pending, result.get("status"), result)
             if result is None or result.get("ok") is not True:
                 message = str((result or {}).get("error", "The browser disconnected"))[:500]
                 if result is not None and action == "start" and not pending.get("cancelled"):
@@ -3352,7 +3355,10 @@ class BrowserService:
         # neither an extension's `automatic` field nor old command history can.
         starts = [
             pending
-            for pending in browser.pending.values()
+            for pending in (
+                *browser.pending.values(),
+                *self._pending_calls.get(self._meeting_id(browser, tab), {}).values(),
+            )
             if pending["tabId"] == tab
             and pending["action"] == "start"
             and not pending.get("cancelled")
