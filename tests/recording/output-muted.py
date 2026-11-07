@@ -6,7 +6,9 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 if os.environ.get("CASSINI_ISOLATED_AUDIO") != "1" or os.environ.get("WAYLAND_DISPLAY"):
@@ -20,6 +22,7 @@ import gi  # noqa: E402
 gi.require_version("Gst", "1.0")
 from gi.repository import GLib, Gst  # noqa: E402
 
+from cassini_talk import output_mute  # noqa: E402
 from cassini_talk.browser_capture import BrowserCapture  # noqa: E402
 from cassini_talk.meeting_store import read_metadata  # noqa: E402
 from cassini_talk.native_recorder import NativeRecorder  # noqa: E402
@@ -97,9 +100,34 @@ try:
     pulse("set-sink-mute", "cassini_desktop", "1")
     native._mute_observer.refresh()
     until(lambda: native.output_muted and len(facts(native)) == 2, "native mute while recording")
-    choice = native.select(True, False)
-    until(lambda: choice.done() and not native._changing_sources, "system source disabled")
-    choice.result()
+    # Order a real stream lookup against actual pulsesrc context teardown.
+    # Hold only the independent client's completed snapshot, never GST/PCM locks.
+    queried, release_query = threading.Event(), threading.Event()
+    pulse_list = output_mute._pulse_list
+    branch = native._branches["system"]
+    source = branch.get_by_name("capture-source")
+
+    def held_snapshot(kind=None):
+        result = pulse_list(kind)
+        if threading.current_thread().name.startswith("pulse-teardown"):
+            queried.set()
+            assert release_query.wait(12), "Teardown query was not released"
+        return result
+
+    output_mute._pulse_list = held_snapshot
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="pulse-teardown") as executor:
+        query = executor.submit(output_mute.monitor_device, branch)
+        try:
+            until(queried.is_set, "in-flight stream snapshot")
+            choice = native.select(True, False)
+            until(lambda: choice.done() and not native._changing_sources, "system source disabled")
+            choice.result()
+            assert source.get_property("source-output-index") == 0xFFFFFFFF, "Pulse stream did not close"
+            release_query.set()
+            assert query.result(timeout=3) is None, "Retired stream's snapshot was still attributed"
+        finally:
+            release_query.set()
+            output_mute._pulse_list = pulse_list
     until(lambda: not native.output_muted and "endMs" in facts(native)[-1], "disabled system span closes its fact")
     native.stop()
     until(lambda: native.pipeline is None and not native._finishing, "native Stop completes")
