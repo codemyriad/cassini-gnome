@@ -2,9 +2,10 @@
 // Persistent app management, independent of the per-recording PCM connection.
 export class AppControl {
   constructor({ runtime, alarms, snapshot, command, capabilities = [], identity = () => ({}), cancelPending = () => {}, connected = async () => {},
-                later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id), busy = () => false }) {
-    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, identity, cancelPending, connected, later, cancel, busy });
+                later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id), busy = () => false, signalSnapshot = null }) {
+    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, identity, cancelPending, connected, later, cancel, busy, signalSnapshot });
     this.port = null;
+    this.resetSignals();
     this.ready = false;
     this.connecting = false;
     this.retry = null;
@@ -27,7 +28,7 @@ export class AppControl {
     this.cancel(this.retry);
     this.alarms.onAlarm.removeListener(this.alarm);
     this.alarms.clear('cassini-app-control').catch(() => {});
-    const port = this.port; this.port = null; this.ready = false; this.connecting = false;
+    const port = this.port; this.port = null; this.resetSignals(); this.ready = false; this.connecting = false;
     port?.disconnect();
   }
   reconnect() {
@@ -45,6 +46,7 @@ export class AppControl {
   disconnected(port) {
     if (port !== this.port) return;
     this.port = null;
+    this.resetSignals();
     this.ready = false;
     this.connecting = false;
     if (Date.now() - this.connectedAt >= 30000) this.delay = 1000;
@@ -60,6 +62,7 @@ export class AppControl {
     try { port = this.runtime.connectNative('io.codemyriad.cassini.control'); }
     catch { this.reconnect(); return; }
     this.port = port;
+    this.resetSignals();
     this.ready = false;
     this.connecting = true;
     this.tabTails.clear();
@@ -87,6 +90,7 @@ export class AppControl {
     if (port && this.ready) this.send(port, message);
   }
   publish() {
+    this.publishSignals();
     this.dirty = true;
     if (!this.port || this.connecting || this.publishing) return;
     this.publishing = (async () => {
@@ -101,8 +105,54 @@ export class AppControl {
       }
     })().finally(() => { this.publishing = null; if (this.dirty && this.port) this.publish(); });
   }
+  resetSignals() {
+    this.signalsConfigured = false;
+    this.signalEpoch = (this.signalEpoch || 0) + 1;
+    this.signalSequence = 0;
+    this.signalRun = null;
+    this.signalDirty = false;
+    this.lastSignals = null;
+  }
+  publishSignals() {
+    if (!this.port || !this.signalsConfigured) return;
+    this.signalDirty = true;
+    if (this.connecting || this.signalRun) return;
+    const run = this.signalRun = {};
+    void (async () => {
+      while (this.signalRun === run && this.signalDirty && this.port && this.signalsConfigured && !this.connecting) {
+        this.signalDirty = false;
+        const port = this.port, epoch = this.signalEpoch;
+        try {
+          const snapshot = await this.signalSnapshot();
+          if (this.signalRun !== run || port !== this.port || epoch !== this.signalEpoch || !this.signalsConfigured) break;
+          if (!snapshot) continue;
+          const serialized = JSON.stringify(snapshot);
+          if (serialized === this.lastSignals) continue;
+          this.lastSignals = serialized;
+          this.send(port,{type:'callSignals',sequence:this.signalSequence++,...snapshot});
+        } catch { /* Failed metadata is not an audio failure or a capture command. */ }
+      }
+    })().finally(() => {
+      if (this.signalRun !== run) return;
+      this.signalRun = null;
+      if (this.signalDirty && this.signalsConfigured) this.publishSignals();
+    });
+  }
   receive(port, message) {
     if (port !== this.port) return;
+    if (message?.type === 'configure') {
+      const values = message.capabilities;
+      if (!Array.isArray(values) || values.length > 1 || values.some(value => value !== 'call-signals-v1') ||
+          Object.keys(message).some(key => !['type','capabilities'].includes(key))) return;
+      this.signalEpoch++;
+      this.signalRun = null;
+      this.lastSignals = null;
+      this.signalsConfigured = values.includes('call-signals-v1') && this.capabilities.includes('call-signals-v1') && typeof this.signalSnapshot === 'function';
+      this.signalDirty = false;
+      this.send(port,{type:'configured',capabilities:this.signalsConfigured ? ['call-signals-v1'] : []});
+      this.publishSignals();
+      return;
+    }
     // heartbeat-v1: answer at once, never through the command queues (a Stop
     // flush can legitimately hold them longer than the app's loss deadline).
     // A pong is only ever a reply; the extension sends no unsolicited types.

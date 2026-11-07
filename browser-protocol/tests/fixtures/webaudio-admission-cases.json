@@ -1,0 +1,41 @@
+{
+  "purpose": "D74 real passive-media negatives only; positive lifecycle contract lives in call-signals-vectors.json",
+  "negativeCases": [
+    {
+      "id": "media-only-worklet",
+      "origin": "http://127.0.0.1",
+      "title": "Generated page audio, no call",
+      "description": "A real AudioWorklet tone with no independent call evidence",
+      "mediaElement": null
+    },
+    {
+      "id": "youtube-playback",
+      "origin": "https://www.youtube.com",
+      "title": "Music video playback",
+      "description": "Passive music or video playback; no active call",
+      "mediaElement": "video"
+    },
+    {
+      "id": "whatsapp-voice-message",
+      "origin": "https://web.whatsapp.com",
+      "title": "Voice message playback",
+      "description": "Listening to a voice message; no active call",
+      "mediaElement": "audio"
+    },
+    {
+      "id": "whatsapp-status",
+      "origin": "https://web.whatsapp.com",
+      "title": "Status playback",
+      "description": "Watching a status update; no active call",
+      "mediaElement": "video"
+    },
+    {
+      "id": "whatsapp-video",
+      "origin": "https://web.whatsapp.com",
+      "title": "Video playback",
+      "description": "Watching a shared video; no active call",
+      "mediaElement": "video"
+    }
+  ],
+  "callSignalContract": "conformance/control/call-signals-vectors.json"
+}

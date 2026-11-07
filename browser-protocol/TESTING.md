@@ -490,3 +490,32 @@ manual Stop suppression and durable open othersRoute metadata are APP policy,
 not extension timers or capture code. These are literal/schema checks; consumer
 adoption still needs actual held-start, reconnect, monotonic deadline, overlapping
 calls, route suppression and cache/export/import E1 tests through app code.
+
+
+## Extension0.2.25 first call-signals producer increment
+
+extension/tests/call-signals.test.cjs exercises actual producer/AppControl code:
+profile-local identity persistence/failure/deadline, strict reviewed origin lookup,
+trusted extension adapter facts bound to the browser document, missing/invalid
+call-generation refusal, opt-in/ack/monotonic snapshots, navigation withdrawal,
+revoked/old-connection async result drops, deduplication and known-mixed browser
+Start refusal before inputs. The registered WhatsApp descriptor deliberately has
+NO evidence reader, so it reports unknown/unverified, never active/inactive.
+Positive lifecycle tests use a fixture-only extension callback, not WhatsApp DOM
+selectors, page messages, graph energy or source counts.
+
+PR75's real Chromium negatives are folded into tests/webaudio-capture.mjs and
+run by `npm run test:signals` and default npm test. This remains negative-only:
+generated AudioWorklet/media playback, sourceCount0/heardfalse, no automatic
+meeting/Start/PCM. Synthetic vendor origins are fulfilled locally; no live site or
+account is accessed. Actual shipped worker negotiation now additionally verifies
+stable profile ID, configure-before-snapshot and Chrome's current document ID;
+WhatsApp cases must report mixed/unknown/unverified/null generation. No native
+user host/microphone or installed profile; random extension ID/private browser,
+disabled physical output, in-memory control peer only. Metadata artifacts contain
+no PCM payload. This is transport/admission proof, NOT live WhatsApp support.
+
+Apps'120s loss grace, fixed route, shared owner and Details provenance remain app
+adoption work under D74.1. Real site evidence readers are separate reviewed PRs;
+WhatsApp markers stay unknown until coordinator approves a disposable test account.
+No release, installed-worktree change, UI action or new graph/native capture path.

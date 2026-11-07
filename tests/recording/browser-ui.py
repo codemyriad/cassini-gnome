@@ -80,6 +80,11 @@ def dispatch(packet, result, ready):
             window.open_meeting(meeting)
             assert window.recording_page.stop.get_sensitive()
             window.recording_page.stop.emit("clicked")
+        elif action == "details":
+            assert window is not None
+            meeting = next(m for m in window.snapshot.meetings if str(m.directory) == packet["path"])
+            window.open_meeting(meeting)
+            window.show_recording_details()
         elif action == "selection":
             assert window is not None
             meeting = next(m for m in window.snapshot.meetings if str(m.directory) == packet["path"])
@@ -117,6 +122,12 @@ def dispatch(packet, result, ready):
             connected=app._browser_snapshot.get("connectedBrowsers", 0),
             auto=app._browser_snapshot.get("autoRecord", False),
             meetings=app._browser_snapshot.get("meetings", []),
+            callSignals=app._browser_snapshot.get("callSignals", []),
+            details=(
+                window.recording_details_dialog.report.plain_text()
+                if window and window.recording_details_dialog and window.recording_details_dialog.report
+                else None
+            ),
             statuses=app._browser_snapshot.get("statuses", []),
             recordReady=not (
                 app._record_start_future

@@ -1,26 +1,26 @@
-tree 0c33b36fd2c70b25cd771013355cf79ec0a82d1d
-parent 1c216f4201d1fcdb7b5c21e4e41a8946c6acc42c
-parent 8cfb071023bf1303b44e6d253b4bc0ffa3ecc942
-author Silvio Tomatis <silviot@gmail.com> 1794083833 +0100
-committer GitHub <noreply@github.com> 1794083833 +0100
+tree b0d4fb97ba4caa11e7d40705119b82395c83d294
+parent 42639e368fd6be33a1a04dfedb2f44d5218b89b0
+parent d1a14f178b5790f3509dbe8be41e4beab949da49
+author Silvio Tomatis <silviot@gmail.com> 1794087345 +0100
+committer GitHub <noreply@github.com> 1794087345 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq74v5CRC1aQ7uu5UhlAAAJrEQAGmKOPa7sZ4gXyZbVlrO6ilZ
- i9fpjKib0gvHp62KAsz3rQ2qZTdtVfcseyE9/6IWsYFOg//0esNqqrRzQ0MrCdcn
- RmIOD+WVD4NKuUdtW/C4h7YhFoZM6TwTEMFzSY5lBnbrmCx4f7Dytnl6phImZE92
- ZbOWPYCNJM9JWrzooh8uvtOZXg0sz+1A6zKiijLZ2HMftFz4idnR9AWk7Phmcgnu
- KVeOG/lC9uN8nR/JLD2YHjqETDkv5CK+TqCxwSOQcqLdKZDJ//STgHnUdbJA54Jp
- L/6A/CKSrDhr94R/3f5G/oVhgf1/BWcbIvsj/XulLP7z8TUaeW56vHh0Gc7QckEN
- 46VC7eHCz+FvqLB27HkdL7KIeyRqRLhv0nX9sTilzjLrwgeqKe1fpkYCDSU5+wUe
- 6BOgjQqVI7zOWdmNjjlJGwlJ4tfGCkPCjNN2dNd8kwVQak7v36dl9PZBhWFu4+60
- WqhP0blVncojMNEGb30vPe0ZNIfHA9eWN6kIyeceazGwbesgfj+r1X4m7oSIeW0O
- SZ8Ng2kezKITwD60ik5RKG05wnJ5G2A05St+BsDQ1E2HDjhmUsX8YdktYh+RuZkp
- a/II0fw4HbLQdpKIRkvHdmRK8mMZZTPZHkjhtAnADnygFhx0afJDzhrL/oQt3VLy
- wzULNaPH0KE9t9vifL5S
- =xhI4
+ wsFcBAABCAAQBQJq75mxCRC1aQ7uu5UhlAAAILsQAKmGjmwoyC2h3fRJT3RwvFIE
+ /TtmkgNPnLOtvBADd3iy1c5sV73cvr/M6fqhuXKaNcDmZMZ/HOo3bGX3geBsl6TC
+ /gNEoaxN/15JBUAqIKwngbP1RtqjY+B4cbD/eJ3X59BRQCxfctJjYmep6yvxjnYg
+ pYIXmrblBJH8v0s4XWJO9oPPPjfgN8xt0PSFe71PiGL0K1zI1yQb0t3PD5OKjEXU
+ t6OJjEejgZ2JNxtzEu10kXLOSjwOiUffPbgNlIX/1TNkRE3N5AteliurJ4zcoKkI
+ 7TGs6B42AtZsW4yEXJK8aOQAi/r4Ka04xRCExSlNOC/x+axY/Wt6eR/6mPbZjaRC
+ L7ZkJTu7luPPRLhCcpFWKsuxihQfog7lHdZ5KyTKYCfGHtKyjydtxAPV5CTOE1hy
+ tFsheNJqPFlZZhxpucAM3nhleSvlabYW1gNS5lEHrqLGHBkBEn+30LYi6c1VuBZW
+ qqCVy55tgoT2veuIP0rji8zOxilIHzH5Xgts2qupar8Kc229gXysq4MsFG1/6627
+ sGu02mdBn3qOiIl+Cz2RN56uj+bh/i8Yj4NsEPIPMeTpYHYuOiQM0Iq74zB9hZo3
+ HeR/X7ynEDty+wRxOTHTGwDDw+VOrMfYPWow9k7hR2e359d9hMQnwEJKGfdx7yoA
+ WDLvpTM3k4SxoXI/M/8d
+ =f9oE
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #76 from codemyriad/spec/webaudio-mix-contract
+Merge pull request #77 from codemyriad/feat/call-signal-producer
 
-spec: signal mixed-feed calls for app system recording (D74)
+feat: produce negotiated call signals with unknown WhatsApp evidence

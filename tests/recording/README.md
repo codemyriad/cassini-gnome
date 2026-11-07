@@ -7,6 +7,18 @@ The browser protocol and source format are shared with Cassini for Mac.
 
 ## Layers
 
+`call-signals.mjs` runs the pinned companion's real `CallSignalProducer` and
+`AppControl` in Chromium through native messaging and GNOME, with private Pulse
+microphone/desktop tones. The unmodified WhatsApp adapter must stay unknown on
+passive playback. Positive cases use only the trusted adapter constructor in the
+extension worker, with Chrome-owned tab/document IDs; no page-supplied markers,
+native replies, PCM, browser APIs or wire packets are fabricated. It checks opt-in,
+shared system recording, independent Me choice, reconnect and manual Stop fences,
+positive end while audio continues, and the quiet persisted Details explanation.
+This proves app/producer integration, not live WhatsApp compatibility. Headless
+E1 regressions separately hold input dispatch and metadata checkpoints to prove
+Stop/end/unknown cancellation, plus the exact 120-second evidence-loss policy.
+
 `app-control.mjs` also drives the production What is recorded dialog through
 off/on choices, then reloads a tab and terminates/restarts its worker. It checks
 frozen ended WAVs, new spans with the same source identity, continuous microphone,

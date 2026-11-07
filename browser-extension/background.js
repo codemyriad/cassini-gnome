@@ -1,4 +1,5 @@
 import { AppControl } from "./app-control.js";
+import { browserProfileIdentity, SiteSignalAdapters, CallSignalProducer } from "./call-signals.js";
 
 async function hasOffscreenDocument() {
   return (await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] })).length > 0;
@@ -48,6 +49,11 @@ const identityReady = (async () => {
   extensionInstance = typeof stored.cassiniExtensionInstance === "string" && stored.cassiniExtensionInstance.length > 0 && stored.cassiniExtensionInstance.length <= 128 ? stored.cassiniExtensionInstance : crypto.randomUUID();
   await chrome.storage.session.set({cassiniExtensionInstance:extensionInstance});
 })().catch(() => { extensionInstance = crypto.randomUUID(); });
+let browserInstance = null;
+const browserIdentityReady = browserProfileIdentity(chrome.storage.local, () => crypto.randomUUID())
+  .then(value => { browserInstance = value; });
+const signalAdapters = new SiteSignalAdapters();
+const signalOnlySite = address => signalAdapters.resolve(address)?.remoteAudio === 'mixed';
 const lostMeetings = new Map();
 const tabRepairs = new Map();
 const relayReady = frame => frame.relayAlive === true && frame.hookReady === true && !frame.obsolete;
@@ -493,6 +499,7 @@ async function start(mode, tabId = null, options = {}) {
     } else [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (request.cancelled || options.resumeIntent?.cancelled) throw new Error("Recording could not start.");
     if (!Number.isSafeInteger(tab?.id) || tab.id < 0 || !/^https?:/.test(tab.url || "")) throw refused("Open the meeting tab first. Recording works on web pages only.", "notWebPage");
+    if (signalOnlySite(tab.url)) throw refused("This site mixes remote audio. Record computer audio in Cassini instead.", "unsupported");
     if (sessions.has(tab.id)) throw refused("A recording is already running. Stop it before starting another.", "busy");
     request.tabId = tab.id; // A popup's Symbol reservation now has a browser-owned identity.
     if (mode === "tracks") requireTrackReadiness(tab.id);
@@ -650,7 +657,7 @@ async function forwardPacket(session, packet, documentGeneration) {
 
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== "cassini-frame" || port.sender?.id !== chrome.runtime.id || !port.sender.tab) return;
-  const frame = { port, tabId: port.sender.tab.id, frameId: port.sender.frameId ?? 0, browserDocumentId:typeof port.sender.documentId === "string" ? port.sender.documentId : null, obsoleteEpoch:0, sourceCount: 0, heard: false, checking:true, relayAlive:false, hookReady:false, fencedGenerations: new Set() };
+  const frame = { port, tabId: port.sender.tab.id, frameId: port.sender.frameId ?? 0, browserDocumentId:typeof port.sender.documentId === "string" ? port.sender.documentId : null, browserUrl:port.sender.url, obsoleteEpoch:0, sourceCount: 0, heard: false, checking:true, relayAlive:false, hookReady:false, fencedGenerations: new Set() };
   if (pageState(frame.tabId) === "closed") return;
   if (frame.frameId === 0) setPageState(frame.tabId, "present");
   frames.add(frame);
@@ -892,7 +899,7 @@ async function meetings() {
       if (!session && tabReadiness(tabId)?.state !== "ready") return null;
       const known = !!tab && /^https?:/.test(tab.url || "");
       if (!known) tab = session?.lastTab;
-      if (!tab || !/^https?:/.test(tab.url || "")) return null;
+      if (!tab || !/^https?:/.test(tab.url || "") || signalOnlySite(tab.url)) return null;
       if (session && known) session.lastTab = { ...tab };
       if (known && callInfo(tabId).url === null) callInfo(tabId).url = callAddress(tab.url);
       // A can reload after its lookup finishes while B's is still pending.
@@ -923,6 +930,7 @@ async function controlCommand(command, intent = {}) {
   }
   if (command.action === "start") {
     if (startBusy(command)) throw refused("A recording is already running. Stop it before starting another.", "busy");
+    if (signalOnlySite(mainFrame(command.tabId)?.browserUrl)) throw refused("This site mixes remote audio. Record computer audio in Cassini instead.", "unsupported");
     requireTrackReadiness(command.tabId);
     if (![...frames].some(frame => frame.tabId === command.tabId && relayReady(frame) && frame.sourceCount > 0))
       throw refused("No audio is available from that meeting yet.", "noSources");
@@ -947,10 +955,16 @@ function cancelPendingStart(command) {
   if (session && !session.ready) session.stopping = true;
 }
 function notifyControl() { appControl.publish(); }
+const signalProducer = new CallSignalProducer({identity:()=>browserInstance,tabs:chrome.tabs,frames:()=>frames,
+  current:frame=>frames.has(frame) && mainFrame(frame.tabId) === frame && relayReady(frame) && pageState(frame.tabId) === 'present',adapters:signalAdapters});
+const controlCapabilities = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1", "tab-readiness-v1"];
 const appControl = new AppControl({
-  runtime: chrome.runtime, alarms: chrome.alarms, busy: startBusy, capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1", "tab-readiness-v1"], identity: () => ({extensionVersion,extensionInstance,...companionDiagnostics}), cancelPending: cancelPendingStart,
+  runtime: chrome.runtime, alarms: chrome.alarms, busy: startBusy, capabilities: controlCapabilities, signalSnapshot:()=>signalProducer.snapshot(), identity: () => ({extensionVersion,extensionInstance,...companionDiagnostics}), cancelPending: cancelPendingStart,
   connected: repairOpenTabs,
   snapshot: async () => { await recovery; return [await meetings(), controlStatus()]; },
   command: controlCommand
 });
-void Promise.all([identityReady,diagnosticsReady]).then(() => { appControl.start(); void repairOpenTabs(); });
+void Promise.all([identityReady,diagnosticsReady,browserIdentityReady]).then(() => {
+  if (browserInstance) controlCapabilities.push('call-signals-v1');
+  appControl.start(); void repairOpenTabs();
+});

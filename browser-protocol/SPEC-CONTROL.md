@@ -720,11 +720,12 @@ This is an open vocabulary, separate from and unrelated to the closed audio-plan
 native host's error code as a result code. Apps do not wait for it: they classify what they
 know locally and record a code-less `startRejected` otherwise.
 
-| code | Set by extension 0.2.16 when |
+| code | Set by extension 0.2.25 when |
 | --- | --- |
 | `busy` | a recording is already running or starting, in that tab or (legacy) anywhere; also a legacy Stop for another tab |
 | `limit` | 128 requests are pending, or 100 recordings are running or starting |
 | `noSources` | the tab has no discovered meeting audio |
+| `unsupported` | a reviewed known-mixed site is signal-only and cannot record browser audio (D74) |
 | `gone` | the tab no longer exists or closes during Start, the call generation changed before or during Start, or a Stop names a capture that is no longer active |
 | `notWebPage` | the tab is not an http(s) page |
 | `pageUnreachable` | no page frame of the tab connected in time |
@@ -1047,7 +1048,16 @@ realm can thaw before its queued disconnect callback; that late callback cannot
 stop or retire the replacement port. Pending capture requests still fail/drain,
 and a new Start still waits for the old hook's stopped/flush acknowledgement.
 
-## D74 draft: call signals and remote-audio classification (not implemented)
+## D74 call signals and remote-audio classification
+
+Extension0.2.25 first increment implements connection-scoped negotiation, stable
+profile identity, snapshots and the generic trusted-adapter/classification boundary.
+The ONLY production descriptor is web.whatsapp.com: mixed design, ALWAYS unknown/
+unverified call state and null callGeneration until an approved marker study.
+No live WhatsApp support or automatic recording is claimed. Separated/active/end
+framework paths are exercised only by trusted extension test fixtures. No AudioNode
+hooks, page-audio capture or app policy/timer implementation. Native protocol is
+unchanged; old consumers get no callSignals without configure.
 
 D74 supersedes D73's graph-capture proposal. A site with one mixed remote feed
 (D74 examples: Teams and WhatsApp Web Audio) is SIGNAL-ONLY: the extension records
