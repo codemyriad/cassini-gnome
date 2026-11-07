@@ -47,3 +47,93 @@ def test_direct_open_before_first_scan_does_not_need_an_existing_cache(tmp_path)
     LibraryWindow._library_loaded(window, fresh)
     assert window._source_snapshot.meetings == (fresh,)
     assert window._source_snapshot.directories == (fresh.directory,)
+
+
+@pytest.mark.parametrize("already_scanned", [True, False])
+@pytest.mark.parametrize("collection", [False, True])
+def test_real_direct_open_survives_an_unrelated_incremental_monitor_scan(
+    tmp_path, monkeypatch, already_scanned, collection
+):
+    import json
+
+    from gi.repository import Gio, GLib
+    from test_library import capture, write_metadata
+
+    from cassini_talk.library_monitor import LibraryMonitor
+    from cassini_talk.meeting_store import atomic_json
+
+    root = tmp_path / "Library"
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    target, other = capture(root), capture(root)
+    write_metadata(target.directory, title="Old title", titleSource="user")
+    activity = {target.manifest["id"]: "saving"}
+    monitor = LibraryMonitor(
+        lambda _snapshot: None, None if collection else root, capture_activity=lambda: activity, debounce_ms=0
+    )
+    original = monitor.scanner.scan(changed_directories=None if already_scanned else {other.directory})
+    delivered, opened, increments = [], [], []
+    window = SimpleNamespace(
+        monitor=monitor, _source_snapshot=original, snapshot=original, _opening_files=0, meeting_page=None
+    )
+    window.get_application = lambda: SimpleNamespace(meeting_trash=SimpleNamespace(scanned=lambda *_: None))
+
+    def updated(snapshot):
+        window.snapshot = snapshot
+        delivered.append(snapshot)
+
+    window._updated = updated
+    window.open_meeting = lambda model, **_kwargs: opened.append(model)
+    window.toast = lambda message: pytest.fail(message)
+    for name in ("_library_loaded", "_library_scanned", "_opened_file"):
+        setattr(window, name, getattr(LibraryWindow, name).__get__(window))
+    monitor.callback = window._library_scanned
+
+    def dispatch_until(predicate):
+        expired = []
+        timer = GLib.timeout_add_seconds(5, lambda: expired.append(True) or False)
+        try:
+            while not predicate():
+                assert not expired, "the actual monitor/open completion did not arrive"
+                GLib.MainContext.default().iteration(True)
+        finally:
+            if not expired:
+                GLib.source_remove(timer)
+
+    try:
+        # Real disk observations, including the reader's future-version
+        # read-only rule; no in-memory replacement or injected Future.
+        metadata = json.loads((target.directory / "meeting.json").read_text())
+        atomic_json(target.directory / "meeting.json", dict(metadata, version=2))
+        manifest = json.loads((target.directory / "session.json").read_text())
+        atomic_json(target.directory / "session.json", dict(manifest, title="Fresh disk title"))
+        LibraryWindow.open_file(window, Gio.File.new_for_path(str(target.directory / "session.json")))
+        dispatch_until(lambda: window._opening_files == 0)
+        assert len(opened) == 1 and opened[0].title == "Fresh disk title"
+        assert not opened[0].metadata_editable
+        dispatch_until(
+            lambda: (
+                monitor._future is None
+                and not monitor._timer
+                and not monitor._pending_dirs
+                and not monitor._pending_full
+            )
+        )
+        scan = monitor.scanner.scan
+
+        def observed(**kwargs):
+            snapshot = scan(**kwargs)
+            if kwargs.get("changed_directories") == {other.directory}:
+                increments.append(snapshot)
+            return snapshot
+
+        monkeypatch.setattr(monitor.scanner, "scan", observed)
+        monitor.refresh({other.directory})
+        dispatch_until(lambda: increments and monitor._future is None)
+        (retained,) = [row for row in increments[0].meetings if row.id == target.manifest["id"]]
+        assert retained.title == "Fresh disk title" and not retained.metadata_editable
+        assert retained.lifecycle == "saving", "the direct load must use current capture activity"
+        assert target.directory in monitor._directories
+        assert next(row for row in delivered[-1].meetings if row.id == retained.id).title == retained.title
+    finally:
+        monitor.close()

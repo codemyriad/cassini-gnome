@@ -172,6 +172,16 @@ class LibraryMonitor:
         remaining = max(0, self.max_wait_ms - (now - self._first_event))
         self._timer = GLib.timeout_add(min(self.debounce_ms, remaining), self._dispatch)
 
+    def watch_meeting(self, directory):
+        """A direct load already updated our scanner on its serial worker.
+
+        Track the directory now, then attach its watch and recheck anything
+        changed between the load and watch installation on the same worker.
+        """
+        if not self._closed:
+            self._directories.add(Path(directory))
+            self.refresh({Path(directory)})
+
     def refresh_now(self):
         """Controller phase changes bypass metadata debounce; IO stays on the worker."""
         self.refresh()

@@ -13,8 +13,11 @@ def test_external_folder_is_read_only_and_queue_enforces_library_boundary(tmp_pa
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
     session = capture(tmp_path)
     before = fingerprint(session.directory)
-    meeting = load_open_meeting(session.directory / "session.json")
+    meeting = load_open_meeting(
+        session.directory / "session.json", capture_activity={session.manifest["id"]: "recording"}
+    )
     assert meeting.has_audio and not meeting.metadata_editable and not meeting.can_write_down
+    assert meeting.lifecycle == "saved", "an outside copy must not inherit a Library capture's live state"
     finished = []
     queue = TranscriptionQueue(lambda _: None, finished.append, bundle=tmp_path)
     try:

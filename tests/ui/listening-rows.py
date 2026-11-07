@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Private GTK row playback, read-only access, caption fit and focus."""
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-from concurrent.futures import Future
 from dataclasses import replace
 from pathlib import Path
 
@@ -60,6 +60,19 @@ def until(window, check):
     assert not expired and check(), "GTK row did not settle"
 
 
+def dispatch_until(check):
+    """Wait for a worker completion while the window is hidden, before mapping rows."""
+    expired = []
+    timer = GLib.timeout_add_seconds(8, lambda: expired.append(True) or False)
+    try:
+        while not check():
+            assert not expired, "the actual direct Open completion did not arrive"
+            GLib.MainContext.default().iteration(True)
+    finally:
+        if not expired:
+            GLib.source_remove(timer)
+
+
 def labels(widget):
     if isinstance(widget, Gtk.Label):
         yield widget
@@ -105,6 +118,17 @@ with tempfile.TemporaryDirectory() as temporary:
             status="done", reference=dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
         ),
     )
+    other = RecordingSession(library, "Unrelated meeting", source="gnome")
+    other.add_track("system", None, "system", 16000, 1)
+    other.append("system", bytes(3200), 0)
+    other.finish()
+    atomic_json(other.directory / "transcript.json", dict(format="cassini.words.v1", items=[]))
+    update_metadata(
+        other.directory,
+        transcript=dict(
+            status="done", reference=dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
+        ),
+    )
     schemas = root / "schemas"
     schemas.mkdir()
     shutil.copyfile(
@@ -127,24 +151,49 @@ with tempfile.TemporaryDirectory() as temporary:
     sink.set_property("sync", True)
     window.player = FolderPlayer(audio_sink=sink)
     window._connect_player()
-    meeting = window.snapshot.meetings[0]
-    # A direct Open File result can be newer than the last full Library scan.
-    # Exercise its real completion path before freezing background IO.
-    scanned_snapshot = window._source_snapshot
-    fresh = replace(meeting, metadata_editable=False, title="Fresh direct-open metadata")
-    opened = Future()
-    opened.set_result((fresh, False))
-    window._opening_files += 1
+    meeting = next(m for m in window.snapshot.meetings if m.id == session.manifest["id"])
+    # Real on-disk changes: a future metadata schema is read-only, while its
+    # capture title remains readable. Keep the real monitor running throughout.
+    original_metadata = json.loads((meeting.directory / "meeting.json").read_text())
+    original_session = json.loads((meeting.directory / "session.json").read_text())
+    atomic_json(meeting.directory / "meeting.json", dict(original_metadata, version=2))
+    atomic_json(meeting.directory / "session.json", dict(original_session, title="Fresh direct-open metadata"))
     window.set_visible(False)
-    window._opened_file(opened, Gio.File.new_for_path(str(meeting.directory / "session.json")))
+    window.open_file(Gio.File.new_for_path(str(meeting.directory / "session.json")))
+    dispatch_until(lambda: window._opening_files == 0)
     assert window.meeting_page and not window._external_meeting
-    assert window.meeting_page.meeting is fresh
-    window.monitor.close()
+    fresh = window.meeting_page.meeting
+    assert not fresh.metadata_editable and fresh.title == "Fresh direct-open metadata"
     direct_page = window.meeting_page
     direct_ready = []
     direct_page.connect("rows-rebuilt", lambda *_: direct_ready.append(True))
     window.present()
     until(window, lambda: direct_ready and window.player._prerolled)
+    until(
+        window,
+        lambda: (
+            window.monitor._future is None
+            and not window.monitor._timer
+            and not window.monitor._pending_dirs
+            and not window.monitor._pending_full
+        ),
+    )
+    incremental = []
+    scan = window.monitor.scanner.scan
+
+    def observed_scan(**kwargs):
+        snapshot = scan(**kwargs)
+        if kwargs.get("changed_directories") == {other.directory}:
+            incremental.append(snapshot)
+        return snapshot
+
+    window.monitor.scanner.scan = observed_scan
+    window.monitor.refresh({other.directory})
+    until(window, lambda: incremental and window.monitor._future is None)
+    retained = next(m for m in incremental[0].meetings if m.id == meeting.id)
+    assert retained.title == fresh.title and not retained.metadata_editable
+    assert meeting.directory in window.monitor._directories
+    assert window.meeting_page is direct_page
     direct_play = direct_page._speaker_rows["voice-0"][1]
     assert direct_play.activate()
     window._activity_tick()
@@ -156,8 +205,12 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.listen.speaker == "voice-0"
     window.player.pause()
     window.listen.stop()
-    # Independent row/layout cases below start from the editable fixture.
-    window._library_scanned(scanned_snapshot)
+    # Restore the editable fixture on disk and let the real scanner deliver it.
+    atomic_json(meeting.directory / "meeting.json", original_metadata)
+    atomic_json(meeting.directory / "session.json", original_session)
+    window.monitor.refresh_now()
+    until(window, lambda: next(m for m in window.snapshot.meetings if m.id == meeting.id).metadata_editable)
+    meeting = next(m for m in window.snapshot.meetings if m.id == meeting.id)
     # Also cover activation before GTK realizes the row: audio/row data
     # can already be ready. Gtk.Button.activate() still returns True then, but
     # schedules no click at all (gtk_real_button_activate checks realized).

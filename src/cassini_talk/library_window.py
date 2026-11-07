@@ -1463,13 +1463,21 @@ class LibraryWindow(Adw.ApplicationWindow):
         from .open_meeting import load_open_meeting
         from .received import import_received
 
+        activity = dict(self.monitor.capture_activity())
+
+        def load(path):
+            return load_open_meeting(
+                path, self.monitor.scanner.root, scanner=self.monitor.scanner, capture_activity=activity
+            )
+
         def opened():
             if not file.get_path():
                 raise ValueError("The recording is not available as a local file")
             path = Path(file.get_path())
             if path.is_dir() or path.name == "session.json":
-                return load_open_meeting(path, self.monitor.scanner.root), False
-            return import_received(path), True
+                return load(path), False
+            imported = import_received(path)
+            return load(imported.directory), True
 
         self._opening_files += 1
         future = self.monitor._executor.submit(opened)
@@ -1495,6 +1503,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                     inside = False
                 watched = inside and meeting.id == meeting_id(meeting.directory)
                 if watched:
+                    self.monitor.watch_meeting(meeting.directory)
                     self._library_loaded(meeting)
                 self.open_meeting(meeting, external=not watched)
         except (OSError, ValueError) as error:
