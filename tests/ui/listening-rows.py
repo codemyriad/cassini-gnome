@@ -315,6 +315,23 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.listen.speaker == "voice-11" and window.listen.cued and not window.player.playing
     page.undo_speaker_merge()
     until(window, lambda: "voice-10" in page._speaker_rows and page._speaker_future is None)
+    # A collapsed sidebar must reopen before its replacement row can map.
+    window.set_default_size(360, 650)
+    until(window, lambda: page.split.get_collapsed() and page.listening_bar.get_width() == 360)
+    page.split.set_show_content(True)
+    assert window.listen.start("voice-10", 0, play=False)
+    page.listening_bar.name_speaker()
+    dialog = page.speakers_dialog
+    until(window, lambda: dialog.play.has_focus())
+    focus_event(window, lambda: page._speaker_rows["host"][0].get_child(), lambda: dialog._merge("host"))
+    assert not page.split.get_show_content()
+    assert window.listen.speaker == "voice-11" and window.listen.cued and not window.player.playing
+    page.undo_speaker_merge()
+    window.set_default_size(900, 650)
+    until(
+        window,
+        lambda: "voice-10" in page._speaker_rows and page._speaker_future is None and not page.split.get_collapsed(),
+    )
     assert window.listen.start("voice-10", 0, play=False)
     page.merge_speaker("voice-10", "host")
     until(

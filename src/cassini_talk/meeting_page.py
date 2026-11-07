@@ -725,14 +725,14 @@ class MeetingPage(Adw.NavigationPage):
         merged = getattr(dialog, "_recompute", None)
         if merged:
             source, destination = merged
+            if self.split.get_collapsed():
+                self.split.set_show_content(False)
             if source in self._speaker_rows or self._rows_rebuilt_tick or self._merge_transition:
                 return GLib.SOURCE_REMOVE
             if destination not in self._speaker_rows:
                 return GLib.SOURCE_REMOVE
             row, play, _when = self._speaker_rows[destination]
             target = row.get_child() if isinstance(row.get_child(), Gtk.Button) else play
-            if self.split.get_collapsed():
-                self.split.set_show_content(False)
             self._scroll_speaker(row)
         else:
             if not self.listening_bar.get_child_revealed():
