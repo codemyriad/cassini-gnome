@@ -240,13 +240,25 @@ with tempfile.TemporaryDirectory() as temporary:
     window.listen.stop()
     # Real merge, filesystem observation, paused next-unnamed cue and Undo.
     original_metadata = json.loads((meeting.directory / "meeting.json").read_text())
-    updated_speakers = [dict(s, name=None, provenance="unnamed") if s["id"] in ("voice-10", "voice-11") else s for s in original_metadata["speakers"]]
+    updated_speakers = [
+        dict(s, name=None, provenance="unnamed") if s["id"] in ("voice-10", "voice-11") else s
+        for s in original_metadata["speakers"]
+    ]
     update_metadata(meeting.directory, speakers=updated_speakers)
     window.monitor.refresh_now()
-    until(window, lambda: any(s.id == "voice-11" and s.provenance == "unnamed" for s in page.meeting.speakers) and not page._rows_rebuilt_tick)
+    until(
+        window,
+        lambda: (
+            any(s.id == "voice-11" and s.provenance == "unnamed" for s in page.meeting.speakers)
+            and not page._rows_rebuilt_tick
+        ),
+    )
     assert window.listen.start("voice-10", 0, play=False)
     page.merge_speaker("voice-10", "host")
-    until(window, lambda: "voice-10" not in page._speaker_rows and window.listen.speaker == "voice-11" and window.listen.cued)
+    until(
+        window,
+        lambda: "voice-10" not in page._speaker_rows and window.listen.speaker == "voice-11" and window.listen.cued,
+    )
     assert not window.player.playing
     assert page.listening_bar.buttons["again"].get_visible()
     assert page.listening_bar.buttons["again"].has_focus()
@@ -275,7 +287,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page._speaker_rows["voice-12"][1] is play
     assert play.get_realized()
     until(window, lambda: window.listen.active)
-    assert window.listen.speaker == "voice-12" and page.speakers_dialog is None
+    assert window.listen.speaker == "voice-12" and page.speakers_dialog is dialog and dialog.closed
     bar = page.listening_bar
     until(window, lambda: bar.get_child_revealed())
     assert bar.name.get_text() == "Unidentified voice"
@@ -358,7 +370,7 @@ with tempfile.TemporaryDirectory() as temporary:
     finally:
         window.player.disconnect(error_handler)
     assert window.listen.speaker == "voice-0" and clicks == ["voice-0"]
-    assert page.speakers_dialog is None
+    assert page.speakers_dialog is dialog and dialog.closed
     page._listen_speaker("voice-0")
     generation = len(rebuilt)
     window._library_scanned(editable_snapshot)
@@ -423,7 +435,7 @@ with tempfile.TemporaryDirectory() as temporary:
         )
 
     until(window, focused_row_visible)
-    assert window.listen.speaker == "voice-12" and page.speakers_dialog is None
+    assert window.listen.speaker == "voice-12" and page.speakers_dialog is dialog and dialog.closed
     page.update(replace(meeting, has_audio=False))
     assert all(not button.get_visible() for _, button, _ in page._speaker_rows.values())
     app.begin_exit()

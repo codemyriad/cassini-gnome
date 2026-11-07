@@ -4,6 +4,7 @@
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
+from .meeting_text import COLOURS, DARK_COLOURS
 from .strings import text
 
 
@@ -44,7 +45,11 @@ class ListeningBar(Gtk.Revealer):
         info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, spacing=2)
         self.name = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, css_classes=["heading"], max_width_chars=25)
         self.turn = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, css_classes=["dim-label", "small"])
-        info.append(self.name)
+        title = Gtk.Box(spacing=6)
+        self.dot = Gtk.Label(label="●", accessible_role=Gtk.AccessibleRole.PRESENTATION)
+        title.append(self.dot)
+        title.append(self.name)
+        info.append(title)
         info.append(self.turn)
         self.body.append(info)
         self.excerpt = Gtk.Label(
@@ -144,6 +149,9 @@ class ListeningBar(Gtk.Revealer):
         if speaker is None:
             return
         self.body.update_property([Gtk.AccessibleProperty.LABEL], [text("listen.bar.a11y", name=speaker.name)])
+        palette = DARK_COLOURS if Adw.StyleManager.get_default().get_dark() else COLOURS
+        colour = palette[getattr(speaker, "colour_index", 0) % len(palette)]
+        self.dot.set_markup(f'<span foreground="{colour}">●</span>')
         self.name.set_label(speaker.name)
         self.name.set_tooltip_text(speaker.name)
         self.turn.set_label(
