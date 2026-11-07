@@ -296,7 +296,7 @@ class ListenController(GObject.Object):
         return self._containing(position)
 
     def _playing_changed(self, player, _pspec):
-        if player.playing and self.cued:
+        if player.playing and self.cued and player._range_end is None:
             self.cued = False
             self.emit("changed")
 

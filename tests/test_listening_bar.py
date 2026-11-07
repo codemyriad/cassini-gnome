@@ -84,3 +84,19 @@ def test_bar_endpoints_readonly_and_collapse(player):  # noqa: F811
     assert bar.buttons["again"].get_visible()
     controller.stop()
     assert not bar.get_reveal_child()
+
+
+def test_dialog_sample_preserves_the_paused_cue_and_restores_its_position(player):  # noqa: F811
+    controller = ListenController(lambda: player)
+    controller.set_turns(TURNS)
+    assert controller.start("ada", 1, play=False)
+    saved = player.position
+    assert controller.cued
+    assert player.play_range(100, 800)
+    until(lambda: not player.playing, "dialog sample end")
+    assert controller.cued and controller.index == 1
+    player.clear_range()
+    player.seek(saved)
+    assert not player.playing and player.position == saved
+    assert controller.cued and controller.step_target(1) == 2
+    controller.stop()

@@ -682,7 +682,7 @@ class MeetingPage(Adw.NavigationPage):
         if from_listening:
             self.speakers_dialog.play.grab_focus()
             self.speakers_dialog.connect(
-                "closed", lambda *_: self.listening_bar.buttons["name"].grab_focus() if not self._closed else None
+                "closed", lambda *_: self.listening_bar.focus_name() if not self._closed else None
             )
         else:
             self.speakers_dialog.entry.grab_focus()

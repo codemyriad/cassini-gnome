@@ -119,6 +119,17 @@ class ListeningBar(Gtk.Revealer):
         fn = self.listen.next_speaker if direction > 0 else self.listen.previous_speaker
         return fn(self.order())
 
+    def focus_name(self):
+        target = (
+            self.buttons["name"]
+            if self.buttons["name"].get_visible()
+            else self.more.get_first_child()
+            if self.more.get_visible()
+            else self.stop
+        )
+        if target.get_mapped():
+            target.grab_focus()
+
     def name_speaker(self):
         if self.listen.active:
             self.page.player.pause()
