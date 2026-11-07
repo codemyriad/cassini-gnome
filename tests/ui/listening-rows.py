@@ -563,6 +563,8 @@ with tempfile.TemporaryDirectory() as temporary:
     )
     until(window, lambda: page.bound and not page._rows_rebuilt_tick)
     assert any(turn.speaker == "host" for turn, _words, _row in page.bound.values())
+    host_turn = next(t for t in stale_merged.listening_turns if t.speaker == "host")
+    assert "Dana" in page.timeline.readout_at(host_turn.start_ms)
     assert all(any(value.get_text() == "Dana" for value in labels(row)) for _turn, _words, row in page.bound.values())
     assert any(value.get_text() == "Dana" for value in labels(window.preview))
     # The single-speaker fixture itself uses the merged words and rebuilt turns.

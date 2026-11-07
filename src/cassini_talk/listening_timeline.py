@@ -63,7 +63,7 @@ class ListeningTimeline(Gtk.Overlay):
     def readout_at(self, position):
         index = bisect_right(self._positions, position) - 1
         speaker_id = self._speakers[index] if index >= 0 else None
-        speaker = next((s for s in self.page.meeting.speakers if s.id == speaker_id), None)
+        speaker = self.page.meeting.speaker_for(speaker_id) if speaker_id is not None else None
         return (
             text("player.timeline.tooltip", position=fmt.position(position), name=speaker.name)
             if speaker
