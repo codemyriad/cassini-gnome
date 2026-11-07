@@ -395,6 +395,10 @@ with tempfile.TemporaryDirectory() as temporary:
     assert play.get_realized()
     until(window, lambda: window.listen.active)
     assert window.listen.speaker == "voice-12" and page.speakers_dialog is dialog and dialog.closed
+    timeline = page.timeline
+    assert timeline.readout_at(34150) == "00:00:34"
+    assert timeline.readout_at(34050) == text("player.timeline.tooltip", position="00:00:34", name="Unidentified voice")
+    assert len(timeline._target) == 1 and timeline._target[0].start_ms == 34000
     bar = page.listening_bar
     until(window, lambda: bar.get_child_revealed())
     assert bar.name.get_text() == "Unidentified voice"
@@ -485,6 +489,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not bar.excerpt.has_css_class("dim-label")
     assert bar.excerpt.get_use_markup()
     window.listen.stop()
+    assert page.timeline._target == ()
     # Read-only rows retain Play, but have no naming action.
     old_play = page._speaker_rows["voice-0"][1]
     generation = len(rebuilt)

@@ -238,7 +238,10 @@ class MeetingPage(Adw.NavigationPage):
         self.seek.set_hexpand(True)
         self.seek.update_property([Gtk.AccessibleProperty.LABEL], [text("player.a11y")])
         self.seek.connect("change-value", self._seek)
-        bar.append(self.seek)
+        from .listening_timeline import ListeningTimeline
+
+        self.timeline = ListeningTimeline(self, self.seek)
+        bar.append(self.timeline)
         self.total = label(fmt.position(self.meeting.duration_ms or 0), "small", "dim-label")
         bar.append(self.total)
         rates = Gio.Menu()
@@ -380,6 +383,7 @@ class MeetingPage(Adw.NavigationPage):
         self._can_listen = can_play
         if self._listening_turns is not meeting.listening_turns:
             self._listening_turns = meeting.listening_turns
+            self.timeline.set_turns(meeting.listening_turns)
             self.window.listen.set_turns(meeting.listening_turns)
         self._listening_changed()
         source = self.window._activity_source
@@ -667,6 +671,7 @@ class MeetingPage(Adw.NavigationPage):
         if not listen.active:
             self._listening_target = None
         self.listening_bar.update()
+        self.timeline.set_target(listen.turns_of(listen.speaker) if listen.active else ())
 
     def _scroll_speaker(self, row):
         self._scroll_target = row
@@ -875,6 +880,7 @@ class MeetingPage(Adw.NavigationPage):
 
     def _position(self, _player=None, property=None):
         self.listening_bar.update_navigation()
+        self.timeline.position_changed()
         index = bisect_right(self._starts, self.player.position) - 1
         explicit_seek = property is not None and property.name == "position" and not self.player.playing
         resumed = self.player.playing and not getattr(self, "_was_playing", False)
@@ -918,6 +924,7 @@ class MeetingPage(Adw.NavigationPage):
     def close(self):
         self._closed = True
         self._clear_dialog_focus()
+        self.timeline.close()
         if self._rows_rebuilt_tick:
             self.remove_tick_callback(self._rows_rebuilt_tick)
             self._rows_rebuilt_tick = 0
