@@ -76,6 +76,35 @@ def standing_broker_caches(app, browser=None):
     return stands(app_at), [s for s in sources if stands(getattr(s, "answered_at", None))]
 
 
+def advance_capture_snapshot(app, snapshot):
+    """A later-received status may have sampled PCM before an earlier reply.
+
+    Keep the stopped/finished lower bound for each session UUID, so replacing
+    the last cache cannot resurrect it. UUIDs are never reused; retain a
+    bounded history beyond the broker's own small finished-capture inventory.
+    Expiry/absence without an explicit terminal status establishes no bound.
+    """
+    phases = getattr(app, "_browser_capture_phases", {})
+    statuses = []
+    for status in snapshot.get("statuses", []):
+        path = status.get("path") if isinstance(status, dict) else None
+        identifier = meeting_id(Path(path)) if isinstance(path, str) else None
+        if identifier:
+            phase = "stopping" if status.get("stopping") else "finished" if status.get("recording") is False else None
+            previous = phases.get(identifier)
+            if phase is not None and previous != "finished":
+                phases[identifier] = phase
+            if known := phases.get(identifier):
+                status = dict(status, recording=False, stopping=known == "stopping")
+                if "phase" in status:
+                    status["phase"] = "stopping" if known == "stopping" else None
+        statuses.append(status)
+    while len(phases) > 512:
+        del phases[next(iter(phases))]
+    app._browser_capture_phases = phases
+    return dict(snapshot, statuses=statuses)
+
+
 def retired_captures(app):
     """Recordings any broker cache already knows stopped (saving) or finished.
 
@@ -90,7 +119,7 @@ def retired_captures(app):
 
     from .library import meeting_id
 
-    retired = set()
+    retired = set(getattr(app, "_browser_capture_phases", {}))
     for target in [app, *app.get_windows()]:
         for status in getattr(target, "_browser_snapshot", {}).get("statuses", []):
             path = status.get("path") if isinstance(status, dict) else None

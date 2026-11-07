@@ -206,3 +206,59 @@ def test_a_held_activity_reply_stamped_after_the_stopping_reply_never_revives_th
     finally:
         replies.put(({}, False, {}))
         activity.close()
+
+
+def test_a_delayed_sample_cannot_resurrect_a_finished_capture(application_class, tmp_path):  # noqa: F811
+    """Two real broker status reads: sampling order differs from receive order."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from cassini_talk.browser_service import BrowserService
+
+    identifier = str(uuid4())
+    path = str(tmp_path / ("Recording-" + identifier))
+    sampled, release = threading.Event(), threading.Event()
+    recording = [True]
+    first = SimpleNamespace(capture_id="first", directory=path, finished=False)
+    first.snapshot = lambda: dict(captureId="first", path=path, recording=recording[0], stopping=False)
+    other_path = str(tmp_path / ("Recording-" + str(uuid4())))
+
+    def second_snapshot():
+        if not sampled.is_set():
+            sampled.set()
+            assert release.wait(5), "release the older status read"
+        return dict(captureId="second", path=other_path, recording=False, stopping=False)
+
+    second = SimpleNamespace(capture_id="second", directory=other_path, finished=True, snapshot=second_snapshot)
+    service = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
+    service.captures.update(first=first, second=second)
+    app, events = app_with(application_class)
+    app._auto_recording_revision = 0
+    app._permission_sources = set()
+    app.browser_connection = None
+    app._browser_seen_saved = set()
+    app.observe_browser_recordings = lambda *_: None
+    app._auto_recording_pending = None
+    app.set_auto_recording_hold = lambda *_: None
+    app.browser_watch = object()
+    app._browser_changed = application_class._browser_changed.__get__(app)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as workers:
+            delayed = workers.submit(service.snapshot)
+            try:
+                assert sampled.wait(5), "older read sampled recording before Stop"
+                recording[0] = False
+                first.finished = True
+                app._browser_changed(service.snapshot(), 10)
+                assert not app.recording_to_stop()
+            finally:
+                release.set()
+            # The old sample arrives last, after the app already showed Ready.
+            app._browser_changed(delayed.result(timeout=5), 11)
+        app.on_record()
+        assert events == ["activate", "record"], "Record after Stop must start, not silently stop a stale capture"
+        status = app._browser_snapshot["statuses"][0]
+        assert status["recording"] is False and status["stopping"] is False
+    finally:
+        release.set()
+        service.workers.shutdown(wait=True)

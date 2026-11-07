@@ -374,3 +374,41 @@ def test_desktop_probe_failure_preserves_watch_lease_and_status_polling(service,
         assert profiles[-1] == "unavailable"
     finally:
         watcher.close()
+
+
+def test_terminal_capture_phases_survive_cache_replacement_without_retiring_a_new_session():
+    from uuid import uuid4
+
+    from cassini_talk.capture_activity import advance_capture_snapshot, retired_captures
+
+    old, new = str(uuid4()), str(uuid4())
+    app = SimpleNamespace(get_windows=lambda: [])
+
+    def reply(identifier, **state):
+        return dict(statuses=[dict(path="/tmp/Recording-" + identifier, phase="recording", **state)])
+
+    saving = advance_capture_snapshot(app, reply(old, recording=False, stopping=True))
+    assert saving["statuses"][0]["stopping"] is True
+    delayed = advance_capture_snapshot(app, reply(old, recording=True, stopping=False))
+    assert delayed["statuses"][0]["phase"] == "stopping"
+    advance_capture_snapshot(app, reply(old, recording=False, stopping=False))
+    advance_capture_snapshot(app, dict(statuses=[]))
+    stale_saving = advance_capture_snapshot(app, reply(old, recording=False, stopping=True))
+    assert stale_saving["statuses"][0]["stopping"] is False
+    assert stale_saving["statuses"][0]["phase"] is None
+    fresh = advance_capture_snapshot(app, reply(new, recording=True, stopping=False))
+    assert fresh["statuses"][0]["recording"] is True
+    assert retired_captures(app) == {old}
+
+
+def test_broker_silence_does_not_establish_a_terminal_capture_phase():
+    from uuid import uuid4
+
+    from cassini_talk.capture_activity import advance_capture_snapshot
+
+    app = SimpleNamespace()
+    status = dict(path="/tmp/Recording-" + str(uuid4()), recording=True, stopping=False)
+    advance_capture_snapshot(app, dict(statuses=[status]))
+    advance_capture_snapshot(app, dict(statuses=[]))
+    answered_again = advance_capture_snapshot(app, dict(statuses=[status]))
+    assert answered_again["statuses"][0]["recording"] is True

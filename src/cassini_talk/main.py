@@ -669,6 +669,9 @@ class CassiniApplication(Adw.Application):
             snapshot["autoRecord"] = self._browser_snapshot.get("autoRecord", False)
         else:
             self._auto_recording_revision = revision
+        from .capture_activity import advance_capture_snapshot
+
+        snapshot = advance_capture_snapshot(self, snapshot)
         self._browser_snapshot = snapshot
         if getattr(self, "recording_failures", None):
             self._prune_recording_failures(snapshot)
