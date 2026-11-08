@@ -3558,7 +3558,9 @@ class BrowserService:
                     self.browsers[browser_id].scheduled.discard(int(tab))
 
     def _auto_start_ready(self, browser, meeting):
-        proof = self.signal_calls.proof(browser, meeting.get("tabId"), self.clock(), remote="separated", meeting=meeting)
+        proof = self.signal_calls.proof(
+            browser, meeting.get("tabId"), self.clock(), remote="separated", meeting=meeting
+        )
         return (
             not browser.closed
             and not browser.shut_down.is_set()
