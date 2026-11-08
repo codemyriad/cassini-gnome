@@ -102,7 +102,15 @@ def dispatch(packet):
             phase=state["phase"] if state else None,
             connected=bool(state and state["phase"] == "connected"),
             guide=bool(guide and not guide.closed),
-            setupReady=bool(setup and not setup.closed and setup.get_mapped()),
+            setupReady=bool(
+                setup
+                and not setup.closed
+                and setup.get_mapped()
+                and setup.add_button.get_sensitive()
+                and (
+                    not setup.local_instructions.get_visible() or setup.guide_folder is not None or setup.prepare_error
+                )
+            ),
             done=bool(guide and guide.done.get_sensitive()),
             peers=state.get("peers", ()) if state else (),
             folder=str(guide.folder) if guide else None,

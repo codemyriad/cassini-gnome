@@ -31,6 +31,9 @@ class CompanionSetup(Adw.Dialog):
         self.prepare_error = False
         self.prefer_local = False
         self.local_dialog = None
+        self.guide_folder = None
+        self._guide_attempted = False
+        self._guide_visible = False
         self.browser_names = []
         self.connected = False
         self.complete = False
@@ -43,7 +46,9 @@ class CompanionSetup(Adw.Dialog):
             margin_top=26,
             margin_bottom=22,
         )
-        self.set_child(
+        self.toasts = Adw.ToastOverlay()
+        self.set_child(self.toasts)
+        self.toasts.set_child(
             Gtk.ScrolledWindow(
                 child=content,
                 width_request=540,
@@ -80,6 +85,13 @@ class CompanionSetup(Adw.Dialog):
         self.local_add = Gtk.Button(label=text("companion.local.add"), css_classes=["flat"], halign=Gtk.Align.START)
         self.local_add.connect("clicked", lambda *_: self._add(local=True))
         content.append(self.local_add)
+        from .companion_local_instructions import LocalCompanionInstructions
+
+        self.local_instructions = LocalCompanionInstructions(
+            lambda: self.toasts.add_toast(Adw.Toast.new(text("companion.local.copied")))
+        )
+        self.local_instructions.set_visible(False)
+        content.append(self.local_instructions)
         self.prepare_problem = Gtk.Box(spacing=10, visible=False)
         self.prepare_label = Gtk.Label(wrap=True, xalign=0, hexpand=True, css_classes=["warn-line"])
         self.prepare_problem.append(self.prepare_label)
@@ -204,6 +216,9 @@ class CompanionSetup(Adw.Dialog):
             action = self.add_requested
             self.add_requested = False
             self._submit(lambda: self._launch_add(local=action == "local"), action)
+        elif self._guide_visible and not self._guide_attempted and self.future is None:
+            self._guide_attempted = True
+            self._submit(companion_bundle.prepare, "guide")
         elif self.service_path is not None:
             self._submit(self._snapshot, "status")
         self.render()
@@ -220,18 +235,25 @@ class CompanionSetup(Adw.Dialog):
             value = future.result()
             if action in ("status", "reload") and self.app.browser_connection:
                 self.app.browser_connection.observe(value)
+            elif action == "guide":
+                self.guide_folder = value
+                self.local_instructions.set_folder(value)
+                self.prepare_error = False
             elif action == "local":
                 from .companion_local_dialog import LocalCompanionDialog
 
                 self.prepare_error = False
                 browser, folder = value
+                self.guide_folder = folder
+                self._guide_attempted = True
+                self.local_instructions.set_folder(folder)
                 self.local_dialog = LocalCompanionDialog(self, browser, folder)
                 self.local_dialog.present(self)
             elif action == "store":
                 self.local_error = None
         except Exception as error:
             LOG.exception("Companion %s failed", action)
-            if action == "local":
+            if action in ("local", "guide"):
                 self.prepare_error = True
             elif action == "reload":
                 self.reload_error = (*self._reload_target, " ".join(str(error).split())[:500])
@@ -261,6 +283,7 @@ class CompanionSetup(Adw.Dialog):
             self.prepare_error,
             self.reload_error,
             self.prefer_local,
+            self.guide_folder,
             companion_bundle.store_listing_public(),
         )
         if signature == self._render_signature:
@@ -269,6 +292,13 @@ class CompanionSetup(Adw.Dialog):
         self.connected = state["phase"] == "connected"
         self.complete = self.connected and setup_complete(state.get("peers", ()))
         self._render_health(state)
+        self._guide_visible = bool(
+            self.app.browser_companion_available
+            and state["browser"] is not None
+            and (self.prefer_local or state["phase"] == "waiting" or (self.guide_folder and not self.complete))
+        )
+        self.local_instructions.set_browser(state["browser"])
+        self.local_instructions.set_visible(self._guide_visible)
         self.local_add.set_visible(
             not self.prefer_local
             and (
