@@ -1,3 +1,15 @@
+cassini-talk (0.4.2) unstable; urgency=medium
+
+  * Add listen-by-speaker controls, transcript/timeline actions and shortcuts.
+  * Fix Nextcloud Talk discovery and retain participant names from the page.
+  * Show companion health, saved loss causes and automatic fallback alerts.
+  * Keep background broker logs and refresh an idle stale service on upgrade.
+  * Replace old cassini-viewer packages cleanly; improve capture accounting.
+  * Bundle companion 0.2.25 and call-signal support; no verified site detection yet.
+  * After upgrading, log out and back in so the new version takes effect.
+
+ -- Silvio Tomatis <silviot@gmail.com>  Sun, 08 Nov 2026 01:53:01 +0100
+
 cassini-talk (0.4.1) unstable; urgency=medium
 
   * Fix wrapping speaker names and screen-reader playback in Search.

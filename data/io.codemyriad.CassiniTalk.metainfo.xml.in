@@ -70,6 +70,20 @@
   </screenshots>
 
   <releases>
+    <release version="0.4.2" date="2026-11-08">
+      <description>
+        <p>After upgrading, log out and back in so the new version takes effect.</p>
+        <ul>
+          <li>Listen by speaker with a listening bar, transcript actions, timeline markers and keyboard shortcuts</li>
+          <li>Fix Nextcloud Talk discovery and keep participant names supplied by the meeting page</li>
+          <li>Show companion health and why browser sound stopped, including in saved recordings</li>
+          <li>Alert once when an automatic recording switches from lost browser sound to computer audio</li>
+          <li>Keep background connection logs and refresh an old service when it is idle</li>
+          <li>Replace old cassini-viewer packages cleanly and improve missing-audio accounting</li>
+          <li>Bundle companion 0.2.25 and call-signal groundwork; no site has verified detection through it yet</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.1" date="2026-11-06">
       <description>
         <p>After upgrading, log out and back in so the new version takes effect.</p>
