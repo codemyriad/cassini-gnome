@@ -51,3 +51,21 @@ def test_legacy_capabilities_cannot_restore_playback_auto_start(tmp_path):
     hello = next(packet for packet in wire if packet["type"] == "hello")
     hello["capabilities"].remove("call-evidence-v1")
     assert replay(wire, tmp_path) == []
+
+
+def test_unverified_admission_preserves_each_reported_source_fact(tmp_path):
+    def inventory(service, browser):
+        original = next(iter(browser.meetings.values()))
+        assert service.snapshot()["browserPeers"][0]["automaticVerified"] is False
+        # A receiver may be discovered before its first packet-evidence vote.
+        # Neither false -> true nor a later withdrawal may be hidden/latched
+        # just because the companion cannot authorize automatic recording.
+        for count, heard in ((0, False), (1, False), (1, True), (3, True), (0, False)):
+            meeting = dict(original, sourceCount=count, heard=heard, sourceCountKnown=True)
+            service.update(browser, dict(type="meetings", meetings=[meeting]))
+            row = service.snapshot()["meetings"][0]
+            assert (row["sourceCount"], row["heard"], row["sourceCountKnown"]) == (count, heard, True)
+            assert row["pageState"] == meeting["pageState"]
+            assert service.snapshot()["browserPeers"][0]["automaticVerified"] is False
+
+    assert replay(packets(), tmp_path, before_dispatch=inventory) == []

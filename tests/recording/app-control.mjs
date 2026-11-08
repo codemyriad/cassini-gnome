@@ -184,8 +184,11 @@ try {
   // Do not use sourceCount/heard to bypass the production admission gate.
   const state = await poll(async () => {
    const state = await call();
-   return state.auto && state.settingsReady && state.meetings.length === 3 && state.browserPeers.length ? state : null;
-  }, 'legacy opt-in and current inventory observed');
+   // Inventory can arrive before the hook's packet evidence. Wait for the
+   // app's own heard update; existence of three rows is not audio readiness.
+   return state.auto && state.settingsReady && state.meetings.length === 3 && state.browserPeers.length &&
+    state.meetings.every(meeting => meeting.heard && meeting.sourceCount > 0) ? state : null;
+  }, 'legacy opt-in and heard source inventory observed');
   assert.ok(state.browserPeers.every(peer => peer.diagnostics.extensionVersion === '0.2.25' && peer.automaticVerified === false));
   assert.ok(state.browserPeers.every(peer => !peer.capabilities.includes('verified-auto-admission-v1')));
   assert.ok(state.meetings.every(meeting => meeting.heard && meeting.sourceCount > 0));
