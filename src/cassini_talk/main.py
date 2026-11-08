@@ -198,6 +198,13 @@ class CassiniApplication(Adw.Application):
                 lambda value: self.recording_settings.set_string("speech-model", value),
                 lambda: GLib.idle_add(self._models_changed),
                 store=store,
+                preference=self.recording_settings.get_string("speech-model-preference"),
+                legacy_whistle=(
+                    self.recording_settings.get_user_value("speech-model-preference") is None
+                    and self.recording_settings.get_user_value("speech-model") is not None
+                    and self.recording_settings.get_string("speech-model") == "whistle"
+                ),
+                persist_preference=lambda value: self.recording_settings.set_string("speech-model-preference", value),
             )
             from .diarization_models import DiarizationModels
             from .transcription import bundle_path
@@ -346,6 +353,7 @@ class CassiniApplication(Adw.Application):
                 window.set_startup_id(self._sni_activation_token)
                 self._sni_activation_token = ""
             window.present()
+            self._model_notices()
             self.windowless_background.refresh()
             from .capture_guard import refresh_capture_background
 
@@ -1305,6 +1313,7 @@ class CassiniApplication(Adw.Application):
                 voice_models=self.voice_models,
                 voice_store=self.voice_store,
                 recordings=self.live_recording_directories,
+                completed=lambda model: GLib.idle_add(self._model_completed, model),
             )
         return self.transcriber
 
@@ -1378,12 +1387,53 @@ class CassiniApplication(Adw.Application):
         return False
 
     def _models_changed(self):
+        self._model_notices()
         if self.settings_dialog and not self.settings_dialog.closed:
             self.settings_dialog.render_models()
         if self.voice_backfill:
             self.voice_backfill.models_changed()
         self._refresh_speaker_dialogs()
         return False
+
+    def _model_completed(self, model):
+        if model == "whistle":
+            self.recording_settings.set_boolean("whistle-transcribed", True)
+            if self.speech_models:
+                self.speech_models.refresh_suggestion()
+            self._model_notices()
+        return False
+
+    def _model_notices(self):
+        from .parakeet_model import MODEL_ID
+        from .parakeet_suggestion import offer
+        from .strings import text
+
+        models = self.speech_models
+        if models is None:
+            return
+        state = models.snapshot()
+        settings = self.recording_settings
+        window = self.get_active_window()
+        if window is None or not window.get_visible() or not hasattr(window, "parakeet_suggestion"):
+            return
+        if (
+            state.get("downloaded")
+            and state["selected"] == MODEL_ID
+            and not settings.get_boolean("parakeet-default-announced")
+        ):
+            window.toasts.add_toast(Adw.Toast(title=text("models.parakeetUltra.nowDefault")))
+            settings.set_boolean("parakeet-default-announced", True)
+        showing = window.parakeet_suggestion.get_visible()
+        eligible = offer(state, settings.get_boolean("parakeet-suggestion-dismissed"))
+        if (
+            eligible
+            and settings.get_boolean("whistle-transcribed")
+            and (showing or not settings.get_boolean("parakeet-suggestion-shown"))
+        ):
+            window.parakeet_suggestion.set_visible(True)
+            settings.set_boolean("parakeet-suggestion-shown", True)
+        elif not eligible:
+            window.parakeet_suggestion.set_visible(False)
 
     def _refresh_speaker_dialogs(self):
         for window in self.get_windows():

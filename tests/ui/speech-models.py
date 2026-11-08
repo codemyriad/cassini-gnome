@@ -94,6 +94,9 @@ try:
                 "whistle",
                 lambda value: app.recording_settings.set_string("speech-model", value),
                 lambda: GLib.idle_add(app._models_changed),
+                capable=lambda: True,
+                preference=app.recording_settings.get_string("speech-model-preference"),
+                persist_preference=lambda value: app.recording_settings.set_string("speech-model-preference", value),
                 store=ModelStore(
                     tmp / "models",
                     origin=server.origin,
@@ -102,12 +105,84 @@ try:
                 ),
             )
             until(lambda: not app.speech_models.snapshot()["busy"])
+            notices = []
+            add_toast = window.toasts.add_toast
+
+            def toast_shown(toast):
+                notices.append(toast.get_title())
+                add_toast(toast)
+
+            window.toasts.add_toast = toast_shown
             dialog = app.settings_dialog = SettingsDialog(app)
             dialog.present(window)
             dialog.set_visible_page_name("transcription")
             assert not dialog.parakeet_radio.get_sensitive() and dialog.whistle_radio.get_active()
             assert dialog.parakeet_status.get_label() == "443 MB download"
             assert dialog.parakeet_action.get_label() == "Download" and not server.requests
+            until(lambda: dialog.parakeet_suggestion.get_visible())
+            app.speech_models.capable = lambda: False
+            app.speech_models.refresh_suggestion()
+            until(lambda: not dialog.parakeet_suggestion.get_visible())
+            app.speech_models.capable = lambda: True
+            app.speech_models.refresh_suggestion()
+            until(lambda: dialog.parakeet_suggestion.get_visible())
+            capture(window, "-suggestion")
+            assert not window.parakeet_suggestion.get_visible()
+            assert not app.recording_settings.get_boolean("whistle-transcribed")
+            # Complete a real FIFO job against a tiny injected recognizer. The
+            # production commit event, not a fabricated Library snapshot, drives D78.
+            from durable import Finished
+            from test_library import capture as make_capture
+
+            from cassini_talk.transcription import TranscriptionQueue
+
+            class Starter:
+                def __init__(self, *_args, **_kwargs):
+                    pass
+
+                def start(self):
+                    pass
+
+                def close(self):
+                    pass
+
+                def process_tracks(self, tracks, notify):
+                    notify(dict(type="planned", etaMinutes=0))
+                    notify(
+                        dict(
+                            type="progress",
+                            etaMinutes=0,
+                            trackId=tracks[0]["id"],
+                            trackOrder=0,
+                            language="en",
+                            words=[dict(startMs=0, endMs=10, text="Hello")],
+                        )
+                    )
+                    return dict(diagnostics=[])
+
+            own = tmp / "first-whistle"
+            session = make_capture(own)
+            finished = Finished()
+            queue = TranscriptionQueue(
+                lambda _: None,
+                finished,
+                root=own,
+                bundle=tmp,
+                client_factory=Starter,
+                completed=lambda model: GLib.idle_add(app._model_completed, model),
+            )
+            try:
+                assert queue.enqueue(session.directory)
+                finished.wait(1, exactly=True)
+                until(lambda: window.parakeet_suggestion.get_visible())
+                assert app.recording_settings.get_boolean("whistle-transcribed")
+                assert app.recording_settings.get_boolean("parakeet-suggestion-shown")
+                window.parakeet_suggestion.dismiss.emit("clicked")
+                until(lambda: not dialog.parakeet_suggestion.get_visible())
+                assert not window.parakeet_suggestion.get_visible()
+                assert app.recording_settings.get_boolean("parakeet-suggestion-dismissed")
+            finally:
+                queue.close()
             capture(window, "-available")
             # A failed request stays retryable and never selects the model.
             server.mode = "truncate"
@@ -123,11 +198,16 @@ try:
                 lambda: (
                     not app.speech_models.snapshot()["busy"]
                     and dialog.parakeet_radio.get_sensitive()
-                    and dialog.parakeet_status.get_label() == "Downloaded"
+                    and dialog.parakeet_status.get_label() == "In use for new meetings"
                 )
             )
-            assert dialog.parakeet_radio.get_sensitive() and dialog.whistle_radio.get_active()
-            assert dialog.parakeet_status.get_label() == "Downloaded"
+            assert dialog.parakeet_radio.get_sensitive() and dialog.parakeet_radio.get_active()
+            assert app.recording_settings.get_boolean("parakeet-default-announced")
+            assert notices.count("New meetings now use Parakeet Ultra.") == 1
+            app._models_changed()
+            assert notices.count("New meetings now use Parakeet Ultra.") == 1
+            dialog.whistle_radio.set_active(True)
+            assert app.recording_settings.get_string("speech-model-preference") == "whistle"
             dialog.parakeet_radio.set_active(True)
             assert app.recording_settings.get_string("speech-model") == MODEL_ID
             assert dialog.parakeet_status.get_label() == "In use for new meetings"
@@ -146,6 +226,12 @@ try:
             assert dialog.model_line.get_label() == "Parakeet Ultra was removed. New meetings use Whistle."
             assert not (tmp / "models" / MODEL_ID / REVISION).exists()
             capture(window, "-removed")
+            dialog.force_close()
+            until(lambda: dialog.closed)
+            dialog = app.settings_dialog = SettingsDialog(app)
+            dialog.present(window)
+            assert not dialog.parakeet_suggestion.get_visible()
+            assert notices.count("New meetings now use Parakeet Ultra.") == 1
             dialog.force_close()
             app.begin_exit()
             window.close()

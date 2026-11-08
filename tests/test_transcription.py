@@ -172,6 +172,7 @@ def test_worker_failure_becomes_retryable_without_changing_audio(tmp_path):
     session = capture(tmp_path)
     before = capture_hashes(session)
     finished = Finished()
+    successful = []
 
     class Client:
         fail = True
@@ -193,16 +194,20 @@ def test_worker_failure_becomes_retryable_without_changing_audio(tmp_path):
             notify(dict(type="planned", etaMinutes=0))
             return dict(diagnostics=[])
 
-    queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
+    queue = TranscriptionQueue(
+        lambda _: None, finished, client_factory=Client, bundle=tmp_path, completed=successful.append
+    )
     try:
         queue.enqueue(session.directory)
         finished.wait(1, exactly=True)
         metadata = read_metadata(session.directory)
         assert metadata["transcript"]["status"] == "failed" and metadata["error"]["id"] == "transcribe-failed"
+        assert successful == []
         assert Client.closed == 1
         assert queue.enqueue(session.directory)
         finished.wait(2, exactly=True)
         assert read_metadata(session.directory)["transcript"]["status"] == "done"
+        assert successful == ["whistle"]
         assert capture_hashes(session) == before
     finally:
         queue.close()

@@ -20,9 +20,29 @@ class SpeechModels:
     invalid_notice = "models.parakeetUltra.invalidFallback"
     removed_notice = "models.parakeetUltra.removedFallback"
 
-    def __init__(self, selected, persist, changed, *, store, client_factory=ParakeetClient):
+    def __init__(
+        self,
+        selected,
+        persist,
+        changed,
+        *,
+        store,
+        client_factory=ParakeetClient,
+        preference="auto",
+        persist_preference=lambda _value: None,
+        capable=None,
+        legacy_whistle=False,
+    ):
         # D54: the app builds one ModelStore with its User-Agent and shares it.
         self.store = store
+        self.preference = preference
+        self.legacy_whistle = legacy_whistle
+        self.persist_preference = persist_preference
+        from .parakeet_suggestion import capable as default_capable
+
+        self.capable = capable or default_capable
+        self._eligibility_thread = None
+        self._eligibility_lock = threading.Lock()
         self.persist, self.changed = persist, changed
         self.client_factory = client_factory
         self.lock = threading.RLock()
@@ -32,7 +52,14 @@ class SpeechModels:
         self._selected = selected if selected in ("whistle", self.pin.MODEL_ID) else "whistle"
         self._state = dict(downloaded=False, busy=True, downloading=False, percent=0, error=False, notice=None)
         self._thread = None
+        self._inspected = threading.Event()
         self._launch(self._inspect)
+
+    def choice_for_job(self):
+        while not self._inspected.wait(0.1):
+            if self.cancelled.is_set():
+                raise CancelledError()
+        return self.snapshot()["selected"]
 
     def snapshot(self):
         with self.lock:
@@ -59,6 +86,8 @@ class SpeechModels:
                 and not self._state["downloaded"]
             ):
                 return False
+            self.preference = value
+            self.persist_preference(value)
             self._choice(value)
         self._change(notice=None)
         return True
@@ -78,7 +107,9 @@ class SpeechModels:
             LOG.exception("Optional speech model operation failed")
             self._change(error=True)
         finally:
+            self._refresh_eligibility()
             self._change(busy=False, downloading=False)
+            self._inspected.set()
 
     def _invalid(self):
         self._choice("whistle")
@@ -121,7 +152,15 @@ class SpeechModels:
                 invalid = True
             else:
                 invalid = False
+                # Earlier versions persisted only the resolved choice. A saved
+                # Whistle choice alongside valid Parakeet weights was explicit;
+                # retain it. An absent/damaged revision was a fallback instead.
+                if self.pin is parakeet_model and self.legacy_whistle and self.preference == "auto":
+                    with self.lock:
+                        self.preference = "whistle"
+                        self.persist_preference("whistle")
                 self._change(downloaded=True)
+                self._promote()
         if invalid:
             self._invalid()
 
@@ -162,8 +201,43 @@ class SpeechModels:
             raise
         # ModelStore verified the exact manifest and notice before the atomic
         # publish. There is no second cancellable pass after publication.
-        # A completed explicit download never selects itself.
+        # D78: verified publication makes Parakeet the automatic default.
         self._change(downloaded=True, percent=100)
+        self._promote()
+
+    def _promote(self):
+        if self.pin is parakeet_model:
+            with self.lock:
+                if not self.cancelled.is_set() and self.preference != "whistle" and self._selected != self.pin.MODEL_ID:
+                    self._choice(self.pin.MODEL_ID)
+                    self._change(notice="models.parakeetUltra.nowDefault")
+
+    def _refresh_eligibility(self):
+        if self.pin is not parakeet_model:
+            return
+        try:
+            allowed = self.capable()
+            if allowed:
+                plan = self.store.plan_new(self.pin.DOWNLOAD_BYTES, self.pin.INSTALLED_BYTES)
+                allowed = plan.free_bytes - plan.required_bytes >= plan.reserve_bytes
+        except (OSError, ValueError):
+            allowed = False
+        self._change(suggestible=allowed)
+
+    def refresh_suggestion(self):
+        # Settings can recheck a changed disk budget without blocking GTK or
+        # starting a second model operation. Coalesce repeated refreshes.
+        if self.cancelled.is_set() or not self._eligibility_lock.acquire(blocking=False):
+            return
+
+        def check():
+            try:
+                self._refresh_eligibility()
+            finally:
+                self._eligibility_lock.release()
+
+        self._eligibility_thread = threading.Thread(target=check, daemon=True, name="cassini-model-capability")
+        self._eligibility_thread.start()
 
     def cancel_download(self):
         self.download_cancelled.set()

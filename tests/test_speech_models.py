@@ -57,11 +57,12 @@ def downloaded(models):
     assert models.snapshot()["downloaded"] and not models.snapshot()["error"]
 
 
-def test_download_is_explicit_pinned_and_never_selects_itself(model_fixture):
+def test_explicit_download_verifies_then_selects_parakeet_default(model_fixture):
     models, store, remote, persisted = model_fixture
     assert not remote.requests and not models.select(MODEL_ID)
     downloaded(models)
-    assert models.snapshot()["selected"] == "whistle" and not persisted
+    assert models.snapshot()["selected"] == MODEL_ID and persisted == [MODEL_ID]
+    assert models.snapshot()["notice"] == "models.parakeetUltra.nowDefault"
     assert (store.root / MODEL_ID / REVISION / "weights.onnx").read_bytes() == remote.data
     assert models.select(MODEL_ID) and persisted[-1] == MODEL_ID
     assert models.remove() and persisted[-1] == "whistle"
@@ -77,6 +78,7 @@ def test_changed_manifest_is_rejected_before_any_weight_request(model_fixture):
     assert models.download()
     idle(models)
     assert models.snapshot()["error"] and not models.snapshot()["downloaded"]
+    assert models.snapshot()["selected"] == "whistle"
     assert [path for path, _ in remote.requests] == ["/manifest.json"]
     assert not (store.root / MODEL_ID / REVISION).exists()
 
@@ -138,6 +140,7 @@ def test_fifo_reads_model_when_job_starts_and_remove_keeps_loaded_job(
     sessions = [capture(root), capture(root)]
     entered, release = threading.Event(), threading.Event()
     calls, finished, active = [], Finished(), set()
+    committed_models = []
 
     class Client:
         kind = "whistle"
@@ -182,7 +185,14 @@ def test_fifo_reads_model_when_job_starts_and_remove_keeps_loaded_job(
             super().start()
 
     models.client_factory = Parakeet
-    queue = TranscriptionQueue(lambda _: None, finished, bundle=tmp_path, client_factory=Client, models=models)
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=tmp_path,
+        client_factory=Client,
+        models=models,
+        completed=committed_models.append,
+    )
     try:
         assert queue.enqueue(sessions[0].directory)
         durable(entered, "the first job did not start")
@@ -199,6 +209,7 @@ def test_fifo_reads_model_when_job_starts_and_remove_keeps_loaded_job(
         release.set()
         finished.wait(2, exactly=True)
         assert calls == expected
+        assert committed_models == [MODEL_TAG if kind == MODEL_ID else "whistle" for kind in expected]
         for session, kind in zip(sessions, expected, strict=True):
             metadata = read_metadata(session.directory)
             assert metadata["transcript"] == dict(
@@ -313,6 +324,7 @@ def test_try_again_can_recover_a_damaged_published_revision(model_fixture, damag
     assert models.download()
     idle(models)
     assert models.snapshot()["error"] and not models.snapshot()["downloaded"]
+    assert models.snapshot()["selected"] == "whistle"
     assert not directory.exists()
     downloaded(models)
     assert store.installed(MODEL_ID, REVISION)
@@ -366,5 +378,141 @@ def test_valid_revision_restores_about_notice_before_model_use(model_fixture):
         idle(second)
         assert second.snapshot()["downloaded"] and has_downloaded_models(store.root)
         assert (store.root / "NOTICE.txt").read_bytes() == test_model_download.NOTICE
+    finally:
+        second.close()
+
+
+def test_verified_startup_promotes_automatic_default(model_fixture):
+    models, store, remote, _ = model_fixture
+    downloaded(models)
+    before = len(remote.requests)
+    persisted = []
+    second = SpeechModels("whistle", persisted.append, lambda: None, store=store)
+    try:
+        idle(second)
+        assert second.snapshot()["downloaded"]
+        assert second.choice_for_job() == MODEL_ID
+        assert persisted == [MODEL_ID]
+        assert second.snapshot()["notice"] == "models.parakeetUltra.nowDefault"
+        assert len(remote.requests) == before
+    finally:
+        second.close()
+
+
+def test_explicit_whistle_choice_survives_download_and_restart(model_fixture):
+    models, store, _, _ = model_fixture
+    preferences = []
+    models.persist_preference = preferences.append
+    assert models.select("whistle")
+    downloaded(models)
+    assert models.snapshot()["selected"] == "whistle"
+    assert preferences == ["whistle"]
+    second = SpeechModels("whistle", lambda _: None, lambda: None, store=store, preference=preferences[-1])
+    try:
+        idle(second)
+        assert second.snapshot()["downloaded"]
+        assert second.choice_for_job() == "whistle"
+        assert second.snapshot()["notice"] is None
+    finally:
+        second.close()
+
+
+def test_initial_verification_holds_job_choice_until_verified(model_fixture, monkeypatch):
+    models, store, _, _ = model_fixture
+    downloaded(models)
+    entered, release, chosen = threading.Event(), threading.Event(), threading.Event()
+    original = SpeechModels._verified
+
+    def held(self):
+        entered.set()
+        durable(release, "release initial verification")
+        return original(self)
+
+    monkeypatch.setattr(SpeechModels, "_verified", held)
+    second = SpeechModels("whistle", lambda _: None, lambda: None, store=store)
+    result = []
+
+    def choose():
+        result.append(second.choice_for_job())
+        chosen.set()
+
+    waiter = threading.Thread(target=choose)
+    try:
+        durable(entered, "initial verification entered")
+        waiter.start()
+        assert not chosen.is_set()
+        release.set()
+        durable(chosen, "job choice after verification")
+        assert result == [MODEL_ID]
+        idle(second)
+    finally:
+        release.set()
+        second.close()
+        waiter.join(2)
+        assert not waiter.is_alive()
+
+
+def test_suggestion_refresh_is_off_thread_and_updates_when_disk_changes(model_fixture, monkeypatch):
+    models, store, _, _ = model_fixture
+    from durable import Changes
+
+    from cassini_talk.parakeet_suggestion import offer
+
+    changes = Changes()
+    models.changed = changes
+    models.capable = lambda: True
+    enough = store.disk_usage(store.root.parent)
+    monkeypatch.setattr(store, "disk_usage", lambda _: enough._replace(free=0))
+    models.refresh_suggestion()
+    models._eligibility_thread.join(2)
+    assert not models.snapshot()["suggestible"]
+    entered, release = threading.Event(), threading.Event()
+    caller = threading.get_ident()
+
+    def held(_):
+        assert threading.get_ident() != caller
+        entered.set()
+        durable(release, "release disk capability check")
+        return enough._replace(free=10**15, total=10**12)
+
+    monkeypatch.setattr(store, "disk_usage", held)
+    try:
+        models.refresh_suggestion()
+        durable(entered, "disk check entered")
+        assert not offer(models.snapshot(), False)
+        release.set()
+        changes.wait(lambda: offer(models.snapshot(), False))
+        assert not offer(models.snapshot(), True)
+    finally:
+        release.set()
+        models._eligibility_thread.join(2)
+        assert not models._eligibility_thread.is_alive()
+
+
+@pytest.mark.parametrize("installed", [True, False])
+def test_legacy_whistle_choice_requires_already_verified_parakeet(model_fixture, installed):
+    models, store, _, _ = model_fixture
+    if installed:
+        downloaded(models)
+    preferences = []
+    second = SpeechModels(
+        "whistle",
+        lambda _: None,
+        lambda: None,
+        store=store,
+        legacy_whistle=True,
+        persist_preference=preferences.append,
+    )
+    try:
+        idle(second)
+        if installed:
+            assert second.snapshot()["downloaded"]
+            assert second.choice_for_job() == "whistle"
+            assert preferences == ["whistle"]
+        else:
+            assert not second.snapshot()["downloaded"]
+            downloaded(second)
+            assert second.choice_for_job() == MODEL_ID
+            assert preferences == []
     finally:
         second.close()

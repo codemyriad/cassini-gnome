@@ -88,6 +88,8 @@ talk_sources = files(
   'cassini_talk/transcription.py',
   'cassini_talk/transcript_publish.py',
   'cassini_talk/speech_models.py',
+  'cassini_talk/parakeet_suggestion.py',
+  'cassini_talk/parakeet_suggestion_widget.py',
   'cassini_talk/models.json',
   'cassini_talk/voices_logic.py',
   'cassini_talk/campplus_model.py',

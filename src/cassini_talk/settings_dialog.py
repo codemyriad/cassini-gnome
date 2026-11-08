@@ -173,6 +173,11 @@ class SettingsDialog(Adw.PreferencesDialog):
             speech.add(self.parakeet)
             self.model_line = Gtk.Label(wrap=True, xalign=0, css_classes=["dim-label"])
             speech.add(self.model_line)
+            from .parakeet_suggestion_widget import ParakeetSuggestion
+
+            self.parakeet_suggestion = ParakeetSuggestion(self.app)
+            speech.add(self.parakeet_suggestion)
+            self.app.speech_models.refresh_suggestion()
             self.render_models()
         page.add(speech)
         self._speakers_models(page)
@@ -451,6 +456,9 @@ class SettingsDialog(Adw.PreferencesDialog):
         from .ux_formats import size
 
         state = models.snapshot()
+        from .parakeet_suggestion import offer
+
+        self.parakeet_suggestion.set_visible(offer(state, self.settings.get_boolean("parakeet-suggestion-dismissed")))
         chosen = state["selected"] == MODEL_ID
         self._updating = True
         self.whistle_radio.set_active(not chosen)
@@ -478,7 +486,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.parakeet_status.set_css_classes(["success", "caption", "heading"] if chosen else ["dim-label", "caption"])
         self.parakeet_status.set_label(status)
         self.parakeet_action.set_label(action)
-        line = text(state["notice"]) if state["notice"] else ""
+        line = text(state["notice"]) if state["notice"] and state["notice"] != "models.parakeetUltra.nowDefault" else ""
         if state["error"]:
             line = text("errors.modelDownloadFailed.line", model=text("models.parakeetUltra.name"))
         self.model_line.set_label(line)
