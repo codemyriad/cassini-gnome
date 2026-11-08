@@ -166,3 +166,38 @@ def test_received_second_pass_reports_progress_while_skipping_a_long_quiet_span(
         pipeline.audio_segments(dict(format="opus"), segments, lambda: notices.append(True), clock=lambda: next(ticks))
     )
     assert len(notices) >= 9 and len(result[0]) == 16000
+
+
+@pytest.mark.parametrize(
+    "length,low,first,last",
+    [
+        (0, 0, 0, 1),
+        (1, 0, 0, 1),
+        (2, 0, 0, 1),
+        (47, 0, 0, 16),
+        (48, 0, 0, 16),
+        (49, 0, 0, 17),
+        (95, 0, 0, 32),
+        (96, 0, 0, 32),
+        (97, 0, 0, 33),
+        (211, 7, 0, 80),
+        (211, 49, 17, 81),
+        (211, 97, 50, 112),
+        (211, 0, 7, 7),
+    ],
+)
+def test_fir_slice_boundaries_keep_scalar_pcm_bytes(length, low, first, last):
+    from cassini_talk.speech_pipeline import TAPS, fir_values
+
+    samples = np.random.default_rng(81).uniform(-1, 1, length).astype("<f4")
+    expected = []
+    # Independent scalar FIR definition, including zero padding. Every tap is
+    # added in order with a separate double-precision multiply and add.
+    for position in range(first, last):
+        total = 0.0
+        for tap, coefficient in enumerate(TAPS):
+            index = position * 3 + 48 - tap - low
+            if 0 <= index < len(samples):
+                total += float(coefficient) * float(samples[index])
+        expected.append(total)
+    assert fir_values(samples, low, first, last).tobytes() == np.asarray(expected, dtype="<f4").tobytes()
