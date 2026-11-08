@@ -398,8 +398,10 @@ class TranscriptionQueue:
         voice_store=None,
         clock=time.monotonic,
         recordings=tuple,
+        completed=lambda _model: None,
     ):
         self.changed, self.finished = changed, finished
+        self.completed = completed
         # Folders of captures running now. G14 keeps the recorder's reserve
         # free on their volume when the job starts.
         self.recordings = recordings
@@ -626,7 +628,7 @@ class TranscriptionQueue:
         # Select on this owner thread when the job starts, never at enqueue.
         from .parakeet_model import MODEL_ID, MODEL_TAG
 
-        selected = self.models.snapshot()["selected"] if self.models else "whistle"
+        selected = self.models.choice_for_job() if self.models else "whistle"
         tag = MODEL_TAG if selected == MODEL_ID else "whistle"
         update_metadata(
             directory,
@@ -936,6 +938,7 @@ class TranscriptionQueue:
                 check_active=self._check_open,
             )
         self.changed(directory)
+        self.completed(tag)
         if self.client_model == MODEL_ID:
             self.client.close()
             self.client = None

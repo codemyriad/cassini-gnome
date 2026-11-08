@@ -9,6 +9,31 @@
       </choices>
       <summary>Speech model for new jobs</summary>
     </key>
+    <key name="speech-model-preference" type="s">
+      <default>'auto'</default>
+      <choices>
+        <choice value="auto" />
+        <choice value="whistle" />
+        <choice value="parakeet-ultra-0.6b-int8" />
+      </choices>
+      <summary>Explicit speech model preference, or verified automatic default</summary>
+    </key>
+    <key name="parakeet-default-announced" type="b">
+      <default>false</default>
+      <summary>Parakeet automatic default notice shown</summary>
+    </key>
+    <key name="parakeet-suggestion-dismissed" type="b">
+      <default>false</default>
+      <summary>Parakeet recommendation dismissed</summary>
+    </key>
+    <key name="parakeet-suggestion-shown" type="b">
+      <default>false</default>
+      <summary>Post-transcription Parakeet recommendation shown</summary>
+    </key>
+    <key name="whistle-transcribed" type="b">
+      <default>false</default>
+      <summary>A Whistle transcription completed successfully</summary>
+    </key>
     <key name="record-shortcut-enabled" type="b">
       <default>false</default>
       <summary>Global recording shortcut explicitly enabled</summary>

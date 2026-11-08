@@ -280,6 +280,23 @@ class ModelStore:
     def fetch_manifest(self, *, cancelled=None):
         return Manifest(self._small("manifest.json", cancelled), origin=self.origin)
 
+    def plan_new(self, download_bytes, installed_bytes):
+        """Conservative D78 offer budget; actual downloads also account for resumes."""
+        self._check_directories(self.root)
+        directory = self.root
+        while not directory.exists() and directory != directory.parent:
+            directory = directory.parent
+        usage = self.disk_usage(directory)
+        reserve = max(1024**3, usage.total // 50)
+        return SpacePlan(
+            download_bytes,
+            installed_bytes,
+            download_bytes,
+            download_bytes + installed_bytes + 2 * SMALL_LIMIT,
+            reserve,
+            usage.free,
+        )
+
     def plan(self, model, *, cancelled=None):
         self._check_directories(self.root)
         directory = self.root

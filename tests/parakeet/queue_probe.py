@@ -17,10 +17,11 @@ for name in ("bundle", "model", "runtime", "modules", "output"):
 args = parser.parse_args()
 sys.path.insert(0, str(args.modules))
 from golden_check import assess, punctuation_match  # noqa: E402
+from queue_models import Models  # noqa: E402
 
 from cassini_talk.meeting_store import read_metadata  # noqa: E402
 from cassini_talk.parakeet_client import ParakeetClient  # noqa: E402
-from cassini_talk.parakeet_model import MODEL_ID, MODEL_TAG  # noqa: E402
+from cassini_talk.parakeet_model import MODEL_TAG  # noqa: E402
 from cassini_talk.recording_session import RecordingSession  # noqa: E402
 from cassini_talk.transcription import TranscriptionQueue  # noqa: E402
 
@@ -45,7 +46,7 @@ for title in ("First", "Second"):
     sessions.append(session)
     before.append({p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in session.directory.iterdir()})
 
-children, clients, assessments = [], [], []
+assessments = []
 
 
 class CheckedClient(ParakeetClient):
@@ -72,19 +73,8 @@ class CheckedClient(ParakeetClient):
         return result
 
 
-class Models:
-    def snapshot(self):
-        return dict(selected=MODEL_ID)
-
-    def start_parakeet(self, bundle, *, register):
-        assert all(client.process is None for client in clients), "Previous speech worker still alive"
-        client = CheckedClient(bundle, args.model, args.runtime, timeout=120)
-        register(client)
-        client.start()
-        children.append(client.process)
-        clients.append(client)
-        return client
-
+models = Models(args.model, args.runtime, client_factory=CheckedClient)
+children, clients = models.children, models.clients
 
 finished = []
 done = threading.Event()
@@ -96,7 +86,7 @@ def complete(directory):
         done.set()
 
 
-queue = TranscriptionQueue(lambda _: None, complete, bundle=args.bundle, root=root, models=Models())
+queue = TranscriptionQueue(lambda _: None, complete, bundle=args.bundle, root=root, models=models)
 try:
     for session in sessions:
         assert queue.enqueue(session.directory)

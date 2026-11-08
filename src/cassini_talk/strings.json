@@ -20903,6 +20903,137 @@
      "text": "{site} mistura todas as vozes remotas num único fluxo, por isso o Cassini gravou-as a partir do áudio do computador."
     }
    }
+  },
+  {
+   "id": "models.parakeetSuggestion.title",
+   "en": "Get better transcripts with Parakeet Ultra",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "D78",
+   "note": "Coordinator (D78). Calm, dismissible suggestion shown only where Parakeet Ultra can run: in Settings, and once after the first Whistle transcription.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascrizioni migliori con Parakeet Ultra"
+    },
+    "fr": {
+     "text": "De meilleures transcriptions avec Parakeet Ultra"
+    },
+    "es": {
+     "text": "Mejores transcripciones con Parakeet Ultra"
+    },
+    "pt-BR": {
+     "text": "Transcrições melhores com o Parakeet Ultra"
+    },
+    "pt-PT": {
+     "text": "Transcrições melhores com o Parakeet Ultra"
+    }
+   }
+  },
+  {
+   "id": "models.parakeetSuggestion.body",
+   "en": "Whistle is built in so you can start right away. Parakeet Ultra is more accurate. It’s a {size} download.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "D78",
+   "note": "Coordinator (D78). {size} is the pinned download size, computed from the manifest and never typed by hand.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Whistle è incluso per iniziare subito. Parakeet Ultra è più preciso. Il download è di {size}."
+    },
+    "fr": {
+     "text": "Whistle est inclus pour commencer tout de suite. Parakeet Ultra est plus précis. Le téléchargement fait {size}."
+    },
+    "es": {
+     "text": "Whistle viene incluido para que empieces enseguida. Parakeet Ultra es más preciso. La descarga ocupa {size}."
+    },
+    "pt-BR": {
+     "text": "O Whistle vem incluído para você começar na hora. O Parakeet Ultra é mais preciso. O download tem {size}."
+    },
+    "pt-PT": {
+     "text": "O Whistle vem incluído para começar de imediato. O Parakeet Ultra é mais preciso. A transferência tem {size}."
+    }
+   },
+   "placeholders": {
+    "size": "download size, e.g. 443 MB"
+   }
+  },
+  {
+   "id": "models.parakeetSuggestion.download",
+   "en": "Download",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "D78",
+   "note": "Coordinator (D78). Starts the Parakeet Ultra download (the existing consent and progress flow). The dismiss action reuses common.notNow, and the dismissal persists.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Scarica"
+    },
+    "fr": {
+     "text": "Télécharger"
+    },
+    "es": {
+     "text": "Descargar"
+    },
+    "pt-BR": {
+     "text": "Baixar"
+    },
+    "pt-PT": {
+     "text": "Transferir"
+    }
+   }
+  },
+  {
+   "id": "models.parakeetUltra.nowDefault",
+   "en": "New meetings now use Parakeet Ultra.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D78",
+   "note": "Coordinator (D78). Shown once after Parakeet Ultra is installed and verified and becomes the default for new meetings.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le nuove riunioni ora usano Parakeet Ultra."
+    },
+    "fr": {
+     "text": "Les nouvelles réunions utilisent désormais Parakeet Ultra."
+    },
+    "es": {
+     "text": "Las reuniones nuevas ahora usan Parakeet Ultra."
+    },
+    "pt-BR": {
+     "text": "As novas reuniões agora usam o Parakeet Ultra."
+    },
+    "pt-PT": {
+     "text": "As novas reuniões passam a usar o Parakeet Ultra."
+    }
+   }
   }
  ]
 }

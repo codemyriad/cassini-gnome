@@ -105,6 +105,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         shell = Adw.ToolbarView(content=self.toasts)
         shell.add_top_bar(self.update_banner)
+        from .parakeet_suggestion_widget import ParakeetSuggestion
+
+        self.parakeet_suggestion = ParakeetSuggestion(application)
+        shell.add_top_bar(self.parakeet_suggestion)
         self.set_content(shell)
         self.update_build_banner()
         self._build_empty()
