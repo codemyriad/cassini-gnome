@@ -63,7 +63,8 @@ The initial branch pins SPEC/schema/shared vectors at protocol
 `a8efd93e29578962c78fe05e06d62b3693956944`; its bundled producer is still 0.2.25.
 Do not release this intermediate pairing. Pin producer #79 / companion 0.2.26 only
 when merged, including its normal-native-Start request echo, and run real producer
-and app proofs before marking the PR ready. D80.3's rejected blanket guard is not
+and app proofs before marking the PR ready. In particular, GNOME adoption must
+not merge before #79 makes real Talk qualify, including its split-PC topology. D80.3's rejected blanket guard is not
 part of this implementation.
 
 The six D80.2 actual-socket regressions retain the frozen real 0.2.25 producer
@@ -74,3 +75,13 @@ positive automatic fixtures now supply explicit synthetic verified evidence; old
 source-only fixtures assert the adopted failure-closed behavior. Existing source
 and manual/lifecycle vectors are retained. No new skip/xfail, coverage exception,
 tolerance or audio golden change is used.
+
+The recording `app-control.mjs` journey explicitly tests the pinned 0.2.25
+companion's failure-closed behavior. After opt-in, current heard RTP inventory
+must not issue another Start on the real native-control writer, create a recording,
+or hide the setup `autoUnverified` explanation. Explicit manual Record retains
+multi-call audio isolation, portal Stop and hidden notification coverage. Inbound
+RTP alone remains insufficient, including after pre-join. Its verified positive
+branch is retained for the producer pin; synthetic oscillator-only inventory is
+not evidence that real Talk qualifies. The D74 real-producer ownership journey
+also needs a matching verified producer/fixture, not an exemption for legacy facts.

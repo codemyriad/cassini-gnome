@@ -29,7 +29,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Gio, GLib  # noqa: E402
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
 
 sys.path[:0] = [str(root / "src"), str(root / "tests")]
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-talk.gresource")))
@@ -38,6 +38,7 @@ from desktop_services import DesktopServices  # noqa: E402
 from cassini_talk.global_shortcut import GlobalShortcut  # noqa: E402
 from cassini_talk.library_window import LibraryWindow  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.strings import text  # noqa: E402
 
 services = DesktopServices()
 app = CassiniApplication("io.codemyriad.CassiniTalk.BrowserTest", "test", "development")
@@ -100,6 +101,10 @@ def dispatch(packet, result, ready):
             window._stop_live()
         elif action == "show-settings":
             app.on_preferences()
+        elif action == "show-companion":
+            app.on_companion_setup(parent=app.settings_dialog or window)
+        elif action == "close-companion":
+            app.companion_setup.force_close()
         elif action == "auto":
             dialog = app.settings_dialog
             # Toggle as a person would, even while the dialog's periodic status
@@ -116,7 +121,18 @@ def dispatch(packet, result, ready):
                 dialog.emit("response", "keep")
                 dialog.force_close()
         window = next((w for w in app.get_windows() if isinstance(w, LibraryWindow)), None)
+        companion = getattr(app, "companion_setup", None)
+        guidance = []
+        if companion and not companion.closed and companion.health_scroller.get_visible():
+            child = companion.health_box.get_first_child()
+            while child is not None:
+                if isinstance(child, Gtk.Label) and child.get_visible():
+                    guidance.append(child.get_label())
+                child = child.get_next_sibling()
         result.update(
+            browserPeers=app._browser_snapshot.get("browserPeers", []),
+            companionAutoUnverified=text("setup.companion.autoUnverified") in guidance,
+            companionGuidance=guidance,
             status="Library" if window and window.get_visible() else "Window closed",
             title=window.get_title() if window else None,
             connected=app._browser_snapshot.get("connectedBrowsers", 0),

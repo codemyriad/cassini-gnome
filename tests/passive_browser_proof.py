@@ -11,6 +11,7 @@ import contextlib
 import socket
 import threading
 from collections import deque
+from types import ModuleType
 from unittest.mock import patch
 
 from cassini_talk.browser_service import BrowserConnection, BrowserService, read_packet, send_packet
@@ -34,6 +35,11 @@ def replay(packets, parent, *, automatic=True, active=True, manual=False, before
 
     def forbidden(*_args, **_kwargs):
         raise AssertionError("The passive proof must never create a capture or fallback")
+
+    # The proof forbids native capture; it must not import its optional Gst
+    # runtime merely to intercept a constructor in minimal/sharded tests.
+    native = ModuleType("cassini_talk.native_recorder")
+    native.NativeRecorder = forbidden
 
     def receiver():
         try:
@@ -66,7 +72,7 @@ def replay(packets, parent, *, automatic=True, active=True, manual=False, before
             patch.object(service.workers, "submit", lambda function, *args: tasks.append((function, args))),
             patch.object(service, "start_fallback", forbidden),
             patch("cassini_talk.browser_capture.BrowserCapture.__init__", forbidden),
-            patch("cassini_talk.native_recorder.NativeRecorder.__init__", forbidden),
+            patch.dict("sys.modules", {native.__name__: native}),
         ):
             for packet in packets:
                 send_packet(extension_stream, packet)

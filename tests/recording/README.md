@@ -123,9 +123,12 @@ Library widgets. It records two generated WebRTC calls while both tabs and the
 private output sink are muted, checks separate remote tones and native microphone
 copies, and proves that a later call does not join manual Record. The meeting
 page stops one while the other grows; the pill and actual private portal shortcut
-stop all. Automatic recording continues with no visible window, and the native
-GNotification Open/Stop actions travel over private D-Bus. A new call starts while
-the app is hidden. All device, framing, IPC and widget code is production code;
+stop all. With pinned companion 0.2.25, opt-in must issue no automatic Start,
+even for heard RTP: the real control-host writer is observed and setup must show
+`setup.companion.autoUnverified`. Manual Record still exercises the hidden native
+GNotification/Stop controls over private D-Bus; a new call stays manual. The
+verified automatic positive branch waits for producer #79 / 0.2.26 and qualifying
+fixtures. GNOME adoption cannot merge before real Talk (including split-PC) qualifies. All device, framing, IPC and widget code is production code;
 only the meeting peers and private desktop services are fixtures.
 
 `tests/recording/run.sh /usr/bin/python3 tests/recording/browser-microphone.py`
