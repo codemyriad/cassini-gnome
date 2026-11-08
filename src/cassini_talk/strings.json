@@ -21034,6 +21034,66 @@
      "text": "As novas reuniões passam a usar o Parakeet Ultra."
     }
    }
+  },
+  {
+   "id": "companion.local.removeOlder",
+   "en": "Remove any older Cassini Recorder first.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "companion-local-help",
+   "note": "Coordinator. Shown in the local install steps while waiting for the companion.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Rimuovi prima eventuali versioni precedenti di Cassini Recorder."
+    },
+    "fr": {
+     "text": "Supprimez d’abord toute ancienne version de Cassini Recorder."
+    },
+    "es": {
+     "text": "Primero quita cualquier versión anterior de Cassini Recorder."
+    },
+    "pt-BR": {
+     "text": "Primeiro remova qualquer versão anterior do Cassini Recorder."
+    },
+    "pt-PT": {
+     "text": "Primeiro remova qualquer versão anterior do Cassini Recorder."
+    }
+   }
+  },
+  {
+   "id": "companion.local.restartBrowser",
+   "en": "Restart the browser.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "companion-local-help",
+   "note": "Coordinator. Last local install step, after Load unpacked.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Riavvia il browser."
+    },
+    "fr": {
+     "text": "Redémarrez le navigateur."
+    },
+    "es": {
+     "text": "Reinicia el navegador."
+    },
+    "pt-BR": {
+     "text": "Reinicie o navegador."
+    },
+    "pt-PT": {
+     "text": "Reinicie o navegador."
+    }
+   }
   }
  ]
 }

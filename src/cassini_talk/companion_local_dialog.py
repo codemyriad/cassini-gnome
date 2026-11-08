@@ -30,38 +30,30 @@ class LocalCompanionDialog(Adw.Dialog):
         self.toasts = Adw.ToastOverlay(child=content)
         self.set_child(self.toasts)
         content.append(Gtk.Label(label=text("companion.local.title"), wrap=True, css_classes=["title-2"]))
-        for n, key in enumerate(("step1", "step2", "step3"), 1):
-            content.append(
-                Gtk.Label(label=f"{n}. " + text("companion.local." + key, browser=browser.name), wrap=True, xalign=0)
+        content.append(Gtk.Label(label=text("companion.local.step1", browser=browser.name), wrap=True, xalign=0))
+        self.address_button = Gtk.Button(
+            label=text("companion.local.copyExtensions", browser=browser.name), halign=Gtk.Align.START
+        )
+        self.address_button.connect("clicked", self._copy_extensions)
+        content.append(self.address_button)
+        content.append(
+            Gtk.Label(
+                label=text("companion.local.extensionsPasteHint"),
+                wrap=True,
+                xalign=0,
+                css_classes=["caption", "dim-label"],
             )
-            if n == 1:
-                self.address_button = Gtk.Button(
-                    label=text("companion.local.copyExtensions", browser=browser.name), halign=Gtk.Align.START
-                )
-                self.address_button.connect("clicked", self._copy_extensions)
-                content.append(self.address_button)
-                content.append(
-                    Gtk.Label(
-                        label=text("companion.local.extensionsPasteHint"),
-                        wrap=True,
-                        xalign=0,
-                        css_classes=["caption", "dim-label"],
-                    )
-                )
-                self.problem = Gtk.Label(wrap=True, xalign=0, visible=False, css_classes=["warn-line"])
-                content.append(self.problem)
-            elif n == 3:
-                self.copy_button = Gtk.Button(label=text("companion.local.copyFolder"), halign=Gtk.Align.START)
-                self.copy_button.connect("clicked", self._copy)
-                content.append(self.copy_button)
-                content.append(
-                    Gtk.Label(
-                        label=text("companion.local.pasteHint"),
-                        wrap=True,
-                        xalign=0,
-                        css_classes=["caption", "dim-label"],
-                    )
-                )
+        )
+        self.problem = Gtk.Label(wrap=True, xalign=0, visible=False, css_classes=["warn-line"])
+        content.append(self.problem)
+        from .companion_local_instructions import LocalCompanionInstructions
+
+        self.instructions = LocalCompanionInstructions(
+            lambda: self.toasts.add_toast(Adw.Toast.new(text("companion.local.copied")))
+        )
+        self.instructions.set_folder(folder)
+        self.copy_button = self.instructions.copy_button
+        content.append(self.instructions)
         content.append(
             Gtk.Label(
                 label=text("companion.local.devModeNote", browser=browser.name),
@@ -109,10 +101,6 @@ class LocalCompanionDialog(Adw.Dialog):
             self.opening, self.failed = False, error is not None
             self.render()
         return GLib.SOURCE_REMOVE
-
-    def _copy(self, *_):
-        self.get_display().get_clipboard().set(str(self.folder))
-        self.toasts.add_toast(Adw.Toast.new(text("companion.local.copied")))
 
     def _done(self, *_):
         if self.done.get_sensitive():

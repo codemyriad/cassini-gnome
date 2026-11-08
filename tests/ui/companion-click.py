@@ -189,6 +189,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         for owner, name in (
             (companion, "installed_browsers"),
             (companion, "register"),
+            (companion_bundle, "prepare"),
             (BrowserWatch, "_read"),
             (CompanionSetup, "_snapshot"),
             (CompanionSetup, "_launch_add"),

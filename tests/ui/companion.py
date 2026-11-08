@@ -67,6 +67,17 @@ def until(check):
     assert check(), "Companion GUI condition timed out"
 
 
+def visible_labels(widget):
+    if not widget.get_visible():
+        return []
+    labels = [widget.get_label()] if isinstance(widget, Gtk.Label) else []
+    child = widget.get_first_child()
+    while child:
+        labels.extend(visible_labels(child))
+        child = child.get_next_sibling()
+    return labels
+
+
 def finish_worker(future):
     if future is not None:
         # Native setup can run two bounded 10 s bundle transactions. This
@@ -150,6 +161,26 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog.present(window)
     until(lambda: dialog.future is None)
     assert not dialog.done.get_sensitive() and not dialog.connect_button.get_visible()
+    expected_folder = Path(os.environ["XDG_DATA_HOME"]) / "cassini/browser-companion"
+    assert str(expected_folder) in visible_labels(dialog), "Waiting setup must show the actual extension folder"
+    assert dialog.local_instructions.copy_button.get_sensitive()
+    assert (expected_folder / "manifest.json").is_file()
+    assert not launches, "Showing waiting help must never launch a browser"
+    for line in (
+        "Turn on Developer mode.",
+        "Click Load unpacked and choose the Cassini folder.",
+        "In the folder chooser, press Ctrl+L and paste.",
+    ):
+        assert any(line in label for label in visible_labels(dialog))
+    assert "Remove any older Cassini Recorder first." in visible_labels(dialog)
+    assert "Restart the browser." in visible_labels(dialog)
+    copied_waiting = []
+    dialog.local_instructions.copy_button.emit("clicked")
+    clipboard = dialog.get_display().get_clipboard()
+    clipboard.read_text_async(None, lambda c, result: copied_waiting.append(c.read_text_finish(result)))
+    until(lambda: bool(copied_waiting))
+    assert copied_waiting == [str(expected_folder)]
+    assert not dialog.done.get_sensitive(), "Preparing/copying a folder is not an extension handshake"
     shot(window, "-pending")
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     shot(window, "-pending-dark")
@@ -171,8 +202,13 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog.prepare_retry.emit("clicked")
     until(lambda: dialog.local_dialog is not None and not dialog.local_dialog.closed)
     local = dialog.local_dialog
+    until(local.get_mapped)
+    assert local.get_child().get_width() <= 540, "The folder path must wrap instead of widening the guide"
     assert not local.done.get_sensitive() and not dialog.done.get_sensitive()
     assert (local.folder / "manifest.json").is_file()
+    assert str(local.folder) in visible_labels(local)
+    assert "Remove any older Cassini Recorder first." in visible_labels(local)
+    assert "Restart the browser." in visible_labels(local)
     copy_values = []
     local.copy_button.emit("clicked")
     clipboard = local.get_display().get_clipboard()
@@ -294,7 +330,8 @@ with tempfile.TemporaryDirectory() as temporary:
         setup_dialogs.append(dialog)
         dialog.service_path = path
         until(dialog.get_mapped)
-        assert dialog.local_dialog is None and dialog.future is None, "Outer Add only presents the setup sheet"
+        assert dialog.local_dialog is None, "Outer Add must not open another installation dialog"
+        assert dialog._future_action not in ("local", "store"), "Only background folder help may start before Add"
         assert dialog.add_button.get_visible() and dialog.add_button.get_label() == "Add from Cassini"
         dialog.add_button.emit("clicked")
         until(lambda: dialog.local_dialog is not None and not dialog.local_dialog.closed)
@@ -315,6 +352,15 @@ with tempfile.TemporaryDirectory() as temporary:
     assert reopened.add_badge.get_label() == "✓" and not reopened.add_button.get_visible()
     assert reopened.add_caption.get_label() == "Done"
     assert reopened.connect_row.get_visible() and not reopened.done.get_sensitive()
+    until(lambda: app.browser_connection.future is None and app.browser_connection.snapshot()["phase"] == "waiting")
+    reopened.render()
+    reopened.poll()
+    until(lambda: reopened.future is None)
+    assert reopened.connect_caption.get_label() == "Waiting for the browser companion"
+    assert str(expected_folder) in visible_labels(reopened), "Step 2 waiting must keep the folder instructions visible"
+    assert reopened.local_instructions.copy_button.get_sensitive()
+    assert not reopened.done.get_sensitive()
+    shot(window, "-waiting-help")
     reopened.force_close()
     until(lambda: reopened.closed)
     # Reproduce the cleanup race by parking a real registration before its
