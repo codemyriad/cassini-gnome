@@ -10,14 +10,16 @@ The browser protocol and source format are shared with Cassini for Mac.
 `call-signals.mjs` runs the pinned companion's real `CallSignalProducer` and
 `AppControl` in Chromium through native messaging and GNOME, with private Pulse
 microphone/desktop tones. The unmodified WhatsApp adapter must stay unknown on
-passive playback. Positive cases use only the trusted adapter constructor in the
-extension worker, with Chrome-owned tab/document IDs; no page-supplied markers,
-native replies, PCM, browser APIs or wire packets are fabricated. It checks opt-in,
-shared system recording, independent Me choice, reconnect and manual Stop fences,
-positive end while audio continues, and the quiet persisted Details explanation.
-This proves app/producer integration, not live WhatsApp compatibility. Headless
-E1 regressions separately hold input dispatch and metadata checkpoints to prove
-Stop/end/unknown cancellation, plus the exact 120-second evidence-loss policy.
+passive playback. With pinned 0.2.25, even a trusted adapter's active mixed fact
+must fail closed for automatic recording: it negotiates only `call-signals-v1`.
+The actual Library Record action must still capture microphone and system PCM,
+continue past that legacy call's end, and save on explicit user Stop. No input,
+wire packet or native reply is fabricated. The verified automatic ownership,
+reconnect and persisted-route positives remain for the matching verified producer
+pin, and do not establish live-site compatibility. Headless E1 regressions retain
+verified mixed ownership, held input dispatch, metadata checkpoints and the exact
+120-second evidence-loss policy. GNOME adoption cannot merge before producer #79
+makes real Talk (including split-PC) qualify.
 
 `app-control.mjs` also drives the production What is recorded dialog through
 off/on choices, then reloads a tab and terminates/restarts its worker. It checks

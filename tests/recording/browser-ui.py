@@ -145,6 +145,16 @@ def dispatch(packet, result, ready):
                 else None
             ),
             statuses=app._browser_snapshot.get("statuses", []),
+            nativeCaptures=[
+                dict(
+                    path=str(recorder.session.directory),
+                    recording=recorder.pipeline is not None and not recorder.starting and not recorder.stopping,
+                    starting=recorder.starting,
+                    stopping=recorder.stopping,
+                )
+                for recorder in app.native_captures.values()
+                if recorder.session is not None
+            ],
             recordReady=not (
                 app._record_start_future
                 or app._browser_stops

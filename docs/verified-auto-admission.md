@@ -85,3 +85,10 @@ RTP alone remains insufficient, including after pre-join. Its verified positive
 branch is retained for the producer pin; synthetic oscillator-only inventory is
 not evidence that real Talk qualifies. The D74 real-producer ownership journey
 also needs a matching verified producer/fixture, not an exemption for legacy facts.
+
+`call-signals.mjs` likewise asserts that an active mixed fact from the legacy
+trusted adapter cannot authorize automatic system recording. A separate explicit
+Library Record captures real private microphone/system PCM despite that absent
+verification, continues after the legacy call ends, and finishes on user Stop.
+The legacy adapter is not relabelled as verified. Its positive automatic ownership
+journey remains behind the matching producer pin and real Talk qualification.
