@@ -10,7 +10,7 @@
 #   _srcdir=cassini-gnome-$pkgver      # GitHub names the top directory after the repo
 
 pkgname=cassini-talk
-pkgver=0.4.1
+pkgver=0.4.2
 pkgrel=1
 replaces=(cassini-viewer)
 conflicts=(cassini-viewer)

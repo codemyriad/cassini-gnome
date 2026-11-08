@@ -2,7 +2,7 @@
 # which makes the source tarball from the working tree and puts Source1-5
 # (from .whistle-cache) next to it.
 Name:           cassini-talk
-Version:        0.4.1
+Version:        0.4.2
 Release:        1%{?dist}
 # The package rename must remove the legacy files through the package manager.
 Obsoletes:      cassini-viewer < 0.4.0
@@ -235,6 +235,13 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/ca
 %{_mandir}/man1/cassini-talk.1*
 
 %changelog
+* Sun Nov 08 2026 Silvio Tomatis <silviot@gmail.com> - 0.4.2-1
+- Add listen-by-speaker playback, timeline/transcript actions and shortcuts.
+- Fix Nextcloud discovery; show participant names, companion health and fallback alerts.
+- Keep broker diagnostics and replace legacy cassini-viewer packages cleanly.
+- Bundle companion 0.2.25; call-signal groundwork has no verified site detection yet.
+- After upgrading, log out and back in so the new version takes effect.
+
 * Fri Nov 06 2026 Silvio Tomatis <silviot@gmail.com> - 0.4.1-1
 - Fix wrapping speaker names and screen-reader playback in Search.
 - Keep browser Stop and automatic-recording choices through saving.

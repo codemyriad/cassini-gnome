@@ -1,3 +1,54 @@
+Version 0.4.2
+~~~~~~~~~~~~~
+Released: 2026-11-08
+
+After upgrading, log out and back in so the new version takes effect.
+
+- Listen by speaker. After a meeting is written down, play one person’s turns
+  in order, move between turns or speakers, replay a turn, and name or merge
+  speakers while listening. A listening bar shows who is speaking, where you
+  are, and an excerpt. It also works in narrow windows.
+- Follow the recording more easily. The transcript highlights the current
+  turn. Select a time to play from there or a name to listen to that person.
+  Speaker markers and a hover readout help you find your place on the
+  timeline. Keyboard navigation and Shift+Enter work with the transcript; the
+  playback skip is ten seconds.
+- Nextcloud Talk discovery is fixed. Calls that previously failed to appear in
+  Cassini can now be discovered. The bundled browser companion is version
+  0.2.25, with better recovery through reloads and temporary connection loss.
+- Clearer companion setup and health. Cassini explains when companion files
+  are missing or out of date, and when a particular browser tab needs
+  reloading. Idle browsers no longer cause misleading warnings. Recording
+  details retain the reason browser sound stopped, even after the recording is
+  saved and reopened.
+- Participant names stay with the audio. Names supplied by the meeting page
+  are preserved with the recorded audio sources, including through retries,
+  and appear in Recording details.
+- An alert when recording switches to computer audio. If an automatic
+  recording loses browser sound and switches to the computer’s audio, Cassini
+  alerts you once and keeps the explanation visible. The alert also works when
+  the Recording page is already open and after a temporary companion
+  reconnect.
+- More reliable recording and clearer missing-audio reports. Stopping or
+  changing sources preserves queued sound and records any known audio loss
+  accurately. Browser reconnection timing is more reliable, and a rare crash
+  while checking muted computer audio is fixed.
+- A cleaner panel indicator. Fixes duplicate recording timers caused by
+  AppIndicator discovery and relaunching Cassini.
+- Better background-service recovery and logs. Cassini detects an old browser
+  connection service after an upgrade and refreshes it when it is idle.
+  Startup failures and connection problems now leave local diagnostic logs
+  that remain available after the window closes.
+- Clean upgrades from cassini-viewer. The Debian, Ubuntu, Fedora, openSUSE and
+  Arch packages replace older cassini-viewer packages properly. Your Library
+  stays where it is.
+- Preparation for future call signals. Cassini can now use verified call-
+  status information from the companion to manage automatic computer-audio
+  recordings under your existing preference. No site provides verified call
+  detection through this feature yet; WhatsApp remains unverified. Playing
+  music, a video or a voice message alone does not automatically start a
+  recording.
+
 Version 0.4.1
 ~~~~~~~~~~~~~
 Released: 2026-11-06
