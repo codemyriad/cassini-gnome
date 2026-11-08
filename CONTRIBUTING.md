@@ -66,6 +66,12 @@ The GTK-free modules have unit tests; please add tests with changes there.
 For UI changes, follow the [GNOME Human Interface Guidelines](https://developer.gnome.org/hig/)
 and include a screenshot in the pull request.
 
+## Package attribution
+
+Use `Codemyriad <cassini@codemyriad.io>` for package maintainer fields and new
+Debian and RPM changelog entries. Keep published changelog entries as history.
+Report Code of Conduct concerns to `cassini@codemyriad.io`.
+
 ## Translations
 
 Strings are marked with gettext. To add a language, add its code to

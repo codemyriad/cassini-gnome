@@ -1,10 +1,10 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Cassini talk
-Upstream-Contact: Silvio Tomatis <silviot@gmail.com>
+Upstream-Contact: Codemyriad <cassini@codemyriad.io>
 Source: https://github.com/codemyriad/cassini-gnome
 
 Files: *
-Copyright: 2026 Silvio Tomatis
+Copyright: 2026 Codemyriad
 License: GPL-3.0-or-later
 
 Files: src/cassini_talk/cldr-dates.json
@@ -18,7 +18,7 @@ Comment: Six calendar names/pattern tables extracted from Unicode CLDR JSON
 
 Files: browser-protocol/*
        browser-extension/*
-Copyright: 2026 Silvio Tomatis
+Copyright: 2026 Codemyriad
 License: GPL-3.0-or-later
 Comment: Vendored from https://github.com/codemyriad/cassini-browser-protocol.
  The upstream licence is GPL-3.0-or-later, confirmed in upstream PR #10
@@ -31,7 +31,7 @@ License: CC0-1.0
 Comment: Conformance vectors vendored from https://github.com/codemyriad/cassini-format
 
 Files: data/io.codemyriad.CassiniTalk.metainfo.xml.in
-Copyright: 2026 Silvio Tomatis
+Copyright: 2026 Codemyriad
 License: CC0-1.0
 
 Files: whistle/whistle.cact

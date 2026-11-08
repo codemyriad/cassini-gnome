@@ -1,6 +1,6 @@
 # portable.py
 #
-# Copyright 2026 Silvio Tomatis
+# Copyright 2026 Codemyriad
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by

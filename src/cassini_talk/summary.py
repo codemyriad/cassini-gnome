@@ -1,6 +1,6 @@
 # summary.py
 #
-# Copyright 2026 Silvio Tomatis
+# Copyright 2026 Codemyriad
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
