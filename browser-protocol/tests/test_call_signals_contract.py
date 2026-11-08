@@ -1,4 +1,4 @@
-"""D74 literal/control-schema checks; not a site detector or app audio engine."""
+"""D74/D80 literal/control-schema checks; not a producer or app audio engine."""
 import copy
 import json
 import unittest
@@ -28,17 +28,160 @@ class CallSignalContractTests(unittest.TestCase):
         message['tabs'][0]['callEvidence']['state'] = 'inactive'
         self.assertFalse(validator.is_valid(message), 'unknown evidence cannot become affirmative inactive')
 
-    def test_passive_media_literals_never_start_and_do_not_fabricate_rtp(self):
+    def test_passive_media_literals_never_start_and_preserve_real_rtp(self):
         cases = VECTORS['passiveMediaNegatives']
-        self.assertEqual(len(cases), 5)
+        self.assertEqual(len(cases), 6)
         for case in cases:
             schema('control-extension').validate(case['signal'])
             self.assertTrue(case['fixtureAudioPlaying'])
             self.assertTrue(case['autoRecordOptIn'])  # opt-in alone is insufficient
             self.assertEqual(case['signal']['tabs'][0]['callEvidence']['state'], 'unknown')
-            for field in ['signalAutoCandidate', 'appSystemStart', 'browserStart', 'legacyHeard']:
+            for field in ['signalAutoCandidate', 'appSystemStart', 'browserStart']:
                 self.assertFalse(case['expect'][field])
-            self.assertEqual(case['expect']['legacySourceCount'], 0)
+            rtc = case['name'] == 'passive-rtc-viewer'
+            self.assertEqual(case['expect']['legacySourceCount'], 1 if rtc else 0)
+            self.assertEqual(case['expect']['legacyHeard'], rtc)
+            if rtc:
+                self.assertFalse(case['fixtureGetUserMedia'])
+                self.assertFalse(case['fixtureLocalCapturedSender'])
+                self.assertEqual(case['fixtureHookCallGeneration'], '0')
+                self.assertEqual(case['rtp']['callGeneration'], 'call-A')
+                self.assertFalse(case['expect']['nativeFallback'])
+                self.assertFalse(case['expect']['inputOpened'])
+
+    def test_verified_rtp_admission_joins_explicit_namespaces_not_raw_ids(self):
+        cases = [case for case in VECTORS['routing'] if 'configuredCapabilities' in case
+                 and case['signal']['tabs'][0]['remoteAudio'] == 'separated']
+        cases += [case for case in VECTORS['passiveMediaNegatives'] if case['name'] == 'passive-rtc-viewer']
+        for case in cases:
+            with self.subTest(name=case['name']):
+                row = case['signal']['tabs'][0]
+                schema('control-extension').validate(case['signal'])
+                schema('control-extension').validate(dict(type='meetings', meetings=[dict(
+                    case['rtp'], title='Controlled media', url='https://conference.invalid/session')]))
+                binding = self.binding_matches(case)
+                self.assertEqual(binding, case['expect']['bindingMatches'])
+                ready = (case['rtp']['sourceCountKnown'] and case['rtp']['sourceCount'] > 0
+                         and case['rtp']['heard'] and case['rtp']['pageState'] == 'present')
+                negotiated = set(case['configuredCapabilities']) == {
+                    'call-signals-v1', 'verified-auto-admission-v1'}
+                fresh = 0 <= case['consumerEvidenceAgeMs'] < VECTORS['freshness']['consumerActiveExpiryMs']
+                automatic = (case['autoRecordOptIn'] and negotiated and binding and ready and fresh
+                             and row['callEvidence']['state'] == 'active' and row['remoteAudio'] == 'separated')
+                self.assertEqual(automatic, case['expect']['browserStart'])
+        positive = next(c for c in cases if c['name'] == 'separated-existing-rtp-ready')
+        self.assertNotEqual(positive['rtp']['documentGeneration'],
+                            positive['signal']['tabs'][0]['documentGeneration'])
+        self.assertEqual(positive['expect']['policy'], 'verified-call-and-RTP')
+
+    def test_mixed_system_admission_requires_verified_ack_alias_binding_and_freshness_without_rtp(self):
+        cases = [case for case in VECTORS['routing'] if 'configuredCapabilities' in case
+                 and case['signal']['tabs'][0]['remoteAudio'] == 'mixed']
+        self.assertGreaterEqual(len(cases), 10)
+        for case in cases:
+            with self.subTest(name=case['name']):
+                schema('control-extension').validate(case['signal'])
+                row = case['signal']['tabs'][0]
+                pending = case['pendingBinding']
+                identities = [row.get('documentGeneration'), row.get('sourceDocumentGeneration'),
+                              row['callEvidence'].get('callGeneration')]
+                binding = (all(isinstance(value, str) and 0 < len(value.encode()) <= 200 for value in identities)
+                           and case['connectionBrowserInstance'] == case['signal']['browserInstance']
+                           and pending['browserInstance'] == case['signal']['browserInstance']
+                           and pending['tabId'] == row['tabId']
+                           and pending['browserDocumentId'] == row['documentGeneration']
+                           and pending['sourceDocumentGeneration'] == row['sourceDocumentGeneration']
+                           and pending['callGeneration'] == row['callEvidence']['callGeneration'])
+                self.assertEqual(binding, case['expect']['bindingMatches'])
+                negotiated = set(case['configuredCapabilities']) == {'call-signals-v1', 'verified-auto-admission-v1'}
+                fresh = 0 <= case['consumerEvidenceAgeMs'] < VECTORS['freshness']['consumerActiveExpiryMs']
+                system = case['autoRecordOptIn'] and negotiated and fresh and binding and row['callEvidence']['state'] == 'active'
+                self.assertEqual(system, case['expect']['appSystemStart'])
+                self.assertFalse(case['expect']['browserStart'])
+                self.assertEqual(case['legacyMeetings'], [], 'signal-only system route cannot require a legacy/RTP row')
+        positive = next(case for case in cases if case['name'] == 'mixed-positive-opt-in')
+        self.assertEqual(positive['rtp']['sourceCount'], 0)
+        self.assertFalse(positive['rtp']['heard'])
+
+    def test_numeric_freshness_expires_with_healthy_heartbeat_and_rejects_cached_renewal_on_both_routes(self):
+        policy = VECTORS['freshness']
+        self.assertEqual([policy[key] for key in ['nativeProgressMaxAgeMs', 'activeRefreshMaxIntervalMs',
+                                                  'producerWithdrawMaxDelayMs', 'consumerActiveExpiryMs']],
+                         [2500, 2000, 5000, 5000])
+        self.assertEqual(set(policy['routes']), {'separated', 'mixed'})
+        self.assertEqual(VECTORS['appPolicy']['evidenceLossGraceMs'], 120000)
+        prerequisites = VECTORS['appPolicy']['admissionPrerequisites']
+        self.assertEqual(set(prerequisites['configuredCapabilities']), {'call-signals-v1', 'verified-auto-admission-v1'})
+        self.assertTrue(prerequisites['nonNullSourceAlias'])
+        self.assertEqual(prerequisites['consumerActiveExpiryMs'], 5000)
+        self.assertEqual(set(prerequisites['routes']), {'separated-browser', 'mixed-system', 'automatic-native-fallback'})
+        self.assertIn('not callEnded', policy['existingOwnerOnProofExpiry'])
+        pair = {'call-signals-v1', 'verified-auto-admission-v1'}
+        for route in policy['routes']:
+            for case in policy['cases']:
+                with self.subTest(route=route, case=case['name']):
+                    configured = set(case['configuredCapabilities'])
+                    last_receipt = last_progress = None
+                    previous_counts = None
+                    last_sequence = -1
+                    for step in case['steps']:
+                        at, event = step['atMs'], step['event']
+                        renewed = False
+                        if event in ['active', 'attempt-active-refresh']:
+                            counts = (step['receivedCounter'], step['sentCounter'])
+                            progressed = previous_counts is None or all(a > b for a, b in zip(counts, previous_counts))
+                            ages = [at - step[key] for key in ['receivedProgressAtMs', 'sentProgressAtMs']]
+                            producer_valid = configured == pair and progressed and all(0 <= age <= policy['nativeProgressMaxAgeMs'] for age in ages)
+                            self.assertEqual(producer_valid, step['expect']['producerActiveAllowed'])
+                            if event == 'active':
+                                self.assertTrue(producer_valid)
+                                self.assertGreater(step['sequence'], last_sequence)
+                                last_sequence = step['sequence']
+                                last_receipt = at
+                                last_progress = min(step['receivedProgressAtMs'], step['sentProgressAtMs'])
+                                previous_counts = counts
+                                renewed = True
+                            else:
+                                # The producer must not emit this attempted cached
+                                # refresh. The app does not see hidden RTP counters.
+                                self.assertFalse(producer_valid)
+                        elif event == 'configured':
+                            configured = set(step['capabilities'])
+                            last_receipt = None
+                        elif event == 'replayed-active':
+                            self.assertLessEqual(step['sequence'], last_sequence)
+                        fresh = (configured == pair and last_receipt is not None
+                                 and 0 <= at - last_receipt < policy['consumerActiveExpiryMs'])
+                        must_withdraw = last_progress is not None and at - last_progress >= policy['producerWithdrawMaxDelayMs']
+                        self.assertEqual(renewed, step['expect']['leaseRenewed'])
+                        self.assertEqual(fresh, step['expect']['consumerFresh'])
+                        self.assertEqual(fresh, step['expect']['newAdmissionEligible'])
+                        self.assertEqual(must_withdraw, step['expect']['producerMustWithdraw'])
+
+    def test_d804_active_means_interactive_media_including_echo_and_early_media(self):
+        meaning = VECTORS['qualificationMeaning']
+        self.assertEqual(meaning['decision'], 'D80.4')
+        cases = {case['name']: case for case in meaning['cases']}
+        for case in cases.values():
+            active = all(case[field] for field in ['connectedSession', 'liveReceivedProgress',
+                         'pageCapturedRootOrClone', 'capturedTrackActuallySent', 'sameSessionBound'])
+            self.assertEqual('active' if active else 'unknown', case['expectState'])
+        for name in ['echo-or-microphone-test', 'unanswered-early-media']:
+            self.assertEqual(cases[name]['expectState'], 'active')
+        self.assertEqual(cases['passive-webrtc-viewer']['expectState'], 'unknown')
+
+    @staticmethod
+    def binding_matches(case):
+        row, rtp = case['signal']['tabs'][0], case['rtp']
+        identities = [row.get('documentGeneration'), row.get('sourceDocumentGeneration'),
+                      rtp.get('browserDocumentId'), rtp.get('documentGeneration'),
+                      row['callEvidence'].get('callGeneration'), rtp.get('callGeneration')]
+        return (all(isinstance(value, str) and 0 < len(value.encode()) <= 200 for value in identities)
+                and case['connectionBrowserInstance'] == case['signal']['browserInstance']
+                and rtp['tabId'] == row['tabId']
+                and rtp['browserDocumentId'] == row['documentGeneration']
+                and rtp['documentGeneration'] == row['sourceDocumentGeneration']
+                and rtp['callGeneration'] == row['callEvidence']['callGeneration'])
 
     def test_routing_literals_distinguish_opt_in_system_and_existing_rtp(self):
         cases = {case['name']: case for case in VECTORS['routing']}
@@ -54,10 +197,13 @@ class CallSignalContractTests(unittest.TestCase):
 
     def test_positive_end_stops_associated_auto_call_while_media_continues(self):
         case = VECTORS['lifecycle']
+        self.assertEqual(set(case['configuredCapabilities']), {'call-signals-v1', 'verified-auto-admission-v1'})
         self.assertEqual([s['signal']['tabs'][0]['callEvidence']['state'] for s in case['steps']],
                          ['active', 'inactive', 'unknown'])
         for step in case['steps']:
             schema('control-extension').validate(step['signal'])
+            self.assertNotEqual(step['signal']['tabs'][0]['documentGeneration'],
+                                step['signal']['tabs'][0]['sourceDocumentGeneration'])
             self.assertTrue(step['fixtureAudioPlaying'])
         self.assertEqual([s['expect']['appSystemStart'] for s in case['steps']], [True, False, False])
         self.assertEqual([s['expect']['appStop'] for s in case['steps']], [False, True, False])

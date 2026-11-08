@@ -67,7 +67,7 @@ def server(tmp_path):
     stop_broker(service, worker, path)
 
 
-def start(client, identifier, *, microphone=True):
+def start(client, identifier, *, microphone=True, call_generation=None, document_generation=None, request_id=None):
     return client.handle(
         dict(
             type="start",
@@ -77,6 +77,9 @@ def start(client, identifier, *, microphone=True):
             timelineOriginMs=int(time.time() * 1000),
             microphone=microphone,
             title=identifier,
+            callGeneration=call_generation,
+            documentGeneration=document_generation,
+            **({"requestId": request_id} if request_id is not None else {}),
         )
     )
 
@@ -1216,7 +1219,13 @@ def test_snapshot_keeps_host_start_origin_after_toggle_and_control_disconnect(
             command = read_packet(control)
             assert command["action"] == "start"
             if audio_first:
-                start(client, "origin")
+                start(
+                    client,
+                    "origin",
+                    call_generation="call-fixture",
+                    document_generation="hook-fixture",
+                    request_id=command["requestId"],
+                )
             status = dict(recording=True, tabId=3, captureId="origin", automatic=not automatic)
             if acknowledged:
                 send_packet(control, dict(type="result", requestId=command["requestId"], ok=True, status=status))
@@ -1225,7 +1234,13 @@ def test_snapshot_keeps_host_start_origin_after_toggle_and_control_disconnect(
             else:
                 send_packet(control, dict(type="status", **status))
             if not audio_first:
-                start(client, "origin")
+                start(
+                    client,
+                    "origin",
+                    call_generation="call-fixture",
+                    document_generation="hook-fixture",
+                    request_id=command["requestId"],
+                )
             wait_for(lambda: service._capture_automatic.get("origin") is automatic)
             request("configure", path=path, autoRecord=not automatic)
             assert (
@@ -1310,7 +1325,13 @@ def pending_automatic_reconnect(server, monkeypatch):
             pending = original_peer.pending[asked["requestId"]]
             assert pending["automatic"] and pending["result"] is None
         client = BrowserAudioProxy(path=path)
-        start(client, "recovered-origin")
+        start(
+            client,
+            "recovered-origin",
+            call_generation="call-fixture",
+            document_generation="hook-fixture",
+            request_id=asked["requestId"],
+        )
         remote(client, "voice")
         capture = service.captures["recovered-origin"]
         # No status or result is sent on this socket. Its pending command
@@ -1396,7 +1417,13 @@ def test_automatic_status_without_browser_instance_binds_origin_before_start_ack
         asked = read_packet(control)
         assert asked["action"] == "start"
         if audio_first:
-            start(client, "unidentified-origin")
+            start(
+                client,
+                "unidentified-origin",
+                call_generation="call-fixture",
+                document_generation="hook-fixture",
+                request_id=asked["requestId"],
+            )
             capture = service.captures["unidentified-origin"]
         send_packet(control, dict(type="status", recording=True, tabId=3, captureId="unidentified-origin"))
         durable(reported, "unidentified peer's recording status was not processed")
@@ -1405,7 +1432,13 @@ def test_automatic_status_without_browser_instance_binds_origin_before_start_ack
             assert peer.browser_instance is None and peer.pending[asked["requestId"]]["result"] is None
             assert service._capture_automatic.get("unidentified-origin") is True
         if not audio_first:
-            start(client, "unidentified-origin")
+            start(
+                client,
+                "unidentified-origin",
+                call_generation="call-fixture",
+                document_generation="hook-fixture",
+                request_id=asked["requestId"],
+            )
             capture = service.captures["unidentified-origin"]
         status = next(s for s in service.snapshot()["statuses"] if s.get("captureId") == "unidentified-origin")
         assert status["automatic"] is True

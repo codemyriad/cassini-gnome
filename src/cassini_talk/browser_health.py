@@ -107,6 +107,7 @@ def read_peers(value):
                 if isinstance(caps, list) and len(caps) <= 16
                 else (),
                 diagnostics=diagnostics({}, row.get("diagnostics")),
+                automaticVerified=row.get("automaticVerified") is True,
                 browserHealth=health(row.get("browserHealth")),
                 busyTabs=tuple(busy)
                 if isinstance(busy, list) and len(busy) <= 100 and all(type(t) is int for t in busy)

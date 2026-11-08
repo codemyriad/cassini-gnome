@@ -6,8 +6,10 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from broker_fixture import stop_broker
 from durable import durable
+from verified_fixture import alias, signal
 
 from cassini_talk.browser_service import BrowserService, connect, read_packet, request, send_packet
+from cassini_talk.call_admission import CAPABILITIES
 
 
 class SilentTap:
@@ -67,16 +69,30 @@ def wait_for(check):
 
 
 def meeting(tab=3):
-    return dict(tabId=tab, title="Synthetic meeting", url="https://meeting.example/test", sourceCount=2)
+    return alias(
+        dict(tabId=tab, title="Synthetic meeting", url="https://meeting.example/test", sourceCount=2, heard=True)
+    )
 
 
-def browser(path, instance=None, meetings=None):
+def browser(path, instance=None, meetings=None, *, profile=None):
     connection = connect(path)
     stream = connection.makefile("rwb")
     send_packet(stream, dict(role="extension", browserName="Chrome", browserInstance=instance))
-    send_packet(stream, dict(type="hello", version=1))
+    send_packet(stream, dict(type="hello", version=1, capabilities=sorted(CAPABILITIES | {"call-evidence-v1"})))
+    assert read_packet(stream) == dict(type="configure", capabilities=sorted(CAPABILITIES))
+    send_packet(stream, dict(type="configured", capabilities=sorted(CAPABILITIES)))
     send_packet(stream, dict(type="status", recording=False, tabId=None))
-    send_packet(stream, dict(type="meetings", meetings=[meeting()] if meetings is None else meetings))
+    entries = [meeting()] if meetings is None else meetings
+    send_packet(stream, dict(type="meetings", meetings=entries))
+    send_packet(
+        stream,
+        dict(
+            type="callSignals",
+            browserInstance=profile or instance or "verified-fixture-profile",
+            sequence=0,
+            tabs=[signal(row) for row in entries],
+        ),
+    )
     if meetings != []:
         wait_for(lambda: request(path=path)["meetings"])
     return connection, stream
@@ -218,6 +234,7 @@ def test_restarted_extension_worker_reports_the_stopped_call_late(service):
     connection, stream = reconnect(path, connection, stream, meetings=[])
     try:
         send_packet(stream, dict(type="meetings", meetings=[meeting(7)]))
+        send_packet(stream, dict(type="callSignals", browserInstance="4242:99", sequence=1, tabs=[signal(meeting(7))]))
         assert read_packet(stream)["tabId"] == 7
         send_packet(stream, dict(type="meetings", meetings=[meeting(7), meeting()]))
         wait_for(lambda: len(request(path=path)["meetings"]) == 2)
@@ -343,7 +360,9 @@ def test_a_new_call_at_the_stopped_address_after_a_reconnect_is_new(service, mon
     connection, stream = reconnect(path, connection, stream, meetings=[])
     try:
         time.sleep(0.5)
-        send_packet(stream, dict(type="meetings", meetings=[meeting()]))
+        new_call = dict(meeting(), callGeneration="new-call")
+        send_packet(stream, dict(type="meetings", meetings=[new_call]))
+        send_packet(stream, dict(type="callSignals", browserInstance="4242:99", sequence=1, tabs=[signal(new_call)]))
         assert read_packet(stream)["action"] == "start"
     finally:
         stream.close()
@@ -406,7 +425,7 @@ def test_other_profile_and_restarted_browser_do_not_inherit_a_stopped_call(servi
 def test_profiles_sharing_a_browser_instance_keep_their_own_calls(service):
     _, path = service
     first, first_stream = browser(path, "4242:99")
-    second, second_stream = browser(path, "4242:99", meetings=[meeting(7)])
+    second, second_stream = browser(path, "4242:99", meetings=[meeting(7)], profile="second-profile")
     request("configure", path=path, autoRecord=True)
     for stream in (first_stream, second_stream):
         command = read_packet(stream)
@@ -530,7 +549,7 @@ def test_unknown_source_inventory_is_preserved_and_cannot_auto_start(tmp_path):
             row = peer.meetings[3]
             assert row["sourceCount"] == 2 and row["heard"]
             assert row["sourceCountKnown"] is known
-            assert server._auto_start_ready(peer, row) is known
+            assert not server._auto_start_ready(peer, row), "Count is a source fact, not verified call admission"
     finally:
         server.workers.shutdown()
 

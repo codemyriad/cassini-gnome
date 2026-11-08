@@ -280,6 +280,7 @@ class BrowserCapture:
                 if self.finished or self.stop_requested.is_set():
                     raise ProtocolError("state", "Recording start was cancelled")
                 self.capture_id, self.origin_ms = identifier, origin
+                self._automatic_admission = admit
                 if session_clock is None or session_clock.origin_ms != origin:
                     session_clock = SessionClock(origin)
                 self.session_clock = session_clock
@@ -323,7 +324,7 @@ class BrowserCapture:
                 if admit is not None and not admit():
                     raise StartCancelled("The signalled call is no longer eligible")
             requested = [kind for kind, wanted in (("microphone", microphone), ("system", self.browser_lost)) if wanted]
-            refused = self._open_natives(requested)
+            refused = self._open_natives(requested, admit=admit)
             items = [self._refusal(0, kind, refused[kind]) for kind in requested if kind in refused]
             if requested and self.browser_lost and not any(kind in self.native_taps for kind in requested):
                 if len(refused) < len(requested):
@@ -616,7 +617,7 @@ class BrowserCapture:
         except Exception:
             LOG.debug("A refused tap did not stop cleanly", exc_info=True)
 
-    def _open_natives(self, kinds):
+    def _open_natives(self, kinds, *, admit=None):
         """Open each requested native side on its own and in parallel (R79 §1).
 
         A side opens when its tap admits a first buffer within its 3 s bound
@@ -628,7 +629,7 @@ class BrowserCapture:
         if not kinds:
             return {}
         with ThreadPoolExecutor(len(kinds), thread_name_prefix="cassini-native-open") as pool:
-            futures = {kind: pool.submit(self._open_native, kind) for kind in kinds}
+            futures = {kind: pool.submit(self._open_native, kind, admit=admit) for kind in kinds}
         refused = {kind: error for kind, future in futures.items() if (error := future.result()) is not None}
         with self.lock:
             self.refused_sides.update(refused)
@@ -636,12 +637,17 @@ class BrowserCapture:
             LOG.warning("Native %s side (%s) did not open at start: %s", SIDES[kind], kind, error)
         return refused
 
-    def _open_native(self, kind):
+    def _open_native(self, kind, *, admit=None):
         """Open-then-commit one side, as a turn-on does. Returns its refusal, if any."""
         if self.stop_requested.is_set():
             return None
+        if admit is not None and not admit():
+            raise StartCancelled("Verified call evidence expired before opening input")
         identifier = kind + "-" + str(uuid4())
         tap, state = self._make_native(kind, identifier)
+        if admit is not None and not admit():
+            tap.stop()
+            raise StartCancelled("Verified call evidence expired before starting input")
         try:
             tap.start()
         except Exception as error:
@@ -699,7 +705,10 @@ class BrowserCapture:
                 loss["cause"] = cause
             if isinstance(detail, str) and detail:
                 loss["detail"] = detail[:1000]
-        return self._change(self.me, self.others, fallback=reason, loss=loss or None)
+        admit = getattr(self, "_automatic_admission", None)
+        return self._change(
+            self.me, self.others, fallback=reason, loss=loss or None, **({"admit": admit} if admit is not None else {})
+        )
 
     @property
     def browser_ready(self):
@@ -1033,8 +1042,8 @@ class BrowserCapture:
         """Whether this loss's restore already failed on the track limit."""
         return self.restore_refused is not None and self.restore_refused == self.loss_serial
 
-    def _change(self, me, others, *, fallback=None, retry=False, loss=None):
-        return self._apply_change(me, others, fallback=fallback, retry=retry, loss=loss)
+    def _change(self, me, others, *, fallback=None, retry=False, loss=None, admit=None):
+        return self._apply_change(me, others, fallback=fallback, retry=retry, loss=loss, admit=admit)
 
     def _events(self, me, others, lost, fallback, at):
         old = source_state(self.host.session.manifest.get("events"))
@@ -1064,7 +1073,7 @@ class BrowserCapture:
             )
         return events
 
-    def _apply_change(self, me, others, *, fallback=None, restore=False, retry=False, loss=None):
+    def _apply_change(self, me, others, *, fallback=None, restore=False, retry=False, loss=None, admit=None):
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.transition:
@@ -1100,9 +1109,13 @@ class BrowserCapture:
                 # No new PCM or event may reach the session until commit below.
                 for kind in sorted(kinds):
                     opening = kind
+                    if admit is not None and not admit():
+                        raise StartCancelled("Verified call evidence expired before fallback input")
                     identifier = kind + "-" + str(uuid4())
                     tap, state = self._make_native(kind, identifier)
                     prepared[kind] = identifier, tap, state
+                    if admit is not None and not admit():
+                        raise StartCancelled("Verified call evidence expired before starting fallback input")
                     tap.start()
                 opening = None
                 with self.lock:

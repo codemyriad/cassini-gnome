@@ -5,8 +5,10 @@ from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 from test_browser_service import meeting, service, wait_for  # noqa: F401
+from verified_fixture import signal
 
 from cassini_talk.browser_service import connect, read_packet, request, send_packet
+from cassini_talk.call_admission import CAPABILITIES
 
 
 class Extension:
@@ -15,14 +17,35 @@ class Extension:
         self.connection = connect(path, timeout=2)
         self.stream = self.connection.makefile("rwb")
         self.sessions = {}
+        self.profile, self.signal_sequence = instance or str(uuid4()), -1
         send_packet(self.stream, dict(role="extension", browserInstance=instance))
-        send_packet(self.stream, dict(type="hello", version=1, capabilities=["independent-sessions-v1"]))
+        send_packet(
+            self.stream, dict(type="hello", version=1, capabilities=sorted(CAPABILITIES | {"independent-sessions-v1"}))
+        )
+        assert read_packet(self.stream) == dict(type="configure", capabilities=sorted(CAPABILITIES))
+        send_packet(self.stream, dict(type="configured", capabilities=sorted(CAPABILITIES)))
         send_packet(self.stream, dict(type="status", recording=False, sessions=[]))
         self.inventory(tabs)
         wait_for(lambda: len(request(path=path)["meetings"]) == len(tabs))
 
-    def inventory(self, tabs):
-        send_packet(self.stream, dict(type="meetings", meetings=[meeting(tab) for tab in tabs]))
+    def inventory(self, tabs, *, page=None, document=None):
+        rows = [meeting(tab) for tab in tabs]
+        for row in rows:
+            if page is not None:
+                row["pageState"] = page
+            if document is not None:
+                row["documentGeneration"] = document
+        send_packet(self.stream, dict(type="meetings", meetings=rows))
+        self.signal_sequence += 1
+        send_packet(
+            self.stream,
+            dict(
+                type="callSignals",
+                browserInstance=self.profile,
+                sequence=self.signal_sequence,
+                tabs=[signal(meeting(tab)) for tab in tabs],
+            ),
+        )
 
     def receive(self):
         return read_packet(self.stream)

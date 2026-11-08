@@ -23,6 +23,8 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from . import browser_health
+from .call_admission import CAPABILITIES as VERIFIED_CAPABILITIES
+from .call_admission import Binding
 from .call_lifecycle import (
     BROWSER_RETURN_GRACE,
     CALL_END_GRACE,
@@ -316,6 +318,7 @@ class BrowserConnection(Transport):
         # socket I/O happens under it; one writer thread owns the stream.
         self.order_lock = threading.RLock()
         self.outbound = deque()
+        self.write_admissions = {}
         self.outbound_ready = threading.Condition(threading.RLock())
         self.writer = None
         self.ignored = set()
@@ -335,6 +338,7 @@ class BrowserConnection(Transport):
         self.command_serial = 0
         self.signals_instance = None
         self.signals_configured = False
+        self.verified_configured = False
         self.signals_waiting = False
         self.signals_sequence = -1
         self.signal_rows = {}
@@ -370,7 +374,13 @@ class BrowserConnection(Transport):
             if len(self.outbound) >= OUTBOUND_LIMIT:
                 self.shutdown()
                 raise OSError("The browser stopped reading commands")
-            self.outbound.append(data)
+            pending = self.pending.get(packet.get("requestId"), {})
+            validate = (
+                (pending.get("validate") or self.write_admissions.pop(packet.get("requestId"), None))
+                if packet.get("action") == "start"
+                else None
+            )
+            self.outbound.append((data, validate))
             if self.writer is None:
                 self.writer = threading.Thread(target=self._write, daemon=True, name="cassini-browser-writer")
                 self.writer.start()
@@ -389,9 +399,13 @@ class BrowserConnection(Transport):
                     self.outbound_ready.wait()
                 if self.shut_down.is_set():
                     return
-                data = self.outbound.popleft()
+                data, validate = self.outbound.popleft()
                 self.write_started = self.clock()
             try:
+                # The producer proof can expire while another write is held.
+                # Recheck on the actual writer, not only at queue insertion.
+                if validate is not None and not validate():
+                    continue
                 self.stream.write(data)
                 self.stream.flush()
             except (OSError, ValueError):
@@ -445,6 +459,11 @@ class BrowserService:
         # Capture origin belongs to the host command, not extension status or
         # the current auto-record toggle. Keep it across control reconnects.
         self._capture_automatic = {}
+        self._native_requests = {}  # exact host request token -> immutable Start origin/binding
+        self._verified_ended = {}  # capture -> irreversible evidence-loss/end action
+        self._verified_owners = {}  # capture -> admitted background/profile/document binding
+        self._verified_losses = {}  # capture -> monotonic proof-loss deadline origin
+        self._scheduled_admission = {}
         self.call_captures = {}
         self.stopped_calls = {}
         self._capture_missing_since = {}
@@ -705,6 +724,8 @@ class BrowserService:
             and isinstance(target.get("captureId"), str)
         ):
             self._set_capture_origin(target["captureId"], command.get("automatic") is True)
+            if command.get("verifiedBinding") is not None:
+                self._verified_owners.setdefault(target["captureId"], command["verifiedBinding"])
 
     def _set_capture_origin(self, capture_id, automatic):
         self._capture_automatic.setdefault(capture_id, automatic)
@@ -715,6 +736,9 @@ class BrowserService:
                 break
             if identifier not in self.captures:
                 self._capture_automatic.pop(identifier)
+                self._verified_owners.pop(identifier, None)
+                self._verified_losses.pop(identifier, None)
+                self._verified_ended.pop(identifier, None)
 
     def _cancel_call(self, logical):
         self._call_versions[logical] = self._call_versions.get(logical, 0) + 1
@@ -1039,6 +1063,7 @@ class BrowserService:
             browser=browser.browser_name,
             capabilities=sorted(browser.capabilities),
             diagnostics=dict(browser.diagnostics),
+            automaticVerified=browser.verified_configured,
             browserHealth=browser.browser_health,
             busyTabs=sorted(busy),
         )
@@ -1139,6 +1164,9 @@ class BrowserService:
                 for key in finished[:-19]:
                     self.captures.pop(key, None)
                     self._capture_automatic.pop(key, None)
+                    self._verified_owners.pop(key, None)
+                    self._verified_losses.pop(key, None)
+                    self._verified_ended.pop(key, None)
                     self._superseded_user_stops.discard(key)
             if capture.directory is not None:
                 self._remember_saved(str(capture.directory), capture.host.session.manifest["title"])
@@ -1202,6 +1230,16 @@ class BrowserService:
         try:
             if refused:
                 raise ResumeRefused()
+            binding = self._verified_owners.get(identifier)
+            if binding is not None:
+                with self.lock:
+                    if not any(
+                        (admitted := self.signal_calls.proof(peer, binding.tab, self.clock(), remote="separated"))
+                        is not None
+                        and admitted.binding == binding
+                        for peer in self.browsers.values()
+                    ):
+                        raise ResumeRefused("Verified call evidence is no longer current")
             proof = target.resume(packet)
         except ResumeRefused as error:
             if target is not None and not refused:
@@ -1216,6 +1254,73 @@ class BrowserService:
             target.close()  # Never leave an attachment nothing owns.
             raise
         return target, proof
+
+    def _native_start_guard(self, packet):
+        """Verified producer echoes the exact host request token on native Start.
+
+        Absence is an explicit popup/manual Start, never a generation-history
+        guess. Old companions cannot have an automatic host request. An echoed
+        token is checked even after timeout/reconnect; unknown/replayed tokens
+        never open another capture. This binding is adopted with producer #79.
+        """
+        identifier, request_id = packet.get("captureId"), packet.get("requestId")
+        if "requestId" not in packet:
+            if identifier in self._verified_owners:
+                raise StartCancelled("Automatic native Start omitted its host request")
+            return None
+        if not isinstance(request_id, (str, int)) or isinstance(request_id, bool):
+            raise StartCancelled("Invalid native Start request identity")
+        command = self._native_requests.get(request_id)
+        if command is None or command.get("action") != "start":
+            raise StartCancelled("Unknown native Start request")
+        previous = command.get("nativeCaptureId")
+        if previous is not None and previous != identifier:
+            raise StartCancelled("A native Start request already owns another capture")
+        binding = command.get("verifiedBinding")
+
+        def current_request():
+            return (
+                not command.get("cancelled")
+                and not self.closed.is_set()
+                and not self._stopping_all.is_set()
+                and command["generation"] == self._stop_generation
+                and command["version"] == self._call_versions.get(command["logical"], 0)
+                and (command.get("result") is None or command["result"].get("ok") is True)
+                and (
+                    command.get("nativeAdmitted")
+                    or command.get("result") is not None
+                    or self.deadline_clock() < command["deadline"]
+                )
+            )
+
+        def admit():
+            with self.lock:
+                current = self._verified_owners.get(identifier, binding) if command.get("nativeAdmitted") else binding
+                return (
+                    current_request()
+                    and identifier not in self._verified_ended
+                    and any(
+                        peer.signals_instance == current.profile
+                        and self._verified_start_allowed(peer, current.tab, current)
+                        for peer in self.browsers.values()
+                    )
+                )
+
+        if not current_request():
+            raise StartCancelled("Native Start request is no longer current")
+        if command.get("automatic") is True:
+            if (
+                binding is None
+                or packet.get("callGeneration") != binding.generation
+                or packet.get("documentGeneration") != binding.source_document
+            ):
+                raise StartCancelled("Automatic native Start has a different source binding")
+            if not admit():
+                raise StartCancelled("Verified call evidence expired before native Start")
+            self._verified_owners[identifier] = binding
+        command["nativeCaptureId"] = identifier
+        self._set_capture_origin(identifier, command.get("automatic") is True)
+        return admit if command.get("automatic") is True else None
 
     def _audio(self, stream, connection=None):
         from .browser_capture import BrowserCapture, ResumeRefused
@@ -1269,6 +1374,7 @@ class BrowserService:
                                 raise ProtocolError("state", "Recording start was cancelled")
                             if identifier in self.captures:
                                 raise ProtocolError("state", "A capture with this identity already exists")
+                            admit = self._native_start_guard(packet)
                             capture = BrowserCapture(
                                 self._capture_changed, parent=self.capture_parent, tap_factory=self.tap_factory
                             )
@@ -1276,7 +1382,10 @@ class BrowserService:
                             # reservation until it has created its own folder.
                             self.captures[identifier] = capture
                             transport.capture = capture
-                        result = capture.start(packet)
+                        result = capture.start(packet, admit=admit)
+                        with self.lock:
+                            if packet.get("requestId") in self._native_requests:
+                                self._native_requests[packet["requestId"]]["nativeAdmitted"] = True
                     else:
                         result = capture.handle(packet)
                         if packet.get("type") == "track" and isinstance(packet.get("id"), str):
@@ -1697,6 +1806,22 @@ class BrowserService:
         if active:
             self._cancel_capture(capture_id, identity, "callEnded")
 
+    def _configure_signals(self, browser, capabilities):
+        requested = frozenset(capabilities)
+        if (
+            not requested <= VERIFIED_CAPABILITIES
+            or not requested <= browser.capabilities
+            or ("verified-auto-admission-v1" in requested and requested != VERIFIED_CAPABILITIES)
+        ):
+            raise ValueError("Invalid call-signal negotiation")
+        # Revoke immediately, not after a delayed acknowledgement.
+        browser.signals_configured = browser.verified_configured = False
+        browser.signals_waiting = True
+        browser.signals_requested = requested
+        browser.signal_rows = {}
+        self.signal_calls.disconnect(browser, self.clock())
+        browser.send(dict(type="configure", capabilities=sorted(requested)))
+
     def update(self, browser, packet):
         self._documents.pending = documents = []
         self._capture_callbacks.pending = callbacks = []
@@ -1717,6 +1842,11 @@ class BrowserService:
 
     def _update(self, browser, packet):
         with self.lock:
+            # A refresh arriving after the owner's full loss grace cannot
+            # retroactively erase that deadline before policy observes it.
+            self._refresh_verified()
+            for key in self._verified_owners:
+                self._verified_owner_action(key)
             browser.last_inbound = self.clock()  # Every frame type proves liveness.
             kind = packet.get("type")
             if kind == "meetings":
@@ -1743,7 +1873,7 @@ class BrowserService:
                         continue
                     meetings[tab] = {key: value[key] for key in ("tabId", "title", "url", "sourceCount")}
                     fresh.add(tab)
-                    for key in ("callGeneration", "documentGeneration"):
+                    for key in ("callGeneration", "documentGeneration", "browserDocumentId"):
                         generation = value.get(key)
                         if isinstance(generation, str) and 0 < len(generation.encode("utf-8")) <= 200:
                             meetings[tab][key] = generation
@@ -1817,11 +1947,23 @@ class BrowserService:
             elif kind == "configured":
                 from .call_signals import CAPABILITY
 
+                values = packet.get("capabilities")
+                valid = isinstance(values, list) and all(isinstance(c, str) for c in values)
+                accepted = frozenset(values) if valid else frozenset()
+                valid = valid and len(values) == len(accepted) and accepted <= VERIFIED_CAPABILITIES
+                valid = valid and ("verified-auto-admission-v1" not in accepted or accepted == VERIFIED_CAPABILITIES)
                 if not browser.signals_waiting:
-                    return  # A repeated ack cannot reset this connection's sequence fence.
+                    # Duplicate acknowledgement cannot renew proof or reset sequence.
+                    if not valid or accepted != getattr(browser, "signals_accepted", frozenset()):
+                        browser.signals_configured = browser.verified_configured = False
+                        browser.signal_rows = {}
+                        self.signal_calls.disconnect(browser, self.clock())
+                    return
                 browser.signals_waiting = False
-                accepted = packet.get("capabilities")
-                browser.signals_configured = CAPABILITY in browser.capabilities and accepted == [CAPABILITY]
+                accepted = accepted if valid and accepted <= browser.signals_requested else frozenset()
+                browser.signals_accepted = accepted
+                browser.signals_configured = CAPABILITY in accepted
+                browser.verified_configured = accepted == VERIFIED_CAPABILITIES
                 browser.signals_sequence = -1
                 browser.signal_rows = {}
                 self.signal_calls.disconnect(browser, self.clock())
@@ -1829,11 +1971,24 @@ class BrowserService:
                 from .call_signals import rows
 
                 if browser.signals_configured:
-                    sequence, snapshot = rows(packet)
+                    try:
+                        sequence, snapshot = rows(packet)
+                    except ValueError:
+                        self.signal_calls.disconnect(browser, self.clock())
+                        browser.signal_rows = {}
+                        raise
+                    if browser.verified_configured and any(
+                        "sourceDocumentGeneration" not in r for r in snapshot.values()
+                    ):
+                        # Strict-mode presence is stronger than the legacy schema.
+                        snapshot = {}
                     instance = packet["browserInstance"]
                     if browser.signals_instance is None:
                         browser.signals_instance = instance
                     elif instance != browser.signals_instance:
+                        self.signal_calls.disconnect(browser, self.clock())
+                        browser.verified_configured = False
+                        browser.signal_rows = {}
                         raise ValueError("Control connection changed browser profile identity")
                     if sequence > browser.signals_sequence:
                         self.signal_calls.claim(browser, self.clock())
@@ -1872,12 +2027,16 @@ class BrowserService:
 
                 self.signal_calls.disconnect(browser, self.clock())
                 browser.signals_configured = False
+                browser.verified_configured = False
+                browser.signals_waiting = False
                 browser.signals_sequence = -1
                 browser.signal_rows = {}
                 self.signal_calls.claim(browser, self.clock())
                 if CAPABILITY in browser.capabilities:
-                    browser.signals_waiting = True
-                    browser.send(dict(type="configure", capabilities=[CAPABILITY]))
+                    self._configure_signals(
+                        browser,
+                        VERIFIED_CAPABILITIES if browser.capabilities >= VERIFIED_CAPABILITIES else [CAPABILITY],
+                    )
             else:
                 # Forward compatible: a newer companion's message is not a
                 # broken link. Log each new type once per connection.
@@ -1906,6 +2065,7 @@ class BrowserService:
         call_version=None,
         expected_capture=None,
         call_generation=ANY_GENERATION,
+        verified_binding=None,
     ):
         from .session_events import END_REASONS
 
@@ -2006,6 +2166,13 @@ class BrowserService:
                     raise ValueError("This meeting is no longer available")
                 self._validate_call(browser, tab, expected, version=call_version)
                 self._validate_generation(browser, tab, call_generation)
+                if automatic:
+                    proof = self.signal_calls.proof(
+                        browser, tab, self.clock(), remote="separated", meeting=browser.meetings.get(tab, {})
+                    )
+                    verified_binding = verified_binding or (proof.binding if proof else None)
+                    if not self._verified_start_allowed(browser, tab, verified_binding):
+                        raise ValueError("Verified call evidence is no longer current")
                 # D52.5/R67: never a second folder for a call being recorded,
                 # also for a manual Start; one the user stopped no longer counts.
                 owner = self.captures.get(browser.states.get(tab, {}).get("captureId"))
@@ -2073,10 +2240,12 @@ class BrowserService:
                 browser.command_serial += 1
                 pending = dict(
                     serial=browser.command_serial,
+                    deadline=deadline,
                     expected=expected,
                     reason=reason,
                     user_stopped=user and reason == "user",
                     automatic=automatic,
+                    verifiedBinding=verified_binding,
                     preserve_capture=preserve_capture,
                     captures=set(),
                     captureId=browser.states.get(tab, {}).get("captureId"),
@@ -2089,8 +2258,34 @@ class BrowserService:
                     version=self._call_versions.get(logical, 0),
                     generation=self._stop_generation,
                 )
+                if automatic and action == "start":
+
+                    def validate():
+                        with self.lock:
+                            valid = (
+                                not pending.get("cancelled")
+                                and pending["generation"] == self._stop_generation
+                                and pending["version"] == self._call_versions.get(logical, 0)
+                                and self.deadline_clock() < pending["deadline"]
+                                and self._verified_start_allowed(browser, tab, verified_binding)
+                            )
+                            if not valid:
+                                pending["cancelled"] = True
+                                pending["event"].set()
+                            return valid
+
+                    pending["validate"] = validate
                 browser.pending[request_id] = pending
                 browser.commands[request_id] = pending
+                if action == "start":
+                    self._native_requests[request_id] = pending
+                    protected = {key for peer in self.browsers.values() for key in peer.pending}
+                    protected.update(key for group in self._pending_calls.values() for key in group)
+                    for old_id, old in tuple(self._native_requests.items()):
+                        if len(self._native_requests) <= 512:
+                            break
+                        if old_id not in protected and old.get("nativeCaptureId") not in self.captures:
+                            self._native_requests.pop(old_id, None)
                 for old_id in tuple(browser.commands):
                     if len(browser.commands) <= 256:
                         break
@@ -2137,6 +2332,8 @@ class BrowserService:
                     else:
                         packet["reason"] = reason
             with browser.order_lock:
+                if action == "start" and automatic and not self._verified_start_allowed(browser, tab, verified_binding):
+                    raise ValueError("Verified call evidence is no longer current")
                 if (
                     action == "start"
                     and expected is not None
@@ -2153,6 +2350,8 @@ class BrowserService:
                     and call_version != self._call_versions.get(logical, 0)
                 ):
                     raise ValueError("Recording start was cancelled")
+                if action == "start" and automatic and not self._verified_start_allowed(browser, tab, verified_binding):
+                    raise ValueError("Verified call evidence is no longer current")
                 browser.send(packet)
             if capture is not None and capture.finished and action == "stop" and not preserve_capture:
                 return dict(self.snapshot(), stoppedPath=str(capture.directory))
@@ -2417,6 +2616,7 @@ class BrowserService:
         call_version=None,
         refusals=(),
         call_generation=ANY_GENERATION,
+        verified_binding=None,
     ):
         from .browser_capture import BrowserCapture
 
@@ -2438,8 +2638,7 @@ class BrowserService:
                         or not self.auto_record
                         or self.require_application
                         and not any(self.applications.values())
-                        or "call-evidence-v1" in browser.capabilities
-                        and not self._auto_start_ready(browser, browser.meetings.get(int(raw_tab), {}))
+                        or not self._verified_start_allowed(browser, int(raw_tab), verified_binding)
                     )
                 )
             ):
@@ -2463,6 +2662,8 @@ class BrowserService:
                 capture.call_tab = tab
                 self.captures[capture_id] = capture
                 self._set_capture_origin(capture_id, automatic_generation is not None)
+                if verified_binding is not None:
+                    self._verified_owners[capture_id] = verified_binding
                 browser.states[tab] = dict(recording=True, captureId=capture_id, tabId=tab)
                 if browser.browser_instance is not None:
                     self._bind_capture(browser, tab, capture_id)
@@ -2472,6 +2673,16 @@ class BrowserService:
             return existing.snapshot()
         # GNOME picks this origin: it and its monotonic mapping are one reading (D61).
         session_clock = SessionClock()
+
+        def admit():
+            with self.lock:
+                current = self.browsers.get(browser_id)
+                return automatic_generation is None or (
+                    current is not None
+                    and automatic_generation == self._stop_generation
+                    and self._verified_start_allowed(current, tab, verified_binding)
+                )
+
         try:
             capture.start(
                 dict(
@@ -2487,6 +2698,7 @@ class BrowserService:
                 reason="missing",
                 refusals=refusals,
                 session_clock=session_clock,
+                admit=admit,
             )
         except Exception as error:
             capture.stop(str(error), user_stopped=False)
@@ -2677,6 +2889,56 @@ class BrowserService:
                         browser.send(ping)  # An overflow already shut the peer down.
         self.policy()
 
+    def _refresh_verified(self):
+        now = self.clock()
+        self.signal_calls.expire(now)
+        protected = set(self._verified_owners.values()) | {call.binding for call in self.signal_calls.calls.values()}
+        for binding in list(self.signal_calls.withdrawals):
+            if len(self.signal_calls.withdrawals) <= 2048:
+                break
+            if binding not in protected:
+                self.signal_calls.withdrawals.pop(binding)
+        for browser in self.browsers.values():
+            if browser.closed or browser.shut_down.is_set():
+                self.signal_calls.disconnect(browser, now)
+                continue
+            for tab, meeting in browser.meetings.items():
+                proof = self.signal_calls.proof(browser, tab, now)
+                if proof is not None and not proof.binding.matches(meeting):
+                    self.signal_calls.invalidate(browser, tab, now)
+
+    def _verified_owner_action(self, key):
+        if key in self._verified_ended:
+            return self._verified_ended[key]
+        binding = self._verified_owners.get(key)
+        if binding is None:
+            return None
+        now = self.clock()
+        for browser in self.browsers.values():
+            if not self.signal_calls.current(browser) or not browser.verified_configured:
+                continue
+            row = browser.signal_rows.get(binding.tab, {})
+            evidence = row.get("callEvidence", {})
+            if (
+                Binding.read(browser, row) == binding
+                and evidence.get("state") == "inactive"
+                and evidence.get("reason") == "callEnded"
+            ):
+                return "stop:callEnded"
+            proof = self.signal_calls.proof(browser, binding.tab, now)
+            if proof is not None and proof.binding.same_call(binding):
+                owner = self.captures.get(key)
+                if proof.binding == binding or owner is not None and owner.ready.is_set() and not owner.starting:
+                    self._verified_owners[key] = proof.binding
+                    self._verified_losses.pop(key, None)
+                    return None
+        lost = self.signal_calls.withdrawals.get(binding, now)
+        since = self._verified_losses.setdefault(key, lost)
+        if now - since >= 120:
+            self._verified_ended[key] = "stop:pageGone"
+            return self._verified_ended[key]
+        return None
+
     def policy(self):
         if self.closed.is_set() or self._stopping_all.is_set():
             return
@@ -2684,6 +2946,7 @@ class BrowserService:
         capture_tasks, cancels = [], []
         with self.lock:
             generation = self._stop_generation
+            self._refresh_verified()
             now = time.monotonic()
             observed = {
                 state.get("captureId"): (browser, tab, browser.meetings.get(tab))
@@ -2707,8 +2970,14 @@ class BrowserService:
                     or key not in self._capture_observed
                     and key not in self._control_reconnects
                     and not capture.browser_lost
+                    and key not in self._verified_owners
                 ):
                     self._capture_missing_since.pop(key, None)
+                    continue
+                verified_action = self._verified_owner_action(key)
+                if verified_action and key not in self._capture_policy_pending:
+                    self._capture_policy_pending.add(key)
+                    capture_tasks.append((key, capture, None, verified_action))
                     continue
                 # Read once, never waiting for capture.lock, which a checkpoint
                 # stalled on storage can hold for seconds: this runs under the
@@ -2830,6 +3099,8 @@ class BrowserService:
                         # and a full pool would run a queued cancel too late.
                         cancels.append((key, capture))
                     elif action and key not in self._capture_policy_pending:
+                        if key in self._verified_owners and action.startswith("stop:"):
+                            continue  # Source counts/transport loss are not a verified call end.
                         self._capture_policy_pending.add(key)
                         capture_tasks.append((key, capture, identifier, action))
                     continue
@@ -2868,6 +3139,8 @@ class BrowserService:
                 elif not ended and not capture.browser_lost and (peer is not None or now - since >= CALL_END_GRACE):
                     action = "fallback"
                 if action and key not in self._capture_policy_pending:
+                    if key in self._verified_owners and action.startswith("stop:"):
+                        continue
                     self._capture_policy_pending.add(key)
                     capture_tasks.append((key, capture, identifier, action))
             for key in self._capture_missing_since.keys() - self.captures.keys():
@@ -2930,6 +3203,9 @@ class BrowserService:
                             self._scheduled_calls.add(identifier)
                             if browser.browser_instance is not None:
                                 self._attempted_calls.add(identifier)
+                            self._scheduled_admission[identifier] = self.signal_calls.proof(
+                                browser, tab, self.clock()
+                            ).binding
                             tasks.append((identifier, "start", self._call_versions.get(identifier, 0)))
                             if not independent:
                                 break
@@ -2983,10 +3259,10 @@ class BrowserService:
                 self.captures[identifier] = capture
                 self._set_capture_origin(identifier, True)
                 state.reserve(identifier)
-                site = next(iter(state.calls.values())).site
-                self.workers.submit(self._start_signal, identifier, capture, site)
+                call = next(call for call in state.calls.values() if call.lost_at is None)
+                self.workers.submit(self._start_signal, identifier, capture, call.site, call.binding)
 
-    def _admit_signal(self, identifier):
+    def _admit_signal(self, identifier, binding):
         # A short control reconnect withdraws eligibility, not the stable
         # reservation. Wait without opening inputs; end/Stop/lease loss wakes
         # this wait immediately. Audio never enters this policy or its clock.
@@ -3002,18 +3278,27 @@ class BrowserService:
                 state.advance(self.clock(), enabled=enabled)
                 if state.capture_id != identifier or state.retiring or not enabled:
                     return None
-                site = next((call.site for call in state.calls.values() if call.lost_at is None), None)
-                if site is not None:
-                    return site
-                self._signal_condition.wait(0.5)  # Also evaluate the monotonic loss deadline.
+                for browser in self.browsers.values():
+                    proof = state.proof(browser, binding.tab, self.clock(), remote="mixed")
+                    meeting = browser.meetings.get(binding.tab)
+                    if proof is not None and proof.binding == binding and (meeting is None or binding.matches(meeting)):
+                        return next(
+                            (
+                                call.site
+                                for call in state.calls.values()
+                                if call.binding == binding and call.lost_at is None
+                            ),
+                            None,
+                        )
+                return None  # Withdrawing proof cancels a pending Start; it is not an end.
 
-    def _start_signal(self, identifier, capture, site):
+    def _start_signal(self, identifier, capture, site, binding):
         route = dict(source="system", reason="mixedSiteSignal", site=site)
         canceled = False
 
         def admit():
             nonlocal canceled
-            current_site = self._admit_signal(identifier)
+            current_site = self._admit_signal(identifier, binding)
             canceled = current_site is None
             if not canceled:
                 route["site"] = current_site
@@ -3083,6 +3368,15 @@ class BrowserService:
 
     def _capture_lifecycle(self, key, capture, identifier, action):
         try:
+            if action in ("fallback", "askResume") and key in self._verified_owners:
+                with self.lock:
+                    binding = self._verified_owners[key]
+                    if not any(
+                        (proof := self.signal_calls.proof(peer, binding.tab, self.clock())) is not None
+                        and proof.binding == binding
+                        for peer in self.browsers.values()
+                    ):
+                        return
             if action == "fallback":
                 if identifier is not None:
                     self._fallback(identifier, capture)
@@ -3117,6 +3411,11 @@ class BrowserService:
         meeting = browser.meetings.get(tab)
         if lifecycle is None or meeting is None:
             return False
+        binding = self._verified_owners.get(key)
+        if binding is not None:
+            proof = self.signal_calls.proof(browser, tab, self.clock(), remote="separated", meeting=meeting)
+            if proof is None or proof.binding != binding:
+                return False
         page = browser.page_states.get(tab) or state.get("pageState") or meeting.get("pageState")
         current = source_state(capture.host.session.manifest.get("events"))
         return bool(
@@ -3211,6 +3510,27 @@ class BrowserService:
         if "page-state-v1" in browser.capabilities:
             # As for any GNOME Start: a reload must not end the resumed session.
             packet["keepOnNavigation"] = True
+        binding = self._verified_owners.get(key)
+        if binding is not None:
+
+            def validate_resume():
+                with self.lock:
+                    proof = self.signal_calls.proof(
+                        browser,
+                        int(raw_tab),
+                        self.clock(),
+                        remote="separated",
+                        meeting=browser.meetings.get(int(raw_tab), {}),
+                    )
+                    valid = proof is not None and proof.binding == binding and not capture.stop_requested.is_set()
+                    if not valid:
+                        browser.resumes.pop(request_id, None)
+                        lifecycle = self._capture_lifecycles.get(key)
+                        if lifecycle is not None:
+                            lifecycle.asked_on.discard(browser.id)
+                    return valid
+
+            browser.write_admissions[request_id] = validate_resume
         browser.resumes[request_id] = key
         while len(browser.resumes) > RESUME_HISTORY:
             browser.resumes.pop(next(iter(browser.resumes)))
@@ -3236,12 +3556,33 @@ class BrowserService:
                 if browser_id in self.browsers:
                     self.browsers[browser_id].scheduled.discard(int(tab))
 
-    @staticmethod
-    def _auto_start_ready(browser, meeting):
+    def _auto_start_ready(self, browser, meeting):
         return (
-            meeting.get("sourceCountKnown", True) is True
+            not browser.closed
+            and not browser.shut_down.is_set()
+            and meeting.get("sourceCountKnown", True) is True
             and meeting.get("sourceCount", 0) > 0
-            and ("call-evidence-v1" not in browser.capabilities or meeting.get("heard") is True)
+            and meeting.get("heard") is True
+            and meeting.get("pageState") == "present"
+            and self.signal_calls.proof(
+                browser, meeting.get("tabId"), self.clock(), remote="separated", meeting=meeting
+            )
+            is not None
+        )
+
+    def _verified_start_allowed(self, browser, tab, binding):
+        proof = self.signal_calls.proof(
+            browser, tab, self.clock(), remote="separated", meeting=browser.meetings.get(tab, {})
+        )
+        return (
+            binding is not None
+            and proof is not None
+            and proof.binding == binding
+            and self.auto_record
+            and not self.closed.is_set()
+            and not self._stopping_all.is_set()
+            and (not self.require_application or any(self.applications.values()))
+            and self._auto_start_ready(browser, browser.meetings.get(tab, {}))
         )
 
     def _automatic(self, identifier, action, generation=None, call_version=None):
@@ -3250,6 +3591,7 @@ class BrowserService:
             expected = self._expected_call(identifier)
             if call_version is None:
                 call_version = self._call_versions.get(identifier, 0)
+            verified_binding = self._scheduled_admission.get(identifier)
         try:
             identifier = self._resolve_call(identifier, wait=True)
             if action == "start":
@@ -3267,8 +3609,7 @@ class BrowserService:
                     browser = self.browsers.get(browser_id)
                     meeting = browser.meetings.get(int(raw_tab), {}) if browser is not None else {}
                     if browser is None or (
-                        "call-evidence-v1" in browser.capabilities
-                        and not self._auto_start_ready(browser, meeting)
+                        not self._auto_start_ready(browser, meeting)
                         # The call may have gained a capture while this task waited.
                         or self._generation_recording(int(raw_tab), meeting, active=True)
                     ):
@@ -3283,7 +3624,13 @@ class BrowserService:
                     if browser is None:
                         return
                     self._validate_call(browser, int(raw_tab), expected, version=call_version)
-                self.command(logical_identifier, action, call_version=call_version, automatic=True)
+                self.command(
+                    logical_identifier,
+                    action,
+                    call_version=call_version,
+                    automatic=True,
+                    verified_binding=verified_binding,
+                )
             else:
                 self.command(logical_identifier, action)
             if action == "start":
@@ -3318,13 +3665,15 @@ class BrowserService:
                 browser = self.browsers.get(browser_id)
                 meeting = browser.meetings.get(int(tab)) if browser else None
                 active = not self.require_application or any(self.applications.values())
-                evidence = (
-                    browser is None
-                    or "call-evidence-v1" not in browser.capabilities
-                    or self._auto_start_ready(browser, meeting or {})
-                )
+                evidence = browser is not None and self._verified_start_allowed(browser, int(tab), verified_binding)
                 allowed = self.auto_record and active and not self._stopping_all.is_set() and evidence
-                if action == "start" and browser is not None and not evidence:
+                if (
+                    action == "start"
+                    and browser is not None
+                    and not evidence
+                    and call_version == self._call_versions.get(logical_identifier, 0)
+                    and not self._stopped_identity(expected)
+                ):
                     self._clear_attempt(browser, int(tab))
             if action == "start" and allowed and meeting is not None:
                 try:
@@ -3334,6 +3683,7 @@ class BrowserService:
                         automatic_generation=generation,
                         call_version=call_version,
                         refusals=[rejected.refusal],
+                        verified_binding=verified_binding,
                     )
                 except (OSError, ValueError, TimeoutError):
                     logging.getLogger(__name__).exception("Could not start the missing-browser fallback")
@@ -3344,6 +3694,16 @@ class BrowserService:
                         resolved = self._resolve_call(logical_identifier)
                     except ValueError:
                         resolved = None
+                    if resolved is not None and call_version == self._call_versions.get(logical_identifier, 0):
+                        owner, _, raw_tab = resolved.partition(":")
+                        peer = self.browsers.get(owner)
+                        proof = self.signal_calls.proof(peer, int(raw_tab), self.clock()) if peer is not None else None
+                        if (
+                            peer is not None
+                            and not self._stopped_identity(expected)
+                            and (proof is None or verified_binding is not None and proof.binding != verified_binding)
+                        ):
+                            self._clear_attempt(peer, int(raw_tab))
                     disconnected = identifier.partition(":")[0] not in self.browsers
                     if (
                         disconnected
@@ -3358,6 +3718,7 @@ class BrowserService:
         finally:
             with self.lock:
                 self._scheduled_calls.discard(logical_identifier)
+                self._scheduled_admission.pop(logical_identifier, None)
                 browser_id, _, tab = identifier.partition(":")
                 if browser_id in self.browsers and tab.isdecimal():
                     self.browsers[browser_id].scheduled.discard(int(tab))
@@ -3577,6 +3938,8 @@ class BrowserService:
         if starts:
             latest = max(starts, key=lambda pending: pending["serial"])
             self._set_capture_origin(capture_id, latest.get("automatic") is True)
+            if latest.get("verifiedBinding") is not None:
+                self._verified_owners.setdefault(capture_id, latest["verifiedBinding"])
         if browser.browser_instance is None:
             return
         key = (browser.browser_instance, tab)

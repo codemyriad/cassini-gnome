@@ -46,7 +46,9 @@ def signals(server, monkeypatch):  # noqa: F811
     monkeypatch.setattr(service, "_start_signal", start)
     monkeypatch.setattr(service, "_stop_signal", stop)
 
-    def opened(instance="synthetic-profile", capabilities=("call-signals-v1",), profile=None):
+    def opened(
+        instance="synthetic-profile", capabilities=("call-signals-v1", "verified-auto-admission-v1"), profile=None
+    ):
         before = set(service.browsers)
         connection = connect(path)
         wire = connection.makefile("rwb")
@@ -54,8 +56,9 @@ def signals(server, monkeypatch):  # noqa: F811
         send_packet(wire, dict(type="hello", version=1, capabilities=list(capabilities)))
         send_packet(wire, dict(type="status", recording=False, tabId=None))
         configure = read_packet(wire)
-        assert configure == dict(type="configure", capabilities=["call-signals-v1"])
-        send_packet(wire, dict(type="configured", capabilities=["call-signals-v1"]))
+        negotiated = sorted(set(capabilities) & {"call-signals-v1", "verified-auto-admission-v1"})
+        assert configure == dict(type="configure", capabilities=negotiated)
+        send_packet(wire, dict(type="configured", capabilities=negotiated))
         changed.wait(lambda: any(b.id not in before and b.signals_configured for b in service.browsers.values()))
         owner = next(b for b in service.browsers.values() if b.id not in before)
         original_send = owner.send
@@ -294,7 +297,9 @@ def test_known_mixed_rtp_receiver_is_not_a_browser_candidate_or_command(signals)
     from cassini_talk.browser_service import StartRefused
 
     d = signals
-    p = d.open(capabilities=("call-signals-v1", "independent-sessions-v1", "call-evidence-v1"))
+    p = d.open(
+        capabilities=("call-signals-v1", "verified-auto-admission-v1", "independent-sessions-v1", "call-evidence-v1")
+    )
     request("configure", path=d.path, autoRecord=True)
     d.report(p, [call()])
     capture = d.started()
@@ -304,7 +309,14 @@ def test_known_mixed_rtp_receiver_is_not_a_browser_candidate_or_command(signals)
             type="meetings",
             meetings=[
                 dict(
-                    tabId=3, title="Synthetic mixed call", url="https://meeting.example/test", sourceCount=1, heard=True
+                    tabId=3,
+                    title="Synthetic mixed call",
+                    url="https://meeting.example/test",
+                    sourceCount=1,
+                    heard=True,
+                    browserDocumentId="document-A",
+                    documentGeneration="hook-document-A",
+                    callGeneration="call-A",
                 )
             ],
         ),
@@ -324,7 +336,7 @@ def test_duplicate_ack_and_stale_snapshot_cannot_resurrect_an_ended_call(signals
     capture = d.started()
     d.report(p, [call(state="inactive")], sequence=11)
     saved(capture)
-    send_packet(p.wire, dict(type="configured", capabilities=["call-signals-v1"]))
+    send_packet(p.wire, dict(type="configured", capabilities=["call-signals-v1", "verified-auto-admission-v1"]))
     send_packet(p.wire, dict(type="callSignals", browserInstance=p.profile, sequence=10, tabs=[call()]))
     # A later fresh unknown snapshot is the FIFO processing barrier.
     d.report(p, [call(state="unknown")], sequence=12)
@@ -542,6 +554,8 @@ def test_different_generation_end_starts_bounded_loss_without_extending_it(signa
     request("configure", path=d.path, autoRecord=True)
     d.report(p, [call()])
     capture = d.started()
+    d.clock[0] = 9
+    d.report(p, [call()])  # Renew proof before testing the explicit other-call end at 10.
     d.clock[0] = 10
     d.report(p, [ended])
     association = next(iter(d.service.signal_calls.calls.values()))
@@ -604,3 +618,120 @@ def test_stop_all_suppresses_current_mixed_snapshot_before_policy_admission(sign
         assert next_capture is not capture and len(d.service.captures) == before + 1
     finally:
         release.set()
+
+
+def test_verified_mixed_lease_expiry_starts_grace_without_heartbeat_or_audio_extension(signals):
+    d = signals
+    p = d.open()
+    request("configure", path=d.path, autoRecord=True)
+    d.report(p, [call()])
+    capture = d.started()
+    d.clock[0] = 4.999
+    d.service.policy()
+    association = next(iter(d.service.signal_calls.calls.values()))
+    assert association.lost_at is None
+    d.clock[0] = 5
+    d.service.update(p.owner, dict(type="pong", seq=1))
+    assert association.lost_at == 5 and not capture.stop_requested.is_set()
+    for now in (10, 100, 124.999):
+        d.clock[0] = now
+        stream(capture, "system")
+        d.service.update(p.owner, dict(type="status", recording=False))
+        assert association.lost_at == 5 and not capture.stop_requested.is_set()
+    d.clock[0] = 125
+    d.service.policy()
+    saved(capture)
+    assert capture.host.session.manifest["events"][-1]["reason"] == "pageGone"
+
+
+def test_d74_only_companion_cannot_automatically_open_mixed_system_inputs(signals, monkeypatch):
+    d = signals
+    opened = []
+    monkeypatch.setattr(d.service, "tap_factory", lambda *args, **kwargs: opened.append(args))
+    p = d.open(capabilities=("call-signals-v1",))
+    request("configure", path=d.path, autoRecord=True)
+    legacy = call()
+    legacy.pop("sourceDocumentGeneration")
+    d.report(p, [legacy])
+    assert p.owner.signals_configured and not p.owner.verified_configured
+    assert not d.service.captures and not d.commands and not opened
+
+
+def test_verified_browser_owner_uses_proof_grace_not_source_count_as_call_end(signals):
+    import time
+
+    from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+
+    d = signals
+    p = d.open(
+        capabilities=(
+            "call-signals-v1",
+            "verified-auto-admission-v1",
+            "independent-sessions-v1",
+            "call-evidence-v1",
+            "page-state-v1",
+            "multi-stream-v1",
+        )
+    )
+    row = call(tab=3, remote="separated")
+    meeting = dict(
+        tabId=3,
+        title="Synthetic verified browser call",
+        url=row["url"],
+        sourceCount=1,
+        heard=True,
+        sourceCountKnown=True,
+        pageState="present",
+        browserDocumentId=row["documentGeneration"],
+        documentGeneration=row["sourceDocumentGeneration"],
+        callGeneration=row["callEvidence"]["callGeneration"],
+    )
+    send_packet(p.wire, dict(type="meetings", meetings=[meeting]))
+    request("configure", path=d.path, autoRecord=True)
+    d.report(p, [row])
+    command = read_packet(p.wire)
+    assert command["action"] == "start"
+    client = BrowserAudioProxy(path=d.path)
+    try:
+        client.handle(
+            dict(
+                type="start",
+                version=1,
+                independent=True,
+                captureId="verified-browser-owner",
+                timelineOriginMs=int(time.time() * 1000),
+                microphone=True,
+                requestId=command["requestId"],
+                callGeneration=meeting["callGeneration"],
+                documentGeneration=meeting["documentGeneration"],
+            )
+        )
+        capture = d.service.captures["verified-browser-owner"]
+        send_packet(
+            p.wire,
+            dict(
+                type="result",
+                requestId=command["requestId"],
+                ok=True,
+                status=dict(recording=True, tabId=3, captureId=capture.capture_id),
+            ),
+        )
+        d.changed.wait(lambda: not p.owner.pending)
+        send_packet(p.wire, dict(type="meetings", meetings=[dict(meeting, sourceCount=0, heard=False)]))
+        d.changed.wait(lambda: p.owner.meetings[3]["sourceCount"] == 0)
+        lifecycle = d.service._capture_lifecycles[capture.capture_id]
+        lifecycle.missing = time.monotonic() - 130
+        d.service.policy()
+        assert not capture.stop_requested.is_set(), "Source loss cannot affirmatively end a verified call"
+        d.clock[0] = 5
+        d.service.update(p.owner, dict(type="pong", seq=1))
+        assert d.service._verified_losses[capture.capture_id] == 5
+        d.clock[0] = 124.999
+        d.service.policy()
+        assert not capture.stop_requested.is_set()
+        d.clock[0] = 125
+        d.service.policy()
+        saved(capture)
+        assert capture.host.session.manifest["events"][-1]["reason"] == "pageGone"
+    finally:
+        client.close()

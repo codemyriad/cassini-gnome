@@ -30,11 +30,28 @@
         },
         "capabilities": {
           "type": "array",
-          "maxItems": 1,
+          "maxItems": 2,
           "uniqueItems": true,
           "items": {
-            "const": "call-signals-v1"
-          }
+            "enum": [
+              "call-signals-v1",
+              "verified-auto-admission-v1"
+            ]
+          },
+          "allOf": [
+            {
+              "if": {
+                "contains": {
+                  "const": "verified-auto-admission-v1"
+                }
+              },
+              "then": {
+                "contains": {
+                  "const": "call-signals-v1"
+                }
+              }
+            }
+          ]
         }
       },
       "required": [

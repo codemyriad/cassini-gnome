@@ -712,7 +712,7 @@ def replay(broker, case):
                         pass  # update() holds the lock until the status is applied.
                     # navigating zeroes the row's count; the page keeps its call.
                     meetings = control.meetings
-                    peer.inventory((3,))
+                    peer.inventory((3,), page=frame.get("pageState"), document=frame.get("documentGeneration"))
                     wait_for(lambda before=meetings: control.meetings is not before)
                     with service.lock:
                         pass

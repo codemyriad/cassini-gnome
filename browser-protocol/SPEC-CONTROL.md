@@ -1111,13 +1111,13 @@ top-level site's classification or lend lifecycle proof to another document.
 Each row keeps TWO independent facts:
 
 - `remoteAudio`: separated/mixed/unknown. This is a reviewed/versioned site
-  adapter's classification of the remote audio design, not inferred from energy,
+  evidence source's classification of the remote audio design (generic under D80), not inferred from energy,
   hostname alone, receiver count, labels or a single observed track. Known
   classification requires a named/versioned adapter. Unknown makes no claim that
   a stream is separated or mixed. Classification alone never proves a call.
 - `callEvidence`: state unknown/inactive/active, reason, nullable adapter
-  `{name,version}` and nullable callGeneration. Active requires positive site-
-  specific call/lifecycle evidence, a named/versioned adapter and current call
+  `{name,version}` and nullable callGeneration. Active requires reviewed positive call/session evidence (generic under D80),
+  a named/versioned algorithm and current call
   generation. Inactive requires affirmative callEnded/nonCall evidence; callEnded
   retains the ended generation so apps stop the correct call. Missing/conflicting/
   unsupported evidence is unknown (unverified/unsupported/evidenceConflict), never
@@ -1128,16 +1128,18 @@ Known inactive requires an adapter; reason nonCall may have no prior generation.
 Document generation changes fence prior evidence. A new call in the same SPA gets
 a new call generation; title, audio or unchanged URL cannot preserve the old call.
 The schema is site-neutral, not permission to invent/add production site adapters.
-New adapters need their own reviewed evidence/classification definition. Actual
-WhatsApp markers remain UNKNOWN until coordinator approves a disposable test
-account/profile study; never inspect the user's account/browser or reload a call.
+D80.1 permits no new hostname-specific adapter, warning or admission rule.
+WhatsApp candidate observations remain evidence only; do not implement markers.
+Generic algorithm/classification changes require their own review.
 
 ### Positive evidence and routing
 
 Page playback, graph presence/energy, a WhatsApp/Teams hostname, voice messages,
 status/video/music and their combinations never report active or cause a new
 automatic meeting/Start. No PCM, AudioContext, analyser/worklet, graph hook,
-getUserMedia/device access, native session or app launch is used to discover calls.
+extension-initiated getUserMedia/device access, native session or app launch is
+used to discover calls. D80 may observe already existing page-captured-track
+metadata, without opening a microphone or reading its samples.
 Site adapter evaluation and relay hints are bounded, scoped and explicitly
 validated; page data remains advisory, never management authority. The allowlisted
 new hint interface extends only lifecycle/classification evidence, never page
@@ -1147,9 +1149,10 @@ Routing and admission are separate from recording state:
 
 | Evidence/classification | App behavior |
 | --- | --- |
-| active + mixed | Signal-only candidate; app may automatically start system-audio Others ONLY under its existing auto-record opt-in, permission/readiness and duplicate/Stop suppression rules |
+| active + mixed, verified-auto-admission-v1 acknowledged | Signal-only candidate; app may automatically start system-audio Others ONLY with the acknowledged capability pair, fresh current source alias/background-call binding and the existing auto-record opt-in, permission/readiness and duplicate/Stop suppression rules. No RTP/legacy meeting row is required for this signal-only route; no browser Start |
 | inactive or unknown + mixed | No new automatic recording; positive callEnded ends that association and stops the shared automatic recording when its last association ends, even if media still plays |
-| separated | Browser capture remains the existing RTP sourceCount/heard/readiness/auto-opt-in path; a call signal alone cannot supply RTP proof or start browser capture |
+| active + separated, with verified-auto-admission-v1 acknowledged | Automatic browser Start needs the explicit Chrome/hook/background binding below, current RTP readiness and existing app guards; RTP or a signal alone is insufficient |
+| separated legacy/non-adopted path | Existing deployed behavior is unchanged by this proposal; D80.3 accepts the interim exposure until the producer and app adoption land |
 | unknown classification | No signal-driven route or automatic Start; never guess browser or system from page audio |
 
 A reviewed known-mixed site is excluded from browser-recordable legacy inventory;
@@ -1205,7 +1208,7 @@ takeover. Check the existing stable owner BEFORE either signal or RTP admission,
 so a newly visible RTP row cannot create a second recording of that same call.
 Fresh active same-call evidence can maintain/reconcile the running
 association independently of a changed classification; admission of a NEW call
-still needs active+mixed and the existing auto-record opt-in. Separate-stream RTP
+still needs acknowledged verified-auto-admission-v1 plus call-signals-v1, fresh correlated active+mixed evidence with its current non-null source alias, and the existing auto-record opt-in. Separate-stream RTP
 policy/recovery remains unchanged for RTP owners. The extension never implements
 a 120-second timer, decides microphone policy or commands a system capture here.
 
@@ -1245,3 +1248,224 @@ state/event proofs of actual start/end, generation/reconnect/Stop suppression,
 no media-only admission, system-source selection and unchanged real RTP/Talk CI.
 GNOME/Mac adoption requires deliberate broker/policy/renderer tests, not just a pin.
 No extension/native runtime or capability advertisement changes in this draft.
+
+## D80.3: verified generic automatic admission and explicit document binding
+
+This proposed additive amendment separates source observation from automatic
+admission. It is not implemented by companion0.2.25. Do not ship a blanket
+browser-auto-start guard as an interim fix: fast-track the generic producer/SPEC,
+then matched GNOME/Mac adoption, with legitimate Talk positives and passive-media
+negatives. Deployed legacy exposure remains explicitly accepted until adoption;
+this amendment does not claim to fix old binaries through an ignored new field.
+
+### Qualification and negotiation
+
+Generic positive evidence requires live remote media on a connected RTC session
+AND a live local audio-capture track actually sent by the page in that bound
+session. Fresh received-media and captured-sender media progress must both be
+observed; connected state, a live/enabled track or an accumulated stats counter
+without fresh progress is insufficient. Track provenance must come from the
+page's getUserMedia result or a
+proven clone, not a permission grant, preview, allocated sendonly slot or synthetic
+MediaStreamDestination. No hostname, label, graph, energy, playback or RTP count
+can supply the missing capture-sender proof. Observation must not open a microphone.
+A listen-only call without an outbound captured sender remains unknown for this
+initial rule, with explicit manual recording preserved. Same-PC proof is preferred;
+a split publisher/subscriber topology needs a reviewed generic session binding,
+not arbitrary page-wide co-occurrence.
+
+**D80.4: active means an interactive captured-media session, not proven answered
+human intent.** Echo/microphone-test pages and unanswered early media qualify when
+they satisfy R1: live remote progress and an actually sent page-captured mic in
+the bound session. These are intentional positives, not detection failures to hide
+with labels or hostname exceptions. The app keeps recording visible, manual Stop
+available, and the existing end/evidence-loss/ownership rules. This accepted cost
+does not relax passive-media, preview, synthetic-sender, unrelated-PC or stale/
+forged-evidence negatives. An unanswered UI alone neither admits nor denies R1.
+
+A producer implementing this contract advertises `verified-auto-admission-v1`
+alongside `call-signals-v1`. It does not advertise the stricter feature merely
+because it can publish D74 signals. An adopting consumer sends both capabilities
+only when hello advertises them; configured acknowledges the accepted pair.
+Requesting/acknowledging the stricter feature alone is invalid. Empty configure
+revokes both; reconnect starts unconfigured and requires fresh acknowledged proof.
+The schemas bound configure/configured to these two unique capabilities. Existing
+single-feature consumers remain valid. Publish the new binding aliases and the
+generic verified signal shape only after the stricter feature is acknowledged on
+that control connection; before acknowledgement or after revocation, retain the
+legacy negotiated shape and make no verified-admission claim. No new
+automaticEligible boolean is added.
+
+The acknowledged pair (`verified-auto-admission-v1` AND `call-signals-v1`) and
+fresh correlated callEvidence active are REQUIRED for **every** adopting automatic
+Start: the separated browser route, the D74 mixed/system route, and any automatic
+native/system fallback after browser rejection. Mixed routing has no D74-only
+acknowledgement exception. It supplements,
+not replaces, opt-in/application/permission/busy/manual-Stop/transport and route
+checks. Revalidate at scheduling, immediately before dispatch, and before any
+fallback/input reservation. Unknown, stale or mismatched evidence cannot authorize
+pending work. Existing recording ownership, fixed route and120s evidence-loss
+grace remain app-owned; unknown is not an affirmative end.
+
+### Numeric freshness and active-proof renewal
+
+These bounds apply identically to separated/browser and mixed/system automatic
+admission. Use monotonic elapsed time locally; the two endpoints do not need a
+shared clock. This amendment adds no wire timestamp/TTL field: the producer owns
+media-progress verification, and the consumer owns the receipt-time expiry below.
+
+| Bound | Required value |
+| --- | --- |
+| Maximum age of each direction's native qualifying progress when publishing active | 2500 ms, including asynchronous collection/read delay |
+| Maximum interval between media-backed active refresh snapshots while qualifying progress continues | 2000 ms |
+| Producer deadline to post unknown after either direction stops progressing | 5000 ms after the older of the last qualifying received-progress and captured-sender-progress times |
+| Consumer active-proof expiry | 5000 ms after receipt of the last accepted media-backed active row; expired at elapsed >=5000 ms |
+
+Each active refresh MUST earn fresh qualifying counter progress in BOTH directions
+since that row's preceding active publication, with current live tracks/session and
+identity rechecked. A newer collector poll/revision, unchanged counter, cached
+boolean, increased snapshot sequence, or healthy transport alone is insufficient.
+The 2500 ms age check also applies at actual publication after async reads/queues;
+those delays cannot reset the proof's age. Missing/hung samples, disabled/ended
+tracks or failed identity checks withdraw admission; never refresh from cache.
+
+Every active row included in a full replacement snapshot follows this rule,
+including unchanged rows copied alongside another tab's update. Coalesce updates
+within the bounds, or publish that row as unknown if it cannot earn a renewal;
+never let another tab's activity renew its cached proof. Send renewed active
+snapshots with strictly advancing control sequence even when their serialized
+admission fields are unchanged; ordinary snapshot deduplication must not suppress
+these media-backed renewals. Unknown withdrawal cannot be delayed beyond the
+5000 ms producer bound. If the worker/page/transport freezes and cannot withdraw,
+the consumer expiry remains authoritative.
+
+A consumer renews the 5000 ms receipt-time lease ONLY from an accepted,
+strictly-new-sequence callSignals snapshot carrying that bound active row under
+the acknowledged pair. By the producer rule above, such a row represents newly
+earned progress, not replayed state. Duplicate/older sequences never renew it.
+Heartbeat/ping/pong, hello, configured, status, meetings, sourceCount/heard updates,
+PCM traffic, another tab's proof or a timer tick MUST NOT renew active admission.
+Clear proof immediately on unknown/inactive, missing row/alias, identity conflict,
+supersession, reconnect, revocation or downgrade. Before the first accepted active
+row there is no lease, including after capability acknowledgement.
+
+Check this monotonic expiry at scheduling, final Start/write dispatch, and every
+native input/fallback reservation boundary. At the exact 5000 ms deadline a
+pending automatic Start is ineligible even if pong just arrived. The producer
+withdrawal bound and consumer receipt-time expiry are separate guarantees; do not
+mistake either for an end-to-end bound from an unshared media timestamp.
+
+Expiry/unknown is loss of new admission, not affirmative callEnded or an immediate
+Stop of an existing owner. The existing fixed route/ownership and 120000 ms
+recording-evidence-loss grace remain separate. Start that loss handling when proof
+is withdrawn/expires; heartbeat/audio cannot extend its existing loss deadline.
+Explicit manual recording remains subject to its existing controls, not this
+automatic-admission lease. Shared freshness vectors cover exact boundaries,
+healthy-heartbeat expiry, cached refresh refusal, media-backed renewal, revocation
+and unchanged owner/route behavior.
+
+### Three namespaces and the wire mapping
+
+These identifiers are opaque1..200 UTF-8 bytes and MUST NOT be interchanged:
+
+| Field | Namespace / authority |
+| --- | --- |
+| callSignals.tabs[].documentGeneration | Chrome top-document ID from the current extension port's sender.documentId, with browser-owned child/parent binding where needed |
+| callSignals.tabs[].sourceDocumentGeneration | NEW: current MAIN-hook document alias, bound to that Chrome document by the background; nullable when unavailable |
+| meetings[].browserDocumentId | NEW: the same Chrome top-document identity; required for the stricter automatic path, optional for legacy rows |
+| meetings[].documentGeneration | Existing MAIN-hook source/span document alias; meaning is unchanged |
+| callSignals.tabs[].callEvidence.callGeneration and meetings[].callGeneration | The SAME background-owned call identity, not the hook's local epoch/counter |
+
+The background owns a current ledger associating browserInstance/profile, tab,
+Chrome document, current frame/port incarnation, MAIN-hook document/epoch and its
+background call generation. It binds actual browser-owned sender metadata and
+current collector state before publication. MAIN-world assertions cannot choose
+Chrome identity or mint the background identity. Source counts and hook generation0
+remain truthful in the passive viewer; its legacy meeting has a background UUID.
+
+Under the stricter acknowledged feature, every signal row includes
+sourceDocumentGeneration (null when unknown). Active and callEnded require a
+non-null current source alias. Unknown evidence has null evidence.callGeneration;
+a pre-existing legacy background UUID alone does not make the call active.
+A missing browser/source binding gives unknown admission, never raw-ID fallback.
+The schema keeps the aliases optional for older D74 payloads; negotiated consumers
+MUST enforce these additional presence/association requirements themselves.
+
+For a separated source row, consumers require all of the following together:
+
+1. Its current authenticated control connection is bound to the signal's stable
+   browserInstance/profile, with current configured sequence and no superseded port.
+2. Legacy and signal tabId agree.
+3. Legacy browserDocumentId equals signal documentGeneration **within the Chrome
+   namespace**.
+4. Legacy documentGeneration equals signal sourceDocumentGeneration **within the
+   MAIN-hook namespace**.
+5. Legacy callGeneration equals active evidence.callGeneration **within the
+   background-call namespace**.
+6. Evidence is fresh/active, capability and current RTP capture readiness permit
+   the browser route, and all existing app guards still pass.
+
+For the mixed/system signal-only route, the acknowledged capability pair and
+freshness bounds are equally mandatory. Require current profile/connection, tab,
+Chrome documentGeneration, non-null sourceDocumentGeneration and the
+background-owned evidence.callGeneration from the producer's same ledger. Recheck
+that complete binding against the candidate captured for pending dispatch/input
+reservation; any changed component invalidates that pending action. A mixed row
+may legitimately have no recordable legacy meetings row or RTP readiness. Do not
+invent one, require heard/sourceCount for the system route, or bypass the source
+alias/strict acknowledgement because the chosen input is native. If legacy
+metadata exists for correlation, compare only corresponding namespaces as above.
+
+Never compare legacy documentGeneration directly to D74 documentGeneration.
+Neither equality of two raw strings nor a hook epoch matching a background token
+establishes a binding. Equal strings without the ledger/current aliases are
+insufficient. Conversely, different Chrome/hook strings are normal and valid:
+
+```json
+{"type":"meetings","meetings":[{"tabId":2,"title":"Controlled call","url":"https://conference.invalid/session","sourceCount":2,"sourceCountKnown":true,"heard":true,"pageState":"present","browserDocumentId":"chrome-document-A","documentGeneration":"hook-document-A","callGeneration":"call-A"}]}
+{"type":"callSignals","browserInstance":"profile-A","sequence":0,"tabs":[{"tabId":2,"url":"https://conference.invalid/session","documentGeneration":"chrome-document-A","sourceDocumentGeneration":"hook-document-A","remoteAudio":"separated","callEvidence":{"state":"active","reason":"activeCall","adapter":{"name":"webrtc-interactive","version":"1"},"callGeneration":"call-A"}}]}
+```
+
+The generic adapter descriptor identifies a reviewed algorithm/version, never a
+hostname registry. This literal illustrates proposed correlation, not implemented
+producer output or vendor support. Subframe proof requires a current browser-owned
+parent/top-document binding; it cannot lend another document a sender/receiver.
+
+PC/track replacement, mute and polling do not by themselves mint background call
+identities. Proven same-call reconnect/control replacement retains identity;
+uncertain continuity withdraws fresh admission without fabricating an end or a
+duplicate Start. Navigation/old-frame results and late ends are fenced before
+association handling. Persisted identity metadata cannot replay cached active proof.
+
+### Source facts, routing and shared literals
+
+sourceCount/sourceCountKnown/heard remain capture/source facts, including genuine
+passive RTP. Do not zero heard, suppress the raw source observation or filter a
+magic hook generation to make the negative pass. For adopted separated automatic
+routing, the old RTP-only policy is superseded by active+explicit binding+RTP
+readiness. An active signal without RTP capture readiness is still insufficient.
+Mixed active evidence retains D74's app-owned system route ONLY after the same
+strict acknowledgement, fresh proof and current binding checks; it does not permit
+browser graph/mixed capture. Unknown classification does not authorize a route.
+
+The shared `separated-existing-rtp-ready` vector now carries a generic active
+signal, acknowledged capabilities and unequal Chrome/hook identifiers with an
+explicit mapping. Its policy is verified-call-and-RTP, not existing-RTP. Matching
+raw cross-namespace strings, missing aliases, a different Chrome/hook/background
+call/profile/tab, absent acknowledgement, unknown evidence or opt-out cannot Start
+merely because sourceCount/heard are positive. `passive-rtc-viewer` preserves
+sourceCount1/heardtrue and hook0 with no captured sender, while expecting unknown
+admission, no automatic Start/fallback/input. These are contract literals; actual
+producer/consumer boundary and real-Chromium tests are still required.
+
+### Rollout constraint
+
+Do not silently ship the draft's interim blanket/legacy-inventory withholding
+behavior: its cost to legitimate Talk and manual inventory requires explicit
+coordinator review. Producer/SPEC first, then compatible consumers and a coordinated
+release. New consumers require acknowledged matching evidence; old consumers may
+ignore fields and retain the accepted legacy exposure until upgraded. A capability
+addition alone is not a backwards-compatible security fix. Confirm version pairings,
+first publication/pre-ack, reconnect/downgrade and explicit manual behavior in the
+consumer review before rollout. Canonical schemas/vectors in this PR do not enable
+any producer capability or change current app policy.
