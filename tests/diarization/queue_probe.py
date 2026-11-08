@@ -80,8 +80,8 @@ if args.parakeet:
     from cassini_talk.parakeet_client import ParakeetClient
 
     class SelectedSpeech:
-        def snapshot(self):
-            return dict(selected="parakeet-ultra-0.6b-int8")
+        def choice_for_job(self):
+            return "parakeet-ultra-0.6b-int8"
 
         def start_parakeet(self, bundle, *, register):
             from cassini_talk.sherpa_runtime import runtime_path

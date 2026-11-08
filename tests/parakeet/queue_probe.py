@@ -73,8 +73,8 @@ class CheckedClient(ParakeetClient):
 
 
 class Models:
-    def snapshot(self):
-        return dict(selected=MODEL_ID)
+    def choice_for_job(self):
+        return MODEL_ID
 
     def start_parakeet(self, bundle, *, register):
         assert all(client.process is None for client in clients), "Previous speech worker still alive"
