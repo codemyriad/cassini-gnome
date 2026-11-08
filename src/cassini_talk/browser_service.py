@@ -1467,6 +1467,7 @@ class BrowserService:
                     if getattr(capture, "stop_requested", None) is not None and capture.stop_requested.is_set()
                 )
                 self.stopped_calls.clear()
+                self.signal_calls.suppressed.clear()
                 self._attempted_calls.clear()
                 for browser in self.browsers.values():
                     browser.attempted.clear()
@@ -3557,6 +3558,7 @@ class BrowserService:
                     self.browsers[browser_id].scheduled.discard(int(tab))
 
     def _auto_start_ready(self, browser, meeting):
+        proof = self.signal_calls.proof(browser, meeting.get("tabId"), self.clock(), remote="separated", meeting=meeting)
         return (
             not browser.closed
             and not browser.shut_down.is_set()
@@ -3564,10 +3566,8 @@ class BrowserService:
             and meeting.get("sourceCount", 0) > 0
             and meeting.get("heard") is True
             and meeting.get("pageState") == "present"
-            and self.signal_calls.proof(
-                browser, meeting.get("tabId"), self.clock(), remote="separated", meeting=meeting
-            )
-            is not None
+            and proof is not None
+            and (proof.binding.profile, proof.binding.tab, proof.binding.generation) not in self.signal_calls.suppressed
         )
 
     def _verified_start_allowed(self, browser, tab, binding):
@@ -3973,6 +3973,10 @@ class BrowserService:
 
     def _remember_stop(self, browser, tab, stopped):
         """Remember a call the user stopped; starting it again forgets that."""
+        if not stopped and browser.signals_instance is not None:
+            generation = browser.meetings.get(tab, {}).get("callGeneration")
+            if isinstance(generation, str):
+                self.signal_calls.suppressed.discard((browser.signals_instance, tab, generation))
         if browser.browser_instance is None:
             return
         key = (browser.browser_instance, tab)

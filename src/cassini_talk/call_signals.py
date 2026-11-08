@@ -280,7 +280,7 @@ class SignalCalls:
         for instance, snapshot in self.snapshots.items():
             for tab, row in snapshot.items():
                 evidence = row["callEvidence"]
-                if evidence["state"] == "active" and row["remoteAudio"] == "mixed":
+                if evidence["state"] == "active":
                     self.suppressed.add((instance, tab, evidence["callGeneration"]))
         for instance, tab, _document, generation in self.calls:
             self.suppressed.add((instance, tab, generation))

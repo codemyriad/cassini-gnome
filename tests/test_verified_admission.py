@@ -362,3 +362,33 @@ def test_unknown_or_replayed_native_request_cannot_create_another_capture(broker
     with pytest.raises(StartCancelled, match="Unknown"):
         service._native_start_guard(dict(packet, requestId="unissued-token"))
     assert service._native_start_guard(dict(captureId="popup-manual")) is None
+
+
+def test_stop_all_fences_verified_call_before_legacy_inventory_is_ready(broker):
+    service,peer,_clock,queued,sent,meeting=broker
+    service.update(peer,dict(type='meetings',meetings=[]))
+    report(service,peer)
+    service.auto_record=True
+    service.stop_all()
+    service.update(peer,dict(type='meetings',meetings=[meeting]))
+    while queued:
+        fn,args=queued.pop(0)
+        fn(*args)
+    assert not starts(sent),'A verified current call must stay stopped when its RTP inventory arrives later'
+
+
+def test_stop_all_suppresses_only_current_call_and_new_background_call_can_start(broker):
+    service,peer,_clock,queued,sent,meeting=broker
+    service.update(peer,dict(type='meetings',meetings=[]))
+    report(service,peer)
+    service.auto_record=True
+    service.stop_all()
+    meeting['callGeneration']='new-background-call'
+    service.update(peer,dict(type='meetings',meetings=[meeting]))
+    packet=copy.deepcopy(POSITIVE['signal']);packet['sequence']=1
+    packet['tabs'][0]['callEvidence']['callGeneration']='new-background-call'
+    service.update(peer,packet)
+    while queued:
+        fn,args=queued.pop(0)
+        fn(*args)
+    assert len(starts(sent))==1 and starts(sent)[0]['callGeneration']=='new-background-call'
