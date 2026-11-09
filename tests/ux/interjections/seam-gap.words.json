@@ -1,0 +1,228 @@
+{
+  "format": "cassini.words.v1",
+  "language": "en",
+  "items": [
+    {
+      "speaker": "ada",
+      "startMs": 0,
+      "endMs": 400,
+      "text": "The"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 400,
+      "endMs": 800,
+      "text": "first"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 800,
+      "endMs": 1200,
+      "text": "build"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 1200,
+      "endMs": 1600,
+      "text": "is"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 1600,
+      "endMs": 2000,
+      "text": "ready"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2000,
+      "endMs": 2400,
+      "text": "for"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2400,
+      "endMs": 2800,
+      "text": "testing,"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 2800,
+      "endMs": 3200,
+      "text": "Right."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 3200,
+      "endMs": 3600,
+      "text": "and"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 3600,
+      "endMs": 4000,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4000,
+      "endMs": 4400,
+      "text": "second"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4400,
+      "endMs": 4800,
+      "text": "one"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4800,
+      "endMs": 5200,
+      "text": "should"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 5200,
+      "endMs": 5600,
+      "text": "be"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 5600,
+      "endMs": 6000,
+      "text": "ready"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 6000,
+      "endMs": 6400,
+      "text": "tonight."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 7600,
+      "endMs": 8000,
+      "text": "I"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 8000,
+      "endMs": 8400,
+      "text": "will"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 8400,
+      "endMs": 8800,
+      "text": "also"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 8800,
+      "endMs": 9200,
+      "text": "update"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 9200,
+      "endMs": 9600,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 9600,
+      "endMs": 10000,
+      "text": "download"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 10000,
+      "endMs": 10400,
+      "text": "page,"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 10400,
+      "endMs": 10850,
+      "text": "Okay."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 10850,
+      "endMs": 11250,
+      "text": "and"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 11250,
+      "endMs": 11650,
+      "text": "then"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 11650,
+      "endMs": 12050,
+      "text": "send"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 12050,
+      "endMs": 12450,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 12450,
+      "endMs": 12850,
+      "text": "link"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 12850,
+      "endMs": 13250,
+      "text": "to"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 13250,
+      "endMs": 13650,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 13650,
+      "endMs": 14050,
+      "text": "testers."
+    },
+    {
+      "speaker": "cy",
+      "startMs": 15550,
+      "endMs": 15950,
+      "text": "Thanks,"
+    },
+    {
+      "speaker": "cy",
+      "startMs": 15950,
+      "endMs": 16350,
+      "text": "that"
+    },
+    {
+      "speaker": "cy",
+      "startMs": 16350,
+      "endMs": 16750,
+      "text": "works"
+    },
+    {
+      "speaker": "cy",
+      "startMs": 16750,
+      "endMs": 17150,
+      "text": "for"
+    },
+    {
+      "speaker": "cy",
+      "startMs": 17150,
+      "endMs": 17550,
+      "text": "me."
+    }
+  ]
+}

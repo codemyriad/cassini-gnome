@@ -76,7 +76,10 @@ def rejoined(speaker, words, gaps):
 def test_writedown_turn_cases_through_every_grouper(case):
     gaps = speaker_gap_ranges([track(gaps=case["gaps"])])
     words = words_of("track-s", case["words"])
-    assert grouped("track-s", words, gaps) == (case["turns"],) * 3
+    # D84 adds the viewer's 4200 ms readable-block boundary. The protocol
+    # vector describes source ownership, not UI paragraphing.
+    rendered = [1, 2] if case["name"] == "a-long-pause-without-a-gap-range-joins" else case["turns"]
+    assert grouped("track-s", words, gaps) == (rendered,) * 3
     if all(abs(b.start_ms - a.end_ms) <= SEAM_GAP_MS for a, b in zip(words, words[1:], strict=False)):
         assert rejoined("track-s", words, gaps) == case["turns"]
 
@@ -111,7 +114,7 @@ def test_a_rejoin_and_a_prefix_of_the_rejoining_span():
     # Two spans of one source: the time between them is no gap range; a prefix gap of the second is.
     first = track("d1", start=0, ms=20000, gaps=[])
     second = track("d2", start=24000, ms=26000, gaps=[dict(atMs=24000, durationMs=500, frames=8000, kind="prefix")])
-    words = words_of("track-s", [(15000, 15500), (25000, 25400)])
+    words = words_of("track-s", [(23000, 23500), (25000, 25400)])
     assert grouped("track-s", words, speaker_gap_ranges([first, dict(second, gaps=[])])) == ([2],) * 3
     assert grouped("track-s", words, speaker_gap_ranges([first, second])) == ([1, 1],) * 3
 
@@ -300,7 +303,7 @@ def test_the_files_own_silent_tracks_apply_to_its_x_tracks():
         gaps = turn_gaps((), metadata, x)
         assert gaps == {"track-s": ((640000, 720000),)}
         assert grouped("track-s", words_of("track-s", [(38000, 39000), (46000, 46500)]), gaps) == ([1, 1],) * 3
-        assert grouped("track-s", words_of("track-s", [(4000, 4500), (9000, 9500)]), gaps) == ([2],) * 3
+        assert grouped("track-s", words_of("track-s", [(4500, 4900), (8000, 8500)]), gaps) == ([2],) * 3
 
 
 def test_a_merge_into_a_voice_keeps_its_groups_ranges():

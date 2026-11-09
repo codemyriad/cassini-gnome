@@ -125,42 +125,39 @@ def reading_word(turn, uri):
 
 
 def reading_turns(words, gaps=None):
-    """Reconstruct speech before splitting it into bounded reading paragraphs.
+    """Viewer rows: split only adjacent own blocks, never after a chip.
 
-    Share the viewer's turn/interjection model with previews and portable files.
-    Retain original indices so speaker listening also finds words folded into a
-    host paragraph. Quotes are paired before any layout split (D38.5), and the
-    speaker's own source gaps still break turns (D63 #2).
+    Keep every turn's paragraphs together. Original indices survive grouping,
+    rejoining, display timing repair and folding, for seeking and listening.
     """
-    ordered = sorted(enumerate(words), key=lambda item: item[1].start_ms)
-    source_indices = [index for index, _word in ordered]
-    reconstructed = build_turns([word for _index, word in ordered], gaps=gaps)
     paragraphs = []
-    for host in visible_turns(reconstructed):
-        first = 0
-        while first < len(host.words):
-            end = first + 1
-            while (
-                end < len(host.words)
-                and end - first < 100
-                and host.words[end].start_ms - host.words[first].start_ms < 30000
-            ):
-                end += 1
-            chunk = host.words[first:end]
-            indices = [source_indices[i] for i in host.word_indices[first:end]]
-            row = Turn(0, host.speaker, chunk, indices[0], chunk[0].start_ms, max(w.end_ms for w in chunk))
+    for host in visible_turns(build_turns(words, gaps=gaps)):
+        chips = {after for after, _aside in host.asides}
+        edges = [0]
+        for i in range(1, len(host.fragments)):
+            first = host.fragments[i][0]
+            if host.block_positions[i] == host.block_positions[i - 1] + 1 and first - 1 not in chips:
+                edges.append(i)
+        edges.append(len(host.fragments))
+        for part, (begin, end) in enumerate(zip(edges, edges[1:], strict=False)):
+            first, last = host.fragments[begin][0], host.fragments[end - 1][1]
+            chunk = host.words[first:last]
+            indices = host.word_indices[first:last]
+            bounds = list(host.block_bounds[begin:end])
+            row = Turn(len(paragraphs), host.speaker, chunk, indices[0], 0, 0)
             row.word_indices = indices
-            row.display = host.items[first:end]
+            row.display = host.items[first:last]
+            row.over = list(host.over) if part == 0 else []
             for after, aside in host.asides:
-                if first <= after < end:
-                    aside.word_indices = [source_indices[i] for i in aside.word_indices]
-                    aside.first_word = aside.word_indices[0]
+                if first <= after < last:
                     aside.host = row
                     row.asides.append((after - first, aside))
-                    row.end_ms = max(row.end_ms, aside.end_ms)
+                    bounds.extend(aside.block_bounds)
+            row.start_ms = min(start for start, _end in bounds)
+            row.end_ms = max(end for _start, end in bounds)
+            previous = paragraphs[-1] if paragraphs else None
+            row.continuation = bool(
+                previous and previous.speaker == row.speaker and row.start_ms - previous.end_ms <= 60000
+            )
             paragraphs.append(row)
-            first = end
-    paragraphs.sort(key=lambda row: row.start_ms)
-    for index, row in enumerate(paragraphs):
-        row.index = index
     return tuple(paragraphs)

@@ -37,6 +37,10 @@ def test_shared_library_vector(case, shared_library):
         .as_dict(now_ms=CASES["nowMs"], tz=CASES["tz"])
     )
     expected = json.loads((VECTORS / "expected" / (case["id"] + ".json")).read_text())
+    if case["id"] == "r8-consecutive-quote":
+        # D84 supersedes R8's separate chronological run renderer. Keep the
+        # historical shared vector intact; the derived quote now includes chips.
+        expected["groups"][0]["meetings"][0]["quote"] = "“first half (Speaker 2: yeah) second half”"
     if artifact_root := os.environ.get("CASSINI_UX_ARTIFACTS"):
         output = Path(artifact_root) / "library-cases"
         output.mkdir(parents=True, exist_ok=True)

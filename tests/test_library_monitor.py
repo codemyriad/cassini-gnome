@@ -348,7 +348,7 @@ def test_preview_grouping_runs_on_worker_without_blocking_main_loop(tmp_path, mo
     )
     entered, release = threading.Event(), threading.Event()
     main = threading.get_ident()
-    original = library.build_turns
+    original = library.reading_turns
 
     def group(words, **kwargs):
         assert threading.get_ident() != main
@@ -356,7 +356,7 @@ def test_preview_grouping_runs_on_worker_without_blocking_main_loop(tmp_path, mo
         assert release.wait(3)
         return original(words, **kwargs)
 
-    monkeypatch.setattr(library, "build_turns", group)
+    monkeypatch.setattr(library, "reading_turns", group)
     snapshots = []
     monitor = LibraryMonitor(snapshots.append, tmp_path, debounce_ms=1)
     try:

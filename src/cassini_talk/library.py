@@ -21,7 +21,7 @@ from .recording_session import KINDS, METADATA_LIMIT, strict_json
 from .refusals import read as read_refusals
 from .session_events import meeting_sources, read_events
 from .strings import text
-from .transcript import build_turns, visible_turns
+from .transcript import row_text
 
 MAX_JSON = METADATA_LIMIT
 
@@ -171,6 +171,7 @@ class PreviewTurn:
     speaker: str
     start_ms: int
     text: str
+    row: object | None = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -771,6 +772,8 @@ class LibraryScanner:
                 track = replace(track, ownership_windows=ownership, spans=spans)
             placed.append(track)
         tracks = tuple(placed)
+        speakers = _speakers(words, metadata.get("speakers", []), embedded if origin == "received" else None)
+        speaker_names = {speaker.id: speaker.name for speaker in speakers}
         return Meeting(
             id=identifier,
             directory=directory,
@@ -789,8 +792,13 @@ class LibraryScanner:
             turns=self._preview_cache.get(directory.name, (None, None, ()))[2],
             listening_turns=self._preview_cache[directory.name][4] if words else (),
             turn_gaps=gaps,
-            speakers=_speakers(words, metadata.get("speakers", []), embedded if origin == "received" else None),
-            quote_line=_quote(words, metadata.get("quoteOverride"))
+            speakers=speakers,
+            quote_line=_quote(
+                words,
+                metadata.get("quoteOverride"),
+                self._preview_cache.get(directory.name, (None, None, ()))[2],
+                speaker_name=lambda speaker: speaker_names.get(speaker, speaker),
+            )
             if transcript in ("done", "queued", "running")
             else None,
             tracks=tracks,
@@ -825,23 +833,11 @@ class LibraryScanner:
         cached = self._preview_cache.get(name)
         if cached is not None and cached[0] is words and cached[3] == gaps:
             return cached[1]
-        # Reader tuples are stat-keyed and immutable to consumers. Group once in
-        # the scanner worker; retain only three visible turns for the GTK pane.
-        ordered = sorted(words, key=lambda word: word.start_ms)
-        # Bound preview lookahead by speaker fragments, keeping a long
-        # monologue intact and enough context for the three previews.
-        # The reading model below reconstructs the full transcript.
-        fragments = 0
-        limit = len(ordered)
-        for index, word in enumerate(ordered):
-            if index == 0 or word.speaker != ordered[index - 1].speaker:
-                fragments += 1
-                if fragments > 32:
-                    limit = index
-                    break
-        turns = tuple(build_turns(ordered[:limit], gaps=gaps))
-        result = tuple(PreviewTurn(t.speaker, t.start_ms, t.text) for t in visible_turns(turns)[:3])
-        self._preview_cache[name] = words, result, reading_turns(words, gaps=gaps), gaps, speaker_turns(words)
+        # Project once, in the scanner worker. A truncated lookahead changes
+        # timing-repair medians and can misclassify a later competing turn.
+        rows = reading_turns(words, gaps=gaps)
+        result = tuple(PreviewTurn(t.speaker, t.start_ms, row_text(t)[0], t) for t in rows[:3])
+        self._preview_cache[name] = words, result, rows, gaps, speaker_turns(words)
         return result
 
     def _transcript(self, fd, directory, metadata, origin, embedded, trusted, embedded_words, diagnostics):
@@ -1190,7 +1186,7 @@ def _speakers(words, values, embedded, *, stored_labels=False):
     return tuple(result)
 
 
-def _quote(words, override):
+def _quote(words, override, rows=None, *, speaker_name=lambda speaker: speaker):
     if not words:
         return None
     if isinstance(override, dict):
@@ -1199,21 +1195,13 @@ def _quote(words, override):
             text = text[1:-1].strip()
         if text:
             return f"“{text}”"
-    turns = []
-    for index, word in sorted(enumerate(words), key=lambda pair: (pair[1].start_ms, pair[0])):
-        if turns and turns[-1][0] == word.speaker:
-            turns[-1][2] = word.end_ms
-            turns[-1][4].append(word.text.strip())
-        else:
-            turns.append([word.speaker, word.start_ms, word.end_ms, index, [word.text.strip()]])
-    candidates = [t for t in turns if t[1] < 600000]
+    rows = reading_turns(words) if rows is None else rows
+    candidates = [row for row in rows if row.start_ms < 600000]
     if not candidates:
         return None
-    chosen = min(candidates, key=lambda t: (-(t[2] - t[1]), t[1], t[3]))
-    # R8.3 keeps the pull quote verbatim, straight quotes included; D38.5
-    # cleans displayed turn text only (r8-consecutive-quote).
-    text = " ".join(" ".join(chosen[4]).split())
-    return f"“{text}”" if text else None
+    chosen = min(candidates, key=lambda row: (-(row.end_ms - row.start_ms), row.start_ms, row.first_word))
+    shown = row_text(chosen, speaker_name)[0]
+    return f"“{shown}”" if shown else None
 
 
 def scan_library(root=None, *, capture_activity=None):

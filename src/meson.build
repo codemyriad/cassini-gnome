@@ -233,6 +233,7 @@ talk_sources = files(
   'cassini_talk/runtime.py',
   'cassini_talk/summary.py',
   'cassini_talk/transcript.py',
+  'cassini_talk/readable.py',
   'cassini_talk/window.py',
 )
 install_data(talk_sources, install_dir: moduledir)

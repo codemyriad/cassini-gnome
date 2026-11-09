@@ -15,6 +15,7 @@ import bisect
 from dataclasses import dataclass, field
 
 from .portable import Word
+from .readable import readable_blocks, repair_word_ends
 from .source_ownership import own_gap_ranges, turn_break
 
 # How long a turn stays highlighted after its last word, so short gaps
@@ -106,6 +107,13 @@ class Turn:
     # D38.5 displayed text per item, paired per consecutive speaker run: one
     # run can span several reading paragraphs, and build_turns rejoins runs.
     display: tuple[str, ...] | None = None
+    block_positions: list[int] = field(default_factory=list)
+    block_bounds: list[tuple[int, int]] = field(default_factory=list)
+    continuation: bool = False
+
+    @property
+    def crosstalk(self):
+        return bool(self.words) and all(word.low_confidence for word in self.words)
 
     @property
     def items(self) -> tuple[str, ...]:
@@ -137,7 +145,9 @@ def _spans(words):
             spans[-1] = (spans[-1][0], max(spans[-1][1], word.end_ms))
         else:
             spans.append((word.start_ms, word.end_ms))
-    return spans
+    # Portable words have no rejected/synthetic timing pool. Like the viewer,
+    # retain a block envelope when none of its words has positive timing.
+    return spans or ([(words[0].start_ms, words[-1].end_ms)] if words else [])
 
 
 def _touches(left, right):
@@ -152,38 +162,38 @@ def gap_break(gaps, first, second):
 
 
 def build_turns(words: list[Word], gaps: dict | None = None) -> list[Turn]:
-    """Rejoin interrupted speaker runs without reordering their words.
+    """Viewer readable blocks, timing repair, and interrupted speaker runs.
 
-    The portable format supplies words rather than Nextcloud's display blocks;
-    consecutive same-speaker items are the fragment boundaries available here.
-    `gaps` (library.turn_gaps) also ends a fragment, and stops a rejoin, at a
-    gap range of the speaker's own tracks (D63 #2).
+    Preserve D63 source ownership and the legacy-only quote pairing bridge.
+    Group before sorting blocks: file order is part of the portable pipeline.
     """
-    fragments, runs = [], []  # runs: fragment slices of each consecutive speaker run
-    for i, word in enumerate(words):
-        if fragments and fragments[-1].speaker == word.speaker and not gap_break(gaps, words[i - 1], word):
-            fragment = fragments[-1]
-            fragment.words.append(word)
-            fragment.word_indices.append(i)
-            fragment.end_ms = max(fragment.end_ms, word.end_ms)
-            continue
-        if fragments and fragments[-1].speaker == word.speaker:
-            runs[-1][1] += 1
-        else:
-            runs.append([len(fragments), len(fragments) + 1])
-        fragments.append(Turn(len(fragments), word.speaker, [word], i, word.start_ms, word.end_ms))
-        fragments[-1].word_indices = [i]
-    # D38.5 pairs quotes within each consecutive speaker run, like Search,
-    # Markdown and the Meeting page; rejoining must never pair across a
-    # speaker change, and a gap break never changes the pairing.
-    for first, end in runs:
-        values = display_items(word for fragment in fragments[first:end] for word in fragment.words)
-        for fragment in fragments[first:end]:
-            fragment.display, values = values[: len(fragment.words)], values[len(fragment.words) :]
+    blocks = readable_blocks(words, gaps, gap_break)
+    repaired = repair_word_ends(words, blocks)
+    values = []
+    first = 0
+    for end in range(1, len(words) + 1):
+        if end == len(words) or words[end].speaker != words[first].speaker:
+            values.extend(display_items(words[first:end]))
+            first = end
+    fragments = []
+    for indices in blocks:
+        chunk = [repaired[i] for i in indices]
+        start, end = words[indices[0]].start_ms, words[indices[-1]].end_ms
+        if any(repaired[i] is not words[i] for i in indices):
+            end = max(start, min(end, max(word.end_ms for word in chunk)))
+        fragment = Turn(0, chunk[0].speaker, chunk, indices[0], start, end)
+        fragment.word_indices = list(indices)
+        fragment.display = tuple(values[i] for i in indices)
+        fragment.block_bounds = [(start, end)]
+        fragments.append(fragment)
+    fragments.sort(key=lambda fragment: fragment.start_ms)
     spans = [_spans(fragment.words) for fragment in fragments]
     turns = []
     opened = {}
     for position, fragment in enumerate(fragments):
+        fragment.block_positions = [position]
+        if spans[position]:
+            fragment.start_ms, fragment.end_ms = spans[position][0][0], spans[position][-1][1]
         previous = opened.get(fragment.speaker)
         join = False
         if previous and spans[position]:
@@ -202,6 +212,8 @@ def build_turns(words: list[Word], gaps: dict | None = None) -> list[Turn]:
             run.word_indices.extend(fragment.word_indices)
             run.display += fragment.display
             run.fragments.append((start, len(run.words)))
+            run.block_positions.extend(fragment.block_positions)
+            run.block_bounds.extend(fragment.block_bounds)
             run.end_ms = max(run.end_ms, fragment.end_ms)
         else:
             run = fragment
@@ -217,17 +229,18 @@ def build_turns(words: list[Word], gaps: dict | None = None) -> list[Turn]:
 def _attach_asides(turns: list[Turn]) -> None:
     candidates = {}
     fragment_spans = {}
+    pools = {turn.index: _spans(turn.words) for turn in turns}
     active = []
     for turn in sorted(turns, key=lambda turn: turn.start_ms):
         active = [host for host in active if host.end_ms >= turn.start_ms]
-        hosts = active[:]
+        hosts = sorted(active, key=lambda host: host.index)
         active.append(turn)
-        spans = _spans(turn.words)
+        spans = pools[turn.index]
         if not spans or sum(end - start for start, end in spans) > ASIDE_MAX_MS:
             continue
         best = None
         for host in hosts:
-            if host.speaker == turn.speaker or turn.end_ms > host.end_ms:
+            if host.speaker == turn.speaker or turn.end_ms > host.end_ms or not pools[host.index]:
                 continue
             if host.index not in fragment_spans:
                 fragment_spans[host.index] = [
@@ -259,16 +272,19 @@ def _attach_asides(turns: list[Turn]) -> None:
             turn = turns[index]
             turn.host = host
             host.asides.append((after, turn))
+    for host in turns:
+        host.asides.sort(key=lambda pair: pair[1].start_ms)
 
 
 def _mark_overlap(turns):
     # Like Nextcloud, report actual word overlap, not paragraph containment.
     pools = [_spans(turn.words) for turn in turns]
+    stretches = []
     active = []
     for left in sorted(turns, key=lambda turn: turn.start_ms):
         active = [right for right in active if right.end_ms > left.start_ms]
         for right in active:
-            if left.speaker == right.speaker:
+            if left.speaker == right.speaker or left.host is right or right.host is left:
                 continue
             a = b = overlap = 0
             while a < len(pools[left.index]) and b < len(pools[right.index]):
@@ -279,11 +295,13 @@ def _mark_overlap(turns):
                 else:
                     b += 1
             if overlap >= 150:
-                if right.speaker not in left.over:
-                    left.over.append(right.speaker)
-                if left.speaker not in right.over:
-                    right.over.append(left.speaker)
+                stretches.append((overlap, min(left.index, right.index), left, right))
         active.append(left)
+    for _duration, _key, left, right in sorted(stretches, key=lambda stretch: (-stretch[0], stretch[1])):
+        if right.speaker not in left.over:
+            left.over.append(right.speaker)
+        if left.speaker not in right.over:
+            right.over.append(left.speaker)
 
 
 def visible_turns(turns: list[Turn]) -> list[Turn]:
@@ -352,3 +370,46 @@ def format_time(ms: int, *, force_hours: bool = False) -> str:
     if hours or force_hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
+
+
+def speaker_list(names):
+    """Viewer overlap caption: A, B and C, preserving overlap-size order."""
+    names = list(dict.fromkeys(names))
+    return " and ".join(names) if len(names) < 3 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def row_text(turn, speaker_name=lambda speaker: speaker):
+    """Copy/export/search prose plus exact character offsets of all timed atoms.
+
+    Chip names and parentheses are text too. Retain their widths when mapping
+    a Search hit back to its original timed word, including a folded reply.
+    """
+    parts, spans = [], []
+    length = 0
+
+    def append(value, word=None):
+        nonlocal length
+        if parts:
+            parts.append(" ")
+            length += 1
+        if word is not None:
+            spans.append((word, value, length))
+        parts.append(value)
+        length += len(value)
+
+    chips = {}
+    for after, aside in turn.asides:
+        chips.setdefault(after, []).append(aside)
+    for i, (word, value) in enumerate(zip(turn.words, turn.items, strict=True)):
+        if value:
+            append(value, word)
+        else:
+            spans.append((word, value, length))
+        for aside in chips.get(i, ()):
+            append("(" + speaker_name(aside.speaker) + ":")
+            for atom, shown in zip(aside.words, aside.items, strict=True):
+                if shown:
+                    append(shown, atom)
+            parts[-1] += ")"
+            length += 1
+    return "".join(parts), tuple(spans)

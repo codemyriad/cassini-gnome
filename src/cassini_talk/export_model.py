@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Shared Markdown bytes, safe names and D8 encode choice; no GTK or audio IO."""
 
-import itertools
 import re
 import unicodedata
 from contextlib import nullcontext
 
 from . import ux_formats as fmt
 from .i18n import using_language
-from .source_ownership import own_gap_ranges, turn_break
+from .meeting_text import reading_turns
+from .portable import Word
 from .strings import text
-from .transcript import quote_items
+from .transcript import row_text, speaker_list
 
 BANDS = ((4000, 12000, 16000), (6000, 12000, 20000), (8000, 16000, 32000), (12000, 20000, 48000), (20000, 24000, 64000))
 
@@ -63,7 +63,7 @@ def markdown(value):
 
 
 def _markdown(value):
-    items = sorted(value["items"], key=lambda item: item["startMs"])
+    items = value["items"]
     names = {s["id"]: s["name"] for s in value["speakers"]}
     order = list(dict.fromkeys(item["speaker"] for item in items))
     lines = ["# " + escaped(value["title"]), ""]
@@ -87,28 +87,33 @@ def _markdown(value):
             "",
         ]
     lines += ["## " + text("export.markdown.transcriptHeading"), ""]
-    # D38.5 pairs quotes over each consecutive speaker run; a paragraph also
-    # ends at a gap range of the speaker's own tracks (D63 #2).
-    gaps = value.get("turnGaps") or {}
-    runs = []
-    for item in items:
-        if runs and runs[-1][-1]["speaker"] == item["speaker"]:
-            runs[-1].append(item)
-        else:
-            runs.append([item])
-    for run in runs:
-        identifier = run[0]["speaker"]
-        name = names.get(identifier, text("common.speaker.unnamed", n=order.index(identifier) + 1))
-        texts = [item["text"] for item in run]
-        values = texts if value.get("verbatim") else quote_items(texts)
-        edges = [0, *(i for i in range(1, len(run)) if _gap_break(gaps, run[i - 1], run[i])), len(run)]
-        for first, end in itertools.pairwise(edges):
-            shown = values[first:end]
-            lines += [
-                f"**{escaped(name)}** · {fmt.position(run[first]['startMs'])}",
-                escaped(" ".join(shown) if value.get("verbatim") else " ".join(v for v in shown if v)),
-                "",
-            ]
+    words = [
+        Word(
+            item["speaker"],
+            item["startMs"],
+            item.get("endMs", item["startMs"]),
+            item["text"],
+            item.get("lowConfidenceSpeaker", False),
+            text_is_stored=value.get("verbatim", False),
+            ends_bounded_by_audio=value.get("endsBoundedByAudio", False),
+        )
+        for item in items
+    ]
+
+    def name(identifier):
+        return names.get(identifier, text("common.speaker.unnamed", n=order.index(identifier) + 1))
+
+    for row in reading_turns(words, gaps=value.get("turnGaps")):
+        over = speaker_list(name(identifier) for identifier in row.over)
+        caption = f" (over {escaped(over)})" if over else ""
+        lines += [
+            f"**{escaped(name(row.speaker))}** · {fmt.position(row.start_ms)}{caption}",
+            # Text is already stored or legacy-paired by the shared projection.
+            re.sub(r"([\\`*_{}\[\]<>#|~])", r"\\\1", row_text(row, name)[0])
+            if value.get("verbatim")
+            else escaped(row_text(row, name)[0]),
+            "",
+        ]
     if value.get("notes"):
         lines += ["## " + text("export.markdown.notesHeading"), ""]
         lines += [
@@ -119,14 +124,18 @@ def _markdown(value):
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
-def _gap_break(gaps, first, second):
-    ranges = own_gap_ranges(gaps, first["speaker"])
-    return turn_break(ranges, (first["startMs"], first["endMs"]), (second["startMs"], second["endMs"]))
-
-
 def model_projection(meeting, *, tz=None):
     items = (
-        [dict(speaker=w.speaker, startMs=w.start_ms, endMs=w.end_ms, text=w.text) for w in meeting.words]
+        [
+            dict(
+                speaker=w.speaker,
+                startMs=w.start_ms,
+                endMs=w.end_ms,
+                text=w.text,
+                lowConfidenceSpeaker=w.low_confidence,
+            )
+            for w in meeting.words
+        ]
         if meeting.transcript == "done"
         else []
     )
@@ -140,6 +149,7 @@ def model_projection(meeting, *, tz=None):
         speakers=[dict(id=s.id, name=s.name) for s in meeting.speakers if s.id in exported],
         items=items,
         notes=list(meeting.notes),
+        endsBoundedByAudio=bool(meeting.words) and all(w.ends_bounded_by_audio for w in meeting.words),
         turnGaps={speaker: [list(r) for r in ranges] for speaker, ranges in meeting.turn_gaps.items()},
         **({"verbatim": True} if meeting.words and all(w.text_is_stored for w in meeting.words) else {}),
     )
