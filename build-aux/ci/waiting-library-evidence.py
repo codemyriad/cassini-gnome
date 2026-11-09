@@ -1,6 +1,6 @@
 # Copyright 2026 Codemyriad OÜ
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Current-main measurement, not a retry: four fixed plain/profile pairs."""
+"""Fixed alternating before/after pairs; keep every budget failure."""
 
 import json
 import os
@@ -102,11 +102,17 @@ text = text.replace(
                 assert gaps and max(gaps) < 0.1,""",
 )
 compile(text, str(test), "exec")
+css = Path("src/style.css")
+original_css = css.read_text()
+candidate_css = original_css.replace(".meeting-transcript .words { border-left: 3px solid transparent; padding-left: 8px; }", ".meeting-transcript .words { padding-left: 11px; }").replace(".meeting-transcript .words.listen-current { border-left-color: @accent_color;", ".meeting-transcript .words.listen-current { border-left: 3px solid @accent_color; padding-left: 8px;")
+assert candidate_css != original_css
 results = []
 try:
     test.write_text(text)
     for pair in range(1, int(os.environ.get("FRAME_CAPTURE_PAIRS", "4")) + 1):
-        for mode in ["plain", "profile"] if pair % 2 else ["profile", "plain"]:
+        for mode in ["before", "after"] if pair % 2 else ["after", "before"]:
+            css.write_text(original_css if mode == "before" else candidate_css)
+            subprocess.run(["meson", "compile", "-C", "_build-heartbeat"], check=True)
             label = f"{mode}-{pair}"
             folder = out / label
             folder.mkdir()
@@ -146,4 +152,5 @@ try:
                 raise SystemExit(label + ": unexpected failure; stop for diagnosis")
 finally:
     test.write_bytes(original)
+    css.write_text(original_css)
 raise SystemExit(int(any(r["returncode"] for r in results)))

@@ -1,4 +1,4 @@
-name: Waiting Library native frame capture (evidence only)
+name: Waiting Library border before-after (evidence only)
 on:
   workflow_dispatch:
 permissions:
@@ -20,8 +20,8 @@ jobs:
         run: |
           meson setup _build-heartbeat -Dprofile=development
           meson compile -C _build-heartbeat
-      - name: "Four fixed plain/profile pairs: retain every budget failure"
-        run: FRAME_CAPTURE_PAIRS=4 python3 build-aux/ci/waiting-library-evidence.py
+      - name: "Eight fixed before/after pairs: retain every budget failure"
+        run: FRAME_CAPTURE_PAIRS=8 python3 build-aux/ci/waiting-library-evidence.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:
