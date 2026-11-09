@@ -10,6 +10,7 @@ from gi.repository import Adw, GLib, Gtk
 from . import browser_service, companion, companion_bundle
 from .browser_connection import add_text, classify, state_text
 from .browser_health import can_reload, older, reload_tabs, setup_complete
+from .cairo_shadows import CairoShadows
 from .strings import text
 
 LOG = logging.getLogger(__name__)
@@ -20,6 +21,8 @@ class CompanionSetup(Adw.Dialog):
         super().__init__(
             title=text("companion.title"), content_width=540, follows_content_size=True, css_classes=["companion-setup"]
         )
+        self._cairo_shadows = CairoShadows()
+        self.connect("unmap", lambda *_: GLib.idle_add(self._cairo_shadows.clear))
         self.app, self.service_path = app, service_path
         self.closed = False
         self.cancelled = Event()
@@ -443,6 +446,9 @@ class CompanionSetup(Adw.Dialog):
         self.force_close()
         # force_close on an unmounted sheet need not emit closed.
         self._closed()
+
+    def do_snapshot(self, snapshot):
+        self._cairo_shadows.snapshot(self, snapshot)
 
     def _closed(self, *_):
         self.closed = True
