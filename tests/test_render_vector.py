@@ -440,14 +440,19 @@ def test_interrupted_long_turn_visits_timing_pools_linearly(monkeypatch):
 
 
 @pytest.mark.parametrize("path", sorted(VECTORS.glob("*.expected.json")), ids=lambda path: path.stem)
-def test_standalone_reader_uses_the_same_rows_with_unique_seek_owners(path):
-    from cassini_talk.meeting_text import reader_turns
+def test_standalone_reader_uses_the_same_rows_with_unique_seek_owners(path, monkeypatch):
+    from types import SimpleNamespace
+
+    from cassini_talk import portable
+    from cassini_talk.meeting_text import load_reader_turns
     from cassini_talk.transcript import find_matches, visible_turns
 
     vector = json.loads(path.read_text())
     body = json.loads(path.with_name(vector["fixture"]).read_text())
     words = [Word(i["speaker"], i["startMs"], i["endMs"], i["text"], text_is_stored=True) for i in body["items"]]
-    owners = reader_turns(words)
+    monkeypatch.setattr(portable, "load_words", lambda *_: words)
+    owners, error = load_reader_turns(SimpleNamespace(manifest={}), "vector")
+    assert error is None
     assert [owner.index for owner in owners] == list(range(len(owners)))
     actual = [
         dict(

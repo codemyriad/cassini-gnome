@@ -70,7 +70,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from desktop_services import DesktopServices  # noqa: E402
 
-from cassini_talk import browser_service, companion, companion_bundle  # noqa: E402
+from cassini_talk import browser_service, companion, companion_bundle, library, meeting_text  # noqa: E402
 from cassini_talk.browser_watch import BrowserWatch  # noqa: E402
 from cassini_talk.capture_activity import BrowserActivity, read_browser_activity  # noqa: E402
 from cassini_talk.companion_setup import CompanionSetup  # noqa: E402
@@ -194,6 +194,9 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
             (CompanionSetup, "_snapshot"),
             (CompanionSetup, "_launch_add"),
             (SettingsDialog, "_call"),
+            (library, "reading_turns"),
+            (meeting_text, "reading_turns"),
+            (meeting_text, "reader_turns"),
         ):
             guards.enter_context(patch.object(owner, name, worker_only(getattr(owner, name))))
         guards.enter_context(
@@ -275,8 +278,12 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                 else:
                     button = page.companion_setup_button
                 gaps, ticks = [], [time.monotonic()]
+                cpu_gaps, cpu_ticks = [], [time.thread_time()]
 
-                def beat(gaps=gaps, ticks=ticks):
+                def beat(gaps=gaps, ticks=ticks, cpu_gaps=cpu_gaps, cpu_ticks=cpu_ticks):
+                    cpu_now = time.thread_time()
+                    cpu_gaps.append(cpu_now - cpu_ticks[0])
+                    cpu_ticks[0] = cpu_now
                     now = time.monotonic()
                     gaps.append(now - ticks[0])
                     ticks[0] = now
@@ -322,6 +329,14 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                     settings.force_close()
                     until(lambda settings=settings: settings.closed and not settings.get_mapped())
                 GLib.source_remove(timer)
+                if gaps:
+                    worst = gaps.index(max(gaps))
+                    print(
+                        f"FRAME {state}/{entry}: wall={gaps[worst] * 1000:.1f} ms, "
+                        f"main CPU={cpu_gaps[worst] * 1000:.1f} ms, "
+                        f"rows={len(page.meeting.turns)}, bound={len(page.bound)}",
+                        flush=True,
+                    )
                 assert gaps and max(gaps) < 0.1, (state, entry, max(gaps))
                 print(f"PASS {state}/{entry}: mapped, max heartbeat gap {max(gaps) * 1000:.1f} ms", flush=True)
             if state == "failed":
