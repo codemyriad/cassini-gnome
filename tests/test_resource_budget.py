@@ -106,6 +106,7 @@ class Meter:
 
     def __init__(self, monkeypatch):
         self.open, self.created, self.peak, self.peak_blocks = set(), 0, 0, 0
+        self.zero_block = b""
         monkeypatch.setattr(diarization_audio, "tempfile", types.SimpleNamespace(TemporaryFile=self.temporary))
 
     def temporary(self, **options):
@@ -128,7 +129,11 @@ class Holes:
 
     def write(self, data):
         end = self.stream.tell() + len(data)
-        if data.count(0) != len(data):
+        # Reuse one exact zero block; byte equality avoids counting every byte.
+        zero = self.meter.zero_block
+        if len(zero) != len(data):
+            self.meter.zero_block = zero = bytes(len(data))
+        if data != zero:
             self.stream.write(data)
         else:
             self.stream.seek(end)
