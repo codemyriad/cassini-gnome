@@ -60,6 +60,7 @@ class SearchHit:
     quote_markup: str
     selected_quote_markup: str
     context_markup: str
+    speaker: str = ""
 
 
 def marked_markup(value, *, selected=False):
@@ -265,9 +266,11 @@ class SearchIndex:
             # Seek the original timed item containing the first matching token.
             first = marked.index(START)
             position = turn.start_ms
+            matched_speaker = turn.speaker
             for word, value, offset in zip(turn.words, turn.items, turn.offsets, strict=True):
                 if offset <= first < offset + len(value):
                     position = word.start_ms
+                    matched_speaker = word.speaker
                     break
             result.append(
                 SearchHit(
@@ -278,6 +281,7 @@ class SearchIndex:
                     excerpt_markup(marked),
                     excerpt_markup(marked, selected=True),
                     excerpt_markup(marked, limit=800),
+                    matched_speaker,
                 )
             )
         return tuple(result)

@@ -217,6 +217,7 @@ def test_folded_search_hit_seeks_the_reply_not_the_host(tmp_path):
         index.sync(LibrarySnapshot(meetings=(meeting,)))
         (hit,) = index.query("good", now_ms=0, tz="UTC")
         assert hit.position_ms == next(word.start_ms for word in words if word.text == "good.")
+        assert hit.speaker == next(word.speaker for word in words if word.text == "good.")
         assert "(ben: Sounds " in hit.marked
     finally:
         index.close()
@@ -241,6 +242,7 @@ def test_folded_reply_speaker_filter_keeps_context_and_seek(tmp_path):
         index.sync(LibrarySnapshot(meetings=(meeting,)))
         (hit,) = index.query("Reply", speaker="Ben", now_ms=0, tz="UTC")
         assert hit.position_ms == 900
+        assert hit.speaker == "b"
         assert hit.marked == "Before (Ben: \x01Reply\x02) after"
         assert index.query("Reply", speaker="Ada", now_ms=0, tz="UTC") == ()
         assert index.query("Before", speaker="Ben", now_ms=0, tz="UTC") == ()

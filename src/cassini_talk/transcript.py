@@ -148,7 +148,10 @@ def _spans(words):
             spans.append((word.start_ms, word.end_ms))
     # Portable words have no rejected/synthetic timing pool. Like the viewer,
     # retain a block envelope when none of its words has positive timing.
-    return spans or ([(words[0].start_ms, words[-1].end_ms)] if words else [])
+    if spans:
+        return spans
+    timed = [word for word in words if any(char.isalnum() for char in word.text)] or words
+    return [(timed[0].start_ms, timed[-1].end_ms)] if timed else []
 
 
 def _turn_spans(turn):
@@ -375,9 +378,19 @@ def find_matches(turns: list[Turn], query: str) -> list[tuple[int, int]]:
     needle = query.strip().casefold()
     if not needle:
         return []
-    return [
-        (turn.index, i) for turn in turns for i, value in enumerate(turn.items) if value and needle in value.casefold()
-    ]
+    matches = []
+    for row in visible_turns(turns):
+        chips = {}
+        for after, aside in row.asides:
+            chips.setdefault(after, []).append(aside)
+        for i, value in enumerate(row.items):
+            if value and needle in value.casefold():
+                matches.append((row.index, i))
+            for aside in chips.get(i, ()):
+                matches.extend(
+                    (aside.index, j) for j, shown in enumerate(aside.items) if shown and needle in shown.casefold()
+                )
+    return matches
 
 
 def join_items(turn: Turn, link, chip) -> tuple[str, list[int]]:
@@ -421,9 +434,12 @@ def format_time(ms: int, *, force_hours: bool = False) -> str:
     return f"{minutes}:{secs:02d}"
 
 
-def speaker_list(names):
+def speaker_list(names, *, language="en"):
     """Viewer overlap caption: A, B and C, preserving overlap-size order."""
     names = list(dict.fromkeys(names))
+    if language != "en":
+        # The shared meeting.turn.over catalog specifies comma-separated labels.
+        return ", ".join(names)
     return " and ".join(names) if len(names) < 3 else ", ".join(names[:-1]) + " and " + names[-1]
 
 

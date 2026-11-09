@@ -6,7 +6,7 @@ import unicodedata
 from contextlib import nullcontext
 
 from . import ux_formats as fmt
-from .i18n import using_language
+from .i18n import language, using_language
 from .meeting_text import reading_turns
 from .portable import Word
 from .strings import text
@@ -65,7 +65,7 @@ def markdown(value):
 def _markdown(value):
     items = value["items"]
     names = {s["id"]: s["name"] for s in value["speakers"]}
-    order = list(dict.fromkeys(item["speaker"] for item in items))
+    order = list(dict.fromkeys(item["speaker"] for item in sorted(items, key=lambda item: item["startMs"])))
     lines = ["# " + escaped(value["title"]), ""]
     stamp = value.get("startMs")
     date_line = ""
@@ -104,14 +104,12 @@ def _markdown(value):
         return names.get(identifier, text("common.speaker.unnamed", n=order.index(identifier) + 1))
 
     for row in reading_turns(words, gaps=value.get("turnGaps")):
-        over = speaker_list(name(identifier) for identifier in row.over)
-        caption = f" (over {escaped(over)})" if over else ""
+        over = speaker_list((name(identifier) for identifier in row.over), language=language())
+        caption = " " + text("meeting.turn.over", names=escaped(over)) if over else ""
         lines += [
             f"**{escaped(name(row.speaker))}** · {fmt.position(row.start_ms)}{caption}",
             # Text is already stored or legacy-paired by the shared projection.
-            re.sub(r"([\\`*_{}\[\]<>#|~])", r"\\\1", row_text(row, name)[0])
-            if value.get("verbatim")
-            else escaped(row_text(row, name)[0]),
+            escaped(row_text(row, name)[0]),
             "",
         ]
     if value.get("notes"):

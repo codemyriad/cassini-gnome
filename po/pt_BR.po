@@ -537,3 +537,6 @@ msgstr "Áudio recuperado"
 msgid "Recovered recording"
 msgstr "Gravação recuperada"
 
+
+msgid "Probably crosstalk"
+msgstr "Provável sobreposição de vozes"

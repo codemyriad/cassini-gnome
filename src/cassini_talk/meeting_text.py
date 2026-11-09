@@ -197,10 +197,12 @@ def load_reader_turns(meeting, transcript_id):
 def row_caption(turn, speaker_name):
     """Only competing stretches appear in the overlap caption, once per turn."""
     from .i18n import gettext as _
+    from .i18n import language
+    from .strings import text
     from .transcript import speaker_list
 
-    names = speaker_list(speaker_name(speaker) for speaker in turn.over)
-    captions = [_("(over {names})").format(names=names)] if names else []
+    names = speaker_list((speaker_name(speaker) for speaker in turn.over), language=language())
+    captions = [text("meeting.turn.over", names=names)] if names else []
     if turn.crosstalk:
         captions.append(_("Probably crosstalk"))
     return " · ".join(captions)
