@@ -48,6 +48,7 @@ class RecordingComfort:
         self.known = {}
         self.clocks = {}
         self.futures = {}
+        self._observe_again = set()
         self.loading = {}
         self.drafts = {}
         self.editor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-meeting-edits")
@@ -205,10 +206,8 @@ class RecordingComfort:
             state = self.states.setdefault(key, dict(levels=[0.0, 0.0], voices=0, silent=False, line=None, minutes=0))
             if own_native and own_native.pipeline is not None:
                 state.update(levels=list(own_native.levels), minutes=own_native.minutes_left, line=own_native.line)
-            elif key not in self.futures and meeting.lifecycle == "recording":
-                future = self.executor.submit(live_observation, meeting)
-                self.futures[key] = future
-                future.add_done_callback(lambda f, m=meeting: GLib.idle_add(self._observed, m, f))
+            elif meeting.lifecycle == "recording":
+                self._request_observation(meeting)
             clock = self.clocks.setdefault(key, SilenceClock(now))
             if self.sources(meeting).me:
                 state["silent"] = clock.update(state["levels"][0], now)
@@ -290,39 +289,60 @@ class RecordingComfort:
             self.tick()
         return False
 
+    def _request_observation(self, meeting):
+        if meeting.key in self.futures:
+            # A source-change tick must survive an older read's completion.
+            # Several requests still coalesce to at most one follow-up read.
+            self._observe_again.add(meeting.key)
+            return
+        future = self.executor.submit(live_observation, meeting)
+        self.futures[meeting.key] = future
+        future.add_done_callback(lambda f, m=meeting: GLib.idle_add(self._observed, m, f))
+
     def _observed(self, meeting, future):
-        self.futures.pop(meeting.key, None)
+        if self.futures.get(meeting.key) is not future:
+            return False  # A discarded capture or superseded callback owns no update.
+        self.futures.pop(meeting.key)
+        again = meeting.key in self._observe_again
+        self._observe_again.discard(meeting.key)
         if self.closed or meeting.key not in self.active():
             return False
         try:
-            current, value = future.result()
-            self.known[meeting.key] = current
-        except (OSError, ValueError) as error:
-            LOG.warning("Could not observe live recording: %s", error)
+            try:
+                current, value = future.result()
+                self.known[meeting.key] = current
+            except (OSError, ValueError) as error:
+                LOG.warning("Could not observe live recording: %s", error)
+                return False
+            state = self.states[meeting.key]
+            state.update(
+                levels=value["levels"],
+                voices=value["voices"],
+                minutes=value["minutes"],
+                output_muted=value.get("output_muted", False),
+                source_problem=value.get("source_problem", False),
+            )
+            if value["recent_sound"]:
+                now = GLib.get_monotonic_time() / 1e6
+                state["silent"] = self.clocks.setdefault(meeting.key, SilenceClock(now)).update(1, now)
+            if value["reserve"]:
+                state["line"] = "errors.diskStopped.line"
+                self.app.stop_browser_recordings(meeting.directory, reason="disk")
+            elif value["minutes"] < 30:
+                state["line"] = "errors.diskLow.line"
+            else:
+                state["line"] = None
+            if state["line"]:
+                self._disk_notification(meeting, state["line"], state["minutes"])
+            self._fallback_notification(current)
+            self._refresh_pages()
             return False
-        state = self.states[meeting.key]
-        state.update(
-            levels=value["levels"],
-            voices=value["voices"],
-            minutes=value["minutes"],
-            output_muted=value.get("output_muted", False),
-            source_problem=value.get("source_problem", False),
-        )
-        if value["recent_sound"]:
-            now = GLib.get_monotonic_time() / 1e6
-            state["silent"] = self.clocks.setdefault(meeting.key, SilenceClock(now)).update(1, now)
-        if value["reserve"]:
-            state["line"] = "errors.diskStopped.line"
-            self.app.stop_browser_recordings(meeting.directory, reason="disk")
-        elif value["minutes"] < 30:
-            state["line"] = "errors.diskLow.line"
-        else:
-            state["line"] = None
-        if state["line"]:
-            self._disk_notification(meeting, state["line"], state["minutes"])
-        self._fallback_notification(current)
-        self._refresh_pages()
-        return False
+
+        finally:
+            if again and not self.closed:
+                current = self.active().get(meeting.key)
+                if current and current.lifecycle == "recording":
+                    self._request_observation(current)
 
     def _fallback_notification(self, meeting):
         """Alert once for each committed automatic-capture loss, even with a window.
@@ -407,6 +427,7 @@ class RecordingComfort:
     def discard_meeting(self, directory):
         key = directory.name
         self.drafts.pop(str(directory), None)
+        self._observe_again.discard(key)
         for mapping in (self.known, self.states, self.clocks, self.futures, self.loading):
             value = mapping.pop(key, None)
             if hasattr(value, "cancel"):
@@ -416,6 +437,7 @@ class RecordingComfort:
 
     def close(self):
         self.closed = True
+        self._observe_again.clear()
         if self.browser_cookie:
             self.app.uninhibit(self.browser_cookie)
             self.browser_cookie = 0
