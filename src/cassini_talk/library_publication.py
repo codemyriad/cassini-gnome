@@ -12,7 +12,6 @@ from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import meeting_store
 from .export_audio import check_cancel
 from .library_v2 import journal
 from .library_v2.fsutil import fsync_dir
@@ -95,6 +94,7 @@ def recover_completed(
     missing files, live captures and legacy root folders are never synthesized
     again. The caller may stop between results; no unbounded PCM is retained.
     """
+    from . import meeting_store
     from .library_location import capture_lease
     from .library_v2 import finalize
 
