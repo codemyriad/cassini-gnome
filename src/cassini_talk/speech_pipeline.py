@@ -61,6 +61,8 @@ def resampled_chunks(path, start=0, end=None, chunk_size=16000):
 
 
 def fir_values(samples, low, first, last):
+    # Convert once; every tap reads a strided view of these same float64 values.
+    samples = np.asarray(samples, dtype=np.float64)
     output = np.zeros(last - first, dtype=np.float64)
     for n, coefficient in enumerate(TAPS):
         index = first * 3 + 48 - n - low
@@ -69,7 +71,7 @@ def fir_values(samples, low, first, last):
         if begin < end:
             # The same per-tap multiply/add order, without materializing an
             # index array and two boolean gathers for every one of the 97 taps.
-            values = samples[index + begin * 3 : index + end * 3 : 3].astype(np.float64)
+            values = samples[index + begin * 3 : index + end * 3 : 3]
             output[begin:end] += float(coefficient) * values
     return output.astype("<f4")
 
