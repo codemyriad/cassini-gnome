@@ -111,11 +111,18 @@ def _linear(x, xs, ys):
     """Piecewise-linear through (xs, ys), extrapolated with the first/last segment's slope."""
     import numpy as np
 
-    y = np.interp(x, xs, ys)
-    first = (ys[1] - ys[0]) / (xs[1] - xs[0])
-    last = (ys[-1] - ys[-2]) / (xs[-1] - xs[-2])
-    y = np.where(x < xs[0], ys[0] + (x - xs[0]) * first, y)
-    return np.where(x > xs[-1], ys[-1] + (x - xs[-1]) * last, y)
+    x = np.asarray(x)
+    y = np.asarray(np.interp(x, xs, ys))
+    # Most blocks lie between anchors; extrapolate only the samples outside them.
+    left = x < xs[0]
+    if left.any():
+        first = (ys[1] - ys[0]) / (xs[1] - xs[0])
+        y[left] = ys[0] + (x[left] - xs[0]) * first
+    right = x > xs[-1]
+    if right.any():
+        last = (ys[-1] - ys[-2]) / (xs[-1] - xs[-2])
+        y[right] = ys[-1] + (x[right] - xs[-1]) * last
+    return y
 
 
 class Mapping:
