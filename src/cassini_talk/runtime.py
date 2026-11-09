@@ -1,6 +1,6 @@
 # runtime.py
 #
-# Copyright 2026 Silvio Tomatis
+# Copyright 2026 Codemyriad OÜ
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 

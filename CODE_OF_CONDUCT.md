@@ -2,5 +2,5 @@
 
 This project follows the [GNOME Code of Conduct](https://conduct.gnome.org/).
 
-Report violations to the maintainers at silviot@gmail.com. Reports are kept
+Report violations to Codemyriad <cassini@codemyriad.io>. Reports are kept
 confidential.

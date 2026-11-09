@@ -1,4 +1,4 @@
-# Maintainer: Silvio Tomatis <silviot@gmail.com>
+# Maintainer: Codemyriad <cassini@codemyriad.io>
 #
 # Builds Cassini talk from a tarball of the local source tree, staged next
 # to this file by build-aux/arch/build.sh. Keep pkgver equal to the version
