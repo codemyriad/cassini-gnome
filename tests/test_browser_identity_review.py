@@ -6,12 +6,21 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from broker_barrier import BrokerBarrier, no_command
 from durable import saved
 from test_browser_capture import server  # noqa: F401
-from test_browser_service import meeting, no_command, service, wait_for  # noqa: F401
+from test_browser_service import meeting, wait_for
+from test_browser_service import service as base_service  # noqa: F401
 from test_control_reconnect import inventory, live, lose, peer
 
 from cassini_talk.browser_service import request, send_packet
+
+
+@pytest.fixture
+def service(base_service):  # noqa: F811
+    broker, path = base_service
+    BrokerBarrier(broker)
+    return broker, path
 
 
 def navigate(extension, url):
@@ -47,7 +56,7 @@ def test_queued_auto_start_cannot_restart_a_manually_stopped_replacement(service
             stopped.result(1)
         release.set()
         wait_for(lambda: not broker._scheduled_calls)
-        assert no_command(new.connection, new.stream), "queued auto work restarted an acknowledged Stop"
+        assert no_command(broker, new.connection, new.stream), "queued auto work restarted an acknowledged Stop"
     finally:
         release.set()
         new.close()
@@ -121,7 +130,7 @@ def test_record_and_fallback_validate_the_original_address_after_resolution(serv
             release.set()
             with pytest.raises(ValueError, match="no longer available"):
                 recording.result(1)
-        assert no_command(extension.connection, extension.stream)
+        assert no_command(broker, extension.connection, extension.stream)
         assert not broker.captures
     finally:
         release.set()
@@ -138,8 +147,8 @@ def test_record_all_deduplicates_overlapping_workers_and_uses_public_ids(service
             new.answer(command)
             result = recording.result(1)
         assert result["attempted"] == 1 and not result["failures"]
-        assert no_command(old.connection, old.stream)
-        assert no_command(new.connection, new.stream)
+        assert no_command(broker, old.connection, old.stream)
+        assert no_command(broker, new.connection, new.stream)
     finally:
         old.close()
         new.close()
@@ -155,7 +164,7 @@ def test_enabling_auto_during_worker_overlap_does_not_duplicate_an_active_call(s
             new.answer(new.receive())
             recording.result(1)
         request("configure", path=path, autoRecord=True)
-        assert no_command(new.connection, new.stream)
+        assert no_command(broker, new.connection, new.stream)
     finally:
         old.close()
         new.close()
@@ -221,7 +230,7 @@ def test_stop_cancels_a_recovering_start_even_before_replacement_connects(servic
     wait_for(lambda: not broker._scheduled_calls)
     new = peer(path)
     try:
-        assert no_command(new.connection, new.stream)
+        assert no_command(broker, new.connection, new.stream)
     finally:
         new.close()
 
@@ -250,7 +259,7 @@ def test_queued_fallback_cannot_run_after_the_call_is_manually_stopped(service, 
         release.set()
         wait_for(lambda: not broker._scheduled_calls)
         assert not broker.captures
-        assert no_command(extension.connection, extension.stream)
+        assert no_command(broker, extension.connection, extension.stream)
     finally:
         release.set()
         extension.close()
@@ -270,7 +279,7 @@ def test_stale_worker_retirement_does_not_reset_the_replacements_failed_attempt(
         wait_for(lambda: not broker._scheduled_calls)
         old.close()
         wait_for(lambda: len(broker.browsers) == 1)
-        assert no_command(new.connection, new.stream)
+        assert no_command(broker, new.connection, new.stream)
         assert next(iter(broker.browsers.values())).attempted == {3}
     finally:
         new.close()
