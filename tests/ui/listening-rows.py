@@ -678,7 +678,26 @@ with tempfile.TemporaryDirectory() as temporary:
     name_button.emit("clicked")
     assert window.listen.active and window.listen.speaker == "voice-12"
     assert window.listen.index == 0
-    play.grab_focus()
+    focus_changes = []
+
+    def focus_state(*_):
+        focused = window.get_focus()
+        state = dict(
+            widget=type(focused).__name__,
+            tooltip=focused.get_tooltip_text() if focused else None,
+            play=focused is play,
+            mapped=play.get_mapped(),
+            sensitive=play.get_sensitive(),
+            current=page._speaker_rows["voice-12"][1] is play,
+            collapsed=page.split.get_collapsed(),
+            active=window.is_active(),
+        )
+        focus_changes.append(state)
+        return state
+
+    focus_handler = window.connect("notify::focus-widget", focus_state)
+    assert play.grab_focus(), focus_state()
+    focus_state()
     # A real wheel event suspends transcript following, including auto-advance.
     assert window.listen.start("voice-0", 126)
 
@@ -765,7 +784,8 @@ with tempfile.TemporaryDirectory() as temporary:
     assert play.get_icon_name() == "media-playback-stop-symbolic"
     assert row.has_css_class("listening")
     until(window, lambda: page.speakers_scroller.get_vadjustment().get_value() > 0)
-    assert window.get_focus() is play
+    assert window.get_focus() is play, (focus_state(), focus_changes)
+    window.disconnect(focus_handler)
     assert play.activate()
     until(window, lambda: not window.listen.active)
     assert not window.player.playing and play.get_icon_name() == "media-playback-start-symbolic"
