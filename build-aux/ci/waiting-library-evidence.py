@@ -11,6 +11,9 @@ from pathlib import Path
 
 out = Path("heartbeat-evidence").resolve()
 out.mkdir()
+measure_pairs = int(os.environ.get("FRAME_MEASURE_PAIRS", "16"))
+profile_pairs = int(os.environ.get("FRAME_PROFILE_PAIRS", "4"))
+assert measure_pairs > 0 and profile_pairs >= 0
 head = os.environ.get("FRAME_EVIDENCE_HEAD") or subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
 library = Path("_build-heartbeat/native-profile.so").resolve()
 subprocess.run(
@@ -22,6 +25,9 @@ subprocess.run(
         dict(
             evidenceHead=head,
             baseline="b0b9806",
+            candidate="901801b974d20e434986a8963347464c9a02a379",
+            measurePairs=measure_pairs,
+            profilePairs=profile_pairs,
             runner=os.environ.get("RUNNER_NAME"),
             cpus=os.cpu_count(),
             lscpu=subprocess.check_output(["lscpu"], text=True),
@@ -109,7 +115,8 @@ assert candidate_page != original_page
 results = []
 try:
     test.write_text(text)
-    for pair in range(1, int(os.environ.get("FRAME_CAPTURE_PAIRS", "4")) + 1):
+    for pair in range(1, measure_pairs + profile_pairs + 1):
+        profiled = pair > measure_pairs
         for mode in ["before", "after"] if pair % 2 else ["after", "before"]:
             page.write_text(original_page if mode == "before" else candidate_page)
             subprocess.run(["meson", "compile", "-C", "_build-heartbeat"], check=True)
@@ -119,7 +126,7 @@ try:
             env = dict(
                 os.environ,
                 CASSINI_TEST_BUILD=str(Path("_build-heartbeat").resolve()),
-                FRAME_NATIVE_LIB=str(library) if mode == "profile" else "",
+                FRAME_NATIVE_LIB=str(library) if profiled else "",
                 FRAME_OUTPUT=str(folder),
             )
             with (out / (label + ".log")).open("w") as log:
@@ -143,7 +150,12 @@ try:
                 )
             )
             row = dict(
-                pair=pair, mode=mode, returncode=result.returncode, budgetFailure=budget, diagnostics=diagnostics
+                pair=pair,
+                mode=mode,
+                profiled=profiled,
+                returncode=result.returncode,
+                budgetFailure=budget,
+                diagnostics=diagnostics,
             )
             results.append(row)
             (out / "results.json").write_text(json.dumps(results, indent=2) + "\n")

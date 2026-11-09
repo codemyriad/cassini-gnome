@@ -1,4 +1,4 @@
-name: Waiting Library glyph runs (evidence only)
+name: Waiting Library headroom and native profile (evidence only)
 on:
   workflow_dispatch:
 permissions:
@@ -6,7 +6,7 @@ permissions:
 jobs:
   heartbeat-pairs:
     runs-on: [self-hosted, cm-hetzner]
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
@@ -20,8 +20,8 @@ jobs:
         run: |
           meson setup _build-heartbeat -Dprofile=development
           meson compile -C _build-heartbeat
-      - name: "Four fixed before/after pairs: retain every budget failure"
-        run: FRAME_CAPTURE_PAIRS=4 python3 build-aux/ci/waiting-library-evidence.py
+      - name: "16 unprofiled pairs plus 4 separate native-profile pairs"
+        run: FRAME_MEASURE_PAIRS=16 FRAME_PROFILE_PAIRS=4 python3 build-aux/ci/waiting-library-evidence.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:
