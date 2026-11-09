@@ -226,6 +226,7 @@ talk_sources = files(
   'cassini_talk/companion_local_instructions.py',
   'cassini_talk/flatpak_bridge.py',
   'cassini_talk/flatpak-native-host.sh',
+  'cassini_talk/cairo_shadows.py',
   'cassini_talk/companion_setup.py',
   'cassini_talk/browser_notifications.py',
   'cassini_talk/portable.py',
