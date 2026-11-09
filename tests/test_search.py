@@ -19,9 +19,14 @@ NOW = 1793107080000
 shared_library = test_library_vectors.shared_library
 
 
+@pytest.fixture(scope="module")
+def scanner(shared_library):
+    # The vector Library is immutable; retain its read cache between fresh indexes.
+    return LibraryScanner(shared_library / "main/root")
+
+
 @pytest.fixture
-def index(shared_library, tmp_path):
-    scanner = LibraryScanner(shared_library / "main/root")
+def index(scanner, tmp_path):
     value = SearchIndex(scanner.root, tmp_path / "cache")
     value.sync(scanner.scan())
     yield value
