@@ -337,7 +337,37 @@ with tempfile.TemporaryDirectory() as tmp:
     track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
     tap.append(bytes(9600), track["startOffsetMs"])
     app.comfort.tick()
-    until(lambda: text("errors.othersFallback.line") in texts(page.lines) and alert in services.notifications)
+    try:
+        until(lambda: text("errors.othersFallback.line") in texts(page.lines) and alert in services.notifications)
+    except AssertionError:
+        # Keep both asynchronous observations and their sources when this
+        # coupled wait fails; a timeout alone cannot say which one was missing.
+        from cassini_talk.recording_details import disk_reserve
+
+        known = app.comfort.known.get(current.key)
+        volume = os.statvfs(capture.directory)
+        evidence = dict(
+            expected_line=text("errors.othersFallback.line"),
+            expected_alert=alert,
+            lines=list(texts(page.lines)),
+            notifications=list(services.notifications),
+            statuses=app._browser_snapshot.get("statuses", []),
+            activity=window._activity,
+            known_events=list(known.capture_events) if known else None,
+            session_events=capture.host.session.manifest.get("events"),
+            source_state=repr(app.comfort.sources(current)),
+            observations=app.comfort.states.get(current.key),
+            observation_pending=list(app.comfort.futures),
+            capture_finished=capture.finished,
+            fallback_pending=capture.fallback_pending,
+            free_bytes=volume.f_bavail * volume.f_frsize,
+            reserve_bytes=disk_reserve(volume.f_blocks * volume.f_frsize),
+        )
+        print("Fallback wait diagnostics: " + json.dumps(evidence, ensure_ascii=False), flush=True)
+        Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_suffix(".fallback.json").write_text(
+            json.dumps(evidence, ensure_ascii=False, indent=2) + "\n"
+        )
+        raise
     assert window.get_visible()
     assert services.notifications[alert]["title"] == text("errors.othersFallback.line")
     assert services.notifications[alert]["body"] == current.title
