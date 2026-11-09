@@ -11,7 +11,7 @@ import pytest
 from test_browser_capture import Tap
 from test_browser_resume_policy import asks, close, peer, policy, row, run, scheduled_asks  # noqa: F401
 from test_refusal_vectors import broker as served  # noqa: F401
-from test_resume_capture_host import VECTORS
+from test_resume_capture_host import VECTORS, payload_identity  # noqa: F401
 from test_resume_capture_host import broker as wire  # noqa: F401
 from test_voice_application import application_class  # noqa: F401
 
