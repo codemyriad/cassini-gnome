@@ -131,6 +131,9 @@ try {
  worker.on('console', message => evidence.console.push(message.text()));
  await poll(async () => (await call()).connected > 0, 'actual companion handshake in Library');
  remoteBrowser = await chromium.launch({headless: false, ignoreDefaultArgs: ['--mute-audio'], args: flags});
+ if (process.env.CASSINI_TEST_TALK_URL) {
+  await (await import('./verified-talk.mjs')).run({context, remoteBrowser, call, automatic, poll, samples, evidence});
+ } else {
  await join('First browser meeting', 440, 880, id);
  await join('Second browser meeting', 550, 990, id);
  const distraction = await context.newPage(); await distraction.goto(`http://127.0.0.1:${server.address().port}/?not-a-meeting`); await distraction.bringToFront();
@@ -307,6 +310,7 @@ try {
   sourceCount: candidate.sourceCount, heardBefore: candidate.heard, heardAfter: heard.heard, directory: joinedDirectory});
 
  await (await import('./source-changes.mjs')).run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence});
+ }
  console.log('PASS real Library Record/individual Stop/global Stop; concurrent muted source capture and mic copies; legacy verified-admission boundary and manual hidden controls');
 } catch (error) {
  evidence.failure = error.stack;

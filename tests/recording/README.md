@@ -257,3 +257,15 @@ the interval, flipping the 880 Hz phase: one coherent coefficient gave 0.0019,
 the two halves 0.196 and 0.200, windowed magnitude 0.198. Skew slaving also
 runs in the recorder's own pulsesrc (provide-clock=false), so the measurement,
 not the producers, is fixed. The > 0.08 wanted and < 0.01 bleed bounds stay.
+
+## Verified automatic Talk admission (D80.5)
+
+With a separate disposable Nextcloud 34/Talk 24 full-profile harness, run
+`CASSINI_TEST_TALK_URL=http://127.0.0.1:PORT/call/ROOM CASSINI_TEST_BUILD=BUILD tests/recording/run.sh node tests/recording/app-control.mjs`.
+Only loopback room URLs are accepted. The pinned 0.2.26 extension and real GNOME
+broker/native hosts run unchanged. Listen-only Talk must expose truthful received
+RTP while automatic Start stays absent. Unmuting the captured fake microphone
+then qualifies real publisher/subscriber split PCs; the actual GNOME automatic
+Start must produce two distinct non-silent remote PCM tracks and save on Stop.
+The native collector and an independent topology probe both assert split PCs.
+This path does not substitute the producer's test host for the GNOME consumer.

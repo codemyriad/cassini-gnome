@@ -77,6 +77,7 @@ class CassiniApplication(Adw.Application):
         self._capture_background = False
         self._capture_confirmation = None
         self._browser_stops = set()
+        self._browser_stop_repeats = {}
         self._capture_exiting = False
         self._closing_background_windows = False
         # Screenshot runs keep the "Write it down" actions visible but never
@@ -1233,7 +1234,14 @@ class CassiniApplication(Adw.Application):
         from .capture_guard import stop_browser_captures
 
         key = str(Path(directory).resolve()) if directory is not None else None
+        if not hasattr(self, "_browser_stop_repeats"):
+            self._browser_stop_repeats = {}
         if None in self._browser_stops or key in self._browser_stops:
+            pending = None if None in self._browser_stops else key
+            # The broker may already have stopped the old capture while its
+            # reply/publication is still pending on GTK. Preserve a later user
+            # Stop: a new automatic capture can exist before delivery finishes.
+            self._browser_stop_repeats.setdefault(pending, {})[key] = (directory, reason)
             return
         self._browser_stops.add(key)
         self.hold()
@@ -1260,6 +1268,9 @@ class CassiniApplication(Adw.Application):
                     self.recording_error = str(error)
                 finally:
                     self._browser_stops.discard(key)
+                    repeats = self._browser_stop_repeats.pop(key, {})
+                    for repeated_directory, repeated_reason in repeats.values():
+                        self.stop_browser_recordings(repeated_directory, reason=repeated_reason)
                     self.release()
                 self._native_changed()
                 if self.build_refresh:
