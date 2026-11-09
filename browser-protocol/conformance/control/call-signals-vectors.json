@@ -190,7 +190,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -716,7 +716,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -935,7 +935,7 @@
               "reason": "unverified",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": null
             },
@@ -994,7 +994,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1047,7 +1047,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1098,7 +1098,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1150,7 +1150,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1201,7 +1201,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1285,7 +1285,7 @@
               "reason": "unverified",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": null
             },
@@ -1336,7 +1336,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1387,7 +1387,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1438,7 +1438,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1489,7 +1489,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1540,7 +1540,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1591,7 +1591,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1641,7 +1641,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             }
@@ -1691,7 +1691,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1742,7 +1742,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1792,7 +1792,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1843,7 +1843,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1895,7 +1895,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -1945,7 +1945,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             }
@@ -1997,7 +1997,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -2050,7 +2050,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -2103,7 +2103,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -2156,7 +2156,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -2209,7 +2209,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -2262,7 +2262,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -2316,7 +2316,7 @@
               "reason": "unverified",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": null
             },
@@ -2369,7 +2369,7 @@
               "reason": "activeCall",
               "adapter": {
                 "name": "webrtc-interactive",
-                "version": "1"
+                "version": "2"
               },
               "callGeneration": "call-A"
             },
@@ -2404,6 +2404,266 @@
       ],
       "consumerEvidenceAgeMs": 5000,
       "heartbeatHealthy": true
+    },
+    {
+      "name": "same-document-split-PC-RTP-ready",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": true,
+        "policy": "verified-call-and-RTP",
+        "bindingMatches": true,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0,
+      "qualificationCase": "split-publisher-subscriber"
+    },
+    {
+      "name": "same-document-independent-PCs-RTP-ready",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": true,
+        "policy": "verified-call-and-RTP",
+        "bindingMatches": true,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0,
+      "qualificationCase": "unrelated-mic-same-backend"
+    },
+    {
+      "name": "cross-document-split-never-admits",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": null
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "unknown-call",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0,
+      "qualificationCase": "cross-document-split"
+    },
+    {
+      "name": "cross-frame-split-never-admits",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": null
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "unknown-call",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0,
+      "qualificationCase": "cross-frame-split"
+    },
+    {
+      "name": "retired-port-split-never-admits",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": null
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "unknown-call",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0,
+      "qualificationCase": "retired-port-split"
     }
   ],
   "lifecycle": {
@@ -3271,9 +3531,9 @@
     "existingOwnerOnProofExpiry": "retain owner/fixed route and enter existing 120000 ms evidence-loss grace; not callEnded"
   },
   "qualificationMeaning": {
-    "decision": "D80.4",
+    "decision": "D80.5",
     "activeMeans": "interactive captured-media session, not proven answered human intent",
-    "scope": "contract observations; echo/early media measured in Chromium149 packaged hook; full producer/app boundary adoption follows",
+    "scope": "same current browser document/frame/port, both native progress directions within 2500 ms; full producer and real Talk proof in CI; app adoption follows",
     "cases": [
       {
         "name": "duplex",
@@ -3281,8 +3541,19 @@
         "liveReceivedProgress": true,
         "pageCapturedRootOrClone": true,
         "capturedTrackActuallySent": true,
-        "sameSessionBound": true,
-        "expectState": "active"
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
       },
       {
         "name": "captured-clone",
@@ -3290,8 +3561,19 @@
         "liveReceivedProgress": true,
         "pageCapturedRootOrClone": true,
         "capturedTrackActuallySent": true,
-        "sameSessionBound": true,
-        "expectState": "active"
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
       },
       {
         "name": "echo-or-microphone-test",
@@ -3299,8 +3581,19 @@
         "liveReceivedProgress": true,
         "pageCapturedRootOrClone": true,
         "capturedTrackActuallySent": true,
-        "sameSessionBound": true,
-        "expectState": "active"
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
       },
       {
         "name": "unanswered-early-media",
@@ -3308,8 +3601,19 @@
         "liveReceivedProgress": true,
         "pageCapturedRootOrClone": true,
         "capturedTrackActuallySent": true,
-        "sameSessionBound": true,
-        "expectState": "active"
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
       },
       {
         "name": "passive-webrtc-viewer",
@@ -3317,8 +3621,19 @@
         "liveReceivedProgress": true,
         "pageCapturedRootOrClone": false,
         "capturedTrackActuallySent": false,
-        "sameSessionBound": true,
-        "expectState": "unknown"
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
       },
       {
         "name": "mic-preview",
@@ -3326,8 +3641,19 @@
         "liveReceivedProgress": true,
         "pageCapturedRootOrClone": true,
         "capturedTrackActuallySent": false,
-        "sameSessionBound": true,
-        "expectState": "unknown"
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
       },
       {
         "name": "synthetic-sender",
@@ -3335,8 +3661,19 @@
         "liveReceivedProgress": true,
         "pageCapturedRootOrClone": false,
         "capturedTrackActuallySent": true,
-        "sameSessionBound": true,
-        "expectState": "unknown"
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
       },
       {
         "name": "unrelated-sending-pc",
@@ -3344,8 +3681,293 @@
         "liveReceivedProgress": true,
         "pageCapturedRootOrClone": true,
         "capturedTrackActuallySent": true,
-        "sameSessionBound": false,
-        "expectState": "unknown"
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "acceptedBy": "D80.5 same-document/frame captured-media cohort"
+      },
+      {
+        "name": "split-publisher-subscriber",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "samePeerConnection": false,
+        "acceptedBy": "D80.5"
+      },
+      {
+        "name": "unrelated-mic-same-backend",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "samePeerConnection": false,
+        "acceptedBy": "D80.5"
+      },
+      {
+        "name": "cross-document-split",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-B",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "cross-frame-split",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 2,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "retired-port-split",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "retired-relay"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "stale-received-half",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 2501,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "stale-sent-half",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 2501
+      }
+    ]
+  },
+  "nativeStartCorrelation": {
+    "scope": "producer request binding plus consumer admission vector; actual host dispatch adoption tested downstream",
+    "cases": [
+      {
+        "name": "late-automatic-after-manual-same-call",
+        "commands": [
+          {
+            "type": "command",
+            "requestId": "automatic-1",
+            "action": "start",
+            "tabId": 2,
+            "independent": true,
+            "mode": "tracks",
+            "callGeneration": "call-A",
+            "captureLocal": false,
+            "microphone": false
+          },
+          {
+            "type": "command",
+            "requestId": "stop-automatic",
+            "action": "stop",
+            "tabId": 2,
+            "independent": true
+          },
+          {
+            "type": "command",
+            "requestId": "manual-2",
+            "action": "start",
+            "tabId": 2,
+            "independent": true,
+            "mode": "tracks",
+            "callGeneration": "call-A",
+            "captureLocal": false,
+            "microphone": false
+          }
+        ],
+        "expectedNativeStarts": [
+          {
+            "type": "start",
+            "version": 1,
+            "requestId": "automatic-1",
+            "callGeneration": "call-A",
+            "documentGeneration": "hook-A"
+          },
+          {
+            "type": "start",
+            "version": 1,
+            "requestId": "manual-2",
+            "callGeneration": "call-A",
+            "documentGeneration": "hook-A"
+          }
+        ],
+        "retiredAutomaticRequestId": "automatic-1",
+        "pendingManualRequestId": "manual-2",
+        "nativeArrivalOrder": [
+          1,
+          0
+        ],
+        "expect": {
+          "acceptManualRequestId": "manual-2",
+          "rejectRetiredAutomaticRequestId": "automatic-1",
+          "lateAutomaticInputs": 0,
+          "lateAutomaticOutputs": 0
+        }
+      },
+      {
+        "name": "numeric-zero-is-not-string-zero",
+        "commands": [
+          {
+            "type": "command",
+            "requestId": 0,
+            "action": "start",
+            "tabId": 2,
+            "independent": true,
+            "mode": "tracks",
+            "callGeneration": "call-A",
+            "captureLocal": false,
+            "microphone": false
+          },
+          {
+            "type": "command",
+            "requestId": "stop-automatic",
+            "action": "stop",
+            "tabId": 2,
+            "independent": true
+          },
+          {
+            "type": "command",
+            "requestId": "0",
+            "action": "start",
+            "tabId": 2,
+            "independent": true,
+            "mode": "tracks",
+            "callGeneration": "call-A",
+            "captureLocal": false,
+            "microphone": false
+          }
+        ],
+        "expectedNativeStarts": [
+          {
+            "type": "start",
+            "version": 1,
+            "requestId": 0,
+            "callGeneration": "call-A",
+            "documentGeneration": "hook-A"
+          },
+          {
+            "type": "start",
+            "version": 1,
+            "requestId": "0",
+            "callGeneration": "call-A",
+            "documentGeneration": "hook-A"
+          }
+        ],
+        "retiredAutomaticRequestId": 0,
+        "pendingManualRequestId": "0",
+        "nativeArrivalOrder": [
+          1,
+          0
+        ],
+        "expect": {
+          "acceptManualRequestId": "0",
+          "rejectRetiredAutomaticRequestId": 0,
+          "lateAutomaticInputs": 0,
+          "lateAutomaticOutputs": 0
+        }
       }
     ]
   }

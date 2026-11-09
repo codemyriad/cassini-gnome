@@ -1,5 +1,5 @@
 import { AppControl } from "./app-control.js";
-import { browserProfileIdentity, SiteSignalAdapters, CallSignalProducer } from "./call-signals.js";
+import { browserProfileIdentity, SiteSignalAdapters, CallSignalProducer, GenericCallEvidenceProducer } from "./call-signals.js";
 
 async function hasOffscreenDocument() {
   return (await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] })).length > 0;
@@ -52,8 +52,7 @@ const identityReady = (async () => {
 let browserInstance = null;
 const browserIdentityReady = browserProfileIdentity(chrome.storage.local, () => crypto.randomUUID())
   .then(value => { browserInstance = value; });
-const signalAdapters = new SiteSignalAdapters();
-const signalOnlySite = address => signalAdapters.resolve(address)?.remoteAudio === 'mixed';
+const signalAdapters = new SiteSignalAdapters([]);
 const lostMeetings = new Map();
 const tabRepairs = new Map();
 const relayReady = frame => frame.relayAlive === true && frame.hookReady === true && !frame.obsolete;
@@ -152,6 +151,7 @@ async function repairTab(tabId, frameId = null) {
     // Never wrap RTCPeerConnection again on an already-running page. A fresh
     // isolated relay can reuse a compatible MAIN hook; older hooks require reload.
     try {
+      await chrome.scripting.executeScript({target:frameId === null ? {tabId,allFrames:true} : {tabId,frameIds:[frameId]},func:()=>{globalThis.__cassiniRepairInjection=true;},world:"ISOLATED"});
       await chrome.scripting.executeScript({target:frameId === null ? {tabId,allFrames:true} : {tabId,frameIds:[frameId]},files:["relay.js"],world:"ISOLATED"});
       await probe();
     } catch (error) {
@@ -499,7 +499,6 @@ async function start(mode, tabId = null, options = {}) {
     } else [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (request.cancelled || options.resumeIntent?.cancelled) throw new Error("Recording could not start.");
     if (!Number.isSafeInteger(tab?.id) || tab.id < 0 || !/^https?:/.test(tab.url || "")) throw refused("Open the meeting tab first. Recording works on web pages only.", "notWebPage");
-    if (signalOnlySite(tab.url)) throw refused("This site mixes remote audio. Record computer audio in Cassini instead.", "unsupported");
     if (sessions.has(tab.id)) throw refused("A recording is already running. Stop it before starting another.", "busy");
     request.tabId = tab.id; // A popup's Symbol reservation now has a browser-owned identity.
     if (mode === "tracks") requireTrackReadiness(tab.id);
@@ -541,13 +540,13 @@ async function start(mode, tabId = null, options = {}) {
       const start = { type: "start", version: 1, title: tab.title || "Browser meeting", features: ["source-outcomes-v1"],
         callGeneration: session.callGeneration, documentGeneration: documentFor(tab.id) };
       if (session.independent) Object.assign(start, { independent: true, microphone: options.microphone !== false, captureId: session.token, timelineOriginMs: session.origin });
+      // Preserve the originating control ask across delayed native handshakes.
+      if (options.requestId !== undefined) start.requestId = options.requestId;
       if (target) {
         // A new native packet type fails closed on older hosts: an unknown
         // optional field on ordinary Start could create a second folder.
         start.type = "resume";
         start.features.push("resume-capture-v1");
-        // Names the ask a refused resume answers (only ever on resume packets).
-        if (options.requestId !== undefined) start.requestId = options.requestId;
         delete start.microphone; // The app retains its actual per-session selection.
       }
       const result = await session.host.send(start);
@@ -655,6 +654,67 @@ async function forwardPacket(session, packet, documentGeneration) {
   } finally { if (reserve) session.trackReservations.delete(packet.id); }
 }
 
+const discoveryTimers={now:()=>globalThis.performance?.now?.()??Date.now(),later:(fn,ms)=>setTimeout(fn,ms),cancel:id=>clearTimeout(id)};
+function requestNativeDiscovery(frame, hint=null) {
+  if (!frames.has(frame)) return;
+  const state=frame.discoveryReadState ||= {lastAt:-Infinity,pending:false,timer:null,dirty:false,closed:false};
+  if(state.closed)return;
+  if(hint)state.hint=hint;
+  state.dirty=true;
+  if(state.pending || state.timer!==null)return;
+  const remaining=1000-(discoveryTimers.now()-state.lastAt);
+  if(remaining>0){state.timer=discoveryTimers.later(()=>{state.timer=null;if(!state.closed)requestNativeDiscovery(frame)},remaining);return}
+  state.dirty=false;state.pending=true;state.lastAt=discoveryTimers.now();
+  void genericProducer.read(frame).then(value=>{
+    // An owned unavailable sentinel cannot authenticate facts. Preserve the
+    // legacy/manual inventory only; verified inventory excludes this frame.
+    if(value===null&&frame.nativeCollectorUnavailable===true&&state.hint&&!state.closed)adoptDiscovery(frame,state.hint);
+  }).catch(()=>{}).finally(()=>{
+    state.pending=false;
+    if(state.dirty&&!state.closed)requestNativeDiscovery(frame);
+  });
+}
+function retireNativeDiscovery(frame) {
+  const state=frame.discoveryReadState;
+  if(state){state.closed=true;discoveryTimers.cancel(state.timer);state.timer=null;state.dirty=false}
+}
+
+function adoptDiscovery(frame, message) {
+  if (!frames.has(frame) || frame.obsolete || pageState(frame.tabId)==='closed') return;
+  frame.hookSeen = true;
+  lostMeetings.delete(`${frame.tabId}:${frame.frameId}`);
+  // A subframe's spans belong to the main document it appeared under (D61).
+  if (frame.frameId !== 0) frame.mainFrame ??= mainFrame(frame.tabId);
+  const document = message.documentGeneration, generation = message.callGeneration;
+  if (validDocument(document) &&
+      typeof generation === "string" && generation.length > 0 && generation.length <= 200) {
+    const info = callInfo(frame.tabId);
+    if (frame.frameId === 0 && !frame.identitySeeded) {
+      frame.identitySeeded = true;
+      if (info.boundaryPending) fenceBaseline(frame, info);
+      else if (info.documentGeneration === document) {
+        frame.documentGeneration = document; frame.callGeneration = info.hookGeneration;
+      }
+    }
+    if (frame.fencedGenerations.has(JSON.stringify([document,generation]))) return;
+    const changed = frame.frameId === 0 && frame.documentGeneration === document && frame.callGeneration !== undefined && frame.callGeneration !== generation;
+    if (changed) callChanged(frame.tabId);
+    frame.documentGeneration = document; frame.callGeneration = generation;
+    if (frame.frameId === 0 && (info.documentGeneration !== document || info.hookGeneration !== generation)) {
+      Object.assign(info, {documentGeneration:document, hookGeneration:generation, boundaryPending:false});
+      void persistSessions().catch(() => {});
+    }
+  }
+  if (frame.obsolete || pageState(frame.tabId) === "closed") return;
+  if (Number.isInteger(message.sourceCount) && message.sourceCount >= 0 && message.sourceCount <= 64 &&
+      (frame.sourceCount !== message.sourceCount || frame.heard !== (message.heard === true))) {
+    frame.sourceCount = message.sourceCount;
+    frame.heard = message.heard === true;
+    notifyControl();
+  }
+
+}
+
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== "cassini-frame" || port.sender?.id !== chrome.runtime.id || !port.sender.tab) return;
   const frame = { port, tabId: port.sender.tab.id, frameId: port.sender.frameId ?? 0, browserDocumentId:typeof port.sender.documentId === "string" ? port.sender.documentId : null, browserUrl:port.sender.url, obsoleteEpoch:0, sourceCount: 0, heard: false, checking:true, relayAlive:false, hookReady:false, fencedGenerations: new Set() };
@@ -670,14 +730,23 @@ chrome.runtime.onConnect.addListener(port => {
     if (!frames.has(frame)) return;
     if (message.type === "relayHello" || message.type === "relayReady" || message.type === "relayUnavailable") {
       if (message.protocol !== relayProtocol || message.instanceId !== extensionInstance) return;
+      const trustedReady=frame.relayAlive&&frame.hookReady&&frame.observerDocumentStart===true;
+      if(message.type==='relayReady'&&frame.relayAlive&&frame.hookReady&&frame.observerDocumentStart===(message.observerDocumentStart===true))return;
       frame.relayAlive = true;
+      frame.observerDocumentStart = message.observerDocumentStart === true;
       if (message.type !== "relayHello") {
         frame.checking = false; clearTimeout(frame.handshakeDeadline); frame.hookReady = message.type === "relayReady";
         frame.hookSeen ||= frame.hookReady;
       }
       // Cache matching readiness during verification, but do not publish or
       // admit an obsolete frame until Chrome proves its document identity.
-      if (!frame.obsolete) { attachFrame(frame); notifyControl(); }
+      if (!frame.obsolete) {
+        if(message.type==='relayReady'&&frame.observerDocumentStart===true&&!trustedReady){
+          await genericProducer.read(frame);
+          if(!frames.has(frame)||frame.obsolete)return;
+        }
+        attachFrame(frame);notifyControl();
+      }
       return;
     }
     if (message.type === "pageState") {
@@ -688,40 +757,14 @@ chrome.runtime.onConnect.addListener(port => {
       return;
     }
     if (message.type === "discovery") {
-      if (frame.obsolete || pageState(frame.tabId) === "closed") return;
-      frame.hookSeen = true;
-      lostMeetings.delete(`${frame.tabId}:${frame.frameId}`);
-      // A subframe's spans belong to the main document it appeared under (D61).
-      if (frame.frameId !== 0) frame.mainFrame ??= mainFrame(frame.tabId);
-      const document = message.documentGeneration, generation = message.callGeneration;
-      if (validDocument(document) &&
-          typeof generation === "string" && generation.length > 0 && generation.length <= 200) {
-        const info = callInfo(frame.tabId);
-        if (frame.frameId === 0 && !frame.identitySeeded) {
-          frame.identitySeeded = true;
-          if (info.boundaryPending) fenceBaseline(frame, info);
-          else if (info.documentGeneration === document) {
-            frame.documentGeneration = document; frame.callGeneration = info.hookGeneration;
-          }
-        }
-        if (frame.fencedGenerations.has(JSON.stringify([document,generation]))) return;
-        const changed = frame.frameId === 0 && frame.documentGeneration === document && frame.callGeneration !== undefined && frame.callGeneration !== generation;
-        if (changed) callChanged(frame.tabId);
-        frame.documentGeneration = document; frame.callGeneration = generation;
-        if (frame.frameId === 0 && (info.documentGeneration !== document || info.hookGeneration !== generation)) {
-          Object.assign(info, {documentGeneration:document, hookGeneration:generation, boundaryPending:false});
-          void persistSessions().catch(() => {});
-        }
-      }
-      if (frame.obsolete || pageState(frame.tabId) === "closed") return;
-      if (Number.isInteger(message.sourceCount) && message.sourceCount >= 0 && message.sourceCount <= 64 &&
-          (frame.sourceCount !== message.sourceCount || frame.heard !== (message.heard === true))) {
-        frame.sourceCount = message.sourceCount;
-        frame.heard = message.heard === true;
-        notifyControl();
-      }
+      if (!frame.relayAlive || frame.obsolete || pageState(frame.tabId) === "closed") return;
+      if (frame.observerDocumentStart===true) {
+        // Wakeup only. read() adopts the browser-bound native facts itself.
+        requestNativeDiscovery(frame,message);
+      } else if(frame.observerDocumentStart===false)adoptDiscovery(frame,message); // Explicitly legacy/manual-only repaired realm.
       return;
     }
+
     const session = sessions.get(frame.tabId);
     if (!session?.frames.has(frame)) return;
     if (session.keepOnNavigation && (frame.obsolete || pageState(frame.tabId) !== "present") &&
@@ -768,6 +811,7 @@ chrome.runtime.onConnect.addListener(port => {
     try { port.postMessage({ type: "ack", token: session.token, request: message.request }); } catch {}
   });
   port.onDisconnect.addListener(() => {
+    retireNativeDiscovery(frame);
     // Chrome closes this channel when a page enters BFCache. Consume the
     // callback error before the existing cleanup/loss handling below.
     void chrome.runtime.lastError;
@@ -810,7 +854,17 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       const scoped = Object.prototype.hasOwnProperty.call(message, "tabId");
       if (scoped && (!Number.isSafeInteger(message.tabId) || message.tabId < 0))
         return {error:"Choose a valid browser tab.", code:"invalid"};
-      return {...(scoped ? popupTabStatus(message.tabId) : status()), browserHealth:browserHealth()};
+      const result={...(scoped ? popupTabStatus(message.tabId) : status()),browserHealth:browserHealth()};
+      if (scoped) {
+        const snapshot=await genericProducer.snapshot({verified:true,preview:true,tabId:message.tabId});
+        const row=snapshot?.tabs.find(row=>row.tabId===message.tabId);
+        const frame=mainFrame(message.tabId);
+        const page=tabReadiness(message.tabId)?.state||(frame?(relayReady(frame)?'ready':frame.checking?'checking':'reloadRequired'):'unavailable');
+        const kind=['separated','mixed'].includes(row?.remoteAudio)?row.remoteAudio:frame&&relayReady(frame)&&frame.sourceCount===0?'unavailable':'unknown';
+        result.tabEvidence={tabId:message.tabId,transport:{page},callEvidence:row?.callEvidence||{state:'unknown',reason:'unverified'},
+          captureCapability:{kind,assurance:kind==='unknown'?'unknown':'observed'}};
+      }
+      return result;
     }
     if (offscreen) {
       const active = [...sessions.values()].find(s => s.mode === "tab");
@@ -885,7 +939,7 @@ function controlStatus(tabId = null) {
   packet.browserHealth = browserHealth();
   return packet;
 }
-async function meetings() {
+async function meetings({verified=false}={}) {
   const counts = new Map();
   for (const frame of frames) if (relayReady(frame) && frame.sourceCount > 0) counts.set(frame.tabId, Math.min(4096, (counts.get(frame.tabId) || 0) + frame.sourceCount));
   for (const session of sessions.values()) if (!counts.has(session.tabId)) counts.set(session.tabId, 0);
@@ -899,17 +953,19 @@ async function meetings() {
       if (!session && tabReadiness(tabId)?.state !== "ready") return null;
       const known = !!tab && /^https?:/.test(tab.url || "");
       if (!known) tab = session?.lastTab;
-      if (!tab || !/^https?:/.test(tab.url || "") || signalOnlySite(tab.url)) return null;
+      if (!tab || !/^https?:/.test(tab.url || "")) return null;
       if (session && known) session.lastTab = { ...tab };
       if (known && callInfo(tabId).url === null) callInfo(tabId).url = callAddress(tab.url);
       // A can reload after its lookup finishes while B's is still pending.
       // Collect every row's current evidence synchronously after ALL lookups.
-      const current = [...frames].filter(frame => frame.tabId === tabId && relayReady(frame) && frame.sourceCount > 0);
+      const current = [...frames].filter(frame => frame.tabId === tabId && relayReady(frame) && frame.sourceCount > 0 &&
+        (!verified || frame.observerDocumentStart===true && frame.nativeSourceVerified===true &&
+          (frame.frameId===0 || frame.mainFrame===mainFrame(tabId))));
       const sourceCount = known ? Math.min(4096, current.reduce((total, frame) => total + frame.sourceCount, 0)) : session.lastSourceCount;
       if (session && known) session.lastSourceCount = sourceCount;
       if (!sourceCount && !sessions.has(tabId)) return null;
       const heard = current.some(frame => frame.heard);
-      return { tabId, title: [...(tab.title || "Meeting")].slice(0, 200).join(""), url: new URL(tab.url).href.slice(0, 2048), sourceCount, heard, sourceCountKnown: known, documentGeneration: documentFor(tabId), callGeneration: callInfo(tabId).generation, pageState: pageState(tabId) };
+      return { tabId, title: [...(tab.title || "Meeting")].slice(0, 200).join(""), url: new URL(tab.url).href.slice(0, 2048), sourceCount, heard, sourceCountKnown: known, ...(verified ? {browserDocumentId:mainFrame(tabId)?.browserDocumentId} : {}), documentGeneration: documentFor(tabId), callGeneration: callInfo(tabId).generation, pageState: pageState(tabId) };
     } catch { return null; }
   });
   return { type: "meetings", meetings: found.filter(Boolean) };
@@ -930,7 +986,6 @@ async function controlCommand(command, intent = {}) {
   }
   if (command.action === "start") {
     if (startBusy(command)) throw refused("A recording is already running. Stop it before starting another.", "busy");
-    if (signalOnlySite(mainFrame(command.tabId)?.browserUrl)) throw refused("This site mixes remote audio. Record computer audio in Cassini instead.", "unsupported");
     requireTrackReadiness(command.tabId);
     if (![...frames].some(frame => frame.tabId === command.tabId && relayReady(frame) && frame.sourceCount > 0))
       throw refused("No audio is available from that meeting yet.", "noSources");
@@ -957,14 +1012,22 @@ function cancelPendingStart(command) {
 function notifyControl() { appControl.publish(); }
 const signalProducer = new CallSignalProducer({identity:()=>browserInstance,tabs:chrome.tabs,frames:()=>frames,
   current:frame=>frames.has(frame) && mainFrame(frame.tabId) === frame && relayReady(frame) && pageState(frame.tabId) === 'present',adapters:signalAdapters});
+const genericProducer = new GenericCallEvidenceProducer({identity:()=>browserInstance,tabs:chrome.tabs,frames:()=>frames,
+  current:frame=>frames.has(frame)&&mainFrame(frame.tabId)===frame&&relayReady(frame)&&pageState(frame.tabId)==='present',
+  currentSource:frame=>frames.has(frame)&&relayReady(frame)&&pageState(frame.tabId)==='present'&&
+    (frame.frameId===0?mainFrame(frame.tabId)===frame:!!mainFrame(frame.tabId)&&(!frame.mainFrame||frame.mainFrame===mainFrame(frame.tabId))),
+  executeScript:request=>chrome.scripting.executeScript(request),callIdentity:frame=>callInfo(frame.tabId).generation,
+  onNativeRead:(frame,native)=>{frame.nativeSourceVerified=true;adoptDiscovery(frame,{documentGeneration:native.documentGeneration,callGeneration:native.hookGeneration,
+    sourceCount:native.sourceCount,heard:native.heard})}});
 const controlCapabilities = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1", "tab-readiness-v1"];
 const appControl = new AppControl({
-  runtime: chrome.runtime, alarms: chrome.alarms, busy: startBusy, capabilities: controlCapabilities, signalSnapshot:()=>signalProducer.snapshot(), identity: () => ({extensionVersion,extensionInstance,...companionDiagnostics}), cancelPending: cancelPendingStart,
+  runtime: chrome.runtime, alarms: chrome.alarms, busy: startBusy, capabilities: controlCapabilities, signalSnapshot:options=>options.verified?genericProducer.snapshot(options):signalProducer.snapshot(), identity: () => ({extensionVersion,extensionInstance,...companionDiagnostics}), cancelPending: cancelPendingStart,
+  signalFinalize:(value,options)=>options.verified?genericProducer.finalize(value):value,
   connected: repairOpenTabs,
-  snapshot: async () => { await recovery; return [await meetings(), controlStatus()]; },
+  snapshot: async options => { await recovery; return [await meetings(options), controlStatus()]; },
   command: controlCommand
 });
 void Promise.all([identityReady,diagnosticsReady,browserIdentityReady]).then(() => {
-  if (browserInstance) controlCapabilities.push('call-signals-v1');
+  if (browserInstance) controlCapabilities.push('call-signals-v1','verified-auto-admission-v1');
   appControl.start(); void repairOpenTabs();
 });

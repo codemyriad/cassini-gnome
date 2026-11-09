@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// D74: real 0.2.25 producer -> native messaging -> GNOME -> private Pulse PCM.
-// Legacy facts cannot authorize automatic capture. Manual system Record remains
-// available. Verified positive ownership waits for the matching producer pin.
+// D74/D80: pinned producer -> native messaging -> GNOME -> private Pulse PCM.
+// Passive pages use the unmodified production collector. Mixed-route ownership
+// uses an explicitly controlled trusted adapter, not real-site qualification.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
@@ -139,10 +139,14 @@ try {
   const tab=await worker.evaluate(async url=>(await chrome.tabs.query({})).find(t=>t.url===url).id,passive.url());
   const signals=await until(async()=>{
    const rows=(await call()).callSignals.flatMap(p=>p.tabs);
-   return fixture.origin==='https://web.whatsapp.com'?rows.find(t=>t.tabId===tab&&t.url===passive.url()):!rows.some(t=>t.tabId===tab)&&rows;
+   return !legacyCompanion || fixture.origin==='https://web.whatsapp.com' ? rows.find(t=>t.tabId===tab&&t.url===passive.url()) : !rows.some(t=>t.tabId===tab)&&rows;
   },'current unmodified producer snapshot for '+fixture.id);
-  if(fixture.origin==='https://web.whatsapp.com') {
+  if(legacyCompanion && fixture.origin==='https://web.whatsapp.com') {
    assert.equal(signals.remoteAudio,'mixed');assert.equal(signals.callEvidence.state,'unknown');assert.equal(signals.callEvidence.reason,'unverified');
+  }
+  if (!legacyCompanion) {
+   assert.equal(signals.callEvidence.state,'unknown');
+   assert.equal(signals.callEvidence.adapter.name,'webrtc-interactive');
   }
   assert.equal((await call()).statuses.some(s=>s.recording),false,'passive '+fixture.id+' must not auto-start');
   assert.equal((await call()).meetings.length,0,'passive audio must not become an RTP meeting');
@@ -154,7 +158,7 @@ try {
  // The pinned producer and AppControl run in the actual extension worker. The
  // ONLY synthetic input is an extension-owned adapter's validated evidence.
  // Chrome tabs, browser document IDs, native messaging, broker and PCM are real.
- await worker.evaluate(async () => {
+ await worker.evaluate(async legacyCompanion => {
   const {AppControl,SiteSignalAdapters,CallSignalProducer}=globalThis.fixtureApi;
   const instance=(await chrome.storage.local.get('cassiniBrowserInstance')).cassiniBrowserInstance+':trusted-fixture';
   globalThis.fixture={facts:new Map(),frames:new Map(),commands:[],packets:[],instance};
@@ -169,14 +173,20 @@ try {
    fixture.frames=next;fixture.control.publish();
   };
   fixture.connect=()=>{
-   fixture.control=new AppControl({runtime:chrome.runtime,alarms:chrome.alarms,capabilities:['call-signals-v1','heartbeat-v1'],signalSnapshot:()=>fixture.producer.snapshot(),snapshot:async()=>[{type:'meetings',meetings:[]},{type:'status',recording:false,tabId:null}],command:async()=>{throw Error('Signal-only recording must never request browser audio')}});
+   fixture.control=new AppControl({runtime:chrome.runtime,alarms:chrome.alarms,capabilities:['call-signals-v1','heartbeat-v1',...(!legacyCompanion?['verified-auto-admission-v1']:[])],signalSnapshot:async options=>{
+    const snapshot=await fixture.producer.snapshot();
+    // Controlled mixed-route contract input, explicitly separate from the real
+    // generic collector above. The current producer has no mixed-site adapter.
+    if (!legacyCompanion && options.verified) for(const row of snapshot.tabs) row.sourceDocumentGeneration='controlled-source:'+row.documentGeneration;
+    return snapshot;
+   },snapshot:async()=>[{type:'meetings',meetings:[]},{type:'status',recording:false,tabId:null}],command:async()=>{throw Error('Signal-only recording must never request browser audio')}});
    const send=fixture.control.send.bind(fixture.control),receive=fixture.control.receive.bind(fixture.control);
    fixture.control.send=(port,packet)=>{fixture.packets.push(packet);return send(port,packet)};
    fixture.control.receive=(port,packet)=>{if(packet.type==='command')fixture.commands.push(packet);return receive(port,packet)};
    fixture.control.start();
   };
   fixture.connect();await fixture.refresh();
- });
+ },legacyCompanion);
  const firstTab=await facts(first,'active','call-A');
  assert.equal((await call()).statuses.some(s=>s.recording),false,'positive evidence still needs opt-in');
  await automatic(true);
@@ -221,8 +231,8 @@ try {
   evidence.scenarios.push({name:'explicit-manual-system-record-with-legacy-companion',directory,powers,end:completed.manifest.events.at(-1)});
   console.log('PASS legacy mixed signals cannot auto-start; actual manual system/microphone PCM and explicit Stop remain available');
  } else {
- // This positive requires the merged verified producer/adapter. Do not grant
- // the legacy fixture capabilities or proof aliases that it did not produce.
+ // Controlled verified mixed-route ownership, with real native PCM/transport.
+ // This is not a claim that the generic producer classifies any site as mixed.
  const directory=await recording();
  const audio=await samples(directory), mic=audio.tracks.find(t=>t.kind==='microphone'),system=audio.tracks.find(t=>t.kind==='system');
  assert.ok(mic && system && audio.tracks.every(t=>['microphone','system'].includes(t.kind)));

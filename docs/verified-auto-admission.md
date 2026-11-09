@@ -9,7 +9,9 @@ D80.4 deliberately accepts echo/microphone tests and early media that satisfy R1
 the consumer does not add a hostname or answered-call heuristic.
 
 The producer verifies progress of both the actual captured sender and remote
-receiver. GNOME verifies the current control owner and the shared ledger aliases:
+receiver in one current document/frame and relay-port cohort. Under D80.5 these
+may be different connected peer connections; neither direction crosses documents,
+frames or retired ports. The cohort includes same-document echo and early media. GNOME verifies the current control owner and the shared ledger aliases:
 
 | Inventory | Signal | Authority |
 | --- | --- | --- |
@@ -59,13 +61,13 @@ per-call eligibility signal.
 
 ## Draft rollout and proofs
 
-The initial branch pins SPEC/schema/shared vectors at protocol
-`a8efd93e29578962c78fe05e06d62b3693956944`; its bundled producer is still 0.2.25.
-Do not release this intermediate pairing. Pin producer #79 / companion 0.2.26 only
-when merged, including its normal-native-Start request echo, and run real producer
-and app proofs before marking the PR ready. In particular, GNOME adoption must
-not merge before #79 makes real Talk qualify, including its split-PC topology. D80.3's rejected blanket guard is not
-part of this implementation.
+The branch pins protocol/producer #79 at
+`b2b561bf1dbf51bbd990cb1c78a1d3e0a07c753f`, companion 0.2.26, including
+normal native Start request correlation and the D80.5 cohort semantics. The
+producer's real Talk split-PC qualification passed before this pin. Consumer
+proofs below still exercise actual GNOME Start dispatch and native PCM; producer
+qualification alone is not a GNOME automatic-recording proof. D80.3's rejected
+blanket guard is not part of this implementation.
 
 The six D80.2 actual-socket regressions retain the frozen real 0.2.25 producer
 packets. New tests consume the shared routing/identity/freshness/qualification
@@ -76,19 +78,18 @@ source-only fixtures assert the adopted failure-closed behavior. Existing source
 and manual/lifecycle vectors are retained. No new skip/xfail, coverage exception,
 tolerance or audio golden change is used.
 
-The recording `app-control.mjs` journey explicitly tests the pinned 0.2.25
-companion's failure-closed behavior. After opt-in, current heard RTP inventory
-must not issue another Start on the real native-control writer, create a recording,
-or hide the setup `autoUnverified` explanation. Explicit manual Record retains
-multi-call audio isolation, portal Stop and hidden notification coverage. Inbound
-RTP alone remains insufficient, including after pre-join. Its verified positive
-branch is retained for the producer pin; synthetic oscillator-only inventory is
-not evidence that real Talk qualifies. The D74 real-producer ownership journey
-also needs a matching verified producer/fixture, not an exemption for legacy facts.
+The recording `app-control.mjs` journey retains the 0.2.25 failure-closed
+branch for frozen legacy companion tests. With pinned 0.2.26 it uses a real
+`getUserMedia` fake-device sender plus received remote tones, then exercises
+automatic recording, hidden controls and new-call admission through the native
+control writer. Receive-only RTP with a synthetic preview remains a negative
+after audible packets arrive; replacing the preview with captured-media sending
+permits automatic Start. No synthetic oscillator is relabelled as captured media.
 
-`call-signals.mjs` likewise asserts that an active mixed fact from the legacy
-trusted adapter cannot authorize automatic system recording. A separate explicit
-Library Record captures real private microphone/system PCM despite that absent
-verification, continues after the legacy call ends, and finishes on user Stop.
-The legacy adapter is not relabelled as verified. Its positive automatic ownership
-journey remains behind the matching producer pin and real Talk qualification.
+`call-signals.mjs` checks passive audio with the unmodified production collector.
+Its mixed-route ownership proof is explicitly a controlled trusted-adapter input
+through the production AppControl, Chromium native messaging and GNOME's real
+system/microphone PCM path. This tests negotiated mixed-route ownership,
+reconnect, Stop suppression, persisted route and call-ended Stop; it does not
+claim the generic producer classifies any real site as mixed. The frozen legacy
+branch separately retains manual system Record and failure-closed admission.

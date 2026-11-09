@@ -1,4 +1,5 @@
 import { popupState } from './popup-state.mjs';
+import { copyDiagnostics } from './tab-evidence.mjs';
 
 const element = id => document.getElementById(id);
 let pending = false, actionPending = false, reloadTabId = null, reloadedTabId = null, diagnosticText = '';
@@ -33,10 +34,7 @@ function render(result, tab) {
   element('reload').hidden = reloadTabId === null;
   element('reload-warning').hidden = reloadTabId === null;
   // Do not copy meeting URLs/titles or filesystem paths into the report.
-  diagnosticText = JSON.stringify({currentTabId: tab?.id ?? null,
-    browserHealth: result.browserHealth ?? null,
-    currentTabCapture: result.tabId === tab?.id ? {recording: !!result.recording, starting: !!result.starting, stopping: !!result.stopping,
-      tracks: result.tracks ?? 0, failedSources: result.failedSources || []} : null}, null, 2);
+  diagnosticText = JSON.stringify(copyDiagnostics(result, tab?.id), null, 2);
   element('diagnostics').textContent = diagnosticText;
   element('copy').disabled = false;
 }
@@ -66,7 +64,7 @@ async function refresh() {
     element('explanation').textContent = error.message;
     element('recording-note').textContent = 'Recording status is unavailable. Check Cassini.';
     element('reload').hidden = element('reload-warning').hidden = true;
-    diagnosticText = JSON.stringify({error: error.message});
+    diagnosticText = JSON.stringify({schemaVersion:1,error:'statusUnavailable'});
     element('diagnostics').textContent = diagnosticText;
     element('copy').disabled = false;
   } finally { pending = false; element('tab-status').setAttribute('aria-busy', 'false'); }

@@ -1,6 +1,10 @@
 # Draft: verified automatic admission, separate from source observation
 
-**Review proposal; no runtime behavior or capability advertisement is enabled.** Proposed canonical SPEC/schema/vector amendments now accompany this draft for review; the producer and consumers are not implemented by them. D80.1, 2026-11-08. Companion version remains0.2.25. No hostname-specific rules, marker implementation, graph capture or user-browser study is proposed here.
+**Historical design proposal; canonical SPEC-CONTROL.md D80.3–D80.5 is controlling.**
+The original failure receipt uses companion0.2.25. Companion0.2.26 implements the
+same-document/frame interactive-media cohort producer and verified negotiation; consumer adoption
+follows separately. The superseded withholding proposal is not an implementation
+requirement. No hostname-specific markers or graph capture are introduced.
 
 ## Confirmed failure at the consumer Start boundary
 
@@ -29,7 +33,7 @@ Receipts: coordination `REPLIES-EXTENSION-meet-observations-2026-11-08.md` and `
 
 ## Proposed minimal semantic change
 
-Keep existing sourceCount/sourceCountKnown/heard truthful and preserve explicit manual Start/record-all semantics. Require fresh **independent verified call/session evidence** for every automatic Start, including a system fallback following browser rejection. Missing, unknown, ambiguous or stale evidence never implicitly qualifies. Do not derive it from hostname, energy, playback, graph presence or receiver count. D80.4 accepts R1 as an interactive captured-media session, not proven answered human intent: echo/microphone tests and early media with a sent captured mic are intentional positives. Passive/preview/synthetic/unrelated-PC and stale-evidence negatives remain strict. The contract does not itself implement the producer.
+Keep existing sourceCount/sourceCountKnown/heard truthful and preserve explicit manual Start/record-all semantics. Require fresh **independent verified call/session evidence** for every automatic Start, including a system fallback following browser rejection. Missing, unknown, ambiguous or stale evidence never implicitly qualifies. Do not derive it from hostname, energy, playback, graph presence or receiver count. D80.4 accepts R1 as an interactive captured-media session, not proven answered human intent: echo/microphone tests and early media with a sent captured mic are intentional positives. D80.5 accepts split PCs within the same fresh browser document/frame/current port; the unrelated-mic case in that cohort is an intentional positive. Passive/preview/synthetic, cross-document/cross-frame and stale-evidence negatives remain strict. The contract does not itself implement the producer.
 
 Use the existing `callSignals` evidence vocabulary, identity/fencing and separate remoteAudio classification where possible, rather than duplicate the same facts in an automaticEligible boolean with a different lifetime. A generic detector may carry a stable algorithm identifier/version in the existing adapter descriptor; it must not be a hostname registry or a page assertion. Whether that descriptor can be reused verbatim must be checked by GNOME and Mac consumers before amendment.
 
@@ -96,6 +100,6 @@ capability advertisement or runtime change is enabled by this contract PR.
 | Auto-record off or no required app | Any | Even active | No automatic Start |
 | Reconnect/replayed evidence | Same current identity | Same valid call | No duplicate automatic Start; manual Stop suppression retained |
 
-Test the real consumer dispatch through its final wire/input boundary with private transports and forbidden device factories. For generic positives, separately prove the detector against representative actual-site flows; synthetic fixtures alone do not establish site support. Keep real passive RTP plus media-only and unrelated-mic negatives, with no hostname exceptions. Require Mac and GNOME consumer review, then agy/coordinator review, before merging any schema/policy/runtime change.
+Test the real consumer dispatch through its final wire/input boundary with private transports and forbidden device factories. For generic positives, separately prove the detector against representative actual-site flows; synthetic fixtures alone do not establish site support. Keep real passive RTP plus media-only and cross-document/cross-frame negatives, plus the documented same-document split-PC positives, with no hostname exceptions. Require Mac and GNOME consumer review, then agy/coordinator review, before merging any schema/policy/runtime change.
 
 The concrete identity mapping and updated separated-existing-rtp-ready/passive-rtc-viewer literals are in the D80.3 section of SPEC-CONTROL.md and conformance/control/call-signals-vectors.json. Chrome documentGeneration and MAIN-hook documentGeneration are distinct namespaces; use the explicit browserDocumentId/sourceDocumentGeneration aliases and the shared background callGeneration, never raw cross-namespace equality.

@@ -226,7 +226,7 @@ for(const patch of [{captureId:'other'}, {timelineOriginMs:1001}, {callGeneratio
   });
 
 for (const id of ['ask-A', 7])
-  test('the native resume packet carries the control requestId; ordinary Start does not: '+JSON.stringify(id), async () => {
+  test('native resume and ordinary Start carry their originating control requestIds: '+JSON.stringify(id), async () => {
     // 0.2.11: a host keys a refused resume to its ask by this requestId.
     const f = await fixture(); f.defer = true;
     try {
@@ -241,7 +241,7 @@ for (const id of ['ask-A', 7])
       assert.equal((await f.app.command(fresh)).ok, true);
       const ordinary = f.packets.filter(p => p.type === 'start');
       assert.equal(ordinary.length, 1);
-      assert.equal(Object.hasOwn(ordinary[0], 'requestId'), false);
+      assert.equal(ordinary[0].requestId, fresh.requestId);
     } finally {await f.close();}
   });
 

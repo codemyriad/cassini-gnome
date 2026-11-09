@@ -40,7 +40,7 @@ try {
   context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: true,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`,
-      `--allowlisted-extension-id=${fixtureId}`, '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns']
+      `--allowlisted-extension-id=${fixtureId}`, '--autoplay-policy=no-user-gesture-required', '--disable-audio-output', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns']
   });
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   const id = new URL(worker.url()).host;
@@ -155,7 +155,15 @@ try {
     const query = chrome.tabs.query.bind(chrome.tabs);
     chrome.tabs.query = async options => options.active ? [await chrome.tabs.get(tabId)] : query(options);
   }, tabId);
-  await popup.getByRole('heading',{name:'Meeting sources detected',exact:true}).waitFor();
+  await popup.getByRole('heading',{name:'Interactive session is unverified',exact:true}).waitFor();
+  await meeting.waitForFunction(() => discovery.some(row => row.sourceCount > 0 && row.heard === true));
+  const beforeStart = await popup.evaluate(tabId => chrome.runtime.sendMessage({target:'background',type:'status',tabId}), tabId);
+  assert.ok(await meeting.evaluate(() => discovery.some(row => row.sourceCount > 0 && row.heard === true)),
+    'reload repair must preserve the live RTP inventory without granting admission');
+  assert.equal(beforeStart.tabEvidence.transport.page, 'ready');
+  assert.equal(beforeStart.tabEvidence.callEvidence.state, 'unknown');
+  console.log('Reload repair observation:', JSON.stringify({sourceCount:await meeting.evaluate(() => discovery.at(-1).sourceCount),
+    heard:await meeting.evaluate(() => discovery.at(-1).heard),callEvidence:beforeStart.tabEvidence.callEvidence.state}));
   const started = await popup.evaluate(() => chrome.runtime.sendMessage({target:'background',type:'start',mode:'tracks'}));
   assert.equal(started.recording, true, JSON.stringify(started));
   const audioDeadline = Date.now() + 15000;

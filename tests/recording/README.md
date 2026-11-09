@@ -7,19 +7,17 @@ The browser protocol and source format are shared with Cassini for Mac.
 
 ## Layers
 
-`call-signals.mjs` runs the pinned companion's real `CallSignalProducer` and
-`AppControl` in Chromium through native messaging and GNOME, with private Pulse
-microphone/desktop tones. The unmodified WhatsApp adapter must stay unknown on
-passive playback. With pinned 0.2.25, even a trusted adapter's active mixed fact
-must fail closed for automatic recording: it negotiates only `call-signals-v1`.
-The actual Library Record action must still capture microphone and system PCM,
-continue past that legacy call's end, and save on explicit user Stop. No input,
-wire packet or native reply is fabricated. The verified automatic ownership,
-reconnect and persisted-route positives remain for the matching verified producer
-pin, and do not establish live-site compatibility. Headless E1 regressions retain
-verified mixed ownership, held input dispatch, metadata checkpoints and the exact
-120-second evidence-loss policy. GNOME adoption cannot merge before producer #79
-makes real Talk (including split-PC) qualify.
+`call-signals.mjs` runs the pinned companion's collector and `AppControl` in
+Chromium through native messaging and GNOME, with private Pulse microphone and
+desktop tones. The unmodified generic collector stays unknown on passive
+playback. A separately labelled controlled trusted adapter supplies mixed-route
+contract inputs with explicit negotiation/document binding to exercise actual
+system PCM, shared ownership, reconnect, Stop suppression, persisted route and
+call-ended Stop. It is not real-site mixed qualification. The legacy 0.2.25
+branch verifies failure-closed automatic admission and explicit manual Record.
+Headless E1 regressions retain held input dispatch, metadata checkpoints and
+the exact 120-second evidence-loss policy. Companion 0.2.26's real Talk split-PC
+producer qualification passed before the adoption pin.
 
 `app-control.mjs` also drives the production What is recorded dialog through
 off/on choices, then reloads a tab and terminates/restarts its worker. It checks

@@ -14,7 +14,7 @@ function relay() {
     connect(){const port={sent:[],onMessage:event(),onDisconnect:event(),disconnect(){this.disconnected=true},postMessage(m){if(!alive)throw Error('Extension context invalidated.');this.sent.push(m)}};ports.push(port);return port}}};
   const context=vm.createContext({window,chrome,setTimeout(fn,ms){const key=++id;timers.set(key,{fn,ms});return key},clearTimeout:key=>timers.delete(key)});
   const inject=()=>vm.runInContext(source,context);inject();
-  const page=data=>{for(const fn of [...handlers.get('message')||[]])fn({source:window,data:{channel:'cassini-page',...data}})};
+  const page=data=>{for(const fn of [...handlers.get('message')||[]])fn({isTrusted:true,source:window,data:{channel:'cassini-page',...data}})};
   return {ports,controls,handlers,runtime,timers,inject,page,context,invalidate(){alive=false}};
 }
 test('relay handshake belongs to the current worker instance; stale and incompatible replies never make it ready',()=>{
@@ -105,7 +105,9 @@ test('recovery injects only a relay, reuses compatible instances, and degrades r
     app.chrome.tabs.sendMessage=async()=>null;
     app.chrome.scripting={async executeScript(value){injections.push(value);throw Error('Cannot access contents of this page')}};
     await app.api.repairTab(2);
-    assert.deepEqual(JSON.parse(JSON.stringify(injections)),[{target:{tabId:2,allFrames:true},files:['relay.js'],world:'ISOLATED'}]);
+    assert.deepEqual(JSON.parse(JSON.stringify(injections)),[{target:{tabId:2,allFrames:true},world:'ISOLATED'}]);
+    assert.equal(typeof injections[0].func,'function');
+    assert.equal(injections.some(value=>value.world==='MAIN'),false);
     assert.equal(app.api.controlStatus().browserHealth.state,'idle');
     const instance=app.api.controlStatus().browserHealth.extensionInstance;
     app.chrome.tabs.sendMessage=async()=>({connected:true,protocol:1,instanceId:instance});
@@ -141,7 +143,7 @@ test('a relay that never answers cannot hold recovery or the first status foreve
     const repair=app.api.repairTab(2);
     await until(()=>timers.size===1);assert.equal([...timers.values()][0].ms,2500);
     [...timers.values()][0].fn();
-    await until(()=>injections===1&&timers.size===1);
+    await until(()=>injections===2&&timers.size===1);
     [...timers.values()][0].fn();
     await repair;
     assert.equal(app.api.browserHealth().state,'idle');
@@ -264,10 +266,10 @@ for(const order of ['disconnect before pageshow','disconnect after pageshow'])
 test('persisted restore replaces a frozen port and drains once: '+order,()=>{
  const f=relay(),old=f.ports[0];old.onMessage.emit({type:'start',token:'old'});
  f.page({type:'packet',token:'old',request:17,packet:{type:'audio'}});
- for(const fn of f.handlers.get('pagehide'))fn({persisted:true});
+ for(const fn of f.handlers.get('pagehide'))fn({isTrusted:true,persisted:true});
  old.postMessage=()=>{throw Error('Attempting to use a disconnected port object.')};
  if(order==='disconnect before pageshow')old.onDisconnect.emit();
- for(const fn of [...f.handlers.get('pageshow')])fn({persisted:true});
+ for(const fn of [...f.handlers.get('pageshow')])fn({isTrusted:true,persisted:true});
  assert.equal(f.ports.length,2,'pageshow must not reuse the cached closed port');
  assert.equal(f.context.__cassiniRelay.valid(),true,'a live extension realm must not retire on the stale port');
  if(order==='disconnect after pageshow')old.onDisconnect.emit();
@@ -278,4 +280,32 @@ test('persisted restore replaces a frozen port and drains once: '+order,()=>{
  f.page({type:'stopped',token:'old'});
  assert.equal(f.controls.filter(m=>m.type==='start').length,2);
  assert.equal(f.controls.at(-1).token,'new');assert.equal(fresh.disconnected,undefined);
+});
+
+test('synthetic MessageEvent dispatch cannot claim hook readiness',()=>{
+ const f=relay(),port=f.ports[0];
+ port.onMessage.emit({type:'relayHello',protocol:1,instanceId:'current'});
+ for(const listener of f.handlers.get('message'))listener({isTrusted:false,source:f.context.window,
+  data:{channel:'cassini-page',type:'hookReady',protocol:1,instanceId:'current'}});
+ assert.equal(port.sent.some(message=>message.type==='relayReady'),false);
+ f.page({type:'hookReady',protocol:1,instanceId:'current'});
+ assert.equal(port.sent.some(message=>message.type==='relayReady'),true);
+});
+
+
+test('synthetic pageshow/pagehide cannot reconnect or retire a live relay',()=>{
+ const f=relay(),port=f.ports[0];
+ port.onMessage.emit({type:'relayHello',protocol:1,instanceId:'current'});
+ f.page({type:'hookReady',protocol:1,instanceId:'current'});
+ const before=port.sent.length;
+ for(const name of ['pagehide','pageshow'])for(const listener of f.handlers.get(name))listener({isTrusted:false,persisted:true});
+ assert.equal(f.ports.length,1);assert.equal(port.disconnected,undefined);assert.equal(port.sent.length,before);
+ assert.equal(f.context.__cassiniRelay.valid(),true);
+});
+
+test('duplicate page hook-ready messages are forwarded only once per handshake',()=>{
+ const f=relay(),port=f.ports[0];
+ port.onMessage.emit({type:'relayHello',protocol:1,instanceId:'current'});
+ for(let i=0;i<200;i++)f.page({type:'hookReady',protocol:1,instanceId:'current'});
+ assert.equal(port.sent.filter(message=>message.type==='relayReady').length,1);
 });

@@ -16,6 +16,25 @@ class CallSignalContractTests(unittest.TestCase):
                     self.assertEqual(validator.is_valid(case['message']), accepted,
                                      list(validator.iter_errors(case['message'])))
 
+    def test_native_start_correlates_retired_automatic_and_later_manual_same_call(self):
+        for case in VECTORS['nativeStartCorrelation']['cases']:
+            with self.subTest(name=case['name']):
+                for command in case['commands']:
+                    schema('control-host').validate(command)
+                for packet in case['expectedNativeStarts']:
+                    schema('request').validate(packet)
+                starts = [command for command in case['commands'] if command['action'] == 'start']
+                native = case['expectedNativeStarts']
+                self.assertEqual([packet['requestId'] for packet in native],
+                                 [command['requestId'] for command in starts])
+                self.assertEqual(len({packet['callGeneration'] for packet in native}), 1)
+                self.assertNotEqual(case['retiredAutomaticRequestId'], case['pendingManualRequestId'])
+                arrival = [native[index]['requestId'] for index in case['nativeArrivalOrder']]
+                self.assertEqual(arrival, [case['expect']['acceptManualRequestId'],
+                                           case['expect']['rejectRetiredAutomaticRequestId']])
+                self.assertEqual(case['expect']['lateAutomaticInputs'], 0)
+                self.assertEqual(case['expect']['lateAutomaticOutputs'], 0)
+
     def test_unknown_call_and_remote_design_are_independent(self):
         message = copy.deepcopy(next(c['message'] for c in VECTORS['valid']
                                      if c['name'] == 'mixed-design-unknown-call'))
@@ -158,17 +177,30 @@ class CallSignalContractTests(unittest.TestCase):
                         self.assertEqual(fresh, step['expect']['newAdmissionEligible'])
                         self.assertEqual(must_withdraw, step['expect']['producerMustWithdraw'])
 
-    def test_d804_active_means_interactive_media_including_echo_and_early_media(self):
+    def test_d805_document_frame_port_cohort_accepts_split_media_but_never_crosses_identity(self):
         meaning = VECTORS['qualificationMeaning']
-        self.assertEqual(meaning['decision'], 'D80.4')
+        self.assertEqual(meaning['decision'], 'D80.5')
         cases = {case['name']: case for case in meaning['cases']}
         for case in cases.values():
-            active = all(case[field] for field in ['connectedSession', 'liveReceivedProgress',
-                         'pageCapturedRootOrClone', 'capturedTrackActuallySent', 'sameSessionBound'])
+            bound = all(case['receiverBinding'][field] == case['senderBinding'][field]
+                        for field in ['browserDocumentId', 'frameId', 'portIncarnation'])
+            fresh = all(0 <= case[field] <= VECTORS['freshness']['nativeProgressMaxAgeMs']
+                        for field in ['receivedProgressAgeMs', 'sentProgressAgeMs'])
+            active = bound and fresh and all(case[field] for field in ['connectedSession', 'liveReceivedProgress',
+                         'pageCapturedRootOrClone', 'capturedTrackActuallySent'])
             self.assertEqual('active' if active else 'unknown', case['expectState'])
-        for name in ['echo-or-microphone-test', 'unanswered-early-media']:
+        for name in ['echo-or-microphone-test', 'unanswered-early-media', 'unrelated-sending-pc',
+                     'split-publisher-subscriber', 'unrelated-mic-same-backend']:
             self.assertEqual(cases[name]['expectState'], 'active')
         self.assertEqual(cases['passive-webrtc-viewer']['expectState'], 'unknown')
+        for name in ['cross-document-split', 'cross-frame-split', 'retired-port-split',
+                     'stale-received-half', 'stale-sent-half', 'mic-preview', 'synthetic-sender']:
+            self.assertEqual(cases[name]['expectState'], 'unknown')
+        for route in VECTORS['routing']:
+            if 'qualificationCase' in route:
+                state = cases[route['qualificationCase']]['expectState']
+                self.assertEqual(route['signal']['tabs'][0]['callEvidence']['state'], state)
+                self.assertEqual(route['expect']['browserStart'], state == 'active')
 
     @staticmethod
     def binding_matches(case):

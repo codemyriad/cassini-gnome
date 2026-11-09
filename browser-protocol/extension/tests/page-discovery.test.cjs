@@ -25,7 +25,7 @@ function fixture() {
   const context=vm.createContext({window,navigator:{},performance:{now:()=>now},setInterval:fn=>timers.push(fn),
     setTimeout(fn,ms){const key=++id;timeouts.set(key,{fn,at:now+ms});return key;},clearTimeout:key=>timeouts.delete(key)});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../page-hook.js'),'utf8'),context);
-  const discover=()=>listeners.forEach(fn=>fn({source:window,data:{channel:'cassini-control',type:'discover'}}));
+  const discover=()=>listeners.forEach(fn=>fn({isTrusted:true,source:window,data:{channel:'cassini-control',type:'discover'}}));
   const state=()=>JSON.parse(JSON.stringify(messages.at(-1)));
   const advance=ms=>{now+=ms;for(const [key,timer]of timeouts)if(timer.at<=now){timeouts.delete(key);timer.fn();}};
   async function tick(){advance(1000);await timers[0]();}

@@ -1,26 +1,26 @@
-tree 5f783373a5aa222f455997d97994ec7a7d95fcbb
-parent bd63bd779a918e11c18169c8a87cb5420fd490a5
-parent 3f92f0241107cb055b18c7cbb8b950b03d90fc9c
-author Silvio Tomatis <silviot@gmail.com> 1794168478 +0100
-committer GitHub <noreply@github.com> 1794168478 +0100
+tree fc3cdca7040a3151ae534b598b779bc820b0a3cb
+parent 1d72416b09b07757fae4ae58d0766f9ef95d0efc
+parent 54a750de5d18b6291d8e077d6431d22cfc4d8c0c
+author Silvio Tomatis <silviot@gmail.com> 1794186639 +0100
+committer GitHub <noreply@github.com> 1794186639 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq8NaeCRC1aQ7uu5UhlAAANIQQAEKWFAB+tVWmDGQJcG0D3DMy
- ngUxBtKTJH7cpbq0Tz1rwlOVLYPIgkooipFaoASReiEZGI6r5R/uky+q+gch9X2T
- Jx9OMn4hRNvyiWNd9+7YOfgAWJwAOzFTS+YEyUO22mLbpTLhU38hVA/44TSxgIhl
- wJD0/IVA/yyNZ89V2836CsGRzczNx0Ja8xMaJqcS/qcJIAe95Q/q7mxWciIwkfwe
- kf6QP3k/j1+AwHoIrc6mQNwmsKpY7qtc+Wn2e1VkbroVzAjlxr8ZtKMF9jv+i/pa
- HOeX7I4E5Enq5VBZGTYlycSM9hYkJKGd1GnjqA3qz0ep1umVHqPnJRLJ8AMcEacC
- kUB5YKKttniE0SXw+JmCboHvUbgUxgtDfQmZFponHJjBvbTuNcf8toVjBEs4Q2L4
- 2Dx5m9xbd3N90/9SBYVjb4qPBSYcpQwbZ23O17v800S/V3ZvbBHnLZHFiwgGBg/Z
- 1cKdvH3WyF8eru1ngz6jirSPbk65GD6tLVtRtNvzutXqPmTjEIoIKuRhqBwAoAC+
- +cmSV3wxjel52hhSJKEJWWEfV3j+AfoS8haz/4792JhzIZVczrDEG9b5hcA9AM1q
- cnLo/cadr+67rfnmn6sc9V0J3K5jmKPGjR9xt16H7aSN7jSEXCO0mMEqDGlHI/HT
- KImighho/eWacxKXCJid
- =F+8O
+ wsFcBAABCAAQBQJq8R2PCRC1aQ7uu5UhlAAAex0QAJVjbYQ2bZGBP/q3N3kvc5FU
+ /itcZnNp6IwiRzqY5wWBLz6D/LBuMEyVwNbJTYhs3FL/DvJB7EtAnbDtM/UDI7BI
+ DSIXK15YKG0xtyuUFekcXWRqmXctgpZBvuDKkkXHcmp/wrRHkvSvVZaU6ZFoWG8W
+ Ilk5ZeJgHIbsGy8K4fVxqrhdjESVQHRk8j3Ut7/MRq2O6TQ/26zCDAO+51rYG7RK
+ TBnwdf5FiPaOwYRwTN/hQ5OH3tdfE/tFYdH73nBqmksBH0riyz+Geo14zGoMnIoP
+ /ye2614fqmEnhtgSE5p5/HsSOdotIfA//ks/27FqLcIVmLOfZ82BJHH5SzELe8Cg
+ oxW2A4rg3r+iIYOUbxTzqkrNYGOEzhI6OiZazBteI8TKUk7GowkQuYM3dOuPVV3u
+ GwPMxcvbKx5Ay/7k08WtUUm/NVO6umPxRVXMCU3cFjkxSxYZehecMyeZAlwqsxRM
+ LHCWAuWWWQ0KPJFYaljmXGi7WAT91P35us7Y2HeglRiYZAuBzkPt/1J3v5YiIkFD
+ YVpNttbuJZS2o2CYaDU4WLvHM/PSzfJa2t2mIRj/G80C+9v4TPuIy/TTZeiRLfSl
+ qWjKbRCG7r4jx1LdIl00duXwFH3X5ljYCW4U5GQAsYosRuo/T/u+fnL192/rCUuL
+ LLUHbmQGJ59ds5hhj5Wb
+ =Tpk7
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #78 from codemyriad/spec/verified-auto-admission
+Merge pull request #79 from codemyriad/feat/generic-call-evidence
 
-spec: require fresh generic evidence for every automatic recording route
+feat: generic verified call evidence and safe diagnostics

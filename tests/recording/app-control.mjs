@@ -73,7 +73,7 @@ async function join(title, localHz, remoteHz, id) {
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/`); await page.click('#join');
  }
- await meeting.evaluate(async ({title, localHz}) => {document.title = title; await window.join(localHz);}, {title, localHz});
+ await meeting.evaluate(async ({title, localHz}) => {document.title = title; await window.join(localHz, true);}, {title, localHz});
  await remote.evaluate(hz => window.join(hz), remoteHz);
  const offer = await meeting.evaluate(async () => {await meeting.pc.setLocalDescription(await meeting.pc.createOffer()); return meeting.description();});
  const answer = await remote.evaluate(async offer => {await meeting.pc.setRemoteDescription(offer); await meeting.pc.setLocalDescription(await meeting.pc.createAnswer()); return meeting.description();}, offer);
@@ -124,7 +124,7 @@ try {
  microphone.stderr.pipe(createWriteStream(path.join(artifacts, 'microphone-producer.log')));
  execFileSync('pactl', ['--server', process.env.PULSE_SERVER, 'set-sink-mute', 'cassini_desktop', '1']);
  assert.match(execFileSync('pactl', ['--server', process.env.PULSE_SERVER, 'get-sink-mute', 'cassini_desktop'], {encoding: 'utf8'}), /yes/);
- const flags = ['--no-sandbox', '--ozone-platform=x11', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns'];
+ const flags = ['--no-sandbox', '--ozone-platform=x11', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
  context = await chromium.launchPersistentContext(profile, {channel: 'chromium', headless: false, ignoreDefaultArgs: ['--mute-audio'], args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...flags]});
  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  assert.equal(new URL(worker.url()).host, id);
@@ -206,8 +206,8 @@ try {
   // Preserve the actual capture/shortcut/notification checks through manual intent.
   await record();
  }
- // The verified positive remains required after pinning #79. Its real Talk
- // split-PC qualification and matching recording fixture are merge prerequisites.
+ // The real pinned producer must qualify captured sending plus received RTP;
+ // synthetic senders alone never authorize these automatic Starts.
  await poll(async () => (await call()).statuses.filter(s => s.recording).length === 3,
   legacyCompanion ? 'explicit manual Record starts every current call' : 'verified auto opt-in starts every current call');
  await call({action: 'shortcut'});
@@ -283,11 +283,17 @@ try {
  await switchReceiveSlot(prejoinRemote, 0, [1100]);
  const heard = await poll(async () => (await call()).meetings.find(m => m.title === 'Pre-join evidence fixture' && m.heard === true), 'joined call evidence reaches Library');
  assert.equal(heard.sourceCount, 3);
- if (legacyCompanion) {
-  const state = await call();
-  assert.ok(!state.statuses.some(s => s.recording || s.starting), 'inbound RTP does not verify a legacy call');
-  assert.deepEqual(state.library.map(m => m.path).sort(), previousFolders, 'legacy RTP creates no recording folder');
-  await record();
+ const passiveState = await call();
+ assert.ok(!passiveState.statuses.some(s => s.recording || s.starting), 'inbound RTP without captured sending never verifies a call');
+ assert.deepEqual(passiveState.library.map(m => m.path).sort(), previousFolders, 'passive RTP creates no recording folder');
+ if (legacyCompanion) await record();
+ else {
+  // Real native-captured sending progress completes the cohort. The synthetic
+  // preview and truthful received RTP above must never authorize Start alone.
+  await prejoin.evaluate(async () => {
+   const track = (await navigator.mediaDevices.getUserMedia({audio: true})).getAudioTracks()[0];
+   await topologyPeer.getSenders().find(sender => sender.track).replaceTrack(track);
+  });
  }
  const joinedDirectory = await recording('Pre-join evidence fixture');
  const joinedAudio = await samples(joinedDirectory);

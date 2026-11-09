@@ -23,12 +23,22 @@
   const sourceRoots = new WeakMap();
   const sourceKeys = new WeakMap();
   const receiverGenerations = new WeakMap(), trackGenerations = new WeakMap();
-  const documentGeneration = globalThis.crypto?.randomUUID?.() || "doc-" + Math.random().toString(36).slice(2);
+  const nativeRead = globalThis.__cassiniCallEvidenceV1?.read;
+  const nativeIdentity = nativeRead?.();
+  const documentGeneration = nativeIdentity?.documentGeneration || globalThis.crypto?.randomUUID?.() || "doc-" + Math.random().toString(36).slice(2);
   let nextSource = 0, callGeneration = 0, lastCallGeneration = -1;
   let callAddress = window.location?.href?.split("#", 1)[0];
   function refreshCall() {
+    if (nativeRead) {
+      const value = nativeRead();
+      if (value) {
+        const generation = Number(value.hookGeneration);
+        if (generation !== callGeneration) { callGeneration = generation; resetEvidence(); }
+        return;
+      }
+    }
     const next = window.location?.href?.split("#", 1)[0];
-    if (next !== callAddress) { callAddress = next; callGeneration++; resetEvidence(); }
+    if (next !== callAddress) { callAddress = next; callGeneration++; resetEvidence();  }
   }
   function receiverGeneration(receiver, pc) {
     let value = receiverGenerations.get(receiver);
@@ -234,6 +244,7 @@
             if (count - previous.get(report.id) >= 10) tick.voters.add(pc);
           }
           previous.set(report.id, count);
+
         });
         // Missing reports keep their last baseline; first appearance never votes.
         previousStats.set(receiver, previous);
@@ -252,7 +263,7 @@
   let active = null, waitingHandshake = null;
   const emit = (token, value) => window.postMessage({ channel: "cassini-page", token, ...value }, "*");
   window.addEventListener("message", async event => {
-    if (event.source !== window || event.data?.channel !== "cassini-control") return;
+    if (event.isTrusted !== true || event.source !== window || event.data?.channel !== "cassini-control") return;
     const message = event.data;
     if (message.type === "handshake") {
       if (message.protocol === 1 && typeof message.instanceId === "string" && message.instanceId.length > 0 && message.instanceId.length <= 128) {

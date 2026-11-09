@@ -2,7 +2,7 @@
 <button id="join">Join test meeting</button><audio id="remote" autoplay></audio>
 <script>
 window.meeting = {};
-window.join = async (frequency) => {
+window.join = async (frequency, captured = false) => {
   const context = new AudioContext({sampleRate: 48000});
   await context.resume();
   function tone(hz) {
@@ -12,7 +12,9 @@ window.join = async (frequency) => {
     oscillator.connect(gain).connect(destination); oscillator.start();
     return {oscillator, destination, track: destination.stream.getAudioTracks()[0]};
   }
-  const source = tone(frequency);
+  const source = captured
+    ? {track: (await navigator.mediaDevices.getUserMedia({audio: true})).getAudioTracks()[0]}
+    : tone(frequency);
   const pc = new RTCPeerConnection({iceServers: []});
   const sender = pc.addTrack(source.track);
   pc.ontrack = event => {

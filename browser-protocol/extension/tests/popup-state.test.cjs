@@ -4,6 +4,19 @@ const state = import('../popup-state.mjs');
 const tab = {id: 7, title: 'Generated meeting', url: 'https://example.test/call/private'};
 const status = (tabs = [], extra = {}) => ({browserHealth: {nativeControl: 'connected', filesOk: true, tabs}, ...extra});
 
+test('healthy source transport and unknown call evidence explain the listen-only limitation',async()=>{
+  const {popupState}=await state;
+  const result=status([{tabId:7,state:'ready'}],{tabEvidence:{tabId:7,
+    callEvidence:{state:'unknown',reason:'unverified'},captureCapability:{kind:'separated',assurance:'observed'}}});
+  const view=popupState(result,tab);
+  assert.equal(view.title,'Interactive session is unverified');assert.match(view.description,/Listen-only.*manual/);
+  assert.equal(view.reloadTabId,null);assert.equal(view.connected,true);
+  result.tabEvidence.callEvidence={state:'active',reason:'activeCall'};
+  assert.equal(popupState(result,tab).title,'Interactive media session detected');
+  result.recording=true;result.tabId=7;result.tracks=2;
+  assert.equal(popupState(result,tab).title,'Browser capture is active','actual capture stays distinct from the evidence state');
+});
+
 test('a connected worker with no sources never claims that detection or recording works', async () => {
   const {popupState} = await state;
   const view = popupState(status(), tab);
