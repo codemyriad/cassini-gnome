@@ -104,7 +104,7 @@ text = text.replace(
 compile(text, str(test), "exec")
 css = Path("src/style.css")
 original_css = css.read_text()
-candidate_css = original_css.replace(".meeting-transcript .words { border-left: 3px solid transparent; padding-left: 8px; }", ".meeting-transcript .words { padding-left: 11px; }").replace(".meeting-transcript .words.listen-current { border-left-color: @accent_color;", ".meeting-transcript .words.listen-current { border-left: 3px solid @accent_color; padding-left: 8px;")
+candidate_css = original_css.replace(".meeting-transcript .words { border-left: 3px solid transparent; padding-left: 8px; }", ".meeting-transcript .words { border: 0 solid transparent; border-left-width: 3px; padding-left: 8px; }")
 assert candidate_css != original_css
 results = []
 try:

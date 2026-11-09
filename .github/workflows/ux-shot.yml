@@ -1,4 +1,4 @@
-name: Waiting Library border before-after (evidence only)
+name: Waiting Library transparent sides (evidence only)
 on:
   workflow_dispatch:
 permissions:
