@@ -4,7 +4,7 @@ Upstream-Contact: Codemyriad <cassini@codemyriad.io>
 Source: https://github.com/codemyriad/cassini-gnome
 
 Files: *
-Copyright: 2026 Codemyriad
+Copyright: 2026 Codemyriad OÜ
 License: GPL-3.0-or-later
 
 Files: src/cassini_talk/cldr-dates.json
@@ -18,7 +18,7 @@ Comment: Six calendar names/pattern tables extracted from Unicode CLDR JSON
 
 Files: browser-protocol/*
        browser-extension/*
-Copyright: 2026 Codemyriad
+Copyright: 2026 Codemyriad OÜ
 License: GPL-3.0-or-later
 Comment: Vendored from https://github.com/codemyriad/cassini-browser-protocol.
  The upstream licence is GPL-3.0-or-later, confirmed in upstream PR #10
@@ -26,12 +26,12 @@ Comment: Vendored from https://github.com/codemyriad/cassini-browser-protocol.
  browser-extension is the pinned runtime copy of the same extension.
 
 Files: tests/conformance/*
-Copyright: 2026 Codemyriad
+Copyright: 2026 Codemyriad OÜ
 License: CC0-1.0
 Comment: Conformance vectors vendored from https://github.com/codemyriad/cassini-format
 
 Files: data/io.codemyriad.CassiniTalk.metainfo.xml.in
-Copyright: 2026 Codemyriad
+Copyright: 2026 Codemyriad OÜ
 License: CC0-1.0
 
 Files: whistle/whistle.cact

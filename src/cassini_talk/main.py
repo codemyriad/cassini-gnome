@@ -1,6 +1,6 @@
 # main.py
 #
-# Copyright 2026 Codemyriad
+# Copyright 2026 Codemyriad OÜ
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -1710,8 +1710,8 @@ class CassiniApplication(Adw.Application):
             website="https://github.com/codemyriad/cassini-gnome",
             issue_url="https://github.com/codemyriad/cassini-gnome/issues",
             support_url="https://format.gocassini.com/",
-            developers=["Codemyriad https://github.com/codemyriad"],
-            copyright="© 2026 Codemyriad",
+            developers=["Codemyriad <cassini@codemyriad.io>"],
+            copyright="© 2026 Codemyriad OÜ",
             license_type=Gtk.License.GPL_3_0,
             comments=_("Play meeting recordings and read along with the transcript stored inside them."),
         )
