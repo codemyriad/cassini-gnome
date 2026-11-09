@@ -26,6 +26,13 @@ export async function run({context, remoteBrowser, call, automatic, poll, sample
   assert.ok(!negative.statuses.some(status => status.recording || status.starting), 'listen-only Talk must not automatically Start');
   assert.equal(negative.recordStartPending, false);
   assert.equal((await startsSent()).length, 0, "listen-only Talk sends no Start on the actual native control writer");
+  // Talk may finish displaying its media-settings modal after joining. Close
+  // that real UI before targeting the call toolbar behind it.
+  const dialog = meeting.getByRole('dialog').filter({visible: true}).last();
+  if (await dialog.count()) {
+   await dialog.getByRole('button', {name: 'Close', exact: true}).click();
+   await dialog.waitFor({state: 'hidden'});
+  }
   await meeting.getByRole('button', {name: /^Unmute(?: audio)?(?: \(.*\))?$/i}).first().click();
   const before = await waitRtcTopology(meeting, {sending: 'captured'});
   const topology = summarizeRtcTopology(before, await waitRtcTopology(meeting, {previous: before, sending: 'captured'}));

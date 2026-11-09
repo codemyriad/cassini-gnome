@@ -130,6 +130,7 @@ def dispatch(packet, result, ready):
                     guidance.append(child.get_label())
                 child = child.get_next_sibling()
         result.update(
+            recordingToStop=app.recording_to_stop(),
             browserPeers=app._browser_snapshot.get("browserPeers", []),
             companionAutoUnverified=text("setup.companion.autoUnverified") in guidance,
             companionGuidance=guidance,

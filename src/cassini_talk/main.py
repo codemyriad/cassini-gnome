@@ -1557,7 +1557,9 @@ class CassiniApplication(Adw.Application):
                 page.flush_edits()
         self._record_start_generation += 1
         self.stop_native()
-        if self.browser_capture_active() or self._record_start_future:
+        # This is explicit Stop intent (including the notification). A cached
+        # idle reply must not discard it while a new automatic Start arrives.
+        if getattr(self, "browser_watch", None) is not None or self.browser_capture_active() or self._record_start_future:
             self.stop_browser_recordings()
 
     def on_open_recording(self, *_):

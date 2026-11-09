@@ -213,6 +213,9 @@ try {
  // synthetic senders alone never authorize these automatic Starts.
  await poll(async () => (await call()).statuses.filter(s => s.recording).length === 3,
   legacyCompanion ? 'explicit manual Record starts every current call' : 'verified auto opt-in starts every current call');
+ // The toggle's mode is an app projection updated independently of inventory.
+ // Drive it only when the app itself offers Stop for these new captures.
+ await poll(async () => (await call()).recordingToStop.length > 0, 'app Record toggle offers Stop');
  await call({action: 'shortcut'});
  await poll(async () => !(await call()).statuses.some(s => s.recording), 'actual portal shortcut stops all sessions');
  await automatic(false);

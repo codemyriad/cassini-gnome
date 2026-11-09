@@ -214,3 +214,20 @@ def test_second_explicit_stop_is_not_lost_while_previous_stop_result_is_pending(
     assert second_entered.is_set(), "A new explicit Stop was discarded behind the previous RPC"
     assert calls == ["user", "user"]
     assert not held
+
+
+def test_explicit_stop_reaches_broker_despite_cached_idle(application_class):  # noqa: F811
+    """A notification's Stop intent is authoritative even during a watch update."""
+    calls = []
+    app = SimpleNamespace(
+        get_windows=lambda: [],
+        _record_start_generation=0,
+        stop_native=lambda: calls.append("native"),
+        browser_watch=object(),
+        browser_capture_active=lambda: False,
+        _record_start_future=None,
+        stop_browser_recordings=lambda: calls.append("browser"),
+    )
+    application_class.on_stop_recording(app)
+    assert calls == ["native", "browser"]
+    assert app._record_start_generation == 1
