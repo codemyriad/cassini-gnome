@@ -52,41 +52,13 @@ def until(check):
     assert check(), "Synthetic transcript did not settle"
 
 
-# A brief reply lands inside one continuous sentence.
-acknowledgment = [
-    Word("ada", i * 500, (i + 1) * 500, word)
-    for i, word in enumerate(
-        [
-            "The",
-            "release",
-            "candidate",
-            "is",
-            "ready",
-            "for",
-            "testing,",
-            "and",
-            "I",
-            "will",
-            "send",
-            "the",
-            "download",
-            "link",
-            "after",
-            "this",
-            "call.",
-        ]
-    )
-] + [Word("ben", 3050, 3550, "Sounds good.")]
-# A producer sorted each speaker's words by start time, shredding both sentences.
-competing = [
-    Word(speaker, i * 500 + offset, (i + 1) * 500 + offset, word)
-    for speaker, offset, sentence in (
-        ("ada", 0, "I can check the Linux build and report any problems today."),
-        ("ben", 50, "I will test the browser connection and check the microphone settings."),
-    )
-    for i, word in enumerate(sentence.split())
-]
-scenarios = (("acknowledgment", acknowledgment), ("competing", competing))
+# Use the same committed English transcript bodies for both source checkouts.
+examples = Path(__file__).resolve().parents[1] / "ux/interjections"
+scenarios = []
+for name in ("acknowledgment", "competing"):
+    body = json.loads((examples / f"{name}.words.json").read_text())
+    items = [Word(w["speaker"], w["startMs"], w["endMs"], w["text"]) for w in body["items"]]
+    scenarios.append((name, items))
 output = Path(os.environ["CASSINI_SCREENSHOT_OUT"])
 output.parent.mkdir(parents=True, exist_ok=True)
 services = DesktopServices()

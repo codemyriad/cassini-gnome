@@ -1,0 +1,114 @@
+{
+  "format": "cassini.words.v1",
+  "language": "en",
+  "items": [
+    {
+      "speaker": "ada",
+      "startMs": 0,
+      "endMs": 500,
+      "text": "The"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 500,
+      "endMs": 1000,
+      "text": "release"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 1000,
+      "endMs": 1500,
+      "text": "candidate"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 1500,
+      "endMs": 2000,
+      "text": "is"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2000,
+      "endMs": 2500,
+      "text": "ready"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2500,
+      "endMs": 3000,
+      "text": "for"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 3000,
+      "endMs": 3500,
+      "text": "testing,"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 3050,
+      "endMs": 3550,
+      "text": "Sounds good."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 3500,
+      "endMs": 4000,
+      "text": "and"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4000,
+      "endMs": 4500,
+      "text": "I"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4500,
+      "endMs": 5000,
+      "text": "will"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 5000,
+      "endMs": 5500,
+      "text": "send"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 5500,
+      "endMs": 6000,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 6000,
+      "endMs": 6500,
+      "text": "download"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 6500,
+      "endMs": 7000,
+      "text": "link"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 7000,
+      "endMs": 7500,
+      "text": "after"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 7500,
+      "endMs": 8000,
+      "text": "this"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 8000,
+      "endMs": 8500,
+      "text": "call."
+    }
+  ]
+}
