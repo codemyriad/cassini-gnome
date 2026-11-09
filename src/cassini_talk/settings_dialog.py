@@ -10,6 +10,7 @@ from threading import Event
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from . import browser_service
+from .cairo_shadows import CairoShadows
 from .library import library_root
 from .strings import plural, text
 
@@ -34,6 +35,8 @@ class SettingsDialog(Adw.PreferencesDialog):
             content_height=680,
             css_classes=["cassini-preferences"],
         )
+        self._cairo_shadows = CairoShadows()
+        self.connect("unmap", lambda *_: GLib.idle_add(self._cairo_shadows.clear))
         self.saved_voices_page = None
         self.app = app
         self.service_path = service_path
@@ -710,6 +713,9 @@ class SettingsDialog(Adw.PreferencesDialog):
             row.add_suffix(retry)
             self.move_lines.add(row)
             self._move_rows.append(row)
+
+    def do_snapshot(self, snapshot):
+        self._cairo_shadows.snapshot(self, snapshot)
 
     def _closed(self, *_):
         self.closed = True
