@@ -153,8 +153,24 @@ def test_this_build_registers_every_shard():
 def collect(cwd, shards):
     """Real `pytest --collect-only` in `cwd`: the whole suite (shard None) and
     each shard ("i/N"), concurrently; per run its exit code, node ids and output."""
-    env = {name: value for name, value in os.environ.items() if not name.startswith(("CASSINI_TEST_", "PYTEST_"))}
-    command = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "--collect-only", "-q", "tests"]
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(("CASSINI_TEST_", "PYTEST_")) and name != "PYTHONOPTIMIZE"
+    }
+    # Collection executes module assertions, but never test bodies. Keep those
+    # assertions enabled without paying to rewrite every unexecuted test body.
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "--assert=plain",
+        "-p",
+        "no:cacheprovider",
+        "--collect-only",
+        "-q",
+        "tests",
+    ]
     runs = [
         subprocess.Popen(
             command,
@@ -235,8 +251,10 @@ def test_real_collection_runs_recorded_unrecorded_and_symlinked_files_exactly_on
     assert_shards_partition(full, shards)
 
 
-def test_a_collection_error_fails_the_shard_that_owns_the_file(tmp_path):
-    files = {"test_a.py": PARAMETRIZED, "test_b.py": PARAMETRIZED, "test_broken.py": "raise RuntimeError('broken')\n"}
+@pytest.mark.parametrize("broken", ["raise RuntimeError('broken')", "assert False, 'broken'"], ids=["error", "assert"])
+def test_a_collection_error_fails_the_shard_that_owns_the_file(tmp_path, monkeypatch, broken):
+    monkeypatch.setenv("PYTHONOPTIMIZE", "1")
+    files = {"test_a.py": PARAMETRIZED, "test_b.py": PARAMETRIZED, "test_broken.py": broken + "\n"}
     root = sandbox(tmp_path, {"test_a.py": 10.0, "test_b.py": 5.0}, files)
     full, *shards = collect(root, [None, "1/2", "2/2"])
     assert full.code != 0

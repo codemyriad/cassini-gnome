@@ -548,7 +548,10 @@ def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
     products = dict(jobs(WORKFLOWS / "build.yml"))["products"]
     for line in ("meson test -C _build-core --print-errorlogs", "meson compile -C _build-core cassini-talk-pot"):
         assert line in tests and line not in products
-    assert "container: ubuntu:26.04" in tests and "if:" not in tests
+    assert "container: ubuntu:26.04" in tests and not re.search(r"^    if:", tests, re.M)
+    for step in re.split(r"^      - ", tests, flags=re.M)[1:]:
+        if "if:" in step:
+            assert step.startswith("uses: actions/upload-artifact@v7\n") and "if: always()" in step
     # The same minimal environment as the products' build.
     install = re.compile(r"- name: Install build tools \(minimal source-validation environment\)\n(?:        .*\n)+")
     assert install.search(tests)[0] == install.search(products)[0]
