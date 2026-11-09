@@ -151,8 +151,14 @@ with tempfile.TemporaryDirectory() as temporary:
             page.recording_notice.set_visible(False)
             window.player.pause()
             window.player.seek(0)
-            until(lambda page=page: page.bound and page.get_mapped())
+            until(lambda page=page: len(page.bound) >= min(6, len(page.meeting.turns)) and page.get_mapped())
             until(lambda page=page: page.get_width() == window.get_width())
+            # Binding can precede the frame that paints all row headers.
+            # Wait for two frames so the captured node contains the full page.
+            frames = []
+            window.add_tick_callback(lambda *_, frames=frames: (frames.append(True), len(frames) < 2)[1])
+            window.queue_draw()
+            until(lambda frames=frames: len(frames) >= 2)
             target = output.with_name(output.stem + "-" + name + ".png")
             node = painted_node(window)
             assert window.get_renderer().render_texture(node, node.get_bounds()).save_to_png(str(target))
