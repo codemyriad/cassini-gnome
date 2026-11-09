@@ -142,7 +142,10 @@ class Feed:
                 return original(description, *args)
             kind = "microphone" if "device=@DEFAULT_SOURCE@" in description else "system"
             buffers = None if self.committed else BUFFERS
-            description, count = PULSESRC.subn(silence_source(self.rate, buffers) + " ", description, count=1)
+            # Finite feeds need the same PCM and EOS without wall-clock pacing.
+            # Broker feeds stay live to align their PTS with the durable commit.
+            replacement = silence_source(self.rate, buffers, live=self.committed is not None)
+            description, count = PULSESRC.subn(replacement + " ", description, count=1)
             assert count == 1 and CAPTURE_CONVERT in description
             self.parsed.append(description)
             element = original(description, *args)
