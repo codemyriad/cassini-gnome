@@ -3,6 +3,7 @@
 import json
 import os
 import platform
+import re
 import subprocess
 from pathlib import Path
 
