@@ -485,6 +485,10 @@ class MeetingPage(Adw.NavigationPage):
             self._highlight_target = None
 
     def _listening_requested(self, *_):
+        dialog = self._dialog_focus
+        if dialog is not None and dialog.closed and not getattr(dialog, "_recompute", None):
+            # A new explicit request supersedes the closed dialog's focus return.
+            self._clear_dialog_focus()
         self._follow_until = 0
         self._scroll_listening_turn()
 
@@ -869,6 +873,10 @@ class MeetingPage(Adw.NavigationPage):
                 self._scroll_speaker(row)
         if not listen.active:
             self._listening_target = None
+            # Stop invalidates a delayed Name return. A merge must still await
+            # its destination row while the removed source stops listening.
+            if not getattr(self._dialog_focus, "_recompute", None):
+                self._clear_dialog_focus()
         self._highlight_listening()
         self.listening_bar.update()
         self.timeline.set_target(listen.turns_of(listen.speaker) if listen.active else ())

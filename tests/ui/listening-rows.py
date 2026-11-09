@@ -314,6 +314,56 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.sample_from.get_text() == text("speakers.sampleFrom", position="00:00:32")
     focus_event(window, lambda: page.listening_bar.buttons["name"], dialog.close)
     window.listen.stop()
+
+    # Hold the dialog's restoration request as a busy main loop can, then
+    # deliver its actual idle callback after Stop and a new Play focus choice.
+    def check_delayed_name_return(stop_first):
+        window.listen.start("voice-10", 0, play=False)
+        until(window, lambda: bar.get_child_revealed())
+        deferred_focus = []
+        queue_focus = page._queue_dialog_focus
+        page._queue_dialog_focus = lambda *_: deferred_focus.append(True)
+        try:
+            page.listening_bar.name_speaker()
+            deferred_dialog = page.speakers_dialog
+            until(window, lambda: deferred_dialog.play.has_focus())
+            deferred_dialog.close()
+            until(
+                window,
+                lambda: (
+                    deferred_focus
+                    and deferred_dialog.closed
+                    and not deferred_dialog.get_mapped()
+                    and window.get_visible_dialog() is None
+                ),
+            )
+            if stop_first:
+                window.listen.stop()
+            assert window.listen.start("voice-12", 0, play=False)
+            until(window, lambda: bar.get_child_revealed())
+            new_play = page._speaker_rows["voice-12"][1]
+            assert new_play.grab_focus()
+        finally:
+            page._queue_dialog_focus = queue_focus
+        delivered_focus = []
+
+        def deliver_old_focus():
+            page._restore_dialog_focus()
+            delivered_focus.append(True)
+            return GLib.SOURCE_REMOVE
+
+        GLib.idle_add(deliver_old_focus)
+        until(window, lambda: delivered_focus)
+        assert window.get_focus() is new_play, (
+            "An old naming dialog stole the new Play focus",
+            window.get_focus() is bar.buttons["name"],
+            window.get_focus().get_tooltip_text(),
+            stop_first,
+        )
+        window.listen.stop()
+
+    for stop_first in (True, False):
+        check_delayed_name_return(stop_first)
     # Real merge, filesystem observation, paused next-unnamed cue and Undo.
     original_metadata = json.loads((meeting.directory / "meeting.json").read_text())
     updated_speakers = [
