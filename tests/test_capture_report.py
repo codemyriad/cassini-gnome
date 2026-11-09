@@ -423,6 +423,9 @@ def test_terminal_or_malformed_event_alone_does_not_invent_a_capture_inventory()
     "route",
     [
         dict(source="system", reason="mixedSiteSignal", site="Synthetic meeting"),
+        dict(source="system", reason="mixedSiteSignal", site="webrtc-interactive"),
+        dict(source="system", reason="mixedSiteSignal", site="future-machine-adapter"),
+        dict(source="system", reason="mixedSiteSignal"),
         dict(source="future-source", reason="future-reason", site="future-site"),
     ],
 )
@@ -466,8 +469,10 @@ def test_signal_system_route_survives_publication_cache_removal_and_metadata_edi
     shutil.rmtree(session.directory)
     (meeting,) = LibraryScanner(root).scan().meetings
     assert meeting.audio_file.name == published.name and meeting.metadata["recordingDetails"]["othersRoute"] == route
-    expected = text("details.othersRoute.mixedSite", site="Synthetic meeting")
+    expected = text("details.othersRoute.mixedGeneric")
     assert (expected in read_details(meeting).notes) == (route["reason"] == "mixedSiteSignal")
+    if route.get("site") in {"webrtc-interactive", "future-machine-adapter"}:
+        assert route["site"] not in read_details(meeting).plain_text()
     edit.edit_meeting(
         root, "Recording", session.manifest["id"], dict(title="Renamed synthetic signal call", titleSource="user")
     )

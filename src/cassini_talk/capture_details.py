@@ -558,14 +558,10 @@ def read_details(meeting):
     folder = str(meeting.audio_file.parent if meeting.audio_file else meeting.directory)
     notes = []
     route = meeting.metadata.get("recordingDetails", {}).get("othersRoute")
-    if (
-        isinstance(route, dict)
-        and route.get("source") == "system"
-        and route.get("reason") == "mixedSiteSignal"
-        and isinstance(route.get("site"), str)
-        and 0 < len(route["site"]) <= 200
-    ):
-        notes.append(text("details.othersRoute.mixedSite", site=clean(route["site"], 200)))
+    if isinstance(route, dict) and route.get("source") == "system" and route.get("reason") == "mixedSiteSignal":
+        # Current routes persist adapter machine IDs, not reviewed display
+        # names. Named-site copy is reserved for a future named adapter.
+        notes.append(text("details.othersRoute.mixedGeneric"))
     try:
         fd = os.open(meeting.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except OSError:

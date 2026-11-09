@@ -405,7 +405,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "recording-fallback-" + current.key not in services.notifications
     window.show_recording_details()
     dialog = window.recording_details_dialog
-    expected = text("details.othersRoute.mixedSite", site="Synthetic meeting")
+    expected = text("details.othersRoute.mixedGeneric")
     until(
         lambda: dialog.report and expected in dialog.report.notes and dialog.get_mapped() and expected in texts(dialog)
     )

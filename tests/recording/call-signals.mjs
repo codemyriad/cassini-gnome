@@ -243,7 +243,8 @@ try {
  assert.ok(!audio.manifest.events.some(e=>e.type==='othersSource'&&['lost','missing'].includes(e.reason)));
  await until(async ()=>(await call()).library.some(m=>m.path===directory),'signal owner visible in Library');
  await call({action:'details',path:directory});
- await until(async ()=>(await call()).details?.includes('synthetic-site-fixture mixes all remote voices'),'quiet Details uses persisted route');
+ await until(async ()=>(await call()).details?.includes('This call mixed all remote voices into one stream'),'quiet Details uses persisted route');
+ assert.ok(!(await call()).details.includes('synthetic-site-fixture'), 'machine adapter ID is not a display name');
  assert.equal((await call()).notifications['recording-fallback-'+path.basename(directory)],undefined);
  await call({action:'selection',path:directory,me:false,others:true});
  await call({action:'sources-done'});
