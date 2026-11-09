@@ -149,9 +149,16 @@ jobs:
           python3 talk-harness/scripts/nextcloud_compatibility.py observe --stack "$RUNNER_TEMP/nextcloud-lock/stack.json" --project "$PROJECT_NAME" --image "$NEXTCLOUD_IMAGE" --out protocol/artifacts/nextcloud-stack.json
           call_url=$(talk-harness/bin/cassini dev room create --name 'Cassini extension regression' | tail -n1)
           echo "NEXTCLOUD_TEST_CALL_URL=$call_url" >> "$GITHUB_ENV"
+          other_call_url=$(talk-harness/bin/cassini dev room create --name 'Cassini separate cohort regression' | tail -n1)
+          echo "NEXTCLOUD_TEST_OTHER_CALL_URL=$other_call_url" >> "$GITHUB_ENV"
       - name: Detect the real call and preserve separate incoming PCM
         working-directory: protocol
-        run: timeout 240 node tests/nextcloud-talk.mjs
+        run: |
+          node --test tests/rtc-topology-probe.test.mjs
+          timeout 240 node tests/nextcloud-talk.mjs
+      - name: Measure generic RTC positives, negatives and semantic ambiguity
+        working-directory: protocol
+        run: timeout 240 node tests/rtc-evidence-observations.mjs
       - name: Preserve Talk service logs
         if: always()
         run: |

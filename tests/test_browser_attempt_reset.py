@@ -10,6 +10,7 @@ import pytest
 from test_browser_capture import server  # noqa: F401
 from test_browser_service import meeting, no_command, service, wait_for  # noqa: F401
 from test_control_reconnect import INSTANCE, live, lose, peer
+from verified_fixture import signal
 
 from cassini_talk.browser_service import STOPPED_CALL_GRACE, STOPPED_CALL_REPORT_WINDOW, request, send_packet
 
@@ -17,11 +18,29 @@ URL = meeting()["url"]
 
 
 def announce(extension, *, heard=True, url=URL):
+    previous = getattr(extension, "fixture_call_url", URL)
+    serial = getattr(extension, "fixture_call_serial", 0) + (url != previous)
+    extension.fixture_call_url, extension.fixture_call_serial = url, serial
+    row = dict(meeting(), title=extension.title, url=url, heard=heard, pageState="present")
+    if serial:
+        row.update(
+            callGeneration=f"call-{serial}", documentGeneration=f"hook-{serial}", browserDocumentId=f"chrome-{serial}"
+        )
     send_packet(
         extension.stream,
         dict(
             type="meetings",
-            meetings=[dict(meeting(), title=extension.title, url=url, heard=heard, pageState="present")],
+            meetings=[row],
+        ),
+    )
+    extension.signal_sequence += 1
+    send_packet(
+        extension.stream,
+        dict(
+            type="callSignals",
+            browserInstance=extension.profile,
+            sequence=extension.signal_sequence,
+            tabs=[signal(row)],
         ),
     )
     wait_for(

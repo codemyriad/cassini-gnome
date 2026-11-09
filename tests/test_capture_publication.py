@@ -194,7 +194,7 @@ def test_browser_rpc_stop_acknowledges_pcm_and_returns_saving_paths_for_quit(tmp
     assert ready.wait(2)
     client = BrowserAudioProxy(path=socket)
     try:
-        path = start_wire(client, "rpc-published")["path"]
+        path = start_wire(client, "rpc-published", service=service)["path"]
         remote(client, "remote")
         stopped = request("stop-all", path=socket)
         assert entered.wait(3)

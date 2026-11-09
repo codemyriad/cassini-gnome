@@ -15,7 +15,7 @@ module.exports = async function fixture(run, settings={}) {
  Peer.prototype.setRemoteDescription=function(){return this.descriptionTask || Promise.resolve()};
  class Stream {constructor(tracks){this.tracks=tracks}getAudioTracks(){return this.tracks}}
  class Context {constructor(){if(contextError)throw Error('generated context attach failure')}sampleRate=48000;state='running';async close(){this.state='closed'}}
- const control=async data=>{for(const fn of listeners)await fn({source:window,data:{channel:'cassini-control',...data}})};
+ const control=async data=>{for(const fn of listeners)await fn({isTrusted:true,source:window,data:{channel:'cassini-control',...data}})};
  const window={location:{href:'https://meet.test/call-A'},RTCPeerConnection:Peer,addEventListener:(_n,fn)=>listeners.push(fn),postMessage(message){
   messages.push(message);
   if(settings.deliver){settings.deliver(message);return;}

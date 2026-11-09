@@ -468,7 +468,16 @@ def test_auto_opt_in_does_not_resurrect_a_previous_bound_user_stop(tmp_path, mon
     tap, _ = record_live(capture, clock)
     service, browser, identity, logical, finished = bound_broker(tmp_path, capture)
     # The call has a generation (D52.5), so the generation guard is exercised too.
-    browser.meetings[identity[1]]["callGeneration"] = capture.call_generation = 7
+    browser.meetings[identity[1]]["callGeneration"] = capture.call_generation = "call-7"
+    from verified_fixture import alias, verify
+
+    browser.meetings[identity[1]] = alias(dict(browser.meetings[identity[1]], heard=True))
+    # This positive is an explicit opt-in with current verified evidence, not
+    # the superseded source-count-only automatic policy.
+    acknowledge = browser.send
+    browser.send = lambda packet: None
+    verify(service, browser, [browser.meetings[identity[1]]])
+    browser.send = acknowledge
     if route == "browser-lost":
         capture.browser_lost = True
     tap.drained.set()

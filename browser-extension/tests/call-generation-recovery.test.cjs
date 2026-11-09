@@ -35,9 +35,12 @@ for(const order of ['browser-first','hook-first'])test(`a real boundary during w
   else{discover(early,'1');chrome.tabs.onUpdated.emit(2,{url:'https://meet.example/new-call'})}
  });
  try{
-  const current=(await fresh.api.meetings()).meetings[0];assert.notEqual(current.callGeneration,row.callGeneration);
+  assert.equal((await fresh.api.meetings()).meetings.length,0,'pre-handshake discovery cannot publish inventory');
+  const boundary=fresh.api.callInfo(2).generation;assert.notEqual(boundary,row.callGeneration,'the browser boundary rotates during recovery');
+  const early=fresh.pages[0];discover(early,'1');
+  const current=(await fresh.api.meetings()).meetings[0];assert.equal(current.callGeneration,boundary);
   const generation=current.callGeneration;assert.equal(current.sourceCount,1);assert.equal(current.heard,true);assert.equal(current.pageState,'present');
-  const early=fresh.pages[0];discover(early,'1');fresh.chrome.tabs.onUpdated.emit(2,{url:'https://meet.example/new-call'});
+  discover(early,'1');fresh.chrome.tabs.onUpdated.emit(2,{url:'https://meet.example/new-call'});
   assert.equal((await fresh.api.meetings()).meetings[0].callGeneration,generation);
   discover(early,'0');assert.equal((await fresh.api.meetings()).meetings[0].callGeneration,generation);
   assert.equal((await fresh.api.meetings()).meetings[0].heard,true);

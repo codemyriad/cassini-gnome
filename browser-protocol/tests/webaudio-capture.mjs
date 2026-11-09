@@ -22,7 +22,7 @@ if(!args.length||args.includes('--negative-cases')) {
   const {stdout}=await promisify(execFile)(process.execPath,[fileURLToPath(import.meta.url),'--observe-only','--fixture='+fixture.id],{env:process.env});
   process.stdout.write(stdout);
  }
- console.log('Call-signal producer stays unknown on unverified WhatsApp; no site markers or graph capture.');
+ console.log('Generic call evidence stays unknown for passive media; no hostname admission or graph capture.');
  process.exit(0);
 }
 const fixtureId=args.find(arg=>arg.startsWith('--fixture='))?.slice('--fixture='.length)||'media-only-worklet';
@@ -117,19 +117,17 @@ try {
  assert.ok(inventories.length>0,'observe actual control inventory');
  assert.ok(inventories.every(p=>p.meetings.length===0),'media-only graph must not publish a meeting');
  assert.deepEqual(pageErrors,[]);
- await worker.evaluate(()=>fixtureControlPort.onMessage.emit({type:'configure',capabilities:['call-signals-v1']}));
+ await worker.evaluate(()=>fixtureControlPort.onMessage.emit({type:'configure',capabilities:['call-signals-v1','verified-auto-admission-v1']}));
  const signal=await observed(()=>worker.evaluate(()=>fixturePackets.filter(p=>p.type==='callSignals').at(-1)),'negotiated call-signal snapshot');
  report.callSignals=signal;
  const profileIdentity=await worker.evaluate(async()=> (await chrome.storage.local.get('cassiniBrowserInstance')).cassiniBrowserInstance);
  assert.equal(signal.browserInstance,profileIdentity);assert.equal(typeof profileIdentity,'string');
  const acknowledged=await worker.evaluate(()=>fixturePackets.findIndex(p=>p.type==='configured')<fixturePackets.findIndex(p=>p.type==='callSignals'));
  assert.equal(acknowledged,true,'configure acknowledged before snapshot');
- if(fixture.origin==='https://web.whatsapp.com') {
-  const row=await observed(()=>worker.evaluate(tabId=>fixturePackets.filter(p=>p.type==='callSignals').at(-1)?.tabs.find(row=>row.tabId===tabId),tabId),'current WhatsApp unknown-call row');
-  assert.equal(row.remoteAudio,'mixed');assert.equal(row.callEvidence.state,'unknown');assert.equal(row.callEvidence.reason,'unverified');assert.equal(row.callEvidence.callGeneration,null);
-  const browserDocument=await worker.evaluate(async tabId=>(await chrome.scripting.executeScript({target:{tabId,frameIds:[0]},world:'ISOLATED',func:()=>null}))[0].documentId,tabId);
-  assert.equal(row.documentGeneration,browserDocument,'browser-owned document identity');
- }else assert.equal(signal.tabs.length,0,'unsupported pages do not become signal candidates');
+ const row=await observed(()=>worker.evaluate(tabId=>fixturePackets.filter(p=>p.type==='callSignals').at(-1)?.tabs.find(row=>row.tabId===tabId),tabId),'current generic unknown-session row');
+ assert.equal(row.remoteAudio,'unknown');assert.equal(row.callEvidence.state,'unknown');assert.equal(row.callEvidence.callGeneration,null);
+ const browserDocument=await worker.evaluate(async tabId=>(await chrome.scripting.executeScript({target:{tabId,frameIds:[0]},world:'ISOLATED',func:()=>null}))[0].documentId,tabId);
+ assert.equal(row.documentGeneration,browserDocument,'browser-owned document identity');
  report.callSignals=await worker.evaluate(()=>fixturePackets.filter(p=>p.type==='callSignals').at(-1));
  const observations=await worker.evaluate(()=>fixturePackets);
  assert.equal(observations.some(p=>p.type==='start'||p.type==='audio'),false,'negotiation and playback never start capture');

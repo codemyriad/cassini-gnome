@@ -4,6 +4,7 @@
   const previous = globalThis.__cassiniRelay;
   if (previous?.valid()) { previous.discover(); return; }
   previous?.retire();
+  const observerDocumentStart = globalThis.__cassiniRepairInjection !== true;
   const protocol = 1;
   let instanceId = null, hookReady = false, handshakeComplete = false, retired = false, handshakeTimer = null;
   const waiters = new Set();
@@ -39,10 +40,11 @@
     } else cleanup();
   }
   function send(message) {
+    if (['relayHello','relayReady','relayUnavailable'].includes(message.type)) message={...message,observerDocumentStart};
     try { port?.postMessage(message); }
     catch { retire(); }
   }
-  globalThis.__cassiniRelay = {valid, retire, discover: () => control({type:"discover"})};
+  globalThis.__cassiniRelay = {valid, retire, observerDocumentStart, discover: () => control({type:"discover"})};
   let port = null, token = null, drainingToken = null, pendingStart = null;
   const pending = new Set();
   let sourceCount, heard = false, hidden = false;
@@ -106,12 +108,14 @@
   }
   chrome.runtime.onMessage.addListener(runtimeMessage);
   connect();
-  listen("pagehide", () => {
+  listen("pagehide", event => {
+    if(event?.isTrusted!==true)return;
     hidden = true; sourceCount = 0; heard = false;
     send({ type: "pageState", state: "navigating" });
     send({ type: "discovery", sourceCount, heard });
   });
   listen("pageshow", event => {
+    if(event?.isTrusted!==true)return;
     hidden = false;
     // The cached realm may thaw before its queued onDisconnect runs. Never
     // send through that stale port or retire an otherwise valid relay for it.
@@ -125,11 +129,12 @@
     control({ type: "discover" });
   });
   listen("message", event => {
-    if (event.source !== window || event.data?.channel !== "cassini-page") return;
+    if (event.isTrusted !== true || event.source !== window || event.data?.channel !== "cassini-page") return;
     const { type, packet, request } = event.data;
     if (retired && !(drainingToken && event.data.token === drainingToken)) return;
     if (type === "hookReady") {
       if (event.data.protocol !== protocol || event.data.instanceId !== instanceId || !instanceId) return;
+      if(hookReady&&handshakeComplete)return;
       hookReady = true; handshakeComplete = true; clearTimeout(handshakeTimer);
       send({type:"relayReady", protocol, instanceId}); settle();
       control({type:"discover"}); return;

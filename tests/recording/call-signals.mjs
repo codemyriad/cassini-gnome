@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// D74: real 0.2.25 producer -> native messaging -> GNOME -> private Pulse PCM.
-// Default WhatsApp evidence stays unknown. Positive evidence comes ONLY from a
-// trusted fixture adapter in the extension worker, never from the test page.
+// D74/D80: pinned producer -> native messaging -> GNOME -> private Pulse PCM.
+// Passive pages use the unmodified production collector. Mixed-route ownership
+// uses an explicitly controlled trusted adapter, not real-site qualification.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
@@ -84,7 +84,8 @@ async function facts(page, state, generation) {
 try {
  await mkdir(artifacts,{recursive:true});
  const manifest=JSON.parse(await readFile(path.join(extension,'manifest.json')));
- assert.equal(manifest.version,'0.2.25');
+ const legacyCompanion=manifest.version==='0.2.25';
+ evidence.companionVersion=manifest.version;
  const id=[...createHash('sha256').update(Buffer.from(manifest.key,'base64')).digest('hex').slice(0,32)].map(c=>String.fromCharCode(97+parseInt(c,16))).join('');
  await mkdir(path.join(profile,'NativeMessagingHosts'),{recursive:true});
  for (const [name,module] of [['io.codemyriad.cassini.control','browser_control_host'],['io.codemyriad.cassini','browser_host']]) {
@@ -138,10 +139,14 @@ try {
   const tab=await worker.evaluate(async url=>(await chrome.tabs.query({})).find(t=>t.url===url).id,passive.url());
   const signals=await until(async()=>{
    const rows=(await call()).callSignals.flatMap(p=>p.tabs);
-   return fixture.origin==='https://web.whatsapp.com'?rows.find(t=>t.tabId===tab&&t.url===passive.url()):!rows.some(t=>t.tabId===tab)&&rows;
+   return !legacyCompanion || fixture.origin==='https://web.whatsapp.com' ? rows.find(t=>t.tabId===tab&&t.url===passive.url()) : !rows.some(t=>t.tabId===tab)&&rows;
   },'current unmodified producer snapshot for '+fixture.id);
-  if(fixture.origin==='https://web.whatsapp.com') {
+  if(legacyCompanion && fixture.origin==='https://web.whatsapp.com') {
    assert.equal(signals.remoteAudio,'mixed');assert.equal(signals.callEvidence.state,'unknown');assert.equal(signals.callEvidence.reason,'unverified');
+  }
+  if (!legacyCompanion) {
+   assert.equal(signals.callEvidence.state,'unknown');
+   assert.equal(signals.callEvidence.adapter.name,'webrtc-interactive');
   }
   assert.equal((await call()).statuses.some(s=>s.recording),false,'passive '+fixture.id+' must not auto-start');
   assert.equal((await call()).meetings.length,0,'passive audio must not become an RTP meeting');
@@ -153,7 +158,7 @@ try {
  // The pinned producer and AppControl run in the actual extension worker. The
  // ONLY synthetic input is an extension-owned adapter's validated evidence.
  // Chrome tabs, browser document IDs, native messaging, broker and PCM are real.
- await worker.evaluate(async () => {
+ await worker.evaluate(async legacyCompanion => {
   const {AppControl,SiteSignalAdapters,CallSignalProducer}=globalThis.fixtureApi;
   const instance=(await chrome.storage.local.get('cassiniBrowserInstance')).cassiniBrowserInstance+':trusted-fixture';
   globalThis.fixture={facts:new Map(),frames:new Map(),commands:[],packets:[],instance};
@@ -168,17 +173,66 @@ try {
    fixture.frames=next;fixture.control.publish();
   };
   fixture.connect=()=>{
-   fixture.control=new AppControl({runtime:chrome.runtime,alarms:chrome.alarms,capabilities:['call-signals-v1','heartbeat-v1'],signalSnapshot:()=>fixture.producer.snapshot(),snapshot:async()=>[{type:'meetings',meetings:[]},{type:'status',recording:false,tabId:null}],command:async()=>{throw Error('Signal-only recording must never request browser audio')}});
+   fixture.control=new AppControl({runtime:chrome.runtime,alarms:chrome.alarms,capabilities:['call-signals-v1','heartbeat-v1',...(!legacyCompanion?['verified-auto-admission-v1']:[])],signalSnapshot:async options=>{
+    const snapshot=await fixture.producer.snapshot();
+    // Controlled mixed-route contract input, explicitly separate from the real
+    // generic collector above. The current producer has no mixed-site adapter.
+    if (!legacyCompanion && options.verified) for(const row of snapshot.tabs) row.sourceDocumentGeneration='controlled-source:'+row.documentGeneration;
+    return snapshot;
+   },snapshot:async()=>[{type:'meetings',meetings:[]},{type:'status',recording:false,tabId:null}],command:async()=>{throw Error('Signal-only recording must never request browser audio')}});
    const send=fixture.control.send.bind(fixture.control),receive=fixture.control.receive.bind(fixture.control);
    fixture.control.send=(port,packet)=>{fixture.packets.push(packet);return send(port,packet)};
    fixture.control.receive=(port,packet)=>{if(packet.type==='command')fixture.commands.push(packet);return receive(port,packet)};
    fixture.control.start();
   };
   fixture.connect();await fixture.refresh();
- });
+ },legacyCompanion);
  const firstTab=await facts(first,'active','call-A');
  assert.equal((await call()).statuses.some(s=>s.recording),false,'positive evidence still needs opt-in');
  await automatic(true);
+ if (legacyCompanion) {
+  // The trusted adapter supplies call-signals-v1, not verified admission. An
+  // active legacy fact cannot replace the negotiated feature and identity join.
+  const state=await call();
+  const peer=state.browserPeers.find(p=>p.id===state.callSignals.find(p=>p.browserInstance.endsWith(':trusted-fixture')).peer);
+  assert.deepEqual(peer.capabilities.toSorted(),['call-signals-v1','heartbeat-v1']);
+  assert.equal(peer.automaticVerified,false);
+  assert.equal(state.auto,true);
+  assert.deepEqual(state.meetings,[]);
+  assert.deepEqual(state.statuses,[],'legacy mixed evidence must not start a broker capture');
+  assert.deepEqual(state.nativeCaptures,[],'legacy mixed evidence must not start a native capture');
+  assert.equal(state.recordStartPending,false);
+  assert.equal(state.error,null);
+  const configured=await worker.evaluate(()=>fixture.packets.filter(p=>p.type==='configured').at(-1));
+  assert.deepEqual(configured.capabilities,['call-signals-v1']);
+  evidence.scenarios.push({name:'legacy-mixed-active-fact-fails-closed',peer,configured});
+
+  // Actual Library Record, not a direct recorder call or a fabricated proof.
+  // No RTP inventory exists, so production Record chooses native system audio.
+  await until(async ()=>(await call()).recordReady,'manual Record is available');
+  await call({action:'record'});
+  const native=await until(async ()=>(await call()).nativeCaptures.find(s=>s.recording&&!s.starting),'explicit manual system recording');
+  const directory=native.path;
+  await until(async ()=>(await samples(directory)).tracks.some(t=>t.kind==='system'&&t.frames>=48000),'manual system input contains real private PCM');
+  const audio=await samples(directory),mic=audio.tracks.find(t=>t.kind==='microphone'),system=audio.tracks.find(t=>t.kind==='system');
+  assert.ok(mic&&system&&audio.tracks.every(t=>['microphone','system'].includes(t.kind)));
+  const powers={microphone660:power(mic,660),system440:power(system,440)};
+  assert.ok(powers.microphone660>.001&&powers.system440>.001,JSON.stringify(powers));
+  assert.equal(audio.manifest.source,'gnome');
+  await facts(first,'inactive','call-A');
+  await until(async ()=>(await samples(directory)).tracks.find(t=>t.kind==='system').frames>=system.frames+48000,'manual system audio continues after a legacy call end');
+  assert.equal((await samples(directory)).manifest.state,'recording','legacy call ownership must not end an explicit manual recording');
+  await call({action:'notification-stop'});
+  const completed=await settled(directory);
+  assert.equal(completed.manifest.events.at(-1).reason,'user');
+  await until(async ()=>(await call()).recordReady,'manual Stop fully saved');
+  assert.deepEqual(await worker.evaluate(()=>fixture.commands),[],'manual native Record does not send browser audio commands');
+  assert.deepEqual(evidence.errors,[]);
+  evidence.scenarios.push({name:'explicit-manual-system-record-with-legacy-companion',directory,powers,end:completed.manifest.events.at(-1)});
+  console.log('PASS legacy mixed signals cannot auto-start; actual manual system/microphone PCM and explicit Stop remain available');
+ } else {
+ // Controlled verified mixed-route ownership, with real native PCM/transport.
+ // This is not a claim that the generic producer classifies any site as mixed.
  const directory=await recording();
  const audio=await samples(directory), mic=audio.tracks.find(t=>t.kind==='microphone'),system=audio.tracks.find(t=>t.kind==='system');
  assert.ok(mic && system && audio.tracks.every(t=>['microphone','system'].includes(t.kind)));
@@ -189,7 +243,8 @@ try {
  assert.ok(!audio.manifest.events.some(e=>e.type==='othersSource'&&['lost','missing'].includes(e.reason)));
  await until(async ()=>(await call()).library.some(m=>m.path===directory),'signal owner visible in Library');
  await call({action:'details',path:directory});
- await until(async ()=>(await call()).details?.includes('synthetic-site-fixture mixes all remote voices'),'quiet Details uses persisted route');
+ await until(async ()=>(await call()).details?.includes('This call mixed all remote voices into one stream'),'quiet Details uses persisted route');
+ assert.ok(!(await call()).details.includes('synthetic-site-fixture'), 'machine adapter ID is not a display name');
  assert.equal((await call()).notifications['recording-fallback-'+path.basename(directory)],undefined);
  await call({action:'selection',path:directory,me:false,others:true});
  await call({action:'sources-done'});
@@ -223,7 +278,8 @@ try {
  assert.deepEqual(await worker.evaluate(()=>fixture.commands),[],'no browser Start/Stop command on the signal route');
  assert.deepEqual(evidence.errors,[]);
  evidence.scenarios.push({name:'real producer/native PCM, opt-in, shared owner, Me off, reconnect, Stop suppression, next generation, positive end during audio',directory,next,powers});
- console.log('PASS D74 real producer -> GNOME: unknown passive media, opt-in system PCM, shared owner, Me choice, reconnect/Stop fences, positive end and quiet Details');
+ console.log('PASS D74 verified producer -> GNOME: opt-in system PCM and ownership');
+ }
 } catch(error) {evidence.error=String(error);if(ui&&ui.exitCode===null)evidence.app=await call().catch(e=>({error:String(e)}));throw error}
 finally {
  if(worker)evidence.producer=await worker.evaluate(()=>globalThis.fixture?.packets).catch(()=>[]);

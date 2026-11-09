@@ -103,6 +103,12 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 200
+              },
+              "browserDocumentId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "$comment": "Chrome-owned top document UUID; never the MAIN hook documentGeneration. Required for verified automatic admission."
               }
             },
             "required": [
@@ -394,11 +400,28 @@
         },
         "capabilities": {
           "type": "array",
-          "maxItems": 1,
+          "maxItems": 2,
           "uniqueItems": true,
           "items": {
-            "const": "call-signals-v1"
-          }
+            "enum": [
+              "call-signals-v1",
+              "verified-auto-admission-v1"
+            ]
+          },
+          "allOf": [
+            {
+              "if": {
+                "contains": {
+                  "const": "verified-auto-admission-v1"
+                }
+              },
+              "then": {
+                "contains": {
+                  "const": "call-signals-v1"
+                }
+              }
+            }
+          ]
         }
       },
       "required": [
@@ -607,6 +630,15 @@
                     }
                   }
                 ]
+              },
+              "sourceDocumentGeneration": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "maxLength": 200,
+                "$comment": "Explicit MAIN-hook document alias, bound by the background to this Chrome document. Negotiated verified mode requires this field; active/end needs a non-null alias."
               }
             },
             "required": [
@@ -638,6 +670,69 @@
                       "properties": {
                         "adapter": {
                           "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "required": [
+                    "sourceDocumentGeneration"
+                  ],
+                  "properties": {
+                    "callEvidence": {
+                      "anyOf": [
+                        {
+                          "properties": {
+                            "state": {
+                              "const": "active"
+                            }
+                          }
+                        },
+                        {
+                          "properties": {
+                            "reason": {
+                              "const": "callEnded"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "sourceDocumentGeneration": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "required": [
+                    "sourceDocumentGeneration"
+                  ],
+                  "properties": {
+                    "callEvidence": {
+                      "properties": {
+                        "state": {
+                          "const": "unknown"
+                        }
+                      }
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "callEvidence": {
+                      "properties": {
+                        "callGeneration": {
+                          "type": "null"
                         }
                       }
                     }

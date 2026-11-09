@@ -246,7 +246,7 @@ for(const recover of [false,true])test(`a timed-out source stays visible through
   if(!receive){queued.push(packet);return;}
   const task=receive(packet);if(packet.type==='start')pageStart=task;
  }};
- const deliver=packet=>listeners.get('message')({source:window,data:packet});
+ const deliver=packet=>listeners.get('message')({isTrusted:true,source:window,data:packet});
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../relay.js'),'utf8'),{window,chrome:{runtime:{connect:()=>endpoint,onMessage:event(),getURL:name=>name==='capture.js'?pageFixture.moduleURL:name}}});
  Context.deferReadiness=node=>nodes.indexOf(node)!==1;
  try{

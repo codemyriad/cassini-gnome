@@ -53,6 +53,7 @@ def peer(identifier="profile-1", check=True, version="0.2.20", value=None, caps=
     return dict(
         id=identifier,
         browser="Chrome",
+        automaticVerified=True,
         diagnostics=dict(filesOk=check, extensionVersion=version),
         capabilities=caps if caps is not None else ["multi-stream-v1", "tab-readiness-v1"],
         browserHealth=value or health(),
@@ -95,7 +96,13 @@ legacy = peer()
 legacy["diagnostics"].pop("filesOk")
 observe([legacy])
 assert dialog.done.get_sensitive() and not labels(dialog.health_box)
+observe([dict(peer(), automaticVerified=False)])
+assert dialog.done.get_sensitive(), "Verified auto-admission must not block explicit manual setup"
+assert text("setup.companion.autoUnverified") in labels(dialog.health_box)
+assert dialog.health_scroller.get_visible(), "The compatibility explanation must be shown"
+assert not dialog.health_rows, "Unverified detection must not fabricate a reload-required tab"
 observe([peer()])
+assert text("setup.companion.autoUnverified") not in labels(dialog.health_box)
 assert dialog.done.get_sensitive() and not dialog.health_rows and not dialog.health_scroller.get_visible()
 observe([peer(version="0.2.18")])
 assert dialog.done.get_sensitive(), "Version wording cannot gate recording capability or self-check"

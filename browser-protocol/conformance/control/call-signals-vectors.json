@@ -1,5 +1,5 @@
 {
-  "status": "D74 draft contract only; not a runtime oracle, live markers or app capture proof",
+  "status": "D74/D80 proposed contract literals; generic producer and app adoption not implemented; not live-call or capture proof",
   "valid": [
     {
       "name": "consumer-opt-in",
@@ -149,6 +149,76 @@
           }
         ],
         "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "generic-configure",
+      "schema": "control-host",
+      "message": {
+        "type": "configure",
+        "capabilities": [
+          "call-signals-v1",
+          "verified-auto-admission-v1"
+        ]
+      }
+    },
+    {
+      "name": "generic-configured",
+      "schema": "control-extension",
+      "message": {
+        "type": "configured",
+        "capabilities": [
+          "call-signals-v1",
+          "verified-auto-admission-v1"
+        ]
+      }
+    },
+    {
+      "name": "generic-bound-signal",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "generic-browser-bound-meeting",
+      "schema": "control-extension",
+      "message": {
+        "type": "meetings",
+        "meetings": [
+          {
+            "sourceCount": 2,
+            "heard": true,
+            "tabId": 2,
+            "sourceCountKnown": true,
+            "pageState": "present",
+            "documentGeneration": "hook-document-A",
+            "browserDocumentId": "chrome-document-A",
+            "callGeneration": "call-A",
+            "title": "Controlled interactive call",
+            "url": "https://conference.invalid/session"
+          }
+        ]
       }
     }
   ],
@@ -608,6 +678,74 @@
         ],
         "browserInstance": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       }
+    },
+    {
+      "name": "verified-configure-without-call-signals",
+      "schema": "control-host",
+      "message": {
+        "type": "configure",
+        "capabilities": [
+          "verified-auto-admission-v1"
+        ]
+      }
+    },
+    {
+      "name": "verified-configured-without-call-signals",
+      "schema": "control-extension",
+      "message": {
+        "type": "configured",
+        "capabilities": [
+          "verified-auto-admission-v1"
+        ]
+      }
+    },
+    {
+      "name": "active-null-source-document-binding",
+      "schema": "control-extension",
+      "message": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": null
+          }
+        ],
+        "browserInstance": "profile-A"
+      }
+    },
+    {
+      "name": "empty-browser-document-binding",
+      "schema": "control-extension",
+      "message": {
+        "type": "meetings",
+        "meetings": [
+          {
+            "sourceCount": 2,
+            "heard": true,
+            "tabId": 2,
+            "sourceCountKnown": true,
+            "pageState": "present",
+            "documentGeneration": "hook-document-A",
+            "browserDocumentId": "",
+            "callGeneration": "call-A",
+            "title": "Controlled interactive call",
+            "url": "https://conference.invalid/session"
+          }
+        ]
+      }
     }
   ],
   "passiveMediaNegatives": [
@@ -780,6 +918,63 @@
         "legacySourceCount": 0,
         "legacyHeard": false
       }
+    },
+    {
+      "name": "passive-rtc-viewer",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": null
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 1,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "signalAutoCandidate": false,
+        "appSystemStart": false,
+        "browserStart": false,
+        "nativeFallback": false,
+        "inputOpened": false,
+        "legacySourceCount": 1,
+        "legacyHeard": true,
+        "bindingMatches": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "fixtureAudioPlaying": true,
+      "fixtureGetUserMedia": false,
+      "fixtureLocalCapturedSender": false,
+      "fixtureHookCallGeneration": "0",
+      "consumerEvidenceAgeMs": 0
     }
   ],
   "routing": [
@@ -791,18 +986,19 @@
         "tabs": [
           {
             "tabId": 2,
-            "url": "https://web.whatsapp.com/",
-            "documentGeneration": "document-A",
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
             "remoteAudio": "mixed",
             "callEvidence": {
               "state": "active",
               "reason": "activeCall",
               "adapter": {
-                "name": "synthetic-site-fixture",
-                "version": "1"
+                "name": "webrtc-interactive",
+                "version": "2"
               },
               "callGeneration": "call-A"
-            }
+            },
+            "sourceDocumentGeneration": "hook-document-A"
           }
         ],
         "browserInstance": "profile-A"
@@ -816,7 +1012,23 @@
         "appSystemStart": true,
         "browserStart": false,
         "others": "system",
-        "me": "existing-app-choice"
+        "me": "existing-app-choice",
+        "bindingMatches": true,
+        "policy": "verified-call-and-system"
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
       }
     },
     {
@@ -827,18 +1039,19 @@
         "tabs": [
           {
             "tabId": 2,
-            "url": "https://web.whatsapp.com/",
-            "documentGeneration": "document-A",
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
             "remoteAudio": "mixed",
             "callEvidence": {
               "state": "active",
               "reason": "activeCall",
               "adapter": {
-                "name": "synthetic-site-fixture",
-                "version": "1"
+                "name": "webrtc-interactive",
+                "version": "2"
               },
               "callGeneration": "call-A"
-            }
+            },
+            "sourceDocumentGeneration": "hook-document-A"
           }
         ],
         "browserInstance": "profile-A"
@@ -850,7 +1063,23 @@
       },
       "expect": {
         "appSystemStart": false,
-        "browserStart": false
+        "browserStart": false,
+        "bindingMatches": true,
+        "policy": "no-verified-admission"
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
       }
     },
     {
@@ -861,18 +1090,19 @@
         "tabs": [
           {
             "tabId": 2,
-            "url": "https://web.whatsapp.com/",
-            "documentGeneration": "document-A",
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
             "remoteAudio": "mixed",
             "callEvidence": {
               "state": "active",
               "reason": "activeCall",
               "adapter": {
-                "name": "synthetic-site-fixture",
-                "version": "1"
+                "name": "webrtc-interactive",
+                "version": "2"
               },
               "callGeneration": "call-A"
-            }
+            },
+            "sourceDocumentGeneration": "hook-document-A"
           }
         ],
         "browserInstance": "profile-A"
@@ -885,7 +1115,23 @@
       "expect": {
         "appSystemStart": true,
         "browserStart": false,
-        "browserCommandRefused": "unsupported"
+        "browserCommandRefused": "unsupported",
+        "bindingMatches": true,
+        "policy": "verified-call-and-system"
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
       }
     },
     {
@@ -896,18 +1142,19 @@
         "tabs": [
           {
             "tabId": 2,
-            "url": "https://web.whatsapp.com/",
-            "documentGeneration": "document-A",
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
             "remoteAudio": "separated",
             "callEvidence": {
               "state": "active",
               "reason": "activeCall",
               "adapter": {
-                "name": "synthetic-site-fixture",
-                "version": "1"
+                "name": "webrtc-interactive",
+                "version": "2"
               },
               "callGeneration": "call-A"
-            }
+            },
+            "sourceDocumentGeneration": "hook-document-A"
           }
         ],
         "browserInstance": "profile-A"
@@ -915,13 +1162,28 @@
       "autoRecordOptIn": true,
       "rtp": {
         "sourceCount": 2,
-        "heard": true
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
       },
       "expect": {
         "appSystemStart": false,
         "browserStart": true,
-        "policy": "existing-RTP"
-      }
+        "policy": "verified-call-and-RTP",
+        "bindingMatches": true,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
     },
     {
       "name": "separated-signal-without-rtp-is-insufficient",
@@ -931,18 +1193,19 @@
         "tabs": [
           {
             "tabId": 2,
-            "url": "https://web.whatsapp.com/",
-            "documentGeneration": "document-A",
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
             "remoteAudio": "separated",
             "callEvidence": {
               "state": "active",
               "reason": "activeCall",
               "adapter": {
-                "name": "synthetic-site-fixture",
-                "version": "1"
+                "name": "webrtc-interactive",
+                "version": "2"
               },
               "callGeneration": "call-A"
-            }
+            },
+            "sourceDocumentGeneration": "hook-document-A"
           }
         ],
         "browserInstance": "profile-A"
@@ -950,12 +1213,27 @@
       "autoRecordOptIn": true,
       "rtp": {
         "sourceCount": 0,
-        "heard": false
+        "heard": false,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
       },
       "expect": {
         "appSystemStart": false,
-        "browserStart": false
-      }
+        "browserStart": false,
+        "bindingMatches": true,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
     },
     {
       "name": "active-call-unknown-design-no-guess",
@@ -990,11 +1268,1407 @@
         "appSystemStart": false,
         "browserStart": false
       }
+    },
+    {
+      "name": "separated-rtp-ready-unknown-call",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": null
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "separated-browser-document-mismatch",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-B",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "separated-hook-document-mismatch",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-B",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "separated-background-call-mismatch",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-B"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "separated-profile-mismatch",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-B",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "separated-tab-mismatch",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 3,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "separated-missing-browser-binding",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "separated-missing-hook-binding",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "separated-raw-cross-namespace-equality-is-insufficient",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "chrome-document-A",
+        "browserDocumentId": "hook-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "separated-verified-capability-not-acknowledged",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": true,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "separated-auto-opt-out",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": false,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": true,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0
+    },
+    {
+      "name": "mixed-verified-capability-not-acknowledged",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "bindingMatches": true,
+        "policy": "no-verified-admission",
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "configuredCapabilities": [
+        "call-signals-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
+      }
+    },
+    {
+      "name": "mixed-before-acknowledgement",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "bindingMatches": true,
+        "policy": "no-verified-admission",
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "configuredCapabilities": [],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
+      }
+    },
+    {
+      "name": "mixed-missing-source-alias",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            }
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "bindingMatches": false,
+        "policy": "no-verified-admission",
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
+      }
+    },
+    {
+      "name": "mixed-profile-mismatch",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "bindingMatches": false,
+        "policy": "no-verified-admission",
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "other-profile",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
+      }
+    },
+    {
+      "name": "mixed-pending-browser-document-mismatch",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "bindingMatches": false,
+        "policy": "no-verified-admission",
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "old-chrome-document",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
+      }
+    },
+    {
+      "name": "mixed-pending-hook-document-mismatch",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "bindingMatches": false,
+        "policy": "no-verified-admission",
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "old-hook-document",
+        "callGeneration": "call-A"
+      }
+    },
+    {
+      "name": "mixed-pending-call-generation-mismatch",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "bindingMatches": false,
+        "policy": "no-verified-admission",
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "old-call"
+      }
+    },
+    {
+      "name": "mixed-pending-tab-mismatch",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "bindingMatches": false,
+        "policy": "no-verified-admission",
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 3,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
+      }
+    },
+    {
+      "name": "mixed-expired-proof-with-healthy-heartbeat",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "bindingMatches": true,
+        "policy": "no-verified-admission",
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 5000,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
+      },
+      "heartbeatHealthy": true
+    },
+    {
+      "name": "mixed-unknown-call",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "mixed",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": null
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 0,
+        "heard": false
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "bindingMatches": false,
+        "policy": "no-verified-admission",
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "connectionBrowserInstance": "profile-A",
+      "consumerEvidenceAgeMs": 0,
+      "legacyMeetings": [],
+      "pendingBinding": {
+        "browserInstance": "profile-A",
+        "tabId": 2,
+        "browserDocumentId": "chrome-document-A",
+        "sourceDocumentGeneration": "hook-document-A",
+        "callGeneration": "call-A"
+      }
+    },
+    {
+      "name": "separated-expired-proof-with-healthy-heartbeat",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "no-verified-admission",
+        "bindingMatches": true,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 5000,
+      "heartbeatHealthy": true
+    },
+    {
+      "name": "same-document-split-PC-RTP-ready",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": true,
+        "policy": "verified-call-and-RTP",
+        "bindingMatches": true,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0,
+      "qualificationCase": "split-publisher-subscriber"
+    },
+    {
+      "name": "same-document-independent-PCs-RTP-ready",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "active",
+              "reason": "activeCall",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": "call-A"
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": true,
+        "policy": "verified-call-and-RTP",
+        "bindingMatches": true,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0,
+      "qualificationCase": "unrelated-mic-same-backend"
+    },
+    {
+      "name": "cross-document-split-never-admits",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": null
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "unknown-call",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0,
+      "qualificationCase": "cross-document-split"
+    },
+    {
+      "name": "cross-frame-split-never-admits",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": null
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "unknown-call",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0,
+      "qualificationCase": "cross-frame-split"
+    },
+    {
+      "name": "retired-port-split-never-admits",
+      "signal": {
+        "type": "callSignals",
+        "sequence": 0,
+        "tabs": [
+          {
+            "tabId": 2,
+            "url": "https://conference.invalid/session",
+            "documentGeneration": "chrome-document-A",
+            "remoteAudio": "separated",
+            "callEvidence": {
+              "state": "unknown",
+              "reason": "unverified",
+              "adapter": {
+                "name": "webrtc-interactive",
+                "version": "2"
+              },
+              "callGeneration": null
+            },
+            "sourceDocumentGeneration": "hook-document-A"
+          }
+        ],
+        "browserInstance": "profile-A"
+      },
+      "autoRecordOptIn": true,
+      "rtp": {
+        "sourceCount": 2,
+        "heard": true,
+        "tabId": 2,
+        "sourceCountKnown": true,
+        "pageState": "present",
+        "documentGeneration": "hook-document-A",
+        "browserDocumentId": "chrome-document-A",
+        "callGeneration": "call-A"
+      },
+      "expect": {
+        "appSystemStart": false,
+        "browserStart": false,
+        "policy": "unknown-call",
+        "bindingMatches": false,
+        "nativeFallback": false,
+        "inputOpened": false
+      },
+      "connectionBrowserInstance": "profile-A",
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "consumerEvidenceAgeMs": 0,
+      "qualificationCase": "retired-port-split"
     }
   ],
   "lifecycle": {
     "name": "positive-call-end-with-passive-media-continuing",
-    "scope": "synthetic contract facts, not real site marker validation",
+    "scope": "synthetic verified mixed/system lifecycle; acknowledged pair and fresh bound initial admission; not a real detector",
     "autoRecordOptIn": true,
     "steps": [
       {
@@ -1004,7 +2678,7 @@
           "tabs": [
             {
               "tabId": 2,
-              "url": "https://web.whatsapp.com/",
+              "url": "https://conference.invalid/session",
               "documentGeneration": "document-A",
               "remoteAudio": "mixed",
               "callEvidence": {
@@ -1015,7 +2689,8 @@
                   "version": "1"
                 },
                 "callGeneration": "call-A"
-              }
+              },
+              "sourceDocumentGeneration": "hook-document-A"
             }
           ],
           "browserInstance": "profile-A"
@@ -1034,7 +2709,7 @@
           "tabs": [
             {
               "tabId": 2,
-              "url": "https://web.whatsapp.com/",
+              "url": "https://conference.invalid/session",
               "documentGeneration": "document-A",
               "remoteAudio": "mixed",
               "callEvidence": {
@@ -1045,7 +2720,8 @@
                   "version": "1"
                 },
                 "callGeneration": "call-A"
-              }
+              },
+              "sourceDocumentGeneration": "hook-document-A"
             }
           ],
           "browserInstance": "profile-A"
@@ -1070,7 +2746,7 @@
           "tabs": [
             {
               "tabId": 2,
-              "url": "https://web.whatsapp.com/",
+              "url": "https://conference.invalid/session",
               "documentGeneration": "document-A",
               "remoteAudio": "mixed",
               "callEvidence": {
@@ -1081,7 +2757,8 @@
                   "version": "1"
                 },
                 "callGeneration": null
-              }
+              },
+              "sourceDocumentGeneration": "hook-document-A"
             }
           ],
           "browserInstance": "profile-A"
@@ -1092,7 +2769,13 @@
           "appStop": false
         }
       }
-    ]
+    ],
+    "configuredCapabilities": [
+      "call-signals-v1",
+      "verified-auto-admission-v1"
+    ],
+    "connectionBrowserInstance": "profile-A",
+    "consumerEvidenceAgeMs": 0
   },
   "identityAndReconnect": [
     {
@@ -1500,6 +3183,792 @@
           }
         }
       ]
+    },
+    "admissionPrerequisites": {
+      "configuredCapabilities": [
+        "call-signals-v1",
+        "verified-auto-admission-v1"
+      ],
+      "nonNullSourceAlias": true,
+      "consumerActiveExpiryMs": 5000,
+      "routes": [
+        "separated-browser",
+        "mixed-system",
+        "automatic-native-fallback"
+      ]
     }
+  },
+  "freshness": {
+    "scope": "D80.3 clock literals shared by separated/browser and mixed/system; new-Start eligibility assumes other guards pass; not runtime/app/audio proof",
+    "nativeProgressMaxAgeMs": 2500,
+    "activeRefreshMaxIntervalMs": 2000,
+    "producerWithdrawMaxDelayMs": 5000,
+    "consumerActiveExpiryMs": 5000,
+    "cases": [
+      {
+        "name": "progress-stops-healthy-heartbeat",
+        "configuredCapabilities": [
+          "call-signals-v1",
+          "verified-auto-admission-v1"
+        ],
+        "autoRecordOptIn": true,
+        "steps": [
+          {
+            "atMs": 0,
+            "event": "active",
+            "sequence": 0,
+            "receivedCounter": 10,
+            "sentCounter": 10,
+            "receivedProgressAtMs": 0,
+            "sentProgressAtMs": 0,
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "producerActiveAllowed": true,
+              "leaseRenewed": true,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 1000,
+            "event": "pong",
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 2000,
+            "event": "status",
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 3000,
+            "event": "meetings-heard",
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 4000,
+            "event": "other-tab-active",
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 4999,
+            "event": "tick",
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 4999,
+            "event": "replayed-active",
+            "sequence": 0,
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 5000,
+            "event": "pong",
+            "expect": {
+              "consumerFresh": false,
+              "producerMustWithdraw": true,
+              "leaseRenewed": false,
+              "newAdmissionEligible": false
+            }
+          },
+          {
+            "atMs": 6000,
+            "event": "pcm",
+            "expect": {
+              "consumerFresh": false,
+              "producerMustWithdraw": true,
+              "leaseRenewed": false,
+              "newAdmissionEligible": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "new-progress-renews-proof",
+        "configuredCapabilities": [
+          "call-signals-v1",
+          "verified-auto-admission-v1"
+        ],
+        "autoRecordOptIn": true,
+        "steps": [
+          {
+            "atMs": 0,
+            "event": "active",
+            "sequence": 0,
+            "receivedCounter": 10,
+            "sentCounter": 10,
+            "receivedProgressAtMs": 0,
+            "sentProgressAtMs": 0,
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "producerActiveAllowed": true,
+              "leaseRenewed": true,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 2000,
+            "event": "active",
+            "sequence": 1,
+            "receivedCounter": 20,
+            "sentCounter": 20,
+            "receivedProgressAtMs": 2000,
+            "sentProgressAtMs": 2000,
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "producerActiveAllowed": true,
+              "leaseRenewed": true,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 6999,
+            "event": "pong",
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 7000,
+            "event": "pong",
+            "expect": {
+              "consumerFresh": false,
+              "producerMustWithdraw": true,
+              "leaseRenewed": false,
+              "newAdmissionEligible": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "cached-refresh-forbidden",
+        "configuredCapabilities": [
+          "call-signals-v1",
+          "verified-auto-admission-v1"
+        ],
+        "autoRecordOptIn": true,
+        "steps": [
+          {
+            "atMs": 0,
+            "event": "active",
+            "sequence": 0,
+            "receivedCounter": 10,
+            "sentCounter": 10,
+            "receivedProgressAtMs": 0,
+            "sentProgressAtMs": 0,
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "producerActiveAllowed": true,
+              "leaseRenewed": true,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 2000,
+            "event": "attempt-active-refresh",
+            "sequence": 1,
+            "receivedCounter": 10,
+            "sentCounter": 10,
+            "receivedProgressAtMs": 0,
+            "sentProgressAtMs": 0,
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "producerActiveAllowed": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 4999,
+            "event": "status",
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 5000,
+            "event": "pong",
+            "expect": {
+              "consumerFresh": false,
+              "producerMustWithdraw": true,
+              "leaseRenewed": false,
+              "newAdmissionEligible": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "revocation-does-not-preserve-lease",
+        "configuredCapabilities": [
+          "call-signals-v1",
+          "verified-auto-admission-v1"
+        ],
+        "autoRecordOptIn": true,
+        "steps": [
+          {
+            "atMs": 0,
+            "event": "active",
+            "sequence": 0,
+            "receivedCounter": 10,
+            "sentCounter": 10,
+            "receivedProgressAtMs": 0,
+            "sentProgressAtMs": 0,
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "producerActiveAllowed": true,
+              "leaseRenewed": true,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 1000,
+            "event": "configured",
+            "expect": {
+              "consumerFresh": false,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": false
+            },
+            "capabilities": []
+          },
+          {
+            "atMs": 2000,
+            "event": "pong",
+            "expect": {
+              "consumerFresh": false,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": false
+            }
+          },
+          {
+            "atMs": 2500,
+            "event": "configured",
+            "expect": {
+              "consumerFresh": false,
+              "producerMustWithdraw": false,
+              "leaseRenewed": false,
+              "newAdmissionEligible": false
+            },
+            "capabilities": [
+              "call-signals-v1",
+              "verified-auto-admission-v1"
+            ]
+          },
+          {
+            "atMs": 3000,
+            "event": "active",
+            "sequence": 1,
+            "receivedCounter": 20,
+            "sentCounter": 20,
+            "receivedProgressAtMs": 3000,
+            "sentProgressAtMs": 3000,
+            "expect": {
+              "consumerFresh": true,
+              "producerMustWithdraw": false,
+              "producerActiveAllowed": true,
+              "leaseRenewed": true,
+              "newAdmissionEligible": true
+            }
+          },
+          {
+            "atMs": 8000,
+            "event": "pong",
+            "expect": {
+              "consumerFresh": false,
+              "producerMustWithdraw": true,
+              "leaseRenewed": false,
+              "newAdmissionEligible": false
+            }
+          }
+        ]
+      }
+    ],
+    "routes": [
+      "separated",
+      "mixed"
+    ],
+    "existingOwnerOnProofExpiry": "retain owner/fixed route and enter existing 120000 ms evidence-loss grace; not callEnded"
+  },
+  "qualificationMeaning": {
+    "decision": "D80.5",
+    "activeMeans": "interactive captured-media session, not proven answered human intent",
+    "scope": "same current browser document/frame/port, both native progress directions within 2500 ms; full producer and real Talk proof in CI; app adoption follows",
+    "cases": [
+      {
+        "name": "duplex",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "captured-clone",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "echo-or-microphone-test",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "unanswered-early-media",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "passive-webrtc-viewer",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": false,
+        "capturedTrackActuallySent": false,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "mic-preview",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": false,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "synthetic-sender",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": false,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "unrelated-sending-pc",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "acceptedBy": "D80.5 same-document/frame captured-media cohort"
+      },
+      {
+        "name": "split-publisher-subscriber",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "samePeerConnection": false,
+        "acceptedBy": "D80.5"
+      },
+      {
+        "name": "unrelated-mic-same-backend",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "samePeerConnection": false,
+        "acceptedBy": "D80.5"
+      },
+      {
+        "name": "cross-document-split",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-B",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "cross-frame-split",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 2,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "retired-port-split",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "retired-relay"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "stale-received-half",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 2501,
+        "sentProgressAgeMs": 0
+      },
+      {
+        "name": "stale-sent-half",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 2501
+      }
+    ]
+  },
+  "nativeStartCorrelation": {
+    "scope": "producer request binding plus consumer admission vector; actual host dispatch adoption tested downstream",
+    "cases": [
+      {
+        "name": "late-automatic-after-manual-same-call",
+        "commands": [
+          {
+            "type": "command",
+            "requestId": "automatic-1",
+            "action": "start",
+            "tabId": 2,
+            "independent": true,
+            "mode": "tracks",
+            "callGeneration": "call-A",
+            "captureLocal": false,
+            "microphone": false
+          },
+          {
+            "type": "command",
+            "requestId": "stop-automatic",
+            "action": "stop",
+            "tabId": 2,
+            "independent": true
+          },
+          {
+            "type": "command",
+            "requestId": "manual-2",
+            "action": "start",
+            "tabId": 2,
+            "independent": true,
+            "mode": "tracks",
+            "callGeneration": "call-A",
+            "captureLocal": false,
+            "microphone": false
+          }
+        ],
+        "expectedNativeStarts": [
+          {
+            "type": "start",
+            "version": 1,
+            "requestId": "automatic-1",
+            "callGeneration": "call-A",
+            "documentGeneration": "hook-A"
+          },
+          {
+            "type": "start",
+            "version": 1,
+            "requestId": "manual-2",
+            "callGeneration": "call-A",
+            "documentGeneration": "hook-A"
+          }
+        ],
+        "retiredAutomaticRequestId": "automatic-1",
+        "pendingManualRequestId": "manual-2",
+        "nativeArrivalOrder": [
+          1,
+          0
+        ],
+        "expect": {
+          "acceptManualRequestId": "manual-2",
+          "rejectRetiredAutomaticRequestId": "automatic-1",
+          "lateAutomaticInputs": 0,
+          "lateAutomaticOutputs": 0
+        }
+      },
+      {
+        "name": "numeric-zero-is-not-string-zero",
+        "commands": [
+          {
+            "type": "command",
+            "requestId": 0,
+            "action": "start",
+            "tabId": 2,
+            "independent": true,
+            "mode": "tracks",
+            "callGeneration": "call-A",
+            "captureLocal": false,
+            "microphone": false
+          },
+          {
+            "type": "command",
+            "requestId": "stop-automatic",
+            "action": "stop",
+            "tabId": 2,
+            "independent": true
+          },
+          {
+            "type": "command",
+            "requestId": "0",
+            "action": "start",
+            "tabId": 2,
+            "independent": true,
+            "mode": "tracks",
+            "callGeneration": "call-A",
+            "captureLocal": false,
+            "microphone": false
+          }
+        ],
+        "expectedNativeStarts": [
+          {
+            "type": "start",
+            "version": 1,
+            "requestId": 0,
+            "callGeneration": "call-A",
+            "documentGeneration": "hook-A"
+          },
+          {
+            "type": "start",
+            "version": 1,
+            "requestId": "0",
+            "callGeneration": "call-A",
+            "documentGeneration": "hook-A"
+          }
+        ],
+        "retiredAutomaticRequestId": 0,
+        "pendingManualRequestId": "0",
+        "nativeArrivalOrder": [
+          1,
+          0
+        ],
+        "expect": {
+          "acceptManualRequestId": "0",
+          "rejectRetiredAutomaticRequestId": 0,
+          "lateAutomaticInputs": 0,
+          "lateAutomaticOutputs": 0
+        }
+      }
+    ]
   }
 }

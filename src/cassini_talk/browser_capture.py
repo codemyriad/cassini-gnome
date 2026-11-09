@@ -323,7 +323,7 @@ class BrowserCapture:
                 if admit is not None and not admit():
                     raise StartCancelled("The signalled call is no longer eligible")
             requested = [kind for kind, wanted in (("microphone", microphone), ("system", self.browser_lost)) if wanted]
-            refused = self._open_natives(requested)
+            refused = self._open_natives(requested, admit=admit)
             items = [self._refusal(0, kind, refused[kind]) for kind in requested if kind in refused]
             if requested and self.browser_lost and not any(kind in self.native_taps for kind in requested):
                 if len(refused) < len(requested):
@@ -616,7 +616,7 @@ class BrowserCapture:
         except Exception:
             LOG.debug("A refused tap did not stop cleanly", exc_info=True)
 
-    def _open_natives(self, kinds):
+    def _open_natives(self, kinds, *, admit=None):
         """Open each requested native side on its own and in parallel (R79 §1).
 
         A side opens when its tap admits a first buffer within its 3 s bound
@@ -628,7 +628,7 @@ class BrowserCapture:
         if not kinds:
             return {}
         with ThreadPoolExecutor(len(kinds), thread_name_prefix="cassini-native-open") as pool:
-            futures = {kind: pool.submit(self._open_native, kind) for kind in kinds}
+            futures = {kind: pool.submit(self._open_native, kind, admit=admit) for kind in kinds}
         refused = {kind: error for kind, future in futures.items() if (error := future.result()) is not None}
         with self.lock:
             self.refused_sides.update(refused)
@@ -636,12 +636,17 @@ class BrowserCapture:
             LOG.warning("Native %s side (%s) did not open at start: %s", SIDES[kind], kind, error)
         return refused
 
-    def _open_native(self, kind):
+    def _open_native(self, kind, *, admit=None):
         """Open-then-commit one side, as a turn-on does. Returns its refusal, if any."""
         if self.stop_requested.is_set():
             return None
+        if admit is not None and not admit():
+            raise StartCancelled("Verified call evidence expired before opening input")
         identifier = kind + "-" + str(uuid4())
         tap, state = self._make_native(kind, identifier)
+        if admit is not None and not admit():
+            tap.stop()
+            raise StartCancelled("Verified call evidence expired before starting input")
         try:
             tap.start()
         except Exception as error:
@@ -699,6 +704,8 @@ class BrowserCapture:
                 loss["cause"] = cause
             if isinstance(detail, str) and detail:
                 loss["detail"] = detail[:1000]
+        # Startup admission protects the initial inputs in start(). A running
+        # recording keeps its loss/fallback policy when that proof disappears.
         return self._change(self.me, self.others, fallback=reason, loss=loss or None)
 
     @property

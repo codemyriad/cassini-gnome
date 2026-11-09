@@ -23,6 +23,7 @@ const server = createServer((_req, res) => {res.setHeader('Content-Type', 'text/
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const evidence = {scenarios: [], console: []}, pending = [], pairs = [];
 let context, remoteBrowser, ui, microphone;
+let legacyCompanion;
 async function poll(check, label, timeout=20000) {
  const end = Date.now() + timeout;
  while (Date.now() < end) {const value = await check(); if (value) return value; await new Promise(r => setTimeout(r, 100));}
@@ -72,7 +73,7 @@ async function join(title, localHz, remoteHz, id) {
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/`); await page.click('#join');
  }
- await meeting.evaluate(async ({title, localHz}) => {document.title = title; await window.join(localHz);}, {title, localHz});
+ await meeting.evaluate(async ({title, localHz}) => {document.title = title; await window.join(localHz, true);}, {title, localHz});
  await remote.evaluate(hz => window.join(hz), remoteHz);
  const offer = await meeting.evaluate(async () => {await meeting.pc.setLocalDescription(await meeting.pc.createOffer()); return meeting.description();});
  const answer = await remote.evaluate(async offer => {await meeting.pc.setRemoteDescription(offer); await meeting.pc.setLocalDescription(await meeting.pc.createAnswer()); return meeting.description();}, offer);
@@ -92,6 +93,13 @@ async function record() {
  await poll(async () => (await call()).recordReady, 'previous capture fully saved before Record starts');
  await call({action: 'record'});
 }
+async function startsSent() {
+ let data;
+ try {data = await readFile(path.join(artifacts, 'host-commands.jsonl'), 'utf8');}
+ catch (error) {if (error.code === 'ENOENT') return []; throw error;}
+ return data.trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
+  .filter(packet => packet.type === 'command' && packet.action === 'start');
+}
 async function recording(title) {
  const status = await poll(async () => (await call()).statuses.find(s => s.recording && s.title === title && s.path), `recording ${title}`);
  await poll(async () => (await samples(status.path)).tracks.some(t => t.kind === 'remote' && t.frames >= t.sampleRate * 2), `two seconds of ${title}`);
@@ -100,11 +108,13 @@ async function recording(title) {
 try {
  const manifest = JSON.parse(await readFile(path.join(extension, 'manifest.json')));
  assert.ok(manifest.key, 'the companion has a pinned key');
+ legacyCompanion = manifest.version === '0.2.25';
+ evidence.companionVersion = manifest.version;
  const id = [...createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32)].map(c => String.fromCharCode(97 + parseInt(c, 16))).join('');
  assert.equal(id, 'pcafdaahfhjiolfpfnlhmljfgoabbaij');
  await mkdir(path.join(profile, 'NativeMessagingHosts'), {recursive: true});
  await hostManifest('io.codemyriad.cassini', `#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nfrom cassini_talk.browser_host import main\nsys.exit(main(directory=${JSON.stringify(artifacts)},open_completed=False))\n`, id);
- await hostManifest('io.codemyriad.cassini.control', `#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nsys.stderr=open(${JSON.stringify(path.join(artifacts, 'control-host.log'))},'a',buffering=1)\nfrom cassini_talk.browser_control_host import main\nsys.exit(main())\n`, id);
+ await hostManifest('io.codemyriad.cassini.control', `#!/usr/bin/python3\nimport sys\nsys.path.insert(0,${JSON.stringify(root + '/src')})\nsys.stderr=open(${JSON.stringify(path.join(artifacts, 'control-host.log'))},'a',buffering=1)\nimport json\nfrom cassini_talk import browser_control_host as host\nwrite=host.write_message\ndef trace(stream,packet):\n with open(${JSON.stringify(path.join(artifacts, 'host-commands.jsonl'))},'a') as log: log.write(json.dumps(packet)+'\\n')\n write(stream,packet)\nhost.write_message=trace\nsys.exit(host.main())\n`, id);
  ui = spawn('/usr/bin/python3', [path.join(root, 'tests/recording/browser-ui.py'), '--build', build], {stdio: ['pipe', 'pipe', 'pipe'], env: {...process.env}});
  ui.stderr.pipe(createWriteStream(path.join(artifacts, 'gnome-ui.log')));
  createInterface({input: ui.stdout}).on('line', line => {try {pending.shift()?.(JSON.parse(line));} catch {evidence.console.push(line);}});
@@ -114,13 +124,16 @@ try {
  microphone.stderr.pipe(createWriteStream(path.join(artifacts, 'microphone-producer.log')));
  execFileSync('pactl', ['--server', process.env.PULSE_SERVER, 'set-sink-mute', 'cassini_desktop', '1']);
  assert.match(execFileSync('pactl', ['--server', process.env.PULSE_SERVER, 'get-sink-mute', 'cassini_desktop'], {encoding: 'utf8'}), /yes/);
- const flags = ['--no-sandbox', '--ozone-platform=x11', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns'];
+ const flags = ['--no-sandbox', '--ozone-platform=x11', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
  context = await chromium.launchPersistentContext(profile, {channel: 'chromium', headless: false, ignoreDefaultArgs: ['--mute-audio'], args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...flags]});
  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  assert.equal(new URL(worker.url()).host, id);
  worker.on('console', message => evidence.console.push(message.text()));
  await poll(async () => (await call()).connected > 0, 'actual companion handshake in Library');
  remoteBrowser = await chromium.launch({headless: false, ignoreDefaultArgs: ['--mute-audio'], args: flags});
+ if (process.env.CASSINI_TEST_TALK_URL) {
+  await (await import('./verified-talk.mjs')).run({context, remoteBrowser, call, automatic, poll, samples, startsSent, evidence});
+ } else {
  await join('First browser meeting', 440, 880, id);
  await join('Second browser meeting', 550, 990, id);
  const distraction = await context.newPage(); await distraction.goto(`http://127.0.0.1:${server.address().port}/?not-a-meeting`); await distraction.bringToFront();
@@ -167,13 +180,48 @@ try {
   }, 'manual browser Stop saves app-owned end facts');
  }
  evidence.scenarios.push({name: 'library-records-two-active-calls-muted-tab-and-sink-independent-mic-stop', directories, powers});
+ const startsBeforeAuto = (await startsSent()).length;
  await automatic(true);
- await poll(async () => (await call()).statuses.filter(s => s.recording).length === 3, 'auto opt-in starts every current call');
+ if (legacyCompanion) {
+  // .25 cannot acknowledge verified-auto-admission-v1 or supply the ledger.
+  // Do not use sourceCount/heard to bypass the production admission gate.
+  const state = await poll(async () => {
+   const state = await call();
+   // Inventory can arrive before the hook's packet evidence. Wait for the
+   // app's own heard update; existence of three rows is not audio readiness.
+   return state.auto && state.settingsReady && state.meetings.length === 3 && state.browserPeers.length &&
+    state.meetings.every(meeting => meeting.heard && meeting.sourceCount > 0) ? state : null;
+  }, 'legacy opt-in and heard source inventory observed');
+  assert.ok(state.browserPeers.every(peer => peer.diagnostics.extensionVersion === '0.2.25' && peer.automaticVerified === false));
+  assert.ok(state.browserPeers.every(peer => !peer.capabilities.includes('verified-auto-admission-v1')));
+  assert.ok(state.meetings.every(meeting => meeting.heard && meeting.sourceCount > 0));
+  assert.ok(!state.statuses.some(s => s.recording || s.starting), 'old companion must not automatically Start');
+  assert.equal(state.recordStartPending, false);
+  assert.equal(state.error, null);
+  assert.deepEqual(state.library.map(m => m.path).sort(), directories.toSorted(), 'opt-in creates no recording folder');
+  await call({action: 'show-companion'});
+  const setup = await poll(async () => {
+   const state = await call(); return state.companionAutoUnverified ? state : null;
+  }, 'real setup shows autoUnverified for the connected legacy companion');
+  evidence.scenarios.push({name: 'legacy-companion-auto-fails-closed-with-guidance', peers: state.browserPeers, guidance: setup.companionGuidance});
+  assert.equal((await startsSent()).length, startsBeforeAuto, 'no Start crosses the actual native control host writer');
+  await call({action: 'close-companion'});
+  // Preserve the actual capture/shortcut/notification checks through manual intent.
+  await record();
+ }
+ // The real pinned producer must qualify captured sending plus received RTP;
+ // synthetic senders alone never authorize these automatic Starts.
+ await poll(async () => (await call()).statuses.filter(s => s.recording).length === 3,
+  legacyCompanion ? 'explicit manual Record starts every current call' : 'verified auto opt-in starts every current call');
+ // The toggle's mode is an app projection updated independently of inventory.
+ // Drive it only when the app itself offers Stop for these new captures.
+ await poll(async () => (await call()).recordingToStop.length > 0, 'app Record toggle offers Stop');
  await call({action: 'shortcut'});
  await poll(async () => !(await call()).statuses.some(s => s.recording), 'actual portal shortcut stops all sessions');
  await automatic(false);
  await automatic(true);
- await poll(async () => (await call()).statuses.filter(s => s.recording).length === 3, 'auto re-enabled for hidden capture');
+ if (legacyCompanion) await record();
+ await poll(async () => (await call()).statuses.filter(s => s.recording).length === 3, legacyCompanion ? 'manual hidden capture' : 'auto re-enabled for hidden capture');
  await call({action: 'close-window'});
  await poll(async () => (await call()).status === 'Window closed', 'desktop approves background capture');
  const hidden = await poll(async () => (await call()).notifications.recording, 'native hidden notification');
@@ -183,8 +231,18 @@ try {
  for (const pair of pairs) {await pair.meeting.evaluate(() => meeting.pc.close()); await pair.remote.evaluate(() => meeting.pc.close());}
  await poll(async () => !(await call()).meetings.length, 'all previous calls end while hidden');
  await join('New hidden meeting', 550, 1100, id);
+ if (legacyCompanion) {
+  const state = await call();
+  assert.ok(!state.statuses.some(s => s.recording || s.starting), 'new legacy call stays manual while hidden');
+  await call({action: 'shortcut'});
+ }
  await recording('New hidden meeting');
- const nextHidden = await poll(async () => (await call()).notifications.recording, 'new call auto-records without visible window');
+ if (legacyCompanion) {
+  // Explicit Record can present Library; close it before checking its hidden notification.
+  await call({action: 'close-window'});
+  await poll(async () => (await call()).status === 'Window closed', 'manual recording moved to the background');
+ }
+ const nextHidden = await poll(async () => (await call()).notifications.recording, legacyCompanion ? 'manual call has a hidden recording notification' : 'new call auto-records without visible window');
  assert.ok(nextHidden.body.includes('New hidden meeting'));
  await call({action: 'notification-stop'});
  await poll(async () => !(await call()).statuses.some(s => s.recording), 'new hidden meeting stopped');
@@ -195,7 +253,7 @@ try {
  // Release completed fixtures and their Web Audio graphs before the next scenario.
  for (const pair of pairs) {await pair.meeting.close(); await pair.remote.close();}
  pairs.length = 0;
- evidence.scenarios.push({name: 'auto-record-hidden-native-notification-stop-all-new-call-reopen'});
+ evidence.scenarios.push({name: legacyCompanion ? 'legacy-manual-record-hidden-shortcut-native-notification-stop-all-new-call-reopen' : 'verified-auto-record-hidden-native-notification-stop-all-new-call-reopen'});
  // D30: the real app must not auto-record connected pre-join receive slots.
  const {connectReceiveSlots, switchReceiveSlot} = await import(process.env.CASSINI_TEST_TOPOLOGIES || path.join(root, 'browser-protocol/scenarios/product-topologies.mjs'));
  const prejoin = await context.newPage(), prejoinRemote = await remoteBrowser.newPage();
@@ -229,9 +287,21 @@ try {
  const beforeJoin = await prejoin.evaluate(() => prejoinEvidenceSamples);
  assert.ok(beforeJoin.every(sample => sample.length === 0), 'pre-join has no inbound RTP report');
  await switchReceiveSlot(prejoinRemote, 0, [1100]);
- const joinedDirectory = await recording('Pre-join evidence fixture');
  const heard = await poll(async () => (await call()).meetings.find(m => m.title === 'Pre-join evidence fixture' && m.heard === true), 'joined call evidence reaches Library');
  assert.equal(heard.sourceCount, 3);
+ const passiveState = await call();
+ assert.ok(!passiveState.statuses.some(s => s.recording || s.starting), 'inbound RTP without captured sending never verifies a call');
+ assert.deepEqual(passiveState.library.map(m => m.path).sort(), previousFolders, 'passive RTP creates no recording folder');
+ if (legacyCompanion) await record();
+ else {
+  // Real native-captured sending progress completes the cohort. The synthetic
+  // preview and truthful received RTP above must never authorize Start alone.
+  await prejoin.evaluate(async () => {
+   const track = (await navigator.mediaDevices.getUserMedia({audio: true})).getAudioTracks()[0];
+   await topologyPeer.getSenders().find(sender => sender.track).replaceTrack(track);
+  });
+ }
+ const joinedDirectory = await recording('Pre-join evidence fixture');
  const joinedAudio = await samples(joinedDirectory);
  assert.ok(joinedAudio.tracks.some(t => t.kind === 'remote' && power(t, 1100) > .001), 'joined remote audio recorded');
  await call({action: 'stop', path: joinedDirectory});
@@ -239,11 +309,12 @@ try {
  await automatic(false);
  await prejoin.close(); await prejoinRemote.close();
  await poll(async () => !(await call()).meetings.length, 'pre-join scenario cleaned up');
- evidence.scenarios.push({name: 'prejoin-receive-slots-do-not-auto-record-until-inbound-rtp', beforeJoin,
+ evidence.scenarios.push({name: legacyCompanion ? 'legacy-prejoin-and-inbound-rtp-stay-manual' : 'verified-prejoin-receive-slots-auto-record-on-qualified-call', beforeJoin,
   sourceCount: candidate.sourceCount, heardBefore: candidate.heard, heardAfter: heard.heard, directory: joinedDirectory});
 
  await (await import('./source-changes.mjs')).run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence});
- console.log('PASS real Library Record/individual Stop/global Stop; concurrent muted source capture and mic copies; windowless auto-record/native notification controls');
+ }
+ console.log('PASS real Library Record/individual Stop/global Stop; concurrent muted source capture and mic copies; legacy verified-admission boundary and manual hidden controls');
 } catch (error) {
  evidence.failure = error.stack;
  try {evidence.failureState = await call();} catch {}

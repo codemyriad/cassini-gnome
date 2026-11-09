@@ -365,7 +365,7 @@ def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, c
             from cassini_talk.strings import text
 
             (meeting,) = LibraryScanner(root).scan().meetings
-            assert text("details.othersRoute.mixedSite", site="Synthetic meeting") in read_details(meeting).notes
+            assert text("details.othersRoute.mixedGeneric") in read_details(meeting).notes
         tracks = saved_tracks(root)
         assert sorted(tracks) == ["microphone", "system"]
         for kind, track in tracks.items():

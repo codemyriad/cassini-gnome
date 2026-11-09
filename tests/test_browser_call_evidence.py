@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from verified_fixture import alias, verify
 
 from cassini_talk.browser_service import BrowserConnection, BrowserService
 from cassini_talk.session_events import source_state
@@ -24,6 +25,7 @@ def policy(tmp_path, monkeypatch):
     service.update(browser, dict(type="status", recording=False))
     tasks = []
     monkeypatch.setattr(service.workers, "submit", lambda fn, *args: tasks.append((fn, args)))
+    verify(service, browser, [meeting(heard=True), dict(meeting(heard=True), tabId=4)])
     service.auto_record = True
     yield service, browser, tasks
     service.workers.shutdown(wait=True)
@@ -32,7 +34,7 @@ def policy(tmp_path, monkeypatch):
 def meeting(**extra):
     # Generated D30 topology: three live recvonly slots and a sendonly preview mic.
     # Protocol discovery deliberately reports receivers only.
-    return dict(tabId=3, title="Pre-join fixture", url="https://meet.example/test", sourceCount=3, **extra)
+    return alias(dict(tabId=3, title="Pre-join fixture", url="https://meet.example/test", sourceCount=3, **extra))
 
 
 @pytest.mark.parametrize("heard", [False, None, "true", 1, {}, []])
@@ -59,17 +61,17 @@ def test_capable_companion_requires_positive_count_and_explicit_heard(policy):
 
 
 @pytest.mark.parametrize("capabilities", [[], ["independent-sessions-v1"]])
-def test_legacy_companion_keeps_previous_auto_start(policy, capabilities):
+def test_legacy_companion_cannot_auto_start_without_verified_admission(policy, capabilities):
     service, browser, tasks = policy
     service.update(browser, dict(type="hello", version=1, capabilities=capabilities))
     service.update(browser, dict(type="meetings", meetings=[meeting(heard=False)]))
-    assert len(tasks) == 1 and tasks[0][1][1] == "start"
+    assert not tasks, "D80 supersedes the deployed legacy RTP-only admission rule"
 
 
 def test_queued_auto_start_rechecks_evidence_and_can_retry_when_joined(policy, monkeypatch):
     service, browser, tasks = policy
     commands = []
-    monkeypatch.setattr(service, "command", lambda *args: commands.append(args))
+    monkeypatch.setattr(service, "command", lambda *args, **kwargs: commands.append(args))
     service.update(browser, dict(type="meetings", meetings=[meeting(heard=True)]))
     fn, args = tasks.pop()
     service.update(browser, dict(type="meetings", meetings=[meeting(heard=False)]))
@@ -264,7 +266,9 @@ def test_shared_auto_start_vectors_schedule_and_dispatch(policy, command_packets
     service.update(browser, dict(type="meetings", meetings=[row(vector)]))
     settle(service, tasks)
     scheduled = starts(tasks, service)
-    assert bool(scheduled) is vector["expect"]["automatic"]
+    # These pre-D80 vectors have no verified acknowledgement/evidence. Their
+    # deployed RTP predicate is superseded; new shared D80 vectors cover positives.
+    assert not scheduled
     if scheduled:
         assert len(scheduled) == 1
         service._automatic(*scheduled[0])
@@ -272,7 +276,7 @@ def test_shared_auto_start_vectors_schedule_and_dispatch(policy, command_packets
     resumes = resume_packets(command_packets)
     assert len(resumes) == (1 if vector["expect"].get("resume") else 0)
     started = [packet for packet in command_packets if packet["action"] == "start" and packet not in resumes]
-    assert bool(started) is vector["expect"]["automatic"]
+    assert not started, "Old inventory cannot bypass verified admission"
     for packet in started:
         assert packet["tabId"] == vector["meeting"]["tabId"]
         assert packet["independent"] is True and "resumeCapture" not in packet

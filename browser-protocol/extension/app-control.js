@@ -2,8 +2,8 @@
 // Persistent app management, independent of the per-recording PCM connection.
 export class AppControl {
   constructor({ runtime, alarms, snapshot, command, capabilities = [], identity = () => ({}), cancelPending = () => {}, connected = async () => {},
-                later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id), busy = () => false, signalSnapshot = null }) {
-    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, identity, cancelPending, connected, later, cancel, busy, signalSnapshot });
+                later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id), busy = () => false, signalSnapshot = null, signalFinalize = value => value }) {
+    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, identity, cancelPending, connected, later, cancel, busy, signalSnapshot, signalFinalize });
     this.port = null;
     this.resetSignals();
     this.ready = false;
@@ -96,9 +96,13 @@ export class AppControl {
     this.publishing = (async () => {
       while (this.dirty && this.port && !this.connecting) {
         this.dirty = false;
-        const port = this.port;
+        const port = this.port, epoch = this.signalEpoch;
         try {
-          for (const message of await this.snapshot()) this.send(port, message);
+          const messages = await this.snapshot({verified:this.verifiedConfigured});
+          // A configure/revoke crossing an asynchronous inventory lookup must
+          // not publish aliases belonging to the previous negotiated shape.
+          if (epoch !== this.signalEpoch) { this.dirty = true; continue; }
+          for (const message of messages) this.send(port, message);
           if (port === this.port) this.ready = true;
         }
         catch { /* A failed metadata refresh must never stop audio capture. */ }
@@ -106,7 +110,10 @@ export class AppControl {
     })().finally(() => { this.publishing = null; if (this.dirty && this.port) this.publish(); });
   }
   resetSignals() {
+    this.cancel(this.signalTimer);this.signalTimer=null;
+    this.signalConnectionEpoch=(this.signalConnectionEpoch||0)+1;
     this.signalsConfigured = false;
+    this.verifiedConfigured = false;
     this.signalEpoch = (this.signalEpoch || 0) + 1;
     this.signalSequence = 0;
     this.signalRun = null;
@@ -117,17 +124,19 @@ export class AppControl {
     if (!this.port || !this.signalsConfigured) return;
     this.signalDirty = true;
     if (this.connecting || this.signalRun) return;
-    const run = this.signalRun = {};
+    const run = this.signalRun = {startedAt:Date.now()};
     void (async () => {
       while (this.signalRun === run && this.signalDirty && this.port && this.signalsConfigured && !this.connecting) {
         this.signalDirty = false;
         const port = this.port, epoch = this.signalEpoch;
         try {
-          const snapshot = await this.signalSnapshot();
+          let snapshot = await this.signalSnapshot({verified:this.verifiedConfigured,epoch:this.signalConnectionEpoch,configurationEpoch:this.signalEpoch});
           if (this.signalRun !== run || port !== this.port || epoch !== this.signalEpoch || !this.signalsConfigured) break;
           if (!snapshot) continue;
+          snapshot=this.signalFinalize(snapshot,{verified:this.verifiedConfigured});
+          if (!snapshot) continue;
           const serialized = JSON.stringify(snapshot);
-          if (serialized === this.lastSignals) continue;
+          if (serialized === this.lastSignals && !this.verifiedConfigured) continue;
           this.lastSignals = serialized;
           this.send(port,{type:'callSignals',sequence:this.signalSequence++,...snapshot});
         } catch { /* Failed metadata is not an audio failure or a capture command. */ }
@@ -136,21 +145,28 @@ export class AppControl {
       if (this.signalRun !== run) return;
       this.signalRun = null;
       if (this.signalDirty && this.signalsConfigured) this.publishSignals();
+      else if (this.verifiedConfigured && this.port && this.signalTimer==null) this.signalTimer=this.later(()=>{
+        this.signalTimer=null;this.publishSignals();
+      },Math.max(0,500-(Date.now()-run.startedAt)));
     });
   }
   receive(port, message) {
     if (port !== this.port) return;
     if (message?.type === 'configure') {
       const values = message.capabilities;
-      if (!Array.isArray(values) || values.length > 1 || values.some(value => value !== 'call-signals-v1') ||
+      if (!Array.isArray(values) || values.length > 2 || new Set(values).size !== values.length ||
+          values.some(value => !['call-signals-v1','verified-auto-admission-v1'].includes(value)) ||
+          (values.includes('verified-auto-admission-v1') && !values.includes('call-signals-v1')) ||
           Object.keys(message).some(key => !['type','capabilities'].includes(key))) return;
+      this.cancel(this.signalTimer);this.signalTimer=null;
       this.signalEpoch++;
       this.signalRun = null;
       this.lastSignals = null;
       this.signalsConfigured = values.includes('call-signals-v1') && this.capabilities.includes('call-signals-v1') && typeof this.signalSnapshot === 'function';
+      this.verifiedConfigured = this.signalsConfigured && values.includes('verified-auto-admission-v1') && this.capabilities.includes('verified-auto-admission-v1');
       this.signalDirty = false;
-      this.send(port,{type:'configured',capabilities:this.signalsConfigured ? ['call-signals-v1'] : []});
-      this.publishSignals();
+      this.send(port,{type:'configured',capabilities:this.signalsConfigured ? ['call-signals-v1',...(this.verifiedConfigured ? ['verified-auto-admission-v1'] : [])] : []});
+      this.publish();
       return;
     }
     // heartbeat-v1: answer at once, never through the command queues (a Stop

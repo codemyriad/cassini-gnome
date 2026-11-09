@@ -170,3 +170,64 @@ def test_library_activity_tick_releases_stale_capture_guard(application_class): 
     windows.append(window)
     LibraryWindow._activity_tick(window)
     assert updates == [True]
+
+
+def test_second_explicit_stop_is_not_lost_while_previous_stop_result_is_pending(application_class, monkeypatch):  # noqa: F811
+    """A broker can finish Stop and admit a new capture before GTK gets its reply."""
+    import threading
+
+    from test_library_monitor import spin_until
+
+    from cassini_talk import capture_guard
+
+    app, held, _finished, _windows = application()
+    app._browser_stops = set()
+    app._record_start_group = None
+    app._notify_shortcut_saved = lambda _: None
+    app.transcription_enabled = False
+    app.recording_error = None
+    app._native_changed = lambda: None
+    app.build_refresh = None
+    first_entered, release_first, second_entered = (threading.Event() for _ in range(3))
+    calls = []
+
+    def stop(*_args, **kwargs):
+        calls.append(kwargs["reason"])
+        if len(calls) == 1:
+            first_entered.set()
+            assert release_first.wait(2)
+        else:
+            second_entered.set()
+        return []
+
+    monkeypatch.setattr(capture_guard, "stop_browser_captures", stop)
+    app.stop_browser_recordings = application_class.stop_browser_recordings.__get__(app)
+    app.stop_browser_recordings()
+    assert first_entered.wait(2)
+    try:
+        # The broker has already applied the first Stop, but its response/save
+        # delivery is held. A later user Stop belongs to the new state too.
+        app.stop_browser_recordings()
+    finally:
+        release_first.set()
+    spin_until(lambda: not app._browser_stops)
+    assert second_entered.is_set(), "A new explicit Stop was discarded behind the previous RPC"
+    assert calls == ["user", "user"]
+    assert not held
+
+
+def test_explicit_stop_reaches_broker_despite_cached_idle(application_class):  # noqa: F811
+    """A notification's Stop intent is authoritative even during a watch update."""
+    calls = []
+    app = SimpleNamespace(
+        get_windows=lambda: [],
+        _record_start_generation=0,
+        stop_native=lambda: calls.append("native"),
+        browser_watch=object(),
+        browser_capture_active=lambda: False,
+        _record_start_future=None,
+        stop_browser_recordings=lambda: calls.append("browser"),
+    )
+    application_class.on_stop_recording(app)
+    assert calls == ["native", "browser"]
+    assert app._record_start_generation == 1

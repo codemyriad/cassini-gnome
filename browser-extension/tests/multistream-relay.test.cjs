@@ -19,7 +19,7 @@ test('seventy sources cross the production relay and worker into a framed native
   const frame=app.frame(2,64,1),endpoint={onMessage:event(),onDisconnect:event(),postMessage:p=>frame.onMessage.emit(p)};
   frame.postMessage=p=>{frame.sent.push(p);endpoint.onMessage.emit(p)};
   const listeners=new Map(),controls=[],window={addEventListener:(name,fn)=>listeners.set(name,fn),postMessage:p=>{controls.push(p);if(p.type==='stop')queueMicrotask(()=>page({type:'stopped',token:p.token}))}};
-  const page=p=>listeners.get('message')({source:window,data:{channel:'cassini-page',...p}});
+  const page=p=>listeners.get('message')({isTrusted:true,source:window,data:{channel:'cassini-page',...p}});
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../relay.js'),'utf8'),{window,chrome:{runtime:{connect:()=>endpoint,onMessage:event(),getURL:p=>p}}});
   const command=(requestId,action)=>app.command({type:'command',requestId,action,tabId:2,mode:'tracks',independent:true});
   assert.equal((await command('start','start')).ok,true);

@@ -7,17 +7,17 @@ The browser protocol and source format are shared with Cassini for Mac.
 
 ## Layers
 
-`call-signals.mjs` runs the pinned companion's real `CallSignalProducer` and
-`AppControl` in Chromium through native messaging and GNOME, with private Pulse
-microphone/desktop tones. The unmodified WhatsApp adapter must stay unknown on
-passive playback. Positive cases use only the trusted adapter constructor in the
-extension worker, with Chrome-owned tab/document IDs; no page-supplied markers,
-native replies, PCM, browser APIs or wire packets are fabricated. It checks opt-in,
-shared system recording, independent Me choice, reconnect and manual Stop fences,
-positive end while audio continues, and the quiet persisted Details explanation.
-This proves app/producer integration, not live WhatsApp compatibility. Headless
-E1 regressions separately hold input dispatch and metadata checkpoints to prove
-Stop/end/unknown cancellation, plus the exact 120-second evidence-loss policy.
+`call-signals.mjs` runs the pinned companion's collector and `AppControl` in
+Chromium through native messaging and GNOME, with private Pulse microphone and
+desktop tones. The unmodified generic collector stays unknown on passive
+playback. A separately labelled controlled trusted adapter supplies mixed-route
+contract inputs with explicit negotiation/document binding to exercise actual
+system PCM, shared ownership, reconnect, Stop suppression, persisted route and
+call-ended Stop. It is not real-site mixed qualification. The legacy 0.2.25
+branch verifies failure-closed automatic admission and explicit manual Record.
+Headless E1 regressions retain held input dispatch, metadata checkpoints and
+the exact 120-second evidence-loss policy. Companion 0.2.26's real Talk split-PC
+producer qualification passed before the adoption pin.
 
 `app-control.mjs` also drives the production What is recorded dialog through
 off/on choices, then reloads a tab and terminates/restarts its worker. It checks
@@ -123,9 +123,12 @@ Library widgets. It records two generated WebRTC calls while both tabs and the
 private output sink are muted, checks separate remote tones and native microphone
 copies, and proves that a later call does not join manual Record. The meeting
 page stops one while the other grows; the pill and actual private portal shortcut
-stop all. Automatic recording continues with no visible window, and the native
-GNotification Open/Stop actions travel over private D-Bus. A new call starts while
-the app is hidden. All device, framing, IPC and widget code is production code;
+stop all. With pinned companion 0.2.25, opt-in must issue no automatic Start,
+even for heard RTP: the real control-host writer is observed and setup must show
+`setup.companion.autoUnverified`. Manual Record still exercises the hidden native
+GNotification/Stop controls over private D-Bus; a new call stays manual. The
+verified automatic positive branch waits for producer #79 / 0.2.26 and qualifying
+fixtures. GNOME adoption cannot merge before real Talk (including split-PC) qualifies. All device, framing, IPC and widget code is production code;
 only the meeting peers and private desktop services are fixtures.
 
 `tests/recording/run.sh /usr/bin/python3 tests/recording/browser-microphone.py`
@@ -254,3 +257,15 @@ the interval, flipping the 880 Hz phase: one coherent coefficient gave 0.0019,
 the two halves 0.196 and 0.200, windowed magnitude 0.198. Skew slaving also
 runs in the recorder's own pulsesrc (provide-clock=false), so the measurement,
 not the producers, is fixed. The > 0.08 wanted and < 0.01 bleed bounds stay.
+
+## Verified automatic Talk admission (D80.5)
+
+With a separate disposable Nextcloud 34/Talk 24 full-profile harness, run
+`CASSINI_TEST_TALK_URL=http://127.0.0.1:PORT/call/ROOM CASSINI_TEST_BUILD=BUILD tests/recording/run.sh node tests/recording/app-control.mjs`.
+Only loopback room URLs are accepted. The pinned 0.2.26 extension and real GNOME
+broker/native hosts run unchanged. Listen-only Talk must expose truthful received
+RTP while automatic Start stays absent. Unmuting the captured fake microphone
+then qualifies real publisher/subscriber split PCs; the actual GNOME automatic
+Start must produce two distinct non-silent remote PCM tracks and save on Stop.
+The native collector and an independent topology probe both assert split PCs.
+This path does not substitute the producer's test host for the GNOME consumer.

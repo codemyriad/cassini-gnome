@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -164,9 +165,43 @@ def test_shutdown_rechecks_identity_and_active_capture_under_the_broker_lock(pri
 
 
 def test_sigterm_finalizes_capture_and_removes_the_socket(private):
+    control = stream = None
     try:
         browser_service.ensure_service(private)
         identity = browser_service.request(path=private)["identity"]
+        control = browser_service.connect(private)
+        stream = control.makefile("rwb")
+        browser_service.send_packet(stream, dict(role="extension"))
+        hello = dict(type="hello", version=1, capabilities=["independent-sessions-v1", "call-signals-v1"])
+        browser_service.send_packet(stream, hello)
+        assert browser_service.read_packet(stream)["type"] == "configure"
+        browser_service.send_packet(
+            stream,
+            dict(
+                type="meetings",
+                meetings=[
+                    dict(
+                        tabId=2,
+                        title="Synthetic manual writer",
+                        url="https://fixture.invalid/manual",
+                        sourceCount=1,
+                        pageState="present",
+                    )
+                ],
+            ),
+        )
+        browser_service.send_packet(stream, dict(type="status", recording=False))
+        # A second configure reply is an ordered barrier after the inventory.
+        browser_service.send_packet(stream, hello)
+        assert browser_service.read_packet(stream)["type"] == "configure"
+        with ThreadPoolExecutor(1) as executor:
+            asking = executor.submit(browser_service.request, "start-all", path=private, microphone=False)
+            command = browser_service.read_packet(stream)
+            assert command["action"] == "start"
+            browser_service.send_packet(
+                stream, dict(type="result", requestId=command["requestId"], ok=True, status=dict(recording=False))
+            )
+            assert asking.result(BOUND)["attempted"] == 1
         proxy = BrowserAudioProxy(path=private)
         try:
             result = proxy.handle(
@@ -175,6 +210,7 @@ def test_sigterm_finalizes_capture_and_removes_the_socket(private):
                     version=1,
                     independent=True,
                     captureId="generated",
+                    requestId=command["requestId"],
                     timelineOriginMs=time.time_ns() // 1_000_000,
                     microphone=False,
                 )
@@ -198,6 +234,10 @@ def test_sigterm_finalizes_capture_and_removes_the_socket(private):
         finally:
             proxy.close()
     finally:
+        if stream is not None:
+            stream.close()
+        if control is not None:
+            control.close()
         close_broker(private)
 
 

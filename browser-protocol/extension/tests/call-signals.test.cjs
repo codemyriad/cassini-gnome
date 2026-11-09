@@ -6,8 +6,8 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../call-signals.js'),'utf8'
 const {browserProfileIdentity,SiteSignalAdapters,CallSignalProducer}=context.signalApi;
 const plain=value=>JSON.parse(JSON.stringify(value));
 const configure=app=>app.api.appControl.port.onMessage.emit({type:'configure',capabilities:['call-signals-v1']});
-async function whatsappFrame(app,count=0){
- app.tabs.get(2).url='https://web.whatsapp.com/';
+async function fixtureFrame(app,count=0){
+ app.tabs.get(2).url='https://fixture.example/';
  app.pages[0].onDisconnect.emit();
  return app.frame(2,count,0,'browser-document-A');
 }
@@ -25,43 +25,39 @@ test('profile storage failure, failed persistence and stalled lookup fail closed
  const pending=browserProfileIdentity({get(){return new Promise(()=>{})}},()=> 'not-used',{later(fn,ms){assert.equal(ms,2500);expire=fn;return 1},cancel(){cancelled=true}});
  expire();assert.equal(await pending,null);assert.equal(cancelled,true);
 });
-test('site framework classifies only reviewed origins and never infers a call from hostname or media',()=>{
+test('production descriptors contain no hostname registry; explicit legacy fixtures never infer a call',()=>{
  const adapters=new SiteSignalAdapters();
- for(const address of ['https://web.whatsapp.com/','https://web.whatsapp.com/#status','https://web.whatsapp.com/voice-message']){
-  const descriptor=adapters.resolve(address);assert.equal(descriptor.remoteAudio,'mixed');
-  assert.deepEqual(plain(adapters.evidence(descriptor)),{state:'unknown',reason:'unverified',adapter:{name:'whatsapp-web',version:'1-unverified'},callGeneration:null});
- }
- for(const address of ['http://web.whatsapp.com/','https://web.whatsapp.com:444/','https://web.whatsapp.com.evil.test/','https://www.youtube.com/','not a URL'])assert.equal(adapters.resolve(address),null);
+ for(const address of ['https://fixture.example/','https://fixture.example/#status','https://www.youtube.com/'])assert.equal(adapters.resolve(address),null);
  const generic=new SiteSignalAdapters([{name:'review-fixture',version:'1',hostname:'fixture.example',remoteAudio:'separated'}]);
  assert.equal(generic.resolve('https://fixture.example/').remoteAudio,'separated');
  assert.equal(generic.evidence(generic.resolve('https://fixture.example/')).state,'unknown');
 });
 test('producer uses Chrome top document and URL, excludes obsolete/subframes and ignores page evidence',async()=>{
- const adapters=new SiteSignalAdapters(),frame={tabId:2,frameId:0,browserDocumentId:'browser-A',browserUrl:'https://web.whatsapp.com/',sourceCount:30,heard:true,callEvidence:{state:'active'}};
+ const adapters=new SiteSignalAdapters([{name:'fixture',version:'1',hostname:'fixture.example',remoteAudio:'mixed'}]),frame={tabId:2,frameId:0,browserDocumentId:'browser-A',browserUrl:'https://fixture.example/',sourceCount:30,heard:true,callEvidence:{state:'active'}};
  let valid=true;const frames=new Set([frame,{...frame,frameId:1,browserDocumentId:'subframe'}]);
- const producer=new CallSignalProducer({identity:()=> 'profile',tabs:{async query(){return [{id:2,url:'https://web.whatsapp.com/'}]}},frames:()=>frames,current:f=>f===frame&&valid,adapters});
+ const producer=new CallSignalProducer({identity:()=> 'profile',tabs:{async query(){return [{id:2,url:'https://fixture.example/'}]}},frames:()=>frames,current:f=>f===frame&&valid,adapters});
  const snapshot=await producer.snapshot();assert.equal(snapshot.tabs.length,1);assert.equal(snapshot.tabs[0].documentGeneration,'browser-A');assert.equal(snapshot.tabs[0].callEvidence.state,'unknown');
  valid=false;assert.equal((await producer.snapshot()).tabs.length,0);
  valid=true;frame.browserUrl='https://other.example/';assert.equal((await producer.snapshot()).tabs.length,0);
 });
 test('a held browser lookup cannot publish a retired/replaced document',async()=>{
- const frame={tabId:2,frameId:0,browserDocumentId:'old',browserUrl:'https://web.whatsapp.com/'};
+ const frame={tabId:2,frameId:0,browserDocumentId:'old',browserUrl:'https://fixture.example/'};
  let release,current=true;const producer=new CallSignalProducer({identity:()=> 'profile',tabs:{query(){return new Promise(resolve=>release=resolve)}},frames:()=>[frame],current:()=>current});
- const pending=producer.snapshot();current=false;release([{id:2,url:'https://web.whatsapp.com/'}]);assert.equal((await pending).tabs.length,0);
+ const pending=producer.snapshot();current=false;release([{id:2,url:'https://fixture.example/'}]);assert.equal((await pending).tabs.length,0);
 });
 test('signals require opt-in, acknowledge first, have stable identity and withdraw on navigation',async()=>{
  const app=await setup(0);
  try{
-  await whatsappFrame(app);
+  await fixtureFrame(app);
   await app.api.appControl.publishing;
   assert.ok(app.ports[0].sent[0].capabilities.includes('call-signals-v1'));
   assert.equal(app.ports[0].sent.some(m=>m.type==='callSignals'),false);
-  configure(app);await until(()=>app.ports[0].sent.some(m=>m.type==='callSignals'&&m.tabs.length));
+  configure(app);await until(()=>app.ports[0].sent.some(m=>m.type==='callSignals'));
   const messages=app.ports[0].sent,ack=messages.findIndex(m=>m.type==='configured'),first=messages.findIndex(m=>m.type==='callSignals');assert.ok(ack<first);
-  const signal=messages[first];assert.equal(signal.browserInstance,app.localStore.cassiniBrowserInstance);assert.equal(signal.sequence,0);assert.equal(signal.tabs[0].callEvidence.state,'unknown');assert.equal(signal.tabs[0].remoteAudio,'mixed');
+  const signal=messages[first];assert.equal(signal.browserInstance,app.localStore.cassiniBrowserInstance);assert.equal(signal.sequence,0);assert.equal(signal.tabs.length,0,'v1-only peers receive no generic verified rows');
   app.chrome.tabs.onUpdated.emit(2,{status:'loading'});
   await until(()=>messages.filter(m=>m.type==='callSignals').at(-1).tabs.length===0);
-  const withdrawn=messages.filter(m=>m.type==='callSignals').at(-1);assert.ok(withdrawn.sequence>signal.sequence);
+  const withdrawn=messages.filter(m=>m.type==='callSignals').at(-1);assert.ok(withdrawn.sequence>=signal.sequence);
   assert.equal(app.audio.length,0);
  }finally{app.close()}
 });
@@ -91,16 +87,17 @@ test('invalid configure and unverified profile storage never enable signals',asy
   assert.equal(app.ports[0].sent.some(m=>m.type==='callSignals'),false);assert.equal(app.audio.length,0);
  }finally{app.close()}
 });
-test('mixed site stays out of legacy inventory and browser Start opens no audio, even with RTP',async()=>{
+test('hostname never grants admission or blocks explicit capture of real RTP sources',async()=>{
  const app=await setup(0);
  try{
-  const frame=await whatsappFrame(app,2);
+  const frame=await fixtureFrame(app,2);
   frame.onMessage.emit({type:'discovery',sourceCount:2,heard:true,documentGeneration:'page-spoof',callGeneration:'page-spoof'});
-  assert.equal((await app.api.meetings()).meetings.length,0);
-  const refused=await app.command({type:'command',requestId:'mixed',action:'start',mode:'tracks',tabId:2,independent:true,microphone:true});
-  assert.equal(refused.ok,false);assert.equal(refused.code,'unsupported');assert.equal(app.audio.length,0);
-  for(const mode of ['tracks','tab'])await assert.rejects(app.api.start(mode,2),error=>error.resultCode==='unsupported');
-  assert.equal(app.audio.length,0);assert.equal(app.api.status().recording,false);
+  assert.equal((await app.api.meetings()).meetings.length,1);
+  app.api.appControl.port.onMessage.emit({type:'configure',capabilities:['call-signals-v1','verified-auto-admission-v1']});
+  await until(()=>app.ports[0].sent.some(m=>m.type==='callSignals'&&m.tabs.length));
+  assert.equal(app.ports[0].sent.filter(m=>m.type==='callSignals').at(-1).tabs[0].callEvidence.state,'unknown');
+  const started=await app.command({type:'command',requestId:'manual',action:'start',mode:'tracks',tabId:2,independent:true,microphone:false});
+  assert.equal(started.ok,true);assert.equal(app.audio.length,1);await app.api.stop();
  }finally{app.close()}
 });
 test('publisher deduplicates unchanged snapshots without resetting sequence on reconfigure',async()=>{

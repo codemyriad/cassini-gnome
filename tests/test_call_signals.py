@@ -12,7 +12,9 @@ from cassini_talk.call_signals import SignalCalls, rows
 
 
 def peer(name="first", stamp=1, instance="private-profile"):
-    return SimpleNamespace(id=name, connected_at=stamp, browser_instance=instance, signals_instance=instance)
+    return SimpleNamespace(
+        id=name, connected_at=stamp, browser_instance=instance, signals_instance=instance, verified_configured=True
+    )
 
 
 def call(tab=3, generation="call-A", document="document-A", state="active", remote="mixed", reason=None):
@@ -20,12 +22,13 @@ def call(tab=3, generation="call-A", document="document-A", state="active", remo
         tabId=tab,
         url="https://meeting.example/test",
         documentGeneration=document,
+        sourceDocumentGeneration="hook-" + document,
         remoteAudio=remote,
         callEvidence=dict(
             state=state,
             reason=reason or {"active": "activeCall", "unknown": "unverified", "inactive": "callEnded"}[state],
             adapter=dict(name="Synthetic meeting", version="1"),
-            callGeneration=generation,
+            callGeneration=None if state == "unknown" else generation,
         ),
     )
 
@@ -89,6 +92,7 @@ def test_evidence_loss_stops_at_120_seconds_and_is_not_call_end(loss):
     update(model, owner, [call()])
     model.reserve("capture")
     model.started()
+    update(model, owner, [call()], 9)  # Keep proof fresh until the explicit loss at 10.
     if loss == "disconnect":
         model.disconnect(owner, 10)
     else:
@@ -187,33 +191,64 @@ def test_shared_refused_signal_shapes(case):
 
 @pytest.mark.parametrize("case", SHARED["routing"] + SHARED["passiveMediaNegatives"], ids=lambda c: c["name"])
 def test_shared_routing_and_passive_media_use_gnome_admission(case):
+    import threading
+
     from cassini_talk.browser_service import BrowserService
+    from cassini_talk.call_admission import CAPABILITIES, Binding
 
     message = case["signal"]
-    model, owner = SignalCalls(), peer(instance=message["browserInstance"])
+    model = SignalCalls()
+    owner = peer(instance=case.get("connectionBrowserInstance", message["browserInstance"]))
+    owner.verified_configured = set(case.get("configuredCapabilities", [])) == CAPABILITIES
+    owner.closed, owner.shut_down = False, threading.Event()
     model.claim(owner, 0)
     _seq, snapshot = rows(message)
-    model.update(owner, snapshot, 0)
-    model.advance(0, enabled=case["autoRecordOptIn"])
-    assert bool(model.calls) == case["expect"]["appSystemStart"]
-    owner.signal_rows = snapshot
-    owner.capabilities = {"call-evidence-v1"}
-    rtp = case.get("rtp", dict(sourceCount=0, heard=False))
-    legacy = (
-        case["autoRecordOptIn"]
-        and BrowserService._auto_start_ready(owner, rtp)
-        and not BrowserService._signal_blocks_browser(SimpleNamespace(signal_calls=model), owner, 2, rtp)
+    if message["browserInstance"] == owner.signals_instance:
+        model.update(owner, snapshot, 0)
+    now = case.get("consumerEvidenceAgeMs", 0) / 1000
+    for legacy in case.get("legacyMeetings", []):
+        proof = model.proof(owner, legacy["tabId"], now)
+        if proof is not None and not proof.binding.matches(legacy):
+            model.invalidate(owner, legacy["tabId"], now)
+    pending = case.get("pendingBinding")
+    if pending:
+        expected = Binding(
+            pending["browserInstance"],
+            pending["tabId"],
+            pending["browserDocumentId"],
+            pending["sourceDocumentGeneration"],
+            pending["callGeneration"],
+        )
+        proof = model.proof(owner, pending["tabId"], now)
+        if proof is not None and proof.binding != expected:
+            model.invalidate(owner, pending["tabId"], now)
+    model.advance(now, enabled=case["autoRecordOptIn"])
+    # Pending binding vectors describe one captured action, not permission
+    # to substitute a different currently eligible call for that action.
+    pending_matches = not pending or (
+        (candidate := model.proof(owner, pending["tabId"], now)) is not None and candidate.binding == expected
     )
-    assert bool(legacy) == case["expect"]["browserStart"]
+    assert bool(model.calls and pending_matches) == case["expect"]["appSystemStart"]
+    service = BrowserService.__new__(BrowserService)
+    service.signal_calls, service.clock = model, lambda: now
+    owner.signal_rows = snapshot
+    rtp = case.get("rtp", dict(sourceCount=0, heard=False))
+    eligible = case["autoRecordOptIn"] and service._auto_start_ready(owner, rtp)
+    assert bool(eligible) == case["expect"]["browserStart"]
 
 
 def _shared_row(association, state="active", remote="mixed"):
     row = copy.deepcopy(next(c["message"]["tabs"][0] for c in SHARED["valid"] if c["name"] == "positive-mixed-call"))
-    row.update(tabId=association["tabId"], documentGeneration=association["documentGeneration"], remoteAudio=remote)
+    row.update(
+        tabId=association["tabId"],
+        documentGeneration=association["documentGeneration"],
+        sourceDocumentGeneration="hook-" + association["documentGeneration"],
+        remoteAudio=remote,
+    )
     row["callEvidence"].update(
         state=state,
         reason={"active": "activeCall", "inactive": "callEnded", "unknown": "unverified"}[state],
-        callGeneration=association["callGeneration"],
+        callGeneration=None if state == "unknown" else association["callGeneration"],
     )
     return row
 
@@ -257,3 +292,28 @@ def test_shared_loss_deadline_is_never_extended_by_other_evidence_loss():
         assert bool(model.retiring) == step["expect"]["stop"]
         if model.calls:
             assert (next(iter(model.calls.values())).lost_at + LOSS_GRACE) * 1000 == step["expect"]["deadlineMs"]
+
+
+def test_fresh_same_background_call_document_binding_preserves_established_owner():
+    model, owner = SignalCalls(), peer()
+    model.claim(owner, 0)
+    update(model, owner, [call()])
+    model.reserve("existing")
+    model.started()
+    update(model, owner, [call(document="chrome-document-B")], 1)
+    assert model.capture_id == "existing" and model.retiring is None and len(model.calls) == 1
+    association = next(iter(model.calls.values()))
+    assert association.binding.source_document == "hook-chrome-document-B" and association.lost_at is None
+    update(model, owner, [call(state="inactive")], 2)
+    assert model.retiring is None, "An old document end cannot end the continuing bound call"
+    assert association.lost_at == 2
+
+
+def test_refresh_after_full_proof_loss_grace_cannot_rescue_old_owner():
+    model, owner = SignalCalls(), peer()
+    model.claim(owner, 0)
+    update(model, owner, [call()])
+    model.reserve("expired-owner")
+    model.started()
+    update(model, owner, [call()], 125)
+    assert model.retiring == "pageGone" and not model.calls

@@ -10,11 +10,14 @@ import wave
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from broker_fixture import authorize_native_start as authorize_broker_start
 from broker_fixture import stop_broker
 from durable import DURABLE_BOUND, CaptureChanges, durable, saved, tracks_bound
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
 from cassini_talk.browser_service import BrowserService, request
+
+_SERVER_SERVICES = {}
 
 
 class Tap:
@@ -63,11 +66,35 @@ def server(tmp_path):
     worker = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
     worker.start()
     assert ready.wait(2)
-    yield service, path, tmp_path / "library"
-    stop_broker(service, worker, path)
+    _SERVER_SERVICES[str(path)] = service
+    try:
+        yield service, path, tmp_path / "library"
+    finally:
+        try:
+            stop_broker(service, worker, path)
+        finally:
+            _SERVER_SERVICES.pop(str(path))
 
 
-def start(client, identifier, *, microphone=True):
+def authorize_native_start(client=None, *, service=None, call_generation=None, microphone=True):
+    service = service or _SERVER_SERVICES[client.connection.getpeername()]
+    return authorize_broker_start(service, call_generation=call_generation, microphone=microphone)
+
+
+def start(
+    client,
+    identifier,
+    *,
+    microphone=True,
+    call_generation=None,
+    document_generation=None,
+    request_id=None,
+    service=None,
+):
+    if request_id is None:
+        request_id = authorize_native_start(
+            client, service=service, call_generation=call_generation, microphone=microphone
+        )
     return client.handle(
         dict(
             type="start",
@@ -77,6 +104,9 @@ def start(client, identifier, *, microphone=True):
             timelineOriginMs=int(time.time() * 1000),
             microphone=microphone,
             title=identifier,
+            callGeneration=call_generation,
+            documentGeneration=document_generation,
+            **({"requestId": request_id} if request_id is not None else {}),
         )
     )
 
@@ -126,6 +156,7 @@ def test_broker_keeps_negotiated_source_io_errors_scoped_and_retries_a_fresh_spa
     try:
         reply = client.handle(
             dict(
+                requestId=authorize_native_start(client),
                 type="start",
                 independent=True,
                 captureId="source-error",
@@ -732,6 +763,7 @@ def test_lost_audio_acknowledgement_keeps_native_mic_and_falls_back(server, monk
         send(
             peer_stream,
             dict(
+                requestId=authorize_native_start(service=service),
                 type="start",
                 independent=True,
                 captureId="ack-loss",
@@ -1052,6 +1084,7 @@ def test_broker_native_first_stop_keeps_a_never_opened_source_without_late_rewri
     try:
         client.handle(
             dict(
+                requestId=authorize_native_start(client),
                 type="start",
                 independent=True,
                 captureId="native-first",
@@ -1123,6 +1156,7 @@ def test_native_mic_checkpoint_failure_keeps_browser_pcm_and_does_not_raise_glob
     try:
         client.handle(
             dict(
+                requestId=authorize_native_start(client),
                 type="start",
                 version=1,
                 independent=True,
@@ -1165,6 +1199,7 @@ def test_announced_page_microphone_never_interrupts_a_native_me_recording(server
     try:
         reply = client.handle(
             dict(
+                requestId=authorize_native_start(client),
                 type="start",
                 independent=True,
                 captureId="native-me",
@@ -1216,7 +1251,13 @@ def test_snapshot_keeps_host_start_origin_after_toggle_and_control_disconnect(
             command = read_packet(control)
             assert command["action"] == "start"
             if audio_first:
-                start(client, "origin")
+                start(
+                    client,
+                    "origin",
+                    call_generation="call-fixture",
+                    document_generation="hook-fixture",
+                    request_id=command["requestId"],
+                )
             status = dict(recording=True, tabId=3, captureId="origin", automatic=not automatic)
             if acknowledged:
                 send_packet(control, dict(type="result", requestId=command["requestId"], ok=True, status=status))
@@ -1225,7 +1266,13 @@ def test_snapshot_keeps_host_start_origin_after_toggle_and_control_disconnect(
             else:
                 send_packet(control, dict(type="status", **status))
             if not audio_first:
-                start(client, "origin")
+                start(
+                    client,
+                    "origin",
+                    call_generation="call-fixture",
+                    document_generation="hook-fixture",
+                    request_id=command["requestId"],
+                )
             wait_for(lambda: service._capture_automatic.get("origin") is automatic)
             request("configure", path=path, autoRecord=not automatic)
             assert (
@@ -1310,7 +1357,13 @@ def pending_automatic_reconnect(server, monkeypatch):
             pending = original_peer.pending[asked["requestId"]]
             assert pending["automatic"] and pending["result"] is None
         client = BrowserAudioProxy(path=path)
-        start(client, "recovered-origin")
+        start(
+            client,
+            "recovered-origin",
+            call_generation="call-fixture",
+            document_generation="hook-fixture",
+            request_id=asked["requestId"],
+        )
         remote(client, "voice")
         capture = service.captures["recovered-origin"]
         # No status or result is sent on this socket. Its pending command
@@ -1396,7 +1449,13 @@ def test_automatic_status_without_browser_instance_binds_origin_before_start_ack
         asked = read_packet(control)
         assert asked["action"] == "start"
         if audio_first:
-            start(client, "unidentified-origin")
+            start(
+                client,
+                "unidentified-origin",
+                call_generation="call-fixture",
+                document_generation="hook-fixture",
+                request_id=asked["requestId"],
+            )
             capture = service.captures["unidentified-origin"]
         send_packet(control, dict(type="status", recording=True, tabId=3, captureId="unidentified-origin"))
         durable(reported, "unidentified peer's recording status was not processed")
@@ -1405,7 +1464,13 @@ def test_automatic_status_without_browser_instance_binds_origin_before_start_ack
             assert peer.browser_instance is None and peer.pending[asked["requestId"]]["result"] is None
             assert service._capture_automatic.get("unidentified-origin") is True
         if not audio_first:
-            start(client, "unidentified-origin")
+            start(
+                client,
+                "unidentified-origin",
+                call_generation="call-fixture",
+                document_generation="hook-fixture",
+                request_id=asked["requestId"],
+            )
             capture = service.captures["unidentified-origin"]
         status = next(s for s in service.snapshot()["statuses"] if s.get("captureId") == "unidentified-origin")
         assert status["automatic"] is True

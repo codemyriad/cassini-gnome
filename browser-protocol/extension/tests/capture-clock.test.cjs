@@ -327,7 +327,11 @@ async function device(run, { stamps = true, outputLatency = 0, retries = [] } = 
   globalThis.AudioContext = Context; globalThis.AudioWorkletNode = Worklet;
   const tick = () => new Promise(resolve => setImmediate(resolve));
   try {
-    const { capture } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+    // The byte-exact test above covers the production encoder. These long clock
+    // simulations discard PCM after counting frames; use its byte-equivalent
+    // native encoder to avoid converting hours of silence through JS strings.
+    const clockSource = source + '\nbase64 = buffer => Buffer.from(buffer).toString("base64");\n';
+    const { capture } = await import(`data:text/javascript;base64,${Buffer.from(clockSource).toString('base64')}`);
     let shared;
     const rig = {
       dev, nodes, packets, warnings, failures, timers, tick, contexts,

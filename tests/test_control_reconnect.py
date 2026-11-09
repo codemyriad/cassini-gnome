@@ -10,9 +10,11 @@ from durable import DURABLE_BOUND, saved
 from test_browser_capture import bind_capture, remote, server, start  # noqa: F401
 from test_browser_service import meeting, wait_for
 from test_browser_sessions import Extension
+from verified_fixture import signal
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
-from cassini_talk.browser_service import connect, request, send_packet
+from cassini_talk.browser_service import connect, read_packet, request, send_packet
+from cassini_talk.call_admission import CAPABILITIES as VERIFIED
 from cassini_talk.call_lifecycle import CALL_END_GRACE, CONTROL_RECONNECT_GRACE
 
 INSTANCE = "4242:99"
@@ -26,8 +28,11 @@ def peer(path, tabs=(3,), instance=INSTANCE):
     extension.stream = extension.connection.makefile("rwb")
     extension.sessions = {}
     extension.title = "Control peer " + str(uuid4())
+    extension.profile, extension.signal_sequence = instance, -1
     send_packet(extension.stream, dict(role="extension", browserName="Chrome", browserInstance=instance))
-    send_packet(extension.stream, dict(type="hello", version=1, capabilities=CAPABILITIES))
+    send_packet(extension.stream, dict(type="hello", version=1, capabilities=sorted(set(CAPABILITIES) | VERIFIED)))
+    assert read_packet(extension.stream) == dict(type="configure", capabilities=sorted(VERIFIED))
+    send_packet(extension.stream, dict(type="configured", capabilities=sorted(VERIFIED)))
     send_packet(extension.stream, dict(type="status", recording=False, sessions=[]))
     inventory(extension, tabs)
     return extension
@@ -42,6 +47,16 @@ def inventory(extension, tabs, page="present", count=2):
                 dict(meeting(tab), title=extension.title, pageState=page, sourceCount=count, heard=count > 0)
                 for tab in tabs
             ],
+        ),
+    )
+    extension.signal_sequence += 1
+    send_packet(
+        extension.stream,
+        dict(
+            type="callSignals",
+            browserInstance=extension.profile,
+            sequence=extension.signal_sequence,
+            tabs=[signal(meeting(tab)) for tab in tabs],
         ),
     )
     # Wait for this inventory, not merely a row: an earlier inventory of the

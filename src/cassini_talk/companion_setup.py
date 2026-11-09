@@ -369,11 +369,18 @@ class CompanionSetup(Adw.Dialog):
         live_errors = set()
         for peer in state.get("peers", ()):
             diagnostic = peer["diagnostics"]
+            unverified = not peer.get("automaticVerified", False)
             outdated = older(diagnostic.get("extensionVersion"), state.get("bundledVersion"))
             again = diagnostic.get("filesOk") is False or outdated or "multi-stream-v1" not in peer["capabilities"]
             tabs = reload_tabs(peer)
-            if (again or tabs) and peer["browser"]:
+            if (unverified or again or tabs) and peer["browser"]:
                 self.health_box.append(Gtk.Label(label=peer["browser"], xalign=0, css_classes=["heading"]))
+            if unverified:
+                self.health_box.append(
+                    Gtk.Label(
+                        label=text("setup.companion.autoUnverified"), wrap=True, xalign=0, css_classes=["dim-label"]
+                    )
+                )
             if diagnostic.get("filesOk") is False:
                 self.health_box.append(Gtk.Label(label=text("setup.companion.filesMissing"), wrap=True, xalign=0))
             if outdated:

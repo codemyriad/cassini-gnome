@@ -367,15 +367,21 @@ def browser_only(appid, microphone):
     here, so a meeting page's own getUserMedia stream is not part of this row.
     """
     import sys
+    from contextlib import ExitStack
 
     sys.path.insert(0, "/usr/share/cassini-talk")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from broker_fixture import remote_native_start
+
     from cassini_talk.browser_audio_proxy import BrowserAudioProxy
 
     runtime = Path(os.environ["XDG_RUNTIME_DIR"])
     socket = (runtime / "app" / appid if appid.endswith(".Devel") else runtime) / "cassini" / "browser-v2.sock"
     until(socket.exists, "browser broker socket")
     proxy = BrowserAudioProxy(path=socket)
+    authorization = ExitStack()
     try:
+        request_id = authorization.enter_context(remote_native_start(socket, microphone=microphone))
         capture = str(uuid.uuid4())
         proxy.handle(
             dict(
@@ -383,6 +389,7 @@ def browser_only(appid, microphone):
                 version=1,
                 independent=True,
                 captureId=capture,
+                requestId=request_id,
                 microphone=microphone,
                 timelineOriginMs=int(time.time() * 1000),
                 title="D41.1 browser-only privacy measurement",
@@ -412,6 +419,7 @@ def browser_only(appid, microphone):
         until(lambda: capture_inputs() == [], "browser capture streams released")
     finally:
         proxy.close()
+        authorization.close()
     return dict(
         path="browser companion only, " + ("Me + The others" if microphone else "The others"),
         inputs=expected,

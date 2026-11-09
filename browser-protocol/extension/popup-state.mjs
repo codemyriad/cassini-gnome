@@ -1,8 +1,10 @@
 // Only describe evidence exposed by the current worker. A native port, a page
 // hook, a recording request, and confirmed saved audio are different things.
+import { tabEvidenceView } from './tab-evidence.mjs';
 export function popupState(result, tab, reloadedTabId = null) {
   const health = result?.browserHealth;
-  const current = health?.tabs?.find(item => item.tabId === tab?.id);
+  const current = health?.tabs?.find(item => item.tabId === tab?.id) ||
+    (result?.tabEvidence?.tabId===tab?.id ? {state:tabEvidenceView(result,tab?.id).transport.page} : null);
   const capture = result?.recording === true && result.tabId === tab?.id;
   const view = {connected: health?.nativeControl === 'connected', fileIssue: health?.filesOk === false, tone: 'neutral', reloadTabId: null,
     note: 'Recording is managed in Cassini.'};
@@ -27,6 +29,15 @@ export function popupState(result, tab, reloadedTabId = null) {
     title: 'This tab needs to reload', description: 'Cassini cannot reach the meeting’s audio sources on this page. Reload the tab, then rejoin your call.'};
   if (current?.state === 'checking') return {...view, title: 'Checking the page connection…',
     description: 'The extension is checking whether it can reach this meeting’s audio sources. Recording is not confirmed.'};
+  if (result?.tabEvidence?.tabId === tab.id) {
+    const evidence = tabEvidenceView(result,tab.id);
+    if (evidence.callEvidence.state === 'unknown') return {...view, title:'Interactive session is unverified',
+      description:'Cassini has not verified an interactive media session. Listen-only calls may need manual recording in Cassini.'};
+    if (evidence.callEvidence.state === 'active') return {...view, tone:'good', title:'Interactive media session detected',
+      description:evidence.captureCapability.kind === 'separated' ?
+        'Live audio is flowing both ways. This can include microphone tests or early media. Check the recording in Cassini.' :
+        'An interactive media session is detected. Audio capture availability is checked separately in Cassini.'};
+  }
   if (current?.state === 'ready') return {...view, tone: 'good', title: 'Meeting sources detected',
     description: view.connected ? 'The extension can reach audio sources on this page. Open Cassini to check or manage the recording.' :
       'The extension can reach audio sources on this page. Open Cassini to connect the app and manage recording.'};

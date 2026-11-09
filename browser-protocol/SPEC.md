@@ -785,6 +785,10 @@ reconnect or an app restart: the audio pipe names no connection, and a late
 packet can follow a timeout or a closed connection. A UUID per ask is the
 simple way. A late refusal whose ask is already answered or
 unknown records nothing.
+Since extension 0.2.26, ordinary native Start also preserves its originating
+host control requestId, unchanged in JSON type and value. See SPEC-CONTROL.md
+verified-admission request binding: a late timed-out automatic ask cannot be
+reclassified as a later manual ask for the same call.
 
 
 ### Source retirement during an active capture (extension0.2.8)

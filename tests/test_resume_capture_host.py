@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 from broker_fixture import stop_broker
 from durable import CaptureChanges, tracks_bound
-from test_browser_capture import Tap
+from test_browser_capture import Tap, authorize_native_start
 from test_browser_liveness import Clock, Settled, me_frames
 from test_browser_service import wait_for
 from test_capture_record import declare, pcm
@@ -60,6 +60,7 @@ def started(broker, identifier="F", *, generation="call-A", document="doc-1"):
             version=1,
             independent=True,
             captureId=identifier,
+            requestId=authorize_native_start(service=broker.service, call_generation=generation),
             timelineOriginMs=int(time.time() * 1000),
             microphone=True,
             title=identifier,
@@ -640,6 +641,7 @@ def test_end_to_end_a_watchdog_close_is_asked_once_and_resumed_on_the_same_folde
                 version=1,
                 independent=True,
                 captureId="F",
+                requestId=authorize_native_start(service=service, call_generation="call-A"),
                 timelineOriginMs=origin,
                 microphone=True,
                 title="Synthetic meeting",
