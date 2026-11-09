@@ -51,3 +51,35 @@ def test_folded_reply_listening_highlights_host_and_header_listens_to_host_speak
     assert page._turn_rows == {0: frozenset({0}), 1: frozenset({0}), 2: frozenset({0}), 3: frozenset({1})}
     assert page._row_listening == {0: 0, 1: 3}
     assert page._local_turn_index == {0: 0, 1: 0, 2: 1, 3: 0}
+
+
+def test_external_file_keeps_source_indices_for_competing_and_folded_speakers(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from cassini_talk import portable
+    from cassini_talk.open_meeting import load_open_meeting
+
+    # A valid portable file may store words in speaker-turn order. Exercise the
+    # external loader's handoff to both projections, with one folded reply and
+    # a sustained competing speaker whose paragraph must remain addressable.
+    path = tmp_path / "external.opus"
+    path.write_bytes((Path(__file__).parent / "conformance/opus/001-minimal-v1.opus").read_bytes())
+    words = (
+        Word("a", 0, 1000, "Before"),
+        Word("a", 1000, 2000, "after"),
+        Word("b", 900, 1200, "Right."),
+        Word("c", 500, 3500, "I have a longer contribution."),
+    )
+    monkeypatch.setattr(portable, "load_words", lambda *_args: list(words))
+    meeting = load_open_meeting(path)
+    assert meeting.words == words
+    assert [row.speaker for row in meeting.turns] == ["a", "c"]
+    page = SimpleNamespace()
+    MeetingPage._index_listening_rows(page, meeting)
+    assert page._turn_rows == {0: frozenset({0}), 1: frozenset({1}), 2: frozenset({0}), 3: frozenset({0})}
+    assert page._row_listening == {0: 0, 1: 1}
+    owners = [owner for row in meeting.turns for owner in [row] + [aside for _, aside in row.asides]]
+    assert all(owner.first_word == owner.word_indices[0] for owner in owners)
+    assert all(
+        word is meeting.words[i] for owner in owners for i, word in zip(owner.word_indices, owner.words, strict=True)
+    )

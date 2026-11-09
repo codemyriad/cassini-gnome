@@ -53,7 +53,7 @@ def until(check):
 
 
 # Use the same committed English transcript bodies for both source checkouts.
-examples = Path(__file__).resolve().parents[1] / "ux/interjections"
+examples = Path(__file__).resolve().parents[2] / "tests/ux/interjections"
 scenarios = []
 for name in ("acknowledgment", "competing"):
     body = json.loads((examples / f"{name}.words.json").read_text())

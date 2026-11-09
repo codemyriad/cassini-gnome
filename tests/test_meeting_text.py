@@ -259,6 +259,7 @@ def test_reading_split_places_aside_once_and_preserves_original_indices():
     assert [len(t.asides) for t in rows] == [1, 0, 0]
     assert rows[0].asides[0][0] == 99
     owners = [owner for row in rows for owner in [row] + [aside for _, aside in row.asides]]
+    assert all(owner.first_word == owner.word_indices[0] for owner in owners)
     indexed = sorted((i, word) for owner in owners for i, word in zip(owner.word_indices, owner.words, strict=True))
     assert [i for i, _ in indexed] == list(range(len(words)))
     assert all(word is words[i] for i, word in indexed)

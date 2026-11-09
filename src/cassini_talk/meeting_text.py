@@ -154,6 +154,7 @@ def reading_turns(words, gaps=None):
             for after, aside in host.asides:
                 if first <= after < end:
                     aside.word_indices = [source_indices[i] for i in aside.word_indices]
+                    aside.first_word = aside.word_indices[0]
                     aside.host = row
                     row.asides.append((after - first, aside))
                     row.end_ms = max(row.end_ms, aside.end_ms)
