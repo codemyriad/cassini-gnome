@@ -237,3 +237,21 @@ def test_native_highlight_uses_repaired_end_instead_of_the_inflated_tail():
     assert "background=" not in reading_markup(row, 192000, str.upper)
     assert reading_word(row, "item:0").start_ms == 188000
     assert word.end_ms == 199000  # display repair never rewrites source data
+
+
+def test_interleaved_listening_fixture_has_sixteen_viewer_rows():
+    words = []
+    for index in range(127):
+        words.extend(
+            (
+                Word("host", index * 150, index * 150 + 140, "Planning."),
+                Word("voice-0", index * 150 + 140, index * 150 + 141, "Yes."),
+            )
+        )
+    words.append(Word("voice-1", 20500, 20600, "Ready."))
+    words.extend(Word(f"voice-{i}", 22000 + i * 1000, 22100 + i * 1000, "Yes.") for i in range(13))
+    rows = reading_turns(words)
+    assert len(rows) == 16
+    assert [len(row.words) for row in rows[:2]] == [127, 127]
+    assert not any(row.asides for row in rows)
+    assert [row.speaker for row in rows[2:]] == ["voice-1", *[f"voice-{i}" for i in range(13)]]
