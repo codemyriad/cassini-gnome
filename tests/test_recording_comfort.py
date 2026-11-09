@@ -380,3 +380,88 @@ def test_pending_signal_start_is_visible_to_capture_controls_before_its_folder_e
         assert not capture.native_taps and capture.directory is None
     finally:
         release.set()
+
+
+@pytest.mark.parametrize("retired", [False, True])
+@pytest.mark.parametrize("failed_first", [False, True])
+def test_refresh_during_old_observation_is_coalesced_and_retirement_cancels_it(
+    tmp_path, monkeypatch, retired, failed_first
+):
+    from concurrent.futures import Future
+
+    from test_browser_capture import Tap
+
+    from cassini_talk.browser_capture import BrowserCapture
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Tap)
+    capture.elapsed_ms = lambda: 1000
+    capture.start(dict(type="start", captureId="coalesced", timelineOriginMs=1, microphone=True))
+    capture.handle(dict(type="track", id="voice", kind="remote", sampleRate=48000, channels=1))
+    capture.handle(dict(type="audio", id="voice", sequence=0, offsetMs=0, pcm="AQACAA=="))
+    before = live_meeting(capture.directory)
+    status = dict(recording=True, automatic=True, path=str(capture.directory))
+    app = application({}, browser=dict(statuses=[status]))
+    comfort = RecordingComfort(app, automatic=False)
+    comfort.known[before.key] = before
+    callbacks, jobs = [], []
+
+    class ObserverQueue:
+        def submit(self, _function, *_args):
+            future = Future()
+            jobs.append(future)
+            return future
+
+        def shutdown(self, **_kwargs):
+            for future in jobs:
+                future.cancel()
+
+    def deliver():
+        while callbacks:
+            function, args = callbacks.pop(0)
+            function(*args)
+
+    monkeypatch.setattr(GLib, "idle_add", lambda function, *args: callbacks.append((function, args)) or 1)
+    comfort.executor.shutdown(wait=True)
+    comfort.executor = ObserverQueue()
+    values = dict(
+        levels=[0.0, 0.0],
+        voices=1,
+        minutes=50,
+        reserve=False,
+        recent_sound=False,
+        output_muted=False,
+        source_problem=False,
+    )
+    alert = "recording-fallback-" + before.key
+    try:
+        comfort.tick()  # This read captured the state before fallback.
+        assert len(jobs) == 1
+        capture.handle(dict(type="stop", failureReason="lost", cause="frameError", captureId="coalesced"))
+        after = live_meeting(capture.directory)
+        assert after.capture_events != before.capture_events
+        comfort.tick()  # Must retain this newer observation request.
+        comfort.tick()  # Several requests still mean only one follow-up.
+        if retired:
+            app._browser_snapshot = dict(statuses=[])
+        if failed_first:
+            jobs[0].set_exception(OSError("older read failed"))
+        else:
+            jobs[0].set_result((before, values))
+        deliver()
+        assert len(jobs) == (1 if retired else 2)
+        if not retired:
+            assert alert not in app.notifications
+            jobs[1].set_result((after, values))
+            deliver()
+            assert comfort.sources(before).fallback
+            assert app.notifications.count(alert) == 1
+            assert not comfort.futures
+            assert not comfort._observe_again
+        else:
+            assert before.key not in comfort.active()
+            assert not comfort._observe_again
+            assert alert not in app.notifications
+    finally:
+        close(comfort)
+        capture.stop()

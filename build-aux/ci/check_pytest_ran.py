@@ -23,7 +23,9 @@ Source job (--source): exports its node ids when its own logs show all of
 pytest-1 .. pytest-N run, as pytest-nodes-<slug>, or else a pytest-skipped-
 <slug> marker, whatever made it skip; --github-output writes kind and slug.
 
-Gate (--gate, the downloaded pytest-* artifacts, one directory each): every
+Gate (--gate, the downloaded pytest-* artifacts, one directory each): require
+the complete Source/package matrix, even if both a Source job and its package
+job disappeared. Then every
 pytest-skipped-<slug> has a pytest-ran-<slug> from a container of the same
 distribution release, and every package job ran, for each test function,
 at least as many cases as the fedora:latest Source job (functions, not node
@@ -81,6 +83,22 @@ REFERENCE = "fedora-latest"
 # VERSION_ID between two pulls of the same tag.
 RELEASE = ("ID", "VERSION_CODENAME", "VERSION_ID")
 ROLLING = {"arch", "opensuse-tumbleweed"}
+
+# This complete matrix is mandatory, independently of optional area selection.
+# tests pin it to the Source and package workflows, including Fedora's reference.
+REQUIRED_ARTIFACTS = (
+    "pytest-skipped-debian-testing",
+    "pytest-skipped-ubuntu-26.04",
+    "pytest-nodes-fedora-latest",
+    "pytest-skipped-registry.opensuse.org-opensuse-tumbleweed-latest",
+    "pytest-skipped-archlinux-latest",
+    "pytest-nodes-alpine-edge",
+    "pytest-ran-debian-testing",
+    "pytest-ran-ubuntu-26.04",
+    "pytest-ran-fedora-44",
+    "pytest-ran-registry.opensuse.org-opensuse-tumbleweed-latest",
+    "pytest-ran-archlinux-latest",
+)
 
 
 def shard_count(meson_build=ROOT / "src/meson.build"):
@@ -256,6 +274,18 @@ def source(logs, image, shards, out):
 
 
 def gate(directory):
+    """Reject missing matrix jobs before comparing releases and test cases."""
+    directory = Path(directory)
+    missing = []
+    for name in REQUIRED_ARTIFACTS:
+        record = "skipped" if name.startswith("pytest-skipped-") else "nodes.json"
+        if not (directory / name / record).is_file():
+            missing.append(f"missing required execution proof: {name}/{record}")
+    return missing or compare_proofs(directory)
+
+
+def compare_proofs(directory):
+    """Compare the proofs present; gate also requires the complete matrix."""
     directory = Path(directory)
     found = []
     artifacts = {p.name: p for p in directory.iterdir() if p.is_dir()} if directory.is_dir() else {}

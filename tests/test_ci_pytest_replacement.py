@@ -237,6 +237,8 @@ def arch_array(pkgbuild, name):
 def problems(files):
     found = []
     source = jobs(files[".github/workflows/source.yml"])["distros"]
+    if re.search(r"^    (?:if|needs):", source, re.M) or "exclude:" in source:
+        found.append("Source job or matrix can omit coverage proofs")
     entries = re.findall(r'^          - image: (\S+)\n(?:            pytest-in: "([^"]+)"\n)?', source, re.M)
     skipped = {image: job for image, job in entries if job}
     if {image for image, job in entries if not job} != KEEPS_PYTEST:
@@ -268,14 +270,12 @@ def problems(files):
 
     # CI runs the package jobs whenever it runs Source, and gates on the proof.
     ci = jobs(files[".github/workflows/ci.yml"])
-    condition = re.search(r"^    if: (.+)$", ci["source"], re.M)[1]
-    for caller in ("deb", "rpm-arch"):
+    for caller in ("source", "deb", "rpm-arch", "meson-tests"):
+        # These produce the proofs the unconditional coverage gate requires.
+        # No path output, detection result or upstream job may suppress them.
         block = ci[caller]
-        if re.findall(r"^    (?:if|needs): (.+)$", block, re.M) != [
-            "changes",
-            condition.replace("outputs.source", "outputs.packages"),
-        ]:
-            found.append(f"ci.yml: {caller} does not run whenever Source does")
+        if re.search(r"^    (?:if|needs):", block, re.M):
+            found.append(f"ci.yml: {caller} depends on selection or another job")
     # The job's own lines: the comment that follows introduces the next job.
     if "\n" + ci.get("pytest-coverage", "").split("\n  #")[0].rstrip("\n") + "\n" != GATE:
         found.append("ci.yml: the Pytest coverage gate is missing or changed")
@@ -416,6 +416,26 @@ def test_the_runtime_check_knows_the_registered_shard_command():
 
 
 MUTATIONS = {
+    "source matrix excluded": (
+        "source.yml",
+        "      matrix:\n",
+        "      matrix:\n        exclude:\n          - image: fedora:latest\n",
+    ),
+    "source matrix job filtered": (
+        "source.yml",
+        "  distros:\n",
+        "  distros:\n    if: false\n",
+    ),
+    "source gated by false or missing changes output": (
+        "ci.yml",
+        "    uses: ./.github/workflows/source.yml",
+        "    if: needs.changes.outputs.source != 'false'\n    uses: ./.github/workflows/source.yml",
+    ),
+    "meson gated by changes": (
+        "ci.yml",
+        "    uses: ./.github/workflows/meson-tests.yml",
+        "    needs: changes\n    if: needs.changes.outputs.packages == 'true'\n    uses: ./.github/workflows/meson-tests.yml",
+    ),
     # The review's case, and the other ways to narrow or drop the Debian run.
     "deb --no-suite pytest": ("debian/rules", "--print-errorlogs", "--print-errorlogs --no-suite pytest"),
     "deb --suite": ("debian/rules", "--print-errorlogs", "--print-errorlogs --suite conformance"),
@@ -565,12 +585,12 @@ MUTATIONS = {
     ),
     "ci deb caller only on push": (
         "ci.yml",
-        "outputs.packages != 'false') }}\n    uses: ./.github/workflows/deb.yml",
-        "outputs.packages != 'false') && github.event_name == 'push' }}\n    uses: ./.github/workflows/deb.yml",
+        "    uses: ./.github/workflows/deb.yml",
+        "    if: github.event_name == 'push'\n    uses: ./.github/workflows/deb.yml",
     ),
     "ci rpm-arch caller waits for build": (
         "ci.yml",
-        "  rpm-arch:\n    name: RPM and Arch packages\n    needs: changes\n",
+        "  rpm-arch:\n    name: RPM and Arch packages\n",
         "  rpm-arch:\n    name: RPM and Arch packages\n    needs: [changes, build]\n",
     ),
     "ci gate dropped": ("ci.yml", "  pytest-coverage:\n", "  pytest-coverage-disabled:\n"),
