@@ -4,6 +4,7 @@
 
 import re
 
+_SPAN = re.compile(r"<(/?)span\b([^>]*)>")
 _SEAM = re.compile(r'</a> (?=<a href="(?:item:\d+|aside:\d+:\d+)">)')
 
 
@@ -17,7 +18,20 @@ def bridge_link_spaces(markup, colour):
     rgb = "#" + "".join(f"{round(channel * 65535):04x}" for channel in colour[:3])
     opacity = round(colour[3] * 65535)
 
+    spans, cursor = [], 0
+
     def seam(match):
+        nonlocal cursor
+        for tag in _SPAN.finditer(markup, cursor, match.start()):
+            if tag[1]:
+                spans.pop()
+            else:
+                spans.append("background=" in tag[2])
+        cursor = match.end()
+        # Pango uses separate background runs: changing their separators can
+        # change the fill at glyph boundaries, even with identical text ink.
+        if any(spans):
+            return match[0]
         following = markup[match.end() : markup.index("</a>", match.end())]
         alpha = "60%" if 'alpha="60%"' in following else str(opacity)
         return f'</a><span foreground="{rgb}" alpha="{alpha}"> </span>'
