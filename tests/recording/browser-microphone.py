@@ -18,8 +18,9 @@ if os.environ.get("CASSINI_ISOLATED_AUDIO") != "1" or os.environ.get("WAYLAND_DI
 pulse = os.environ.get("PULSE_SERVER", "")
 if not pulse.startswith("unix:/tmp/cassini-audio-") or not pulse.endswith("/pulse.sock"):
     raise SystemExit("A private Pulse socket is required")
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path[:0] = [str(Path(__file__).resolve().parents[2] / "src"), str(Path(__file__).resolve().parents[1])]
 import gi  # noqa: E402
+from broker_fixture import authorize_native_start  # noqa: E402
 
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
@@ -84,6 +85,7 @@ try:
                     version=1,
                     independent=True,
                     captureId=identifier,
+                    requestId=authorize_native_start(service, microphone=selected),
                     microphone=selected,
                     timelineOriginMs=int(time.time() * 1000),
                     title="Private browser microphone proof",

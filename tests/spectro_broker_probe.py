@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "tests")]
-from broker_fixture import stop_broker  # noqa: E402
+from broker_fixture import authorize_native_start, stop_broker  # noqa: E402
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy  # noqa: E402
 from cassini_talk.browser_service import BrowserService  # noqa: E402
@@ -39,6 +39,7 @@ def main():
     worker.start()
     assert ready.wait(5), "private broker socket was not ready"
     proxy = BrowserAudioProxy(path=socket_path)
+    request_id = authorize_native_start(service)
     # One instant is both the declared timeline origin and the producer's
     # clock, as a browser stamps offsetMs from capture time: chunk n is
     # captured at origin + n chunks. What is captured while Start and the
@@ -50,6 +51,7 @@ def main():
             version=1,
             independent=True,
             captureId="spectrogram-four-voices",
+            requestId=request_id,
             timelineOriginMs=origin_ms,
             microphone=True,
             title="Spectrogram browser measurement",

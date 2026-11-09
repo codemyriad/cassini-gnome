@@ -2,7 +2,6 @@
 """Independent writer ownership and per-session microphone choice, without devices."""
 
 import base64
-import io
 import json
 import struct
 import threading
@@ -11,12 +10,12 @@ import wave
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from broker_fixture import authorize_native_start as authorize_broker_start
 from broker_fixture import stop_broker
 from durable import DURABLE_BOUND, CaptureChanges, durable, saved, tracks_bound
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
-from cassini_talk.browser_service import BrowserConnection, BrowserService, request
-from cassini_talk.call_admission import CAPABILITIES
+from cassini_talk.browser_service import BrowserService, request
 
 _SERVER_SERVICES = {}
 
@@ -77,40 +76,9 @@ def server(tmp_path):
             _SERVER_SERVICES.pop(str(path))
 
 
-def authorize_native_start(client=None, *, service=None, call_generation=None):
-    """Issue an actual manual host ask for a synthetic audio-socket writer."""
+def authorize_native_start(client=None, *, service=None, call_generation=None, microphone=True):
     service = service or _SERVER_SERVICES[client.connection.getpeername()]
-    peer = BrowserConnection(io.BytesIO())
-
-    def acknowledge(packet):
-        if packet.get("type") == "command":
-            service.update(
-                peer, dict(type="result", requestId=packet["requestId"], ok=True, status=dict(recording=False))
-            )
-
-    peer.send = acknowledge
-    with service.lock:
-        service.browsers[peer.id] = peer
-    try:
-        service.update(
-            peer, dict(type="hello", version=1, capabilities=sorted(CAPABILITIES | {"independent-sessions-v1"}))
-        )
-        service.update(peer, dict(type="configured", capabilities=sorted(CAPABILITIES)))
-        row = dict(
-            tabId=2,
-            title="Synthetic manual writer",
-            url="https://fixture.invalid/manual",
-            sourceCount=1,
-            pageState="present",
-            callGeneration=call_generation,
-        )
-        service.update(peer, dict(type="meetings", meetings=[row]))
-        service.update(peer, dict(type="status", recording=False))
-        service.command(f"{peer.id}:2", "start", user=True)
-        return next(reversed(peer.commands))
-    finally:
-        with service.lock:
-            service.browsers.pop(peer.id, None)
+    return authorize_broker_start(service, call_generation=call_generation, microphone=microphone)
 
 
 def start(
@@ -124,7 +92,9 @@ def start(
     service=None,
 ):
     if request_id is None:
-        request_id = authorize_native_start(client, service=service, call_generation=call_generation)
+        request_id = authorize_native_start(
+            client, service=service, call_generation=call_generation, microphone=microphone
+        )
     return client.handle(
         dict(
             type="start",

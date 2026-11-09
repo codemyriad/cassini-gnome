@@ -790,3 +790,36 @@ def test_native_socket_rejects_same_id_replay_after_pre_directory_cancellation(s
             client.close()
         ended.get(timeout=5)
         assert not service.captures and not root.exists()
+
+
+def test_remote_private_writer_uses_a_real_manual_host_request(server):  # noqa: F811
+    import time
+
+    from broker_fixture import remote_native_start
+    from durable import saved
+
+    from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+
+    service, path, _root = server
+    with remote_native_start(path, microphone=False) as token:
+        client = BrowserAudioProxy(path=path)
+        try:
+            result = client.handle(
+                dict(
+                    type="start",
+                    version=1,
+                    independent=True,
+                    captureId="remote-fixture",
+                    requestId=token,
+                    timelineOriginMs=int(time.time() * 1000),
+                    microphone=False,
+                )
+            )
+            assert result["type"] == "started"
+            capture = service.captures["remote-fixture"]
+            assert service._native_requests[token]["nativeCaptureId"] == capture.capture_id
+            assert service._capture_automatic[capture.capture_id] is False
+            client.handle(dict(type="stop"))
+            saved(capture)
+        finally:
+            client.close()

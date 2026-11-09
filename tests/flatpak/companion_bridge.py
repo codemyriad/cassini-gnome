@@ -22,6 +22,7 @@ import sys
 import tempfile
 import time
 import wave
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
@@ -226,12 +227,44 @@ def worker(application, private, report):
 
     try:
         control = launch("io.codemyriad.cassini.control")
-        send(control, dict(type="hello", version=1, capabilities=["independent-sessions-v1"]))
+        hello = dict(type="hello", version=1, capabilities=["independent-sessions-v1", "call-signals-v1"])
+        send(control, hello)
+        assert receive(control)["type"] == "configure"
         send(control, dict(type="status", recording=False, tabId=None))
         send(control, dict(type="meetings", meetings=[]))
         until(lambda: status()["connectedBrowsers"] == 1)
-        directories, expected = [], {}
+        directories, expected, meetings = [], {}, []
         for index, frequency in enumerate((880, 990)):
+            row = dict(
+                tabId=index + 2,
+                title=f"Private bridge {index}",
+                url=f"https://fixture.invalid/bridge/{index}",
+                sourceCount=1,
+                pageState="present",
+                callGeneration=f"bridge-call-{index}",
+            )
+            meetings.append(row)
+            send(control, dict(type="meetings", meetings=meetings))
+            send(control, hello)
+            assert receive(control)["type"] == "configure"
+            send(control, dict(type="configured", capabilities=["call-signals-v1"]))
+            selected = next(meeting for meeting in status()["meetings"] if meeting["url"] == row["url"])
+            only = dict(id=selected["id"], callGeneration=row["callGeneration"])
+            with ThreadPoolExecutor(1) as pool:
+                asking = pool.submit(
+                    inside,
+                    "import json;from cassini_talk.browser_service import request,ensure_service;"
+                    + "print(json.dumps(request('start-all',path=ensure_service(),microphone=False,only="
+                    + repr(only)
+                    + ")))",
+                )
+                command = receive(control)
+                assert command["type"] == "command" and command["action"] == "start"
+                send(
+                    control, dict(type="result", requestId=command["requestId"], ok=True, status=dict(recording=False))
+                )
+                result = asking.result(20)
+                assert result["attempted"] == 1 and not result["failures"]
             audio = launch("io.codemyriad.cassini")
             send(
                 audio,
@@ -240,6 +273,8 @@ def worker(application, private, report):
                     version=1,
                     independent=True,
                     captureId=f"bridge-{index}",
+                    requestId=command["requestId"],
+                    callGeneration=row["callGeneration"],
                     timelineOriginMs=int(time.time() * 1000),
                     microphone=False,
                     title=f"Private bridge {index}",
