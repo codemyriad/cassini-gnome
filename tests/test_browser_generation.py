@@ -32,7 +32,10 @@ class HeldWorkers:
 
 
 @pytest.mark.parametrize("same_address", [False, True])
-def test_call_boundary_fences_pcm_before_worker_then_late_A_cannot_mutate_B(tmp_path, same_address):
+@pytest.mark.parametrize("stop_lag_ms", [0, 500], ids=["immediate-stop", "delayed-stop"])
+def test_call_boundary_fences_pcm_before_worker_then_late_A_cannot_mutate_B(
+    tmp_path, monkeypatch, same_address, stop_lag_ms
+):
     broker = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
     broker.workers.shutdown()
     broker.workers = workers = HeldWorkers()
@@ -83,12 +86,17 @@ def test_call_boundary_fences_pcm_before_worker_then_late_A_cannot_mutate_B(tmp_
 
     try:
         a = start("A", "generation-A")
+        # Exercise both prompt and delayed Stop admission without waiting on IO.
+        boundary_ms = a.elapsed_ms() + stop_lag_ms
+        monkeypatch.setattr(a, "elapsed_ms", lambda: boundary_ms)
         inventory(address_a, "generation-A")
         mic = next(t for t in a.host.session.manifest["tracks"] if t["kind"] == "microphone")
         before = mic["frames"]
         inventory(address_b, "generation-B")
         assert a.stop_requested.is_set() and not a.finished
-        a.microphone.append(struct.pack("<hhhh", 777, 777, 777, 777), 200)
+        # 200 ms can still be queued pre-Stop PCM on a slow CI filesystem.
+        # This packet belongs after the actual boundary under test (R93-2).
+        a.microphone.append(struct.pack("<hhhh", 777, 777, 777, 777), a.stop_at_ms + 1)
         assert mic["frames"] == before, "B microphone PCM entered A before the finalizer ran"
         reply = a.handle(dict(type="sources", discoveredSources=[dict(sourceTrackId="late", kind="remote")]))
         assert (reply["type"], reply["code"]) == ("error", "state")
@@ -117,7 +125,7 @@ def test_call_boundary_fences_pcm_before_worker_then_late_A_cannot_mutate_B(tmp_
             assert peer.states[2]["captureId"] == "B" and peer.page_states[2] == "present"
         mic_b = next(t for t in b.host.session.manifest["tracks"] if t["kind"] == "microphone")
         before_b = mic_b["frames"]
-        b.microphone.append(struct.pack("<hhhh", 888, 888, 888, 888), 200)
+        b.microphone.append(struct.pack("<hhhh", 888, 888, 888, 888), b.elapsed_ms() + 1)
         assert mic_b["frames"] > before_b
         assert mic["frames"] == before
     finally:
