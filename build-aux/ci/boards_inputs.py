@@ -173,13 +173,12 @@ def sys_path_nodes(tree_):
 
 
 def words_in(node):
-    docstrings = {
-        id(child.value)
-        for child in ast.walk(node)
-        if isinstance(child, ast.Expr) and isinstance(child.value, ast.Constant)
-    }
-    chained = set()
+    docstrings, chained = set(), set()
     for child in ast.walk(node):
+        # ast.walk visits each Expr before its value, so record docstrings
+        # during this traversal instead of walking the whole tree twice.
+        if isinstance(child, ast.Expr) and isinstance(child.value, ast.Constant):
+            docstrings.add(id(child.value))
         if id(child) in chained:
             continue
         if (chain := constant_chain(child)) is not None:
