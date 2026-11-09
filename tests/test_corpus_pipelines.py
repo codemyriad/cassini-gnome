@@ -613,8 +613,14 @@ def check_turns(run, session=CALL):
         for key in people:
             here = [t for t in turns if t.speaker == key and overlaps((t.start_ms, t.end_ms), [window])]
             assert here, f"no {key} turn at {window}"
-            marked = set().union(*(t.over for t in here))
-            assert set(people) - {key} <= marked, f"{key} at {window} overlaps {marked}"
+            # The corpus records physical simultaneity. D84 displays an
+            # interjection as an inline participant, not as competing speech.
+            # Keep requiring every participant; the canonical render vectors
+            # independently check which pairs are chips versus competitors.
+            represented = set().union(*(t.over for t in here))
+            represented.update(aside.speaker for turn in here for _after, aside in turn.asides)
+            represented.update(turn.host.speaker for turn in here if turn.host is not None)
+            assert set(people) - {key} <= represented, f"{key} at {window} overlaps {represented}"
 
 
 def test_turns_overlap_where_people_talk_at_once(accept_all):
