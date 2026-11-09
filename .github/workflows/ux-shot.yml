@@ -1,4 +1,4 @@
-name: Companion frame CPU and wall timings (evidence only)
+name: Cairo shadow cache app comparison (evidence only)
 on:
   workflow_dispatch:
 permissions:

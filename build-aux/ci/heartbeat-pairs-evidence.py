@@ -4,21 +4,24 @@ import json
 import os
 import platform
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
 out = Path("heartbeat-evidence")
 out.mkdir()
 head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-original = subprocess.check_output(["git", "show", "e60cd5d:tests/ui/companion-click.py"])
 test = Path("tests/ui/companion-click.py")
 changed = test.read_bytes()
+app_paths = [Path("src/cassini_talk/settings_dialog.py"), Path("src/cassini_talk/companion_setup.py")]
+app_after = {path: path.read_bytes() for path in app_paths}
+app_before = {path: subprocess.check_output(["git", "show", "4ceb468:" + str(path)]) for path in app_paths}
 (out / "machine.json").write_text(
     json.dumps(
         dict(
             evidenceHead=head,
-            testHead="4ceb4687df3ebff9f778fd8a86d5188839116360",
-            baseline="e60cd5d",
+            testHead="1dcc247d67bedce963263544d3e70c964fde58c9",
+            baseline="4ceb468",
             runner=os.environ.get("RUNNER_NAME"),
             cpus=os.cpu_count(),
             machine=platform.machine(),
@@ -33,7 +36,10 @@ results = []
 env = dict(os.environ, CASSINI_TEST_BUILD=str(Path("_build-heartbeat").resolve()))
 try:
     for number in range(1, 13):
-        for phase, data in [("before", original), ("after", changed)]:
+        for phase, data in [("before", changed), ("after", changed)]:
+            for path, content in (app_before if phase == "before" else app_after).items():
+                path.write_bytes(content)
+            shutil.rmtree("src/cassini_talk/__pycache__", ignore_errors=True)
             text = data.decode().replace("import builtins  # noqa: E402", "import json\nimport builtins  # noqa: E402")
             text = text.replace(
                 "                gaps, ticks = [], [time.monotonic()]",
@@ -76,7 +82,7 @@ try:
                 """                for signal in paint_signals:
                     clock.disconnect(signal)
                 worst=gaps.index(max(gaps))
-                print("HEARTBEAT-DIAG "+json.dumps(dict(state=state,entry=entry,gap=max(gaps),beat=beat_info[worst],beats=len(gaps),frames=len(frames),worstFrame=max(frames,key=lambda f:f["wall"]) if frames else None)),flush=True)
+                print("HEARTBEAT-DIAG "+json.dumps(dict(state=state,entry=entry,gap=max(gaps),beat=beat_info[worst],beats=len(gaps),frames=len(frames),worstFrame=max(frames,key=lambda f:f["wall"]) if frames else None,phaseFrames={label:max((f for f in frames if f["stage"]==label),key=lambda f:f["wall"]) for label in {f["stage"] for f in frames}})),flush=True)
                 assert gaps and max(gaps) < 0.1,""",
             )
             compile(text, phase, "exec")
@@ -117,4 +123,6 @@ try:
                 raise SystemExit(f"{name}: unexpected non-budget failure, stop for diagnosis")
 finally:
     test.write_bytes(changed)
+    for path, content in app_after.items():
+        path.write_bytes(content)
 raise SystemExit(int(any(r["returncode"] for r in results)))
