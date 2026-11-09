@@ -31,8 +31,23 @@ class Clock:
         return self.now
 
 
+@pytest.fixture(scope="module")
+def payload_identity():
+    # This suite never edits the application payload. Hash its real bytes once;
+    # dedicated broker-identity tests still exercise live updates and mismatches.
+    from cassini_talk.broker_identity import expected
+
+    return expected()
+
+
 @pytest.fixture
-def broker(tmp_path, monkeypatch):
+def broker(tmp_path, monkeypatch, payload_identity):
+    from cassini_talk import broker_identity
+
+    expected = broker_identity.expected
+    monkeypatch.setattr(
+        broker_identity, "expected", lambda root=None: expected(root) if root is not None else dict(payload_identity)
+    )
     Tap.instances = []
     clock = Clock()
     service = BrowserService(
