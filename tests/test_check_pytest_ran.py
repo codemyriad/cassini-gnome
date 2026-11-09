@@ -319,9 +319,11 @@ GATES = {
 def test_the_gate_requires_a_matching_complete_proof_for_every_skip(tmp_path, name):
     kinds, refused = GATES[name]
     check = module()
-    found = check.gate(artifacts(tmp_path, kinds))
+    found = check.compare_proofs(artifacts(tmp_path, kinds))
     assert len(found) == len(refused) and all(r in f for r, f in zip(refused, found, strict=True)), found
-    assert check.main(["--gate", str(tmp_path / "pytest")]) == (1 if refused else 0)
+    # These relationship fixtures deliberately contain only part of the matrix.
+    # The production CLI must reject even an internally consistent subset.
+    assert check.main(["--gate", str(tmp_path / "pytest")]) == 1
 
 
 def test_rolling_releases_compare_by_distribution_and_codename():
@@ -330,3 +332,54 @@ def test_rolling_releases_compare_by_distribution_and_codename():
     assert check.release(tumbleweed[0]) == check.release(tumbleweed[1])
     older = check.os_release_text('ID=ubuntu\nVERSION_ID="25.10"\nVERSION_CODENAME=questing\n')
     assert check.release(check.os_release_text(UBUNTU)) != check.release(older)
+
+
+def full_matrix():
+    return {
+        name: (DEBIAN, None if name.startswith("pytest-skipped-") else FULL) for name in module().REQUIRED_ARTIFACTS
+    }
+
+
+def test_complete_matrix_passes_the_production_gate(tmp_path):
+    root = artifacts(tmp_path, full_matrix())
+    check = module()
+    assert check.gate(root) == []
+    assert check.main(["--gate", str(root)]) == 0
+
+
+@pytest.mark.parametrize("missing", module().REQUIRED_ARTIFACTS)
+def test_no_matrix_job_can_disappear_even_if_its_dependents_are_missing(tmp_path, missing):
+    kinds = full_matrix()
+    del kinds[missing]
+    root = artifacts(tmp_path, kinds)
+    check = module()
+    assert any(missing in problem for problem in check.gate(root))
+    assert check.main(["--gate", str(root)]) == 1
+
+
+def test_runtime_proof_manifest_matches_the_actual_workflow_matrices():
+    import re
+
+    def slug(image):
+        return image.replace(":", "-").replace("/", "-")
+
+    workflows = ROOT / ".github/workflows"
+    source = (workflows / "source.yml").read_text()
+    entries = re.findall(r'^          - image: (\S+)\n(?:            pytest-in: "([^"\n]+)"\n)?', source, re.M)
+    expected = {"pytest-" + ("skipped-" if job else "nodes-") + slug(image) for image, job in entries}
+    deb = json.loads(re.search(r"base: (\[[^\n]+\])", (workflows / "deb.yml").read_text())[1])
+    rpm = re.findall(r"^          - base: (\S+)$", (workflows / "packages.yml").read_text(), re.M)
+    arch = re.search(r"BASE=\$\{1:-(.+)\}", (ROOT / "build-aux/arch/build.sh").read_text())[1]
+    expected.update("pytest-ran-" + slug(image) for image in [*deb, *rpm, arch])
+    assert set(module().REQUIRED_ARTIFACTS) == expected
+
+
+def test_missing_source_and_its_package_cannot_hide_each_other(tmp_path):
+    kinds = full_matrix()
+    del kinds["pytest-skipped-archlinux-latest"]
+    del kinds["pytest-ran-archlinux-latest"]
+    root = artifacts(tmp_path, kinds)
+    check = module()
+    assert check.compare_proofs(root) == []  # The old gate silently accepted it.
+    assert len(check.gate(root)) == 2
+    assert check.main(["--gate", str(root)]) == 1

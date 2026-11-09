@@ -53,21 +53,17 @@ jobs:
     name: Meson tests
     uses: ./.github/workflows/meson-tests.yml
   source:
+    # Coverage requires this complete Source/package proof matrix on every run.
+    # Keep it independent of changes detection, even false/missing outputs.
     name: Source
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.source != 'false') }}
     uses: ./.github/workflows/source.yml
   # The three package workflows are called directly, so Desktop waits only for
   # the deb and Flatpak it installs, not for the RPM and Arch builds (G2).
   deb:
     name: Debian package
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
     uses: ./.github/workflows/deb.yml
   rpm-arch:
     name: RPM and Arch packages
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
     uses: ./.github/workflows/packages.yml
   flatpak:
     name: Flatpak
