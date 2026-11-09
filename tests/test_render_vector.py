@@ -255,3 +255,74 @@ def test_interleaved_listening_fixture_has_sixteen_viewer_rows():
     assert [len(row.words) for row in rows[:2]] == [127, 127]
     assert not any(row.asides for row in rows)
     assert [row.speaker for row in rows[2:]] == ["voice-1", *[f"voice-{i}" for i in range(13)]]
+
+
+CORPUS_VECTOR = Path(__file__).parent / "ux" / "interjections-corpus"
+
+
+def projected_row(row):
+    return dict(
+        speaker=row.speaker,
+        continuation=row.continuation,
+        startMs=row.start_ms,
+        endMs=row.end_ms,
+        over=row.over,
+        crosstalk=row.crosstalk,
+        members=members(row),
+    )
+
+
+def assert_corpus_interjection_row(rows, *, exact=True):
+    """Independent viewer oracle for the physical 49–50 s overlap."""
+    expected = json.loads((CORPUS_VECTOR / "corpus-accept-all.expected.json").read_text())["rows"]
+    expected = [
+        dict(row, members=coalesce(row["members"]))
+        for row in expected
+        if row["speaker"] == "track-source-a" and row["startMs"] < 50000 and row["endMs"] > 49000
+    ]
+    assert len(expected) == 1
+    actual = [
+        projected_row(row)
+        for row in rows
+        if row.speaker == "track-source-a" and row.start_ms < 50000 and row.end_ms > 49000
+    ]
+    if not exact:
+        # The live acoustic fixture already checks its timestamp tolerances.
+        # Pin classification and visible member roles here, while frozen-word
+        # tests below compare every timestamp and original atom index exactly.
+        def roles(row):
+            return dict(
+                speaker=row["speaker"],
+                over=row["over"],
+                crosstalk=row["crosstalk"],
+                members=[{k: v for k, v in member.items() if k != "wordIndices"} for member in row["members"]],
+            )
+
+        actual, expected = [roles(row) for row in actual], [roles(row) for row in expected]
+    assert actual == expected
+
+
+def corpus_vector_words():
+    body = json.loads((CORPUS_VECTOR / "corpus-accept-all.words.json").read_text())
+    return [
+        Word(
+            item["speaker"],
+            item["startMs"],
+            item["endMs"],
+            item["text"],
+            item.get("lowConfidenceSpeaker", False),
+            text_is_stored=True,
+        )
+        for item in body["items"]
+    ]
+
+
+def test_actual_corpus_words_match_the_complete_viewer_portable_projection():
+    expected = json.loads((CORPUS_VECTOR / "corpus-accept-all.expected.json").read_text())["rows"]
+    actual = [projected_row(row) for row in reading_turns(corpus_vector_words())]
+    assert actual == [dict(row, members=coalesce(row["members"])) for row in expected]
+
+
+def test_actual_corpus_interjection_matches_viewer_with_source_gap_information():
+    gaps = json.loads((CORPUS_VECTOR / "source-gaps.json").read_text())
+    assert_corpus_interjection_row(reading_turns(corpus_vector_words(), gaps))
