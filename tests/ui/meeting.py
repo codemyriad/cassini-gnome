@@ -224,6 +224,22 @@ with tempfile.TemporaryDirectory() as temporary:
             assert page.meeting.words is words
             assert page.store.get_n_items() == len(current.turns)
 
+        # The real GTK label folds a brief reply at the original seam, and
+        # its link still seeks the reply's own audio rather than the host's.
+        first, second = (speaker.id for speaker in meeting.speakers[:2])
+        interrupted = (
+            Word(first, 0, 1000, "We should"),
+            Word(second, 900, 1200, "Yes <&>."),
+            Word(first, 1000, 2000, "ship it."),
+        )
+        show_synthetic(interrupted)
+        until(lambda: len(page.bound) == 1 and page.bound[0][0].words[0] is interrupted[0])
+        inline = page.bound[0][1]
+        assert inline.get_text() == f"We should  {meeting.speaker_for(second).name}: Yes <&>.  ship it."
+        assert 'href="aside:0:0"' in inline.get_label()
+        inline.emit("activate-link", "aside:0:0")
+        until(lambda: window.player.position == 900)
+        assert 'foreground="#202024">Yes &lt;&amp;&gt;.' in inline.get_label()
         show_synthetic(timed)
         until(lambda: page.scroller.get_vadjustment().get_upper() > 5000)
         adjustment = page.scroller.get_vadjustment()

@@ -1,0 +1,138 @@
+{
+  "format": "cassini.words.v1",
+  "language": "en",
+  "items": [
+    {
+      "speaker": "ada",
+      "startMs": 0,
+      "endMs": 500,
+      "text": "I"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 50,
+      "endMs": 550,
+      "text": "I"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 500,
+      "endMs": 1000,
+      "text": "can"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 550,
+      "endMs": 1050,
+      "text": "will"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 1000,
+      "endMs": 1500,
+      "text": "check"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 1050,
+      "endMs": 1550,
+      "text": "test"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 1500,
+      "endMs": 2000,
+      "text": "the"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 1550,
+      "endMs": 2050,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2000,
+      "endMs": 2500,
+      "text": "Linux"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 2050,
+      "endMs": 2550,
+      "text": "browser"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2500,
+      "endMs": 3000,
+      "text": "build"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 2550,
+      "endMs": 3050,
+      "text": "connection"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 3000,
+      "endMs": 3500,
+      "text": "and"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 3050,
+      "endMs": 3550,
+      "text": "and"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 3500,
+      "endMs": 4000,
+      "text": "report"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 3550,
+      "endMs": 4050,
+      "text": "check"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4000,
+      "endMs": 4500,
+      "text": "any"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 4050,
+      "endMs": 4550,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4500,
+      "endMs": 5000,
+      "text": "problems"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 4550,
+      "endMs": 5050,
+      "text": "microphone"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 5000,
+      "endMs": 5500,
+      "text": "today."
+    },
+    {
+      "speaker": "ben",
+      "startMs": 5050,
+      "endMs": 5550,
+      "text": "settings."
+    }
+  ]
+}

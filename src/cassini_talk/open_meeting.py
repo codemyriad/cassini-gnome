@@ -70,7 +70,7 @@ def load_open_meeting(path, root=None, *, scanner=None, capture_activity=None):
         audio_size_bytes=audio_size,
         has_audio=duration is not None,
         words=words,
-        turns=reading_turns(sorted(words, key=lambda w: w.start_ms), gaps=gaps),
+        turns=reading_turns(words, gaps=gaps),
         listening_turns=speaker_turns(words),
         turn_gaps=gaps,
         speakers=_speakers(words, [], embedded, stored_labels=True),

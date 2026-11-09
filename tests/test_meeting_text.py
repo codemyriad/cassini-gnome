@@ -200,3 +200,66 @@ def test_preview_chips_resolve_and_deduplicate_stale_and_unlisted_speakers(tmp_p
     changed = replace(meeting, metadata={"speakerMerges": [{"from": "host", "into": "ben"}]})
     assert changed.preview_speakers[0] is ben
     assert meeting.speakers == (old, dana, ben)
+
+
+def test_reading_rejoins_interrupted_sentence_and_keeps_named_seekable_reply():
+    from cassini_talk.meeting_text import reading_markup, reading_turns, reading_word
+
+    words = [
+        Word("a", 0, 1000, "We should"),
+        Word("b", 900, 1200, "Yes <&>."),
+        Word("a", 1000, 2000, "ship it."),
+        Word("c", 2200, 2600, "Agreed."),
+    ]
+    rows = reading_turns(words)
+    assert [t.text for t in rows] == ["We should ship it.", "Agreed."]
+    host = rows[0]
+    assert host.word_indices == [0, 2]
+    assert host.asides[0][0] == 0
+    aside = host.asides[0][1]
+    assert aside.host is host and aside.word_indices == [1]
+    markup = reading_markup(host, 950, lambda speaker: "Ben <&>")
+    assert markup.index("We should") < markup.index("Ben &lt;&amp;&gt;") < markup.index("ship it.")
+    assert 'href="aside:0:0"' in markup and 'href="item:1"' in markup
+    assert 'foreground="#202024">Yes &lt;&amp;&gt;.' in markup
+    assert reading_word(host, "aside:0:0") is words[1]
+    assert reading_word(host, "item:1") is words[2]
+    for uri in ("item:-1", "aside:-1:0", "aside:1:0", "aside:0:-1", "other:0"):
+        with pytest.raises(ValueError):
+            reading_word(host, uri)
+    # Scanner refresh compares models; the aside's host back-reference cannot
+    # recurse through dataclass equality.
+    assert rows == reading_turns(words)
+
+
+def test_reading_clean_exchange_and_competing_speech_stay_separate():
+    from cassini_talk.meeting_text import reading_turns
+
+    clean = [Word("a", 0, 1000, "Question?"), Word("b", 1050, 1150, "Yes."), Word("a", 1200, 2000, "Good.")]
+    assert [t.text for t in reading_turns(clean)] == ["Question?", "Yes.", "Good."]
+    woven = []
+    for i in range(12):
+        woven.extend([Word("a", i * 300, (i + 1) * 300, f"a{i}"), Word("b", i * 300 + 20, (i + 1) * 300 + 20, f"b{i}")])
+    rows = reading_turns(woven)
+    assert len(rows) == 2 and not any(t.asides for t in rows)
+    assert rows[0].words == woven[::2] and rows[1].words == woven[1::2]
+    assert rows[0].word_indices == list(range(0, 24, 2))
+    assert rows[1].word_indices == list(range(1, 24, 2))
+
+
+def test_reading_split_places_aside_once_and_preserves_original_indices():
+    from cassini_talk.meeting_text import reading_turns
+
+    words = [Word("a", i * 100, i * 100 + 100, str(i)) for i in range(205)]
+    reply = Word("b", 9950, 10250, "Right.")
+    # Deliberately unsorted source, as speaker listening uses source indices.
+    words.insert(0, reply)
+    rows = reading_turns(words)
+    assert [len(t.words) for t in rows] == [100, 100, 5]
+    assert [len(t.asides) for t in rows] == [1, 0, 0]
+    assert rows[0].asides[0][0] == 99
+    owners = [owner for row in rows for owner in [row] + [aside for _, aside in row.asides]]
+    assert all(owner.first_word == owner.word_indices[0] for owner in owners)
+    indexed = sorted((i, word) for owner in owners for i, word in zip(owner.word_indices, owner.words, strict=True))
+    assert [i for i, _ in indexed] == list(range(len(words)))
+    assert all(word is words[i] for i, word in indexed)

@@ -9,7 +9,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
 from . import ux_formats as fmt
 from .i18n import language, using_language
 from .inline_line import InlineLine
-from .meeting_text import COLOURS, DARK_COLOURS, item_markup, speaking_shares
+from .meeting_text import COLOURS, DARK_COLOURS, reading_markup, reading_word, speaking_shares
 from .strings import plural, text
 
 
@@ -333,6 +333,14 @@ class MeetingPage(Adw.NavigationPage):
         palette = DARK_COLOURS if Adw.StyleManager.get_default().get_dark() else COLOURS
         return palette[speaker.colour_index % len(palette)]
 
+    def _turn_markup(self, turn):
+        return reading_markup(
+            turn,
+            self.player.position,
+            lambda speaker: self.meeting.speaker_for(speaker).name,
+            dark=Adw.StyleManager.get_default().get_dark(),
+        )
+
     def _bind(self, _factory, item):
         turn = item.get_item().turn
         row = Gtk.Box(spacing=16, margin_bottom=24)
@@ -366,7 +374,7 @@ class MeetingPage(Adw.NavigationPage):
             use_markup=True,
             css_classes=["words"],
         )
-        words.set_markup(item_markup(turn.words, self.player.position, values=turn.items))
+        words.set_markup(self._turn_markup(turn))
         words.connect("activate-link", lambda _label, uri: self._word_clicked(turn, uri))
         row.append(names)
         row.append(words)
@@ -465,12 +473,12 @@ class MeetingPage(Adw.NavigationPage):
         return False
 
     def _index_listening_rows(self, meeting):
-        # reading_turns partitions the original words without dropping them.
-        rows, offset = {}, 0
+        # Rejoined words and inline replies both belong to the visible host row.
+        rows = {}
         for row in meeting.turns:
-            for index in range(offset, offset + len(row.words)):
-                rows[index] = row.index
-            offset += len(row.words)
+            for owner in [row] + [aside for _, aside in row.asides]:
+                for index in owner.word_indices:
+                    rows[index] = row.index
         previous = getattr(self, "_turn_rows", {})
         self._turn_rows, self._row_listening, self._local_turn_index = {}, {}, {}
         counts = {}
@@ -478,7 +486,8 @@ class MeetingPage(Adw.NavigationPage):
             positions = frozenset(rows[i] for i in turn.word_indices if i in rows)
             self._turn_rows[turn.index] = positions
             for row_index in positions:
-                self._row_listening[row_index] = turn.index
+                if meeting.turns[row_index].speaker == turn.speaker:
+                    self._row_listening.setdefault(row_index, turn.index)
             self._local_turn_index[turn.index] = counts.get(turn.speaker, 0)
             counts[turn.speaker] = self._local_turn_index[turn.index] + 1
         if previous != self._turn_rows:
@@ -532,8 +541,7 @@ class MeetingPage(Adw.NavigationPage):
 
     def _word_clicked(self, turn, uri):
         try:
-            index = int(uri.removeprefix("item:"))
-            word = turn.words[index]
+            word = reading_word(turn, uri)
         except (ValueError, IndexError):
             return True
         GLib.idle_add(lambda: (self.player.seek(word.start_ms), False)[1])
@@ -1119,7 +1127,7 @@ class MeetingPage(Adw.NavigationPage):
         self.play.set_tooltip_text(play_name)
         self.play.update_property([Gtk.AccessibleProperty.LABEL], [play_name])
         for turn, words, _row in list(self.bound.values()):
-            words.set_markup(item_markup(turn.words, self.player.position, values=turn.items))
+            words.set_markup(self._turn_markup(turn))
 
     def set_recording_notice(self, line, minutes):
         signature = line, minutes

@@ -828,9 +828,9 @@ class LibraryScanner:
         # Reader tuples are stat-keyed and immutable to consumers. Group once in
         # the scanner worker; retain only three visible turns for the GTK pane.
         ordered = sorted(words, key=lambda word: word.start_ms)
-        # Bound the legacy aside/overlap grouper by speaker fragments, keeping
-        # a long monologue intact and enough lookahead for the three previews.
-        # Its pairwise work is constant-bounded; full reading keeps every word.
+        # Bound preview lookahead by speaker fragments, keeping a long
+        # monologue intact and enough context for the three previews.
+        # The reading model below reconstructs the full transcript.
         fragments = 0
         limit = len(ordered)
         for index, word in enumerate(ordered):
@@ -841,7 +841,7 @@ class LibraryScanner:
                     break
         turns = tuple(build_turns(ordered[:limit], gaps=gaps))
         result = tuple(PreviewTurn(t.speaker, t.start_ms, t.text) for t in visible_turns(turns)[:3])
-        self._preview_cache[name] = words, result, reading_turns(ordered, gaps=gaps), gaps, speaker_turns(words)
+        self._preview_cache[name] = words, result, reading_turns(words, gaps=gaps), gaps, speaker_turns(words)
         return result
 
     def _transcript(self, fd, directory, metadata, origin, embedded, trusted, embedded_words, diagnostics):

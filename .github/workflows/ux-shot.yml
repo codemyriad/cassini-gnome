@@ -67,6 +67,7 @@ jobs:
           python3 tests/ui/check-dark.py ux-artifacts/dark
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library.py ux-artifacts/gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/meeting.py ux-artifacts/meeting-gui.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/interjections.py ux-artifacts/interjections.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/trash.py ux-artifacts/trash.png
           CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/trash.py ux-artifacts/dark/trash.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speakers.py ux-artifacts/speakers-gui.png
