@@ -26,8 +26,23 @@ VECTORS = json.loads((ROOT / "browser-protocol/conformance/control/resume-captur
 CONTROL = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1"]
 
 
+@pytest.fixture(scope="module")
+def payload_identity():
+    # This suite never edits the application payload. Hash its real bytes once;
+    # dedicated broker-identity tests still exercise live updates and mismatches.
+    from cassini_talk.broker_identity import expected
+
+    return expected()
+
+
 @pytest.fixture
-def broker(tmp_path):
+def broker(tmp_path, monkeypatch, payload_identity):
+    from cassini_talk import broker_identity
+
+    expected = broker_identity.expected
+    monkeypatch.setattr(
+        broker_identity, "expected", lambda root=None: expected(root) if root is not None else dict(payload_identity)
+    )
     Tap.instances = []
     clock = Clock()
     service = BrowserService(

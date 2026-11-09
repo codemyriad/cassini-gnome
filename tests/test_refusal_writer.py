@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 from test_browser_service import service  # noqa: F401
-from test_resume_capture_host import broker  # noqa: F401
+from test_resume_capture_host import broker, payload_identity  # noqa: F401
 from test_voice_application import application_class  # noqa: F401
 
 from cassini_talk import refusals
