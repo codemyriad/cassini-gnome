@@ -251,7 +251,7 @@ def broker(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "case", [c for c in gnome_cases() if c["request"]["others"] == "browser"], ids=lambda c: c["name"]
 )
-def test_browser_writer_cases(broker, case):
+def test_browser_writer_cases(broker, case, monkeypatch):
     from test_browser_sessions import Extension
 
     from cassini_talk.browser_service import request, send_packet
@@ -260,6 +260,7 @@ def test_browser_writer_cases(broker, case):
     browser = next(s for s in start_refusals(case) if s["side"] == "browser")
     Taps.refused = {KINDS[s["side"]]: s for s in start_refusals(case) if s["side"] != "browser"}
     peer = Extension(path, (3,))
+    cleanup_timed_out = threading.Event()
     try:
         with ThreadPoolExecutor(1) as pool:
             pending = pool.submit(request, "start-all", path=path)
@@ -272,8 +273,37 @@ def test_browser_writer_cases(broker, case):
                 if "detail" in browser:
                     result["code"] = browser["detail"]
                 send_packet(peer.stream, result)
-            # startFailed/timeout: the extension never answers this Start.
+            else:
+                # Keep the unanswered Start's real timeout. Once its retirement
+                # Stop is sent, expire that separate deadline through the clock
+                # seam, keeping both timeout paths without a second wall wait.
+                clock, offset = service.deadline_clock, [0]
+                monkeypatch.setattr(service, "deadline_clock", lambda: clock() + offset[0])
+                with service.lock:
+                    (browser_peer,) = service.browsers.values()
+                send, command_call = browser_peer.send, service.command
+
+                def sent(packet):
+                    send(packet)
+                    if packet.get("action") == "stop":
+                        offset[0] += service.command_timeout
+
+                def command_observed(identifier, action, **kwargs):
+                    try:
+                        return command_call(identifier, action, **kwargs)
+                    except TimeoutError:
+                        if action == "stop":
+                            cleanup_timed_out.set()
+                        raise
+
+                monkeypatch.setattr(browser_peer, "send", sent)
+                monkeypatch.setattr(service, "command", command_observed)
+            # startFailed/timeout: neither Start nor its retirement Stop is answered.
             snapshot = pending.result(10)
+            if browser["code"] != "startRejected":
+                cleanup = peer.receive()
+                assert cleanup["action"] == "stop" and cleanup["tabId"] == command["tabId"]
+                assert cleanup_timed_out.is_set()
         active = [s for s in snapshot["statuses"] if s.get("recording") and s.get("path")]
         if not active:
             assert snapshot["failures"] and not list(library.glob("Recording-*"))
