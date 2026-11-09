@@ -13,9 +13,11 @@ from .meeting_text import (
     COLOURS,
     DARK_COLOURS,
     FollowRows,
+    changed_header_rows,
     reading_markup,
     reading_markup_signature,
     reading_word,
+    row_caption,
     speaking_shares,
 )
 from .strings import plural, text
@@ -379,11 +381,23 @@ class MeetingPage(Adw.NavigationPage):
         )
 
     def _render_words(self, turn, words):
-        markup = self._turn_markup(turn)
-        if words.get_root() is not None:
-            colour = words.get_color()
-            markup = bridge_link_spaces(markup, (colour.red, colour.green, colour.blue, colour.alpha))
-        words.set_markup(markup)
+        colour = words.get_color() if words.get_root() is not None else None
+        rgba = (colour.red, colour.green, colour.blue, colour.alpha) if colour is not None else None
+        signature = (
+            reading_markup_signature(
+                turn,
+                self.player.position,
+                lambda speaker: self.meeting.speaker_for(speaker).name,
+                dark=Adw.StyleManager.get_default().get_dark(),
+            ),
+            rgba,
+        )
+        if getattr(words, "_reading_signature", None) != signature:
+            markup = self._turn_markup(turn)
+            if rgba is not None:
+                markup = bridge_link_spaces(markup, rgba)
+            words.set_markup(markup)
+            words._reading_signature = signature
 
     def _bind(self, _factory, item):
         turn = item.get_item().turn
@@ -397,6 +411,9 @@ class MeetingPage(Adw.NavigationPage):
         )
         name.connect("clicked", lambda button: self.listen_from_row(turn, button))
         names.append(name)
+        row._over_label = label("", "small", "dim-label", xalign=0, wrap=True)
+        names.append(row._over_label)
+        row._auto_tag = None
         time = Gtk.Button(
             label=fmt.position(turn.start_ms),
             css_classes=["flat", "link", "small", "transcript-time"],
@@ -445,25 +462,41 @@ class MeetingPage(Adw.NavigationPage):
         name_tip = text("listen.speakerName.tooltip", name=speaker.name) if interactive else speaker.name
         time_tip = text("player.playFromHere") if isinstance(time, Gtk.Button) else None
         tag_name, tag_tip = text("common.autoTag"), text("common.autoTag.tooltip")
-        state = speaker.name, self._colour(speaker), recognised, name_tip, time_tip, tag_name, tag_tip
+        caption_text = row_caption(turn, lambda identifier: self.meeting.speaker_for(identifier).name)
+        state = (
+            speaker.name,
+            self._colour(speaker),
+            recognised,
+            name_tip,
+            time_tip,
+            tag_name,
+            tag_tip,
+            turn.continuation,
+            caption_text,
+        )
         if getattr(row, "_header_state", None) == state:
             return
         row._header_state = state
         caption = name.get_child() if interactive else name
         caption.set_markup(f'<span foreground="{state[1]}">{GLib.markup_escape_text(speaker.name)}</span>')
+        name.set_visible(not turn.continuation)
+        row._over_label.set_label(caption_text)
+        row._over_label.set_visible(bool(caption_text))
         name.set_tooltip_text(name_tip)
         if interactive:
             name.update_property([Gtk.AccessibleProperty.LABEL], [name_tip])
-        tag = name.get_next_sibling()
-        if recognised:
-            if tag is time:
+        tag = row._auto_tag
+        if recognised and not turn.continuation:
+            if tag is None:
                 tag = label(tag_name, "auto-tag", halign=Gtk.Align.START)
                 headers.insert_child_after(tag, name)
+                row._auto_tag = tag
             tag.set_label(tag_name)
             tag.set_tooltip_text(tag_tip)
             tag.update_property([Gtk.AccessibleProperty.DESCRIPTION], [tag_tip])
-        elif tag is not time:
+        elif tag is not None:
             headers.remove(tag)
+            row._auto_tag = None
         time.set_tooltip_text(time_tip)
         if isinstance(time, Gtk.Button):
             time.update_property([Gtk.AccessibleProperty.LABEL], [time_tip + ", " + fmt.position(turn.start_ms)])
@@ -471,9 +504,19 @@ class MeetingPage(Adw.NavigationPage):
     def _queue_transcript_headers(self, signature):
         if signature == self._header_signature:
             return
+        targets = changed_header_rows(
+            (turn for turn, _words, _row in self.bound.values()), self._header_signature, signature
+        )
         self._header_signature = signature
-        # Coalesce rescans and keep the existing focused buttons/text widgets.
-        self._header_pending = list(self.bound.values())
+        # Keep still-bound pending updates when a second rename arrives before
+        # the idle batch runs; each widget reads the newest meeting metadata.
+        pending = {
+            turn.index: (turn, words, row)
+            for turn, words, row in self._header_pending
+            if self.bound.get(turn.index, (None, None, None))[2] is row
+        }
+        pending.update((turn.index, self.bound[turn.index]) for turn in targets)
+        self._header_pending = list(pending.values())
         if self._header_pending and not self._header_source:
             self._header_source = GLib.idle_add(self._refresh_headers)
 
@@ -488,15 +531,7 @@ class MeetingPage(Adw.NavigationPage):
             if current is not None and current[2] is row:
                 self._refresh_header(turn, row)
                 if turn.asides:
-                    signature = reading_markup_signature(
-                        turn,
-                        self.player.position,
-                        lambda speaker: self.meeting.speaker_for(speaker).name,
-                        dark=self._style_manager.get_dark(),
-                    )
-                    if getattr(words, "_markup_signature", None) != signature:
-                        words._markup_signature = signature
-                        self._render_words(turn, words)
+                    self._render_words(turn, words)
             if GLib.get_monotonic_time() >= deadline:
                 break
         return GLib.SOURCE_CONTINUE
@@ -754,17 +789,18 @@ class MeetingPage(Adw.NavigationPage):
             )
         # Only changed timed text replaces transcript items. Metadata/theme
         # updates preserve their focused widgets and refresh headers in batches.
-        common = 0
-        for before, after in zip(self._turns, meeting.turns, strict=False):
-            if before != after:
-                break
-            common += 1
-        removed = len(self._turns) - common
-        additions = [TurnItem(turn) for turn in meeting.turns[common:]]
-        if removed or additions:
-            self.store.splice(common, removed, additions)
-        self._turns = meeting.turns
-        self._follow_rows = getattr(meeting.turns, "follow", None) or FollowRows(meeting.turns)
+        if self._turns is not meeting.turns:
+            common = 0
+            for before, after in zip(self._turns, meeting.turns, strict=False):
+                if before != after:
+                    break
+                common += 1
+            removed = len(self._turns) - common
+            additions = [TurnItem(turn) for turn in meeting.turns[common:]]
+            if removed or additions:
+                self.store.splice(common, removed, additions)
+            self._turns = meeting.turns
+            self._follow_rows = getattr(meeting.turns, "follow", None) or FollowRows(meeting.turns)
         self._updating_transcript = False
         self._highlight_listening()
         self._position()

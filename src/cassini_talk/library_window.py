@@ -17,10 +17,12 @@ from .i18n import gettext as _
 from .library import LibrarySnapshot, _sort, meeting_id
 from .library_monitor import LibraryMonitor
 from .listen import ListenController
+from .meeting_text import row_caption
 from .player import Player
 from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
 from .spectrogram_strip import SpectrogramStrip
 from .strings import text
+from .transcript import row_text
 
 
 def label(value, *classes, **kwargs):
@@ -1268,12 +1270,19 @@ class LibraryWindow(Adw.ApplicationWindow):
         for turn in meeting.preview_turns:
             line = Gtk.Box(spacing=16)
             name = vertical(3, width_request=110, valign=Gtk.Align.START)
-            name.append(self._speaker(meeting.speaker_for(turn.speaker), meeting=meeting))
+            if turn.row is None or not turn.row.continuation:
+                name.append(self._speaker(meeting.speaker_for(turn.speaker), meeting=meeting))
+            if turn.row is not None:
+                caption = row_caption(turn.row, lambda identifier: meeting.speaker_for(identifier).name)
+                if caption:
+                    name.append(label(caption, "small", "dim-label", xalign=0, wrap=True))
             name.append(label(fmt.position(turn.start_ms), "small", "dim-label", xalign=0))
             line.append(name)
             line.append(
                 label(
-                    turn.text,
+                    row_text(turn.row, lambda identifier: meeting.speaker_for(identifier).name)[0]
+                    if turn.row is not None
+                    else turn.text,
                     "excerpt",
                     xalign=0,
                     yalign=0,

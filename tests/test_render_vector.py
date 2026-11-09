@@ -437,3 +437,48 @@ def test_interrupted_long_turn_visits_timing_pools_linearly(monkeypatch):
     assert turns[0].word_indices == list(range(0, len(words), 2))
     assert [(after, aside.word_indices) for after, aside in turns[0].asides] == [(i, [2 * i + 1]) for i in range(255)]
     assert visits[0] < 20 * len(words), "long host timing pools were rescanned for each reply"
+
+
+@pytest.mark.parametrize("path", sorted(VECTORS.glob("*.expected.json")), ids=lambda path: path.stem)
+def test_standalone_reader_uses_the_same_rows_with_unique_seek_owners(path):
+    from cassini_talk.meeting_text import reader_turns
+    from cassini_talk.transcript import find_matches, visible_turns
+
+    vector = json.loads(path.read_text())
+    body = json.loads(path.with_name(vector["fixture"]).read_text())
+    words = [Word(i["speaker"], i["startMs"], i["endMs"], i["text"], text_is_stored=True) for i in body["items"]]
+    owners = reader_turns(words)
+    assert [owner.index for owner in owners] == list(range(len(owners)))
+    actual = [
+        dict(
+            speaker=row.speaker,
+            continuation=row.continuation,
+            startMs=row.start_ms,
+            endMs=row.end_ms,
+            over=row.over,
+            crosstalk=row.crosstalk,
+            members=members(row),
+        )
+        for row in visible_turns(owners)
+    ]
+    assert actual == [dict(row, members=coalesce(row["members"])) for row in vector["rows"]]
+    for index, word in find_matches(owners, "good"):
+        assert "good" in owners[index].items[word].casefold()
+    assert all(
+        aside is owners[aside.index] and aside.host is row
+        for row in visible_turns(owners)
+        for _after, aside in row.asides
+    )
+
+
+def test_native_captions_format_overlap_labels_once_and_deduplicate_names():
+    from cassini_talk.meeting_text import row_caption
+    from cassini_talk.transcript import Turn
+
+    row = Turn(0, "a", [Word("a", 0, 400, "word")], 0, 0, 400, over=["b", "c", "d"])
+    assert row_caption(row, str.upper) == "(over B, C and D)"
+    assert row_caption(row, lambda _speaker: "Same name") == "(over Same name)"
+    row.over = []
+    assert row_caption(row, str.upper) == ""
+    row.words = [Word("a", 0, 400, "word", low_confidence=True)]
+    assert row_caption(row, str.upper) == "Probably crosstalk"

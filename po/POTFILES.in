@@ -16,3 +16,4 @@ src/cassini_talk/library_window.py
 src/cassini_talk/ux_formats.py
 src/cassini_talk/recording_comfort.py
 src/cassini_talk/recording_session.py
+src/cassini_talk/meeting_text.py
