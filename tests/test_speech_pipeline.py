@@ -10,6 +10,24 @@ from cassini_talk.speech_pipeline import SpeechGate, resampled_chunks  # noqa: E
 ROOT = Path(__file__).resolve().parent / "whistle/pipeline"
 
 
+@pytest.mark.parametrize("channels", [1, 2], ids=["mono", "stereo"])
+def test_all_pcm16_values_and_asymmetric_stereo_normalize_exactly(tmp_path, channels):
+    values = np.arange(-32768, 32768, dtype="<i2")
+    pcm = values if channels == 1 else np.column_stack((values, np.roll(values, 7919)))
+    # Integer arithmetic defines the downmix independently of float reduction.
+    expected = pcm.astype(np.int64)
+    if channels == 2:
+        expected = expected.sum(axis=1)
+    expected = (expected / (32768 * channels)).astype("<f4")
+    path = tmp_path / "pcm.wav"
+    with wave.open(str(path), "wb") as stream:
+        stream.setparams((channels, 2, 16000, 0, "NONE", ""))
+        stream.writeframes(pcm.tobytes())
+    actual = np.concatenate(list(resampled_chunks(path, chunk_size=1009)))
+    assert actual.tobytes() == expected.tobytes()
+    assert path.read_bytes()[44:] == pcm.tobytes()
+
+
 def test_shared_fir_golden_and_random_access_edges_are_exact():
     assert (ROOT / "fir-48k-16k.json").read_bytes() == (
         ROOT.parents[2] / "src/cassini_talk/fir-48k-16k.json"

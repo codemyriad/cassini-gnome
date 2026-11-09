@@ -48,9 +48,12 @@ def resampled_chunks(path, start=0, end=None, chunk_size=16000):
             high = min(total, (last - 1) * 3 + 49) if rate == 48000 else last
             source.setpos(low)
             raw = source.readframes(high - low)
-            samples = np.frombuffer(raw, dtype="<i2").astype(np.float32).reshape(-1, channels)
-            # Integer PCM values are exact float32. D11.2 averages first.
-            samples = samples.mean(axis=1, dtype=np.float32) / np.float32(32768)
+            samples = np.frombuffer(raw, dtype="<i2").astype(np.float32)
+            # Integer PCM values are exact float32. D11.2 averages stereo first;
+            # mono already has one value per frame. Both buffers are owned here.
+            if channels == 2:
+                samples = samples.reshape(-1, channels).mean(axis=1, dtype=np.float32)
+            samples /= np.float32(32768)
             if rate == 16000:
                 yield samples
                 continue
