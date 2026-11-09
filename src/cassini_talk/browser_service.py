@@ -3191,7 +3191,7 @@ class BrowserService:
                             owners.get((browser.browser_instance or browser.id, tab)) is browser
                             and tab not in browser.attempted
                             and self._meeting_id(browser, tab) not in self._scheduled_calls
-                            and self._auto_start_ready(browser, meeting)
+                            and (proof := self._auto_start_proof(browser, meeting)) is not None
                             and not self._signal_blocks_browser(browser, tab, meeting)
                             and not browser.states.get(tab, {}).get("recording")
                             # A capture the user stopped, only saving, does not block
@@ -3204,9 +3204,7 @@ class BrowserService:
                             self._scheduled_calls.add(identifier)
                             if browser.browser_instance is not None:
                                 self._attempted_calls.add(identifier)
-                            self._scheduled_admission[identifier] = self.signal_calls.proof(
-                                browser, tab, self.clock()
-                            ).binding
+                            self._scheduled_admission[identifier] = proof.binding
                             tasks.append((identifier, "start", self._call_versions.get(identifier, 0)))
                             if not independent:
                                 break
@@ -3369,7 +3367,7 @@ class BrowserService:
 
     def _capture_lifecycle(self, key, capture, identifier, action):
         try:
-            if action in ("fallback", "askResume") and key in self._verified_owners:
+            if action == "askResume" and key in self._verified_owners:
                 with self.lock:
                     binding = self._verified_owners[key]
                     if not any(
@@ -3558,10 +3556,14 @@ class BrowserService:
                     self.browsers[browser_id].scheduled.discard(int(tab))
 
     def _auto_start_ready(self, browser, meeting):
+        return self._auto_start_proof(browser, meeting) is not None
+
+    def _auto_start_proof(self, browser, meeting):
+        """Return the same proof that establishes this scheduling eligibility."""
         proof = self.signal_calls.proof(
             browser, meeting.get("tabId"), self.clock(), remote="separated", meeting=meeting
         )
-        return (
+        if (
             not browser.closed
             and not browser.shut_down.is_set()
             and meeting.get("sourceCountKnown", True) is True
@@ -3570,7 +3572,9 @@ class BrowserService:
             and meeting.get("pageState") == "present"
             and proof is not None
             and (proof.binding.profile, proof.binding.tab, proof.binding.generation) not in self.signal_calls.suppressed
-        )
+        ):
+            return proof
+        return None
 
     def _verified_start_allowed(self, browser, tab, binding):
         proof = self.signal_calls.proof(

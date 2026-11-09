@@ -280,7 +280,6 @@ class BrowserCapture:
                 if self.finished or self.stop_requested.is_set():
                     raise ProtocolError("state", "Recording start was cancelled")
                 self.capture_id, self.origin_ms = identifier, origin
-                self._automatic_admission = admit
                 if session_clock is None or session_clock.origin_ms != origin:
                     session_clock = SessionClock(origin)
                 self.session_clock = session_clock
@@ -705,10 +704,9 @@ class BrowserCapture:
                 loss["cause"] = cause
             if isinstance(detail, str) and detail:
                 loss["detail"] = detail[:1000]
-        admit = getattr(self, "_automatic_admission", None)
-        return self._change(
-            self.me, self.others, fallback=reason, loss=loss or None, **({"admit": admit} if admit is not None else {})
-        )
+        # Startup admission protects the initial inputs in start(). A running
+        # recording keeps its loss/fallback policy when that proof disappears.
+        return self._change(self.me, self.others, fallback=reason, loss=loss or None)
 
     @property
     def browser_ready(self):
@@ -1042,8 +1040,8 @@ class BrowserCapture:
         """Whether this loss's restore already failed on the track limit."""
         return self.restore_refused is not None and self.restore_refused == self.loss_serial
 
-    def _change(self, me, others, *, fallback=None, retry=False, loss=None, admit=None):
-        return self._apply_change(me, others, fallback=fallback, retry=retry, loss=loss, admit=admit)
+    def _change(self, me, others, *, fallback=None, retry=False, loss=None):
+        return self._apply_change(me, others, fallback=fallback, retry=retry, loss=loss)
 
     def _events(self, me, others, lost, fallback, at):
         old = source_state(self.host.session.manifest.get("events"))
@@ -1073,7 +1071,7 @@ class BrowserCapture:
             )
         return events
 
-    def _apply_change(self, me, others, *, fallback=None, restore=False, retry=False, loss=None, admit=None):
+    def _apply_change(self, me, others, *, fallback=None, restore=False, retry=False, loss=None):
         if self.starting and not self.ready.wait(12):
             raise TimeoutError("Native capture did not finish starting")
         with self.transition:
@@ -1109,13 +1107,9 @@ class BrowserCapture:
                 # No new PCM or event may reach the session until commit below.
                 for kind in sorted(kinds):
                     opening = kind
-                    if admit is not None and not admit():
-                        raise StartCancelled("Verified call evidence expired before fallback input")
                     identifier = kind + "-" + str(uuid4())
                     tap, state = self._make_native(kind, identifier)
                     prepared[kind] = identifier, tap, state
-                    if admit is not None and not admit():
-                        raise StartCancelled("Verified call evidence expired before starting fallback input")
                     tap.start()
                 opening = None
                 with self.lock:

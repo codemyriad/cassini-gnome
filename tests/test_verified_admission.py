@@ -393,3 +393,112 @@ def test_stop_all_suppresses_only_current_call_and_new_background_call_can_start
         fn, args = queued.pop(0)
         fn(*args)
     assert len(starts(sent)) == 1 and starts(sent)[0]["callGeneration"] == "new-background-call"
+
+
+@pytest.mark.parametrize("independent", [True, False])
+def test_schedule_keeps_the_binding_of_the_eligibility_proof(broker, monkeypatch, independent):
+    service, peer, clock, queued, sent, _meeting = broker
+    if not independent:
+        peer.capabilities -= {"independent-sessions-v1"}
+    report(service, peer)
+    service.auto_record = True
+    original = service.signal_calls.proof
+
+    def expire_after_check(*args, **kwargs):
+        proof = original(*args, **kwargs)
+        if kwargs.get("meeting") is not None and proof is not None:
+            clock[0] = LEASE
+        return proof
+
+    monkeypatch.setattr(service.signal_calls, "proof", expire_after_check)
+    service.policy()
+    assert len(queued) == 1
+    function, args = queued.pop(0)
+    function(*args)
+    assert not starts(sent), "final dispatch must still reject the expired proof"
+    monkeypatch.setattr(service.signal_calls, "proof", original)
+    clock[0] = LEASE + 1
+    report(service, peer, sequence=1)
+    assert len(queued) == 1, "a fresh proof must remain eligible after the cancelled Start"
+    function, args = queued.pop(0)
+    function(*args)
+    assert len(starts(sent)) == 1
+
+
+@pytest.mark.parametrize("loss", ["reload", "workerRestart", "autoOff"])
+@pytest.mark.parametrize("fallback", ["audioClose", "policy"])
+def test_established_automatic_capture_falls_back_after_start_admission_changes(
+    broker, tmp_path, monkeypatch, loss, fallback
+):
+    import time
+
+    from durable import saved
+    from test_browser_capture import Tap, stream
+
+    from cassini_talk.browser_capture import BrowserCapture
+
+    service, peer, clock, queued, _sent, meeting = broker
+    report(service, peer)
+    service.auto_record = True
+
+    def accept(packet):
+        if packet.get("action") in ("start", "stop"):
+            service.update(
+                peer, dict(type="result", requestId=packet["requestId"], ok=True, status=dict(recording=False))
+            )
+
+    monkeypatch.setattr(peer, "send", accept)
+    service.command(f"{peer.id}:2", "start", automatic=True)
+    token = next(reversed(service._native_requests))
+    packet = dict(
+        type="start",
+        captureId="established",
+        requestId=token,
+        timelineOriginMs=int(time.time() * 1000),
+        microphone=False,
+        callGeneration=meeting["callGeneration"],
+        documentGeneration=meeting["documentGeneration"],
+    )
+    admit = service._native_start_guard(packet)
+    capture = BrowserCapture(service._capture_changed, parent=tmp_path / "Library", tap_factory=Tap)
+    service.captures[capture_id := packet["captureId"]] = capture
+    capture.start(packet, admit=admit)
+    service._native_requests[token]["nativeAdmitted"] = True
+    assert capture.ready.is_set() and not capture.starting and admit()
+    try:
+        if loss == "reload":
+            meeting["pageState"] = "navigating"
+            service.update(peer, dict(type="meetings", meetings=[meeting]))
+        elif loss == "workerRestart":
+            service.update(peer, dict(type="hello", version=1, capabilities=sorted(peer.capabilities)))
+        else:
+            service.auto_record = False
+        assert not admit(), "the test must withdraw startup eligibility"
+        if fallback == "audioClose":
+            capture.close()
+        else:
+            service._capture_lifecycle(capture_id, capture, f"{peer.id}:2", "fallback")
+        assert capture.browser_lost and not capture.finished and capture.error is None
+        assert stream(capture, "system")["frames"] > 0
+        assert capture.host.session.manifest["state"] == "recording"
+        if loss != "autoOff":
+            clock[0] = LEASE
+            service.policy()
+            while queued:
+                function, args = queued.pop(0)
+                function(*args)
+            since = service._verified_losses[capture_id]
+            clock[0] = since + 119.999
+            service.policy()
+            assert not capture.stop_requested.is_set()
+            clock[0] = since + 120
+            service.policy()
+            while queued:
+                function, args = queued.pop(0)
+                function(*args)
+            saved(capture)
+            assert capture.end_reason == "pageGone" and capture.error is None
+    finally:
+        if not capture.finished:
+            capture.stop(user_stopped=False)
+        saved(capture)

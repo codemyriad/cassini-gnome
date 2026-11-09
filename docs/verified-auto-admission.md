@@ -44,6 +44,9 @@ This echo is the coordinator-approved producer #79 dependency. A popup/manual
 Start without a host token stays explicit manual intent, rather than being guessed
 from historical call generations.
 
+Startup admission is not retained as a gate on an established recording. A browser
+transport loss can still fall back to system audio after reload, worker restart or
+disabling auto-record; resuming browser input still requires fresh proof.
 A started recording retains its ownership and route. Proof loss starts its separate
 120-second recording-loss grace, anchored at the actual lease expiry rather than a
 later heartbeat/tick. Unknown and empty source inventory are not affirmative call
