@@ -7,6 +7,7 @@ src/shortcuts-dialog.ui
 src/cassini_talk/main.py
 src/cassini_talk/player.py
 src/cassini_talk/window.py
+src/cassini_talk/meeting_text.py
 src/cassini_talk/recorder.py
 src/cassini_talk/recording_window.py
 src/cassini_talk/browser_notifications.py

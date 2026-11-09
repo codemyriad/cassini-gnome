@@ -788,7 +788,7 @@ class LibraryScanner:
             started_at_ms=started,
             duration_ms=duration,
             words=tuple(words),
-            preview_turns=self._preview(directory.name, words, gaps),
+            preview_turns=self._preview(directory.name, words, gaps, speaker_names),
             turns=self._preview_cache.get(directory.name, (None, None, ()))[2],
             listening_turns=self._preview_cache[directory.name][4] if words else (),
             turn_gaps=gaps,
@@ -826,18 +826,27 @@ class LibraryScanner:
             else {},
         )
 
-    def _preview(self, name, words, gaps=None):
+    def _preview(self, name, words, gaps=None, speaker_names=None):
         if not words:
             self._preview_cache.pop(name, None)
             return ()
         cached = self._preview_cache.get(name)
         if cached is not None and cached[0] is words and cached[3] == gaps:
+            rows, listening = cached[2], cached[4]
+        else:
+            # Group once on the scanner worker; metadata changes reuse rows.
+            rows, listening = reading_turns(words, gaps=gaps), speaker_turns(words)
+        names = speaker_names or {}
+        labels = tuple(
+            (aside.speaker, names.get(aside.speaker, aside.speaker)) for row in rows[:3] for _after, aside in row.asides
+        )
+        if cached is not None and cached[2] is rows and cached[5] == labels:
             return cached[1]
-        # Project once, in the scanner worker. A truncated lookahead changes
-        # timing-repair medians and can misclassify a later competing turn.
-        rows = reading_turns(words, gaps=gaps)
-        result = tuple(PreviewTurn(t.speaker, t.start_ms, row_text(t)[0], t) for t in rows[:3])
-        self._preview_cache[name] = words, result, rows, gaps, speaker_turns(words)
+        result = tuple(
+            PreviewTurn(t.speaker, t.start_ms, row_text(t, lambda speaker: names.get(speaker, speaker))[0], t)
+            for t in rows[:3]
+        )
+        self._preview_cache[name] = words, result, rows, gaps, listening, labels
         return result
 
     def _transcript(self, fd, directory, metadata, origin, embedded, trusted, embedded_words, diagnostics):

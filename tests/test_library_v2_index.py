@@ -167,3 +167,36 @@ def test_no_x_root_file_is_read_play_only_until_step_five(tmp_path):
     assert meeting.has_audio and meeting.audio_file == path
     assert not meeting.metadata_editable and not meeting.can_write_down
     assert fingerprints(tmp_path) == before
+
+
+def test_published_preview_uses_current_chip_speaker_names(tmp_path):
+    from cassini_talk import portable
+    from cassini_talk.meeting_store import update_metadata
+
+    sid, directory = simple_session(tmp_path, 2.0)
+    finalize.finalize(tmp_path, sid, zone="Europe/Rome")
+    speakers = [
+        dict(id=s, name=name, provenance="user", colourIndex=i)
+        for i, (s, name) in enumerate((("a", "Ada"), ("b", "Ben")))
+    ]
+    update_metadata(
+        directory,
+        speakers=speakers,
+        transcript=dict(status="done", reference=None),
+        transcript_body=dict(
+            format=portable.WORDS_FORMAT,
+            items=[
+                dict(speaker="a", startMs=0, endMs=1000, text="Before"),
+                dict(speaker="b", startMs=900, endMs=1100, text="Reply"),
+                dict(speaker="a", startMs=1000, endMs=2000, text="after"),
+            ],
+        ),
+    )
+    scanner = LibraryScanner(tmp_path)
+    (meeting,) = scanner.scan().meetings
+    assert meeting.preview_turns[0].text == "Before (Ben: Reply) after"
+    speakers[1]["name"] = "Bea"
+    update_metadata(directory, speakers=speakers)
+    (meeting,) = scanner.scan().meetings
+    assert meeting.preview_turns[0].text == "Before (Bea: Reply) after"
+    assert "(Bea: Reply)" in meeting.quote_line

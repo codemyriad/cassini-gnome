@@ -14,6 +14,15 @@ _SENTENCE = re.compile(r"""[.!?]["')\]]*$""")
 _FINAL = re.compile(r"""[.?!,;:…。．！？；：，、।॥؛؟][)\]}"'’”»›」』〉》]*$""")
 
 
+def _joined(words, indices):
+    text = ""
+    for index in indices:
+        part = words[index].text.strip()
+        if part:
+            text += (" " if text and part[0] not in ",.;:!?)" else "") + part
+    return text
+
+
 def readable_blocks(words, gaps, gap_break):
     """Group in file order, then merge small neighbors (portable.ts)."""
     grouped = []
@@ -23,7 +32,7 @@ def readable_blocks(words, gaps, gap_break):
             first, last = words[current[0]], words[current[-1]]
             gap = max(0, word.start_ms - last.end_ms)
             target = len(current) >= 96 or last.end_ms - first.start_ms >= 45000
-            boundary = bool(_SENTENCE.search(last.text.strip())) or gap >= 2200
+            boundary = bool(_SENTENCE.search(_joined(words, current))) or gap >= 2200
             if (
                 word.speaker != first.speaker
                 or gap_break(gaps, last, word)
@@ -44,14 +53,16 @@ def readable_blocks(words, gaps, gap_break):
             previous = merged[-1]
             a, b = words[previous[0]], words[previous[-1]]
             c, d = words[block[0]], words[block[-1]]
+            previous_count = len(_joined(words, previous).split())
+            block_count = len(_joined(words, block).split())
             small = (
-                len(previous) < 18 or len(block) < 18 or b.end_ms - a.start_ms < 8000 or d.end_ms - c.start_ms < 8000
+                previous_count < 18 or block_count < 18 or b.end_ms - a.start_ms < 8000 or d.end_ms - c.start_ms < 8000
             )
             if (
                 a.speaker == c.speaker
                 and not gap_break(gaps, b, c)
                 and max(0, c.start_ms - b.end_ms) <= 4200
-                and len(previous) + len(block) <= 140
+                and previous_count + block_count <= 140
                 and d.end_ms - a.start_ms <= 90000
                 and small
             ):

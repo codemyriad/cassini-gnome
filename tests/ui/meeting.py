@@ -237,7 +237,7 @@ with tempfile.TemporaryDirectory() as temporary:
         show_synthetic(interrupted)
         until(lambda: len(page.bound) == 1 and page.bound[0][0].words[0] is interrupted[0])
         inline = page.bound[0][1]
-        assert inline.get_text() == f"We should  {meeting.speaker_for(second).name}: Yes <&>.  ship it."
+        assert inline.get_text() == f"We should ({meeting.speaker_for(second).name}: Yes <&>.) ship it."
         assert 'href="aside:0:0"' in inline.get_label()
         inline.emit("activate-link", "aside:0:0")
         until(lambda: window.player.position == 900)

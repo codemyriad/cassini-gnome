@@ -102,7 +102,7 @@ class Word:
     # Internal origin marker, never serialized. Legacy sidecars retain the
     # D38.5 migration bridge until conversion; Cassini-file text is verbatim.
     text_is_stored: bool = field(default=False, compare=False, repr=False)
-    ends_bounded_by_audio: bool = field(default=False, compare=False, repr=False)
+    ends_bounded_by_audio: bool = field(default=False, repr=False)
 
 
 @dataclass(slots=True)
@@ -607,7 +607,7 @@ def load_words(meeting: Meeting, transcript_id: str) -> list[Word]:
         return []
     if not isinstance(items, list):
         raise CassiniError("transcript items is not an array", "json-invalid")
-    provenance = body.get("provenance")
+    provenance = meeting.manifest.get("provenance") if isinstance(meeting.manifest, dict) else None
     timings = provenance.get("wordTimings") if isinstance(provenance, dict) else None
     bounded = isinstance(timings, dict) and timings.get("endsBoundedByAudio") is True
     words: list[Word] = []

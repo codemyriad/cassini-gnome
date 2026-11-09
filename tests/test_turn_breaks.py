@@ -448,7 +448,7 @@ def test_merged_ranges_are_joined_without_changing_a_break():
 
 
 def test_a_break_looks_up_a_few_ranges_not_all_of_them():
-    # Long recordings keep many gaps; window._set_words groups on the GTK main thread.
+    # Long recordings keep many gaps; grouping must query their ranges efficiently.
     class Counted(Sequence):
         def __init__(self, values):
             self.values, self.reads = values, 0
