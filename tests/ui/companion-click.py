@@ -291,9 +291,6 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                 assert len(page.meeting.words) > 3000
                 assert len(launches) == count and not launch_entered.is_set(), "Entry point launched the browser"
                 until(lambda started=started: time.monotonic() - started >= 2)
-                GLib.source_remove(timer)
-                assert gaps and max(gaps) < 0.1, (state, entry, max(gaps))
-                print(f"PASS {state}/{entry}: mapped, max heartbeat gap {max(gaps) * 1000:.1f} ms", flush=True)
                 if state == "waiting" and entry == "meeting":
                     # Re-presenting an already mounted sheet keeps the same
                     # instance and focus. A closed sheet is never reused.
@@ -317,10 +314,16 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                     for _ in range(10):
                         dialog.render()
                 dialog.force_close()
-                until(lambda dialog=dialog: dialog.closed)
+                # closed starts the closing animation. Keep its frames inside
+                # the heartbeat budget, and wait for unmap before closing the
+                # parent or clicking an entry behind the modal sheet.
+                until(lambda dialog=dialog: dialog.closed and not dialog.get_mapped())
                 if entry == "preferences":
                     settings.force_close()
-                    until(lambda settings=settings: settings.closed)
+                    until(lambda settings=settings: settings.closed and not settings.get_mapped())
+                GLib.source_remove(timer)
+                assert gaps and max(gaps) < 0.1, (state, entry, max(gaps))
+                print(f"PASS {state}/{entry}: mapped, max heartbeat gap {max(gaps) * 1000:.1f} ms", flush=True)
             if state == "failed":
                 dialog = app.on_companion_setup(parent=window)
                 until(dialog.get_mapped, 0.5)
