@@ -225,3 +225,15 @@ def test_folded_reply_speaker_filter_keeps_context_and_seek(tmp_path):
         assert len(index.query("Reply", now_ms=0, tz="UTC")) == 1
     finally:
         index.close()
+
+
+def test_native_highlight_uses_repaired_end_instead_of_the_inflated_tail():
+    from cassini_talk.meeting_text import reading_markup, reading_word
+
+    word = Word("guest", 188000, 199000, "September?", text_is_stored=True)
+    (row,) = reading_turns([word])
+    assert row.end_ms == 189000
+    assert "background=" in reading_markup(row, 188500, str.upper)
+    assert "background=" not in reading_markup(row, 192000, str.upper)
+    assert reading_word(row, "item:0").start_ms == 188000
+    assert word.end_ms == 199000  # display repair never rewrites source data

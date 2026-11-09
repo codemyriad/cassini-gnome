@@ -107,11 +107,13 @@ with tempfile.TemporaryDirectory() as temporary:
     page.update(meeting)
     assert not menu_changes, "An unchanged meeting must not rebuild the More menu"
     page.more_menu.disconnect(handler)
-    window.player.seek(192000)
+    # D84 repairs the fixture's inflated sentence-final item to 188–189 s.
+    # Seek inside its displayed timing rather than the discarded tail.
+    window.player.seek(188500)
     current = next(row for row in page.bound.values() if row[0].speaker == "guest")
     assert "background=" in current[1].get_label()
     assert 'alpha="60%"' in page.bound[3][1].get_label()
-    assert page.elapsed.get_label() == "00:03:12" and page.total.get_label() == "00:47:05"
+    assert page.elapsed.get_label() == "00:03:08" and page.total.get_label() == "00:47:05"
     assert isinstance(page.rate_button, Gtk.MenuButton)
     window.activate_action("win.rate", GLib.Variant("s", "1.5"))
     assert window.player.rate == 1.5 and page.rate_button.get_label() == "1.5×"
