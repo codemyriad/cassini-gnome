@@ -241,6 +241,7 @@
 .listening-bar button { min-width: 24px; padding: 4px; }
 
 .meeting-player > label { font-feature-settings: "tnum"; }
-.meeting-transcript .words { border-left: 3px solid transparent; padding-left: 8px; }
+/* Zero-width sides must also be transparent, so GTK omits the idle border node. */
+.meeting-transcript .words { border: 0 solid transparent; border-left-width: 3px; padding-left: 8px; }
 .meeting-transcript .words.listen-current { border-left-color: @accent_color; background: alpha(@accent_color, 0.08); }
 .transcript-name, .transcript-time { padding: 0; min-height: 0; }
