@@ -124,39 +124,32 @@ def limited_pcm(chunks, *, limit=0.95, lookahead=240, release=2400):
     pending, peaks = deque(), deque()
     index, gain = -1, 1.0
 
-    def push(sample):
-        nonlocal index, gain
-        index += 1
-        pending.append(sample)
-        while peaks and peaks[-1][1] <= abs(sample):
-            peaks.pop()
-        peaks.append((index, abs(sample)))
-        oldest = index - lookahead
-        while peaks and peaks[0][0] < oldest:
-            peaks.popleft()
-        if len(pending) <= lookahead:
-            return None
-        needed = min(1.0, limit / peaks[0][1]) if peaks[0][1] else 1.0
-        gain = min(needed, gain + (1 - gain) / release)
-        return pending.popleft() * gain
+    def with_tail():
+        yield from chunks
+        if pending:
+            yield (0.0 for _ in range(lookahead))
 
-    for chunk in chunks:
+    for chunk in with_tail():
         output = array.array("f")
         for sample in chunk:
             if not math.isfinite(sample):
                 raise ValueError("Recording contains non-finite PCM")
-            value = push(sample)
-            if value is not None:
-                output.append(value)
+            index += 1
+            pending.append(sample)
+            magnitude = abs(sample)
+            while peaks and peaks[-1][1] <= magnitude:
+                peaks.pop()
+            peaks.append((index, magnitude))
+            oldest = index - lookahead
+            while peaks and peaks[0][0] < oldest:
+                peaks.popleft()
+            if len(pending) <= lookahead:
+                continue
+            needed = min(1.0, limit / peaks[0][1]) if peaks[0][1] else 1.0
+            gain = min(needed, gain + (1 - gain) / release)
+            output.append(pending.popleft() * gain)
         if output:
             yield output
-    tail = array.array("f")
-    for _ in range(lookahead if pending else 0):
-        value = push(0.0)
-        if value is not None:
-            tail.append(value)
-    if tail:
-        yield tail
 
 
 def encode_pcm(tracks, output, choice, cancel=None):

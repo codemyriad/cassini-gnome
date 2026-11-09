@@ -96,6 +96,17 @@ def test_limiter_preserves_short_and_long_timeline_and_quiet_sound(length):
     assert list(limited_pcm([])) == []
 
 
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 7])
+def test_limiter_exact_peak_release_tail_and_chunk_boundaries(chunk_size):
+    signal = [0.0, 2.0, -0.5, 0.25, -0.0, 0.75, 0.0]
+    # Two samples of lookahead; the peak sets gain to 1/2, then each quiet
+    # sample halves the remaining attenuation. Include the signed zero.
+    expected = array.array("f", [0.0, 1.0, -0.375, 0.21875, -0.0, 0.7265625, 0.0])
+    chunks = [[], *[signal[i : i + chunk_size] for i in range(0, len(signal), chunk_size)], []]
+    actual = b"".join(block.tobytes() for block in limited_pcm(chunks, limit=1.0, lookahead=2, release=2))
+    assert actual == expected.tobytes()
+
+
 def check_portable(path):
     independent = runpy.run_path(str(HERE / "cassini-read-pure.py"))["read_file"]
     result, size = independent(path)
