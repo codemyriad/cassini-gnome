@@ -657,12 +657,22 @@ def test_d74_only_companion_cannot_automatically_open_mixed_system_inputs(signal
     assert not d.service.captures and not d.commands and not opened
 
 
-def test_verified_browser_owner_uses_proof_grace_not_source_count_as_call_end(signals):
+def test_verified_browser_owner_uses_proof_grace_not_source_count_as_call_end(signals, monkeypatch):
     import time
 
     from cassini_talk.browser_audio_proxy import BrowserAudioProxy
 
     d = signals
+    automatic_done = threading.Event()
+    automatic = d.service._automatic
+
+    def complete(*args):
+        try:
+            return automatic(*args)
+        finally:
+            automatic_done.set()
+
+    monkeypatch.setattr(d.service, "_automatic", complete)
     p = d.open(
         capabilities=(
             "call-signals-v1",
@@ -716,7 +726,8 @@ def test_verified_browser_owner_uses_proof_grace_not_source_count_as_call_end(si
                 status=dict(recording=True, tabId=3, captureId=capture.capture_id),
             ),
         )
-        d.changed.wait(lambda: not p.owner.pending)
+        durable(automatic_done, "automatic Start did not complete")
+        assert not p.owner.pending
         send_packet(p.wire, dict(type="meetings", meetings=[dict(meeting, sourceCount=0, heard=False)]))
         d.changed.wait(lambda: p.owner.meetings[3]["sourceCount"] == 0)
         lifecycle = d.service._capture_lifecycles[capture.capture_id]
