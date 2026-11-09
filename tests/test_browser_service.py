@@ -196,7 +196,12 @@ def test_auto_record_explicit_opt_in_persists_and_does_not_restart_after_stop(se
         # A genuinely new meeting on this tab is eligible again.
         send_packet(stream, dict(type="meetings", meetings=[]))
         wait_for(lambda: not request(path=path)["meetings"])
-        send_packet(stream, dict(type="meetings", meetings=[meeting()]))
+        joined = dict(meeting(), callGeneration="new-call")
+        send_packet(
+            stream,
+            dict(type="callSignals", browserInstance="verified-fixture-profile", sequence=1, tabs=[signal(joined)]),
+        )
+        send_packet(stream, dict(type="meetings", meetings=[joined]))
         assert read_packet(stream)["action"] == "start"
     finally:
         stream.close()

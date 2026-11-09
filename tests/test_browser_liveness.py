@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from broker_fixture import stop_broker
 from durable import durable
-from test_browser_capture import Tap, stream
+from test_browser_capture import Tap, authorize_native_start, stream
 from test_browser_service import wait_for
 from test_browser_sessions import Extension
 from test_capture_record import declare, pcm
@@ -93,6 +93,7 @@ def negotiated(client, service, identifier):
             version=1,
             independent=True,
             captureId=identifier,
+            requestId=authorize_native_start(service=service),
             timelineOriginMs=int(time.time() * 1000),
             microphone=True,
             title=identifier,

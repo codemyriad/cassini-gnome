@@ -250,7 +250,7 @@ class SignalCalls:
                 # call immediately or extend a grace that has already begun.
                 call.lost_at = now
 
-    def advance(self, now, *, enabled):
+    def advance(self, now, *, enabled, meetings=None):
         self.expire(now)
         for key, call in list(self.calls.items()):
             if call.lost_at is not None and now - call.lost_at >= LOSS_GRACE:
@@ -263,12 +263,14 @@ class SignalCalls:
             for instance, snapshot in self.snapshots.items():
                 for tab, row in snapshot.items():
                     evidence = row["callEvidence"]
+                    meeting = (meetings or {}).get(instance, {}).get(tab)
                     key = (instance, tab, row["documentGeneration"], evidence.get("callGeneration"))
                     if (
                         evidence["state"] == "active"
                         and row["remoteAudio"] == "mixed"
                         and (proof := self.proofs.get((instance, tab))) is not None
                         and now < proof.expires
+                        and (meeting is None or proof.binding.matches(meeting))
                         and (instance, tab, key[3]) not in self.suppressed
                     ):
                         self.calls.setdefault(key, Association(evidence["adapter"]["name"], binding=proof.binding))

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import pytest
+from test_browser_capture import server  # noqa: F401
 
 from cassini_talk.browser_service import BrowserConnection, BrowserService
 from cassini_talk.call_admission import CAPABILITIES, LEASE
@@ -51,6 +52,12 @@ def broker(tmp_path, monkeypatch):
     meeting.update(title="Controlled generic call", url="https://conference.invalid/session")
     service.update(peer, dict(type="meetings", meetings=[meeting]))
     yield service, peer, clock, queued, sent, meeting
+    service.closed.set()
+    for owner in {peer, *service.browsers.values()}:
+        owner.shutdown()
+        if owner.writer is not None:
+            owner.writer.join(2)
+            assert not owner.writer.is_alive(), "private control writer did not stop"
     service.workers.shutdown(wait=True)
 
 
@@ -280,8 +287,9 @@ def test_native_start_after_automatic_command_cannot_open_on_expired_proof(broke
     assert not service.captures
 
 
-def test_explicit_popup_manual_start_is_not_inferred_from_automatic_history(broker):
+def test_independent_start_cannot_infer_manual_intent_from_automatic_history(broker):
     from cassini_talk.browser_service import StartRejected
+    from cassini_talk.refusals import StartCancelled
 
     service, peer, clock, _queued, _sent, meeting = broker
     report(service, peer)
@@ -291,7 +299,7 @@ def test_explicit_popup_manual_start_is_not_inferred_from_automatic_history(brok
     clock[0] = LEASE
     with pytest.raises(StartRejected):
         service.command(f"{peer.id}:2", "start", user=True)
-    assert (
+    with pytest.raises(StartCancelled, match="requestId"):
         service._native_start_guard(
             dict(
                 captureId="explicit-manual",
@@ -299,8 +307,6 @@ def test_explicit_popup_manual_start_is_not_inferred_from_automatic_history(brok
                 documentGeneration=meeting["documentGeneration"],
             )
         )
-        is None
-    )
 
 
 @pytest.mark.parametrize("case", VECTORS["qualificationMeaning"]["cases"], ids=lambda c: c["name"])
@@ -361,7 +367,8 @@ def test_unknown_or_replayed_native_request_cannot_create_another_capture(broker
         service._native_start_guard(dict(packet, captureId="second-manual"))
     with pytest.raises(StartCancelled, match="Unknown"):
         service._native_start_guard(dict(packet, requestId="unissued-token"))
-    assert service._native_start_guard(dict(captureId="popup-manual")) is None
+    with pytest.raises(StartCancelled, match="requestId"):
+        service._native_start_guard(dict(captureId="unrequested-independent"))
 
 
 def test_stop_all_fences_verified_call_before_legacy_inventory_is_ready(broker):
@@ -502,3 +509,284 @@ def test_established_automatic_capture_falls_back_after_start_admission_changes(
         if not capture.finished:
             capture.stop(user_stopped=False)
         saved(capture)
+
+
+@pytest.mark.parametrize("route", ["separated", "mixed"])
+@pytest.mark.parametrize("order", ["configured", "rotation"])
+@pytest.mark.parametrize("arrival", [4.0, LEASE])
+def test_evidence_before_matching_inventory_keeps_its_original_receipt(broker, route, order, arrival):
+    service, peer, clock, queued, sent, meeting = broker
+    previous = dict(meeting)
+    if order == "configured":
+        service.update(peer, dict(type="hello", version=1, capabilities=sorted(peer.capabilities)))
+        previous.pop("browserDocumentId")
+    else:
+        meeting = dict(meeting, callGeneration="next-call")
+    service.update(peer, dict(type="meetings", meetings=[previous]))
+    if order == "configured":
+        service.update(peer, dict(type="configured", capabilities=sorted(CAPABILITIES)))
+    service.auto_record = True
+    packet = copy.deepcopy(POSITIVE["signal"])
+    packet["tabs"][0]["remoteAudio"] = route
+    packet["tabs"][0]["callEvidence"]["callGeneration"] = meeting["callGeneration"]
+    service.update(peer, packet)
+    proof = service.signal_calls.proof(peer, 2, clock[0])
+    assert proof is not None and proof.received == 0 and proof.expires == LEASE
+    assert not queued and not service.captures and not starts(sent), "unmatched inventory must not admit"
+    clock[0] = arrival
+    service.update(peer, dict(type="meetings", meetings=[meeting]))
+    assert len(queued) == (1 if arrival < LEASE else 0)
+    current = service.signal_calls.proof(peer, 2, clock[0])
+    assert current == (proof if arrival < LEASE else None), "inventory cannot renew the lease"
+
+
+@pytest.mark.parametrize("change", ["identity", "removed"])
+def test_inventory_withdraws_previously_joined_proof_without_reviving_it(broker, change):
+    service, peer, clock, queued, _sent, meeting = broker
+    report(service, peer)
+    assert service.signal_calls.proof(peer, 2, clock[0]) is not None
+    replacement = dict(meeting, browserDocumentId="departed-document")
+    service.update(peer, dict(type="meetings", meetings=[] if change == "removed" else [replacement]))
+    assert service.signal_calls.proof(peer, 2, clock[0]) is None
+    service.auto_record = True
+    service.update(peer, dict(type="meetings", meetings=[meeting]))
+    assert not queued, "an inventory replay cannot revive withdrawn evidence"
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+def test_verified_independent_start_requires_exact_request_id(broker, monkeypatch, automatic):
+    from cassini_talk.refusals import StartCancelled
+
+    service, peer, _clock, _queued, _sent, meeting = broker
+    report(service, peer)
+    service.auto_record = True
+
+    def accept(packet):
+        service.update(peer, dict(type="result", requestId=packet["requestId"], ok=True, status=dict(recording=False)))
+
+    monkeypatch.setattr(peer, "send", accept)
+    service.command(f"{peer.id}:2", "start", automatic=automatic, user=not automatic)
+    with pytest.raises(StartCancelled):
+        service._native_start_guard(dict(captureId="unidentified", callGeneration=meeting["callGeneration"]))
+    token = next(reversed(service._native_requests))
+    assert service._native_requests[token].get("nativeCaptureId") is None
+
+
+def test_same_request_and_capture_cannot_be_replayed_before_directory_creation(broker, monkeypatch):
+    from cassini_talk.refusals import StartCancelled
+
+    service, peer, _clock, _queued, _sent, meeting = broker
+    monkeypatch.setattr(
+        peer,
+        "send",
+        lambda packet: service.update(
+            peer, dict(type="result", requestId=packet["requestId"], ok=True, status=dict(recording=False))
+        ),
+    )
+    service.command(f"{peer.id}:2", "start", user=True)
+    packet = dict(
+        captureId="cancelled-before-directory",
+        requestId=next(reversed(service._native_requests)),
+        callGeneration=meeting["callGeneration"],
+    )
+    assert service._native_start_guard(packet) is None
+    assert not service.captures
+    with pytest.raises(StartCancelled, match="already"):
+        service._native_start_guard(packet)
+
+
+@pytest.mark.parametrize("blocked", ["starting", "policyPending"])
+def test_call_ended_is_latched_before_a_later_unknown_snapshot(broker, blocked):
+    import threading
+    from types import SimpleNamespace
+
+    service, peer, _clock, _queued, _sent, _meeting = broker
+    report(service, peer)
+    key = "starting-or-busy-owner"
+    service._verified_owners[key] = service.signal_calls.proof(peer, 2, 0).binding
+    capture = SimpleNamespace(
+        finished=False,
+        starting=blocked == "starting",
+        stopping=False,
+        stop_requested=threading.Event(),
+        browser_lost=False,
+        readiness=lambda **_kwargs: None,
+    )
+    service.captures[key] = capture
+    if blocked == "policyPending":
+        service._capture_policy_pending.add(key)
+    packet = copy.deepcopy(POSITIVE["signal"])
+    packet["sequence"] = 1
+    packet["tabs"][0]["callEvidence"].update(state="inactive", reason="callEnded")
+    service.update(peer, packet)
+    report(service, peer, sequence=2, state="unknown")
+    capture.starting = False
+    service._capture_policy_pending.discard(key)
+    assert service._verified_owner_action(key) == "stop:callEnded"
+    assert service._verified_ended[key] == "stop:callEnded"
+    service.policy()
+    assert any(
+        args == (key, capture, None, "stop:callEnded")
+        for function, args in _queued
+        if function == service._capture_lifecycle
+    )
+
+
+@pytest.mark.parametrize("case", VECTORS["nativeStartCorrelation"]["cases"], ids=lambda c: c["name"])
+def test_shared_native_start_correlation_vectors_use_exact_retired_and_manual_asks(broker, monkeypatch, case):
+    from cassini_talk.refusals import StartCancelled
+
+    service, peer, _clock, _queued, _sent, _meeting = broker
+    report(service, peer)
+    service.auto_record = True
+    monkeypatch.setattr(
+        peer,
+        "send",
+        lambda packet: service.update(
+            peer, dict(type="result", requestId=packet["requestId"], ok=True, status=dict(recording=False))
+        ),
+    )
+    for index, command in enumerate(case["commands"]):
+        service.command(f"{peer.id}:2", command["action"], automatic=index == 0, user=index != 0)
+        if command["action"] == "start":
+            actual = next(reversed(service._native_requests))
+            service._native_requests[command["requestId"]] = service._native_requests.pop(actual)
+    accepted, rejected = [], []
+    for index in case["nativeArrivalOrder"]:
+        packet = dict(case["expectedNativeStarts"][index], captureId=f"vector-capture-{index}")
+        try:
+            assert service._native_start_guard(packet) is None
+            accepted.append(packet["requestId"])
+        except StartCancelled:
+            rejected.append(packet["requestId"])
+    assert accepted == [case["expect"]["acceptManualRequestId"]]
+    assert rejected == [case["expect"]["rejectRetiredAutomaticRequestId"]]
+    assert not service.captures
+
+
+@pytest.mark.parametrize("scenario", ["sole", "ambiguous", "verifiedOther", "wrongGeneration", "cancelled"])
+def test_legacy_unechoed_start_needs_one_current_unclaimed_manual_ask(broker, monkeypatch, scenario):
+    from cassini_talk.refusals import StartCancelled
+
+    service, peer, _clock, _queued, _sent, meeting = broker
+    peer.verified_configured = False
+
+    def accept(owner, packet):
+        service.update(owner, dict(type="result", requestId=packet["requestId"], ok=True, status=dict(recording=False)))
+
+    monkeypatch.setattr(peer, "send", lambda packet: accept(peer, packet))
+    service.command(f"{peer.id}:2", "start", user=True)
+    if scenario in ("ambiguous", "verifiedOther"):
+        other = BrowserConnection(io.BytesIO(), browser_instance="other-manual-profile")
+        service.browsers[other.id] = other
+        other.capabilities = {"independent-sessions-v1"}
+        other.status_seen = True
+        other.verified_configured = scenario == "verifiedOther"
+        other.meetings[2] = dict(meeting)
+        monkeypatch.setattr(other, "send", lambda packet: accept(other, packet))
+        service.command(f"{other.id}:2", "start", user=True)
+    if scenario == "cancelled":
+        service._cancel_call(service._meeting_id(peer, 2))
+    packet = dict(captureId="legacy-manual", callGeneration=meeting["callGeneration"])
+    if scenario == "wrongGeneration":
+        packet["callGeneration"] = "unrelated-call"
+    if scenario == "sole":
+        assert service._native_start_guard(packet) is None
+        with pytest.raises(StartCancelled):
+            service._native_start_guard(packet)
+    else:
+        with pytest.raises(StartCancelled):
+            service._native_start_guard(packet)
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+def test_verified_native_socket_denies_missing_id_before_inputs_or_directory(server, automatic):  # noqa: F811
+    import time
+
+    from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+    from cassini_talk.recording_session import ProtocolError
+
+    service, path, root = server
+    peer = BrowserConnection(io.BytesIO(), browser_instance="verified-private-control")
+    service.browsers[peer.id] = peer
+    service.update(peer, dict(type="hello", version=1, capabilities=sorted(CAPABILITIES | {"independent-sessions-v1"})))
+    service.update(peer, dict(type="configured", capabilities=sorted(CAPABILITIES)))
+    service.update(
+        peer,
+        dict(
+            type="meetings",
+            meetings=[dict(POSITIVE["rtp"], title="Controlled call", url="https://fixture.invalid/call")],
+        ),
+    )
+    service.update(peer, dict(type="status", recording=False))
+    report(service, peer)
+    service.auto_record = automatic
+
+    def accept(packet):
+        if packet.get("type") == "command":
+            service.update(
+                peer, dict(type="result", requestId=packet["requestId"], ok=True, status=dict(recording=False))
+            )
+
+    peer.send = accept
+    service.command(f"{peer.id}:2", "start", automatic=automatic, user=not automatic)
+    client = BrowserAudioProxy(path=path)
+    try:
+        with pytest.raises(ProtocolError, match="requestId"):
+            client.handle(
+                dict(
+                    type="start",
+                    version=1,
+                    independent=True,
+                    captureId="unidentified-native",
+                    timelineOriginMs=int(time.time() * 1000),
+                    microphone=True,
+                    callGeneration=POSITIVE["rtp"]["callGeneration"],
+                )
+            )
+        assert not service.captures and not root.exists()
+    finally:
+        client.close()
+
+
+def test_native_socket_rejects_same_id_replay_after_pre_directory_cancellation(server, monkeypatch):  # noqa: F811
+    import queue
+    import time
+
+    from test_browser_capture import authorize_native_start
+
+    from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+    from cassini_talk.recording_session import ProtocolError
+
+    service, path, root = server
+    ended = queue.Queue()
+    audio = service._audio
+
+    def completed(*args, **kwargs):
+        try:
+            return audio(*args, **kwargs)
+        finally:
+            ended.put(None)
+
+    monkeypatch.setattr(service, "_audio", completed)
+    token = authorize_native_start(service=service)
+    packet = dict(
+        type="start",
+        version=1,
+        independent=True,
+        captureId="same-native",
+        requestId=token,
+        timelineOriginMs=-1,
+        microphone=True,
+    )
+    for first in (True, False):
+        client = BrowserAudioProxy(path=path)
+        try:
+            if not first:
+                packet["timelineOriginMs"] = int(time.time() * 1000)
+            with pytest.raises(ProtocolError, match="Invalid independent capture metadata" if first else "already"):
+                client.handle(packet)
+        finally:
+            client.close()
+        ended.get(timeout=5)
+        assert not service.captures and not root.exists()

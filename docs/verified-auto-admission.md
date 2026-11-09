@@ -25,6 +25,11 @@ never a substitute for the published mapping. Mixed/system calls require the sam
 acknowledgement, current profile/document/source/call binding and freshness, and may
 have no legacy RTP inventory. Unknown classification does not pick a route.
 
+A fresh proof may precede matching inventory at configuration or call rotation. It
+keeps its original receipt until inventory joins it, without inventory renewing
+freshness. Once joined, a later identity change or removal withdraws that proof.
+Mixed admission also waits when an existing inventory row conflicts.
+
 Each accepted, strictly newer active row earns a local monotonic five-second lease.
 At elapsed **>= 5000 ms** it cannot authorize a new Start or input reservation.
 Status, heartbeat, inventory/heard, PCM, stale sequences and another profile's
@@ -40,9 +45,12 @@ and input start. A changed candidate cannot be silently retargeted. The verified
 producer echoes the **exact host requestId on ordinary native Start** (as already
 supported for resume); GNOME keeps a bounded host-request ledger, rejects unknown,
 cancelled, expired and replayed requests, and checks the bound current proof again.
-This echo is the coordinator-approved producer #79 dependency. A popup/manual
-Start without a host token stays explicit manual intent, rather than being guessed
-from historical call generations.
+This echo is the coordinator-approved producer #79 dependency and is required
+for both automatic and manual independent Starts from verified peers. Each ask is
+claimed only once, including cancellation before directory creation. Only one
+unambiguous, current legacy manual host ask can authorize an unechoed Start;
+unsolicited independent Starts are refused. Popup recordings use the separate
+non-independent native-host path, rather than bypassing broker authorization.
 
 Startup admission is not retained as a gate on an established recording. A browser
 transport loss can still fall back to system audio after reload, worker restart or
@@ -52,7 +60,8 @@ A started recording retains its ownership and route. Proof loss starts its separ
 later heartbeat/tick. Unknown and empty source inventory are not affirmative call
 ends. A fresh binding for a proven continuing background call can update an
 established owner's documents; a pending Start retains its immutable candidate.
-An affirmative matching callEnded ends the correct owner. A renewal arriving after
+An affirmative matching callEnded is latched even while startup or a pending
+lifecycle action delays its Stop, so a later unknown snapshot cannot erase it. A renewal arriving after
 the full loss grace cannot retroactively rescue an expired recording.
 
 With an old 0.2.25 companion, automatic Start and automatic fallback fail closed.

@@ -2,6 +2,7 @@
 """Independent writer ownership and per-session microphone choice, without devices."""
 
 import base64
+import io
 import json
 import struct
 import threading
@@ -14,7 +15,10 @@ from broker_fixture import stop_broker
 from durable import DURABLE_BOUND, CaptureChanges, durable, saved, tracks_bound
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
-from cassini_talk.browser_service import BrowserService, request
+from cassini_talk.browser_service import BrowserConnection, BrowserService, request
+from cassini_talk.call_admission import CAPABILITIES
+
+_SERVER_SERVICES = {}
 
 
 class Tap:
@@ -63,11 +67,64 @@ def server(tmp_path):
     worker = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
     worker.start()
     assert ready.wait(2)
-    yield service, path, tmp_path / "library"
-    stop_broker(service, worker, path)
+    _SERVER_SERVICES[str(path)] = service
+    try:
+        yield service, path, tmp_path / "library"
+    finally:
+        try:
+            stop_broker(service, worker, path)
+        finally:
+            _SERVER_SERVICES.pop(str(path))
 
 
-def start(client, identifier, *, microphone=True, call_generation=None, document_generation=None, request_id=None):
+def authorize_native_start(client=None, *, service=None, call_generation=None):
+    """Issue an actual manual host ask for a synthetic audio-socket writer."""
+    service = service or _SERVER_SERVICES[client.connection.getpeername()]
+    peer = BrowserConnection(io.BytesIO())
+
+    def acknowledge(packet):
+        if packet.get("type") == "command":
+            service.update(
+                peer, dict(type="result", requestId=packet["requestId"], ok=True, status=dict(recording=False))
+            )
+
+    peer.send = acknowledge
+    with service.lock:
+        service.browsers[peer.id] = peer
+    try:
+        service.update(
+            peer, dict(type="hello", version=1, capabilities=sorted(CAPABILITIES | {"independent-sessions-v1"}))
+        )
+        service.update(peer, dict(type="configured", capabilities=sorted(CAPABILITIES)))
+        row = dict(
+            tabId=2,
+            title="Synthetic manual writer",
+            url="https://fixture.invalid/manual",
+            sourceCount=1,
+            pageState="present",
+            callGeneration=call_generation,
+        )
+        service.update(peer, dict(type="meetings", meetings=[row]))
+        service.update(peer, dict(type="status", recording=False))
+        service.command(f"{peer.id}:2", "start", user=True)
+        return next(reversed(peer.commands))
+    finally:
+        with service.lock:
+            service.browsers.pop(peer.id, None)
+
+
+def start(
+    client,
+    identifier,
+    *,
+    microphone=True,
+    call_generation=None,
+    document_generation=None,
+    request_id=None,
+    service=None,
+):
+    if request_id is None:
+        request_id = authorize_native_start(client, service=service, call_generation=call_generation)
     return client.handle(
         dict(
             type="start",
@@ -129,6 +186,7 @@ def test_broker_keeps_negotiated_source_io_errors_scoped_and_retries_a_fresh_spa
     try:
         reply = client.handle(
             dict(
+                requestId=authorize_native_start(client),
                 type="start",
                 independent=True,
                 captureId="source-error",
@@ -735,6 +793,7 @@ def test_lost_audio_acknowledgement_keeps_native_mic_and_falls_back(server, monk
         send(
             peer_stream,
             dict(
+                requestId=authorize_native_start(service=service),
                 type="start",
                 independent=True,
                 captureId="ack-loss",
@@ -1055,6 +1114,7 @@ def test_broker_native_first_stop_keeps_a_never_opened_source_without_late_rewri
     try:
         client.handle(
             dict(
+                requestId=authorize_native_start(client),
                 type="start",
                 independent=True,
                 captureId="native-first",
@@ -1126,6 +1186,7 @@ def test_native_mic_checkpoint_failure_keeps_browser_pcm_and_does_not_raise_glob
     try:
         client.handle(
             dict(
+                requestId=authorize_native_start(client),
                 type="start",
                 version=1,
                 independent=True,
@@ -1168,6 +1229,7 @@ def test_announced_page_microphone_never_interrupts_a_native_me_recording(server
     try:
         reply = client.handle(
             dict(
+                requestId=authorize_native_start(client),
                 type="start",
                 independent=True,
                 captureId="native-me",

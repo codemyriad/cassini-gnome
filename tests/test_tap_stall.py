@@ -689,7 +689,7 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
     client = BrowserAudioProxy(path=path)
     peer = release = None
     try:
-        start_audio(client, "stall")
+        start_audio(client, "stall", service=service)
         capture = service.captures["stall"]
         lifecycle = stall in ("policy", "status")
         if route in ("stop", "command") or lifecycle:

@@ -50,7 +50,7 @@ def test_record_after_stop_starts_while_the_stop_is_unanswered_and_publication_i
     peer = Extension(socket, (3,), instance="4242:99")
     client = BrowserAudioProxy(path=socket)
     try:
-        start(client, "old")
+        start(client, "old", service=service)
         remote(client, "remote")
         old = service.captures["old"]
         bind_capture(peer, old)
@@ -88,6 +88,8 @@ def test_record_after_stop_starts_while_the_stop_is_unanswered_and_publication_i
         peer.close()
         client.close()
         stop_broker(service, worker, socket)
+        for capture in service.captures.values():
+            saved(capture)
 
 
 def test_start_all_that_skips_every_live_call_says_so(tmp_path, monkeypatch, application_class):  # noqa: F811
@@ -95,7 +97,7 @@ def test_start_all_that_skips_every_live_call_says_so(tmp_path, monkeypatch, app
     peer = Extension(socket, (3,), instance="4242:99")
     client = BrowserAudioProxy(path=socket)
     try:
-        start(client, "live")
+        start(client, "live", service=service)
         remote(client, "remote")
         bind_capture(peer, service.captures["live"])
         result = request("start-all", path=socket, groupId="while-live")
@@ -108,3 +110,5 @@ def test_start_all_that_skips_every_live_call_says_so(tmp_path, monkeypatch, app
         peer.close()
         client.close()
         stop_broker(service, worker, socket)
+        for capture in service.captures.values():
+            saved(capture)

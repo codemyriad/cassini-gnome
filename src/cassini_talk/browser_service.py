@@ -339,6 +339,7 @@ class BrowserConnection(Transport):
         self.signals_instance = None
         self.signals_configured = False
         self.verified_configured = False
+        self.verified_joined = {}  # tab -> proof binding already joined to inventory
         self.signals_waiting = False
         self.signals_sequence = -1
         self.signal_rows = {}
@@ -1258,27 +1259,13 @@ class BrowserService:
     def _native_start_guard(self, packet):
         """Verified producer echoes the exact host request token on native Start.
 
-        Absence is an explicit popup/manual Start, never a generation-history
-        guess. Old companions cannot have an automatic host request. An echoed
-        token is checked even after timeout/reconnect; unknown/replayed tokens
-        never open another capture. This binding is adopted with producer #79.
+        Verified peers must echo the exact ask, for manual and automatic Starts.
+        Only an unambiguous legacy manual ask can authorize an absent echo.
+        Every ask is claimed once, including a Start cancelled before its folder.
         """
         identifier, request_id = packet.get("captureId"), packet.get("requestId")
-        if "requestId" not in packet:
-            if identifier in self._verified_owners:
-                raise StartCancelled("Automatic native Start omitted its host request")
-            return None
-        if not isinstance(request_id, (str, int)) or isinstance(request_id, bool):
-            raise StartCancelled("Invalid native Start request identity")
-        command = self._native_requests.get(request_id)
-        if command is None or command.get("action") != "start":
-            raise StartCancelled("Unknown native Start request")
-        previous = command.get("nativeCaptureId")
-        if previous is not None and previous != identifier:
-            raise StartCancelled("A native Start request already owns another capture")
-        binding = command.get("verifiedBinding")
 
-        def current_request():
+        def current_request(command):
             return (
                 not command.get("cancelled")
                 and not self.closed.is_set()
@@ -1293,11 +1280,35 @@ class BrowserService:
                 )
             )
 
+        if "requestId" not in packet:
+            # Only the old manual protocol lacks an echo. It needs one actual,
+            # unclaimed host ask; a popup never enters this independent channel.
+            candidates = [
+                entry
+                for entry in self._native_requests.values()
+                if entry.get("action") == "start"
+                and entry.get("nativeCaptureId") is None
+                and current_request(entry)
+                and (entry.get("callGeneration") is None or entry["callGeneration"] == packet.get("callGeneration"))
+            ]
+            if len(candidates) != 1 or candidates[0].get("automatic") or candidates[0].get("verifiedRequired"):
+                raise StartCancelled("Independent native Start requires its exact host requestId")
+            command = candidates[0]
+        else:
+            if not isinstance(request_id, (str, int)) or isinstance(request_id, bool):
+                raise StartCancelled("Invalid native Start request identity")
+            command = self._native_requests.get(request_id)
+            if command is None or command.get("action") != "start":
+                raise StartCancelled("Unknown native Start request")
+        if command.get("nativeCaptureId") is not None:
+            raise StartCancelled("A native Start request already owns a capture")
+        binding = command.get("verifiedBinding")
+
         def admit():
             with self.lock:
                 current = self._verified_owners.get(identifier, binding) if command.get("nativeAdmitted") else binding
                 return (
-                    current_request()
+                    current_request(command)
                     and identifier not in self._verified_ended
                     and any(
                         peer.signals_instance == current.profile
@@ -1306,7 +1317,7 @@ class BrowserService:
                     )
                 )
 
-        if not current_request():
+        if not current_request(command):
             raise StartCancelled("Native Start request is no longer current")
         if command.get("automatic") is True:
             if (
@@ -2247,6 +2258,7 @@ class BrowserService:
                     user_stopped=user and reason == "user",
                     automatic=automatic,
                     verifiedBinding=verified_binding,
+                    verifiedRequired=browser.verified_configured,
                     preserve_capture=preserve_capture,
                     captures=set(),
                     captureId=browser.states.get(tab, {}).get("captureId"),
@@ -2903,10 +2915,17 @@ class BrowserService:
             if browser.closed or browser.shut_down.is_set():
                 self.signal_calls.disconnect(browser, now)
                 continue
-            for tab, meeting in browser.meetings.items():
+            for tab in browser.meetings.keys() | browser.verified_joined.keys():
                 proof = self.signal_calls.proof(browser, tab, now)
-                if proof is not None and not proof.binding.matches(meeting):
+                if proof is None:
+                    browser.verified_joined.pop(tab, None)
+                elif proof.binding.matches(browser.meetings.get(tab, {})):
+                    browser.verified_joined[tab] = proof.binding
+                elif browser.verified_joined.get(tab) == proof.binding:
+                    # Inventory can withdraw a join it already established. A
+                    # newer receipt may precede inventory and must stay pending.
                     self.signal_calls.invalidate(browser, tab, now)
+                    browser.verified_joined.pop(tab, None)
 
     def _verified_owner_action(self, key):
         if key in self._verified_ended:
@@ -2925,7 +2944,8 @@ class BrowserService:
                 and evidence.get("state") == "inactive"
                 and evidence.get("reason") == "callEnded"
             ):
-                return "stop:callEnded"
+                self._verified_ended[key] = "stop:callEnded"
+                return self._verified_ended[key]
             proof = self.signal_calls.proof(browser, binding.tab, now)
             if proof is not None and proof.binding.same_call(binding):
                 owner = self.captures.get(key)
@@ -3222,6 +3242,11 @@ class BrowserService:
             browser, tab, meeting.get("callGeneration")
         )
 
+    def _signal_meetings(self):
+        return {
+            peer.signals_instance: peer.meetings for peer in self.browsers.values() if self.signal_calls.current(peer)
+        }
+
     def _signal_policy(self):
         """Reserve under the inventory lock, do input/disk work on workers."""
         from .browser_capture import BrowserCapture
@@ -3234,7 +3259,7 @@ class BrowserService:
                 and not self._stopping_all.is_set()
                 and (not self.require_application or any(self.applications.values()))
             )
-            state.advance(self.clock(), enabled=enabled)
+            state.advance(self.clock(), enabled=enabled, meetings=self._signal_meetings())
             self._signal_condition.notify_all()
             capture = self.captures.get(state.capture_id)
             if capture is not None and capture.finished:
@@ -3274,7 +3299,7 @@ class BrowserService:
                     and not self._stopping_all.is_set()
                     and (not self.require_application or any(self.applications.values()))
                 )
-                state.advance(self.clock(), enabled=enabled)
+                state.advance(self.clock(), enabled=enabled, meetings=self._signal_meetings())
                 if state.capture_id != identifier or state.retiring or not enabled:
                     return None
                 for browser in self.browsers.values():

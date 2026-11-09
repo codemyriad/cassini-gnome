@@ -200,7 +200,7 @@ def test_native_audio_is_saved_even_when_another_browser_stop_never_answers(tmp_
     peer = Extension(path)
     client = BrowserAudioProxy(path=path)
     try:
-        start(client, "owned-save")
+        start(client, "owned-save", service=server)
         remote(client, "voice")
         capture = server.captures["owned-save"]
         saved = {
