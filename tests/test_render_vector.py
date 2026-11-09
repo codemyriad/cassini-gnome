@@ -482,3 +482,20 @@ def test_native_captions_format_overlap_labels_once_and_deduplicate_names():
     assert row_caption(row, str.upper) == ""
     row.words = [Word("a", 0, 400, "word", low_confidence=True)]
     assert row_caption(row, str.upper) == "Probably crosstalk"
+
+
+def test_uncertain_chip_keeps_its_own_crosstalk_and_stored_text():
+    from cassini_talk.meeting_text import reading_markup, reading_word
+
+    words = [
+        Word("a", 0, 1000, "Before"),
+        Word("b", 900, 1200, "Reply", low_confidence=True),
+        Word("a", 1000, 2000, "after"),
+    ]
+    (row,) = reading_turns(words)
+    assert not row.crosstalk and row.asides[0][1].crosstalk
+    assert row.over == []
+    markup = reading_markup(row, 0, str.upper)
+    assert "<i>Reply</i>" in markup and 'href="aside:0:0"' in markup
+    assert reading_word(row, "aside:0:0") is words[1]
+    assert words[1].text == "Reply"
