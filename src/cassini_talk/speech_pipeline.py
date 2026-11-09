@@ -59,11 +59,15 @@ def resampled_chunks(path, start=0, end=None, chunk_size=16000):
 
 def fir_values(samples, low, first, last):
     output = np.zeros(last - first, dtype=np.float64)
-    positions = np.arange(first, last, dtype=np.int64) * 3 + 48
     for n, coefficient in enumerate(TAPS):
-        indices = positions - n - low
-        valid = (indices >= 0) & (indices < len(samples))
-        output[valid] += float(coefficient) * samples[indices[valid]].astype(np.float64)
+        index = first * 3 + 48 - n - low
+        begin = max(0, (-index + 2) // 3)
+        end = min(len(output), (len(samples) - index + 2) // 3)
+        if begin < end:
+            # The same per-tap multiply/add order, without materializing an
+            # index array and two boolean gathers for every one of the 97 taps.
+            values = samples[index + begin * 3 : index + end * 3 : 3].astype(np.float64)
+            output[begin:end] += float(coefficient) * values
     return output.astype("<f4")
 
 
