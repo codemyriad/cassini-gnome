@@ -36,3 +36,18 @@ def test_reindexed_long_turn_invalidates_previous_scroll_target():
     MeetingPage._index_listening_rows(page, long)
     assert page._turn_rows == {0: frozenset(range(5))}
     assert page._highlight_target is None
+
+
+def test_folded_reply_listening_highlights_host_and_header_listens_to_host_speaker():
+    words = (
+        Word("b", 900, 1200, "Right."),
+        Word("a", 0, 1000, "Before"),
+        Word("a", 1000, 2000, "after"),
+        Word("c", 3000, 4000, "Next."),
+    )
+    model = SimpleNamespace(turns=reading_turns(words), listening_turns=speaker_turns(words))
+    page = SimpleNamespace()
+    MeetingPage._index_listening_rows(page, model)
+    assert page._turn_rows == {0: frozenset({0}), 1: frozenset({0}), 2: frozenset({0}), 3: frozenset({1})}
+    assert page._row_listening == {0: 0, 1: 3}
+    assert page._local_turn_index == {0: 0, 1: 0, 2: 1, 3: 0}

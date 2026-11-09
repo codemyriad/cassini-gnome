@@ -307,7 +307,7 @@ def test_d38_rejoined_interrupted_turn_never_pairs_quotes_across_speakers(index,
     # two quotes across B into “yes then no”. Every surface pairs per
     # consecutive speaker run, so both unmatched quotes drop everywhere.
     from cassini_talk import export_model
-    from cassini_talk.meeting_text import item_markup, reading_turns
+    from cassini_talk.meeting_text import reading_markup, reading_turns
     from cassini_talk.transcript import build_turns, visible_turns
 
     words = (
@@ -332,11 +332,11 @@ def test_d38_rejoined_interrupted_turn_never_pairs_quotes_across_speakers(index,
     assert shown == {
         "reader": ["He said yes then no", "okay"],
         "preview": ["He said yes then no"],
-        "meeting": expected,
+        "meeting": ["He said yes then no"],
         "search": expected,
         "markdown": expected,
     }
-    meeting_markup = "".join(item_markup(t.words, 0, values=t.items) for t in reading_turns(list(words)))
+    meeting_markup = "".join(reading_markup(t, 0, lambda speaker: speaker) for t in reading_turns(list(words)))
     assert not any("“" in v or "”" in v for v in [*map(str, shown.values()), meeting_markup])
     by_item = {id(w): v for t in reader for w, v in zip(t.words, t.items, strict=True)}
     assert [by_item[id(w)] for w in words] == expected

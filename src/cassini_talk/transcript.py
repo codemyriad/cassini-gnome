@@ -101,7 +101,8 @@ class Turn:
     asides: list[tuple[int, Turn]] = field(default_factory=list)  # (after word i, turn)
     fragments: list[tuple[int, int]] = field(default_factory=list)  # word slices
     over: list[str] = field(default_factory=list)
-    host: Turn | None = None  # set when this turn is shown inside another
+    host: Turn | None = field(default=None, compare=False, repr=False)
+    word_indices: list[int] = field(default_factory=list)  # original transcript indices, including after rejoining
     # D38.5 displayed text per item, paired per consecutive speaker run: one
     # run can span several reading paragraphs, and build_turns rejoins runs.
     display: tuple[str, ...] | None = None
@@ -163,6 +164,7 @@ def build_turns(words: list[Word], gaps: dict | None = None) -> list[Turn]:
         if fragments and fragments[-1].speaker == word.speaker and not gap_break(gaps, words[i - 1], word):
             fragment = fragments[-1]
             fragment.words.append(word)
+            fragment.word_indices.append(i)
             fragment.end_ms = max(fragment.end_ms, word.end_ms)
             continue
         if fragments and fragments[-1].speaker == word.speaker:
@@ -170,6 +172,7 @@ def build_turns(words: list[Word], gaps: dict | None = None) -> list[Turn]:
         else:
             runs.append([len(fragments), len(fragments) + 1])
         fragments.append(Turn(len(fragments), word.speaker, [word], i, word.start_ms, word.end_ms))
+        fragments[-1].word_indices = [i]
     # D38.5 pairs quotes within each consecutive speaker run, like Search,
     # Markdown and the Meeting page; rejoining must never pair across a
     # speaker change, and a gap break never changes the pairing.
@@ -196,6 +199,7 @@ def build_turns(words: list[Word], gaps: dict | None = None) -> list[Turn]:
         if join:
             start = len(run.words)
             run.words.extend(fragment.words)
+            run.word_indices.extend(fragment.word_indices)
             run.display += fragment.display
             run.fragments.append((start, len(run.words)))
             run.end_ms = max(run.end_ms, fragment.end_ms)
@@ -212,15 +216,24 @@ def build_turns(words: list[Word], gaps: dict | None = None) -> list[Turn]:
 
 def _attach_asides(turns: list[Turn]) -> None:
     candidates = {}
-    for turn in turns:
+    fragment_spans = {}
+    active = []
+    for turn in sorted(turns, key=lambda turn: turn.start_ms):
+        active = [host for host in active if host.end_ms >= turn.start_ms]
+        hosts = active[:]
+        active.append(turn)
         spans = _spans(turn.words)
         if not spans or sum(end - start for start, end in spans) > ASIDE_MAX_MS:
             continue
         best = None
-        for host in turns:
+        for host in hosts:
             if host.speaker == turn.speaker or turn.end_ms > host.end_ms:
                 continue
-            fragments = [(start, end, _spans(host.words[start:end])) for start, end in host.fragments]
+            if host.index not in fragment_spans:
+                fragment_spans[host.index] = [
+                    (start, end, _spans(host.words[start:end])) for start, end in host.fragments
+                ]
+            fragments = fragment_spans[host.index]
             before = -1
             for i, (_, _, pool) in enumerate(fragments):
                 if pool and pool[0][0] < turn.start_ms:
@@ -251,14 +264,15 @@ def _attach_asides(turns: list[Turn]) -> None:
 def _mark_overlap(turns):
     # Like Nextcloud, report actual word overlap, not paragraph containment.
     pools = [_spans(turn.words) for turn in turns]
-    for i, left in enumerate(turns):
-        for j in range(i + 1, len(turns)):
-            right = turns[j]
-            if left.speaker == right.speaker or max(left.start_ms, right.start_ms) >= min(left.end_ms, right.end_ms):
+    active = []
+    for left in sorted(turns, key=lambda turn: turn.start_ms):
+        active = [right for right in active if right.end_ms > left.start_ms]
+        for right in active:
+            if left.speaker == right.speaker:
                 continue
             a = b = overlap = 0
-            while a < len(pools[i]) and b < len(pools[j]):
-                x, y = pools[i][a], pools[j][b]
+            while a < len(pools[left.index]) and b < len(pools[right.index]):
+                x, y = pools[left.index][a], pools[right.index][b]
                 overlap += max(0, min(x[1], y[1]) - max(x[0], y[0]))
                 if x[1] < y[1]:
                     a += 1
@@ -269,6 +283,7 @@ def _mark_overlap(turns):
                     left.over.append(right.speaker)
                 if left.speaker not in right.over:
                     right.over.append(left.speaker)
+        active.append(left)
 
 
 def visible_turns(turns: list[Turn]) -> list[Turn]:
