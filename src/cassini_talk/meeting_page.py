@@ -9,6 +9,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
 from . import ux_formats as fmt
 from .i18n import language, using_language
 from .inline_line import InlineLine
+from .markup_runs import bridge_link_spaces
 from .meeting_text import COLOURS, DARK_COLOURS, reading_markup, reading_word, speaking_shares
 from .strings import plural, text
 
@@ -341,6 +342,13 @@ class MeetingPage(Adw.NavigationPage):
             dark=Adw.StyleManager.get_default().get_dark(),
         )
 
+    def _render_words(self, turn, words):
+        markup = self._turn_markup(turn)
+        if words.get_root() is not None:
+            colour = words.get_color()
+            markup = bridge_link_spaces(markup, (colour.red, colour.green, colour.blue, colour.alpha))
+        words.set_markup(markup)
+
     def _bind(self, _factory, item):
         turn = item.get_item().turn
         row = Gtk.Box(spacing=16, margin_bottom=24)
@@ -374,7 +382,8 @@ class MeetingPage(Adw.NavigationPage):
             use_markup=True,
             css_classes=["words"],
         )
-        words.set_markup(self._turn_markup(turn))
+        self._render_words(turn, words)
+        words.connect("map", lambda words: self._render_words(turn, words))
         words.connect("activate-link", lambda _label, uri: self._word_clicked(turn, uri))
         row.append(names)
         row.append(words)
@@ -1127,7 +1136,7 @@ class MeetingPage(Adw.NavigationPage):
         self.play.set_tooltip_text(play_name)
         self.play.update_property([Gtk.AccessibleProperty.LABEL], [play_name])
         for turn, words, _row in list(self.bound.values()):
-            words.set_markup(self._turn_markup(turn))
+            self._render_words(turn, words)
 
     def set_recording_notice(self, line, minutes):
         signature = line, minutes

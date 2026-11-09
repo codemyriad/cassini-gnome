@@ -102,16 +102,16 @@ text = text.replace(
                 assert gaps and max(gaps) < 0.1,""",
 )
 compile(text, str(test), "exec")
-css = Path("src/style.css")
-original_css = css.read_text()
-candidate_css = original_css.replace(".meeting-transcript .words { border-left: 3px solid transparent; padding-left: 8px; }", ".meeting-transcript .words { border: 0 solid transparent; border-left-width: 3px; padding-left: 8px; }")
-assert candidate_css != original_css
+page = Path("src/cassini_talk/meeting_page.py")
+candidate_page = page.read_text()
+original_page = subprocess.check_output(["git", "show", "b0b9806:src/cassini_talk/meeting_page.py"], text=True)
+assert candidate_page != original_page
 results = []
 try:
     test.write_text(text)
     for pair in range(1, int(os.environ.get("FRAME_CAPTURE_PAIRS", "4")) + 1):
         for mode in ["before", "after"] if pair % 2 else ["after", "before"]:
-            css.write_text(original_css if mode == "before" else candidate_css)
+            page.write_text(original_page if mode == "before" else candidate_page)
             subprocess.run(["meson", "compile", "-C", "_build-heartbeat"], check=True)
             label = f"{mode}-{pair}"
             folder = out / label
@@ -152,5 +152,5 @@ try:
                 raise SystemExit(label + ": unexpected failure; stop for diagnosis")
 finally:
     test.write_bytes(original)
-    css.write_text(original_css)
+    page.write_text(candidate_page)
 raise SystemExit(int(any(r["returncode"] for r in results)))
