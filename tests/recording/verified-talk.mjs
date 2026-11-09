@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {joinNextcloudTalk, talkMediaState} from '../../browser-protocol/scenarios/nextcloud-talk.mjs';
 import {installRtcTopologyProbe, summarizeRtcTopology, waitRtcTopology} from '../../browser-protocol/tests/rtc-topology-probe.mjs';
 
-export async function run({context, remoteBrowser, call, automatic, poll, samples, evidence}) {
+export async function run({context, remoteBrowser, call, automatic, poll, samples, startsSent, evidence}) {
  const url = process.env.CASSINI_TEST_TALK_URL;
  assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname), 'disposable local Talk room required');
  const meeting = await context.newPage(), participants = [];
@@ -25,6 +25,7 @@ export async function run({context, remoteBrowser, call, automatic, poll, sample
   }, 'listen-only Talk has current unverified evidence');
   assert.ok(!negative.statuses.some(status => status.recording || status.starting), 'listen-only Talk must not automatically Start');
   assert.equal(negative.recordStartPending, false);
+  assert.equal((await startsSent()).length, 0, "listen-only Talk sends no Start on the actual native control writer");
   await meeting.getByRole('button', {name: /^Unmute(?: audio)?(?: \(.*\))?$/i}).first().click();
   const before = await waitRtcTopology(meeting, {sending: 'captured'});
   const topology = summarizeRtcTopology(before, await waitRtcTopology(meeting, {previous: before, sending: 'captured'}));
@@ -38,6 +39,9 @@ export async function run({context, remoteBrowser, call, automatic, poll, sample
    const capture = state.statuses.find(status => status.tabId === row.tabId && status.recording && status.automatic && status.path);
    return signal && inventory && capture && {state, signal, inventory, capture};
   }, 'real producer evidence automatically starts Talk in GNOME');
+  const commands = await startsSent();
+  assert.equal(commands.length, 1, 'exactly one real automatic Start');
+  assert.equal(commands[0].tabId, row.tabId);
   assert.equal(admitted.signal.remoteAudio, 'separated');
   assert.equal(admitted.signal.callEvidence.adapter.version, '2');
   assert.equal(admitted.inventory.browserDocumentId, admitted.signal.documentGeneration);

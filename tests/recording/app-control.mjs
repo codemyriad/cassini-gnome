@@ -132,7 +132,7 @@ try {
  await poll(async () => (await call()).connected > 0, 'actual companion handshake in Library');
  remoteBrowser = await chromium.launch({headless: false, ignoreDefaultArgs: ['--mute-audio'], args: flags});
  if (process.env.CASSINI_TEST_TALK_URL) {
-  await (await import('./verified-talk.mjs')).run({context, remoteBrowser, call, automatic, poll, samples, evidence});
+  await (await import('./verified-talk.mjs')).run({context, remoteBrowser, call, automatic, poll, samples, startsSent, evidence});
  } else {
  await join('First browser meeting', 440, 880, id);
  await join('Second browser meeting', 550, 990, id);
