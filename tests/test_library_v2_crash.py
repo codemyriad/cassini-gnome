@@ -30,7 +30,8 @@ CHILD = textwrap.dedent(
     import os, signal, sys
     from pathlib import Path
     sys.path.insert(0, sys.argv[1])
-    from cassini_talk.library_v2 import edit, finalize, journal, publish
+    from cassini_talk.i18n import using_language
+    from cassini_talk.library_v2 import publish
     operation, target, root, sid = sys.argv[2:6]
     if os.environ.get("CASSINI_TEST_CASEFOLD"):
         sys.path.insert(0, os.environ["CASSINI_TEST_DIR"])
@@ -42,19 +43,26 @@ CHILD = textwrap.dedent(
             os.kill(os.getpid(), signal.SIGKILL)
 
     publish.CHECKPOINT = checkpoint
-    if operation == "publish":
-        finalize.finalize(root, sid, zone="Europe/Rome")
-    elif operation == "replace":
-        edit.edit_meeting(root, "Recording", sid, {"notes": [{"atMs": 1, "text": "after"}]})
-    elif operation == "rename":
-        edit.edit_meeting(root, "Recording", sid, {"title": "Renamed", "titleSource": "user"})
-    elif operation == "case":
-        edit.edit_meeting(root, "Recording", sid, {"title": "WEEKLY sync", "titleSource": "user"})
-    elif operation == "delete":
-        layout = journal.Layout(Path(root))
-        with journal.LibraryLock(layout):
-            name = publish.find_file(layout, "Recording", sid)
-            publish.delete(layout, origin="Recording", session_id=sid, file_name=name)
+    # This matrix uses English fixture content; locale discovery is tested separately.
+    with using_language("en"):
+        if operation == "publish":
+            from cassini_talk.library_v2 import finalize
+            finalize.finalize(root, sid, zone="Europe/Rome")
+        elif operation == "replace":
+            from cassini_talk.library_v2 import edit
+            edit.edit_meeting(root, "Recording", sid, {"notes": [{"atMs": 1, "text": "after"}]})
+        elif operation == "rename":
+            from cassini_talk.library_v2 import edit
+            edit.edit_meeting(root, "Recording", sid, {"title": "Renamed", "titleSource": "user"})
+        elif operation == "case":
+            from cassini_talk.library_v2 import edit
+            edit.edit_meeting(root, "Recording", sid, {"title": "WEEKLY sync", "titleSource": "user"})
+        elif operation == "delete":
+            from cassini_talk.library_v2 import journal
+            layout = journal.Layout(Path(root))
+            with journal.LibraryLock(layout):
+                name = publish.find_file(layout, "Recording", sid)
+                publish.delete(layout, origin="Recording", session_id=sid, file_name=name)
     """
 )
 OLD = "2026-10-30--18.02-Weekly sync.opus"
