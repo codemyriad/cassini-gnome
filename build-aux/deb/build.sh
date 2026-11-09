@@ -31,7 +31,9 @@ build-aux/sherpa-cache.sh
 container_pull "$BASE"
 # The image only installs the build dependencies (no build, no test), so a
 # mirror failure while building it is retried as a whole (retry.sh).
-retry container_build -q -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
+# Keep dependency-install output: quiet mode hides apt/mk-build-deps failures,
+# leaving only a Dockerfile line and an exit code in CI.
+retry container_build -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
 mkdir -p dist
 logs=$(test_log_dir "deb-$(image_slug "$BASE")")
 container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/logs:rw$Z"} -e DEB="$DEB" -e OUT="$OUT" "$TAG" sh -ec '
