@@ -1,4 +1,4 @@
-name: Companion heartbeat pool measurements (evidence only)
+name: Companion native heartbeat profiles (evidence only)
 on:
   workflow_dispatch:
 permissions:
@@ -20,7 +20,7 @@ jobs:
         run: |
           meson setup _build-heartbeat -Dprofile=development
           meson compile -C _build-heartbeat
-      - name: Twelve fixed before-after pairs, retaining every result
+      - name: One instrumented before and after: phase-labelled native samples
         run: python3 build-aux/ci/heartbeat-pairs-evidence.py
       - uses: actions/upload-artifact@v7
         if: always()
