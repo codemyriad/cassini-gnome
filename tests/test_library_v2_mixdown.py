@@ -99,6 +99,35 @@ def test_anchors_map_piecewise_linearly_and_extrapolate_with_the_nearest_valid_s
 GAPS = [dict(atMs=250, durationMs=1000, frames=48000, kind="input")]
 
 
+@pytest.mark.parametrize(
+    "positions,expected",
+    [
+        (-3, -8),
+        (9, 13),
+        (2, 7),
+        (5, 11),
+        ([], []),
+        ([[], []], [[], []]),
+        ([9, 2, -3, 7, 5, 0], [13, 7, -8, 12, 11, 1]),
+        ([[1, 2, 3], [5, 7, 9]], [[4, 7, 10], [11, 12, 13]]),
+    ],
+)
+def test_clock_map_interpolation_and_extrapolation_keep_values_and_shape(positions, expected):
+    # Through (1, 4), (3, 10), (7, 12): slopes are 3 then 1/2,
+    # extended beyond either end. Expectations are derived by hand.
+    x = np.asarray(positions, dtype=np.float64)
+    before = x.copy()
+    x.setflags(write=False)
+    xs, ys = np.array([1.0, 3.0, 7.0]), np.array([4.0, 10.0, 12.0])
+    actual = mixdown._linear(x, xs, ys)
+    expected = np.asarray(expected, dtype=np.float64)
+    assert actual.shape == expected.shape
+    assert actual.tobytes() == expected.tobytes()
+    np.testing.assert_array_equal(x, before)
+    np.testing.assert_array_equal(xs, [1.0, 3.0, 7.0])
+    np.testing.assert_array_equal(ys, [4.0, 10.0, 12.0])
+
+
 def test_x_tracks_keep_the_span_map_and_zero_sample_sources_are_reported(tmp_path):
     audio = track_audio(RATE, 1.0)
     tracks = [
