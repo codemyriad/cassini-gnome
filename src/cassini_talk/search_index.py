@@ -193,7 +193,22 @@ class SearchIndex:
                     )
                 )
                 names = {s.id: s.name.casefold() for s in meeting.speakers}
-                rows = [(t.text, key, i, names.get(t.speaker, "")) for i, t in enumerate(turns)]
+                rows = []
+                for i, turn in enumerate(turns):
+                    # Unfiltered queries index the whole rendered paragraph once.
+                    rows.append((turn.text, key, i, ""))
+                    # Filtered queries match ONLY that speaker's atoms. Retain
+                    # widths so highlight offsets still address the full prose,
+                    # including chip names and other speakers' surrounding words.
+                    scopes = {}
+                    for word, shown, offset in zip(turn.words, turn.items, turn.offsets, strict=True):
+                        name = names.get(word.speaker)
+                        if name:
+                            if name not in scopes:
+                                scopes[name] = [" "] * len(turn.text)
+                            scoped = scopes[name]
+                            scoped[offset : offset + len(shown)] = shown
+                    rows.extend(("".join(scoped), key, i, name) for name, scoped in scopes.items())
                 fingerprint = hashlib.sha256(
                     json.dumps([rows, meeting.started_at_ms, meeting.origin], ensure_ascii=False).encode()
                 ).hexdigest()
@@ -226,9 +241,8 @@ class SearchIndex:
         # become query syntax. Parameters also cover every filter.
         params = ['"' + query.replace('"', '""') + '"']
         conditions = ["hits MATCH ?"]
-        if speaker:
-            conditions.append("hits.speaker = ?")
-            params.append(speaker.casefold())
+        conditions.append("hits.speaker = ?")
+        params.append(speaker.casefold() if speaker else "")
         if own:
             conditions.append("meetings.origin = 'own'")
         if bounds := date_range(date, now_ms, tz):
@@ -241,6 +255,11 @@ class SearchIndex:
         for key, turn_index, marked in self.db.execute(sql, params):
             self._check_cancelled()
             turn = self.turns[key][turn_index]
+            if speaker:
+                # FTS highlighted the width-preserving speaker projection;
+                # restore context without moving either marker or timed atom.
+                chars = iter(turn.text)
+                marked = "".join(char if char in (START, END) else next(chars) for char in marked)
             # Seek the original timed item containing the first matching token.
             first = marked.index(START)
             position = turn.start_ms

@@ -198,3 +198,30 @@ def test_folded_search_hit_seeks_the_reply_not_the_host(tmp_path):
         assert "(ben: Sounds " in hit.marked
     finally:
         index.close()
+
+
+def test_folded_reply_speaker_filter_keeps_context_and_seek(tmp_path):
+    from dataclasses import replace
+
+    from test_library import capture, write_metadata
+
+    from cassini_talk.library import LibraryScanner, LibrarySnapshot, LibrarySpeaker
+    from cassini_talk.search_index import SearchIndex
+
+    session = capture(tmp_path / "Library")
+    write_metadata(session.directory)
+    (meeting,) = LibraryScanner(session.directory.parent).scan().meetings
+    words = (Word("a", 0, 1000, "Before"), Word("b", 900, 1100, "Reply"), Word("a", 1000, 2000, "after"))
+    speakers = tuple(LibrarySpeaker(s, name, "named", 0, i) for i, (s, name) in enumerate((("a", "Ada"), ("b", "Ben"))))
+    meeting = replace(meeting, words=words, speakers=speakers, transcript="done")
+    index = SearchIndex(session.directory.parent, tmp_path / "cache")
+    try:
+        index.sync(LibrarySnapshot(meetings=(meeting,)))
+        (hit,) = index.query("Reply", speaker="Ben", now_ms=0, tz="UTC")
+        assert hit.position_ms == 900
+        assert hit.marked == "Before (Ben: \x01Reply\x02) after"
+        assert index.query("Reply", speaker="Ada", now_ms=0, tz="UTC") == ()
+        assert index.query("Before", speaker="Ben", now_ms=0, tz="UTC") == ()
+        assert len(index.query("Reply", now_ms=0, tz="UTC")) == 1
+    finally:
+        index.close()
