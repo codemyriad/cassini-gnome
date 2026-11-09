@@ -499,3 +499,13 @@ def test_uncertain_chip_keeps_its_own_crosstalk_and_stored_text():
     assert "<i>Reply</i>" in markup and 'href="aside:0:0"' in markup
     assert reading_word(row, "aside:0:0") is words[1]
     assert words[1].text == "Reply"
+
+
+def test_timing_provenance_change_invalidates_the_rendered_snapshot():
+    from dataclasses import replace
+
+    word = Word("a", 0, 5000, "Yes.", text_is_stored=True)
+    bounded = replace(word, ends_bounded_by_audio=True)
+    assert word != bounded
+    assert reading_turns([word])[0].end_ms == 1000
+    assert reading_turns([bounded])[0].end_ms == 5000
