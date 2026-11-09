@@ -12,10 +12,12 @@ from cassini_talk.portable import Word
 from cassini_talk.transcript import Turn
 
 
-def test_header_refresh_updates_chip_names_and_theme_without_replacing_rows():
+def test_header_refresh_updates_chip_names_and_theme_without_replacing_rows(monkeypatch):
     gi = pytest.importorskip("gi")
     for name, version in (("Gtk", "4.0"), ("Adw", "1"), ("Gst", "1.0")):
         gi.require_version(name, version)
+    from gi.repository import Adw
+
     from cassini_talk.meeting_page import MeetingPage
 
     names, dark = {"a": "Ada", "b": "Ben"}, [False]
@@ -31,6 +33,7 @@ def test_header_refresh_updates_chip_names_and_theme_without_replacing_rows():
         _style_manager=SimpleNamespace(get_dark=lambda: dark[0]),
         meeting=SimpleNamespace(speaker_for=lambda s: SimpleNamespace(name=names[s])),
     )
+    monkeypatch.setattr(Adw.StyleManager, "get_default", lambda: page._style_manager)
     page._render_words = lambda turn, words: MeetingPage._render_words(page, turn, words)
     page._turn_markup = lambda t: reading_markup(t, 0, names.__getitem__, dark=dark[0])
 
