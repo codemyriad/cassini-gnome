@@ -31,8 +31,6 @@ from gi.repository import Gio, GLib, Gst, Gtk  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "tests"), str(Path(__file__).parent)]
 BASELINE = os.environ.get("CASSINI_TRANSCRIPT_RENDER") == "listview"
-if not BASELINE:
-    os.environ["CASSINI_TRANSCRIPT_RENDER"] = "custom"
 os.environ["CASSINI_SCREENSHOT_ISOLATED"] = "1"
 os.environ["GSETTINGS_BACKEND"] = "memory"
 Gio.resources_register(
@@ -259,6 +257,7 @@ with tempfile.TemporaryDirectory() as temporary:
         window.open_meeting(model, external=True)
         opened_cpu = time.thread_time_ns()
         page = window.meeting_page
+        assert page._exact is not BASELINE
         paint(window)
         if BASELINE:
             until(lambda page=page: page.list.get_mapped() and bool(page.bound))

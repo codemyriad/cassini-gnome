@@ -156,7 +156,7 @@ class MeetingPage(Adw.NavigationPage):
         self.lines = box(margin_start=48, margin_end=48, margin_top=8)
         center.append(self.lines)
         self.store = Gio.ListStore.new(TurnItem)
-        self._exact = os.environ.get("CASSINI_TRANSCRIPT_RENDER") == "custom"
+        self._exact = os.environ.get("CASSINI_TRANSCRIPT_RENDER") != "listview"
         if self._exact:
             from .exact_transcript import ExactTranscript
 
