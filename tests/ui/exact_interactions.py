@@ -59,6 +59,20 @@ def check_interactions(window, page, paint, until):
     model = page.meeting
     view = page.list
     result = {}
+    # Real GtkScrolledWindow touch gestures pause follow without a replacement
+    # controller or a claimed sequence. Both touch drag and swipe are observed.
+    controllers = page.scroller.observe_controllers()
+    for cls, signal in ((Gtk.GestureDrag, "drag-begin"), (Gtk.GestureSwipe, "swipe")):
+        gestures = [
+            controllers.get_item(i)
+            for i in range(controllers.get_n_items())
+            if isinstance(controllers.get_item(i), cls)
+        ]
+        assert gestures
+        page._follow_until = 0
+        gestures[0].emit(signal, 0.0, 0.0)
+        assert page._follow_until > GLib.get_monotonic_time()
+    result["touchFollowPause"] = True
     # Baseline GtkLabels are not selectable; do not promise whole-document copy.
     assert all(not words.get_selectable() for _, words, _ in page.bound.values())
     assert not hasattr(page, "search_entry"), "Meeting gained an inline search UI; add parity coverage"

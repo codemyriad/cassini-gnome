@@ -190,6 +190,20 @@ class MeetingPage(Adw.NavigationPage):
         for signal in ("drag-begin", "drag-update", "drag-end"):
             drag.connect(signal, self._hand_scroll)
         self.scroller.get_vscrollbar().add_controller(drag)
+        # Observe GTK's existing touchscreen gestures without replacing or
+        # claiming them. Touch drag/flick does not emit the scroll signal.
+        self._touch_scroll_signals = []
+        if self._exact:
+            controllers = self.scroller.observe_controllers()
+            for i in range(controllers.get_n_items()):
+                controller = controllers.get_item(i)
+                signals = ()
+                if isinstance(controller, Gtk.GestureDrag):
+                    signals = ("drag-begin", "drag-update", "drag-end")
+                elif isinstance(controller, Gtk.GestureSwipe):
+                    signals = ("swipe",)
+                for signal in signals:
+                    self._touch_scroll_signals.append((controller, controller.connect(signal, self._hand_scroll)))
         content.set_content(center)
         split.set_content(Adw.NavigationPage.new(content, meeting.title))
         self._companion = self._companion_card()
@@ -1294,6 +1308,9 @@ class MeetingPage(Adw.NavigationPage):
         if self._speaker_future is not None:
             self._speaker_future.cancel()
         self._clear_style_refresh()
+        for controller, handler in self._touch_scroll_signals:
+            controller.disconnect(handler)
+        self._touch_scroll_signals.clear()
         if self._exact:
             self.list.close()
         if self.capture._controls in self.window._capture_headers:
