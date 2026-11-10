@@ -106,7 +106,7 @@ def test_paused_and_within_word_ticks_do_not_replace_existing_label_markup(monke
     page = SimpleNamespace(
         player=SimpleNamespace(position=10), meeting=SimpleNamespace(), _turn_markup=Mock(return_value="word")
     )
-    words = SimpleNamespace(set_markup=Mock())
+    words = SimpleNamespace(set_markup=Mock(), get_root=lambda: None)
     page_type._render_words(page, row, words)
     page_type._render_words(page, row, words)
     page.player.position = 100
@@ -139,3 +139,32 @@ def test_renamed_merge_destination_refreshes_retained_source_references(referenc
     assert changed_header_rows(
         [target, untouched], signature(speakers, merges=merges), signature(speakers, matches=["b"], merges=merges)
     ) == (target,)
+
+
+def test_mapping_and_inherited_colour_refresh_separator_markup_without_repeated_ticks(monkeypatch):
+    page_type = page_class()
+    from gi.repository import Adw
+
+    monkeypatch.setattr(Adw.StyleManager, "get_default", lambda: SimpleNamespace(get_dark=lambda: False))
+    row = turn(0, "a")
+    markup = '<a href="item:0">Before</a> <a href="item:1">after</a>'
+    page = SimpleNamespace(
+        player=SimpleNamespace(position=500), meeting=SimpleNamespace(), _turn_markup=Mock(return_value=markup)
+    )
+    colour = SimpleNamespace(red=0.0, green=0.0, blue=0.0, alpha=1.0)
+    rooted = [False]
+    words = SimpleNamespace(
+        set_markup=Mock(), get_root=lambda: object() if rooted[0] else None, get_color=lambda: colour
+    )
+    page_type._render_words(page, row, words)
+    assert words.set_markup.call_args.args[0] == markup
+    rooted[0] = True
+    page_type._render_words(page, row, words)
+    assert 'foreground="#000000000000"' in words.set_markup.call_args.args[0]
+    page_type._render_words(page, row, words)
+    assert words.set_markup.call_count == 2
+    colour.red = colour.green = colour.blue = 1.0
+    page_type._render_words(page, row, words)
+    assert 'foreground="#ffffffffffff"' in words.set_markup.call_args.args[0]
+    page_type._render_words(page, row, words)
+    assert words.set_markup.call_count == 3

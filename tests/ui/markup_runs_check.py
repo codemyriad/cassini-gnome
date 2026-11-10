@@ -78,6 +78,7 @@ def check_markup_runs(window, until):
                 words.set_markup(raw)
                 frame()
                 before = capture()
+                words._reading_signature = None  # Raw baseline deliberately bypasses the page cache.
                 page._render_words(turn, words)
                 frame()
                 after = capture()
@@ -97,6 +98,7 @@ def check_markup_runs(window, until):
         words.set_markup(page._turn_markup(turn))
         frame()
         before = capture()
+        words._reading_signature = None  # Raw baseline deliberately bypasses the page cache.
         page._render_words(turn, words)
         frame()
         after = capture()
