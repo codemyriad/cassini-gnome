@@ -96,7 +96,7 @@ elif args[:1] == ["build"]:
     if "--iidfile" in args:
         if os.environ.get("FAKE_REFRESH_FAIL"):
             sys.exit(42)
-        job = args[args.index("--label")+1].split("=",1)[1]
+        job = args[args.index("--label")+1].split("=",1)[1] if "--label" in args else "cached-harness"
         image = "sha256:" + hashlib.sha256(job.encode()).hexdigest()
         labels = os.path.join(state, "labels.json")
         data = json.load(open(labels)) if os.path.exists(labels) else {}

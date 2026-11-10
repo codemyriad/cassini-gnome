@@ -57,7 +57,7 @@ load-module module-null-sink sink_name=cassini_microphone rate=48000 channels=1
 set-default-sink cassini_desktop
 set-default-source cassini_microphone.monitor
 PA
-docker build -q -t cassini-recording-test-audio -f tests/recording/Audio.Dockerfile tests/recording
+build-aux/ci/docker-build-bounded.sh "recording audio server" docker build -q -t cassini-recording-test-audio -f tests/recording/Audio.Dockerfile tests/recording
 docker run -d --name "$container" --network=none --user "$(id -u):$(id -g)" \
     -v "$runtime:/audio" cassini-recording-test-audio > /dev/null
 for _ in $(seq 1 100); do

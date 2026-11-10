@@ -35,7 +35,7 @@ else
   base=$("$root/tests/harness-image.sh" base whistle)
   harness=$("$root/tests/harness-image.sh" tag whistle)
   if ! docker image inspect "$harness" >/dev/null 2>&1; then
-    docker build --pull -q --target harness --build-arg BASE="$base" -t "$harness" - < "$root/tests/whistle/Containerfile"
+    "$root/build-aux/ci/docker-build-bounded.sh" "voices cached harness" docker build --pull -q --target harness --build-arg BASE="$base" -t "$harness" - < "$root/tests/whistle/Containerfile"
   fi
   offline_job=standalone-$$
   image=$("$root/tests/whistle/refresh-image.sh" build "$harness" "$offline_job")
