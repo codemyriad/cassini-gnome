@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Dispatch real GStreamer playback messages until the expected event."""
 
-from gi.repository import GLib
-
 
 def wait_for_playback(predicate, event):
+    from gi.repository import GLib
+
     context = GLib.MainContext.default()
     expired = False
 
