@@ -93,7 +93,7 @@ class TurnRow(Gtk.Box):
         self.time.set_label(format_time(turn.start_ms))
         self.time.set_tooltip_text(_("Play from {time}").format(time=format_time(turn.start_ms)))
         caption = row_caption(turn, self.window.speaker_label)
-        over_tip = _("Simultaneous speech") if turn.over else None
+        over_tip = text("meeting.turn.over.tooltip") if turn.over else None
         self.over.set_label(caption)
         self.over.set_visible(bool(caption))
         self.over.set_tooltip_text(over_tip)

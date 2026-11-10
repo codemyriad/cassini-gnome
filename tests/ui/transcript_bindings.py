@@ -237,8 +237,12 @@ def standalone_bindings():
     turn.over = ["b"]
     row.bind(turn)
     assert row.over.get_label() == "(over Ben) · Probably crosstalk"
-    assert row.over.get_tooltip_text() == "Simultaneous speech"
+    assert row.over.get_tooltip_text() == text("meeting.turn.over.tooltip")
     assert Gtk.test_accessible_has_property(row.over, Gtk.AccessibleProperty.DESCRIPTION)
+    with using_language("it"):
+        row.bind(turn)
+        assert row.over.get_tooltip_text() == text("meeting.turn.over.tooltip")
+        assert row.over.get_tooltip_text() != "Simultaneous speech"
     turn.over, turn.continuation = [], False
     set_crosstalk(turn, False)
     row.bind(turn)
