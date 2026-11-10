@@ -27,8 +27,8 @@ jobs:
           python3 build-aux/ci/release_metadata.py --tag "v$version" --report "$RUNNER_TEMP/release-metadata.json"
       - name: Install system Python audio test dependencies
         run: |
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o APT::Update::Error-Mode=any update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o APT::Update::Error-Mode=any install -y gcc libc6-dev python3-pytest python3-jsonschema python3-rfc3339-validator python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::Retries::Delay=true -o Acquire::Retries::Delay::Maximum=5 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o APT::Update::Error-Mode=any update
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::Retries::Delay=true -o Acquire::Retries::Delay::Maximum=5 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o APT::Update::Error-Mode=any install -y gcc libc6-dev python3-pytest python3-jsonschema python3-rfc3339-validator python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good
       - name: Require the approved native ABI layout check
         run: |
           command -v cc
