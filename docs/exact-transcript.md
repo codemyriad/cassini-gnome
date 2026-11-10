@@ -1,6 +1,6 @@
 # Exact transcript renderer, Library Meeting page
 
-`CASSINI_TRANSCRIPT_RENDER=custom` selects a Gtk.Scrollable with exact row heights on the Library Meeting page. The default ListView and standalone window are unchanged. GTK handles touchpad and touchscreen gestures, friction and overshoot; no replacement scroll controller is installed.
+The Library Meeting page uses the exact-height Gtk.Scrollable by default. For one release, launch with `CASSINI_TRANSCRIPT_RENDER=listview cassini-talk` to use the previous renderer. GTK handles touchpad and touchscreen gestures, friction and overshoot; no replacement scroll controller is installed.
 
 A reusable GTK/Pango probe builds an append-only pixel prefix in 4 ms CPU slices (one turn can overrun a slice). The first viewport paints before indexing finishes. Previously published rows do not shift as the range extends below them. Uncached resize widths build a replacement in the background and swap it atomically around the current row; old wrapping remains visible meanwhile. Three complete/partial width indices and per-turn metric markup are cached. The centered column caps at 720 px including headers. Its expanding text label skips an unused unwrapped natural-width layout; GTK retains the styled minimum, and every real height-for-width measurement stays native.
 
@@ -8,7 +8,7 @@ The regular `Exact transcript renderer` workflow runs the native GTK UI test, fr
 
 Keyboard navigation covers arrows, Page Up/Down, Home/End, keypad variants and chronological Tab traversal, including unrealized rows. Alt listening shortcuts propagate. A focused row stays realized. Unchanged row widgets and accessible actions survive running-recording suffix replacement; the old exact range remains active until the changed suffix is measured. Touchscreen follow pause observes GTK's existing native gestures without claiming their sequences. Playback updates only visible rows; a retained overscan widget refreshes its highlight before its first visible paint.
 
-The existing Meeting GtkLabels are not selectable and the page has no inline search/highlight controls. Library search routes a timed seek into the page. Native label link clipboard actions remain available; whole-document selection is not added. Standalone migration and the default switch remain follow-ups after Silvio tests a package.
+The existing Meeting GtkLabels are not selectable and the page has no inline search/highlight controls. Library search routes a timed seek into the page. Native label link clipboard actions remain available; whole-document selection is not added. The standalone window will follow in a separate PR.
 
 ## Accessibility
 
