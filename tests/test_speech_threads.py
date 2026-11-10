@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Recognition policy boundaries and the actual child/native configuration."""
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -88,3 +91,18 @@ def test_denied_priority_change_does_not_refuse_a_valid_speech_job(monkeypatch):
     monkeypatch.setattr(speech_threads.os, "getpriority", lambda *_: 0)
     monkeypatch.setattr(speech_threads.os, "setpriority", Mock(side_effect=PermissionError("denied")))
     speech_threads.background_worker_priority()
+
+
+def test_direct_whistle_worker_bootstraps_package_without_pythonpath(tmp_path):
+    worker = Path(whistle_client.__file__).with_name("whistle_worker.py")
+    process = subprocess.run(
+        [sys.executable, "-I", str(worker), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,  # Hang guard only; no elapsed-time pass condition.
+    )
+    assert process.returncode == 1
+    error = json.loads(process.stdout)
+    assert error["type"] == "error"
+    assert "pins.json" in error["message"]  # Reached bundle validation, not an import error.

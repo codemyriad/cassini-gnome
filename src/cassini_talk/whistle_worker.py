@@ -107,6 +107,7 @@ def emit(kind, **values):
 
 
 def main(bundle):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from cassini_talk.speech_threads import background_worker_priority
 
     background_worker_priority()

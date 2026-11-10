@@ -7,7 +7,6 @@ import hashlib
 import json
 import os
 import re
-import socket
 import sys
 from pathlib import Path
 
@@ -24,7 +23,7 @@ from cassini_talk.whistle_worker import PRIVACY  # noqa: E402
 assert Path(sys.modules["cassini_talk.whistle_client"].__file__).is_relative_to(args.modules)
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1", "Use the networkless container harness"
-assert {name for _, name in socket.if_nameindex()} == {"lo"}, "Container must have only loopback"
+assert set(os.listdir("/sys/class/net")) == {"lo"}, "Container must have only loopback"
 fixture = Path(__file__).with_name("jfk.wav")
 assert (
     hashlib.sha256(fixture.read_bytes()).hexdigest()
