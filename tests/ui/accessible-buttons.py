@@ -4,11 +4,9 @@
 
 import json
 import os
-import select
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
@@ -253,38 +251,33 @@ def parent():
                 yield from walk(app)
 
     def wait_event(expected_event):
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
+        while True:
             drain()
             if OUTPUT.exists() and expected_event in json.loads(OUTPUT.read_text())["events"]:
                 return
-            assert process.poll() is None, f"GTK child exited before {expected_event}"
-            remaining = deadline - time.monotonic()
-            if remaining <= 0 or not select.select([event_fd], [], [], remaining)[0]:
-                break
-            assert os.read(event_fd, 4096), f"GTK event pipe closed before {expected_event}"
-        raise AssertionError(f"App did not report {expected_event}")
+            assert not pipe_closed and process.poll() is None, (
+                f"GTK child exited before {expected_event}; see {log_path}"
+            )
+            context.iteration(True)
 
     def find_button(name):
-        deadline = time.monotonic() + 10
-        names = []
-        while time.monotonic() < deadline:
-            assert process.poll() is None, f"GTK child exited {process.returncode}; see {log_path}"
+        print(f"AT-SPI waiting for {name}", flush=True)
+        while True:
+            drain()
+            assert not pipe_closed and process.poll() is None, (
+                f"GTK child exited before button {name!r}; see {log_path}"
+            )
             try:
-                drain()
-                found = list(buttons())
-                names = [button.get_name() for button in found]
-                target = next((button for button in found if button.get_name() == name), None)
+                target = next((button for button in buttons() if button.get_name() == name), None)
                 if target and target.get_state_set().contains(Atspi.StateType.SENSITIVE):
                     action = target.get_action_iface()
                     assert action and action.get_n_actions() > 0, f"No AT-SPI action for {name}"
-                    break
+                    return target, action
             except GLib.Error:
                 pass  # A replaced page can invalidate its old accessible objects.
-            time.sleep(0.025)
-        else:
-            raise AssertionError(f"No named AT-SPI button {name!r}; visible buttons: {names!r}")
-        return target, action
+            # Accessibility publication and child pipe events wake this context.
+            # The screenshot process watchdog is the only elapsed-time bound.
+            context.iteration(True)
 
     def activate(name, expected_event, *, refresh_after_lookup=False):
         target, action = find_button(name)
@@ -311,6 +304,21 @@ def parent():
     log_path = OUTPUT.with_suffix(".gtk.log")
     with log_path.open("w") as log:
         event_fd, child_event_fd = os.pipe()
+        context = GLib.MainContext.default()
+        pipe_closed = False
+
+        def child_event(_fd, _condition):
+            nonlocal pipe_closed
+            if os.read(event_fd, 4096):
+                return GLib.SOURCE_CONTINUE
+            pipe_closed = True
+            return GLib.SOURCE_REMOVE
+
+        event_watch = GLib.io_add_watch(event_fd, GLib.IO_IN | GLib.IO_HUP, child_event)
+        listener = Atspi.EventListener.new(lambda *_: None)
+        event_types = ("object:children-changed", "object:state-changed", "object:property-change", "window")
+        for event_type in event_types:
+            assert listener.register(event_type), event_type
         process = subprocess.Popen(
             [sys.executable, __file__, "--child"],
             stdin=subprocess.PIPE,
@@ -346,13 +354,17 @@ def parent():
             when = text("speakers.when.once", position="00:00:09")
             find_button("Dario, " + when)
             activate(text("speakers.listen.a11y", name="Dario", when=when), "published-play")
-            assert process.wait(10) == 0
+            assert process.wait() == 0
             assert not any(value in log_path.read_text() for value in ("Gtk-WARNING", "Gtk-CRITICAL"))
         finally:
             if process.poll() is None:
                 process.terminate()
                 process.wait(5)
             process.stdin.close()
+            if not pipe_closed:
+                GLib.source_remove(event_watch)
+            for event_type in event_types:
+                listener.deregister(event_type)
             os.close(event_fd)
     print("PASS real AT-SPI names/actions: Record, Start recording, Stop, speaker row, Search playback")
 
