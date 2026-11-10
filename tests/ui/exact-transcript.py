@@ -270,6 +270,7 @@ with tempfile.TemporaryDirectory() as temporary:
         started = time.thread_time_ns()
         frame_started = window.get_frame_clock().get_frame_time()
         window.open_meeting(model, external=True)
+        opened_cpu = time.thread_time_ns()
         page = window.meeting_page
         paint(window)
         if BASELINE:
@@ -321,6 +322,7 @@ with tempfile.TemporaryDirectory() as temporary:
             words=len(model.words),
             turns=len(model.turns),
             openFirstPaintCpuMs=first,
+            openPageConstructionCpuMs=(opened_cpu - started) / 1e6,
             openFirstPaintFrameClockMs=first_frame_ms,
             rowsMeasuredAtFirstPaint=first_rows,
             openFullyLaidOutFrameClockMs=fully_frame_ms,

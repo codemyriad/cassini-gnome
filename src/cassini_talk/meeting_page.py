@@ -477,7 +477,7 @@ class MeetingPage(Adw.NavigationPage):
         words.connect("activate-link", lambda _label, uri: self._word_clicked(turn, uri))
         row.append(names)
         row.append(words)
-        if not self._exact or not register:
+        if not self._exact:
             self._render_words(turn, words)
         if register:
             words.connect("map", lambda words: self._render_words(turn, words))

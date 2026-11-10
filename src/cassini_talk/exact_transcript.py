@@ -213,6 +213,14 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             height = self._probe.measure(Gtk.Orientation.VERTICAL, index.width).natural
             index.prefix.append(index.prefix[-1] + height)
             self.measured_rows += 1
+            # Publish the first covered viewport before measuring anything
+            # below it. Subsequent frames resume the ordinary CPU slices.
+            if (
+                not self.viewport_ready
+                and index is self._active
+                and index.prefix[-1] >= self._value() + self._viewport_height
+            ):
+                break
             if time.thread_time_ns() - started >= BUILD_BUDGET_NS:
                 break
         cost = time.thread_time_ns() - started
@@ -239,6 +247,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
     def do_size_allocate(self, width, height, baseline):
         if width <= 0 or height <= 0:
             return
+        self._viewport_height = height
         target_width = min(width, COLUMN_CAP)
         if self._requested_width != target_width:
             self._start_index(target_width)
