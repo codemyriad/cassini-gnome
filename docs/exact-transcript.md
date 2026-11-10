@@ -1,4 +1,4 @@
-# Exact transcript renderer, step 1a
+# Exact transcript renderer, Library Meeting page
 
 `CASSINI_TRANSCRIPT_RENDER=custom` selects a Gtk.Scrollable with exact row heights on the Library Meeting page. The default ListView and standalone window are unchanged. GTK handles touchpad and touchscreen gestures, friction and overshoot; no replacement scroll controller is installed.
 
@@ -6,7 +6,25 @@ A reusable GTK/Pango probe builds an append-only pixel prefix in 4 ms CPU slices
 
 The regular `Exact transcript renderer` workflow runs the native GTK UI test, fresh ListView memory baseline, and budgets: first transcript paint <100 ms UI CPU, load/scroll/resize paint frames <32 ms, highlight <2 ms, RSS <= ListView +20 MiB. The fixture generator uses synthetic English only: 12,803 words / 484 rows and 51,212 / 1,933, plus the hour without diarization. It checks finger/coast in both directions, native touch-only drag/swipe, paused/playing, and the visible anchor during incremental indexing. Measured row heights must agree with live widgets. This is native-handler signal injection; physical hardware routing is not certified by a headless test.
 
-Step 1b will add keyboard/focus/accessibility parity and incremental recording-tail updates before the feature is ready for Silvio's package trial. The current page has neither selectable transcript text nor inline search/highlight controls; its Library search routes a timed seek into the page. Both facts will be checked against the baseline. Full standalone migration and the default switch remain explicit follow-ups after Silvio tests a package.
+Keyboard navigation covers arrows, Page Up/Down, Home/End, keypad variants and chronological Tab traversal, including unrealized rows. Alt listening shortcuts propagate. A focused row stays realized. Unchanged row widgets and accessible actions survive running-recording suffix replacement; the old exact range remains active until the changed suffix is measured. Touchscreen follow pause observes GTK's existing native gestures without claiming their sequences.
+
+The existing Meeting GtkLabels are not selectable and the page has no inline search/highlight controls. Library search routes a timed seek into the page. Native label link clipboard actions remain available; whole-document selection is not added. Standalone migration and the default switch remain follow-ups after Silvio tests a package.
+
+## Accessibility
+
+Both renderers expose native GtkLabel Text and Hypertext. On tested GTK 4.22, native virtual hyperlink children have no AT-SPI Action; their hyperlink object points back to the label, whose first action copies text. The exact renderer additionally exposes named native link buttons for visible timed words. These nonvisual buttons cannot intercept pointer events or take keyboard focus, and their native click action invokes the existing word seek. The row exposes its position and total set size; a group wraps its ordinary header and text. An independent AT-SPI process reads the text and activates a word, with the GUI verifying the resulting seek. Offscreen turns remain virtualized. Headless accessibility coverage does not certify a particular screen reader's speech presentation.
+
+## Measurements in progress
+
+The core revision passed the local native GTK matrix before the accessible actions were added. The final interaction revision must repeat the matrix before either PR becomes ready. Values below are UI-thread CPU milliseconds and process RSS MiB from fresh, separate baseline/exact processes, in the private GNOME QA desktop.
+
+| Fixture | ListView RSS | Exact core RSS | First viewport paint | Worst load frame | Worst resize frame |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 60 min diarized | 161.9 | 147.4 | 55.7 | 15.3 | 12.8 |
+| 4 h diarized | 172.4 | 160.2 | 43.0 | 11.5 | 13.4 |
+| 60 min without speakers | 179.1 | 164.6 | 24.3 | 8.7 | 10.6 |
+
+All modes had zero reversed frames. Hosted pinned-font Xvfb first-paint budget validation remains under investigation; local numbers alone are not a readiness claim.
 
 ## Checked bug classes
 
@@ -14,12 +32,12 @@ Reviewed [cassini-ux/review/BUG-CLASSES.md](https://github.com/codemyriad/cassin
 
 - 1 (long inputs): one append per turn/width, counters prohibit remeasurement after cancellation/cache return; 4x-length indexing CPU scaling is bounded in the UI test.
 - 2 (UI thread): no synchronous whole transcript widget/index rebuild; work yields once per frame. Actual paint-frame budgets are asserted. Cold page construction outside paint may exceed 32 ms, as the spike reported; no end-to-end deadline guarantee is claimed.
-- 3 (cache keys): indices are scoped to the model/header generation, width, font/DPI/scale. Theme/provenance/language notifications and live-tail invalidation are covered in step 1b before readiness.
+- 3 (cache keys): indices are scoped to the model/header generation, width, font/DPI/scale. Theme, font/DPI/scale, header/language and live-tail changes invalidate the affected geometry; the UI test exercises rename, theme and font changes.
 - 4/5/6 (ordering, word identity, zero-duration): retain unchanged FollowRows and reading_word projections; all original timed word and aside URIs are resolved in the UI test, with D84/transcript unit tests unchanged.
-- 7/8/9/13 (chip hits, chip-only speakers, search, localization): retain the production row builder/sidebar/catalog; complete interaction checks and synthetic chip punctuation hit coverage follow in 1b.
+- 7/8/9/13 (chip hits, chip-only speakers, search, localization): retain the production row builder/sidebar/catalog; interaction checks cover synthetic chip hits, chip-only speaker actions and no-inline-search parity.
 - 10–12, 14–16: no preview, format/export, I/O, download or storage changes.
 - 17: measurements use thread CPU/frame-clock gates, never wall-clock pass conditions.
-- 18/19: keep draft until exact-head CI is green; step 1b will not be opened on a draft/failing base.
+- 18/19: both PRs stay draft until exact-head CI and budgets pass. The coordinator explicitly requested publishing the intermediate stacked interaction draft; it cannot become ready before the base is green and ready.
 
 ## Reproduce
 
