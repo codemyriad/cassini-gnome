@@ -53,12 +53,26 @@ class Link:
         self.thread.join(5)
 
 
-def settle(condition, timeout=5):
-    """Wait for a broker-thread state change; the timeout is only a bound."""
-    deadline = time.monotonic() + timeout
-    while not condition():
-        assert time.monotonic() < deadline, "broker did not settle"
-        time.sleep(0.001)
+def observe_writer_wait(browser, monkeypatch):
+    """Observe the real writer entering its idle wait after flushing a ping."""
+    changed = threading.Condition()
+    sequences = set()
+    original_wait = browser.outbound_ready.wait
+
+    def observed_wait(*args, **kwargs):
+        with changed:
+            sequences.add(browser.ping_seq)
+            changed.notify_all()
+        return original_wait(*args, **kwargs)
+
+    monkeypatch.setattr(browser.outbound_ready, "wait", observed_wait)
+
+    def wait_for_ping(seq):
+        with changed:
+            assert changed.wait_for(lambda: seq + 1 in sequences, 5), f"writer did not return to idle after ping {seq}"
+        assert browser.write_started is None, f"writer retained the in-flight timestamp after ping {seq}"
+
+    return wait_for_ping
 
 
 @pytest.fixture
@@ -111,7 +125,7 @@ def test_heartbeat_constants_match_the_shared_vectors():
 
 
 @pytest.mark.parametrize("case", VECTORS["cases"], ids=lambda case: case["name"])
-def test_shared_heartbeat_vectors_on_the_real_control_handler(broker, case):
+def test_shared_heartbeat_vectors_on_the_real_control_handler(broker, case, monkeypatch):
     service, clock, frame = broker
     link = browser = None
     try:
@@ -126,6 +140,7 @@ def test_shared_heartbeat_vectors_on_the_real_control_handler(broker, case):
                 frame(link, inbound(kind, step, (browser.ping_seq - 1) if browser else -1))
                 if kind == "hello":
                     (browser,) = service.browsers.values()
+                    wait_for_ping = observe_writer_wait(browser, monkeypatch)
             sent = browser.ping_seq if browser is not None else 0
             lost = browser is not None and browser.shut_down.is_set()
             service.tick()
@@ -140,9 +155,8 @@ def test_shared_heartbeat_vectors_on_the_real_control_handler(broker, case):
             for seq in range(sent, browser.ping_seq if browser is not None else 0):
                 ping = read_packet(link.stream)
                 assert ping == dict(type="ping", seq=seq)
-                # E1: the writer clears write_started just after the ping is
-                # read; the next fake-clock step must not find it still set.
-                settle(lambda browser=browser: browser.write_started is None)
+                # The next virtual clock step must see this write completed.
+                wait_for_ping(seq)
                 assert oracle.pong_for(ping) == dict(type="pong", seq=seq)
                 outputs.append(f"ping:{seq}")
             assert outputs == step["expect"], (case["name"], step)
