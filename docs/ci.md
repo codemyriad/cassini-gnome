@@ -221,11 +221,21 @@ cleanup checks ownership before removing that exact image. It is never saved
 in the weekly harness cache. Standalone run.sh invocations still refresh once
 per invocation. All original offline checks and resource limits remain active.
 
-Every local harness `docker build` also has its own 180-second wall-clock budget,
-independent of the later container/test command's timeout. The shared
-`build-aux/ci/docker-build-bounded.sh` names the build and streams plain BuildKit
-output, including failed mirror URLs, while reserving stdout for the image ID.
-On expiry it sends TERM, escalates to KILL after ten seconds, and fails the
-caller before tests start. `CASSINI_HARNESS_BUILD_TIMEOUT` accepts 1–300 seconds
-for a bounded diagnostic override. APT's per-connection/read limits and retries
-cannot extend this whole-build deadline.
+Every local harness `docker build` has a progress watchdog, separate from the
+later container/test command's timeout. `docker-build-bounded.sh` streams merged
+stdout/stderr bytes to stderr and reserves stdout for the verified image ID.
+Any output bytes, including partial lines, reset a 180-second silence deadline.
+A separate 900-second overall limit stops builds that emit indefinitely. Neither
+EOF alone nor a parent exit while a descendant holds the pipe means completion.
+On expiry/cancellation the watchdog signals only its owned build process group,
+with TERM and at most ten seconds of grace before KILL. It names a stall, overall
+expiry, cancellation or ordinary build failure and preserves failure status.
+
+Cold Desktop builds observed in CI include roughly 114 s and 249 s completions,
+plus two builds cut off by the former 180 s total bound; a local pinned cold build
+took 160.6 s. These are a small, heterogeneous sample, not a p95. Cache-hit refresh
+measurements do not establish cold-bootstrap cost. The new bounds allow normal
+progress across a cold install while still bounding mirror stalls and total work.
+`CASSINI_HARNESS_BUILD_STALL_TIMEOUT` accepts 1–300 seconds (default 180) and
+`CASSINI_HARNESS_BUILD_TIMEOUT` accepts 1–900 seconds (default 900) for bounded
+diagnostics. No build or test retry is added, and test/job timeouts are unchanged.

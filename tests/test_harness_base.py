@@ -446,10 +446,18 @@ def test_failed_archive_refresh_never_returns_a_cached_image(docker):
 @pytest.mark.parametrize("status", [124, 137])
 def test_shared_archive_refresh_timeout_fails_before_reuse_or_test_execution(docker, tmp_path, status):
     # Inject the external watchdog outcome; no real-time expiration decides this test.
-    timeout = tmp_path / "bin/timeout"
-    timeout.write_text(f"#!/bin/sh\nexit {status}\n")
-    timeout.chmod(0o755)
+    python = tmp_path / "bin/python3"
+    import sys
+
+    python.write_text(
+        f"#!{sys.executable}\n"
+        "import os,sys\n"
+        "if sys.argv[1].endswith('docker_build_watchdog.py'):\n"
+        f"    raise SystemExit({status})\n"
+        f"os.execv({sys.executable!r}, [{sys.executable!r}, *sys.argv[1:]])\n"
+    )
+    python.chmod(0o755)
     result = run(["bash", str(REFRESH), "build", "cached-harness", "job-one"], docker.env, check=False)
     assert result.returncode == status and result.stdout == ""
-    assert "offline current-archive refresh" in result.stderr and "tests were not run" in result.stderr
+    assert "Offline harness: refreshing current archive" in result.stderr
     assert not docker.calls()
