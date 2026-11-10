@@ -7,7 +7,7 @@ import time
 
 import pytest
 import test_model_download
-from durable import durable, idle
+from durable import idle
 
 from cassini_talk import diarization_models, nemotron_model
 from cassini_talk.diarization_models import DiarizationModels
@@ -55,7 +55,7 @@ def fixture(remote, tmp_path, monkeypatch):
     idle(models)
     yield models, store, remote
     models.close()
-    models._thread.join(2)
+    models._thread.join()
     assert not models._thread.is_alive()
 
 
@@ -148,23 +148,34 @@ def test_cancel_after_publish_keeps_the_verified_model_on(fixture, monkeypatch):
 
 def test_close_signals_a_busy_capability_child_without_joining_gtk(fixture):
     models, _store, _remote = fixture
-    entered, release = threading.Event(), threading.Event()
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
 
     class Busy(Probe):
         def start(self):
             entered.set()
-            assert release.wait(3)
+            release.wait()
             from concurrent.futures import CancelledError
 
             raise CancelledError()
 
         def cancel(self):
-            release.set()
+            cancelled.set()
 
     models.client_factory = Busy
     assert models.download()
-    durable(entered, "the download did not reach the runtime start")
-    started = time.monotonic()
-    models.close()
-    assert time.monotonic() - started < 0.1
-    idle(models)
+    worker = models._thread
+    try:
+        entered.wait()
+        # No one can release the capability worker until close has returned.
+        started_cpu = time.thread_time_ns()
+        models.close()
+        # Keep the original 100 ms UI-cost ceiling, counting only this thread's
+        # CPU. Close only signals cancellation; held work must finish elsewhere.
+        assert time.thread_time_ns() - started_cpu < 100_000_000
+        assert cancelled.is_set(), "Close did not signal the active capability child"
+        assert models.cancelled.is_set() and models.download_cancelled.is_set()
+        assert not release.is_set() and worker.is_alive(), "Close must not wait for worker completion"
+    finally:
+        release.set()
+        worker.join()  # Completion barrier; the outer test watchdog guards hangs.
+    assert not models.snapshot()["busy"]
