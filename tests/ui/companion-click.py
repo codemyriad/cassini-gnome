@@ -307,14 +307,27 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         # Let the initial 3600-link transcript layout and accessibility cache
         # finish. The first dialog itself is deliberately never pre-created.
         settled_frame(window, page)
+        ready_browsers = app.browser_connection.browsers
+
+        def setup_finished():
+            connection = app.browser_connection
+            return connection.future is None and connection.health_future is None and not connection.force
+
+        def prepare_state(state):
+            # Every sheet opening schedules a real forced registration. Consume
+            # its completed callback before injecting the next rendering input.
+            until(setup_finished)
+            connection = app.browser_connection
+            connection.browsers = () if state == "needsBrowser" else ready_browsers
+            connection.error = (
+                None if state == "waiting" else companion.SetupError("unwritable" if state == "failed" else "noBrowser")
+            )
+            app._browser_connection_changed()
+            assert connection.snapshot()["phase"] == state, connection.snapshot()
+
         for state in ("waiting", "failed", "needsBrowser"):
-            if state != "waiting":
-                app.browser_connection.error = companion.SetupError("unwritable" if state == "failed" else "noBrowser")
-                app._browser_connection_changed()
-            if state == "needsBrowser":
-                app.browser_connection.browsers = ()
-            assert app.browser_connection.snapshot()["phase"] == state
             for entry in ("meeting", "preferences", "library"):
+                prepare_state(state)
                 if entry == "preferences":
                     settings = app.settings_dialog = SettingsDialog(app)
                     settings.present(window)
@@ -372,11 +385,14 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                     meter.run(settings.force_close)
                     until(lambda settings=settings: settings.closed and not settings.get_mapped())
                 settled_frame(window, page)
+                until(setup_finished)
                 meter.check(state, entry)
                 meter = None
             if state == "failed":
                 dialog = app.on_companion_setup(parent=window)
                 until(dialog.get_mapped)
+                prepare_state("failed")
+                assert dialog.connect_button.get_sensitive()
                 entered, release = threading.Event(), threading.Event()
                 original_attempt = app.browser_connection.attempt
 
@@ -395,6 +411,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                 release.set()
                 until(lambda: app.browser_connection.snapshot()["phase"] == "waiting")
                 settled_frame(window, page)
+                until(setup_finished)
                 meter.check("failed", "retry")
                 meter = None
                 app.browser_connection.attempt = original_attempt
