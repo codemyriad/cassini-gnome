@@ -463,6 +463,7 @@ class MeetingPage(Adw.NavigationPage):
         time_tip = text("player.playFromHere") if isinstance(time, Gtk.Button) else None
         tag_name, tag_tip = text("common.autoTag"), text("common.autoTag.tooltip")
         caption_text = row_caption(turn, lambda identifier: self.meeting.speaker_for(identifier).name)
+        over_tip = text("meeting.turn.over.tooltip") if turn.over else None
         state = (
             speaker.name,
             self._colour(speaker),
@@ -473,6 +474,7 @@ class MeetingPage(Adw.NavigationPage):
             tag_tip,
             turn.continuation,
             caption_text,
+            over_tip,
         )
         if getattr(row, "_header_state", None) == state:
             return
@@ -482,6 +484,11 @@ class MeetingPage(Adw.NavigationPage):
         name.set_visible(not turn.continuation)
         row._over_label.set_label(caption_text)
         row._over_label.set_visible(bool(caption_text))
+        row._over_label.set_tooltip_text(over_tip)
+        if over_tip:
+            row._over_label.update_property([Gtk.AccessibleProperty.DESCRIPTION], [over_tip])
+        else:
+            row._over_label.reset_property(Gtk.AccessibleProperty.DESCRIPTION)
         name.set_tooltip_text(name_tip)
         if interactive:
             name.update_property([Gtk.AccessibleProperty.LABEL], [name_tip])

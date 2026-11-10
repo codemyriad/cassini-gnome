@@ -6,6 +6,7 @@ from fractions import Fraction
 from html import escape
 
 from .portable import Word
+from .speaker_merges import resolve_merges
 from .transcript import Turn, build_turns, display_items, join_items, visible_turns
 
 COLOURS = ("#1c71d8", "#b34d00", "#813d9c", "#21804b", "#bd2028", "#167c8b")
@@ -223,13 +224,21 @@ def changed_header_rows(turns, before, after):
         return turns
     changed = set(before[1]) ^ set(after[1])
     changed.update(identifier for identifier in new if old[identifier] != new[identifier])
-    result = []
-    for turn in turns:
-        references = {turn.speaker, *turn.over}
-        references.update(aside.speaker for _after, aside in turn.asides)
-        if references & changed:
-            result.append(turn)
-    return tuple(result)
+    if not changed:
+        return ()
+    references = [{turn.speaker, *turn.over, *(aside.speaker for _after, aside in turn.asides)} for turn in turns]
+    known = set(new).union(*references)
+    entries = after[3]
+    if isinstance(entries, list):
+        for entry in entries:
+            if isinstance(entry, dict):
+                known.update(value for key in ("from", "into") if isinstance(value := entry.get(key), str))
+    merges = resolve_merges(entries, known)
+    return tuple(
+        turn
+        for turn, ids in zip(turns, references, strict=True)
+        if (ids | {merges.get(speaker, speaker) for speaker in ids}) & changed
+    )
 
 
 def reading_markup_signature(turn, position, speaker_name, *, dark=False):

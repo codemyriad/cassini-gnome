@@ -92,8 +92,15 @@ class TurnRow(Gtk.Box):
         self.dot.set_visible(not turn.continuation)
         self.time.set_label(format_time(turn.start_ms))
         self.time.set_tooltip_text(_("Play from {time}").format(time=format_time(turn.start_ms)))
-        self.over.set_label(row_caption(turn, self.window.speaker_label))
-        self.over.set_tooltip_text(_("Simultaneous speech"))
+        caption = row_caption(turn, self.window.speaker_label)
+        over_tip = _("Simultaneous speech") if turn.over else None
+        self.over.set_label(caption)
+        self.over.set_visible(bool(caption))
+        self.over.set_tooltip_text(over_tip)
+        if over_tip:
+            self.over.update_property([Gtk.AccessibleProperty.DESCRIPTION], [over_tip])
+        else:
+            self.over.reset_property(Gtk.AccessibleProperty.DESCRIPTION)
         self.render()
 
     def render(self):

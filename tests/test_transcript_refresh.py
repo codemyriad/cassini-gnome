@@ -115,3 +115,27 @@ def test_paused_and_within_word_ticks_do_not_replace_existing_label_markup(monke
     page.player.position = 400
     page_type._render_words(page, row, words)
     assert words.set_markup.call_count == 2
+
+
+@pytest.mark.parametrize("reference", ["host", "over", "chip"])
+@pytest.mark.parametrize("chained", [False, True])
+def test_renamed_merge_destination_refreshes_retained_source_references(reference, chained):
+    speakers = [LibrarySpeaker(s, s.upper(), "user", 0, i) for i, s in enumerate("abc")]
+    target = turn(0, "old" if reference == "host" else "a")
+    if reference == "over":
+        target.over = ["old"]
+    elif reference == "chip":
+        target.asides = [(0, turn(2, "old"))]
+    untouched = turn(1, "c")
+    merges = (
+        [{"from": "old", "into": "middle"}, {"from": "middle", "into": "b"}]
+        if chained
+        else [{"from": "old", "into": "b"}]
+    )
+    renamed = [replace(s, name="Ben") if s.id == "b" else s for s in speakers]
+    assert changed_header_rows(
+        [target, untouched], signature(speakers, merges=merges), signature(renamed, merges=merges)
+    ) == (target,)
+    assert changed_header_rows(
+        [target, untouched], signature(speakers, merges=merges), signature(speakers, matches=["b"], merges=merges)
+    ) == (target,)

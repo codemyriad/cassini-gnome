@@ -120,6 +120,8 @@ def labels(widget):
         child = child.get_next_sibling()
 
 
+from transcript_bindings import check_transcript_bindings  # noqa: E402
+
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     library = root / "Library"
@@ -180,6 +182,9 @@ with tempfile.TemporaryDirectory() as temporary:
     os.environ.update(
         GSETTINGS_SCHEMA_DIR=str(schemas), CASSINI_LIBRARY_DIR=str(library), CASSINI_SCREENSHOT_ACTIVITY=str(activity)
     )
+    # GTK may initialize the default GSettings schema source. Run the pure
+    # widget checks only after this harness's private schema directory is set.
+    check_transcript_bindings()
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
     app = CassiniApplication("com.gocassini.ListeningRowsTest", "test", "development")
     app.register(None)

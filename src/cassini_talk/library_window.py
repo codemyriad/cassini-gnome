@@ -943,6 +943,18 @@ class LibraryWindow(Adw.ApplicationWindow):
             if meeting.metadata_editable
             else (),
             meeting.preview_turns,
+            tuple(
+                (
+                    turn.row.continuation if turn.row is not None else False,
+                    row_caption(turn.row, lambda identifier: meeting.speaker_for(identifier).name)
+                    if turn.row is not None
+                    else "",
+                    row_text(turn.row, lambda identifier: meeting.speaker_for(identifier).name)[0]
+                    if turn.row is not None
+                    else turn.text,
+                )
+                for turn in meeting.preview_turns[:3]
+            ),
             meeting.has_audio,
             meeting.legacy_transcript_file,
             meeting.lifecycle,
@@ -1267,7 +1279,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                     callback=lambda: self.get_application().write_down(meeting),
                 )
             )
-        for turn in meeting.preview_turns:
+        for turn in meeting.preview_turns[:3]:
             line = Gtk.Box(spacing=16)
             name = vertical(3, width_request=110, valign=Gtk.Align.START)
             if turn.row is None or not turn.row.continuation:
