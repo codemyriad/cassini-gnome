@@ -183,7 +183,11 @@ with tempfile.TemporaryDirectory() as temporary:
     page.open.emit("clicked")
     until(lambda: window.meeting_page is not None and window.player.position >= 872000)
     assert window.search_page is None
-    assert window.meeting_page.meeting.title == "Budget review"
+    opened = window.meeting_page
+    assert opened.meeting.title == "Budget review" and opened._exact
+    target = opened._follow_rows.at(872000)
+    assert target >= 0
+    until(lambda: opened.list.viewport_ready and target in opened.list.visible_rows)
     window.back_to_library()
     window.toggle_search()
     fresh = window.search_page
