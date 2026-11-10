@@ -6,6 +6,7 @@ import threading
 import time
 
 import pytest
+from durable import DURABLE_BOUND
 
 from cassini_talk import companion
 from cassini_talk.browser_connection import Backoff, BrowserConnection
@@ -31,7 +32,9 @@ class Clock:
 
     def finish(self):
         with self.posted_changed:
-            self.posted_changed.wait_for(lambda: bool(self.posted))
+            assert self.posted_changed.wait_for(lambda: bool(self.posted), DURABLE_BOUND), (
+                "BrowserConnection did not post callback"
+            )
             call, args = self.posted.pop(0)
         call(*args)
 
@@ -130,13 +133,13 @@ def test_trigger_during_io_is_single_flight_and_close_never_waits_for_host():
         threads.append(threading.get_ident())
         assert threads[-1] != main
         entered.set()
-        release.wait()
+        assert release.wait(DURABLE_BOUND), "Test did not release the held host operation"
         return ()
 
     controller = clock.connection(blocked, lambda: changes.append(threading.get_ident()))
     try:
         controller.trigger()
-        entered.wait()
+        assert entered.wait(DURABLE_BOUND), "BrowserConnection did not enter the host operation"
         controller.trigger()
         controller.trigger()
         assert len(threads) == 1 and controller.snapshot()["phase"] == "settingUp"
@@ -144,22 +147,25 @@ def test_trigger_during_io_is_single_flight_and_close_never_waits_for_host():
         clock.finish()
         clock.finish()
         assert len(threads) == 2 and controller.snapshot()["phase"] == "waiting"
-        assert all(t == main for t in changes)
+        assert changes == [main, main, main]
         entered.clear()
         release.clear()
         controller.trigger()
-        entered.wait()
+        assert entered.wait(DURABLE_BOUND), "BrowserConnection did not enter the host operation"
         active = controller.future
         assert active.running()
         before_cpu = time.thread_time_ns()
         controller.close()
         # Preserve the original 50 ms synchronous-work ceiling as thread CPU;
-        # completion ordering below independently detects joining/blocking.
+        # event ordering detects joining/blocking; durable bounds only escape hangs.
         assert time.thread_time_ns() - before_cpu < 50_000_000
         assert controller.closed and active.running() and not release.is_set()
         count = len(changes)
+        assert count == 4 and changes == [main] * count
         release.set()
         clock.finish()
+        assert active.result() == () and not clock.posted
+        assert controller.future is None
         assert len(changes) == count
     finally:
         release.set()
