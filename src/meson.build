@@ -72,6 +72,8 @@ talk_sources = files(
   'cassini_talk/search_index.py',
   'cassini_talk/search_page.py',
   'cassini_talk/meeting_page.py',
+  'cassini_talk/exact_transcript.py',
+  'cassini_talk/transcript_label.py',
   'cassini_talk/speaker_merges.py',
   'cassini_talk/speaker_edits.py',
   'cassini_talk/speakers_dialog.py',

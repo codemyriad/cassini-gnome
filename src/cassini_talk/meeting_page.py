@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Pushed Meeting page, with virtualised timed transcript items and transport."""
 
+import os
 from decimal import Decimal
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
@@ -162,6 +163,11 @@ class MeetingPage(Adw.NavigationPage):
             model=Gtk.NoSelection.new(self.store), factory=factory, css_classes=["meeting-transcript"]
         )
         self.list.set_enable_rubberband(False)
+        self._exact = os.environ.get("CASSINI_TRANSCRIPT_RENDER") == "custom"
+        if self._exact:
+            from .exact_transcript import ExactTranscript
+
+            self.list = ExactTranscript(self)
         shortcut = Gtk.ShortcutController(scope=Gtk.ShortcutScope.LOCAL)
         for key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter):
             shortcut.add_shortcut(
@@ -401,6 +407,9 @@ class MeetingPage(Adw.NavigationPage):
 
     def _bind(self, _factory, item):
         turn = item.get_item().turn
+        item.set_child(self._build_row(turn))
+
+    def _build_row(self, turn, *, register=True):
         row = Gtk.Box(spacing=16, margin_bottom=24)
         names = box(5, width_request=120, valign=Gtk.Align.START)
         caption = label("", "heading", xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=16)
@@ -426,7 +435,13 @@ class MeetingPage(Adw.NavigationPage):
         )
         time.connect("clicked", lambda *_: self.play_from(turn.start_ms))
         names.append(time)
-        words = Gtk.Label(
+        if self._exact:
+            from .transcript_label import TranscriptLabel
+
+            label_type = TranscriptLabel
+        else:
+            label_type = Gtk.Label
+        words = label_type(
             xalign=0,
             yalign=0,
             wrap=True,
@@ -438,13 +453,14 @@ class MeetingPage(Adw.NavigationPage):
         words.connect("activate-link", lambda _label, uri: self._word_clicked(turn, uri))
         row.append(names)
         row.append(words)
-        item.set_child(row)
         self._render_words(turn, words)
         words.connect("map", lambda words: self._render_words(turn, words))
-        self.bound[turn.index] = (turn, words, row)
+        if register:
+            self.bound[turn.index] = (turn, words, row)
         self._refresh_header(turn, row)
         if turn.index in self._highlighted_rows:
             words.add_css_class("listen-current")
+        return row
 
     def _refresh_header(self, turn, row):
         # Idle callbacks run outside a caller's temporary locale context.
@@ -511,6 +527,8 @@ class MeetingPage(Adw.NavigationPage):
     def _queue_transcript_headers(self, signature):
         if signature == self._header_signature:
             return
+        if getattr(self, "_exact", False):
+            self.list.invalidate()
         targets = changed_header_rows(
             (turn for turn, _words, _row in self.bound.values()), self._header_signature, signature
         )
@@ -804,7 +822,9 @@ class MeetingPage(Adw.NavigationPage):
                 common += 1
             removed = len(self._turns) - common
             additions = [TurnItem(turn) for turn in meeting.turns[common:]]
-            if removed or additions:
+            if self._exact:
+                self.list.set_turns(meeting.turns)
+            elif removed or additions:
                 self.store.splice(common, removed, additions)
             self._turns = meeting.turns
             self._follow_rows = getattr(meeting.turns, "follow", None) or FollowRows(meeting.turns)
@@ -1260,6 +1280,8 @@ class MeetingPage(Adw.NavigationPage):
         if self._speaker_future is not None:
             self._speaker_future.cancel()
         self._clear_style_refresh()
+        if self._exact:
+            self.list.close()
         if self.capture._controls in self.window._capture_headers:
             self.window._capture_headers.remove(self.capture._controls)
         for handler in self._signals:
