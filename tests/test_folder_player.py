@@ -3,14 +3,14 @@
 
 import array
 import math
-import time
 import wave
 
 import pytest
+from playback_events import wait_for_playback
 
 gi = pytest.importorskip("gi")
 gi.require_version("Gst", "1.0")
-from gi.repository import GLib, Gst  # noqa: E402
+from gi.repository import Gst  # noqa: E402
 
 Gst.init(None)
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
@@ -32,18 +32,6 @@ def tone(path, frequency, seconds=2, rate=48000, channels=1):
     return round(seconds * rate)
 
 
-def until(predicate, timeout=5):
-    context = GLib.MainContext.default()
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        while context.pending():
-            context.iteration(False)
-        if predicate():
-            return
-        time.sleep(0.005)
-    assert predicate(), "GStreamer did not reach the expected state"
-
-
 def capture(tracks, seek=None):
     sink = Gst.ElementFactory.make("appsink", None)
     sink.set_property("caps", Gst.Caps.from_string("audio/x-raw,format=S16LE,layout=interleaved,rate=48000,channels=1"))
@@ -63,13 +51,13 @@ def capture(tracks, seek=None):
     player.connect("error", lambda _p, message: errors.append(message))
     try:
         player.load_tracks(tracks)
-        until(lambda: player._prerolled or errors)
+        wait_for_playback(lambda: player._prerolled or errors, "preroll")
         assert not errors
         if seek is not None:
             player.seek(seek)
-            until(lambda: player._pending_seek is None or errors)
+            wait_for_playback(lambda: player._pending_seek is None or errors, "seek completion")
         player.play()
-        until(lambda: player._at_end or errors)
+        wait_for_playback(lambda: player._at_end or errors, "EOS")
         assert not errors
         result = array.array("h", b"".join(chunks))
         return result, pts, player.duration
@@ -165,7 +153,7 @@ def test_missing_source_reports_bus_error_and_cleans_up(tmp_path):
     try:
         player.load_tracks([CaptureTrack(tmp_path / "missing.wav", 100, 8000, 0, True)])
         player.play()
-        until(lambda: bool(errors))
+        wait_for_playback(lambda: bool(errors), "the bus error")
         assert not player.playing
     finally:
         player.shutdown()
@@ -249,10 +237,10 @@ def test_voice_sample_has_a_real_stop_boundary_and_normal_playback_recovers(tmp_
         else:
             player._pipeline.set_property("audio-sink", sink)
             player.load(path.as_uri(), 12000)
-        until(lambda: player._prerolled or errors)
+        wait_for_playback(lambda: player._prerolled or errors, "preroll")
         assert not errors
         assert player.play_range(200, end)
-        until(lambda: player._at_end or errors)
+        wait_for_playback(lambda: player._at_end or errors, "EOS")
         stop = min(end, 10200)
         assert not errors and player.position == stop and not player.playing
         assert sum(samples) == (stop - 200) * 48, "Stop must bound actual output PCM, including the 10 s cap"
@@ -260,7 +248,7 @@ def test_voice_sample_has_a_real_stop_boundary_and_normal_playback_recovers(tmp_
         player.seek(0)
         samples.clear()
         player.play()
-        until(lambda: player._at_end or errors)
+        wait_for_playback(lambda: player._at_end or errors, "EOS")
         assert not errors and player.position == 12000 and sum(samples) == 12000 * 48
     finally:
         player.shutdown()
@@ -285,7 +273,7 @@ def test_voice_sample_waits_for_preroll_and_does_not_play_if_seek_fails(tmp_path
             player._pipeline.set_property("audio-sink", sink)
             player.load(path.as_uri(), 2000)
         assert not player.play_range(100, 500), "A sample must wait until its start/end seek can be applied"
-        until(lambda: player._prerolled or errors)
+        wait_for_playback(lambda: player._prerolled or errors, "preroll")
         assert not errors
         monkeypatch.setattr(player._pipeline, "send_event", lambda *_args: False)
         assert not player.play_range(100, 500) and not player.playing
