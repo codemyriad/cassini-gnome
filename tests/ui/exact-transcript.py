@@ -277,6 +277,8 @@ with tempfile.TemporaryDirectory() as temporary:
             until(lambda page=page: page.list.get_mapped() and bool(page.bound))
             for _ in range(8):
                 paint(window)
+            assert all(not words.get_selectable() for _, words, _ in page.bound.values())
+            assert not hasattr(page, "search_entry")
             if name == "60min-diarized":
                 from exact_interactions import accessible
 

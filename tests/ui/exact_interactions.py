@@ -264,6 +264,20 @@ def check_interactions(window, page, paint, until):
     settings.set_property("gtk-font-name", font)
     paint(window)
     until(lambda: view.ready)
+    dpi = settings.get_property("gtk-xft-dpi")
+    before_dpi = view.measured_rows
+    settings.set_property("gtk-xft-dpi", 120 * 1024)
+    paint(window)
+    until(lambda: view.ready)
+    assert view.measured_rows > before_dpi
+    for index, (_, _words, row) in page.bound.items():
+        assert (
+            row.measure(Gtk.Orientation.VERTICAL, view.layout_width).natural
+            == view.prefix[index + 1] - view.prefix[index]
+        )
+    settings.set_property("gtk-xft-dpi", dpi)
+    paint(window)
+    until(lambda: view.ready)
     result["renameThemeFont"] = True
     # Synthetic chip labels/punctuation all link to its original first atom.
     host = next(t for t in model.turns if t.asides)

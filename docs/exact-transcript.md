@@ -12,7 +12,7 @@ The existing Meeting GtkLabels are not selectable and the page has no inline sea
 
 ## Accessibility
 
-Both renderers expose native GtkLabel Text and Hypertext. On tested GTK 4.22, native virtual hyperlink children have no AT-SPI Action; their hyperlink object points back to the label, whose first action copies text. The exact renderer additionally exposes named native link buttons for visible timed words. These nonvisual buttons cannot intercept pointer events or take keyboard focus, and their native click action invokes the existing word seek. The row exposes its position and total set size; a group wraps its ordinary header and text. An independent AT-SPI process reads the text and activates a word, with the GUI verifying the resulting seek. Offscreen turns remain virtualized. Headless accessibility coverage does not certify a particular screen reader's speech presentation.
+Both renderers expose native GtkLabel Text and Hypertext. On tested GTK 4.22, native virtual hyperlink children have no AT-SPI Action; their hyperlink object points back to the label, whose first action copies text. The exact renderer additionally exposes named native link buttons for visible timed words. These nonvisual buttons cannot intercept pointer events or take keyboard focus, and their native click action invokes the existing word seek. Native Text paints first; supplemental Action objects are created in 2 ms CPU chunks. Word geometry is cached per row, width and style generation rather than querying Pango on every scroll allocation. Only our escaped canonical markup is parsed, without importing a general-purpose HTML parser on opening. The row exposes its position and total set size; a group wraps its ordinary header and text. An independent AT-SPI process reads the text and activates a word, with the GUI verifying the resulting seek. Offscreen turns remain virtualized. Headless accessibility coverage does not certify a particular screen reader's speech presentation.
 
 ## Measurements in progress
 
@@ -24,7 +24,7 @@ The core revision passed the local native GTK matrix before the accessible actio
 | 4 h diarized | 172.4 | 160.2 | 43.0 | 11.5 | 13.4 |
 | 60 min without speakers | 179.1 | 164.6 | 24.3 | 8.7 | 10.6 |
 
-All modes had zero reversed frames. Hosted pinned-font Xvfb first-paint budget validation remains under investigation; local numbers alone are not a readiness claim.
+All modes had zero reversed frames. The added interaction revision subsequently passed the full local Xvfb matrix (70.8 / 67.9 / 45.0 ms first viewport paint, exact RSS 221.3 / 243.3 / 249.6 MiB versus ListView 261.9 / 286.7 / 287.9 MiB). After caching accessible geometry and budgeting action creation, the 60-minute run improved to 57.7 ms first paint, 16.1 ms worst load frame, 13.5 ms resize and 8.5–9.6 ms touchpad scroll frames. Hosted pinned-font Xvfb validation is still pending on this optimization; no local number alone establishes readiness. Final exact-head results and package links are recorded in `RESULT-production.md` by the coordinator.
 
 ## Checked bug classes
 
