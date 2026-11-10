@@ -4,9 +4,10 @@
 import base64
 import hashlib
 import json
+import select
 import stat
 import subprocess
-import time
+import sys
 from pathlib import Path
 
 import pytest
@@ -219,14 +220,36 @@ def test_real_browser_launcher_early_exit_is_reported(tmp_path, monkeypatch, cod
         companion.check_browser_launch(process)
 
 
-def test_browser_launch_probe_is_bounded_and_does_not_kill_a_live_browser(tmp_path, monkeypatch):
+def test_browser_launch_probe_is_bounded_and_does_not_kill_a_live_browser(monkeypatch):
     monkeypatch.setattr(companion, "in_flatpak", lambda: False)
-    process = subprocess.Popen(["/bin/sleep", "10"])
-    try:
-        start = time.monotonic()
-        companion.check_browser_launch(process)
-        assert time.monotonic() - start < 1.5
-        assert process.poll() is None
-    finally:
-        process.terminate()
-        process.wait(timeout=2)
+    with subprocess.Popen(
+        [sys.executable, "-c", "import signal; print('ready', flush=True); signal.pause()"], stdout=subprocess.PIPE
+    ) as process:
+        real_wait = process.wait
+        signals, waits = [], []
+
+        def expire(timeout=None):
+            waits.append(timeout)
+            assert timeout == 0.5, "the browser launch probe must request its bounded wait"
+            assert process.poll() is None
+            raise subprocess.TimeoutExpired(process.args, timeout)
+
+        signal_child = process.send_signal
+
+        def observed_signal(signum):
+            signals.append(signum)
+            signal_child(signum)
+
+        try:
+            assert select.select([process.stdout], [], [], 5)[0] and process.stdout.readline() == b"ready\n"
+            with monkeypatch.context() as patch:
+                patch.setattr(process, "wait", expire)
+                patch.setattr(process, "send_signal", observed_signal)
+                companion.check_browser_launch(process)
+            assert waits == [0.5]
+            assert signals == [], "the launch probe signalled the live browser"
+            assert process.poll() is None
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                real_wait(timeout=5)
