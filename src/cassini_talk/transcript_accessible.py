@@ -71,6 +71,8 @@ class WordActions:
 
     def update(self, height):
         view, needed = self.view, set()
+        if not view.items:
+            return
         # Paint readable native Text first. Creating the supplemental native
         # Action objects is then bounded separately from text indexing.
         if not view.viewport_ready:
