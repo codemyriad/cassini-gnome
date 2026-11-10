@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Synthetic parts of an exact-renderer chip retain its first timed word."""
+
 import re
 
 from cassini_talk.meeting_text import reading_markup, reading_word

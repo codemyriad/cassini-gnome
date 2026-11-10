@@ -112,7 +112,7 @@ def reading_markup(turn, position, speaker_name, *, dark=False, chip_links=False
             links = separator.join(link(aside, i) for i, value in enumerate(aside.items) if value)
             contents = f'<a href="{target}">(<b>{escape(name)}:</b> </a>{links}<a href="{target}">)</a>'
         else:
-            contents = f'(<b>{escape(name)}:</b> {links})'
+            contents = f"(<b>{escape(name)}:</b> {links})"
         bg, alpha = ("#ffffff", "10%") if dark else ("#000006", "7%")
         markup = f'<span size="small" background="{bg}" bgalpha="{alpha}">{contents}</span>'
         return markup, f"({name}: {aside.text})"
