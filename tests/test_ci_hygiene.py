@@ -477,7 +477,13 @@ def test_harness_images_install_the_app_on_top_of_the_cached_stage():
             # The harness stage is built only for a new tag, from a freshly pulled base.
             assert any("--pull" in line and "--target harness" in line and '-t "$harness"' in line for line in builds)
             # The per-run stage is rebuilt every run: no local layer cache keeps an old refresh.
-            current = [line for line in builds if '--build-arg HARNESS="$harness"' in line]
+            if name == "whistle":
+                assert 'refresh-image.sh" build "$harness" "$offline_job"' in script.read_text()
+                assert 'refresh-image.sh" check "$CASSINI_OFFLINE_HARNESS_IMAGE"' in script.read_text()
+                refresh = commands(ROOT / "tests/whistle/refresh-image.sh")
+                current = [line for line in refresh if '--build-arg HARNESS="$image"' in line]
+            else:
+                current = [line for line in builds if '--build-arg HARNESS="$harness"' in line]
             assert current and all("--no-cache" in line and "--pull" not in line for line in current), script
             # Nothing runs in the cached stage itself.
             runs = [line for line in lines if re.search(r"(^|\s)docker run\s", line)]

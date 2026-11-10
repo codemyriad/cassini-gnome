@@ -91,6 +91,17 @@ jobs:
       - name: Load the cached harness images
         if: steps.harness-cache.outputs.cache-hit == 'true'
         run: build-aux/ci/harness-cache.sh load "${{ steps.harness.outputs.path }}"
+      - name: Refresh the offline harness once against the current archive
+        run: |
+          harness=$(tests/harness-image.sh tag whistle)
+          if ! docker image inspect "$harness" >/dev/null 2>&1; then
+            base=$(tests/harness-image.sh base whistle)
+            docker build --pull --progress=plain --target harness --build-arg BASE="$base" -t "$harness" - < tests/whistle/Containerfile
+          fi
+          offline_job="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB"
+          image=$(tests/whistle/refresh-image.sh build "$harness" "$offline_job")
+          echo "CASSINI_OFFLINE_HARNESS_IMAGE=$image" >> "$GITHUB_ENV"
+          echo "CASSINI_OFFLINE_HARNESS_JOB=$offline_job" >> "$GITHUB_ENV"
       - name: Native constructor guard, both goldens and real GTK queue without network
         run: tests/whistle/run.sh "$OFFLINE_STAGE/usr/share/cassini-talk/whistle" "$PWD/whistle-artifacts" "$OFFLINE_STAGE"
       - name: Both Parakeet goldens and ABI through isolated per-job workers
@@ -99,6 +110,9 @@ jobs:
         run: tests/diarization/run.sh "$OFFLINE_STAGE/usr/share/cassini-talk/whistle" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/diarization-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
       - name: D25 installed extractor, S-9 vectors and model comparisons without network
         run: tests/voices/run.sh "$OFFLINE_STAGE/usr/share/cassini-talk/whistle" "$RUNNER_TEMP/voice-models" "$RUNNER_TEMP/diarization-input.wav" "$PWD/voice-artifacts" "$OFFLINE_STAGE" "$RUNNER_TEMP/nemotron-models" "$RUNNER_TEMP/parakeet-models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
+      - name: Remove only this job's refreshed harness image
+        if: always() && env.CASSINI_OFFLINE_HARNESS_IMAGE != ''
+        run: tests/whistle/refresh-image.sh remove "$CASSINI_OFFLINE_HARNESS_IMAGE" "$CASSINI_OFFLINE_HARNESS_JOB"
       - name: Save the harness images (main only)
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
         run: build-aux/ci/harness-cache.sh save "${{ steps.harness.outputs.path }}" whistle

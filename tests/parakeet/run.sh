@@ -28,20 +28,25 @@ test -n "$ort_target"
 test -n "$runtime_target"
 test -f "$modules/parakeet_client.py"
 mkdir -p "$output"
-# The harness image (tests/harness-image.sh): built when its tag is new, or loaded from CI's cache.
-# Its base is pinned to one digest (here, or for the whole job by CI's cache key)
-# that both its tag and its build name.
-export CASSINI_HARNESS_BASES
-CASSINI_HARNESS_BASES=$("$root/tests/harness-image.sh" pin whistle)
-base=$("$root/tests/harness-image.sh" base whistle)
-harness=$("$root/tests/harness-image.sh" tag whistle)
-if ! docker image inspect "$harness" >/dev/null 2>&1; then
-  docker build --pull -q --target harness --build-arg BASE="$base" -t "$harness" - < "$root/tests/whistle/Containerfile"
-  "$root/tests/harness-image.sh" prune whistle
+# CI shares one current-archive image across all four offline steps. A
+# standalone invocation still refreshes once and owns only that fresh image.
+if [ -n "${CASSINI_OFFLINE_HARNESS_IMAGE:-}" ]; then
+  image=$("$root/tests/whistle/refresh-image.sh" check "$CASSINI_OFFLINE_HARNESS_IMAGE" "${CASSINI_OFFLINE_HARNESS_JOB:?}")
+else
+  # The harness image (tests/harness-image.sh): built when its tag is new, or loaded from CI's cache.
+  # Its base is pinned to one digest (here, or for the whole job by CI's cache key)
+  # that both its tag and its build name.
+  export CASSINI_HARNESS_BASES
+  CASSINI_HARNESS_BASES=$("$root/tests/harness-image.sh" pin whistle)
+  base=$("$root/tests/harness-image.sh" base whistle)
+  harness=$("$root/tests/harness-image.sh" tag whistle)
+  if ! docker image inspect "$harness" >/dev/null 2>&1; then
+    docker build --pull -q --target harness --build-arg BASE="$base" -t "$harness" - < "$root/tests/whistle/Containerfile"
+  fi
+  offline_job=standalone-$$
+  image=$("$root/tests/whistle/refresh-image.sh" build "$harness" "$offline_job")
+  trap '"$root/tests/whistle/refresh-image.sh" remove "$image" "$offline_job" >/dev/null 2>&1 || true' EXIT
 fi
-# Every run: the cached harness brought up to the current archive (D68).
-image=$(docker build --no-cache -q --build-arg HARNESS="$harness" - < "$root/tests/whistle/Containerfile")
-trap 'docker image rm "$image" >/dev/null 2>&1 || true' EXIT
 # timeout must be the container's PID 1: refuse an ENTRYPOINT inherited from the harness image.
 entrypoint=$(docker image inspect -f '{{json .Config.Entrypoint}}' "$image")
 [ "$entrypoint" = null ] || { echo "$image has ENTRYPOINT $entrypoint: timeout must be PID 1" >&2; exit 2; }

@@ -212,3 +212,11 @@ harness Dockerfile also changes its cache key, so existing cached images cannot
 bypass these defaults. The bounded install helper retains its separate whole
 network-phase budgets and two attempts (one internal acquisition retry); package
 configuration runs once, without network or retries. Test/job timeouts are unchanged.
+
+The offline recognition job refreshes its harness against the current archive
+once, then shares that immutable image across Whistle, Parakeet, D24 and D25.
+Package-refresh progress is visible before the network-isolated tests start.
+The image is labelled with this job's identity; other jobs cannot reuse it, and
+cleanup checks ownership before removing that exact image. It is never saved
+in the weekly harness cache. Standalone run.sh invocations still refresh once
+per invocation. All original offline checks and resource limits remain active.
