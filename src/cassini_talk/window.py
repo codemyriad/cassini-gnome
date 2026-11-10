@@ -263,8 +263,10 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.search_entry.connect("next-match", lambda *_: self.activate_action("win.next-match"))
         self.search_entry.connect("stop-search", lambda *_: self.search_bar.set_search_mode(False))
         self.transcript_dropdown.connect("notify::selected", self._on_transcript_selected)
-        self.style_manager.connect("notify::dark", self._on_style_changed)
-        self.style_manager.connect("notify::accent-color", self._on_style_changed)
+        self._transcript_style_signals = [
+            self.style_manager.connect("notify::" + property, self._on_style_changed)
+            for property in ("dark", "accent-color", "high-contrast")
+        ]
         self.connect("close-request", self._on_close_request)
         self._narrow = False
         self.narrow_breakpoint.connect("apply", lambda *_: self._set_narrow(True))
@@ -303,7 +305,7 @@ class CassiniWindow(Adw.ApplicationWindow):
             self.add_action(self.settings.create_action(key))
         self.settings.bind("show-sidebar", self.sidebar_split, "show-sidebar", Gio.SettingsBindFlags.DEFAULT)
         self.settings.bind("show-properties", self.inspector_split, "show-sidebar", Gio.SettingsBindFlags.DEFAULT)
-        self.settings.connect("changed::follow-along", self._on_follow_changed)
+        self._follow_signal = self.settings.connect("changed::follow-along", self._on_follow_changed)
 
     def _setup_transcript_list(self):
         self._exact_transcript = None
@@ -441,7 +443,11 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.settings.set_int("window-height", height)
         self.settings.set_boolean("window-maximized", self.is_maximized())
         self._cancel_verification()
-        self._cancel_word_scroll()
+        self._cancel_transcript_scroll()
+        self.settings.disconnect(self._follow_signal)
+        for handler in self._transcript_style_signals:
+            self.style_manager.disconnect(handler)
+        self._transcript_style_signals.clear()
         for controller, handler in self._touch_scroll_signals:
             controller.disconnect(handler)
         self._touch_scroll_signals.clear()
@@ -463,7 +469,7 @@ class CassiniWindow(Adw.ApplicationWindow):
             self.toast(_("Only local files can be opened"))
             return
         self._cancel_verification()
-        self._cancel_word_scroll()
+        self._cancel_transcript_scroll()
         if self._exact_transcript:
             self._exact_transcript.reset_turns(())
         self._generation += 1
@@ -648,8 +654,8 @@ class CassiniWindow(Adw.ApplicationWindow):
         visible = transcript.visible_turns(self.turns)
         self.visible_index = {turn.index: i for i, turn in enumerate(visible)}
         self.rows = {}
+        self._cancel_transcript_scroll()
         if self._exact_transcript:
-            self._cancel_word_scroll()
             self._exact_transcript.reset_turns(visible)
         else:
             self.store.splice(0, self.store.get_n_items(), [TurnItem(t) for t in visible])
@@ -923,13 +929,16 @@ class CassiniWindow(Adw.ApplicationWindow):
         return False
 
     def _on_user_drag(self, *_args):
+        self._cancel_transcript_scroll()
+        self._stop_following()
+
+    def _cancel_transcript_scroll(self):
         self._cancel_word_scroll()
         if self._exact_transcript:
             self._exact_transcript.cancel_pending_scroll()
         if self._scroll_animation:
             self._scroll_animation.pause()
             self._scroll_animation = None
-        self._stop_following()
 
     def _stop_following(self):
         if self.player.playing and self.settings.get_boolean("follow-along"):

@@ -145,6 +145,9 @@ with tempfile.TemporaryDirectory() as temporary:
         assert steady >= 4 and direction * (previous - released) > 0
 
     assert view.word_actions.buttons, "Visible reader words need native actions"
+    for index, widget in view.rows.items():
+        actual = widget.measure(Gtk.Orientation.VERTICAL, view.layout_width).natural
+        assert actual == view.prefix[index + 1] - view.prefix[index]
     old_rows = tuple(view.rows.values())
     window.open_file(file)
     assert not view.rows and all(row.get_parent() is None for row in old_rows)
