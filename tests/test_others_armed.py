@@ -15,6 +15,7 @@ import threading
 import time
 
 import pytest
+from durable import DURABLE_BOUND
 
 gi = pytest.importorskip("gi")
 try:
@@ -42,6 +43,25 @@ from cassini_talk.native_recorder import NativeRecorder  # noqa: E402
 Gst.init(None)
 DENIED = Gst.ResourceError.NOT_AUTHORIZED
 QUIET = {"microphone": ("ok", 0.1), "system": ("never", 0)}
+
+
+def dispatch_until(check, message):
+    context = GLib.MainContext.default()
+    expired = []
+
+    def expire(*_args):
+        expired.append(True)
+        return GLib.SOURCE_REMOVE
+
+    guard = GLib.timeout_source_new(int(DURABLE_BOUND * 1000))
+    guard.set_callback(expire)
+    guard.attach(context)
+    try:
+        while not check() and not expired:
+            context.iteration(True)
+        assert check(), message
+    finally:
+        guard.destroy()
 
 
 def start(tmp_path, plan, causes=None, codes=None):
@@ -80,7 +100,10 @@ def saved(session):
 
 def stop(recorder, signals):
     recorder.stop()
-    spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+    dispatch_until(
+        lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing,
+        "the armed-side capture did not finish",
+    )
 
 
 def test_a_silent_others_side_stays_armed_and_opens_on_its_late_first_buffer(tmp_path, caplog):
@@ -256,7 +279,7 @@ def test_a_refused_microphone_and_a_late_others_error_record_nothing(tmp_path):
     try:
         session = recorder.session
         post_error(sides, "system", DENIED)
-        spin_until(lambda: "finished" in names(signals))
+        dispatch_until(lambda: "finished" in names(signals), "the armed-side capture did not finish")
         assert recorder.discarded and not session.directory.exists()
         assert [(r["side"], r["code"]) for r in recorder.refusals] == [
             ("me", "deviceUnavailable"),
@@ -415,7 +438,9 @@ def test_an_armed_refusal_persists_off_the_main_loop_and_stop_still_completes(tm
         assert blocked == [False], "the refusal's checkpoint ran on the main loop"
         ran = threading.Event()
         GLib.idle_add(ran.set)
-        spin_until(ran.is_set)  # The main loop iterates while the fsync is blocked.
+        dispatch_until(
+            ran.is_set, "the main context did not dispatch the idle"
+        )  # The main loop iterates while the fsync is blocked.
         # Stop is accepted at once: its work queues behind the refusal. The
         # stream error that follows the cause reaches the bus meanwhile; its
         # handling waits for the lock off the main loop too.
@@ -423,9 +448,12 @@ def test_an_armed_refusal_persists_off_the_main_loop_and_stop_still_completes(tm
         assert recorder.stopping and not released and "finished" not in names(signals)
         ran.clear()
         GLib.idle_add(ran.set)
-        spin_until(ran.is_set)
+        dispatch_until(ran.is_set, "the main context did not dispatch the idle")
         release.set()
-        spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+        dispatch_until(
+            lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing,
+            "the armed-side capture did not finish",
+        )
     finally:
         release.set()
         close(recorder)
@@ -492,10 +520,13 @@ def test_an_armed_refusal_whose_checkpoint_fails_is_logged_and_still_releases_it
         assert len(failures) == 1 and isinstance(failures[0].exc_info[1], OSError)
         ran = threading.Event()
         GLib.idle_add(ran.set)
-        spin_until(ran.is_set)
+        dispatch_until(ran.is_set, "the main context did not dispatch the idle")
         assert threads and all(threads) and not recorder._finishing
         recorder.stop()
-        spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+        dispatch_until(
+            lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing,
+            "the armed-side capture did not finish",
+        )
     finally:
         close(recorder)
     assert names(signals) == ["started", "finished"] and all(threads)
@@ -526,7 +557,10 @@ def test_a_try_again_after_the_worker_found_nothing_open_commits_nothing(tmp_pat
         with pytest.raises(ValueError):
             future.result(10)  # Bound only: the turn-on opens its devices, then commits nothing.
         assert kinds_of(session) == [] and not recorder._pending_sources
-        spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+        dispatch_until(
+            lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing,
+            "the armed-side capture did not finish",
+        )
     finally:
         close(recorder)
     assert recorder.discarded and not session.directory.exists() and not list(tmp_path.iterdir())
@@ -553,9 +587,12 @@ def test_an_eos_never_overtakes_a_committed_side_s_error_still_waiting_for_the_l
             recorder._message(None, Gst.Message.new_eos(recorder.pipeline))
             ran = threading.Event()
             GLib.idle_add(ran.set)
-            spin_until(ran.is_set)
+            dispatch_until(ran.is_set, "the main context did not dispatch the idle")
             assert not recorder._finishing  # Neither has acted while the error waits.
-        spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+        dispatch_until(
+            lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing,
+            "the armed-side capture did not finish",
+        )
     finally:
         close(recorder)
     assert names(signals) == ["started", "error", "finished"] and ("error", "Fake microphone went away") in signals
@@ -1091,7 +1128,10 @@ def stop_with_an_armed_buffer_on_its_way(tmp_path, monkeypatch, plan, captured, 
             holder.join(BOUND)
             assert admitted.wait(BOUND)
             gate.set()
-        spin_until(lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing)
+        dispatch_until(
+            lambda: "finished" in names(signals) and recorder.pipeline is None and not recorder._finishing,
+            "the armed-side capture did not finish",
+        )
     finally:
         release.set()
         gate.set()
