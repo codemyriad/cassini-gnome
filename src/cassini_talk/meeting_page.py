@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Pushed Meeting page, with virtualised timed transcript items and transport."""
 
+import os
 from decimal import Decimal
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
@@ -174,6 +175,16 @@ class MeetingPage(Adw.NavigationPage):
         self.scroller = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.scroller.set_child(self.list)
         center.append(self.scroller)
+        self.web_transcript = None
+        if os.environ.get("CASSINI_TRANSCRIPT_RENDER") == "webkit":
+            from .webkit_transcript import WebKitTranscript
+
+            center.remove(self.scroller)
+            self.web_transcript = WebKitTranscript(self)
+            # WebKit owns its native scroll surface. Do not nest it in a GTK
+            # scroller or replace either engine's gesture/kinetic controllers.
+            self.list = self.web_transcript
+            center.append(self.web_transcript)
         scroll = Gtk.EventControllerScroll(
             flags=Gtk.EventControllerScrollFlags.BOTH_AXES, propagation_phase=Gtk.PropagationPhase.CAPTURE
         )
@@ -622,6 +633,8 @@ class MeetingPage(Adw.NavigationPage):
                 words = self.bound[index][1]
                 (words.add_css_class if index in positions else words.remove_css_class)("listen-current")
         self._highlighted_rows = positions
+        if self.web_transcript:
+            self.web_transcript.set_listening(positions)
         if target != self._highlight_target and positions and GLib.get_monotonic_time() >= self._follow_until:
             self._scroll_listening_turn()
         self._highlight_target = target
@@ -723,6 +736,8 @@ class MeetingPage(Adw.NavigationPage):
             self._updating_transcript = False
             self._updating_rows = False
             self._listening_changed()
+            if self.web_transcript:
+                self.web_transcript.update(meeting, dark)
             return
         self._signature = signature
         self.more_menu.remove_all()
@@ -804,10 +819,12 @@ class MeetingPage(Adw.NavigationPage):
                 common += 1
             removed = len(self._turns) - common
             additions = [TurnItem(turn) for turn in meeting.turns[common:]]
-            if removed or additions:
+            if (removed or additions) and not self.web_transcript:
                 self.store.splice(common, removed, additions)
             self._turns = meeting.turns
             self._follow_rows = getattr(meeting.turns, "follow", None) or FollowRows(meeting.turns)
+        if self.web_transcript:
+            self.web_transcript.update(meeting, dark)
         self._updating_transcript = False
         self._highlight_listening()
         self._position()
@@ -1207,6 +1224,7 @@ class MeetingPage(Adw.NavigationPage):
         self._was_playing = self.player.playing
         if (
             not self._updating_transcript
+            and (not self.web_transcript or self.settings.get_boolean("follow-along"))
             and index >= 0
             and GLib.get_monotonic_time() >= self._follow_until
             and (self.player.playing or explicit_seek)
@@ -1226,6 +1244,8 @@ class MeetingPage(Adw.NavigationPage):
         self.play.update_property([Gtk.AccessibleProperty.LABEL], [play_name])
         for turn, words, _row in list(self.bound.values()):
             self._render_words(turn, words)
+        if self.web_transcript:
+            self.web_transcript.position(self.player.position)
 
     def set_recording_notice(self, line, minutes):
         signature = line, minutes
@@ -1246,6 +1266,8 @@ class MeetingPage(Adw.NavigationPage):
 
     def close(self):
         self._closed = True
+        if self.web_transcript:
+            self.web_transcript.close()
         if self._header_source:
             GLib.source_remove(self._header_source)
             self._header_source = 0

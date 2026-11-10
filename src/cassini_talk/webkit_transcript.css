@@ -1,0 +1,21 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Viewer structure, adapted to the GNOME reading pane. No external assets. */
+:root { color-scheme: light; --bg: #fafafa; --ink: #292929; --chip: #eeeeef; --line: #d5d5d5; }
+html { background: var(--bg); color: var(--ink); overflow-y: scroll; }
+body { margin: 0; font: 16px Cantarell, sans-serif; }
+body.dark { color-scheme: dark; --bg: #242424; --ink: #fafafa; --chip: #353535; --line: #555; background: var(--bg); }
+main { padding: 16px 32px 32px; max-width: 900px; margin: auto; }
+article { margin-bottom: 24px; scroll-margin: 28px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 14px; margin-bottom: 4px; }
+.mv-speaker-name { font-weight: bold; }
+.caption, .mv-turn-time { opacity: .65; }
+p { margin: 0; padding: 0 7px; font-size: 1.06rem; line-height: 1.72; overflow-wrap: anywhere; }
+button { display: inline; font: inherit; color: inherit; border: 0; padding: 0; background: transparent; cursor: pointer; -webkit-user-select: text; user-select: text; }
+button:hover { background: #3584e433; }
+button:focus-visible { outline: 2px solid #3584e4; border-radius: 3px; }
+.cassini-word.current { background: #fbe7a1; color: #202024; border-radius: 3px; }
+.mv-interjection { font-size: .94rem; color: color-mix(in srgb, var(--ink) 65%, transparent); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px 3px 2px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.crosstalk { border-color: #e5a50a; }
+.listen-current p { outline: 2px solid #3584e455; }
+.plain header { display: none; }
+mark { background: #f6d32d; color: #202024; }
