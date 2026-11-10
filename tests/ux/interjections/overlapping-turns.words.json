@@ -1,0 +1,1674 @@
+{
+  "format": "cassini.words.v1",
+  "language": "en",
+  "items": [
+    {
+      "speaker": "ada",
+      "startMs": 0,
+      "endMs": 400,
+      "text": "Good"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 400,
+      "endMs": 800,
+      "text": "morning"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 800,
+      "endMs": 1200,
+      "text": "everyone,"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 1200,
+      "endMs": 1600,
+      "text": "this"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 1600,
+      "endMs": 2000,
+      "text": "is"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2000,
+      "endMs": 2400,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2400,
+      "endMs": 2800,
+      "text": "weekly"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2800,
+      "endMs": 3200,
+      "text": "update"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 3200,
+      "endMs": 3600,
+      "text": "for"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 3600,
+      "endMs": 4000,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4000,
+      "endMs": 4400,
+      "text": "desktop"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4400,
+      "endMs": 4800,
+      "text": "release."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4800,
+      "endMs": 5200,
+      "text": "We"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 5200,
+      "endMs": 5600,
+      "text": "finished"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 5600,
+      "endMs": 6000,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 6000,
+      "endMs": 6400,
+      "text": "packaging"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 6400,
+      "endMs": 6800,
+      "text": "work"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 6800,
+      "endMs": 7200,
+      "text": "for"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 7200,
+      "endMs": 7600,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 7600,
+      "endMs": 8000,
+      "text": "three"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 8000,
+      "endMs": 8400,
+      "text": "Linux"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 8400,
+      "endMs": 8800,
+      "text": "formats"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 8800,
+      "endMs": 9200,
+      "text": "on"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 9200,
+      "endMs": 9600,
+      "text": "Tuesday"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 9600,
+      "endMs": 10000,
+      "text": "and"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 10000,
+      "endMs": 10400,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 10400,
+      "endMs": 10800,
+      "text": "builds"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 10800,
+      "endMs": 11200,
+      "text": "are"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 11200,
+      "endMs": 11600,
+      "text": "green."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 11600,
+      "endMs": 12000,
+      "text": "The"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 12000,
+      "endMs": 12400,
+      "text": "installer"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 12400,
+      "endMs": 12800,
+      "text": "now"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 12800,
+      "endMs": 13200,
+      "text": "checks"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 13200,
+      "endMs": 13600,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 13600,
+      "endMs": 14000,
+      "text": "free"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 14000,
+      "endMs": 14400,
+      "text": "disk"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 14400,
+      "endMs": 14800,
+      "text": "space"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 14800,
+      "endMs": 15200,
+      "text": "before"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 15200,
+      "endMs": 15600,
+      "text": "it"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 15600,
+      "endMs": 16000,
+      "text": "downloads"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 16000,
+      "endMs": 16400,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 16400,
+      "endMs": 16800,
+      "text": "speech"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 16800,
+      "endMs": 17200,
+      "text": "model."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 17200,
+      "endMs": 17600,
+      "text": "On"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 17600,
+      "endMs": 18000,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 18000,
+      "endMs": 18400,
+      "text": "recording"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 18400,
+      "endMs": 18800,
+      "text": "side"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 18800,
+      "endMs": 19200,
+      "text": "we"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 19200,
+      "endMs": 19600,
+      "text": "fixed"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 19600,
+      "endMs": 20000,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 20000,
+      "endMs": 20400,
+      "text": "bug"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 20400,
+      "endMs": 20800,
+      "text": "where"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 20800,
+      "endMs": 21200,
+      "text": "a"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 21200,
+      "endMs": 21600,
+      "text": "muted"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 21600,
+      "endMs": 22000,
+      "text": "microphone"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 22000,
+      "endMs": 22400,
+      "text": "produced"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 22400,
+      "endMs": 22800,
+      "text": "an"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 22800,
+      "endMs": 23200,
+      "text": "empty"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 23200,
+      "endMs": 23600,
+      "text": "file."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 23600,
+      "endMs": 24000,
+      "text": "The"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 24000,
+      "endMs": 24400,
+      "text": "new"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 24400,
+      "endMs": 24800,
+      "text": "level"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 24800,
+      "endMs": 25200,
+      "text": "meter"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 25200,
+      "endMs": 25600,
+      "text": "is"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 25600,
+      "endMs": 26000,
+      "text": "in"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 26000,
+      "endMs": 26400,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 26400,
+      "endMs": 26800,
+      "text": "main"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 26800,
+      "endMs": 27200,
+      "text": "window"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 27200,
+      "endMs": 27600,
+      "text": "and"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 27600,
+      "endMs": 28000,
+      "text": "it"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 28000,
+      "endMs": 28400,
+      "text": "responds"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 28400,
+      "endMs": 28800,
+      "text": "within"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 28800,
+      "endMs": 29200,
+      "text": "a"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 29200,
+      "endMs": 29600,
+      "text": "few"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 29600,
+      "endMs": 30000,
+      "text": "frames."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 30000,
+      "endMs": 30400,
+      "text": "We"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 30400,
+      "endMs": 30800,
+      "text": "also"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 30800,
+      "endMs": 31200,
+      "text": "cut"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 31200,
+      "endMs": 31600,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 31600,
+      "endMs": 32000,
+      "text": "start-up"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 32000,
+      "endMs": 32400,
+      "text": "time"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 32400,
+      "endMs": 32800,
+      "text": "by"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 32800,
+      "endMs": 33200,
+      "text": "loading"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 33200,
+      "endMs": 33600,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 33600,
+      "endMs": 34000,
+      "text": "model"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 34000,
+      "endMs": 34400,
+      "text": "in"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 34400,
+      "endMs": 34800,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 34800,
+      "endMs": 35200,
+      "text": "background."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 35200,
+      "endMs": 35600,
+      "text": "Translations"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 35600,
+      "endMs": 36000,
+      "text": "for"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 36000,
+      "endMs": 36400,
+      "text": "all"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 36400,
+      "endMs": 36800,
+      "text": "five"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 36800,
+      "endMs": 37200,
+      "text": "languages"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 37200,
+      "endMs": 37600,
+      "text": "are"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 37600,
+      "endMs": 38000,
+      "text": "complete"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 38000,
+      "endMs": 38400,
+      "text": "and"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 38400,
+      "endMs": 38800,
+      "text": "reviewed"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 38800,
+      "endMs": 39200,
+      "text": "by"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 39200,
+      "endMs": 39600,
+      "text": "native"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 39600,
+      "endMs": 40000,
+      "text": "speakers."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 40000,
+      "endMs": 40400,
+      "text": "The"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 40400,
+      "endMs": 40800,
+      "text": "remaining"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 40800,
+      "endMs": 41200,
+      "text": "work"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 41200,
+      "endMs": 41600,
+      "text": "is"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 41600,
+      "endMs": 42000,
+      "text": "mostly"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 42000,
+      "endMs": 42400,
+      "text": "polish"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 42400,
+      "endMs": 42800,
+      "text": "and"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 42800,
+      "endMs": 43200,
+      "text": "a"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 43200,
+      "endMs": 43600,
+      "text": "few"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 43600,
+      "endMs": 44000,
+      "text": "accessibility"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 44000,
+      "endMs": 44400,
+      "text": "fixes"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 44400,
+      "endMs": 44800,
+      "text": "in"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 44800,
+      "endMs": 45200,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 45200,
+      "endMs": 45600,
+      "text": "settings"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 45600,
+      "endMs": 46000,
+      "text": "dialog."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 46000,
+      "endMs": 46400,
+      "text": "That"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 46400,
+      "endMs": 46800,
+      "text": "brings"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 46800,
+      "endMs": 47200,
+      "text": "me"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 47200,
+      "endMs": 47600,
+      "text": "to"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 47600,
+      "endMs": 48000,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 48000,
+      "endMs": 48400,
+      "text": "question"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 48400,
+      "endMs": 48800,
+      "text": "of"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 48800,
+      "endMs": 49200,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 49200,
+      "endMs": 49600,
+      "text": "release"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 49600,
+      "endMs": 50000,
+      "text": "date,"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 50000,
+      "endMs": 50400,
+      "text": "which"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 50400,
+      "endMs": 50800,
+      "text": "I"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 50800,
+      "endMs": 51200,
+      "text": "think"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 51200,
+      "endMs": 51600,
+      "text": "we"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 51600,
+      "endMs": 52000,
+      "text": "should"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 52000,
+      "endMs": 52400,
+      "text": "settle"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 52400,
+      "endMs": 52800,
+      "text": "today"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 52800,
+      "endMs": 53200,
+      "text": "because"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 53200,
+      "endMs": 53600,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 53600,
+      "endMs": 54000,
+      "text": "store"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 54000,
+      "endMs": 54400,
+      "text": "review"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 54400,
+      "endMs": 54800,
+      "text": "takes"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 54800,
+      "endMs": 55200,
+      "text": "about"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 55200,
+      "endMs": 55600,
+      "text": "a"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 55600,
+      "endMs": 56000,
+      "text": "week."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 56000,
+      "endMs": 56400,
+      "text": "If"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 56200,
+      "endMs": 56600,
+      "text": "I"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 56400,
+      "endMs": 56800,
+      "text": "we"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 56600,
+      "endMs": 57000,
+      "text": "agree"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 56800,
+      "endMs": 57200,
+      "text": "submit"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 57000,
+      "endMs": 57400,
+      "text": "that"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 57200,
+      "endMs": 57600,
+      "text": "on"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 57400,
+      "endMs": 57800,
+      "text": "we"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 57600,
+      "endMs": 58000,
+      "text": "Friday"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 57800,
+      "endMs": 58200,
+      "text": "should"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 58000,
+      "endMs": 58400,
+      "text": "the"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 58200,
+      "endMs": 58600,
+      "text": "pick"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 58400,
+      "endMs": 58800,
+      "text": "build"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 58600,
+      "endMs": 59000,
+      "text": "a"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 58800,
+      "endMs": 59200,
+      "text": "could"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 59000,
+      "endMs": 59400,
+      "text": "date,"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 59200,
+      "endMs": 59600,
+      "text": "be"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 59400,
+      "endMs": 59800,
+      "text": "but"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 59600,
+      "endMs": 60000,
+      "text": "live"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 59800,
+      "endMs": 60200,
+      "text": "I"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 60000,
+      "endMs": 60400,
+      "text": "by"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 60200,
+      "endMs": 60600,
+      "text": "am"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 60400,
+      "endMs": 60800,
+      "text": "the"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 60600,
+      "endMs": 61000,
+      "text": "worried"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 60800,
+      "endMs": 61200,
+      "text": "following"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 61000,
+      "endMs": 61400,
+      "text": "about"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 61200,
+      "endMs": 61600,
+      "text": "Thursday,"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 61400,
+      "endMs": 61800,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 61600,
+      "endMs": 62000,
+      "text": "and"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 61800,
+      "endMs": 62200,
+      "text": "audio"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 62000,
+      "endMs": 62400,
+      "text": "that"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 62200,
+      "endMs": 62600,
+      "text": "regression"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 62400,
+      "endMs": 62800,
+      "text": "gives"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 62600,
+      "endMs": 63000,
+      "text": "on"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 62800,
+      "endMs": 63200,
+      "text": "us"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 63000,
+      "endMs": 63400,
+      "text": "older"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 63200,
+      "endMs": 63600,
+      "text": "enough"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 63400,
+      "endMs": 63800,
+      "text": "laptops."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 63600,
+      "endMs": 64000,
+      "text": "time"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 63800,
+      "endMs": 64200,
+      "text": "Two"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 64000,
+      "endMs": 64400,
+      "text": "to"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 64200,
+      "endMs": 64600,
+      "text": "testers"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 64400,
+      "endMs": 64800,
+      "text": "fix"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 64600,
+      "endMs": 65000,
+      "text": "reported"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 64800,
+      "endMs": 65200,
+      "text": "anything"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 65000,
+      "endMs": 65400,
+      "text": "crackling"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 65200,
+      "endMs": 65600,
+      "text": "the"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 65400,
+      "endMs": 65800,
+      "text": "during"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 65600,
+      "endMs": 66000,
+      "text": "testers"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 65800,
+      "endMs": 66200,
+      "text": "long"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 66000,
+      "endMs": 66400,
+      "text": "report"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 66200,
+      "endMs": 66600,
+      "text": "recordings"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 66400,
+      "endMs": 66800,
+      "text": "in"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 66600,
+      "endMs": 67000,
+      "text": "and"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 66800,
+      "endMs": 67200,
+      "text": "the"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 67000,
+      "endMs": 67400,
+      "text": "we"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 67200,
+      "endMs": 67600,
+      "text": "first"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 67400,
+      "endMs": 67800,
+      "text": "still"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 67600,
+      "endMs": 68000,
+      "text": "days."
+    },
+    {
+      "speaker": "ben",
+      "startMs": 67800,
+      "endMs": 68200,
+      "text": "do"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 68000,
+      "endMs": 68400,
+      "text": "I"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 68200,
+      "endMs": 68600,
+      "text": "not"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 68400,
+      "endMs": 68800,
+      "text": "would"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 68600,
+      "endMs": 69000,
+      "text": "know"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 68800,
+      "endMs": 69200,
+      "text": "rather"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 69000,
+      "endMs": 69400,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 69200,
+      "endMs": 69600,
+      "text": "move"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 69400,
+      "endMs": 69800,
+      "text": "cause."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 69600,
+      "endMs": 70000,
+      "text": "fast"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 69800,
+      "endMs": 70200,
+      "text": "If"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 70000,
+      "endMs": 70400,
+      "text": "and"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 70200,
+      "endMs": 70600,
+      "text": "we"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 70400,
+      "endMs": 70800,
+      "text": "ship"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 70600,
+      "endMs": 71000,
+      "text": "ship"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 70800,
+      "endMs": 71200,
+      "text": "small"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 71000,
+      "endMs": 71400,
+      "text": "with"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 71200,
+      "endMs": 71600,
+      "text": "fixes"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 71400,
+      "endMs": 71800,
+      "text": "that"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 71600,
+      "endMs": 72000,
+      "text": "after"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 71800,
+      "endMs": 72200,
+      "text": "problem"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 72000,
+      "endMs": 72400,
+      "text": "the"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 72200,
+      "endMs": 72600,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 72400,
+      "endMs": 72800,
+      "text": "launch"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 72600,
+      "endMs": 73000,
+      "text": "first"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 72800,
+      "endMs": 73200,
+      "text": "than"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 73000,
+      "endMs": 73400,
+      "text": "reviews"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 73200,
+      "endMs": 73600,
+      "text": "hold"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 73400,
+      "endMs": 73800,
+      "text": "will"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 73600,
+      "endMs": 74000,
+      "text": "everything"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 73800,
+      "endMs": 74200,
+      "text": "be"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 74000,
+      "endMs": 74400,
+      "text": "back"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 74200,
+      "endMs": 74600,
+      "text": "about"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 74400,
+      "endMs": 74800,
+      "text": "for"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 74600,
+      "endMs": 75000,
+      "text": "sound"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 74800,
+      "endMs": 75200,
+      "text": "another"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 75000,
+      "endMs": 75400,
+      "text": "quality"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 75200,
+      "endMs": 75600,
+      "text": "month."
+    },
+    {
+      "speaker": "ben",
+      "startMs": 75400,
+      "endMs": 75800,
+      "text": "and"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 75800,
+      "endMs": 76200,
+      "text": "nothing"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 76200,
+      "endMs": 76600,
+      "text": "else."
+    },
+    {
+      "speaker": "ben",
+      "startMs": 76600,
+      "endMs": 77000,
+      "text": "I"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 77000,
+      "endMs": 77400,
+      "text": "would"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 77400,
+      "endMs": 77800,
+      "text": "like"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 77800,
+      "endMs": 78200,
+      "text": "one"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 78200,
+      "endMs": 78600,
+      "text": "more"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 78600,
+      "endMs": 79000,
+      "text": "week"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 79000,
+      "endMs": 79400,
+      "text": "to"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 79400,
+      "endMs": 79800,
+      "text": "reproduce"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 79800,
+      "endMs": 80200,
+      "text": "it"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 80200,
+      "endMs": 80600,
+      "text": "on"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 80600,
+      "endMs": 81000,
+      "text": "the"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 81000,
+      "endMs": 81400,
+      "text": "hardware"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 81400,
+      "endMs": 81800,
+      "text": "we"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 81800,
+      "endMs": 82200,
+      "text": "have"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 82200,
+      "endMs": 82600,
+      "text": "in"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 82600,
+      "endMs": 83000,
+      "text": "the"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 83000,
+      "endMs": 83400,
+      "text": "office."
+    },
+    {
+      "speaker": "ben",
+      "startMs": 83400,
+      "endMs": 83800,
+      "text": "After"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 83800,
+      "endMs": 84200,
+      "text": "that"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 84200,
+      "endMs": 84600,
+      "text": "I"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 84600,
+      "endMs": 85000,
+      "text": "am"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 85000,
+      "endMs": 85400,
+      "text": "happy"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 85400,
+      "endMs": 85800,
+      "text": "with"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 85800,
+      "endMs": 86200,
+      "text": "any"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 86200,
+      "endMs": 86600,
+      "text": "date"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 86600,
+      "endMs": 87000,
+      "text": "you"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 87000,
+      "endMs": 87400,
+      "text": "choose,"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 87400,
+      "endMs": 87800,
+      "text": "as"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 87800,
+      "endMs": 88200,
+      "text": "long"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 88200,
+      "endMs": 88600,
+      "text": "as"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 88600,
+      "endMs": 89000,
+      "text": "the"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 89000,
+      "endMs": 89400,
+      "text": "fix"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 89400,
+      "endMs": 89800,
+      "text": "is"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 89800,
+      "endMs": 90200,
+      "text": "in"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 90200,
+      "endMs": 90600,
+      "text": "the"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 90600,
+      "endMs": 91000,
+      "text": "build"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 91000,
+      "endMs": 91400,
+      "text": "we"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 91400,
+      "endMs": 91800,
+      "text": "submit."
+    }
+  ]
+}

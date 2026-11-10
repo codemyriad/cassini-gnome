@@ -7,14 +7,15 @@ import os
 import re
 import sqlite3
 import stat
+from bisect import bisect_left
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from html import escape
-from itertools import groupby, pairwise
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .transcript import display_items, gap_break
+from .meeting_text import reading_turns
+from .transcript import row_text
 
 START, END = "\x01", "\x02"
 
@@ -24,23 +25,30 @@ class SearchTurn:
     speaker: str
     words: tuple
     text: str
-    items: tuple  # display_items of the whole run, one per word
+    items: tuple  # displayed atoms, including folded replies
+    offsets: tuple = ()  # character offsets in text, including chip names
 
     @property
     def start_ms(self):
         return self.words[0].start_ms
 
 
-def search_turns(ordered, gaps):
-    """One turn per consecutive speaker run, also split at the speaker's own gap
-    ranges (D63 #2); D38.5 quotes still pair over the whole run."""
-    for speaker, words in groupby(ordered, key=lambda w: w.speaker):
-        run = tuple(words)
-        values = display_items(run)
-        edges = [0, *(i for i in range(1, len(run)) if gap_break(gaps, run[i - 1], run[i])), len(run)]
-        for first, end in pairwise(edges):
-            shown = " ".join(value.replace(START, "").replace(END, "") for value in values[first:end] if value)
-            yield SearchTurn(speaker, run[first:end], shown, values[first:end])
+def search_turns(words, gaps, speaker_name=lambda speaker: speaker):
+    """Index the same reading paragraphs and inline replies as the reader."""
+    for row in reading_turns(words, gaps):
+        raw, spans = row_text(row, speaker_name)
+        # Control delimiters belong only to the FTS highlighter.
+        shown = raw.replace(START, "").replace(END, "")
+        # Removing delimiters also shifts subsequent atom offsets.
+        removed = [i for i, char in enumerate(raw) if char in (START, END)]
+        offsets = tuple(offset - bisect_left(removed, offset) for _w, _v, offset in spans)
+        yield SearchTurn(
+            row.speaker,
+            tuple(w for w, _v, _o in spans),
+            shown,
+            tuple(v.replace(START, "").replace(END, "") for _w, v, _o in spans),
+            offsets,
+        )
 
 
 @dataclass(frozen=True)
@@ -52,6 +60,7 @@ class SearchHit:
     quote_markup: str
     selected_quote_markup: str
     context_markup: str
+    speaker: str = ""
 
 
 def marked_markup(value, *, selected=False):
@@ -178,10 +187,32 @@ class SearchIndex:
                 signature = (meeting.words, meeting.speakers, meeting.started_at_ms, meeting.origin, meeting.turn_gaps)
                 if old is not None and old[0] is meeting.words and old[1:] == signature[1:]:
                     continue
-                ordered = sorted(meeting.words, key=lambda word: word.start_ms)
-                turns = tuple(search_turns(ordered, meeting.turn_gaps))
+                labels = {s.id: s.name for s in meeting.speakers}
+                turns = tuple(
+                    search_turns(
+                        meeting.words, meeting.turn_gaps, lambda speaker, labels=labels: labels.get(speaker, speaker)
+                    )
+                )
                 names = {s.id: s.name.casefold() for s in meeting.speakers}
-                rows = [(t.text, key, i, names.get(t.speaker, "")) for i, t in enumerate(turns)]
+                rows = []
+                for i, turn in enumerate(turns):
+                    # Unfiltered queries index the whole rendered paragraph once.
+                    spoken = [" "] * len(turn.text)
+                    for value, offset in zip(turn.items, turn.offsets, strict=True):
+                        spoken[offset : offset + len(value)] = value
+                    rows.append(("".join(spoken), key, i, ""))
+                    # Filtered queries match ONLY that speaker's atoms. Retain
+                    # widths so highlight offsets still address the full prose,
+                    # including chip names and other speakers' surrounding words.
+                    scopes = {}
+                    for word, shown, offset in zip(turn.words, turn.items, turn.offsets, strict=True):
+                        name = names.get(word.speaker)
+                        if name:
+                            if name not in scopes:
+                                scopes[name] = [" "] * len(turn.text)
+                            scoped = scopes[name]
+                            scoped[offset : offset + len(shown)] = shown
+                    rows.extend(("".join(scoped), key, i, name) for name, scoped in scopes.items())
                 fingerprint = hashlib.sha256(
                     json.dumps([rows, meeting.started_at_ms, meeting.origin], ensure_ascii=False).encode()
                 ).hexdigest()
@@ -214,9 +245,8 @@ class SearchIndex:
         # become query syntax. Parameters also cover every filter.
         params = ['"' + query.replace('"', '""') + '"']
         conditions = ["hits MATCH ?"]
-        if speaker:
-            conditions.append("hits.speaker = ?")
-            params.append(speaker.casefold())
+        conditions.append("hits.speaker = ?")
+        params.append(speaker.casefold() if speaker else "")
         if own:
             conditions.append("meetings.origin = 'own'")
         if bounds := date_range(date, now_ms, tz):
@@ -229,18 +259,18 @@ class SearchIndex:
         for key, turn_index, marked in self.db.execute(sql, params):
             self._check_cancelled()
             turn = self.turns[key][turn_index]
+            # Both projections index only spoken atoms, never generated chip
+            # labels. Restore visible context without moving timed offsets.
+            chars = iter(turn.text)
+            marked = "".join(char if char in (START, END) else next(chars) for char in marked)
             # Seek the original timed item containing the first matching token.
             first = marked.index(START)
-            end = 0
             position = turn.start_ms
-            # The run's quote pairing, not one recomputed on this gap-split part.
-            for word, value in zip(turn.words, turn.items, strict=True):
-                value = value.replace(START, "").replace(END, "")
-                if not value:
-                    continue
-                end += len(value) + 1
-                if first < end:
+            matched_speaker = turn.speaker
+            for word, value, offset in zip(turn.words, turn.items, turn.offsets, strict=True):
+                if offset <= first < offset + len(value):
                     position = word.start_ms
+                    matched_speaker = word.speaker
                     break
             result.append(
                 SearchHit(
@@ -251,6 +281,7 @@ class SearchIndex:
                     excerpt_markup(marked),
                     excerpt_markup(marked, selected=True),
                     excerpt_markup(marked, limit=800),
+                    matched_speaker,
                 )
             )
         return tuple(result)

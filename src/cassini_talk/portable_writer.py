@@ -77,6 +77,10 @@ def recording_date(value):
 
 
 def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None, recorded_date=None):
+    stored = all(getattr(word, "text_is_stored", False) for word in meeting.words)
+    ordered = meeting.words
+    if not stored and meeting.transcript == "done":
+        ordered = sorted(meeting.words, key=lambda word: word.start_ms)
     items = (
         [
             dict(
@@ -86,12 +90,12 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
                 text=w.text,
                 **({"lowConfidenceSpeaker": True} if w.low_confidence else {}),
             )
-            for w in sorted(meeting.words, key=lambda w: w.start_ms)
+            for w in ordered
         ]
         if meeting.transcript == "done"
         else []
     )
-    if not all(getattr(word, "text_is_stored", False) for word in meeting.words):
+    if not stored:
         items = normalize_quote_items(items)
     body = dict(format=portable.WORDS_FORMAT, wordCount=len(items), items=items)
     exported = {item["speaker"] for item in items}
@@ -126,6 +130,8 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
             dict(id="words", default=True, format=portable.WORDS_FORMAT, wordCount=len(items), payloadRef=reference)
         ],
     )
+    if items and all(word.ends_bounded_by_audio for word in meeting.words):
+        manifest["provenance"] = {"wordTimings": {"endsBoundedByAudio": True}}
     if recorded_at_local is not None:
         # A Received row's Library date may be artifact/export/import time.
         # Carry only an explicitly stored recording wall-clock label forward.

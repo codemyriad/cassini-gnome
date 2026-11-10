@@ -1,0 +1,108 @@
+{
+  "format": "cassini.words.v1",
+  "language": "en",
+  "items": [
+    {
+      "speaker": "ada",
+      "startMs": 0,
+      "endMs": 400,
+      "text": "Can"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 400,
+      "endMs": 800,
+      "text": "you"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 800,
+      "endMs": 1200,
+      "text": "send"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 1200,
+      "endMs": 1600,
+      "text": "me"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 1600,
+      "endMs": 2000,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2000,
+      "endMs": 2400,
+      "text": "updated"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2400,
+      "endMs": 2800,
+      "text": "release"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 2800,
+      "endMs": 3200,
+      "text": "notes"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 3200,
+      "endMs": 3600,
+      "text": "before"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 3600,
+      "endMs": 4000,
+      "text": "the"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4000,
+      "endMs": 4400,
+      "text": "review"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 4400,
+      "endMs": 4800,
+      "text": "today?"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 4700,
+      "endMs": 5100,
+      "text": "Yes,"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 5100,
+      "endMs": 8000,
+      "text": "today."
+    },
+    {
+      "speaker": "ada",
+      "startMs": 7600,
+      "endMs": 8000,
+      "text": "Great,"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 8000,
+      "endMs": 8400,
+      "text": "thank"
+    },
+    {
+      "speaker": "ada",
+      "startMs": 8400,
+      "endMs": 8800,
+      "text": "you."
+    }
+  ]
+}

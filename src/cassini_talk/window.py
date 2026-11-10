@@ -27,7 +27,7 @@ from . import ux_formats as fmt
 from .colors import SpeakerPalette, hex_color
 from .i18n import gettext as _
 from .i18n import ngettext, number
-from .library import turn_gaps
+from .meeting_text import load_reader_turns, row_caption
 from .player import Player
 from .portable import State
 from .strings import text
@@ -88,10 +88,11 @@ class TurnRow(Gtk.Box):
                 self.dot.remove_css_class(cls)
         self.dot.add_css_class(palette.css_class(turn.speaker))
         self.name.set_label(self.window.speaker_label(turn.speaker))
+        self.name.set_visible(not turn.continuation)
+        self.dot.set_visible(not turn.continuation)
         self.time.set_label(format_time(turn.start_ms))
         self.time.set_tooltip_text(_("Play from {time}").format(time=format_time(turn.start_ms)))
-        names = ", ".join(self.window.speaker_label(speaker) for speaker in turn.over)
-        self.over.set_label(_("(over {names})").format(names=names) if names else "")
+        self.over.set_label(row_caption(turn, self.window.speaker_label))
         self.over.set_tooltip_text(_("Simultaneous speech"))
         self.render()
 
@@ -214,6 +215,7 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.file: Gio.File | None = None
         self.meeting: portable.Meeting | None = None
         self.audio_check: portable.AudioCheck | None = None
+        self._transcript_request = None
         self.transcript_id: str | None = None
         self.transcript_error: str | None = None
         self.turns: list[transcript.Turn] = []
@@ -356,6 +358,8 @@ class CassiniWindow(Adw.ApplicationWindow):
     def _on_close_request(self, *_args):
         if self.get_application().confirm_capture_close(self):
             return True
+        self._generation += 1
+        self._transcript_request = None
         self.get_application().window_closing(self)
         width, height = self.get_default_size()
         self.settings.set_int("window-width", width)
@@ -380,6 +384,7 @@ class CassiniWindow(Adw.ApplicationWindow):
         self._cancel_verification()
         self._generation += 1
         generation = self._generation
+        self._transcript_request = None
         self.file = file
         self.main_stack.set_visible_child_name("loading")
         self.set_title(file.get_basename())
@@ -390,13 +395,10 @@ class CassiniWindow(Adw.ApplicationWindow):
             except (OSError, portable.NotOpus, portable.Truncated) as exc:
                 GLib.idle_add(self._on_load_failed, generation, file, str(exc))
                 return
-            words, error = None, None
+            turns, error = [], None
             if meeting.is_readable and meeting.default_transcript_id:
-                try:
-                    words = portable.load_words(meeting, meeting.default_transcript_id)
-                except portable.CassiniError as exc:
-                    error = str(exc)
-            GLib.idle_add(self._on_loaded, generation, file, meeting, words, error)
+                turns, error = load_reader_turns(meeting, meeting.default_transcript_id)
+            GLib.idle_add(self._on_loaded, generation, file, meeting, turns, error)
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -409,10 +411,11 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.toast(_("“{name}” is not an Opus audio file").format(name=file.get_basename()))
         self._update_actions()
 
-    def _on_loaded(self, generation, file, meeting, words, error):
+    def _on_loaded(self, generation, file, meeting, turns, error):
         if generation != self._generation:
             return
         self.meeting = meeting
+        self._transcript_request = None
         self.audio_check = None
         self.extra_speakers = {}
         self.palette = SpeakerPalette([s.id for s in meeting.speakers])
@@ -428,7 +431,7 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.file_label.set_tooltip_text(file.get_basename())
 
         self._populate_transcript_chooser()
-        self._set_words(words, error)
+        self._set_turns(turns, error)
         self._populate_summary()
         self._update_banner()
         self._populate_properties()
@@ -440,12 +443,9 @@ class CassiniWindow(Adw.ApplicationWindow):
         if meeting.is_readable:
             self._start_verification(generation, file.get_path(), meeting)
 
-    def _set_words(self, words, error=None):
+    def _set_turns(self, turns, error=None):
         self.transcript_error = error
-        # D63 #2: the file's own track map gives each speaker's gap ranges.
-        manifest = self.meeting.manifest if self.meeting else None
-        gaps = turn_gaps((), {}, manifest.get("x")) if manifest else None
-        self.turns = transcript.build_turns(words or [], gaps=gaps)
+        self.turns = turns
         known = {s.id for s in self.meeting.speakers} if self.meeting else set()
         for turn in self.turns:
             if turn.speaker not in known and turn.speaker not in self.extra_speakers:
@@ -467,12 +467,18 @@ class CassiniWindow(Adw.ApplicationWindow):
             if entry.language:
                 label = f"{label} ({entry.language})"
             model.append(label)
-        self.transcript_dropdown.set_model(model)
-        if self.transcript_id in self._chooser_ids:
-            self.transcript_dropdown.set_selected(self._chooser_ids.index(self.transcript_id))
+        self._updating_transcript_chooser = True
+        try:
+            self.transcript_dropdown.set_model(model)
+            if self.transcript_id in self._chooser_ids:
+                self.transcript_dropdown.set_selected(self._chooser_ids.index(self.transcript_id))
+        finally:
+            self._updating_transcript_chooser = False
         self.transcript_chooser.set_visible(len(entries) > 1)
 
     def _on_transcript_selected(self, dropdown, _pspec):
+        if getattr(self, "_updating_transcript_chooser", False):
+            return
         index = dropdown.get_selected()
         if not self.meeting or index >= len(getattr(self, "_chooser_ids", [])):
             return
@@ -480,13 +486,22 @@ class CassiniWindow(Adw.ApplicationWindow):
         if transcript_id == self.transcript_id:
             return
         self.transcript_id = transcript_id
-        try:
-            words, error = portable.load_words(self.meeting, transcript_id), None
-        except portable.CassiniError as exc:
-            words, error = None, str(exc)
-        self._set_words(words, error)
+        generation, meeting = self._generation, self.meeting
+        request = self._transcript_request = object()
+
+        def work():
+            turns, error = load_reader_turns(meeting, transcript_id)
+            GLib.idle_add(self._on_transcript_loaded, generation, request, meeting, turns, error)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_transcript_loaded(self, generation, request, meeting, turns, error):
+        if generation != self._generation or request is not self._transcript_request or meeting is not self.meeting:
+            return False
+        self._set_turns(turns, error)
         self._populate_properties()
         self._update_subtitle()
+        return False
 
     def _start_verification(self, generation, path, meeting):
         cancel = threading.Event()
@@ -638,9 +653,9 @@ class CassiniWindow(Adw.ApplicationWindow):
             links = " ".join(word_link(aside, j) for j, value in enumerate(displayed[aside.index]) if value)
             markup = (
                 f'<span size="small" background="{bg}" bgalpha="{alpha}">'
-                f" <b>{GLib.markup_escape_text(name)}:</b> {links} </span>"
+                f"(<b>{GLib.markup_escape_text(name)}:</b> {links})</span>"
             )
-            return markup, f" {name}: {aside.text} "
+            return markup, f"({name}: {aside.text})"
 
         return transcript.join_items(turn, word_link, chip)
 

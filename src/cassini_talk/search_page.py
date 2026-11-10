@@ -369,7 +369,7 @@ class SearchPage(Adw.NavigationPage):
         item.set_child(None)
 
     def _speaker(self, hit):
-        return self._meetings[hit.key].speaker_for(self._turns[hit.key][hit.turn].speaker)
+        return self._meetings[hit.key].speaker_for(hit.speaker or self._turns[hit.key][hit.turn].speaker)
 
     def _selected(self, *_):
         chosen = self.selection.get_selected_item()

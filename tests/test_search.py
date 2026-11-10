@@ -331,15 +331,17 @@ def test_d38_rejoined_interrupted_turn_never_pairs_quotes_across_speakers(index,
     selected = next(iter(index.current.values()))
     index.sync(LibrarySnapshot(meetings=(replace(selected, words=words),)))
     shown["search"] = [t.text for t in index.turns[selected.key]]
-    items = [dict(speaker=w.speaker, startMs=w.start_ms, text=w.text) for w in words]
-    exported = export_model.markdown(dict(title="T", speakers=[], items=items)).split("## Transcript", 1)[1]
+    items = [dict(speaker=w.speaker, startMs=w.start_ms, endMs=w.end_ms, text=w.text) for w in words]
+    exported = export_model.markdown(
+        dict(title="T", speakers=[dict(id="a", name="A"), dict(id="b", name="B")], items=items)
+    ).split("## Transcript", 1)[1]
     shown["markdown"] = [line for line in exported.splitlines() if line and not line.startswith("**")]
     assert shown == {
         "reader": ["He said yes then no", "okay"],
-        "preview": ["He said yes then no"],
+        "preview": ["He said yes (b: okay) then no"],
         "meeting": ["He said yes then no"],
-        "search": expected,
-        "markdown": expected,
+        "search": ["He said yes (b: okay) then no"],
+        "markdown": ["He said yes (B: okay) then no"],
     }
     meeting_markup = "".join(reading_markup(t, 0, lambda speaker: speaker) for t in reading_turns(list(words)))
     assert not any("“" in v or "”" in v for v in [*map(str, shown.values()), meeting_markup])
@@ -371,11 +373,11 @@ def test_search_context_omits_duration_of_meeting_whose_audio_is_missing(shared_
 def test_search_turns_split_at_the_speakers_own_gap_ranges(index):
     # D63 #2: like the other groupers, a phrase never matches across a gap break.
     meeting = next(m for m in index.current.values() if m.title == "Budget review")
-    words = (Word("me", 1000, 1500, "budget"), Word("me", 9000, 9500, "plan"))
+    words = (Word("me", 1000, 1500, "budget"), Word("me", 2000, 2500, "plan"))
     joined = replace(meeting, words=words, turn_gaps={})
     index.sync(LibrarySnapshot(meetings=(joined,)))
     assert len(index.turns[meeting.key]) == 1 and len(search(index, "budget plan")) == 1
-    split = replace(joined, turn_gaps={"me": ((80000, 128000),)})
+    split = replace(joined, turn_gaps={"me": ((24000, 32000),)})
     index.sync(LibrarySnapshot(meetings=(split,)))
     assert [t.text for t in index.turns[meeting.key]] == ["budget", "plan"]
     assert search(index, "budget plan") == () and len(search(index, "plan")) == 1

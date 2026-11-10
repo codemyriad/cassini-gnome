@@ -1,0 +1,917 @@
+{
+  "format": "cassini.render-vector.v1",
+  "source": {
+    "repo": "codemyriad/gocassini",
+    "commit": "1111155cb0017b47c072a8662c54f28ad7c44223"
+  },
+  "fixture": "overlapping-turns.words.json",
+  "rows": [
+    {
+      "speaker": "ada",
+      "continuation": false,
+      "startMs": 0,
+      "endMs": 40000,
+      "over": [
+        "ben"
+      ],
+      "crosstalk": false,
+      "members": [
+        {
+          "kind": "words",
+          "wordIndices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55,
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63,
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71,
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79,
+            80,
+            81,
+            82,
+            83,
+            84,
+            85,
+            86,
+            87,
+            88,
+            89,
+            90,
+            91,
+            92,
+            93,
+            94,
+            95,
+            96,
+            97,
+            98,
+            99
+          ],
+          "text": "Good morning everyone, this is the weekly update for the desktop release. We finished the packaging work for the three Linux formats on Tuesday and the builds are green. The installer now checks the free disk space before it downloads the speech model. On the recording side we fixed the bug where a muted microphone produced an empty file. The new level meter is in the main window and it responds within a few frames. We also cut the start-up time by loading the model in the background. Translations for all five languages are complete and reviewed by native speakers."
+        }
+      ]
+    },
+    {
+      "speaker": "ada",
+      "continuation": true,
+      "startMs": 40000,
+      "endMs": 75600,
+      "over": [],
+      "crosstalk": false,
+      "members": [
+        {
+          "kind": "words",
+          "wordIndices": [
+            100,
+            101,
+            102,
+            103,
+            104,
+            105,
+            106,
+            107,
+            108,
+            109,
+            110,
+            111,
+            112,
+            113,
+            114,
+            115,
+            116,
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123,
+            124,
+            125,
+            126,
+            127,
+            128,
+            129,
+            130,
+            131,
+            132,
+            133,
+            134,
+            135,
+            136,
+            137,
+            138,
+            139,
+            140
+          ],
+          "text": "The remaining work is mostly polish and a few accessibility fixes in the settings dialog. That brings me to the question of the release date, which I think we should settle today because the store review takes about a week. If"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            142
+          ],
+          "text": "we"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            144
+          ],
+          "text": "submit"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            146
+          ],
+          "text": "on"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            148
+          ],
+          "text": "Friday"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            150
+          ],
+          "text": "the"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            152
+          ],
+          "text": "build"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            154
+          ],
+          "text": "could"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            156
+          ],
+          "text": "be"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            158
+          ],
+          "text": "live"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            160
+          ],
+          "text": "by"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            162
+          ],
+          "text": "the"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            164
+          ],
+          "text": "following"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            166
+          ],
+          "text": "Thursday,"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            168
+          ],
+          "text": "and"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            170
+          ],
+          "text": "that"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            172
+          ],
+          "text": "gives"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            174
+          ],
+          "text": "us"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            176
+          ],
+          "text": "enough"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            178
+          ],
+          "text": "time"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            180
+          ],
+          "text": "to"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            182
+          ],
+          "text": "fix"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            184
+          ],
+          "text": "anything"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            186
+          ],
+          "text": "the"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            188
+          ],
+          "text": "testers"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            190
+          ],
+          "text": "report"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            192
+          ],
+          "text": "in"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            194
+          ],
+          "text": "the"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            196
+          ],
+          "text": "first"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            198
+          ],
+          "text": "days."
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            200
+          ],
+          "text": "I"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            202
+          ],
+          "text": "would"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            204
+          ],
+          "text": "rather"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            206
+          ],
+          "text": "move"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            208
+          ],
+          "text": "fast"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            210
+          ],
+          "text": "and"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            212
+          ],
+          "text": "ship"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            214
+          ],
+          "text": "small"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            216
+          ],
+          "text": "fixes"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            218
+          ],
+          "text": "after"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            220
+          ],
+          "text": "the"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            222
+          ],
+          "text": "launch"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            224
+          ],
+          "text": "than"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            226
+          ],
+          "text": "hold"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            228
+          ],
+          "text": "everything"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            230
+          ],
+          "text": "back"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            232
+          ],
+          "text": "for"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            234
+          ],
+          "text": "another"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            236
+          ],
+          "text": "month."
+        }
+      ]
+    },
+    {
+      "speaker": "ben",
+      "continuation": false,
+      "startMs": 56200,
+      "endMs": 91800,
+      "over": [
+        "ada"
+      ],
+      "crosstalk": false,
+      "members": [
+        {
+          "kind": "words",
+          "wordIndices": [
+            141
+          ],
+          "text": "I"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            143
+          ],
+          "text": "agree"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            145
+          ],
+          "text": "that"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            147
+          ],
+          "text": "we"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            149
+          ],
+          "text": "should"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            151
+          ],
+          "text": "pick"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            153
+          ],
+          "text": "a"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            155
+          ],
+          "text": "date,"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            157
+          ],
+          "text": "but"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            159
+          ],
+          "text": "I"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            161
+          ],
+          "text": "am"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            163
+          ],
+          "text": "worried"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            165
+          ],
+          "text": "about"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            167
+          ],
+          "text": "the"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            169
+          ],
+          "text": "audio"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            171
+          ],
+          "text": "regression"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            173
+          ],
+          "text": "on"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            175
+          ],
+          "text": "older"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            177
+          ],
+          "text": "laptops."
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            179
+          ],
+          "text": "Two"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            181
+          ],
+          "text": "testers"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            183
+          ],
+          "text": "reported"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            185
+          ],
+          "text": "crackling"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            187
+          ],
+          "text": "during"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            189
+          ],
+          "text": "long"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            191
+          ],
+          "text": "recordings"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            193
+          ],
+          "text": "and"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            195
+          ],
+          "text": "we"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            197
+          ],
+          "text": "still"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            199
+          ],
+          "text": "do"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            201
+          ],
+          "text": "not"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            203
+          ],
+          "text": "know"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            205
+          ],
+          "text": "the"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            207
+          ],
+          "text": "cause."
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            209
+          ],
+          "text": "If"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            211
+          ],
+          "text": "we"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            213
+          ],
+          "text": "ship"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            215
+          ],
+          "text": "with"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            217
+          ],
+          "text": "that"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            219
+          ],
+          "text": "problem"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            221
+          ],
+          "text": "the"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            223
+          ],
+          "text": "first"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            225
+          ],
+          "text": "reviews"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            227
+          ],
+          "text": "will"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            229
+          ],
+          "text": "be"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            231
+          ],
+          "text": "about"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            233
+          ],
+          "text": "sound"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            235
+          ],
+          "text": "quality"
+        },
+        {
+          "kind": "words",
+          "wordIndices": [
+            237,
+            238,
+            239,
+            240,
+            241,
+            242,
+            243,
+            244,
+            245,
+            246,
+            247,
+            248,
+            249,
+            250,
+            251,
+            252,
+            253,
+            254,
+            255,
+            256,
+            257,
+            258,
+            259,
+            260,
+            261,
+            262,
+            263,
+            264,
+            265,
+            266,
+            267,
+            268,
+            269,
+            270,
+            271,
+            272,
+            273,
+            274,
+            275,
+            276,
+            277
+          ],
+          "text": "and nothing else. I would like one more week to reproduce it on the hardware we have in the office. After that I am happy with any date you choose, as long as the fix is in the build we submit."
+        }
+      ]
+    }
+  ],
+  "markdown": "# overlapping-turns\n\n**ada** [0:00] (over ben)\n\nGood morning everyone, this is the weekly update for the desktop release. We finished the packaging work for the three Linux formats on Tuesday and the builds are green. The installer now checks the free disk space before it downloads the speech model. On the recording side we fixed the bug where a muted microphone produced an empty file. The new level meter is in the main window and it responds within a few frames. We also cut the start-up time by loading the model in the background. Translations for all five languages are complete and reviewed by native speakers.\n\n**ada** [0:40]\n\nThe remaining work is mostly polish and a few accessibility fixes in the settings dialog. That brings me to the question of the release date, which I think we should settle today because the store review takes about a week. If we submit on Friday the build could be live by the following Thursday, and that gives us enough time to fix anything the testers report in the first days. I would rather move fast and ship small fixes after the launch than hold everything back for another month.\n\n**ben** [0:56] (over ada)\n\nI agree that we should pick a date, but I am worried about the audio regression on older laptops. Two testers reported crackling during long recordings and we still do not know the cause. If we ship with that problem the first reviews will be about sound quality and nothing else. I would like one more week to reproduce it on the hardware we have in the office. After that I am happy with any date you choose, as long as the fix is in the build we submit.\n"
+}

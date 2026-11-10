@@ -46,7 +46,7 @@ def test_reading_paragraphs_bound_layout_without_losing_timed_items():
     words = [Word("one", i * 100, i * 100 + 100, str(i)) for i in range(10000)]
     turns = reading_turns(words)
     assert [w for turn in turns for w in turn.words] == words
-    assert all(len(t.words) <= 100 for t in turns)
+    assert all(len(t.words) <= 140 for t in turns)
 
 
 def test_d38_quotes_are_display_only_and_pair_within_a_turn():
@@ -252,11 +252,12 @@ def test_reading_split_places_aside_once_and_preserves_original_indices():
 
     words = [Word("a", i * 100, i * 100 + 100, str(i)) for i in range(205)]
     reply = Word("b", 9950, 10250, "Right.")
-    # Deliberately unsorted source, as speaker listening uses source indices.
-    words.insert(0, reply)
+    # File order contains the interruption; sorting words before grouping
+    # would lose this seam. A chip must not create a new paragraph.
+    words.insert(100, reply)
     rows = reading_turns(words)
-    assert [len(t.words) for t in rows] == [100, 100, 5]
-    assert [len(t.asides) for t in rows] == [1, 0, 0]
+    assert [len(t.words) for t in rows] == [205]
+    assert [len(t.asides) for t in rows] == [1]
     assert rows[0].asides[0][0] == 99
     owners = [owner for row in rows for owner in [row] + [aside for _, aside in row.asides]]
     assert all(owner.first_word == owner.word_indices[0] for owner in owners)

@@ -888,13 +888,26 @@ with tempfile.TemporaryDirectory() as temporary:
     )
     until(
         window,
-        lambda: all(
-            any(value.get_text() == "Dana" for value in labels(row))
-            for turn, _words, row in page.bound.values()
-            if turn.speaker == "voice-0"
+        lambda: (
+            bool(input_seen)
+            and not page._header_pending
+            and not page._header_source
+            and all(
+                any(value.get_text() == "Dana" for value in labels(row))
+                for turn, _words, row in page.bound.values()
+                if turn.speaker == "voice-0"
+            )
         ),
     )
-    assert input_seen and 0 < input_seen[0] < len(headers), "Header refresh monopolized the main loop"
+    # D84 keeps each rejoined run whole: this fixture now has 16 reading
+    # rows, exactly one legal batch (formerly 18). Assert the production's
+    # existing 16-header cap, even when that batch finishes all bound rows.
+    # A large refresh may not process almost all rows before yielding either.
+    assert input_seen and 0 < input_seen[0] <= min(16, len(headers)), (
+        "Header refresh monopolized the main loop",
+        input_seen,
+        len(headers),
+    )
     assert not splices and page.store.get_item(0) is model_item
     page._refresh_header = refresh_header
     assert bar.name.get_text() == "Dana" and not announcements

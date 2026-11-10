@@ -414,13 +414,13 @@ def test_preview_filters_asides_before_limit_and_reuses_grouping_on_metadata_cha
         )
 
     calls = []
-    original = library.build_turns
+    original = library.reading_turns
 
     def grouped(words, **kwargs):
         calls.append(True)
         return original(words, **kwargs)
 
-    monkeypatch.setattr(library, "build_turns", grouped)
+    monkeypatch.setattr(library, "reading_turns", grouped)
     metadata("Before")
     scanner = LibraryScanner(tmp_path)
     before = scanner.scan().meetings[0]
@@ -456,24 +456,23 @@ def test_missing_root_and_unreadable_folder_evict_all_cached_bodies(tmp_path, mo
     assert not scanner._files.entries and not scanner._directories and not scanner._preview_cache
 
 
-def test_long_preview_bounds_legacy_grouping_and_retains_full_reading_body(tmp_path, monkeypatch):
+def test_long_preview_projects_once_and_retains_full_reading_body(tmp_path, monkeypatch):
     from cassini_talk import library, portable
 
     scanner = LibraryScanner(tmp_path)
-    original = library.build_turns
+    original = library.reading_turns
     observed = []
 
     def bounded(words, **kwargs):
         observed.append(len(words))
-        assert sum(i == 0 or word.speaker != words[i - 1].speaker for i, word in enumerate(words)) <= 32
         return original(words, **kwargs)
 
-    monkeypatch.setattr(library, "build_turns", bounded)
+    monkeypatch.setattr(library, "reading_turns", bounded)
     words = tuple(portable.Word(str(index % 2), index * 1000, index * 1000 + 900, "word") for index in range(20000))
     result = scanner._preview("long", words)
     assert len(result) == 3
     assert sum(len(turn.words) for turn in scanner._preview_cache["long"][2]) == 20000
-    assert scanner._preview("long", words) is result and observed == [32]
+    assert scanner._preview("long", words) is result and observed == [20000]
 
 
 def test_default_title_is_a_placeholder_but_real_identical_titles_are_not(tmp_path):

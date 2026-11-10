@@ -524,3 +524,114 @@ def test_received_dot_only_stem_is_rejected_before_library_creation(tmp_path):
     with pytest.raises(ValueError, match="Choose an Ogg Opus"):
         import_received(source, root)
     assert not root.exists()
+
+
+@pytest.mark.parametrize("stored", [False, True])
+@pytest.mark.parametrize(
+    "spoken,expected",
+    [
+        ("- Yes", r"\- Yes"),
+        ("+ Yes", r"\+ Yes"),
+        ("1. First", r"1\. First"),
+        ("line\n# Heading", "line # Heading"),
+        ("  words\t  here  ", "words here"),
+        ("*word* _more_ [x] <tag> `code`", r"\*word\* \_more\_ \[x\] \<tag\> \`code\`"),
+    ],
+)
+def test_stored_and_legacy_markdown_use_identical_s5_safety(spoken, expected, stored):
+    value = dict(
+        title="safe",
+        speakers=[dict(id="a", name="Ada")],
+        items=[dict(speaker="a", startMs=0, endMs=500, text=spoken)],
+        verbatim=stored,
+    )
+    body = markdown(value).split("## Transcript\n", 1)[1]
+    assert body.splitlines()[2] == expected
+    assert "\n# Heading" not in body
+
+
+def test_markdown_speaker_header_is_chronological_but_words_remain_in_stored_order(monkeypatch):
+    from cassini_talk import export_model
+    from cassini_talk.meeting_text import reading_turns
+
+    captured = []
+
+    def project(words, **kwargs):
+        captured.extend(words)
+        return reading_turns(words, **kwargs)
+
+    monkeypatch.setattr(export_model, "reading_turns", project)
+    items = [
+        dict(speaker="late", startMs=1000, endMs=1100, text="later"),
+        dict(speaker="early", startMs=0, endMs=100, text="earlier"),
+    ]
+    result = markdown(dict(title="order", speakers=[], items=items, verbatim=True))
+    assert [(word.speaker, word.text) for word in captured] == [(i["speaker"], i["text"]) for i in items]
+    assert "Speakers: Speaker 1, Speaker 2" in result
+    assert result.index("**Speaker 1**") < result.index("**Speaker 2**")
+    assert "**Speaker 1** · 00:00:00" in result
+    assert "**Speaker 2** · 00:00:01" in result
+
+
+@pytest.mark.parametrize(
+    "lang,caption",
+    [
+        ("en", "(over Ben and Cora)"),
+        ("it", "(in sovrapposizione con Ben, Cora)"),
+        ("fr", "(en même temps que Ben, Cora)"),
+        ("es", "(a la vez que Ben, Cora)"),
+        ("pt-BR", "(ao mesmo tempo que Ben, Cora)"),
+        ("pt-PT", "(ao mesmo tempo que Ben, Cora)"),
+    ],
+)
+def test_markdown_overlap_caption_follows_ui_language(lang, caption):
+    result = markdown(
+        dict(
+            title="overlap",
+            uiLanguage=lang,
+            verbatim=True,
+            speakers=[dict(id=s, name=n) for s, n in (("a", "Ada"), ("b", "Ben"), ("c", "Cora"))],
+            items=[
+                dict(speaker="a", startMs=0, endMs=4000, text="holding"),
+                dict(speaker="b", startMs=100, endMs=1000, text="short"),
+                dict(speaker="c", startMs=200, endMs=900, text="shorter"),
+            ],
+        )
+    )
+    assert "**Ada** · 00:00:00 " + caption in result
+
+
+@pytest.mark.parametrize("bounded", [True, False])
+def test_opus_share_preserves_stored_order_and_audio_bound_provenance(tmp_path, bounded):
+    original = load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library")
+    words = tuple(
+        portable.Word(s, start, end, shown, text_is_stored=True, ends_bounded_by_audio=bounded)
+        for s, start, end, shown in (("a", 1000, 1500, "later"), ("b", 0, 400, "earlier"), ("a", 1500, 3000, "Held."))
+    )
+    speakers = (
+        tuple(replace(original.speakers[0], id=s, name=name) for s, name in (("a", "Ada"), ("b", "Ben")))
+        if original.speakers
+        else ()
+    )
+    if not speakers:
+        from cassini_talk.library import LibrarySpeaker
+
+        speakers = tuple(
+            LibrarySpeaker(s, name, "named", 0, i) for i, (s, name) in enumerate((("a", "Ada"), ("b", "Ben")))
+        )
+    model = replace(original, words=words, speakers=speakers, transcript="done")
+    first = export_meeting(model, tmp_path / "Exports")
+    parsed = portable.read_meeting(str(first))
+    assert portable.load_words(parsed, parsed.default_transcript_id) == list(words)
+    assert parsed.manifest.get("provenance", {}).get("wordTimings", {}).get("endsBoundedByAudio") is (
+        True if bounded else None
+    )
+    opened = load_open_meeting(first, tmp_path / "Library")
+    from cassini_talk.meeting_text import reading_turns
+
+    held = next(row for row in reading_turns(opened.words) if any(word.text == "Held." for word in row.words))
+    assert held.end_ms == (3000 if bounded else 2500)
+    second = export_meeting(opened, tmp_path / "Exports")
+    again = portable.read_meeting(str(second))
+    assert portable.load_words(again, again.default_transcript_id) == list(words)
+    assert again.manifest.get("provenance") == parsed.manifest.get("provenance")

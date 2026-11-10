@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Pushed Meeting page, with virtualised timed transcript items and transport."""
 
-from bisect import bisect_right
 from decimal import Decimal
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
@@ -9,7 +8,15 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
 from . import ux_formats as fmt
 from .i18n import language, using_language
 from .inline_line import InlineLine
-from .meeting_text import COLOURS, DARK_COLOURS, reading_markup, reading_word, speaking_shares
+from .meeting_text import (
+    COLOURS,
+    DARK_COLOURS,
+    FollowRows,
+    reading_markup,
+    reading_markup_signature,
+    reading_word,
+    speaking_shares,
+)
 from .strings import plural, text
 
 
@@ -42,7 +49,7 @@ class MeetingPage(Adw.NavigationPage):
         self.bound = {}
         self._signature = None
         self._reading_index = -1
-        self._starts = []
+        self._follow_rows = FollowRows(())
         self._turns = ()
         self._header_signature = None
         self._header_source = 0
@@ -438,10 +445,20 @@ class MeetingPage(Adw.NavigationPage):
             if not self._header_pending:
                 self._header_source = 0
                 return GLib.SOURCE_REMOVE
-            turn, _words, row = self._header_pending.pop()
+            turn, words, row = self._header_pending.pop()
             current = self.bound.get(turn.index)
             if current is not None and current[2] is row:
                 self._refresh_header(turn, row)
+                if turn.asides:
+                    signature = reading_markup_signature(
+                        turn,
+                        self.player.position,
+                        lambda speaker: self.meeting.speaker_for(speaker).name,
+                        dark=self._style_manager.get_dark(),
+                    )
+                    if getattr(words, "_markup_signature", None) != signature:
+                        words._markup_signature = signature
+                        words.set_markup(self._turn_markup(turn))
             if GLib.get_monotonic_time() >= deadline:
                 break
         return GLib.SOURCE_CONTINUE
@@ -709,7 +726,7 @@ class MeetingPage(Adw.NavigationPage):
         if removed or additions:
             self.store.splice(common, removed, additions)
         self._turns = meeting.turns
-        self._starts = [turn.start_ms for turn in meeting.turns]
+        self._follow_rows = getattr(meeting.turns, "follow", None) or FollowRows(meeting.turns)
         self._updating_transcript = False
         self._highlight_listening()
         self._position()
@@ -1098,7 +1115,7 @@ class MeetingPage(Adw.NavigationPage):
     def _position(self, _player=None, property=None):
         self.listening_bar.update_navigation()
         self.timeline.position_changed()
-        index = bisect_right(self._starts, self.player.position) - 1
+        index = self._follow_rows.at(self.player.position)
         listen = self.window.listen
         turn = listen.turn
         positions = self._turn_rows.get(turn.index, ()) if turn else ()

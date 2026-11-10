@@ -272,3 +272,58 @@ def test_background_worker_finds_its_prefix_catalog_without_a_ui_launcher(tmp_pa
     with i18n.using_language("fr"):
         assert i18n.gettext("Open…") == "Ouvrir…"
         assert i18n.gettext("Recovered recording") == "Enregistrement récupéré"
+
+
+def test_every_gettext_source_message_is_in_english_po():
+    english = po_entries(ROOT / "po/en.po")
+    missing = []
+    for relative in (ROOT / "po/POTFILES.in").read_text().splitlines():
+        source = ROOT / relative
+        if not relative.endswith(".py") or not source.is_file():
+            continue
+        for node in ast.walk(ast.parse(source.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            name = (
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else ""
+            )
+            if name not in ("_", "gettext", "ngettext") or not node.args:
+                continue
+            message = node.args[0]
+            if isinstance(message, ast.Constant) and isinstance(message.value, str) and message.value not in english:
+                missing.append((relative, node.lineno, message.value))
+    assert missing == []
+
+
+@pytest.mark.parametrize(
+    "lang,expected",
+    [
+        ("en", "Probably crosstalk"),
+        ("it", "Probabile sovrapposizione di voci"),
+        ("fr", "Chevauchement de voix probable"),
+        ("es", "Probable solapamiento de voces"),
+        ("pt-BR", "Provável sobreposição de vozes"),
+        ("pt-PT", "Provável sobreposição de vozes"),
+    ],
+)
+def test_crosstalk_caption_is_translated_in_the_actual_po_catalog(lang, expected, tmp_path, monkeypatch):
+    if not (compiler := shutil.which("msgfmt")):
+        pytest.skip("gettext compiler is a build dependency")
+    destination = tmp_path / TAGS[lang] / "LC_MESSAGES/cassini-talk.mo"
+    destination.parent.mkdir(parents=True)
+    subprocess.run([compiler, str(ROOT / "po" / (TAGS[lang] + ".po")), "-o", str(destination)], check=True)
+    monkeypatch.setattr(i18n, "_localedir", str(tmp_path))
+    from cassini_talk.meeting_text import row_caption
+    from cassini_talk.portable import Word
+    from cassini_talk.transcript import Turn
+
+    row = Turn(0, "a", [Word("a", 0, 400, "word", low_confidence=True)], 0, 0, 400)
+    with i18n.using_language(lang):
+        assert row_caption(row, str.upper) == expected
+        row.over = ["b", "c"]
+        names = "B and C" if lang == "en" else "B, C"
+        assert row_caption(row, str.upper) == strings.text("meeting.turn.over", names=names) + " · " + expected

@@ -278,7 +278,9 @@ class PublishedIndex:
         if transcript == "damaged":
             error = MeetingError("transcript-damaged", None)
         preview_key = "v2:" + "/".join(identity)
-        preview = self.scanner._preview(preview_key, words, gaps)
+        speakers = _speakers(words, metadata.get("speakers", []), embedded, stored_labels=True)
+        names = {speaker.id: speaker.name for speaker in speakers}
+        preview = self.scanner._preview(preview_key, words, gaps, names)
         lifecycle = activity.get(identifier, "saved") if origin == "Recording" else "saved"
         if lifecycle not in ("recording", "saving"):
             lifecycle = "saved"
@@ -300,12 +302,17 @@ class PublishedIndex:
                 eta_minutes=eta,
                 error=error,
                 words=tuple(words),
-                speakers=_speakers(words, metadata.get("speakers", []), embedded, stored_labels=True),
+                speakers=speakers,
                 preview_turns=preview,
                 turns=self.scanner._preview_cache.get(preview_key, (None, None, ()))[2],
                 listening_turns=self.scanner._preview_cache[preview_key][4] if words else (),
                 turn_gaps=gaps,
-                quote_line=_quote(words, metadata.get("quoteOverride"))
+                quote_line=_quote(
+                    words,
+                    metadata.get("quoteOverride"),
+                    self.scanner._preview_cache.get(preview_key, (None, None, ()))[2],
+                    speaker_name=lambda speaker: names.get(speaker, speaker),
+                )
                 if transcript in ("done", "queued", "running")
                 else None,
                 tracks=working.tracks if working else (),

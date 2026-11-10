@@ -47,8 +47,14 @@
     {
       "speaker": "ben",
       "startMs": 3050,
+      "endMs": 3300,
+      "text": "Sounds"
+    },
+    {
+      "speaker": "ben",
+      "startMs": 3300,
       "endMs": 3550,
-      "text": "Sounds good."
+      "text": "good."
     },
     {
       "speaker": "ada",
