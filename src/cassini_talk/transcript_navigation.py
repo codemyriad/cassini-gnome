@@ -80,6 +80,17 @@ class TranscriptNavigation:
 
     def focus(self, direction):
         previous = self.focused()
+        if (
+            previous is None
+            and self.view.visible_rows
+            and direction
+            in (
+                Gtk.DirectionType.TAB_FORWARD,
+                Gtk.DirectionType.TAB_BACKWARD,
+            )
+        ):
+            index = self.view.visible_rows[0 if direction == Gtk.DirectionType.TAB_FORWARD else -1]
+            return self.request(index)
         if Gtk.Widget.do_focus(self.view, direction):
             current = self.focused()
             if (

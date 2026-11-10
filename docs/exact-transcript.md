@@ -14,17 +14,17 @@ The existing Meeting GtkLabels are not selectable and the page has no inline sea
 
 Both renderers expose native GtkLabel Text and Hypertext. On tested GTK 4.22, native virtual hyperlink children have no AT-SPI Action; their hyperlink object points back to the label, whose first action copies text. The exact renderer additionally exposes named native link buttons for visible timed words. These nonvisual buttons cannot intercept pointer events or take keyboard focus, and their native click action invokes the existing word seek. Native Text paints first; supplemental Action objects are created in 2 ms CPU chunks. Word geometry is cached per row, width and style generation rather than querying Pango on every scroll allocation. Only our escaped canonical markup is parsed, without importing a general-purpose HTML parser on opening. The row exposes its position and total set size; a group wraps its ordinary header and text. An independent AT-SPI process reads the text and activates a word, with the GUI verifying the resulting seek. Offscreen turns remain virtualized. Headless accessibility coverage does not certify a particular screen reader's speech presentation.
 
-## Measurements in progress
+## Local before/after
 
-The core revision passed the local native GTK matrix before the accessible actions were added. The final interaction revision must repeat the matrix before either PR becomes ready. Values below are UI-thread CPU milliseconds and process RSS MiB from fresh, separate baseline/exact processes, in the private GNOME QA desktop.
+Fresh processes in the same private Xvfb environment with pinned fonts. Frame and tick figures are UI-thread CPU milliseconds.
 
-| Fixture | ListView RSS | Exact core RSS | First viewport paint | Worst load frame | Worst resize frame |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 60 min diarized | 161.9 | 147.4 | 55.7 | 15.3 | 12.8 |
-| 4 h diarized | 172.4 | 160.2 | 43.0 | 11.5 | 13.4 |
-| 60 min without speakers | 179.1 | 164.6 | 24.3 | 8.7 | 10.6 |
+| Fixture | ListView RSS MiB | Exact RSS MiB | First viewport | Worst load frame | Worst scroll frame | Worst resize frame | Worst highlight tick |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 60 min diarized | 261.9 | 233.0 | 60.3 | 15.1 | 10.7 | 15.8 | 0.83 |
+| 4 h diarized | 286.7 | 254.1 | 49.8 | 13.9 | 10.5 | 15.3 | 0.66 |
+| 60 min without speakers | 287.9 | 260.5 | 26.8 | 12.9 | 10.9 | 10.5 | 0.97 |
 
-All modes had zero reversed frames. The added interaction revision subsequently passed the full local Xvfb matrix (70.8 / 67.9 / 45.0 ms first viewport paint, exact RSS 221.3 / 243.3 / 249.6 MiB versus ListView 261.9 / 286.7 / 287.9 MiB). After caching accessible geometry and budgeting action creation, the 60-minute run improved to 57.7 ms first paint, 16.1 ms worst load frame, 13.5 ms resize and 8.5–9.6 ms touchpad scroll frames. Hosted pinned-font Xvfb validation is still pending on this optimization; no local number alone establishes readiness. Final exact-head results and package links are recorded in `RESULT-production.md` by the coordinator.
+All modes had zero reversed frames. The hosted workflow exercises the default with the environment variable unset, and uses the escape hatch for its ListView baseline. The normal Meeting, listening rows and wide speakers journeys run against the default renderer.
 
 ## Checked bug classes
 
@@ -37,7 +37,7 @@ Reviewed [cassini-ux/review/BUG-CLASSES.md](https://github.com/codemyriad/cassin
 - 7/8/9/13 (chip hits, chip-only speakers, search, localization): retain the production row builder/sidebar/catalog; interaction checks cover synthetic chip hits, chip-only speaker actions and no-inline-search parity.
 - 10–12, 14–16: no preview, format/export, I/O, download or storage changes.
 - 17: measurements use thread CPU/frame-clock gates, never wall-clock pass conditions.
-- 18/19: both PRs stay draft until exact-head CI and budgets pass. The coordinator explicitly requested publishing the intermediate stacked interaction draft; it cannot become ready before the base is green and ready.
+- 18/19: container and interaction changes land together, so the default never ships without keyboard, accessibility and live-tail support. Keep the combined PR draft until exact-head CI and budgets pass.
 
 ## Reproduce
 

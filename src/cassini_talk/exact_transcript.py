@@ -38,6 +38,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         from .transcript_navigation import TranscriptNavigation
 
         self.page = page
+        self._closed = False
         self.navigation = TranscriptNavigation(self)
         self.word_actions = WordActions(self)
         self.items = ()
@@ -80,6 +81,8 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         ]
 
     def _adjustment_changed(self, *_):
+        if self._closed:
+            return
         if self._adjustment_handler:
             obj, handler = self._adjustment_handler
             obj.disconnect(handler)
@@ -133,6 +136,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self.rows.clear()
 
     def close(self):
+        self._closed = True
         self._cancel_build()
         self.clear_rows()
         for obj, handler in self._font_signals:
@@ -246,7 +250,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         return GLib.SOURCE_CONTINUE
 
     def do_size_allocate(self, width, height, baseline):
-        if width <= 0 or height <= 0:
+        if self._closed or width <= 0 or height <= 0:
             return
         self._viewport_height = height
         target_width = min(width, COLUMN_CAP)
