@@ -46,7 +46,7 @@ def test_opaque_dark_and_high_contrast_separators_omit_alpha(colour, rgb):
     )
 
 
-@pytest.mark.parametrize("opacity,expected", [(1.2, ""), (-0.2, ' alpha="0"')])
+@pytest.mark.parametrize("opacity,expected", [(1.2, ""), (-0.2, ' alpha="1"'), (0, ' alpha="1"')])
 def test_rgba_channels_are_clamped_to_valid_pango_values(opacity, expected):
     markup = '<a href="item:0">before</a> <a href="item:1">after</a>'
     assert bridge_link_spaces(markup, (-0.2, 0.5, 1.2, opacity)) == (

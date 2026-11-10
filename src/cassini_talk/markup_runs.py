@@ -16,7 +16,7 @@ def bridge_link_spaces(markup, colour):
     next link's foreground and alpha lets Pango join those runs again.
     """
     rgb = "#" + "".join(f"{min(65535, max(0, round(channel * 65535))):04x}" for channel in colour[:3])
-    opacity = min(65535, max(0, round(colour[3] * 65535)))
+    opacity = min(65535, max(1, round(colour[3] * 65535)))
 
     spans, cursor = [], 0
 
