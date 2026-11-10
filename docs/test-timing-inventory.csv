@@ -426,6 +426,8 @@ browser-protocol/tests/independent-sessions.mjs,141,temporal-assertion,vendored,
 browser-protocol/tests/independent-sessions.mjs,148,temporal-assertion,vendored,review,"assert.equal(value.state,'completed');assert.equal(ends.length,1);assert.equal(ends[0].reason,reason);"
 browser-protocol/tests/live-folder-driver.test.mjs,45,clock-read,vendored,review,"// run's 50 ms meOn margin) and under a 2 s step, while the old reading (Date.now() - origin)"
 browser-protocol/tests/live-folder-driver.test.mjs,65,clock-condition,vendored,review,"for (t = base.actions.record.requestedAtMs; t < base.actions.record.observedAtMs; t += 50) pairs.push(wallPair({ wall, mono }));"
+browser-protocol/tests/live-folder-driver.test.mjs,76,temporal-assertion,vendored,review,"assert.ok(Math.abs(a.requestedAtMs - base.actions[key].requestedAtMs) <= bound, `${name}: ${key} requested ${a.requestedAtMs}`);"
+browser-protocol/tests/live-folder-driver.test.mjs,77,temporal-assertion,vendored,review,"assert.ok(Math.abs(a.observedAtMs - base.actions[key].observedAtMs) <= bound, `${name}: ${key} observed ${a.observedAtMs}`);"
 browser-protocol/tests/live-folder-driver.test.mjs,81,temporal-assertion,vendored,review,"assert.ok(Math.abs(clock.now() - 90_000) <= bound, `${name}: now() ${clock.now()}`);"
 browser-protocol/tests/live-folder-driver.test.mjs,83,temporal-assertion,vendored,review,"assert.deepEqual(await failing(monotonicRun, `${name}-monotonic`), before, `${name}: the monotonic session clock keeps every verdict`);"
 browser-protocol/tests/live-folder-driver.test.mjs,84,temporal-assertion,vendored,review,"assert.ok(viaWall.includes('O5.selection') && viaWall.some(id => !before.includes(id)),"
@@ -490,6 +492,7 @@ browser-protocol/tests/live-folder-driver.test.mjs,504,temporal-assertion,vendor
 browser-protocol/tests/live-folder-driver.test.mjs,505,temporal-assertion,vendored,review,"assert.deepEqual(await stopRelays(run.host), [], 'no start line yet, so no relay to stop');"
 browser-protocol/tests/live-folder-driver.test.mjs,506,temporal-assertion,vendored,review,"assert.deepEqual(await stopLaunchers(run.host), [run.browser.pid]);"
 browser-protocol/tests/live-folder-driver.test.mjs,507,temporal-assertion,vendored,review,"assert.deepEqual(await exitOf(run.browser), { code: null, signal: 'SIGKILL' });"
+browser-protocol/tests/live-folder-driver.test.mjs,513,temporal-assertion,vendored,review,"assert.deepEqual([after.ended, after.frames.length, after.inputError, after.outputError], [true, 0, null, null]);"
 browser-protocol/tests/live-folder-driver.test.mjs,520,temporal-assertion,vendored,review,"assert.equal((await controlConnections(run.host))[0].live, false);"
 browser-protocol/tests/live-folder-driver.test.mjs,521,temporal-assertion,vendored,review,"assert.deepEqual(await stopLaunchers(run.host), [run.browser.pid]);"
 browser-protocol/tests/live-folder-driver.test.mjs,522,temporal-assertion,vendored,review,"assert.deepEqual(await exitOf(run.browser), { code: null, signal: 'SIGKILL' });"
@@ -1889,6 +1892,8 @@ tests/test_timing_inventory.py,147,clock-read,gnome,review,"(""browser-protocol/
 tests/test_timing_inventory.py,152,clock-read,gnome,review,"(""tests/ui/companion-click.py"", ""clock-read"", ""time.thread_time()""),"
 tests/test_timing_inventory.py,174,temporal-assertion,gnome,review,assert gl.get_monotonic_time() - start < 100
 tests/test_timing_inventory.py,181,clock-read,gnome,review,self.sample = time.monotonic()
+tests/test_timing_inventory.py,197,temporal-assertion,gnome,review,while (now < deadline) assert.ok(now <= deadline);
+tests/test_timing_inventory.py,200,temporal-assertion,gnome,review,for (const [stamp] of arrivals) assert.ok(stamp<deadline);
 tests/test_track_source.py,309,bounded-wait,gnome,review,"def until(predicate, timeout=10):"
 tests/test_track_source.py,311,clock-read,gnome,review,end = time.monotonic() + timeout
 tests/test_track_source.py,312,clock-condition,gnome,review,while time.monotonic() < end:

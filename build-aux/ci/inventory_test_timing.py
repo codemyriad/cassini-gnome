@@ -237,17 +237,24 @@ def javascript_sites(text, add):
                 return tokens[index] if IDENTIFIER.fullmatch(tokens[index]) else None
         return None
 
-    edges, aliases = [], set()
+    def binding_targets(index):
+        if tokens[index] in ("]", "}") and index in reverse_pairs:
+            start = reverse_pairs[index]
+            if tokens[index] == "}" or start == 0 or tokens[start - 1] in ("const", "let", "var", "(", ","):
+                return names(start + 1, index)
+        root = target_root(index)
+        return {root} if root else set()
+
+    edges, alias_edges = [], []
     for index, value in enumerate(tokens):
         if value in ("=", "+=", "-=") and index:
-            start = index - 1
-            while start >= 2 and tokens[start - 1] == ".":
-                start -= 2
-            if IDENTIFIER.fullmatch(tokens[start]):
-                end = expression_end(index + 1)
-                edges.append(({tokens[start]}, dependencies(index + 1, end)))
-                if direct(index + 1, end) and end - index == 4:
-                    aliases.add(tokens[start])
+            targets = binding_targets(index - 1)
+            end = expression_end(index + 1)
+            edges.append((targets, dependencies(index + 1, end)))
+            if direct(index + 1, end) and end - index == 4:
+                alias_edges.append((targets, {"$clock"}))
+            elif end - index == 2 and IDENTIFIER.fullmatch(tokens[index + 1]):
+                alias_edges.append((targets, {tokens[index + 1]}))
         # Track container mutation and iteration: continuity.push(...) and
         # for (const measure of continuity) assert(measure.error < bound).
         if (
@@ -261,8 +268,9 @@ def javascript_sites(text, add):
                 edges.append(({root}, dependencies(index + 1, pairs.get(index, index))))
         if value == "of" and index and index + 1 < len(tokens):
             end = expression_end(index + 1)
-            edges.append(({tokens[index - 1]}, dependencies(index + 1, end)))
+            edges.append((binding_targets(index - 1), dependencies(index + 1, end)))
     tainted = propagate(edges)
+    aliases = propagate(alias_edges) - {"$clock"}
     for index, value in enumerate(tokens):
         if value != "(" or index not in pairs:
             continue

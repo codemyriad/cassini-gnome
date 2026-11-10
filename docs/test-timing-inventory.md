@@ -3,13 +3,13 @@
 Baseline: main `3a87538` (2026-11-10), plus this PR's scanner regression
 fixtures. The inventory scans 518 tracked test source files, including both
 pinned extension copies, protocol scenarios and conformance runners. It records
-2,271 timing-related sites in 248 files: 441 clock reads, 110 fixed-delay
-references, 111 timer registrations, 99 clock conditions, 938 candidate temporal
-assertions and 572 bounded waits. GNOME owns 1,683 sites; 588 are vendored.
+2,276 timing-related sites in 248 files: 441 clock reads, 110 fixed-delay
+references, 111 timer registrations, 99 clock conditions, 943 candidate temporal
+assertions and 572 bounded waits. GNOME owns 1,685 sites; 591 are vendored.
 
 [The CSV](test-timing-inventory.csv) gives file, source line, category,
 ownership and expression. A site can occur in several categories. These are
-conservative audit candidates, **not 2,271 confirmed violations**. In particular,
+conservative audit candidates, **not 2,276 confirmed violations**. In particular,
 media timestamps, injected clock values, CPU budgets, diagnostic timestamps and
 outer hang guards retain their coverage. `review` means the area's migration
 must classify the site before changing it. Both `browser-extension/` and
@@ -27,7 +27,7 @@ values through assignments and container mutations into assertions and compared
 making every other field on that object a clock value.
 
 JavaScript/MJS/CJS use a dependency-free lexical scan with balanced expressions:
-clock-dependent assignments, indexed container mutations and `for ... of`
+clock-dependent assignments, destructured bindings, indexed container mutations and `for ... of`
 bindings feed assertion and condition candidates, including multiline callback
 results. Promise/setTimeout delays are also tagged as fixed delays. Other
 languages retain direct line-pattern discovery.

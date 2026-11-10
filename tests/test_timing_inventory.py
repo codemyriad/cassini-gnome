@@ -187,3 +187,22 @@ assert item < 5
     result = kinds(source)
     assert {(3, "temporal-assertion"), (6, "temporal-assertion")} <= result
     assert (4, "temporal-assertion") not in result
+
+
+def test_javascript_destructuring_indexed_updates_and_chained_function_aliases():
+    source = """const read = Date.now;
+const clock = read;
+const {deadline} = {deadline: clock()+200};
+let [now] = [clock()];
+while (now < deadline) assert.ok(now <= deadline);
+const arrivals={};
+arrivals[id]=[clock()];
+for (const [stamp] of arrivals) assert.ok(stamp<deadline);
+"""
+    assert {
+        (3, "clock-read"),
+        (4, "clock-read"),
+        (5, "clock-condition"),
+        (5, "temporal-assertion"),
+        (8, "temporal-assertion"),
+    } <= kinds(source, "cjs")
