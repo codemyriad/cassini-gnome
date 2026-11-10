@@ -355,6 +355,20 @@ with tempfile.TemporaryDirectory() as temporary:
         report["highlightCpuMeanMs"] = sum(costs) / len(costs)
         report["highlightCpuMaxMs"] = max(costs)
         assert max(costs) < 2, ("Highlight CPU budget", max(costs))
+        # A retained overscan row skips playback work until it enters the
+        # viewport. Its first painted frame must already highlight the seek.
+        outside = next(i for i in sorted(page.bound) if i >= page.list.visible_rows.stop)
+        turn, overscan_words, _ = page.bound[outside]
+        word = next(w for w, value in zip(turn.words, turn.items, strict=True) if value and w.end_ms > w.start_ms)
+        page._follow_until = GLib.get_monotonic_time() + 3600_000_000
+        page.player.seek(word.start_ms)
+        paint(window)
+        assert outside not in page.list.visible_rows and 'background="#fbe7a1"' not in overscan_words.get_label()
+        page.list.scroll_to(outside)
+        paint(window)
+        assert page.bound[outside][1] is overscan_words
+        assert 'background="#fbe7a1"' in overscan_words.get_label()
+        report["overscanHighlightOnEntry"] = True
         # Above the cap: real resize, same layout width and zero measurement.
         frames = Frames(window)
         widths = [page.list.layout_width]

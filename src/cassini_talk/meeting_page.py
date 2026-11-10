@@ -1272,7 +1272,11 @@ class MeetingPage(Adw.NavigationPage):
         play_name = text("player.pause" if self.player.playing else "common.play")
         self.play.set_tooltip_text(play_name)
         self.play.update_property([Gtk.AccessibleProperty.LABEL], [play_name])
-        for turn, words, _row in list(self.bound.values()):
+        if self._exact:
+            rows = (self.bound[i] for i in self.list.visible_rows if i in self.bound)
+        else:
+            rows = list(self.bound.values())
+        for turn, words, _row in rows:
             self._render_words(turn, words)
 
     def set_recording_notice(self, line, minutes):

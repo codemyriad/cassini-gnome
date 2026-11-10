@@ -2,7 +2,7 @@
 """Exact prefix geometry, built in frame-budgeted chunks, with native scrolling."""
 
 import time
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import OrderedDict
 from dataclasses import dataclass, field
 
@@ -44,6 +44,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self._display_items = ()
         self.prefix = [0]
         self.rows = {}
+        self.visible_rows = range(0)
         self.layout_width = -1
         self.ready = False
         self.viewport_ready = False
@@ -269,6 +270,11 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             self._pending_scroll = None
             self.scroll_to(index)
         value = self._value()
+        previous_visible = self.visible_rows
+        self.visible_rows = range(
+            max(0, bisect_right(self.prefix, value) - 1),
+            min(len(self.prefix) - 1, bisect_left(self.prefix, value + height)),
+        )
         first = max(0, bisect_right(self.prefix, max(0, value - height)) - 1)
         end = min(len(self._display_items), len(self.prefix) - 1, bisect_right(self.prefix, value + height * 2))
         needed = set(range(first, end))
@@ -290,6 +296,11 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
                     [Gtk.AccessibleRelation.POS_IN_SET, Gtk.AccessibleRelation.SET_SIZE], [index + 1, len(self.items)]
                 )
                 self.rows[index] = row
+            elif index in self.visible_rows and index not in previous_visible:
+                # Overscan keeps widgets ready, but only visible text tracks
+                # playback ticks. Refresh a retained row before it paints.
+                turn, words, _ = self.page.bound[index]
+                self.page._render_words(turn, words)
             point = Graphene.Point().init((width - self.layout_width) / 2, self.prefix[index] - value)
             transform = Gsk.Transform.new().translate(point)
             row.allocate(self.layout_width, self.prefix[index + 1] - self.prefix[index], -1, transform)
