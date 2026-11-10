@@ -190,8 +190,8 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self._building = index
         if self.items:
             self._probe = self.page._build_row(self.items[0], register=False)
-            self._probe.set_parent(self)
             self._probe.set_child_visible(False)
+            self._probe.set_parent(self)
         if not self.items:
             self._advance_index()
         else:
@@ -279,8 +279,12 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             max(0, bisect_right(self.prefix, value) - 1),
             min(len(self.prefix) - 1, bisect_left(self.prefix, value + height)),
         )
-        first = max(0, bisect_right(self.prefix, max(0, value - height)) - 1)
-        end = min(len(self._display_items), len(self.prefix) - 1, bisect_right(self.prefix, value + height * 2))
+        first, end = self.visible_rows.start, self.visible_rows.stop
+        if self._active.complete:
+            # Keep a small buffer once indexing settles. While the extent
+            # grows, spending a frame on offscreen widgets delays visible text.
+            first = max(0, min(first - 1, bisect_right(self.prefix, value - height / 2) - 1))
+            end = min(len(self.prefix) - 1, max(end + 1, bisect_right(self.prefix, value + height * 1.5)))
         needed = set(range(first, end))
         focused = self.navigation.focused()
         if focused is not None:
