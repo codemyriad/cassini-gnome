@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Session-owned levels/timers and browser observations without visible windows."""
 
-import time
+import threading
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -57,6 +57,7 @@ def close(comfort):
 
 def test_each_native_session_keeps_its_levels_and_clock_when_another_stops(tmp_path, monkeypatch):
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    monkeypatch.setattr(GLib, "get_monotonic_time", lambda: 200_000_000)
     captures = [session(tmp_path, title, "gnome") for title in ("Earlier", "Later")]
     natives = [
         SimpleNamespace(
@@ -85,8 +86,8 @@ def test_each_native_session_keeps_its_levels_and_clock_when_another_stops(tmp_p
         assert len(comfort.active()) == 2
         assert comfort.status(meetings[0])["levels"] == [0.2, 0.4]
         assert comfort.status(meetings[1])["levels"] == [0.6, 0.8]
-        assert comfort.elapsed(meetings[0]) >= 125500
-        assert 65500 <= comfort.elapsed(meetings[1]) < 70000
+        assert comfort.elapsed(meetings[0]) == 125500
+        assert comfort.elapsed(meetings[1]) == 65500
         assert comfort.last_payload["title"] == "Cassini is recording"
         assert "Earlier" in comfort.last_payload["body"]
         natives[0].pipeline = None
@@ -108,14 +109,20 @@ def test_application_browser_inventory_drives_hidden_notifications_without_windo
     browser = dict(statuses=[dict(recording=True, path=str(capture.directory))])
     app = application({}, browser=browser)
     comfort = RecordingComfort(app, automatic=False)
+    loaded = threading.Event()
+    deliver = comfort._loaded
+
+    def delivered(key, future):
+        try:
+            return deliver(key, future)
+        finally:
+            loaded.set()
+
+    comfort._loaded = delivered
     try:
         comfort.active()
-        end = time.monotonic() + 2
-        while capture.directory.name not in comfort.known and time.monotonic() < end:
-            context = GLib.MainContext.default()
-            while context.pending():
-                context.iteration(False)
-            time.sleep(0.005)
+        while not loaded.is_set():
+            GLib.MainContext.default().iteration(True)
         assert capture.directory.name in comfort.active()
         comfort.tick()
         assert "Hidden browser call" in comfort.last_payload["body"]
@@ -132,19 +139,23 @@ def test_saved_notification_waits_for_readable_finished_audio_and_releases_its_h
     if state == "saved":
         capture.finish()
     holds, notifications = [], []
+    released = threading.Event()
+
+    def release():
+        holds.append("release")
+        released.set()
+
     app = SimpleNamespace(
         _quitting=False,
         hold=lambda: holds.append("hold"),
-        release=lambda: holds.append("release"),
+        release=release,
         send_notification=lambda identifier, _: notifications.append(identifier),
     )
     comfort = RecordingComfort(app, automatic=False)
     try:
         comfort.saved_notification(capture.directory if state != "missing" else tmp_path / "Recording-missing")
-        end = time.monotonic() + 3
-        while holds != ["hold", "release"] and time.monotonic() < end:
-            GLib.MainContext.default().iteration(False)
-            time.sleep(0.005)
+        while not released.is_set():
+            GLib.MainContext.default().iteration(True)
         assert holds == ["hold", "release"]
         assert notifications == (["saved-" + capture.directory.name] if state == "saved" else [])
     finally:
@@ -384,8 +395,9 @@ def test_pending_signal_start_is_visible_to_capture_controls_before_its_folder_e
 
 @pytest.mark.parametrize("retired", [False, True])
 @pytest.mark.parametrize("failed_first", [False, True])
+@pytest.mark.parametrize("cached_snapshot", [False, True])
 def test_refresh_during_old_observation_is_coalesced_and_retirement_cancels_it(
-    tmp_path, monkeypatch, retired, failed_first
+    tmp_path, monkeypatch, retired, failed_first, cached_snapshot
 ):
     from concurrent.futures import Future
 
@@ -404,6 +416,9 @@ def test_refresh_during_old_observation_is_coalesced_and_retirement_cancels_it(
     app = application({}, browser=dict(statuses=[status]))
     comfort = RecordingComfort(app, automatic=False)
     comfort.known[before.key] = before
+    window = SimpleNamespace(snapshot=SimpleNamespace(meetings=(before,)), get_visible=lambda: True)
+    if cached_snapshot:
+        app.get_windows = lambda: [window]
     callbacks, jobs = [], []
 
     class ObserverQueue:
@@ -454,8 +469,14 @@ def test_refresh_during_old_observation_is_coalesced_and_retirement_cancels_it(
             assert alert not in app.notifications
             jobs[1].set_result((after, values))
             deliver()
+            comfort.active()  # A cached pre-fallback Library row must not undo the newer observation.
             assert comfort.sources(before).fallback
             assert app.notifications.count(alert) == 1
+            if cached_snapshot:
+                # An equally current scan can still supply newer metadata.
+                window.snapshot = SimpleNamespace(meetings=(replace(after, title="Renamed after fallback"),))
+                assert comfort.active()[before.key].title == "Renamed after fallback"
+                assert comfort.sources(before).fallback
             assert not comfort.futures
             assert not comfort._observe_again
         else:
