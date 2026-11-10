@@ -60,6 +60,14 @@ class TranscriptLabel(Gtk.Label):
         )
 
     def _measure_uncached(self, orientation, for_size):
+        minimum, natural, minimum_baseline, natural_baseline = Gtk.Label.do_measure(self, orientation, for_size)
+        # The C horizontal vfunc leaves baseline output pointers untouched.
+        # GI initializes its temporary outputs to zero rather than GTK's -1.
+        if orientation == Gtk.Orientation.HORIZONTAL:
+            minimum_baseline = natural_baseline = -1
+        return minimum, natural, minimum_baseline, natural_baseline
+
+    def do_measure(self, orientation, for_size):
         if (
             orientation == Gtk.Orientation.HORIZONTAL
             and for_size < 0
@@ -69,24 +77,10 @@ class TranscriptLabel(Gtk.Label):
             and self.get_max_width_chars() < 0
             and self.get_ellipsize() == Pango.EllipsizeMode.NONE
         ):
-            # GTK measures WORD_CHAR at width zero to find the widest glyph.
-            # That constructs a line for every character in every cached row.
-            # These text columns can shrink: their container supplies the
-            # viewport width and WORD_CHAR already handles narrow allocation.
-            # Keep GTK's unwrapped natural width without that glyph-per-line
-            # minimum-width layout. Actual height-for-width stays unchanged.
-            layout = self.get_layout().copy()
-            layout.set_width(-1)
-            natural, _height = layout.get_pixel_size()
-            return 0, natural, -1, -1
-        minimum, natural, minimum_baseline, natural_baseline = Gtk.Label.do_measure(self, orientation, for_size)
-        # The C horizontal vfunc leaves baseline output pointers untouched.
-        # GI initializes its temporary outputs to zero rather than GTK's -1.
-        if orientation == Gtk.Orientation.HORIZONTAL:
-            minimum_baseline = natural_baseline = -1
-        return minimum, natural, minimum_baseline, natural_baseline
-
-    def do_measure(self, orientation, for_size):
+            # The exact container assigns this expanding column its width.
+            # No consumer needs an unwrapped natural width. Avoid shaping the
+            # entire paragraph at width -1 before measuring its real width.
+            return 0, 0, -1, -1
         key = self._measurement_key(orientation, for_size)
         if key in _MEASUREMENTS:
             _MEASUREMENTS.move_to_end(key)

@@ -35,12 +35,12 @@ def check_measurements(window):
         reference = label(Gtk.Label)
         candidate = label(TranscriptLabel)
         compare(reference, candidate)
-        # Relaxing the minimum-width request must preserve the natural width
-        # and exact height-for-width at every real text column width.
-        assert (
-            candidate.measure(Gtk.Orientation.HORIZONTAL, -1).natural
-            == reference.measure(Gtk.Orientation.HORIZONTAL, -1).natural
-        )
+        # The exact container owns the text-column width. Neither minimum
+        # nor unwrapped natural width may shape an unused paragraph layout;
+        # every real height-for-width remains identical to a native label.
+        horizontal = candidate.measure(Gtk.Orientation.HORIZONTAL, -1)
+        assert horizontal.minimum == horizontal.natural, tuple(horizontal)
+        assert horizontal.natural < reference.measure(Gtk.Orientation.HORIZONTAL, -1).natural
         calls = []
         original = TranscriptLabel._measure_uncached
 
