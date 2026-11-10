@@ -2,6 +2,7 @@
 import time
 
 import pytest
+from durable import DURABLE_BOUND
 
 gi = pytest.importorskip("gi")
 gi.require_version("Gst", "1.0")
@@ -24,10 +25,17 @@ def spin_until(predicate, timeout=12):
 
 
 def dispatch_until(predicate):
-    """Dispatch actual GLib sources; the outer test watchdog guards hangs."""
-    context = GLib.MainContext.default()
-    while not predicate():
-        context.iteration(True)
+    """Dispatch actual GLib sources with a guard for missing progress."""
+    context, expired = GLib.MainContext.default(), []
+    guard = GLib.timeout_add(int(DURABLE_BOUND * 1000), lambda: expired.append(True) or GLib.SOURCE_REMOVE)
+    try:
+        while not predicate() and not expired:
+            context.iteration(True)
+        assert predicate(), "Recorder did not deliver the expected completion event"
+    finally:
+        source = context.find_source_by_id(guard)
+        if source is not None:
+            source.destroy()
 
 
 def notify_context():
@@ -114,9 +122,10 @@ def test_capture_finalizes_playable_opus(tmp_path, monkeypatch, microphone, desk
         pipeline.set_state(Gst.State.PLAYING)
         try:
             message = pipeline.get_bus().timed_pop_filtered(
-                Gst.CLOCK_TIME_NONE, Gst.MessageType.ERROR | Gst.MessageType.EOS
+                int(DURABLE_BOUND * Gst.SECOND), Gst.MessageType.ERROR | Gst.MessageType.EOS
             )
-            assert message and message.type == Gst.MessageType.EOS
+            assert message is not None, "Opus decoder did not post EOS or error"
+            assert message.type == Gst.MessageType.EOS
         finally:
             pipeline.set_state(Gst.State.NULL)
         assert not list(tmp_path.glob(".cassini-*"))
@@ -234,7 +243,7 @@ def test_stop_never_waits_for_source_stream_locks_on_main_context(tmp_path, monk
             threads.append(thread)
             notify_context()
             assert thread != main, "EOS delivery ran on the main context"
-            release.wait()
+            assert release.wait(DURABLE_BOUND), "Test did not release the held EOS worker"
         return original(element, event)
 
     try:
@@ -277,7 +286,13 @@ def test_stop_never_waits_for_source_stream_locks_on_main_context(tmp_path, monk
         if kind == "opus":
             recorder._cleanup()
         else:
-            recorder.stop()
-            dispatch_until(lambda: recorder.pipeline is None and not recorder.starting and not recorder._finishing)
-            recorder._executor.shutdown(wait=True)
-            recorder._bus_worker.shutdown(wait=True)
+            cleaned_up = False
+            try:
+                recorder.stop()
+                if recorder.pipeline is not None and not recorder._finishing:
+                    recorder._begin_finish()
+                dispatch_until(lambda: recorder.pipeline is None and not recorder.starting and not recorder._finishing)
+                cleaned_up = True
+            finally:
+                for executor in (recorder._executor, recorder._bus_worker):
+                    executor.shutdown(wait=cleaned_up, cancel_futures=not cleaned_up)
