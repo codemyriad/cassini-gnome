@@ -234,11 +234,19 @@ class Store:
         from pathlib import Path
         return Path("/nonexistent-cassini-model")
     def fetch_manifest(self, **kwargs):
-        entered.set()
-        os.read(int(sys.argv[1]), 1)
-        raise AssertionError("The parent released the network read before exit")
+        fd = int(sys.argv[1])
+        try:
+            assert os.read(fd, 1) == b"1", "Missing pipe handshake"
+            entered.set()
+            os.read(fd, 1)
+        except BaseException:
+            import traceback
+            traceback.print_exc()
+            os._exit(2)
+        print("The parent released the network read before exit", file=sys.stderr, flush=True)
+        os._exit(2)
 entered = threading.Event()
-m = SpeechModels("whistle", lambda _:None, lambda:None, store=Store())
+m = SpeechModels("whistle", lambda _:None, lambda:None, store=Store(), capable=lambda: False)
 m._inspected.wait()
 assert not m.snapshot()["busy"]
 assert m.download()
@@ -246,10 +254,13 @@ entered.wait()
 m.close()
 assert m._thread.is_alive(), "The artificial network read must still be held"
 assert m.cancelled.is_set() and m.download_cancelled.is_set()
+assert not m.snapshot()["error"]
 print("closed-with-download-held", flush=True)
 """
     read_fd, held_write_fd = os.pipe()
     try:
+        pipe = os.fstat(held_write_fd)
+        assert os.write(held_write_fd, b"1") == 1
         result = subprocess.run(
             [sys.executable, "-c", script, str(read_fd)],
             pass_fds=(read_fd,),
@@ -259,7 +270,10 @@ print("closed-with-download-held", flush=True)
             timeout=30,  # Outer hang guard, not a shutdown performance budget.
             env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src")),
         )
+        still_held = os.fstat(held_write_fd)
+        assert (still_held.st_dev, still_held.st_ino) == (pipe.st_dev, pipe.st_ino)
         assert result.stdout.strip() == "closed-with-download-held"
+        assert "Traceback" not in result.stderr, result.stderr
     finally:
         os.close(read_fd)
         os.close(held_write_fd)
