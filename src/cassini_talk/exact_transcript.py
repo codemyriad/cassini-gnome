@@ -8,9 +8,6 @@ from dataclasses import dataclass, field
 
 from gi.repository import GLib, GObject, Graphene, Gsk, Gtk
 
-from . import ux_formats as fmt
-from .meeting_text import reading_markup
-
 # Includes the existing 120 px name column. CSS outer padding is separate.
 COLUMN_CAP = 720
 BUILD_BUDGET_NS = 4_000_000
@@ -30,14 +27,13 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
     hscroll_policy = GObject.Property(type=Gtk.ScrollablePolicy, default=Gtk.ScrollablePolicy.MINIMUM)
     vscroll_policy = GObject.Property(type=Gtk.ScrollablePolicy, default=Gtk.ScrollablePolicy.MINIMUM)
 
-    def __init__(self, page):
-        super().__init__(
-            css_classes=["meeting-transcript"], hexpand=True, vexpand=True, accessible_role=Gtk.AccessibleRole.LIST
-        )
+    def __init__(self, page, *, column_cap=COLUMN_CAP, css_class="meeting-transcript"):
+        super().__init__(css_classes=[css_class], hexpand=True, vexpand=True, accessible_role=Gtk.AccessibleRole.LIST)
         from .transcript_accessible import WordActions
         from .transcript_navigation import TranscriptNavigation
 
         self.page = page
+        self.column_cap = column_cap
         self._closed = False
         self.navigation = TranscriptNavigation(self)
         self.word_actions = WordActions(self)
@@ -106,6 +102,19 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self.ready = False
         self._requested_width = -1
         self.queue_allocate()
+
+    def reset_turns(self, turns):
+        """Switch documents; never retain clickable rows from the old one."""
+        self.clear_rows()
+        self.items, self._display_items = turns, ()
+        self._active = None
+        self.prefix = [0]
+        self.visible_rows = range(0)
+        self.viewport_ready = False
+        self._pending_scroll = self.navigation.pending = None
+        self.invalidate()
+        if self.props.vadjustment:
+            self.props.vadjustment.set_value(0)
 
     def _cancel_build(self):
         if self._build_tick:
@@ -210,11 +219,9 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             if markup is None:
                 # Only geometry: word highlight/future opacity never changes
                 # metrics. Cache markup once instead of regenerating it on resize.
-                markup = reading_markup(turn, -1, lambda speaker: self.page.meeting.speaker_for(speaker).name)
+                markup = self.page._metric_transcript_markup(turn)
                 self._metric_markup[number] = markup
-            self._probe.get_last_child().set_markup(markup)
-            self.page._refresh_header(turn, self._probe)
-            self._probe.get_first_child().get_last_child().set_label(fmt.position(turn.start_ms))
+            self.page._set_probe_turn(turn, self._probe, markup)
             height = self._probe.measure(Gtk.Orientation.VERTICAL, index.width).natural
             index.prefix.append(index.prefix[-1] + height)
             self.measured_rows += 1
@@ -253,7 +260,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         if self._closed or width <= 0 or height <= 0:
             return
         self._viewport_height = height
-        target_width = min(width, COLUMN_CAP)
+        target_width = min(width, self.column_cap)
         if self._requested_width != target_width:
             self._start_index(target_width)
         target = self._indices[target_width]
@@ -317,6 +324,9 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
 
     def _value(self):
         return self.props.vadjustment.get_value() if self.props.vadjustment else 0
+
+    def cancel_pending_scroll(self):
+        self._pending_scroll = None
 
     def scroll_to(self, index, *_args):
         if not 0 <= index < len(self.items):

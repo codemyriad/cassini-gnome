@@ -5,9 +5,10 @@ from gi.repository import Gtk
 
 
 class ExactTurnRow(Gtk.Widget):
-    def __init__(self):
-        super().__init__(margin_bottom=24, focusable=True, accessible_role=Gtk.AccessibleRole.LIST_ITEM)
-        self.body = Gtk.Box(spacing=16, accessible_role=Gtk.AccessibleRole.GROUP)
+    def __init__(self, *, body=None, margin_bottom=24):
+        super().__init__(margin_bottom=margin_bottom, focusable=True, accessible_role=Gtk.AccessibleRole.LIST_ITEM)
+        self.body = body if body is not None else Gtk.Box(spacing=16)
+        self.body.set_accessible_role(Gtk.AccessibleRole.GROUP)
         self.body.set_parent(self)
 
     def append(self, child):

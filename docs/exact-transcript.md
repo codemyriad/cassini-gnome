@@ -8,7 +8,7 @@ The regular `Exact transcript renderer` workflow runs the native GTK UI test, fr
 
 Keyboard navigation covers arrows, Page Up/Down, Home/End, keypad variants and chronological Tab traversal, including unrealized rows. Alt listening shortcuts propagate. A focused row stays realized. Unchanged row widgets and accessible actions survive running-recording suffix replacement; the old exact range remains active until the changed suffix is measured. Touchscreen follow pause observes GTK's existing native gestures without claiming their sequences. Playback updates only visible rows; a retained overscan widget refreshes its highlight before its first visible paint.
 
-The existing Meeting GtkLabels are not selectable and the page has no inline search/highlight controls. Library search routes a timed seek into the page. Native label link clipboard actions remain available; whole-document selection is not added. The standalone window will follow in a separate PR.
+The existing Meeting GtkLabels are not selectable and the page has no inline search/highlight controls. Library search routes a timed seek into the page. Native label link clipboard actions remain available; whole-document selection is not added. The standalone reader also uses exact scrolling and honors the same one-release escape hatch. It keeps its vertical speaker headers, inline search and word-level follow behavior. Search waits for its target geometry to become available before centering the word. Opening a different document discards the prior index and its link actions. The standalone UI check exercises a search during indexing, word activation, native coast and document replacement.
 
 ## Accessibility
 

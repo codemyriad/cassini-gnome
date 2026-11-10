@@ -17,6 +17,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
 import threading
 from datetime import date
 
@@ -51,7 +52,7 @@ class TurnRow(Gtk.Box):
 
     __gtype_name__ = "CassiniTurnRow"
 
-    def __init__(self, window):
+    def __init__(self, window, *, exact=False):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2, css_classes=["turn"])
         self.window = window
         self.turn = None
@@ -69,7 +70,13 @@ class TurnRow(Gtk.Box):
         self.over = Gtk.Label(xalign=0, css_classes=["dimmed", "caption"], ellipsize=Pango.EllipsizeMode.END)
         header.append(self.over)
 
-        self.words = Gtk.Label(
+        if exact:
+            from .transcript_label import TranscriptLabel
+
+            label_type = TranscriptLabel
+        else:
+            label_type = Gtk.Label
+        self.words = label_type(
             xalign=0,
             wrap=True,
             wrap_mode=Pango.WrapMode.WORD_CHAR,
@@ -80,7 +87,7 @@ class TurnRow(Gtk.Box):
         self.append(header)
         self.append(self.words)
 
-    def bind(self, turn):
+    def bind(self, turn, *, render=True):
         self.turn = turn
         palette = self.window.palette
         for cls in list(self.dot.get_css_classes()):
@@ -101,7 +108,8 @@ class TurnRow(Gtk.Box):
             self.over.update_property([Gtk.AccessibleProperty.DESCRIPTION], [over_tip])
         else:
             self.over.reset_property(Gtk.AccessibleProperty.DESCRIPTION)
-        self.render()
+        if render:
+            self.render()
 
     def render(self):
         turn = self.turn
@@ -122,11 +130,11 @@ class TurnRow(Gtk.Box):
         # Seeking synchronously changes the highlight markup, which destroys
         # GtkLabel's link controllers while GTK is still dispatching this click.
         # Keep the URI (not the recycled row's turn) and wait for dispatch to end.
-        GLib.idle_add(self._activate_link_later, uri, self.window._generation)
+        GLib.idle_add(self._activate_link_later, uri, self.window._generation, self.window.turns)
         return True
 
-    def _activate_link_later(self, uri, generation):
-        if generation != self.window._generation or not self.window.get_visible():
+    def _activate_link_later(self, uri, generation, turns):
+        if generation != self.window._generation or self.window.turns is not turns or not self.window.get_visible():
             return GLib.SOURCE_REMOVE
         kind, _sep, value = uri.partition(":")
         if kind == "w":
@@ -298,13 +306,35 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.settings.connect("changed::follow-along", self._on_follow_changed)
 
     def _setup_transcript_list(self):
-        self.store = Gio.ListStore.new(TurnItem)
-        factory = Gtk.SignalListItemFactory()
-        factory.connect("setup", self._on_item_setup)
-        factory.connect("bind", self._on_item_bind)
-        factory.connect("unbind", self._on_item_unbind)
-        self.transcript_list.set_factory(factory)
-        self.transcript_list.set_model(Gtk.NoSelection.new(self.store))
+        self._exact_transcript = None
+        self.bound = {}
+        self._word_scroll = None
+        self._word_scroll_tick = 0
+        self._touch_scroll_signals = []
+        if os.environ.get("CASSINI_TRANSCRIPT_RENDER") != "listview":
+            from .exact_transcript import ExactTranscript
+
+            self._exact_transcript = ExactTranscript(self, column_cap=760, css_class="transcript")
+            self._exact_transcript.update_property([Gtk.AccessibleProperty.LABEL], [_("Transcript")])
+            self.transcript_scroller.set_child(self._exact_transcript)
+            controllers = self.transcript_scroller.observe_controllers()
+            for i in range(controllers.get_n_items()):
+                controller = controllers.get_item(i)
+                if isinstance(controller, Gtk.GestureDrag):
+                    signal = "drag-update"
+                elif isinstance(controller, Gtk.GestureSwipe):
+                    signal = "swipe"
+                else:
+                    continue
+                self._touch_scroll_signals.append((controller, controller.connect(signal, self._on_user_drag)))
+        else:
+            self.store = Gio.ListStore.new(TurnItem)
+            factory = Gtk.SignalListItemFactory()
+            factory.connect("setup", self._on_item_setup)
+            factory.connect("bind", self._on_item_bind)
+            factory.connect("unbind", self._on_item_unbind)
+            self.transcript_list.set_factory(factory)
+            self.transcript_list.set_model(Gtk.NoSelection.new(self.store))
 
         # Scrolling by hand stops following along, as in any reader that
         # scrolls itself: otherwise the next word would yank the view back.
@@ -316,6 +346,44 @@ class CassiniWindow(Adw.ApplicationWindow):
         drag.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         drag.connect("drag-update", self._on_user_drag)
         self.transcript_scroller.get_vscrollbar().add_controller(drag)
+
+    def _build_row(self, turn, *, register=True):
+        from .transcript_row import ExactTurnRow
+
+        body = TurnRow(self, exact=True)
+        body.bind(turn, render=register)
+        row = ExactTurnRow(body=body, margin_bottom=0)
+        row._turn = turn
+        if register:
+            row.update_property(
+                [Gtk.AccessibleProperty.LABEL], [self.speaker_label(turn.speaker) + ", " + format_time(turn.start_ms)]
+            )
+            self.bound[self.visible_index[turn.index]] = turn, body.words, row
+        return row
+
+    def _metric_transcript_markup(self, turn):
+        return self.turn_markup(turn, geometry=True)[0]
+
+    def _set_probe_turn(self, turn, probe, markup):
+        probe.body.bind(turn, render=False)
+        probe.body.words.set_markup(markup)
+
+    def _realized_turn(self, index):
+        if self._exact_transcript:
+            entry = self.bound.get(self.visible_index.get(index))
+            return entry[2].body if entry else None
+        return self.rows.get(index)
+
+    def _render_words(self, turn, _words):
+        self._realized_turn(turn.index).render()
+
+    def _word_clicked(self, turn, uri):
+        row = self._realized_turn(turn.index)
+        if row is not None:
+            row._on_activate_link(row.words, uri)
+
+    def _hand_scroll(self, *_):
+        self._on_user_drag()
 
     def _on_item_setup(self, _factory, item):
         item.set_activatable(False)
@@ -373,6 +441,12 @@ class CassiniWindow(Adw.ApplicationWindow):
         self.settings.set_int("window-height", height)
         self.settings.set_boolean("window-maximized", self.is_maximized())
         self._cancel_verification()
+        self._cancel_word_scroll()
+        for controller, handler in self._touch_scroll_signals:
+            controller.disconnect(handler)
+        self._touch_scroll_signals.clear()
+        if self._exact_transcript:
+            self._exact_transcript.close()
         self._uninhibit()
         self.player.shutdown()
         return False
@@ -389,6 +463,9 @@ class CassiniWindow(Adw.ApplicationWindow):
             self.toast(_("Only local files can be opened"))
             return
         self._cancel_verification()
+        self._cancel_word_scroll()
+        if self._exact_transcript:
+            self._exact_transcript.reset_turns(())
         self._generation += 1
         generation = self._generation
         self._transcript_request = None
@@ -571,7 +648,11 @@ class CassiniWindow(Adw.ApplicationWindow):
         visible = transcript.visible_turns(self.turns)
         self.visible_index = {turn.index: i for i, turn in enumerate(visible)}
         self.rows = {}
-        self.store.splice(0, self.store.get_n_items(), [TurnItem(t) for t in visible])
+        if self._exact_transcript:
+            self._cancel_word_scroll()
+            self._exact_transcript.reset_turns(visible)
+        else:
+            self.store.splice(0, self.store.get_n_items(), [TurnItem(t) for t in visible])
         self._update_transcript_page(bool(visible))
 
     def _update_transcript_page(self, has_rows):
@@ -622,25 +703,33 @@ class CassiniWindow(Adw.ApplicationWindow):
             status.set_description(_("Nobody said anything in this transcript."))
         self.transcript_stack.set_visible_child_name("status")
 
-    def turn_markup(self, turn):
+    def turn_markup(self, turn, *, geometry=False):
         """Pango markup for one turn's words, and each word's byte offset."""
         dark = self.style_manager.get_dark()
         accent = hex_color(self.style_manager.get_accent_color_rgba())
         current_alpha = "45%" if dark else "25%"
         match_bg, match_alpha = ("#f8e45c", "40%") if dark else ("#f6d32d", "60%")
-        position = self.player.position
-        focused = self.matches[self.match_cursor] if 0 <= self.match_cursor < len(self.matches) else None
+        position = -1 if geometry else self.player.position
+        focused = (
+            self.matches[self.match_cursor] if not geometry and 0 <= self.match_cursor < len(self.matches) else None
+        )
 
         displayed = {owner.index: owner.items for owner in [turn] + [aside for _, aside in turn.asides]}
 
+        current_items = {
+            owner.index: owner.word_at(position)
+            for owner in [turn] + [aside for _, aside in turn.asides]
+            if not geometry and owner.index in self.active_turns
+        }
+
         def word_link(owner, i):
             word = owner.words[i]
-            current = owner.word_at(position) if owner.index in self.active_turns else -1
+            current = current_items.get(owner.index, -1)
             attrs = []
             key = (owner.index, i)
             if key == focused:
                 attrs.append('background="#e5a50a" bgalpha="80%"')
-            elif key in self.match_set:
+            elif not geometry and key in self.match_set:
                 attrs.append(f'background="{match_bg}" bgalpha="{match_alpha}"')
             elif i == current:
                 attrs.append(f'background="{accent}" bgalpha="{current_alpha}"')
@@ -672,12 +761,16 @@ class CassiniWindow(Adw.ApplicationWindow):
             if turn is None:
                 continue
             host = turn.host.index if turn.host is not None else index
-            row = self.rows.get(host)
+            row = self._realized_turn(host)
             if row is not None:
                 row.render()
 
     def _on_style_changed(self, *_args):
-        self._render_turns(list(self.rows))
+        if self._exact_transcript:
+            self._exact_transcript.invalidate()
+            self._render_turns([turn.index for turn, _, _ in self.bound.values()])
+        else:
+            self._render_turns(list(self.rows))
 
     # Playback
 
@@ -765,11 +858,18 @@ class CassiniWindow(Adw.ApplicationWindow):
         position = self.visible_index.get(turn_index)
         if position is None:
             return
-        row = self.rows.get(turn_index)
-        if row is None or not row.get_mapped() or not row.offsets:
-            self.transcript_list.scroll_to(position, Gtk.ListScrollFlags.NONE, None)
-            GLib.idle_add(self._scroll_to_word_later, turn_index, word_index, center)
+        row = self._realized_turn(turn_index)
+        if row is None or not row.get_mapped() or not row.offsets or row.words.get_width() <= 0:
+            if self._exact_transcript:
+                self._exact_transcript.scroll_to(position)
+                self._word_scroll = turn_index, word_index, center
+                if not self._word_scroll_tick:
+                    self._word_scroll_tick = self._exact_transcript.add_tick_callback(self._scroll_when_allocated)
+            else:
+                self.transcript_list.scroll_to(position, Gtk.ListScrollFlags.NONE, None)
+                GLib.idle_add(self._scroll_to_word_later, turn_index, word_index, center)
             return
+        self._cancel_word_scroll()
         layout = row.words.get_layout()
         offset = row.offsets[min(max(word_index, 0), len(row.offsets) - 1)]
         rect = layout.index_to_pos(offset)
@@ -786,6 +886,21 @@ class CassiniWindow(Adw.ApplicationWindow):
         goal = adjustment.get_value() + target.y - height * 0.35
         goal = max(adjustment.get_lower(), min(goal, adjustment.get_upper() - adjustment.get_page_size()))
         self._animate_scroll(adjustment, goal)
+
+    def _cancel_word_scroll(self):
+        self._word_scroll = None
+        if self._word_scroll_tick:
+            self._exact_transcript.remove_tick_callback(self._word_scroll_tick)
+            self._word_scroll_tick = 0
+
+    def _scroll_when_allocated(self, *_):
+        turn_index, word_index, center = self._word_scroll
+        row = self._realized_turn(turn_index)
+        if row is None or not row.get_mapped() or not row.offsets or row.words.get_width() <= 0:
+            return GLib.SOURCE_CONTINUE
+        self._word_scroll_tick = 0
+        self._scroll_to_word(turn_index, word_index, center)
+        return GLib.SOURCE_REMOVE
 
     def _scroll_to_word_later(self, turn_index, word_index, center):
         row = self.rows.get(turn_index)
@@ -804,10 +919,16 @@ class CassiniWindow(Adw.ApplicationWindow):
         animation.play()
 
     def _on_user_scroll(self, *_args):
-        self._stop_following()
+        self._on_user_drag()
         return False
 
     def _on_user_drag(self, *_args):
+        self._cancel_word_scroll()
+        if self._exact_transcript:
+            self._exact_transcript.cancel_pending_scroll()
+        if self._scroll_animation:
+            self._scroll_animation.pause()
+            self._scroll_animation = None
         self._stop_following()
 
     def _stop_following(self):
