@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Production Recording page with real metadata edits in a private display."""
 
+import faulthandler
 import json
 import os
 import shutil
@@ -31,31 +32,14 @@ from cassini_talk.recording_details import SilenceClock  # noqa: E402
 
 
 def until(predicate):
-    loop = GLib.MainLoop()
-    failures = []
+    context = GLib.MainContext.default()
+    while not predicate():
+        context.iteration(True)  # Dispatch an event; the outer process guard handles hangs.
 
-    def check():
-        try:
-            done = predicate()
-        except BaseException as error:
-            failures.append(error)
-            done = True
-        if done:
-            loop.quit()
-        return not done
 
-    def expired():
-        failures.append(AssertionError("Recording page state did not arrive before the deadline"))
-        loop.quit()
-        return False
-
-    tick, limit = GLib.timeout_add(10, check), GLib.timeout_add_seconds(10, expired)
-    loop.run()
-    for source in (tick, limit):
-        if GLib.MainContext.default().find_source_by_id(source):
-            GLib.source_remove(source)
-    if failures:
-        raise failures[0]
+# Diagnostic only. The existing screenshot subprocess watchdog is the sole
+# time-based hang guard; no per-condition deadline determines success (D88).
+faulthandler.dump_traceback_later(60, repeat=True)
 
 
 services = DesktopServices()
@@ -178,8 +162,9 @@ with tempfile.TemporaryDirectory() as tmp:
     assert not changes, "An unchanged unfocused title was rewritten"
     assert all((live.directory / name).read_bytes() == data for name, data in before.items())
     app.comfort.states[live.key] = dict(levels=[0.0, 0.6], voices=4, silent=False, line=None, minutes=50)
-    app.comfort.clocks[live.key] = SilenceClock(GLib.get_monotonic_time() / 1e6 - 20)
-    app.comfort.tick()
+    app.comfort.clocks[live.key] = SilenceClock(180)
+    with patch.object(GLib, "get_monotonic_time", return_value=200_000_000):
+        app.comfort.tick()
     assert page.check.get_visible() and page.mic_warning.get_visible()
     assert page.others_caption.get_label() == "Listening inside your browser · 4 voices"
     app.comfort.states[live.key].update(line="errors.diskLow.line", minutes=29)
@@ -257,22 +242,23 @@ with tempfile.TemporaryDirectory() as tmp:
 
     original_now = window._fixed_now
     original_badge = window._live_badges[live.key]
-    app.recorder = SimpleNamespace(
-        session=SimpleNamespace(directory=live.directory, manifest={"events": []}),
-        pipeline=object(),
-        _start_us=GLib.get_monotonic_time() - 65_500_000,
-        levels=[0.2, 0.4],
-        line=None,
-        minutes_left=50,
-        stopping=False,
-    )
-    for shift in (-86_400_000, 86_400_000):
-        window._fixed_now = original_now + shift
-        window._row(live)
-        assert window._live_badges[live.key].get_label() == "Recording 1:05"
-        window._update_live()
-        assert window._live_badges[live.key].get_label() == "Recording 1:05"
-        assert all(c["timer"].get_label() == "1:05" for c in window._capture_headers)
+    with patch.object(GLib, "get_monotonic_time", return_value=65_500_000):
+        app.recorder = SimpleNamespace(
+            session=SimpleNamespace(directory=live.directory, manifest={"events": []}),
+            pipeline=object(),
+            _start_us=0,
+            levels=[0.2, 0.4],
+            line=None,
+            minutes_left=50,
+            stopping=False,
+        )
+        for shift in (-86_400_000, 86_400_000):
+            window._fixed_now = original_now + shift
+            window._row(live)
+            assert window._live_badges[live.key].get_label() == "Recording 1:05"
+            window._update_live()
+            assert window._live_badges[live.key].get_label() == "Recording 1:05"
+            assert all(c["timer"].get_label() == "1:05" for c in window._capture_headers)
     app.native_captures.clear()  # Retire the injected clock-only fixture controller.
     app.recorder = None
     window._fixed_now = original_now
@@ -346,11 +332,10 @@ with tempfile.TemporaryDirectory() as tmp:
     # test waiting for a line on a closed page while its notification arrived.
     window._activity_tick()
     assert window.recording_page is page and not page._closed, "Activity replay closed the live Recording page"
-    try:
-        until(lambda: text("errors.othersFallback.line") in texts(page.lines) and alert in services.notifications)
-    except AssertionError:
-        # Keep both asynchronous observations and their sources when this
-        # coupled wait fails; a timeout alone cannot say which one was missing.
+
+    def fallback_wait_diagnostics():
+        # Diagnostic timer only: never terminates the wait or decides pass/fail.
+        # Keep both async observations and their sources for an outer hang.
         from cassini_talk.recording_details import disk_reserve
 
         known = app.comfort.known.get(current.key)
@@ -380,7 +365,17 @@ with tempfile.TemporaryDirectory() as tmp:
         Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_suffix(".fallback.json").write_text(
             json.dumps(evidence, ensure_ascii=False, indent=2) + "\n"
         )
+        return False
+
+    diagnostic = GLib.timeout_add_seconds(55, fallback_wait_diagnostics)
+    try:
+        until(lambda: text("errors.othersFallback.line") in texts(page.lines) and alert in services.notifications)
+    except BaseException:
+        fallback_wait_diagnostics()
         raise
+    finally:
+        if GLib.MainContext.default().find_source_by_id(diagnostic):
+            GLib.source_remove(diagnostic)
     assert window.get_visible()
     assert services.notifications[alert]["title"] == text("errors.othersFallback.line")
     assert services.notifications[alert]["body"] == current.title
