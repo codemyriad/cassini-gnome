@@ -1,8 +1,8 @@
 # D88 timing audit
 
-Baseline: green #306 `8848340`, based on main `e556fff` (2026-11-10),
-plus this PR's scanner regression fixtures. Retarget to main after #306 merges.
-The inventory scans 518 tracked test source files, including both pinned extension copies, protocol scenarios and conformance runners. It records
+Baseline: main `a67e8b5` (merged #306, 2026-11-10), plus this PR's scanner
+regression fixtures. The inventory scans 518 tracked test source files, including
+both pinned extension copies, protocol scenarios and conformance runners. It records
 2,263 timing-related sites in 247 files: 435 clock reads, 106 fixed-delay
 references, 112 timer registrations, 97 clock conditions, 942 candidate temporal
 assertions and 571 bounded waits. GNOME owns 1,672 sites; 591 are vendored.
