@@ -119,7 +119,7 @@ class WordActions:
                 row._action_geometry_key, row._action_geometry = geometry_key, geometry
             previous = row.body
             for uri, value, x, local_y, width, word_height in row._action_geometry:
-                if top + local_y < 0 or top + local_y >= height:
+                if top + local_y + word_height <= 0 or top + local_y >= height:
                     continue
                 key = number, uri
                 needed.add(key)

@@ -147,6 +147,13 @@ def check_interactions(window, page, paint, until):
     view.scroll_to(10)
     paint(window)
     turn, words, row = page.bound[10]
+    # A clipped first line remains visible and must retain its word action.
+    uri, _value, _x, y, _width, height = row._action_geometry[0]
+    view.props.vadjustment.set_value(view.prefix[10] + y + height / 2)
+    paint(window)
+    assert (10, uri) in view.word_actions.buttons
+    view.scroll_to(10)
+    paint(window)
     row.get_first_child().get_last_child().emit("clicked")
     assert page.player.playing and page.player.position == turn.start_ms
     page.player.pause()
