@@ -96,7 +96,7 @@ elif args[:1] == ["build"]:
     if "--iidfile" in args:
         if os.environ.get("FAKE_REFRESH_FAIL"):
             sys.exit(42)
-        job = args[args.index("--label")+1].split("=",1)[1]
+        job = args[args.index("--label")+1].split("=",1)[1] if "--label" in args else "cached-harness"
         image = "sha256:" + hashlib.sha256(job.encode()).hexdigest()
         labels = os.path.join(state, "labels.json")
         data = json.load(open(labels)) if os.path.exists(labels) else {}
@@ -441,3 +441,15 @@ def test_failed_archive_refresh_never_returns_a_cached_image(docker):
     )
     assert result.returncode == 42 and result.stdout == ""
     assert not [call for call in docker.calls() if call[:1] == ["run"] or call[:2] == ["image", "rm"]]
+
+
+@pytest.mark.parametrize("status", [124, 137])
+def test_shared_archive_refresh_timeout_fails_before_reuse_or_test_execution(docker, tmp_path, status):
+    # Inject the external watchdog outcome; no real-time expiration decides this test.
+    timeout = tmp_path / "bin/timeout"
+    timeout.write_text(f"#!/bin/sh\nexit {status}\n")
+    timeout.chmod(0o755)
+    result = run(["bash", str(REFRESH), "build", "cached-harness", "job-one"], docker.env, check=False)
+    assert result.returncode == status and result.stdout == ""
+    assert "offline current-archive refresh" in result.stderr and "tests were not run" in result.stderr
+    assert not docker.calls()

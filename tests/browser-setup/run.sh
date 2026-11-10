@@ -29,12 +29,12 @@ CASSINI_HARNESS_BASES=$("$source_root/tests/harness-image.sh" pin browser-setup)
 base=$("$source_root/tests/harness-image.sh" base browser-setup)
 harness=$("$source_root/tests/harness-image.sh" tag browser-setup)
 if ! docker image inspect "$harness" >/dev/null 2>&1; then
-  docker build --pull --target harness --label cassini.scope=browser-startup-harness \
+  "$source_root/build-aux/ci/docker-build-bounded.sh" "browser-setup cached harness" docker build --pull --target harness --label cassini.scope=browser-startup-harness \
     --build-arg BASE="$base" \
     -f "$source_root/tests/browser-setup/Dockerfile" -t "$harness" "$package_context"
   "$source_root/tests/harness-image.sh" prune browser-setup
 fi
-docker build --no-cache --label cassini.scope=browser-startup-test --build-arg HARNESS="$harness" \
+"$source_root/build-aux/ci/docker-build-bounded.sh" "browser-setup current-archive refresh" docker build --no-cache --label cassini.scope=browser-startup-test --build-arg HARNESS="$harness" \
   --build-arg TEST_UID="$(id -u)" --build-arg TEST_GID="$(id -g)" \
   -f "$source_root/tests/browser-setup/Dockerfile" -t "$package_test_image" "$package_context"
 # timeout must be the container's PID 1, so that its exit ends everything left in

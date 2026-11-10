@@ -220,3 +220,12 @@ The image is labelled with this job's identity; other jobs cannot reuse it, and
 cleanup checks ownership before removing that exact image. It is never saved
 in the weekly harness cache. Standalone run.sh invocations still refresh once
 per invocation. All original offline checks and resource limits remain active.
+
+Every local harness `docker build` also has its own 180-second wall-clock budget,
+independent of the later container/test command's timeout. The shared
+`build-aux/ci/docker-build-bounded.sh` names the build and streams plain BuildKit
+output, including failed mirror URLs, while reserving stdout for the image ID.
+On expiry it sends TERM, escalates to KILL after ten seconds, and fails the
+caller before tests start. `CASSINI_HARNESS_BUILD_TIMEOUT` accepts 1–300 seconds
+for a bounded diagnostic override. APT's per-connection/read limits and retries
+cannot extend this whole-build deadline.

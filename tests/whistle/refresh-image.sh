@@ -12,13 +12,9 @@ job=${3:?offline harness job identity}
 label=io.codemyriad.cassini.offline-job
 case "$action" in
   build)
-    iid=$(mktemp)
-    trap 'rm -f "$iid"' EXIT
     echo "Offline harness: refreshing current archive for $job" >&2
-    docker build --no-cache --progress=plain --iidfile "$iid" --label "$label=$job" \
-      --build-arg HARNESS="$image" - < "$root/tests/whistle/Containerfile" >&2
-    image=$(cat "$iid")
-    [[ $image =~ ^sha256:[a-f0-9]{64}$ ]] || { echo 'Docker returned no refreshed image id' >&2; exit 1; }
+    image=$("$root/build-aux/ci/docker-build-bounded.sh" "offline current-archive refresh" docker build \
+      --no-cache --label "$label=$job" --build-arg HARNESS="$image" - < "$root/tests/whistle/Containerfile")
     echo "Offline harness: refreshed $image for $job" >&2
     echo "$image"
     ;;
