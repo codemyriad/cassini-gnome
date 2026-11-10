@@ -6,7 +6,6 @@ import threading
 import time
 
 import pytest
-from test_transcription import until
 
 from cassini_talk import companion
 from cassini_talk.browser_connection import Backoff, BrowserConnection
@@ -18,6 +17,7 @@ class Clock:
         self.next_id = 0
         self.timers = {}
         self.posted = []
+        self.posted_changed = threading.Condition()
 
     def later(self, delay, call):
         self.next_id += 1
@@ -25,11 +25,14 @@ class Clock:
         return self.next_id
 
     def post(self, call, *args):
-        self.posted.append((call, args))
+        with self.posted_changed:
+            self.posted.append((call, args))
+            self.posted_changed.notify_all()
 
     def finish(self):
-        until(lambda: bool(self.posted))
-        call, args = self.posted.pop(0)
+        with self.posted_changed:
+            self.posted_changed.wait_for(lambda: bool(self.posted))
+            call, args = self.posted.pop(0)
         call(*args)
 
     def advance(self, seconds):
@@ -127,13 +130,13 @@ def test_trigger_during_io_is_single_flight_and_close_never_waits_for_host():
         threads.append(threading.get_ident())
         assert threads[-1] != main
         entered.set()
-        assert release.wait(4)
+        release.wait()
         return ()
 
     controller = clock.connection(blocked, lambda: changes.append(threading.get_ident()))
     try:
         controller.trigger()
-        assert entered.wait(2)
+        entered.wait()
         controller.trigger()
         controller.trigger()
         assert len(threads) == 1 and controller.snapshot()["phase"] == "settingUp"
@@ -145,10 +148,15 @@ def test_trigger_during_io_is_single_flight_and_close_never_waits_for_host():
         entered.clear()
         release.clear()
         controller.trigger()
-        assert entered.wait(2)
-        before = time.monotonic()
+        entered.wait()
+        active = controller.future
+        assert active.running()
+        before_cpu = time.thread_time_ns()
         controller.close()
-        assert time.monotonic() - before < 0.05
+        # Preserve the original 50 ms synchronous-work ceiling as thread CPU;
+        # completion ordering below independently detects joining/blocking.
+        assert time.thread_time_ns() - before_cpu < 50_000_000
+        assert controller.closed and active.running() and not release.is_set()
         count = len(changes)
         release.set()
         clock.finish()
