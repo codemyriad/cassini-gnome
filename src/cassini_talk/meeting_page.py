@@ -241,6 +241,8 @@ class MeetingPage(Adw.NavigationPage):
     def _style_ready(self):
         self._style_source = 0
         if not self._closed:
+            if self._exact:
+                self.list.invalidate()
             for turn, words, _row in list(self.bound.values()):
                 self._render_words(turn, words)
         return GLib.SOURCE_REMOVE
