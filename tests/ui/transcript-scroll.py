@@ -168,6 +168,14 @@ def check_surface(name, window, view, scroller, get_rows, motion):
 
     try:
         assert not scroller.get_kinetic_scrolling(), "GTK absolute touch kinetic ticker is still enabled"
+        controllers = scroller.observe_controllers()
+        active = [
+            controllers.get_item(index)
+            for index in range(controllers.get_n_items())
+            if isinstance(controllers.get_item(index), Gtk.EventControllerScroll)
+            and controllers.get_item(index).get_propagation_phase() != Gtk.PropagationPhase.NONE
+        ]
+        assert active == [motion.controller], "Native input has competing scroll/deceleration authorities"
         for touch, direction in ((False, 1), (False, -1), (True, 1), (True, -1)):
             phase = "finger"
             previous = snapshot(direction, None)

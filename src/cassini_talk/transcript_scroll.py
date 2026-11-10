@@ -14,6 +14,14 @@ class TranscriptScroll:
         self.motion = None
         self.tick = 0
         scroller.set_kinetic_scrolling(False)
+        # That property disables GTK's touch gestures, not its independent
+        # capture/bubble wheel controllers. Their history/deceleration must
+        # not compete with the relative controller below on native input.
+        existing = scroller.observe_controllers()
+        for index in range(existing.get_n_items()):
+            controller = existing.get_item(index)
+            if isinstance(controller, Gtk.EventControllerScroll):
+                controller.set_propagation_phase(Gtk.PropagationPhase.NONE)
         self.touch_drag = Gtk.GestureDrag(touch_only=True, propagation_phase=Gtk.PropagationPhase.CAPTURE)
         self.touch_swipe = Gtk.GestureSwipe(touch_only=True, propagation_phase=Gtk.PropagationPhase.CAPTURE)
         self.touch_drag.connect("drag-begin", self._touch_begin)
