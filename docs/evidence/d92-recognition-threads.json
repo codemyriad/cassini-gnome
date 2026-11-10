@@ -1,0 +1,226 @@
+{
+  "method": "One sequential 2-versus-6 pair per engine, real speech pipeline, concurrent NativeRecorder synthetic inputs and GTK spinner; elapsed times diagnostic only.",
+  "hostLogicalCpus": 8,
+  "containerLogicalCpusWithoutOverride": 12,
+  "pythonCpuCountOverride": 8,
+  "input": {
+    "frames": 43688319,
+    "rate": 48000,
+    "seconds": 910.1733125,
+    "channels": 1,
+    "gain": 1,
+    "sha256": "bc47f97107dfc3a3e9b0562c8f17719c8101f1cbfd68581b5112a6c1dc7fbc08",
+    "source": "Archived Kokoro TTS fixture, six synthetic English voices, five repeats",
+    "sourceTruthSha256": "f010b54983f407aa424b04c97f4510558b67c9357abf338d5a04925b1856e73e"
+  },
+  "comparison": {
+    "parakeet": {
+      "textIdentical": true,
+      "wordsAndTimesIdentical": true,
+      "speedup": 1.6859049543184643
+    },
+    "whistle": {
+      "textIdentical": true,
+      "wordsAndTimesIdentical": true,
+      "speedup": 1.6425628098710818
+    }
+  },
+  "cases": [
+    {
+      "case": "parakeet-two",
+      "threads": 2,
+      "startupSeconds": 1.9835342140004286,
+      "pipelineSeconds": 52.543067634999716,
+      "words": 2312,
+      "wordHash": "ad1d601228403fe8c7012207523def5c97ee486053323ff68f3603674e606239",
+      "textHash": "011cb8b25df423c0e13955ab4286f3b7cd14505bb7110a757775ef3af688912f",
+      "childNice": 5,
+      "workerThreadNiceMin": 5,
+      "parentNice": 0,
+      "whistleEnvironmentLimit": null,
+      "ui": {
+        "frames": 3299,
+        "frameGapMedianMs": 16.667,
+        "frameGapP90Ms": 16.667,
+        "frameGapMaxMs": 16.667,
+        "frameCpuP90Ms": 0.952127
+      },
+      "capture": {
+        "tracks": [
+          {
+            "id": "microphone",
+            "frames": 2209706,
+            "rate": 48000,
+            "gaps": [],
+            "start": 4.214023,
+            "end": 46039.755689666665
+          },
+          {
+            "id": "system",
+            "frames": 2209685,
+            "rate": 48000,
+            "gaps": [],
+            "start": 4.655746,
+            "end": 46039.75991266666
+          }
+        ],
+        "started": true,
+        "finished": true,
+        "errors": [],
+        "drainTimedOut": false
+      }
+    },
+    {
+      "case": "parakeet-policy",
+      "threads": 6,
+      "startupSeconds": 2.9917171870001766,
+      "pipelineSeconds": 31.16609124399929,
+      "words": 2312,
+      "wordHash": "ad1d601228403fe8c7012207523def5c97ee486053323ff68f3603674e606239",
+      "textHash": "011cb8b25df423c0e13955ab4286f3b7cd14505bb7110a757775ef3af688912f",
+      "childNice": 5,
+      "workerThreadNiceMin": 5,
+      "parentNice": 0,
+      "whistleEnvironmentLimit": null,
+      "ui": {
+        "frames": 2077,
+        "frameGapMedianMs": 16.667,
+        "frameGapP90Ms": 16.667,
+        "frameGapMaxMs": 16.667,
+        "frameCpuP90Ms": 1.162075
+      },
+      "capture": {
+        "tracks": [
+          {
+            "id": "microphone",
+            "frames": 1188591,
+            "rate": 48000,
+            "gaps": [],
+            "start": 3.899542,
+            "end": 24766.212042
+          },
+          {
+            "id": "system",
+            "frames": 1188572,
+            "rate": 48000,
+            "gaps": [],
+            "start": 4.284397,
+            "end": 24766.201063666667
+          }
+        ],
+        "started": true,
+        "finished": true,
+        "errors": [],
+        "drainTimedOut": false
+      }
+    },
+    {
+      "case": "whistle-two",
+      "threads": 2,
+      "startupSeconds": 0.15786582500004442,
+      "pipelineSeconds": 142.43623503100025,
+      "words": 2625,
+      "wordHash": "dd3814dd337f87031952e79c1b3004f7f688554bfaee58620fb79566b7d7f3f4",
+      "textHash": "ac44d35f7893639dec5dd79684a5e7a0de87ed9c20e6b7785eaa16ccf15484a8",
+      "childNice": 5,
+      "workerThreadNiceMin": 5,
+      "parentNice": 0,
+      "whistleEnvironmentLimit": "2",
+      "ui": {
+        "frames": 8575,
+        "frameGapMedianMs": 16.667,
+        "frameGapP90Ms": 16.667,
+        "frameGapMaxMs": 16.667,
+        "frameCpuP90Ms": 0.821264
+      },
+      "capture": {
+        "tracks": [
+          {
+            "id": "microphone",
+            "frames": 6431744,
+            "rate": 48000,
+            "gaps": [],
+            "start": 1.002684,
+            "end": 133995.66935066666
+          },
+          {
+            "id": "system",
+            "frames": 6431744,
+            "rate": 48000,
+            "gaps": [],
+            "start": 1.216592,
+            "end": 133995.88325866667
+          }
+        ],
+        "started": true,
+        "finished": true,
+        "errors": [],
+        "drainTimedOut": false
+      }
+    },
+    {
+      "case": "whistle-policy",
+      "threads": 6,
+      "startupSeconds": 0.1287647620001735,
+      "pipelineSeconds": 86.7158529190001,
+      "words": 2625,
+      "wordHash": "dd3814dd337f87031952e79c1b3004f7f688554bfaee58620fb79566b7d7f3f4",
+      "textHash": "ac44d35f7893639dec5dd79684a5e7a0de87ed9c20e6b7785eaa16ccf15484a8",
+      "childNice": 5,
+      "workerThreadNiceMin": 5,
+      "parentNice": 0,
+      "whistleEnvironmentLimit": "6",
+      "ui": {
+        "frames": 5227,
+        "frameGapMedianMs": 16.667,
+        "frameGapP90Ms": 16.667,
+        "frameGapMaxMs": 33.334,
+        "frameCpuP90Ms": 0.895791
+      },
+      "capture": {
+        "tracks": [
+          {
+            "id": "microphone",
+            "frames": 3815424,
+            "rate": 48000,
+            "gaps": [],
+            "start": 1.178038,
+            "end": 79489.178038
+          },
+          {
+            "id": "system",
+            "frames": 3815424,
+            "rate": 48000,
+            "gaps": [],
+            "start": 1.631754,
+            "end": 79489.631754
+          }
+        ],
+        "started": true,
+        "finished": true,
+        "errors": [],
+        "drainTimedOut": false
+      }
+    }
+  ],
+  "sourceHashes": {
+    "two": {
+      "speech_threads.py": "c6e097afbf5e1063b58a1ffe4a0ea91ad40bc77e11c01adeebb41109de388365",
+      "parakeet.py": "8a36a7a41a3cbdddef92bde53acb9289ac466801a5ab15e9fc1d4b1b066128e5",
+      "parakeet_worker.py": "52a09a3b2aefb0072dd16ed82d89a2fb6e6459ac62d05835a95738810b77bb64",
+      "whistle_client.py": "691568a345e64a18f15d0ecd4974959a9687e7b0dbff9f701052bce822bd6719",
+      "whistle_worker.py": "1ca2bf82ea571a83b04130fc48c2ed6711b3cb0e8472c2cf9ef1d09170292286",
+      "models.json": "6d25f7aaa6f72ba6de97b55f9e8a049c0ce6993a130f9d3e3ee508148b58abae",
+      "sherpa-pins.json": "6aea80f4368a38d73289fbf739cf1a7d5d1d50cea18034f5de18af3cb792d697"
+    },
+    "policy": {
+      "speech_threads.py": "c6e097afbf5e1063b58a1ffe4a0ea91ad40bc77e11c01adeebb41109de388365",
+      "parakeet.py": "f2d9df6d4c08b1702beb52782e712f80b4e153d54be8bd7c58074405e2f40cd9",
+      "parakeet_worker.py": "52a09a3b2aefb0072dd16ed82d89a2fb6e6459ac62d05835a95738810b77bb64",
+      "whistle_client.py": "691568a345e64a18f15d0ecd4974959a9687e7b0dbff9f701052bce822bd6719",
+      "whistle_worker.py": "1ca2bf82ea571a83b04130fc48c2ed6711b3cb0e8472c2cf9ef1d09170292286",
+      "models.json": "6d25f7aaa6f72ba6de97b55f9e8a049c0ce6993a130f9d3e3ee508148b58abae",
+      "sherpa-pins.json": "6aea80f4368a38d73289fbf739cf1a7d5d1d50cea18034f5de18af3cb792d697"
+    }
+  }
+}
