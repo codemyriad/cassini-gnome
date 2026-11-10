@@ -1,7 +1,7 @@
 {
   "version": 1,
   "decision": "D16",
-  "note": "D16 golden (fork engine), same input and D11 segmentation as whistle-golden.json, segment boundaries identical; recognised per segment by the unmodified dist parakeet-ultra-0.6b-int8 with codemyriad sherpa-onnx v1.13.7-cassini.8 (C API). Word times = segment start (floor ms) + per-word ms from token timestamps: a token beginning with U+2581 or U+0020 starts a word; start = round(ts*1000) of the word's first piece; end = max round((ts+dur)*1000) over pieces holding a Unicode letter or number (punctuation stays attached but never extends the word); round half away from zero, in double from the engine's float32. Conformance: segments, segment inputSha256 and word count exact; words exact up to trailing , . ? ! (D16); startMs/endMs within 80 ms (D11.3) once hashes match. D26.1: silero-input-hpf-butter2-100hz-v1 filters VAD only; recognition PCM is unchanged.",
+  "note": "D16 golden (fork engine), same input and D11 segmentation as whistle-golden.json, segment boundaries identical; recognised per segment by the unmodified dist parakeet-ultra-0.6b-int8 with codemyriad sherpa-onnx v1.13.7-cassini.8 (C API). Word times = segment start (floor ms) + per-word ms from token timestamps: a token beginning with U+2581 or U+0020 starts a word; start = round(ts*1000) of the word's first piece; end = max round((ts+dur)*1000) over pieces holding a Unicode letter or number (punctuation stays attached but never extends the word); round half away from zero, in double from the engine's float32. Conformance: segments, segment inputSha256 and word count exact; words exact up to trailing , . ? ! (D16); startMs/endMs within 80 ms (D11.3) once hashes match. D26.1: silero-input-hpf-butter2-100hz-v1 filters VAD only; recognition PCM is unchanged. D86: regenerated through the GNOME ParakeetClient worker with the sherpa-onnx#4179 encoder revision; runtime, recognition PCM and segmentation are unchanged.",
   "input": "segmentation-input.wav",
   "inputSha256": "1d93aacf85e8ef17c804ff11d910c24a4f38631ae267a49da056fd89fcb227dd",
   "sampleRate": 16000,
@@ -17,7 +17,7 @@
       "startSample": 61440,
       "endSample": 93184,
       "reason": "silence",
-      "text": "Ask not",
+      "text": "Ask not.",
       "inputSha256": "7c9d72f3aca7ec324afba674d378d2e615aa3f26005207f32e55b4600cc760aa"
     },
     {
@@ -45,14 +45,14 @@
       "startSample": 318976,
       "endSample": 458240,
       "reason": "silence",
-      "text": "What your country can do for you, ask what you can do for your country. And so, my fellow Americans.",
+      "text": "What your country can do for you, ask what you can do for your country. And so, my fellow Americans,",
       "inputSha256": "6c404deaebdb28fe1719303645a7dbf4fb2f56dac5254ae79aa4ef5aec5e95e0"
     },
     {
       "startSample": 461312,
       "endSample": 493056,
       "reason": "silence",
-      "text": "Ask not",
+      "text": "Ask not.",
       "inputSha256": "f5adbff0944f72f592e35d889c64ec28161d91d9edf0601c856f8f337266e236"
     },
     {
@@ -65,39 +65,39 @@
   ],
   "words": [
     {
-      "startMs": 1024,
-      "endMs": 1344,
+      "startMs": 1104,
+      "endMs": 1424,
       "text": "And"
     },
     {
-      "startMs": 1344,
+      "startMs": 1424,
       "endMs": 1584,
       "text": "so,"
     },
     {
-      "startMs": 1744,
-      "endMs": 1984,
+      "startMs": 1824,
+      "endMs": 2064,
       "text": "my"
     },
     {
-      "startMs": 1984,
+      "startMs": 2064,
       "endMs": 2464,
       "text": "fellow"
     },
     {
       "startMs": 2464,
-      "endMs": 3264,
+      "endMs": 3344,
       "text": "Americans"
     },
     {
-      "startMs": 4080,
-      "endMs": 4720,
+      "startMs": 4160,
+      "endMs": 4800,
       "text": "Ask"
     },
     {
-      "startMs": 4720,
-      "endMs": 5040,
-      "text": "not"
+      "startMs": 4800,
+      "endMs": 5120,
+      "text": "not."
     },
     {
       "startMs": 6112,
@@ -116,22 +116,22 @@
     },
     {
       "startMs": 7312,
-      "endMs": 7552,
+      "endMs": 7632,
       "text": "can"
     },
     {
-      "startMs": 7552,
-      "endMs": 7792,
+      "startMs": 7632,
+      "endMs": 7872,
       "text": "do"
     },
     {
-      "startMs": 7792,
-      "endMs": 8112,
+      "startMs": 7872,
+      "endMs": 8192,
       "text": "for"
     },
     {
-      "startMs": 8112,
-      "endMs": 8432,
+      "startMs": 8192,
+      "endMs": 8512,
       "text": "you,"
     },
     {
@@ -141,36 +141,36 @@
     },
     {
       "startMs": 9472,
-      "endMs": 9712,
+      "endMs": 9792,
       "text": "what"
     },
     {
-      "startMs": 9712,
-      "endMs": 9952,
+      "startMs": 9792,
+      "endMs": 10032,
       "text": "you"
     },
     {
-      "startMs": 9952,
-      "endMs": 10192,
+      "startMs": 10032,
+      "endMs": 10272,
       "text": "can"
     },
     {
-      "startMs": 10192,
+      "startMs": 10272,
       "endMs": 10512,
       "text": "do"
     },
     {
       "startMs": 10512,
-      "endMs": 10672,
+      "endMs": 10752,
       "text": "for"
     },
     {
-      "startMs": 10672,
-      "endMs": 10912,
+      "startMs": 10752,
+      "endMs": 10992,
       "text": "your"
     },
     {
-      "startMs": 10912,
+      "startMs": 10992,
       "endMs": 11792,
       "text": "country."
     },
@@ -185,7 +185,7 @@
       "text": "so,"
     },
     {
-      "startMs": 15760,
+      "startMs": 15840,
       "endMs": 16000,
       "text": "my"
     },
@@ -196,7 +196,7 @@
     },
     {
       "startMs": 16480,
-      "endMs": 17280,
+      "endMs": 17360,
       "text": "Americans"
     },
     {
@@ -216,36 +216,36 @@
     },
     {
       "startMs": 20496,
-      "endMs": 20736,
+      "endMs": 20816,
       "text": "your"
     },
     {
-      "startMs": 20736,
-      "endMs": 21296,
+      "startMs": 20816,
+      "endMs": 21376,
       "text": "country"
     },
     {
-      "startMs": 21296,
-      "endMs": 21536,
+      "startMs": 21376,
+      "endMs": 21616,
       "text": "can"
     },
     {
-      "startMs": 21536,
-      "endMs": 21856,
+      "startMs": 21616,
+      "endMs": 21936,
       "text": "do"
     },
     {
-      "startMs": 21856,
-      "endMs": 22176,
+      "startMs": 21936,
+      "endMs": 22256,
       "text": "for"
     },
     {
-      "startMs": 22176,
-      "endMs": 22496,
+      "startMs": 22256,
+      "endMs": 22576,
       "text": "you,"
     },
     {
-      "startMs": 22896,
+      "startMs": 22976,
       "endMs": 23456,
       "text": "ask"
     },
@@ -256,32 +256,32 @@
     },
     {
       "startMs": 23776,
-      "endMs": 24016,
+      "endMs": 24096,
       "text": "you"
     },
     {
-      "startMs": 24016,
-      "endMs": 24256,
+      "startMs": 24096,
+      "endMs": 24336,
       "text": "can"
     },
     {
-      "startMs": 24256,
+      "startMs": 24336,
       "endMs": 24496,
       "text": "do"
     },
     {
       "startMs": 24496,
-      "endMs": 24656,
+      "endMs": 24736,
       "text": "for"
     },
     {
-      "startMs": 24656,
-      "endMs": 24896,
+      "startMs": 24736,
+      "endMs": 24976,
       "text": "your"
     },
     {
-      "startMs": 24896,
-      "endMs": 25696,
+      "startMs": 24976,
+      "endMs": 25776,
       "text": "country."
     },
     {
@@ -295,19 +295,19 @@
       "text": "so,"
     },
     {
-      "startMs": 26736,
-      "endMs": 26976,
+      "startMs": 26816,
+      "endMs": 27056,
       "text": "my"
     },
     {
-      "startMs": 26976,
-      "endMs": 27456,
+      "startMs": 27056,
+      "endMs": 27536,
       "text": "fellow"
     },
     {
-      "startMs": 27456,
-      "endMs": 28336,
-      "text": "Americans."
+      "startMs": 27536,
+      "endMs": 28416,
+      "text": "Americans,"
     },
     {
       "startMs": 29152,
@@ -317,7 +317,7 @@
     {
       "startMs": 29792,
       "endMs": 30112,
-      "text": "not"
+      "text": "not."
     },
     {
       "startMs": 31104,
@@ -326,21 +326,21 @@
     },
     {
       "startMs": 31504,
-      "endMs": 31744,
+      "endMs": 31824,
       "text": "your"
     },
     {
-      "startMs": 31744,
+      "startMs": 31824,
       "endMs": 32304,
       "text": "country"
     },
     {
       "startMs": 32304,
-      "endMs": 32544,
+      "endMs": 32624,
       "text": "can"
     },
     {
-      "startMs": 32544,
+      "startMs": 32624,
       "endMs": 32864,
       "text": "do"
     },
@@ -356,41 +356,41 @@
     },
     {
       "startMs": 33904,
-      "endMs": 34464,
+      "endMs": 34544,
       "text": "ask"
     },
     {
-      "startMs": 34464,
-      "endMs": 34704,
+      "startMs": 34544,
+      "endMs": 34784,
       "text": "what"
     },
     {
-      "startMs": 34704,
+      "startMs": 34784,
       "endMs": 35024,
       "text": "you"
     },
     {
       "startMs": 35024,
-      "endMs": 35184,
+      "endMs": 35264,
       "text": "can"
     },
     {
-      "startMs": 35184,
+      "startMs": 35264,
       "endMs": 35504,
       "text": "do"
     },
     {
       "startMs": 35504,
-      "endMs": 35664,
+      "endMs": 35744,
       "text": "for"
     },
     {
-      "startMs": 35664,
-      "endMs": 35904,
+      "startMs": 35744,
+      "endMs": 35984,
       "text": "your"
     },
     {
-      "startMs": 35904,
+      "startMs": 35984,
       "endMs": 36784,
       "text": "country."
     }
@@ -409,9 +409,9 @@
   },
   "model": {
     "distId": "parakeet-ultra-0.6b-int8",
-    "sourceSha256": "18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9",
+    "sourceSha256": "50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
     "files": {
-      "encoder.int8.onnx": "299617fefd4664d1c115b691dcb6413cabcdbcc694cdf3cb4464b72c5fc3ae69",
+      "encoder.int8.onnx": "f9a8af14deb2e5237eebb9dfb25126180614feaf835a03f307e4077eab247015",
       "decoder.int8.onnx": "1fab98fe6c12aded87d2da66272cc9e148d0a0044ce3850a12fe56302ec4a922",
       "joiner.int8.onnx": "8a71aaccfdba3d451775507a889afd2257d2e754463fd81095a8c8f290f924c2",
       "tokens.txt": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"

@@ -147,16 +147,27 @@ def test_conformance_never_uses_the_whistle_as_ask_exception_or_draft_parakeet_e
 def test_model_pins_match_only_the_approved_revision_and_raw_files():
     from types import SimpleNamespace
 
-    from cassini_talk.parakeet_model import FILES, MODEL_ID, REVISION, check_manifest
+    from cassini_talk.parakeet_model import FILES, MODEL_ID, PIN, REVISION, check_manifest
 
     files = [
         SimpleNamespace(
-            path=name, artifact=SimpleNamespace(uncompressed_size=size, uncompressed_sha256=sha, size=download)
+            path=name,
+            artifact=SimpleNamespace(
+                uncompressed_size=size,
+                uncompressed_sha256=sha,
+                size=download,
+                sha256=PIN["files"][name].get("artifactSHA256"),
+            ),
         )
         for name, (size, sha, download) in FILES.items()
     ]
     model = SimpleNamespace(id=MODEL_ID, source_sha256=REVISION, files=files)
     assert check_manifest(model) is model
+    artifact = files[0].artifact.sha256
+    files[0].artifact.sha256 = "0" * 64
+    with pytest.raises(ValueError, match="Compressed Parakeet"):
+        check_manifest(model)
+    files[0].artifact.sha256 = artifact
     files[0].artifact.uncompressed_sha256 = "0" * 64
     with pytest.raises(ValueError, match="D16"):
         check_manifest(model)

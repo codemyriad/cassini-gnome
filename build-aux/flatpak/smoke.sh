@@ -34,7 +34,7 @@ if [ "$(uname -m)" = x86_64 ]; then goldens=$GOLDENS; fi
 if [ "$goldens" = yes ]; then
   model_cache=${CASSINI_PARAKEET_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/cassini/package-test-models}
   python3 tests/parakeet/prepare_model.py --cache "$model_cache"
-  model=$(realpath "$model_cache/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9")
+  model=$(realpath "$model_cache/parakeet-ultra-0.6b-int8/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366")
 fi
 set -- -I "$PWD/build-aux/smoke-installed.py" /app/share/cassini-talk
 if [ "$goldens" = yes ]; then

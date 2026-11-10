@@ -261,7 +261,7 @@ def fake_tools(directory):
             [
                 'printf "python3 %s\\n" "$*" >> "$LOG"',
                 'if [ "$1" = tests/parakeet/prepare_model.py ]; then',
-                '  mkdir -p "$3/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"',
+                '  mkdir -p "$3/parakeet-ultra-0.6b-int8/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366"',
                 "fi",
             ]
         ),
@@ -299,7 +299,7 @@ def test_smoke_without_goldens_runs_every_check_but_the_golden_decodes(tmp_path)
     full, full_calls = smoke(tmp_path / "full")
     light, light_calls = smoke(tmp_path / "light", "--without-goldens")
     assert full.returncode == light.returncode == 0, (full.stderr, light.stderr)
-    model = "$TMP/models/parakeet-ultra-0.6b-int8/18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9"
+    model = "$TMP/models/parakeet-ultra-0.6b-int8/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366"
     shared = [
         "flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo",
         "flatpak install --user -y --noninteractive --reinstall --bundle app.flatpak",

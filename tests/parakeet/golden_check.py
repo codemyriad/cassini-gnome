@@ -5,8 +5,8 @@ import hashlib
 import json
 
 GOLDENS = {
-    "parakeet-golden.json": "a6fda769d0e729cca54dc05d50c9803290e1f66a4643afdfa04a66d12cf58a3d",
-    "parakeet-pipeline-golden.json": "8ded0bcea24bf93e93c713510afa4f9bd2ccfd9865e0c68061314b72749bcf4c",
+    "parakeet-golden.json": "996ac8cdabc4cf99fba860e0070a0c6cb1a9aa3ac7433fdd59ab3bf48d48732b",
+    "parakeet-pipeline-golden.json": "5e45c264dfdc60ea4cbfe14ec1ed1239a7435dbbc0fd76126ce91c9a308699c7",
 }
 
 

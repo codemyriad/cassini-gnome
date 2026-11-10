@@ -2,12 +2,13 @@
   "format": "cassini.desktop-models.v1",
   "models": {
     "parakeet-ultra-0.6b-int8": {
-      "source_sha256": "18cb623004dd6c15999b93cb70b14d8a1f6e8f3a2a97ff733f104bfc3494f6a9",
+      "source_sha256": "50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
       "files": {
         "encoder.int8.onnx": {
-          "size": 652282922,
-          "sha256": "299617fefd4664d1c115b691dcb6413cabcdbcc694cdf3cb4464b72c5fc3ae69",
-          "downloadBytes": 452306705
+          "size": 653313528,
+          "sha256": "f9a8af14deb2e5237eebb9dfb25126180614feaf835a03f307e4077eab247015",
+          "downloadBytes": 452843967,
+          "artifactSHA256": "44060ee9be2ac23ace05d6ea1271dd4cdbb353ac4d822f36c51ce733142d31a0"
         },
         "decoder.int8.onnx": {
           "size": 11845274,

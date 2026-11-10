@@ -117,7 +117,7 @@ try:
             dialog.present(window)
             dialog.set_visible_page_name("transcription")
             assert not dialog.parakeet_radio.get_sensitive() and dialog.whistle_radio.get_active()
-            assert dialog.parakeet_status.get_label() == "443 MB download"
+            assert dialog.parakeet_status.get_label() == "444 MB download"
             assert dialog.parakeet_action.get_label() == "Download" and not server.requests
             until(lambda: dialog.parakeet_suggestion.get_visible())
             app.speech_models.capable = lambda: False

@@ -29,6 +29,10 @@ def check_manifest(model):
     }
     if model.id != MODEL_ID or model.source_sha256 != REVISION or actual != FILES or len(model.files) != len(FILES):
         raise ValueError("Distribution manifest differs from the D16 Parakeet pin")
+    for file in model.files:
+        artifact = PIN["files"].get(file.path, {}).get("artifactSHA256")
+        if artifact is not None and file.artifact.sha256 != artifact:
+            raise ValueError("Compressed Parakeet artifact differs from the D16 pin")
     return model
 
 
