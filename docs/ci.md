@@ -202,3 +202,13 @@ release provenance/expiration. Local restore proofs run the real native GTK/audi
 light/dark boards and installed offline goldens from the archived products. Hosted
 CI checks artifact transfer and every matrix/profile again, then main verifies the
 full unfiltered graph. Standalone dispatch remains independently available.
+
+
+APT network acquisition in CI uses 15-second HTTP/HTTPS timeouts and three
+retries, including both cached harness stages and their current-archive refresh.
+Index updates use `APT::Update::Error-Mode=any`: an unavailable repository fails
+the update rather than silently keeping incomplete or stale indexes. Changing a
+harness Dockerfile also changes its cache key, so existing cached images cannot
+bypass these defaults. The bounded install helper retains its separate whole
+network-phase budgets and two attempts (one internal acquisition retry); package
+configuration runs once, without network or retries. Test/job timeouts are unchanged.

@@ -5,6 +5,8 @@
 ARG BASE=ubuntu:26.04
 ARG HARNESS=harness
 FROM ${BASE} AS harness
+# Bound mirror acquisition and reject incomplete indexes instead of using stale ones.
+RUN printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "15";' 'Acquire::https::Timeout "15";' 'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/80cassini-network
 ENV DEBIAN_FRONTEND=noninteractive
 COPY depends /tmp/depends
 # Verify the complete package payload, including man pages that minimal OCI
