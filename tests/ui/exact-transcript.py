@@ -193,7 +193,7 @@ def flicks(window, page, playing, touch=False):
     if playing:
         page.player.pause()
     assert coast > 0, "Native kinetic coast did not run"
-    assert max(frames.cpu) < 32, ("Scroll frame CPU budget", max(frames.cpu)))
+    assert max(frames.cpu) < 32, ("Scroll frame CPU budget", max(frames.cpu))
     if not BASELINE:
         assert reverse == 0, ("Visible anchor reversed", reverse)
     if not BASELINE:
