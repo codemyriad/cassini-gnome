@@ -439,7 +439,10 @@ with tempfile.TemporaryDirectory() as temporary:
         ok, bounds = page.bound[target.index][2].compute_bounds(page.scroller)
         assert ok and bounds.get_y() < page.scroller.get_height() and bounds.get_y() + bounds.get_height() > 0
         report["wordActivationAndFollow"] = True
-        assert report["openFirstPaintCpuMs"] < 100, ("First transcript paint CPU target missed", report["openFirstPaintCpuMs"])
+        assert report["openFirstPaintCpuMs"] < 100, (
+            "First transcript paint CPU target missed",
+            report["openFirstPaintCpuMs"],
+        )
         assert report["openWorstFrameCpuMs"] < 32, "Load paint-frame CPU target missed"
         assert report["resizeWorstFrameCpuMs"] < 32, "Uncached resize paint-frame CPU target missed"
         assert report["resizeAboveCapWorstFrameCpuMs"] < 32, "Above-cap resize CPU target missed"
