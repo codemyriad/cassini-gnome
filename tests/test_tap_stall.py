@@ -24,7 +24,7 @@ pytest.importorskip("gi")
 import gi  # noqa: E402
 
 gi.require_version("Gst", "1.0")
-from gi.repository import Gst  # noqa: E402
+from gi.repository import GLib, Gst  # noqa: E402
 
 from cassini_talk import native_recorder, native_tap  # noqa: E402
 from cassini_talk.recorder import TAP_QUEUE  # noqa: E402
@@ -971,29 +971,55 @@ def test_a_buffer_after_the_session_finished_is_never_written(tmp_path):
     assert [t["kind"] for t in session.manifest["tracks"]] == ["microphone"]
 
 
-def test_the_native_recorder_keeps_the_stop_moment_through_a_held_pcm_lock(tmp_path):
+def dispatch_until(predicate, failure):
+    context = GLib.MainContext.default()
+    expired = []
+
+    def expire(*_args):
+        expired.append(True)
+        return GLib.SOURCE_REMOVE
+
+    guard = GLib.timeout_source_new(BOUND * 1000)
+    guard.set_callback(expire)
+    guard.attach(context)
+    try:
+        while not predicate() and not expired:
+            context.iteration(True)
+        assert predicate(), failure
+    finally:
+        guard.destroy()
+
+
+def test_the_native_recorder_keeps_the_stop_moment_through_a_held_pcm_lock(tmp_path, monkeypatch):
     """The native-only recorder: a stalled checkpoint holds its PCM lock when Stop
     is pressed, and the stall lasts 1 s of audio past Stop. Its taps capture into
     their queues until the drain's EOS reaches them, after the lock is free. The
     audio queued before Stop is kept up to Stop's moment, the audio after it stays
     out, and the end event is at that moment, not at the drain's end (D4)."""
-    from test_recorder import spin_until
-
     recorder = native_recorder.NativeRecorder()
     finished, errors = [], []
     recorder.connect("finished", lambda _r, path: finished.append(path))
     recorder.connect("error", lambda _r, message: errors.append(message))
     holder = None
-    release = threading.Event()
+    release, hold_expired, pcm_ready = (threading.Event() for _ in range(3))
+    sample = recorder._sample
+
+    def observed_sample(sink, kind):
+        result = sample(sink, kind)
+        if (
+            not pcm_ready.is_set()
+            and not recorder.starting
+            and len(recorder._track_ids) == 2
+            and all(track["frames"] >= 9600 for track in recorder.session.manifest["tracks"])
+        ):
+            pcm_ready.set()
+            GLib.idle_add(lambda: GLib.SOURCE_REMOVE)
+        return result
+
+    monkeypatch.setattr(recorder, "_sample", observed_sample)
     try:
         recorder.start(tmp_path, test=True, observe_output=False)
-        spin_until(
-            lambda: (
-                not recorder.starting
-                and len(recorder._track_ids) == 2
-                and all(t["frames"] >= 9600 for t in recorder.session.manifest["tracks"])
-            )
-        )
+        dispatch_until(pcm_ready.is_set, "the two native tracks did not deliver initial PCM")
         pipeline = recorder.pipeline
         # Audio time reaching each tap's queue: the newest input's end, as it enters.
         reached, arrivals = {}, threading.Condition()
@@ -1013,18 +1039,24 @@ def test_the_native_recorder_keeps_the_stop_moment_through_a_held_pcm_lock(tmp_p
         def hold():
             with recorder._lock:
                 held.set()
-                assert release.wait(BOUND)  # Bound only: the test releases it.
+                if not release.wait(BOUND):
+                    hold_expired.set()
 
         holder = threading.Thread(target=hold, name="test-stall")
         holder.start()
         assert held.wait(BOUND)
         pressed = recorder._elapsed_ms(pipeline)
-        recorder.stop()
+        with monkeypatch.context() as patch:
+            patch.setattr(recorder, "_elapsed_ms", lambda _pipeline: pressed)
+            recorder.stop()
+        assert not hold_expired.is_set(), "Stop waited for the held PCM lock"
+        assert recorder._stop_at_ms == pressed, "Stop did not latch the press position"
         with arrivals:  # The stall goes on for 1 s of audio past Stop.
             assert arrivals.wait_for(lambda: len(reached) == 2 and min(reached.values()) >= pressed + 1000, BOUND)
         release.set()
         holder.join(BOUND)
-        spin_until(lambda: bool(finished))
+        assert not holder.is_alive()
+        dispatch_until(lambda: bool(finished), "native Stop did not emit finished")
         manifest = recorder.session.manifest
         assert not errors and manifest["state"] == "completed", (errors, manifest.get("problem"))
         ends = {t["kind"]: t["endOffsetMs"] for t in manifest["tracks"]}
@@ -1041,7 +1073,11 @@ def test_the_native_recorder_keeps_the_stop_moment_through_a_held_pcm_lock(tmp_p
         release.set()
         if holder is not None:
             holder.join(BOUND)
-        if recorder.pipeline is not None:
-            recorder._begin_finish()
-            spin_until(lambda: recorder.pipeline is None)
-        recorder._executor.shutdown()
+        try:
+            if recorder.pipeline is not None:
+                recorder._begin_finish()
+                dispatch_until(lambda: recorder.pipeline is None, "native recorder cleanup did not finish")
+        finally:
+            complete = recorder.pipeline is None and not recorder._finishing
+            for executor in (recorder._executor, recorder._bus_worker):
+                executor.shutdown(wait=complete, cancel_futures=not complete)
