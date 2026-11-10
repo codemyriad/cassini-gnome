@@ -21,6 +21,7 @@ from .meeting_text import (
     speaking_shares,
 )
 from .strings import plural, text
+from .transcript_scroll import TranscriptScroll
 
 
 def box(spacing=0, **kwargs):
@@ -174,15 +175,7 @@ class MeetingPage(Adw.NavigationPage):
         self.scroller = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.scroller.set_child(self.list)
         center.append(self.scroller)
-        scroll = Gtk.EventControllerScroll(
-            flags=Gtk.EventControllerScrollFlags.BOTH_AXES, propagation_phase=Gtk.PropagationPhase.CAPTURE
-        )
-        scroll.connect("scroll", self._hand_scroll)
-        self.scroller.add_controller(scroll)
-        drag = Gtk.GestureDrag(propagation_phase=Gtk.PropagationPhase.CAPTURE)
-        for signal in ("drag-begin", "drag-update", "drag-end"):
-            drag.connect(signal, self._hand_scroll)
-        self.scroller.get_vscrollbar().add_controller(drag)
+        self._transcript_scroll = TranscriptScroll(self.scroller, self._hand_scroll)
         content.set_content(center)
         split.set_content(Adw.NavigationPage.new(content, meeting.title))
         self._companion = self._companion_card()
@@ -365,6 +358,7 @@ class MeetingPage(Adw.NavigationPage):
 
     def _seek(self, _scale, _scroll, value):
         if not self._updating:
+            self._transcript_scroll.stop()
             self.player.seek(int(value))
         return True
 
@@ -553,6 +547,7 @@ class MeetingPage(Adw.NavigationPage):
         return False
 
     def play_from(self, position):
+        self._transcript_scroll.stop()
         if not self._can_listen:
             return False
         self.player.seek(position)
@@ -591,6 +586,7 @@ class MeetingPage(Adw.NavigationPage):
             self._highlight_target = None
 
     def _listening_requested(self, *_):
+        self._transcript_scroll.stop()
         dialog = self._dialog_focus
         if dialog is not None and dialog.closed and not getattr(dialog, "_recompute", None):
             # A new explicit request supersedes the closed dialog's focus return.
@@ -1245,6 +1241,7 @@ class MeetingPage(Adw.NavigationPage):
         self._listening_changed()
 
     def close(self):
+        self._transcript_scroll.stop()
         self._closed = True
         if self._header_source:
             GLib.source_remove(self._header_source)

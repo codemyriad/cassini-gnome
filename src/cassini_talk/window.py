@@ -32,6 +32,7 @@ from .player import Player
 from .portable import State
 from .strings import text
 from .transcript import format_time
+from .transcript_scroll import TranscriptScroll
 
 RESOURCE = "/io/codemyriad/CassiniTalk"
 SKIP_MS = 15_000
@@ -308,14 +309,7 @@ class CassiniWindow(Adw.ApplicationWindow):
 
         # Scrolling by hand stops following along, as in any reader that
         # scrolls itself: otherwise the next word would yank the view back.
-        scroll = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
-        scroll.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        scroll.connect("scroll", self._on_user_scroll)
-        self.transcript_scroller.add_controller(scroll)
-        drag = Gtk.GestureDrag()
-        drag.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        drag.connect("drag-update", self._on_user_drag)
-        self.transcript_scroller.get_vscrollbar().add_controller(drag)
+        self._transcript_scroll = TranscriptScroll(self.transcript_scroller, self._on_user_scroll)
 
     def _on_item_setup(self, _factory, item):
         item.set_activatable(False)
@@ -365,6 +359,7 @@ class CassiniWindow(Adw.ApplicationWindow):
     def _on_close_request(self, *_args):
         if self.get_application().confirm_capture_close(self):
             return True
+        self._transcript_scroll.stop()
         self._generation += 1
         self._transcript_request = None
         self.get_application().window_closing(self)
@@ -794,6 +789,7 @@ class CassiniWindow(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _animate_scroll(self, adjustment, goal):
+        self._transcript_scroll.stop()
         if self._scroll_animation is not None:
             self._scroll_animation.skip()
         target = Adw.PropertyAnimationTarget.new(adjustment, "value")
@@ -804,6 +800,9 @@ class CassiniWindow(Adw.ApplicationWindow):
         animation.play()
 
     def _on_user_scroll(self, *_args):
+        if self._scroll_animation is not None:
+            self._scroll_animation.pause()
+            self._scroll_animation = None
         self._stop_following()
         return False
 
