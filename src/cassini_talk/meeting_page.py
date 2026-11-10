@@ -483,7 +483,8 @@ class MeetingPage(Adw.NavigationPage):
             words.connect("map", lambda words: self._render_words(turn, words))
         if register:
             self.bound[turn.index] = (turn, words, row)
-        self._refresh_header(turn, row)
+        if register:
+            self._refresh_header(turn, row)
         if turn.index in self._highlighted_rows:
             words.add_css_class("listen-current")
         return row
