@@ -20,19 +20,13 @@ def builder(tmp_path):
     docker = tmp_path / "docker"
     docker.write_text(
         """#!/usr/bin/env python3
-import json, os, signal, sys
+import json, os, sys
 from pathlib import Path
 state = Path(os.environ['BUILD_STATE'])
 (state / 'calls.json').write_text(json.dumps(sys.argv[1:]))
 (state / 'pid').write_text(str(os.getpid()))
 print('APT mirror: http://security.example.invalid/ubuntu', file=sys.stderr, flush=True)
 mode = os.environ.get('BUILD_MODE', 'success')
-if mode == 'hang':
-    def stopped(*_):
-        print('Build client received TERM', file=sys.stderr, flush=True)
-        raise SystemExit(23)
-    signal.signal(signal.SIGTERM, stopped)
-    signal.pause()
 if mode == 'failure':
     raise SystemExit(100)
 (state / 'input').write_text(sys.stdin.read())
@@ -75,17 +69,27 @@ def test_failed_build_preserves_exit_status_and_names_the_build_and_mirror(build
     assert "security.example.invalid" in result.stderr and "tests were not run" in result.stderr
 
 
-def test_real_wall_clock_deadline_stops_a_client_waiting_on_an_event(builder):
-    result = build(dict(builder, BUILD_MODE="hang", CASSINI_HARNESS_BUILD_TIMEOUT="1"))
-    assert result.returncode == 124 and result.stdout == ""
+@pytest.mark.parametrize("status", [124, 137])
+def test_timeout_result_is_classified_without_a_wall_clock_wait(builder, status):
+    state = Path(builder["BUILD_STATE"])
+    timeout = state / "timeout"
+    timeout.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "state = Path(os.environ['BUILD_STATE'])\n"
+        "(state / 'timeout-call.json').write_text(json.dumps(sys.argv[1:]))\n"
+        f"raise SystemExit({status})\n"
+    )
+    timeout.chmod(0o755)
+    result = build(dict(builder, CASSINI_HARNESS_BUILD_TIMEOUT="1"))
+    assert result.returncode == status and result.stdout == ""
     assert "native audio readiness] exceeded its 1s wall-clock budget" in result.stderr
     assert "tests were not run" in result.stderr
-    # The deadline includes interpreter startup: on a stalled host it may
-    # expire before the fake client installs its handler or writes its PID.
-    pid = Path(builder["BUILD_STATE"]) / "pid"
-    if pid.exists():
-        with pytest.raises(ProcessLookupError):
-            os.kill(int(pid.read_text()), 0)
+    arguments = json.loads((state / "timeout-call.json").read_text())
+    assert arguments[:4] == ["--kill-after=10", "1", "docker", "build"]
+    assert "--progress=plain" in arguments and "--iidfile" in arguments
+    assert not (state / "calls.json").exists()
 
 
 @pytest.mark.parametrize("limit", ["0", "301", "-1", "1s", ""])
