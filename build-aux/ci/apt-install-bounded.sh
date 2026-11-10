@@ -3,7 +3,7 @@
 # Network preparation has its own budget; never retry package configuration or tests.
 set -euo pipefail
 [ "$#" -gt 0 ] || { echo "Usage: apt-install-bounded.sh PACKAGE..." >&2; exit 2; }
-options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o APT::Update::Error-Mode=any)
 for attempt in 1 2; do
   if timeout --kill-after=10 60 apt-get "${options[@]}" update &&
      timeout --kill-after=10 180 apt-get "${options[@]}" --download-only install -y "$@"; then

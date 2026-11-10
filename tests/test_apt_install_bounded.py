@@ -68,6 +68,11 @@ def test_network_retry_is_bounded_and_never_repeats_package_configuration(
     )
     calls = json.loads(log.read_text())
     assert (result.returncode == 0) is success
+    for call in calls:
+        if "--no-download" not in call:
+            assert "Acquire::Retries=1" in call
+            assert "Acquire::http::Timeout=15" in call and "Acquire::https::Timeout=15" in call
+            assert "APT::Update::Error-Mode=any" in call
     assert sum("--download-only" in row for row in calls) == downloads
     assert sum("--no-download" in row for row in calls) == installs
     assert third_party.read_text() == "deb https://example.invalid/other stable main\n"
