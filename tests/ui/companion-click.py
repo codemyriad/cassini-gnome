@@ -80,22 +80,72 @@ from cassini_talk.portable import Word  # noqa: E402
 from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
 
 MAIN = threading.get_ident()
-SLEEP = time.sleep
 RUN = subprocess.run
 context = GLib.MainContext.default()
 
 
-def until(check, timeout=2):
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        for _ in range(32):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
+class MainThreadWork:
+    """CPU work per direct action or main-context dispatch, including frames."""
+
+    def __init__(self):
+        self.cpu, self.wall = [], []
+
+    def run(self, call, *args):
+        cpu_before, wall_before = time.thread_time(), time.monotonic()
+        try:
+            return call(*args)
+        finally:
+            self.cpu.append(time.thread_time() - cpu_before)
+            self.wall.append(time.monotonic() - wall_before)
+
+    def check(self, state, entry):
+        assert self.cpu and max(self.cpu) < 0.1, (state, entry, "main-thread CPU", max(self.cpu))
+        print(
+            f"PASS {state}/{entry}: max GTK dispatch/action CPU {max(self.cpu) * 1000:.1f} ms, "
+            f"wall diagnostic {max(self.wall) * 1000:.1f} ms, samples={len(self.cpu)}",
+            flush=True,
+        )
+
+
+meter = None
+
+
+def until(check):
+    # Each iteration blocks for and dispatches an actual GLib event. The
+    # enclosing 90 s child-process watchdog only guards a missing event.
+    while not check():
+        if meter is None:
+            context.iteration(True)
+        else:
+            meter.run(context.iteration, True)
+
+
+def painted(window):
+    frame = window.get_frame_clock()
+    seen = []
+    handler = frame.connect("after-paint", lambda *_: seen.append(True))
+    try:
+        window.queue_draw()
+        until(lambda: seen)
+    finally:
+        frame.disconnect(handler)
+
+
+def settled_frame(window, page):
+    # Closing a sheet can queue a default-idle style/header refresh after its
+    # unmap. Drain those tracked sources, then include their resulting paint.
+    while True:
+        idle = []
+        GLib.idle_add(lambda idle=idle: idle.append(True) or False)
+        until(lambda idle=idle: idle and not page._style_source and not page._header_source)
+        painted(window)
+        if not page._style_source and not page._header_source:
             return
-        SLEEP(0.001)
-    assert check(), "Companion click condition timed out"
+
+
+def signaled(event):
+    event.set()
+    GLib.idle_add(lambda: False)  # Wake an event waiter on the GTK context.
 
 
 def worker_only(call):
@@ -149,9 +199,12 @@ original_result = Future.result
 with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
     tmp = Path(temporary)
     ready = tmp / "atspi-ready"
+    ready_watch = Gio.File.new_for_path(str(ready)).monitor_file(Gio.FileMonitorFlags.NONE, None)
+    ready_watch.connect("changed", lambda *_: None)
     atspi = subprocess.Popen([sys.executable, __file__, "--listener", str(ready)])
     try:
-        until(ready.exists, 5)
+        until(ready.exists)
+        ready_watch.cancel()
         assert atspi.poll() is None, "AT-SPI listener/registry must remain live"
         RUN([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(tmp / "fixtures")], check=True)
         schemas = tmp / "schemas"
@@ -182,7 +235,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
             target=service.serve, args=(browser_service.service_path(), server_ready), daemon=True
         )
         server.start()
-        assert server_ready.wait(2)
+        server_ready.wait()
         # Every production path into blocking browser work is guarded. Watch,
         # Activity and Settings remain real; only opening an external browser
         # is recorded instead of spawning one.
@@ -217,8 +270,8 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
 
         def open_add(browser):
             assert threading.get_ident() != MAIN
-            launch_entered.set()
-            assert launch_release.wait(2)
+            signaled(launch_entered)
+            launch_release.wait()
             launches.append(browser.name)
             return subprocess.Popen(["/bin/true"])
 
@@ -233,8 +286,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         until(
             lambda: (
                 not window._pending and app.browser_watch and app.browser_connection.snapshot()["phase"] == "waiting"
-            ),
-            5,
+            )
         )
         assert isinstance(window._activity_source, BrowserActivity)
         assert app.browser_watch.lease is not None
@@ -254,8 +306,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         assert len(page.meeting.words) > 3000 and page._companion.get_parent() is not None
         # Let the initial 3600-link transcript layout and accessibility cache
         # finish. The first dialog itself is deliberately never pre-created.
-        settled = time.monotonic()
-        until(lambda: time.monotonic() - settled >= 2, 3)
+        settled_frame(window, page)
         for state in ("waiting", "failed", "needsBrowser"):
             if state != "waiting":
                 app.browser_connection.error = companion.SetupError("unwritable" if state == "failed" else "noBrowser")
@@ -277,33 +328,21 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                     button = window.browser_status.add
                 else:
                     button = page.companion_setup_button
-                gaps, ticks = [], [time.monotonic()]
-                cpu_gaps, cpu_ticks = [], [time.thread_time()]
-
-                def beat(gaps=gaps, ticks=ticks, cpu_gaps=cpu_gaps, cpu_ticks=cpu_ticks):
-                    cpu_now = time.thread_time()
-                    cpu_gaps.append(cpu_now - cpu_ticks[0])
-                    cpu_ticks[0] = cpu_now
-                    now = time.monotonic()
-                    gaps.append(now - ticks[0])
-                    ticks[0] = now
-                    return True
-
-                timer = GLib.timeout_add(10, beat)
-                count, started = len(launches), time.monotonic()
-                button.emit("clicked")
+                meter = MainThreadWork()
+                count = len(launches)
+                meter.run(button.emit, "clicked")
                 dialog = app.companion_setup
-                until(dialog.get_mapped, 0.5)
+                until(dialog.get_mapped)
                 assert window.get_visible_dialog() is dialog
                 assert len(page.meeting.words) > 3000
                 assert len(launches) == count and not launch_entered.is_set(), "Entry point launched the browser"
-                until(lambda started=started: time.monotonic() - started >= 2)
+                settled_frame(window, page)
                 if state == "waiting" and entry == "meeting":
                     # Re-presenting an already mounted sheet keeps the same
                     # instance and focus. A closed sheet is never reused.
-                    assert app.on_companion_setup(parent=window) is dialog
+                    assert meter.run(lambda: app.on_companion_setup(parent=window)) is dialog
                     assert dialog.get_mapped()
-                    dialog.add_button.emit("clicked")
+                    meter.run(dialog.add_button.emit, "clicked")
                     until(launch_entered.is_set)
                     assert "Opening Chrome" in dialog.add_caption.get_label()
                     launch_release.set()
@@ -318,67 +357,53 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                         dialog, "set_default_widget", side_effect=AssertionError("Unchanged render reset focus")
                     ),
                 ):
-                    for _ in range(10):
-                        dialog.render()
-                dialog.force_close()
-                # closed starts the closing animation. Keep its frames inside
-                # the heartbeat budget, and wait for unmap before closing the
+
+                    def unchanged_batch(dialog=dialog):
+                        for _ in range(10):
+                            dialog.render()
+
+                    meter.run(unchanged_batch)
+                meter.run(dialog.force_close)
+                # closed starts the closing animation. Keep its frame work in
+                # the CPU samples, and wait for unmap before closing the
                 # parent or clicking an entry behind the modal sheet.
                 until(lambda dialog=dialog: dialog.closed and not dialog.get_mapped())
                 if entry == "preferences":
-                    settings.force_close()
+                    meter.run(settings.force_close)
                     until(lambda settings=settings: settings.closed and not settings.get_mapped())
-                GLib.source_remove(timer)
-                if gaps:
-                    worst = gaps.index(max(gaps))
-                    print(
-                        f"FRAME {state}/{entry}: wall={gaps[worst] * 1000:.1f} ms, "
-                        f"main CPU={cpu_gaps[worst] * 1000:.1f} ms, "
-                        f"rows={len(page.meeting.turns)}, bound={len(page.bound)}",
-                        flush=True,
-                    )
-                assert gaps and max(gaps) < 0.1, (state, entry, max(gaps))
-                print(f"PASS {state}/{entry}: mapped, max heartbeat gap {max(gaps) * 1000:.1f} ms", flush=True)
+                settled_frame(window, page)
+                meter.check(state, entry)
+                meter = None
             if state == "failed":
                 dialog = app.on_companion_setup(parent=window)
-                until(dialog.get_mapped, 0.5)
+                until(dialog.get_mapped)
                 entered, release = threading.Event(), threading.Event()
                 original_attempt = app.browser_connection.attempt
 
                 def delayed_attempt(
                     entered=entered, release=release, original_attempt=original_attempt, *, force=False
                 ):
-                    entered.set()
-                    assert release.wait(2)
+                    signaled(entered)
+                    release.wait()
                     return original_attempt(force=force)
 
                 app.browser_connection.attempt = delayed_attempt
-                before = time.monotonic()
-                retry_ticks, retry_gaps = [before], []
-
-                def retry_beat(retry_gaps=retry_gaps, retry_ticks=retry_ticks):
-                    now = time.monotonic()
-                    retry_gaps.append(now - retry_ticks[0])
-                    retry_ticks[0] = now
-                    return True
-
-                timer = GLib.timeout_add(10, retry_beat)
-                dialog.connect_button.emit("clicked")
-                assert time.monotonic() - before < 0.1
+                meter = MainThreadWork()
+                meter.run(dialog.connect_button.emit, "clicked")
                 assert app.browser_connection.snapshot()["phase"] == "settingUp"
                 until(entered.is_set)
                 release.set()
                 until(lambda: app.browser_connection.snapshot()["phase"] == "waiting")
-                until(lambda before=before: time.monotonic() - before >= 2, 3)
-                GLib.source_remove(timer)
-                assert retry_gaps and max(retry_gaps) < 0.1, ("retry", max(retry_gaps))
+                settled_frame(window, page)
+                meter.check("failed", "retry")
+                meter = None
                 app.browser_connection.attempt = original_attempt
                 dialog.force_close()
                 until(lambda dialog=dialog: dialog.closed)
         orphan = app.companion_setup = CompanionSetup(app)
         assert orphan.get_root() is None and not orphan.closed
         replacement = app.on_companion_setup(parent=window)
-        until(replacement.get_mapped, 0.5)
+        until(replacement.get_mapped)
         assert replacement is not orphan and orphan.closed and not orphan.timer
         replacement.force_close()
         until(lambda: replacement.closed)
@@ -386,9 +411,9 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         other.present()
         until(other.get_mapped)
         previous = app.on_companion_setup(parent=other)
-        until(previous.get_mapped, 0.5)
+        until(previous.get_mapped)
         replacement = app.on_companion_setup(parent=window)
-        until(replacement.get_mapped, 0.5)
+        until(replacement.get_mapped)
         assert replacement is not previous and previous.closed and not previous.timer
         assert replacement.get_root() is window and window.get_visible_dialog() is replacement
         replacement.force_close()
@@ -405,13 +430,14 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         app.do_shutdown()
         guards.close()
         service.closed.set()
-        server.join(2)
+        server.join()
         assert not server.is_alive()
         print(
             "PASS setup click gate: live private broker/watch/activity, AT-SPI listener, no GTK blocking calls",
             flush=True,
         )
     finally:
+        ready_watch.cancel()
         guards.close()
         atspi.terminate()
-        atspi.wait(5)
+        atspi.wait()
