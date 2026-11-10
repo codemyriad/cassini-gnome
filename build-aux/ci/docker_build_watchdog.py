@@ -138,8 +138,22 @@ class Interrupted(Exception):
         self.signum = signum
 
 
-def interrupted(signum, _frame):
-    raise Interrupted(signum)
+class Cancellation:
+    """Defer interruption until a spawned child and its output are owned."""
+
+    def __init__(self):
+        self.signum = None
+        self.armed = False
+
+    def __call__(self, signum, _frame):
+        if self.armed:
+            raise Interrupted(signum)
+        self.signum = signum
+
+    def arm(self):
+        self.armed = True
+        if self.signum is not None:
+            raise Interrupted(self.signum)
 
 
 def seconds(name, default, maximum):
@@ -172,11 +186,14 @@ def main(argv=None):
         file=sys.stderr,
         flush=True,
     )
-    previous = {signum: signal.signal(signum, interrupted) for signum in (signal.SIGTERM, signal.SIGINT)}
+    cancellation = Cancellation()
+    previous = {signum: signal.signal(signum, cancellation) for signum in (signal.SIGTERM, signal.SIGINT)}
     process, events, workspace = None, None, None
     try:
         workspace = tempfile.TemporaryDirectory(prefix="cassini-build-", dir="/tmp")
         receipt = Path(workspace.name) / "image"
+        if cancellation.signum is not None:
+            raise Interrupted(cancellation.signum)
         started = time.monotonic()
         process = subprocess.Popen(
             ["docker", "build", "--progress=plain", "--iidfile", str(receipt), *arguments],
@@ -186,6 +203,7 @@ def main(argv=None):
             start_new_session=True,
         )
         events = ProcessEvents(process)
+        cancellation.arm()
         status, reason = supervise(events, Progress(started, stall, overall), time.monotonic, emit)
         if reason:
             status = 137 if stop(process) else 124

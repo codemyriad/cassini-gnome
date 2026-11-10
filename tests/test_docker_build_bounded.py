@@ -285,3 +285,23 @@ def test_cancellation_reaps_the_build_before_cleaning_its_iid_directory(monkeypa
     assert module.main(["receipt race", "docker", "build", "-"]) == 143
     assert order == ["reaped", "output closed", "receipt removed"]
     assert "cancelled by signal 15" in capsys.readouterr().err
+
+
+def test_cancellation_during_spawn_still_records_and_reaps_the_returned_child(monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    module = watchdog()
+    order = []
+    child = SimpleNamespace(pid=4321)
+
+    def spawn(*args, **kwargs):
+        # Model a signal between fork/exec and Popen returning the owned PID.
+        signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+        return child
+
+    monkeypatch.setattr(module.subprocess, "Popen", spawn)
+    monkeypatch.setattr(module, "ProcessEvents", lambda _: SimpleNamespace(close=lambda: order.append("closed")))
+    monkeypatch.setattr(module, "stop", lambda process: order.append(process.pid) or False)
+    assert module.main(["spawn cancel", "docker", "build", "-"]) == 143
+    assert order == [4321, "closed"]
+    assert "cancelled by signal 15" in capsys.readouterr().err
