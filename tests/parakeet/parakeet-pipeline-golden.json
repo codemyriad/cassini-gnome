@@ -1,7 +1,7 @@
 {
   "version": 1,
   "decision": "D16",
-  "note": "D16 golden (fork engine), same input and D11 segmentation as pipeline-golden.json (48 kHz -> cassini-fir-48k-16k-v1), segment boundaries identical; recognised per segment by the unmodified dist parakeet-ultra-0.6b-int8 with codemyriad sherpa-onnx v1.13.7-cassini.8 (C API). Word times = segment start (floor ms) + per-word ms from token timestamps: a token beginning with U+2581 or U+0020 starts a word; start = round(ts*1000) of the word's first piece; end = max round((ts+dur)*1000) over pieces holding a Unicode letter or number (punctuation stays attached but never extends the word); round half away from zero, in double from the engine's float32. Conformance: segments, segment inputSha256 and word count exact; words exact up to trailing , . ? ! (D16); startMs/endMs within 80 ms (D11.3) once hashes match. D26.1: silero-input-hpf-butter2-100hz-v1 filters VAD only; recognition PCM is unchanged. D86: regenerated through the GNOME ParakeetClient worker with the sherpa-onnx#4179 encoder revision; runtime, recognition PCM and segmentation are unchanged.",
+  "note": "D16 golden (fork engine), same input and D11 segmentation as pipeline-golden.json (48 kHz -> cassini-fir-48k-16k-v1), segment boundaries identical; recognised per segment by the unmodified dist parakeet-ultra-0.6b-int8-v2 with codemyriad sherpa-onnx v1.13.7-cassini.8 (C API). Word times = segment start (floor ms) + per-word ms from token timestamps: a token beginning with U+2581 or U+0020 starts a word; start = round(ts*1000) of the word's first piece; end = max round((ts+dur)*1000) over pieces holding a Unicode letter or number (punctuation stays attached but never extends the word); round half away from zero, in double from the engine's float32. Conformance: segments, segment inputSha256 and word count exact; words exact up to trailing , . ? ! (D16); startMs/endMs within 80 ms (D11.3) once hashes match. D26.1: silero-input-hpf-butter2-100hz-v1 filters VAD only; recognition PCM is unchanged. D86: regenerated through the GNOME ParakeetClient worker with the sherpa-onnx#4179 encoder revision; runtime, recognition PCM and segmentation are unchanged.",
   "input": "pipeline-input-48k.wav",
   "inputSha256": "b7062e41f452236812aa3417a68eb50372a99851ab4a18d1c4f4f99e2e2e3963",
   "segments": [
@@ -410,7 +410,7 @@
     }
   },
   "model": {
-    "distId": "parakeet-ultra-0.6b-int8",
+    "distId": "parakeet-ultra-0.6b-int8-v2",
     "sourceSha256": "50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
     "files": {
       "encoder.int8.onnx": "f9a8af14deb2e5237eebb9dfb25126180614feaf835a03f307e4077eab247015",

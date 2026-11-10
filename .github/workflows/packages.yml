@@ -49,7 +49,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/parakeet-models
-          key: parakeet-ultra-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+          key: parakeet-ultra-v2-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
       - run: build-aux/whistle-cache.sh
       # Builds in a container, installs in a fresh one and, with no network,
       # smoke-tests and writes the D11 goldens down. Run once (D66): the
@@ -108,7 +108,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/parakeet-models
-          key: parakeet-ultra-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+          key: parakeet-ultra-v2-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
       - run: build-aux/whistle-cache.sh
       # Run once (D66): only package installs and image pulls are retried.
       - run: build-aux/arch/build.sh

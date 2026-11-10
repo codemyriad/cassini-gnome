@@ -10,9 +10,13 @@ from pathlib import Path
 from .model_download import model_root
 from .received import regular_input
 
-MODEL_ID = "parakeet-ultra-0.6b-int8"
-PIN = json.loads(Path(__file__).with_name("models.json").read_text())["models"][MODEL_ID]
+MODEL_ID = "parakeet-ultra-0.6b-int8-v2"
+_PINS = json.loads(Path(__file__).with_name("models.json").read_text())["models"]
+PIN = _PINS[MODEL_ID]
+LEGACY_MODEL_ID = "parakeet-ultra-0.6b-int8"
 REVISION = PIN["source_sha256"]
+# The improved revision briefly appeared under the old ID before v2 was published.
+LEGACY_REVISIONS = (_PINS[LEGACY_MODEL_ID]["source_sha256"], REVISION)
 MODEL_TAG = MODEL_ID + "@" + REVISION
 FILES = {name: (p["size"], p["sha256"], p["downloadBytes"]) for name, p in PIN["files"].items()}
 DOWNLOAD_BYTES = sum(value[2] for value in FILES.values())

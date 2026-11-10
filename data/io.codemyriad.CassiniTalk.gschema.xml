@@ -6,6 +6,7 @@
       <choices>
         <choice value="whistle" />
         <choice value="parakeet-ultra-0.6b-int8" />
+        <choice value="parakeet-ultra-0.6b-int8-v2" />
       </choices>
       <summary>Speech model for new jobs</summary>
     </key>
@@ -15,6 +16,7 @@
         <choice value="auto" />
         <choice value="whistle" />
         <choice value="parakeet-ultra-0.6b-int8" />
+        <choice value="parakeet-ultra-0.6b-int8-v2" />
       </choices>
       <summary>Explicit speech model preference, or verified automatic default</summary>
     </key>

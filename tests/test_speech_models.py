@@ -516,3 +516,111 @@ def test_legacy_whistle_choice_requires_already_verified_parakeet(model_fixture,
             assert preferences == []
     finally:
         second.close()
+
+
+def legacy_install(store, revision):
+    directory = store.root / parakeet_model.LEGACY_MODEL_ID / revision
+    directory.mkdir(parents=True)
+    (directory / "legacy.onnx").write_bytes(b"legacy-model")
+    return directory
+
+
+@pytest.mark.parametrize("revision", parakeet_model.LEGACY_REVISIONS)
+def test_v2_retires_only_known_legacy_installs_after_verified_publication(model_fixture, monkeypatch, revision):
+    models, store, remote, persisted = model_fixture
+    legacy = legacy_install(store, revision)
+    unrelated = store.root / "another-model" / ("c" * 64)
+    unrelated.mkdir(parents=True)
+    (unrelated / "keep").write_bytes(b"unrelated")
+    remove = store.remove
+    retired = []
+
+    def checked_remove(model_id, source, **kwargs):
+        if model_id == parakeet_model.LEGACY_MODEL_ID:
+            assert store.installed(MODEL_ID, REVISION)
+            retired.append(source)
+        return remove(model_id, source, **kwargs)
+
+    monkeypatch.setattr(store, "remove", checked_remove)
+    assert models.download()
+    models._thread.join()  # Completion event; the suite's outer watchdog guards hangs.
+    assert models.snapshot()["downloaded"] and not models.snapshot()["error"]
+    assert models.choice_for_job() == MODEL_ID and persisted[-1] == MODEL_ID
+    assert not legacy.exists() and revision in retired
+    assert (unrelated / "keep").read_bytes() == b"unrelated"
+
+
+def test_missing_or_failed_v2_download_preserves_legacy_install(model_fixture):
+    models, store, remote, persisted = model_fixture
+    legacy = legacy_install(store, parakeet_model.LEGACY_REVISIONS[0])
+    assert not models.snapshot()["downloaded"]
+    remote.mode = "truncate"
+    assert models.download()
+    models._thread.join()
+    assert models.snapshot()["error"] and not models.snapshot()["downloaded"]
+    assert (legacy / "legacy.onnx").read_bytes() == b"legacy-model"
+
+
+def test_verified_v2_startup_retires_legacy_offline_and_resolves_old_preference(model_fixture):
+    models, store, remote, persisted = model_fixture
+    assert models.download()
+    models._thread.join()
+    legacy = legacy_install(store, parakeet_model.LEGACY_REVISIONS[0])
+    models.close()
+    before = len(remote.requests)
+    replacement = SpeechModels(
+        parakeet_model.LEGACY_MODEL_ID,
+        persisted.append,
+        lambda: None,
+        store=store,
+        preference=parakeet_model.LEGACY_MODEL_ID,
+    )
+    try:
+        replacement._thread.join()
+        assert replacement.snapshot()["downloaded"] and replacement.choice_for_job() == MODEL_ID
+        assert not legacy.exists() and len(remote.requests) == before
+    finally:
+        replacement.close()
+
+
+def test_invalid_v2_startup_keeps_legacy_model(model_fixture):
+    models, store, remote, persisted = model_fixture
+    assert models.download()
+    models._thread.join()
+    legacy = legacy_install(store, parakeet_model.LEGACY_REVISIONS[0])
+    (store.root / MODEL_ID / REVISION / "weights.onnx").write_bytes(b"corrupt")
+    models.close()
+    replacement = SpeechModels(MODEL_ID, persisted.append, lambda: None, store=store)
+    try:
+        replacement._thread.join()
+        assert replacement.choice_for_job() == "whistle" and not replacement.snapshot()["downloaded"]
+        assert (legacy / "legacy.onnx").read_bytes() == b"legacy-model"
+    finally:
+        replacement.close()
+
+
+def test_legacy_cleanup_failure_keeps_verified_v2_usable_and_retries_at_startup(model_fixture, monkeypatch):
+    models, store, remote, persisted = model_fixture
+    legacy = legacy_install(store, parakeet_model.LEGACY_REVISIONS[0])
+    remove = store.remove
+
+    def denied(model_id, source, **kwargs):
+        if model_id == parakeet_model.LEGACY_MODEL_ID:
+            raise PermissionError("fixture: legacy directory is read-only")
+        return remove(model_id, source, **kwargs)
+
+    monkeypatch.setattr(store, "remove", denied)
+    assert models.download()
+    models._thread.join()
+    assert models.snapshot()["downloaded"] and not models.snapshot()["error"]
+    assert models.choice_for_job() == MODEL_ID and legacy.exists()
+    models.close()
+    monkeypatch.setattr(store, "remove", remove)
+    before = len(remote.requests)
+    replacement = SpeechModels(MODEL_ID, persisted.append, lambda: None, store=store)
+    try:
+        replacement._thread.join()
+        assert replacement.choice_for_job() == MODEL_ID and not legacy.exists()
+        assert len(remote.requests) == before
+    finally:
+        replacement.close()

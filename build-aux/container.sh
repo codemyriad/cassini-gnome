@@ -78,7 +78,7 @@ container_offline_smoke() {
   smoke_base=$1 smoke_install=$2
   smoke_cache=${CASSINI_PARAKEET_TEST_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/cassini/package-test-models}
   python3 tests/parakeet/prepare_model.py --cache "$smoke_cache"
-  smoke_model=$smoke_cache/parakeet-ultra-0.6b-int8/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+  smoke_model=$smoke_cache/parakeet-ultra-0.6b-int8-v2/50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
   smoke_model=$(realpath "$smoke_model")
   shift 2
   smoke_name=cassini-pkgtest-install-$(image_slug "$smoke_base")-$$

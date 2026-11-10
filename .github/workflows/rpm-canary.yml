@@ -33,6 +33,6 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/parakeet-models
-          key: parakeet-ultra-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+          key: parakeet-ultra-v2-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
       - run: build-aux/whistle-cache.sh
       - run: build-aux/rpm/build.sh fedora:latest
