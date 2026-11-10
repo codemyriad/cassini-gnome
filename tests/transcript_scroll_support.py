@@ -8,7 +8,7 @@ from pathlib import Path
 from cassini_talk import portable, portable_writer
 
 
-def hour_meeting(root):
+def hour_meeting(root, *, mixed=False):
     root.mkdir()
     source = Path(__file__).parents[1] / "ux/library-vectors/assets/build.py"
     spec = importlib.util.spec_from_file_location("scroll_opus_fixture", source)
@@ -38,23 +38,58 @@ def hour_meeting(root):
         "interaction.",
     ]
     items, stamp = [], 0
-    for turn in range(480):
+    for turn in range(490 if mixed else 480):
         pattern = ((1, 2, 4, 8), (30, 40, 50, 60), (2, 5, 10, 15))[0 if turn < 120 else 1 if turn < 360 else 2]
-        for word in range(pattern[turn % 4]):
+        count = (
+            ((1, 2, 1, 8, 3, 80, 1, 4) if turn < 120 or turn >= 360 else (1, 45, 80, 3, 120, 60, 100, 2))[turn % 8]
+            if mixed
+            else pattern[turn % 4]
+        )
+        speaker = f"person-{turn % (2 if mixed else 3)}"
+        for word in range(count):
             items.append(
                 dict(
-                    speaker=f"person-{turn % 3}", startMs=stamp, endMs=stamp + 180, text=sentence[word % len(sentence)]
+                    speaker=speaker,
+                    startMs=stamp,
+                    endMs=stamp + 180,
+                    text=f"{turn + 1}." if mixed and word == 0 else sentence[word % len(sentence)],
                 )
             )
+            if mixed and count >= 45 and word == count // 2:
+                for offset, value in ((20, "Sounds"), (170, "good.")):
+                    items.append(
+                        dict(
+                            speaker=f"person-{1 - turn % 2}",
+                            startMs=stamp + offset,
+                            endMs=stamp + offset + 150,
+                            text=value,
+                        )
+                    )
             stamp += 200
+        if mixed and turn % 20 == 9:
+            for i in range(18):
+                items.append(
+                    dict(
+                        speaker=f"person-{1 - turn % 2}",
+                        startMs=stamp - 1500 + i * 200,
+                        endMs=stamp - 1320 + i * 200,
+                        text=sentence[i % len(sentence)],
+                    )
+                )
+            stamp += 2400
         stamp += 700
+    if mixed:
+        items.sort(key=lambda word: word["startMs"])
     for word in items:
         word["startMs"] = round(word["startMs"] * 3600000 / stamp)
         word["endMs"] = round(word["endMs"] * 3600000 / stamp)
     seed = root / "seed.opus"
     meeting = portable.read_meeting(str(seed))
     manifest = meeting.manifest
-    manifest["speakers"] = [dict(id=f"person-{i}", label=name) for i, name in enumerate(("Alice", "Ben", "Claire"))]
+    manifest["speakers"] = [
+        dict(id=f"person-{i}", label=name)
+        for i, name in enumerate(("Alice", "Ben") if mixed else ("Alice", "Ben", "Claire"))
+    ]
     word_tags, reference = portable_writer.chunk_set(
         "CASSINI_TX_MAIN_PAYLOAD_",
         dict(format=portable.WORDS_FORMAT, language="en", wordCount=len(items), items=items),

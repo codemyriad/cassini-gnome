@@ -21,6 +21,7 @@ from .meeting_text import (
     speaking_shares,
 )
 from .strings import plural, text
+from .transcript_label import TranscriptLabel
 from .transcript_scroll import TranscriptScroll
 
 
@@ -427,7 +428,7 @@ class MeetingPage(Adw.NavigationPage):
         )
         time.connect("clicked", lambda *_: self.play_from(turn.start_ms))
         names.append(time)
-        words = Gtk.Label(
+        words = TranscriptLabel(
             xalign=0,
             yalign=0,
             wrap=True,

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Fast kinetic gestures through real hour-long reader and Meeting widgets."""
 
+import faulthandler
 import json
 import os
 import shutil
@@ -14,6 +15,7 @@ from pathlib import Path
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
+faulthandler.dump_traceback_later(60, repeat=True)
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "tests")]
 import gi  # noqa: E402
@@ -25,9 +27,11 @@ from gi.repository import GdkX11, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from listening_input import key  # noqa: E402
+from transcript_measurements import check_measurements  # noqa: E402
 from transcript_scroll_support import hour_meeting  # noqa: E402
 
 from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.open_meeting import load_open_meeting  # noqa: E402
 from cassini_talk.window import CassiniWindow  # noqa: E402
 
 
@@ -73,7 +77,11 @@ def real_key(window, sequence):
     controller.connect("key-released", lambda *_: released.append(True))
     window.add_controller(controller)
     try:
-        key(window, sequence, lambda _window, check: dispatch_until(check))
+
+        def ready(_window, check):
+            assert check(), "Native key target must be mapped before starting momentum"
+
+        key(window, sequence, ready)
         dispatch_until(lambda: released)
     finally:
         window.remove_controller(controller)
@@ -145,21 +153,23 @@ def check_surface(name, window, view, scroller, get_rows, motion):
         "value-changed", lambda *_: raw.append((adjustment.get_value(), adjustment.get_upper()))
     )
     peak_bound = [0]
+    phase = "finger"
 
     def snapshot(direction, previous):
         rows = get_rows()
         peak_bound[0] = max(peak_bound[0], len(rows))
         current = anchor(rows, scroller)
-        samples.append((direction, current, adjustment.get_value(), adjustment.get_upper()))
+        samples.append((direction, phase, current, adjustment.get_value(), adjustment.get_upper()))
         if previous is not None:
-            assert direction * (current[0] - previous[0]) >= 0, (name, "row reversed", previous, current)
+            assert direction * (current[0] - previous[0]) >= 0, (name, phase, "row reversed", previous, current)
             if current[0] == previous[0]:
-                assert direction * (current[1] - previous[1]) >= -1, (name, "anchor reversed", previous, current)
+                assert direction * (current[1] - previous[1]) >= -1, (name, phase, "anchor reversed", previous, current)
         return current
 
     try:
         assert not scroller.get_kinetic_scrolling(), "GTK absolute touch kinetic ticker is still enabled"
         for touch, direction in ((False, 1), (False, -1), (True, 1), (True, -1)):
+            phase = "finger"
             previous = snapshot(direction, None)
             initial = previous
             controller = motion.controller
@@ -170,15 +180,23 @@ def check_surface(name, window, view, scroller, get_rows, motion):
             # Xvfb has no physical touchpad: drive the same real GTK scroll and
             # decelerate signals that receive its finger event/velocity history.
             displacement = 0
-            for delta in (1, 2, 3, 2, 1):
+            for pixels in (75, 138, 225, 213, 163):
                 if touch:
-                    displacement -= direction * delta * 2.5
+                    displacement -= direction * pixels
                     motion.touch_drag.emit("drag-update", 0, displacement)
                 else:
-                    controller.emit("scroll", 0, direction * delta)
+                    controller.emit("scroll", 0, direction * pixels / motion._factor(controller))
+                paint(window)
+                previous = snapshot(direction, previous)
+            if not touch:
+                # A slow render can deliver several finger events before the
+                # next allocation. Cover the entire batch, not just inertia.
+                for pixels in (20, 25, 30):
+                    controller.emit("scroll", 0, direction * pixels / motion._factor(controller))
                 paint(window)
                 previous = snapshot(direction, previous)
             released = previous
+            phase = "coast"
             factor = motion._factor(controller)
             if touch:
                 motion.touch_swipe.emit("swipe", 0, -direction * 16000)
@@ -211,12 +229,16 @@ def check_surface(name, window, view, scroller, get_rows, motion):
         motion.controller.emit("decelerate", 0, 16000 / motion._factor(motion.controller))
         assert motion.motion is not None
         for sequence in ("Page_Down", "KP_Page_Down"):
-            assert get_rows()[anchor(get_rows(), scroller)[0]].child_focus(Gtk.DirectionType.TAB_FORWARD)
+            scroller.set_focusable(True)
+            assert scroller.grab_focus()
+            paint(window)
             start_motion(motion)
             real_key(window, sequence)
             assert motion.motion is None and motion.tick == 0, (name, sequence)
         # Alt navigation belongs to listening, not manual transcript scrolling.
-        assert get_rows()[anchor(get_rows(), scroller)[0]].child_focus(Gtk.DirectionType.TAB_FORWARD)
+        scroller.set_focusable(True)
+        assert scroller.grab_focus()
+        paint(window)
         start_motion(motion)
         original = motion.motion
         real_key(window, "alt+Down")
@@ -269,6 +291,7 @@ with tempfile.TemporaryDirectory() as temporary:
     reader.player._pipeline.set_property("audio-sink", sink)
     reader.open_file(Gio.File.new_for_path(str(opus)))
     reader.present()
+    check_measurements(reader)
     dispatch_until(lambda: len(reader.turns) == 480)
     results = [
         check_surface(
@@ -286,6 +309,7 @@ with tempfile.TemporaryDirectory() as temporary:
     reader.search_entry.set_text("internationalization")
     dispatch_until(lambda: reader.matches)
     reader._step_match(1)
+    print("search navigation requested", flush=True)
     assert motion.motion is None, "Search jump left momentum active"
     target = reader.matches[reader.match_cursor][0]
     dispatch_until(lambda: target in reader.rows and reader.rows[target].get_mapped())
@@ -337,6 +361,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page._reading_index == target, "Timeline seek did not select the sounding row"
     dispatch_until(lambda: target in page.bound and page.bound[target][2].get_mapped())
     assert page.bound[target][1].grab_focus()
+    paint(library)
     start_motion(page._transcript_scroll)
     real_key(library, "Return")
     assert page._transcript_scroll.motion is None and page._follow_until == 0, "Word link left momentum active"
@@ -344,6 +369,61 @@ with tempfile.TemporaryDirectory() as temporary:
         start_motion(page._transcript_scroll)
         library.lookup_action(action).activate(None)
         assert page._transcript_scroll.motion is None and page._follow_until == 0, action
+    # The reported Library case has about 490 turns, two speakers, many
+    # short rows, long paragraphs, overlap captions and inline interjections.
+    mixed_opus = hour_meeting(root / "MixedLibrary", mixed=True)
+    mixed = load_open_meeting(mixed_opus, root / "MixedLibrary")
+    assert len(mixed.speakers) == 2 and 450 <= len(mixed.turns) <= 550
+    assert any(turn.over for turn in mixed.turns) and any(turn.asides for turn in mixed.turns)
+    library.back_to_library()
+    library.open_meeting(mixed, external=True)
+    page = library.meeting_page
+    results.append(
+        check_surface(
+            "meeting-diarized",
+            library,
+            page.list,
+            page.scroller,
+            lambda: {index: row for index, (_turn, _words, row) in page.bound.items()},
+            page._transcript_scroll,
+        )
+    )
+    # Exercise the plain paragraph geometry too: no sidebar/header column.
+    # This varies presentation only; the word atoms remain the same fixture.
+    page.split.set_collapsed(True)
+    page.split.set_show_content(True)
+    # The factory already owns the bound callback; hide new headers at map
+    # time as well as existing rows, without rebuilding transcript words.
+    factory = page.list.get_factory()
+    handler = factory.connect_after("bind", lambda _f, item: item.get_child().get_first_child().set_visible(False))
+    for _turn, _words, row in page.bound.values():
+        row.get_first_child().set_visible(False)
+    results.append(
+        check_surface(
+            "meeting-plain-geometry",
+            library,
+            page.list,
+            page.scroller,
+            lambda: {index: row for index, (_turn, _words, row) in page.bound.items()},
+            page._transcript_scroll,
+        )
+    )
+    factory.disconnect(handler)
+    mixed_reader = CassiniWindow(application=app)
+    mixed_reader.open_file(Gio.File.new_for_path(str(mixed_opus)))
+    mixed_reader.present()
+    dispatch_until(lambda: len(mixed_reader.turns) >= 480)
+    results.append(
+        check_surface(
+            "reader-diarized",
+            mixed_reader,
+            mixed_reader.transcript_list,
+            mixed_reader.transcript_scroller,
+            lambda: mixed_reader.rows,
+            mixed_reader._transcript_scroll,
+        )
+    )
+    mixed_reader.close()
     Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_suffix(".json").write_text(json.dumps(results))
     app.on_quit()
     app.do_shutdown()

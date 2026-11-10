@@ -73,6 +73,7 @@ talk_sources = files(
   'cassini_talk/search_page.py',
   'cassini_talk/meeting_page.py',
   'cassini_talk/kinetic_scroll.py',
+  'cassini_talk/transcript_label.py',
   'cassini_talk/transcript_scroll.py',
   'cassini_talk/speaker_merges.py',
   'cassini_talk/speaker_edits.py',

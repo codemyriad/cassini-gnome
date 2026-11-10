@@ -32,6 +32,7 @@ from .player import Player
 from .portable import State
 from .strings import text
 from .transcript import format_time
+from .transcript_label import TranscriptLabel
 from .transcript_scroll import TranscriptScroll
 
 RESOURCE = "/io/codemyriad/CassiniTalk"
@@ -70,7 +71,7 @@ class TurnRow(Gtk.Box):
         self.over = Gtk.Label(xalign=0, css_classes=["dimmed", "caption"], ellipsize=Pango.EllipsizeMode.END)
         header.append(self.over)
 
-        self.words = Gtk.Label(
+        self.words = TranscriptLabel(
             xalign=0,
             wrap=True,
             wrap_mode=Pango.WrapMode.WORD_CHAR,
