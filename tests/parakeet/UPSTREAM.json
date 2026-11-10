@@ -2,9 +2,9 @@
   "coordinator": "7177f1f7cd3876a379042ac8bd2905a4c57a8422",
   "sha256": {
     "pins.json": "6aea80f4368a38d73289fbf739cf1a7d5d1d50cea18034f5de18af3cb792d697",
-    "SHA256SUMS": "cf7185e70e02890853d0fb7b79b5453f9291f6cd526facb00c1b24d1ae237dcc",
-    "parakeet-golden.json": "a6fda769d0e729cca54dc05d50c9803290e1f66a4643afdfa04a66d12cf58a3d",
-    "parakeet-pipeline-golden.json": "8ded0bcea24bf93e93c713510afa4f9bd2ccfd9865e0c68061314b72749bcf4c",
+    "SHA256SUMS": "ae5e08f989487544f6b672291e50463d8aae6b78a8676d227c8951b9d38aec1e",
+    "parakeet-golden.json": "0a28d0808a6dda82e4f6e3055a1ac8048eb5b49c537ce45912e114e84dc18e5d",
+    "parakeet-pipeline-golden.json": "acf6049fcdba3fdac8780f95f2914e197c588ac6066fab72255b90c43e6519f6",
     "parakeet-text-exceptions.json": "48bdab951cca0bf5aa59e607e341e7c903b266e43a610d68647141b334f952b3",
     "tools/capi_golden.py": "f5dae686ddd1191dc6bba15ac377461fe81bebf05003c5846f7ec6ed58d693d6",
     "tools/decode.c": "c6801179ccd07917b51d060169bb117731021d23b55e89c885e470b37be28c13",
@@ -13,5 +13,11 @@
   "additionalSource": {
     "commit": "7e7000f1d5815725b622c7729328cdce71dfd4bb",
     "note": "Coordinator-authorised GNOME regeneration of D26.1 WebRTC VAD input only"
+  },
+  "modelRevisionUpdate": {
+    "decision": "D86",
+    "source_sha256": "50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+    "pipeline": "GNOME ParakeetClient worker; pinned runtime unchanged; segment boundaries and input hashes unchanged",
+    "modelId": "parakeet-ultra-0.6b-int8-v2"
   }
 }

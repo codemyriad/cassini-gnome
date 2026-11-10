@@ -138,7 +138,7 @@ jobs:
               speakers = json.loads(Path(folder, 'speakers.json').read_text())
               assert speakers['speakersDialog'] == dict(id='guest', name='Giulia', saveEnabled=False, privatePrint=True, savedVoices=4), speakers
               settings = json.loads(Path(folder, 'settings-transcription.json').read_text())
-              assert settings['speechModels'] == ['whistle', 'parakeet-ultra-0.6b-int8'], settings
+              assert settings['speechModels'] == ['whistle', 'parakeet-ultra-0.6b-int8-v2'], settings
               assert settings['diarizationOn'] is True, settings
           for state in ['pending', 'pending-dark', 'connected', 'connected-dark', 'failed']:
               assert struct.unpack('>II',Path(f'ux-artifacts/companion-setup-{state}.png').read_bytes()[16:24]) == (1120,720)

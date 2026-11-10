@@ -134,6 +134,18 @@ class SpeechModels:
             _write(self.store.root / "NOTICE.txt", source.read())
         return directory
 
+    def _retire_legacy(self):
+        """Retire known old-ID installs only after the replacement is verified."""
+        if self.pin is not parakeet_model:
+            return
+        for revision in self.pin.LEGACY_REVISIONS:
+            try:
+                self.store.remove(self.pin.LEGACY_MODEL_ID, revision, cancelled=self.cancelled)
+            except (OSError, ValueError):
+                # Cleanup cannot turn a verified new model into a bad download.
+                # Startup inspection retries retirement on the next launch.
+                LOG.warning("Could not retire the legacy Parakeet install", exc_info=True)
+
     def _inspect(self):
         try:
             directory = self.store._directory(self.pin.MODEL_ID, self.pin.REVISION)
@@ -163,6 +175,8 @@ class SpeechModels:
                 self._promote()
         if invalid:
             self._invalid()
+        else:
+            self._retire_legacy()
 
     def download(self):
         with self.lock:
@@ -204,6 +218,7 @@ class SpeechModels:
         # D78: verified publication makes Parakeet the automatic default.
         self._change(downloaded=True, percent=100)
         self._promote()
+        self._retire_legacy()
 
     def _promote(self):
         if self.pin is parakeet_model:

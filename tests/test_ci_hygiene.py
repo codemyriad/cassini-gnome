@@ -421,13 +421,16 @@ D66_SAVE_ON_PR_DEBT = sorted(
     [
         ("background-apps.yml", "desktop-gnome50-v1"),
         *[("build.yml", key) for key in ("whistle", "sherpa")],
-        *[("deb.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra", "browser-startup-linux-x64")],
-        *[("flatpak.yml", key) for key in ("flatpak-builder-devel", "parakeet-ultra")],
-        *[("packages.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra") * 2],
+        *[("deb.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra-v2", "browser-startup-linux-x64")],
+        *[("flatpak.yml", key) for key in ("flatpak-builder-devel", "parakeet-ultra-v2")],
+        *[("packages.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra-v2") * 2],
         ("recording.yml", "browser-startup-linux-x64"),
-        *[("rpm-canary.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra")],
+        *[("rpm-canary.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra-v2")],
         *[("ux-shot.yml", key) for key in ("whistle", "sherpa")],
-        *[("whistle.yml", key) for key in ("whistle", "sherpa", "parakeet-ultra", "nemotron", "campplus", "s11-audio")],
+        *[
+            ("whistle.yml", key)
+            for key in ("whistle", "sherpa", "parakeet-ultra-v2", "nemotron", "campplus", "s11-audio")
+        ],
     ]
 )
 

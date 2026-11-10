@@ -233,7 +233,7 @@ def capture(application_id, version, profile):
                 speechModels=(
                     (["whistle"] if opened_settings and app.settings_dialog.whistle.get_visible() else [])
                     + (
-                        ["parakeet-ultra-0.6b-int8"]
+                        ["parakeet-ultra-0.6b-int8-v2"]
                         if opened_settings and hasattr(app.settings_dialog, "parakeet")
                         else []
                     )
