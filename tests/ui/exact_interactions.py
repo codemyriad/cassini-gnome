@@ -59,6 +59,10 @@ def check_interactions(window, page, paint, until):
     model = page.meeting
     view = page.list
     result = {}
+    from cassini_talk.transcript_accessible import LinkSpans
+
+    markup = '<a href="item:0">é&lt;&amp;</a> <a href="aside:0:0">(<b>A:</b> </a><a href="aside:0:0">hi</a>'
+    assert LinkSpans(markup).spans == [("item:0", 0, "é<&"), ("aside:0:0", 9, "hi")]
     # Real GtkScrolledWindow touch gestures pause follow without a replacement
     # controller or a claimed sequence. Both touch drag and swipe are observed.
     controllers = page.scroller.observe_controllers()
