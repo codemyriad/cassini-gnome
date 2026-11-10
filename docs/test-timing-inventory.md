@@ -3,13 +3,13 @@
 Baseline: main `a67e8b5` (merged #306, 2026-11-10), plus this PR's scanner
 regression fixtures. The inventory scans 518 tracked test source files, including
 both pinned extension copies, protocol scenarios and conformance runners. It records
-2,263 timing-related sites in 247 files: 435 clock reads, 106 fixed-delay
+2,266 timing-related sites in 247 files: 438 clock reads, 106 fixed-delay
 references, 112 timer registrations, 97 clock conditions, 942 candidate temporal
-assertions and 571 bounded waits. GNOME owns 1,672 sites; 591 are vendored.
+assertions and 571 bounded waits. GNOME owns 1,675 sites; 591 are vendored.
 
 [The CSV](test-timing-inventory.csv) gives file, source line, category,
 ownership and expression. A site can occur in several categories. These are
-conservative audit candidates, **not 2,263 confirmed violations**. In particular,
+conservative audit candidates, **not 2,266 confirmed violations**. In particular,
 media timestamps, injected clock values, CPU budgets, diagnostic timestamps and
 outer hang guards retain their coverage. `review` means the area's migration
 must classify the site before changing it. Both `browser-extension/` and
@@ -38,7 +38,9 @@ Dynamic properties, imported helper implementations, arbitrary function-return
 flows and embedded template expressions require manual follow-up. Regex/string
 contents can also appear as direct-pattern candidates. The regression suite
 (`tests/test_timing_inventory.py`) checks synthetic flows, non-timing numeric
-checks and the concrete omissions from the review against actual source files.
+checks and the concrete omissions from the review against actual source files. The
+converted AT-SPI parent deadline is retained as a historical source snippet so
+later D88 conversions do not have to keep the old timing code alive.
 Later migration PRs report which candidates they convert or retain.
 
 ## Conversion order

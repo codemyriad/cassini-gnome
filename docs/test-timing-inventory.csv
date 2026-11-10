@@ -1891,10 +1891,13 @@ tests/test_timing_inventory.py,135,clock-read,gnome,review,values.push(Date.now(
 tests/test_timing_inventory.py,144,clock-read,gnome,review,"(""browser-extension/tests/background-lifecycle.test.cjs"", ""temporal-assertion"", ""Date.now()-started>=250""),"
 tests/test_timing_inventory.py,147,clock-read,gnome,review,"(""browser-protocol/tests/live-folder-driver.test.mjs"", ""temporal-assertion"", ""Date.now() - started < BOUND""),"
 tests/test_timing_inventory.py,152,clock-read,gnome,review,"(""tests/ui/companion-click.py"", ""clock-read"", ""time.thread_time()""),"
-tests/test_timing_inventory.py,174,temporal-assertion,gnome,review,assert gl.get_monotonic_time() - start < 100
-tests/test_timing_inventory.py,181,clock-read,gnome,review,self.sample = time.monotonic()
-tests/test_timing_inventory.py,197,temporal-assertion,gnome,review,while (now < deadline) assert.ok(now <= deadline);
-tests/test_timing_inventory.py,200,temporal-assertion,gnome,review,for (const [stamp] of arrivals) assert.ok(stamp<deadline);
+tests/test_timing_inventory.py,164,clock-read,gnome,review,deadline = time.monotonic() + 10
+tests/test_timing_inventory.py,165,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/test_timing_inventory.py,166,clock-read,gnome,review,remaining = deadline - time.monotonic()
+tests/test_timing_inventory.py,186,temporal-assertion,gnome,review,assert gl.get_monotonic_time() - start < 100
+tests/test_timing_inventory.py,193,clock-read,gnome,review,self.sample = time.monotonic()
+tests/test_timing_inventory.py,209,temporal-assertion,gnome,review,while (now < deadline) assert.ok(now <= deadline);
+tests/test_timing_inventory.py,212,temporal-assertion,gnome,review,for (const [stamp] of arrivals) assert.ok(stamp<deadline);
 tests/test_track_source.py,309,bounded-wait,gnome,review,"def until(predicate, timeout=10):"
 tests/test_track_source.py,311,clock-read,gnome,review,end = time.monotonic() + timeout
 tests/test_track_source.py,312,clock-condition,gnome,review,while time.monotonic() < end:

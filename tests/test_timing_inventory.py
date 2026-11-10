@@ -150,13 +150,25 @@ for (const delta of values) assert.ok(delta<300);
         ("tests/browser-setup/installed.mjs", "clock-condition", "while"),
         ("tests/ui/progress_wait.py", "clock-condition", "if now >= deadline"),
         ("tests/ui/companion-click.py", "clock-read", "time.thread_time()"),
-        ("tests/ui/accessible-buttons.py", "clock-condition", "remaining <= 0"),
         ("tests/conftest.py", "clock-condition", "elapsed > budget / 2"),
     ],
 )
 def test_review_examples_are_present_in_real_repository(path, kind, needle):
     rows = inventory.scan_text(path, (ROOT / path).read_text())
     assert any(row[2] == kind and needle in row[5] for row in rows), (path, kind, needle)
+
+
+def test_historical_accessibility_deadline_remains_detectable_after_d88_conversion():
+    # Preserve the review example without requiring the live test to retain it.
+    source = """def wait_event():
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not select.select([event_fd], [], [], remaining)[0]:
+            break
+"""
+    rows = inventory.scan_text("tests/ui/accessible-buttons.py", source)
+    assert any(row[2] == "clock-condition" and "remaining <= 0" in row[5] for row in rows)
 
 
 def test_plain_numeric_checks_do_not_become_timing_assertions():
