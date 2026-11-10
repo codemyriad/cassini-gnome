@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Pushed Meeting page, with virtualised timed transcript items and transport."""
 
+import os
 from decimal import Decimal
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
@@ -154,14 +155,21 @@ class MeetingPage(Adw.NavigationPage):
         center.append(self.recording_notice)
         self.lines = box(margin_start=48, margin_end=48, margin_top=8)
         center.append(self.lines)
+        self.textview = None
         self.store = Gio.ListStore.new(TurnItem)
-        factory = Gtk.SignalListItemFactory()
-        factory.connect("bind", self._bind)
-        factory.connect("unbind", self._unbind)
-        self.list = Gtk.ListView(
-            model=Gtk.NoSelection.new(self.store), factory=factory, css_classes=["meeting-transcript"]
-        )
-        self.list.set_enable_rubberband(False)
+        if os.environ.get("CASSINI_TRANSCRIPT_RENDER") == "textview":
+            from .transcript_textview import TranscriptTextView
+
+            self.textview = TranscriptTextView(self)
+            self.list = self.textview
+        else:
+            factory = Gtk.SignalListItemFactory()
+            factory.connect("bind", self._bind)
+            factory.connect("unbind", self._unbind)
+            self.list = Gtk.ListView(
+                model=Gtk.NoSelection.new(self.store), factory=factory, css_classes=["meeting-transcript"]
+            )
+            self.list.set_enable_rubberband(False)
         shortcut = Gtk.ShortcutController(scope=Gtk.ShortcutScope.LOCAL)
         for key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter):
             shortcut.add_shortcut(
@@ -797,17 +805,20 @@ class MeetingPage(Adw.NavigationPage):
         # Only changed timed text replaces transcript items. Metadata/theme
         # updates preserve their focused widgets and refresh headers in batches.
         if self._turns is not meeting.turns:
-            common = 0
-            for before, after in zip(self._turns, meeting.turns, strict=False):
-                if before != after:
-                    break
-                common += 1
-            removed = len(self._turns) - common
-            additions = [TurnItem(turn) for turn in meeting.turns[common:]]
-            if removed or additions:
-                self.store.splice(common, removed, additions)
+            if self.textview is None:
+                common = 0
+                for before, after in zip(self._turns, meeting.turns, strict=False):
+                    if before != after:
+                        break
+                    common += 1
+                removed = len(self._turns) - common
+                additions = [TurnItem(turn) for turn in meeting.turns[common:]]
+                if removed or additions:
+                    self.store.splice(common, removed, additions)
             self._turns = meeting.turns
             self._follow_rows = getattr(meeting.turns, "follow", None) or FollowRows(meeting.turns)
+        if self.textview is not None:
+            self.textview.set_meeting(meeting)
         self._updating_transcript = False
         self._highlight_listening()
         self._position()
@@ -1213,7 +1224,8 @@ class MeetingPage(Adw.NavigationPage):
             and (index != self._reading_index or explicit_seek or resumed)
         ):
             self._reading_index = index
-            self.list.scroll_to(index, Gtk.ListScrollFlags.NONE, None)
+            if self.textview is None:
+                self.list.scroll_to(index, Gtk.ListScrollFlags.NONE, None)
         self._updating = True
         self.elapsed.set_label(fmt.position(self.player.position))
         self.seek.set_value(self.player.position)
@@ -1224,6 +1236,14 @@ class MeetingPage(Adw.NavigationPage):
         play_name = text("player.pause" if self.player.playing else "common.play")
         self.play.set_tooltip_text(play_name)
         self.play.update_property([Gtk.AccessibleProperty.LABEL], [play_name])
+        if self.textview is not None:
+            self.textview.highlight(self.player.position)
+            if (
+                not self._updating_transcript
+                and GLib.get_monotonic_time() >= self._follow_until
+                and (self.player.playing or explicit_seek)
+            ):
+                self.textview.follow_current()
         for turn, words, _row in list(self.bound.values()):
             self._render_words(turn, words)
 
