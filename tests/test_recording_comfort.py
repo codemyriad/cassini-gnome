@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Session-owned levels/timers and browser observations without visible windows."""
 
-import time
+import threading
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -109,14 +109,20 @@ def test_application_browser_inventory_drives_hidden_notifications_without_windo
     browser = dict(statuses=[dict(recording=True, path=str(capture.directory))])
     app = application({}, browser=browser)
     comfort = RecordingComfort(app, automatic=False)
+    loaded = threading.Event()
+    deliver = comfort._loaded
+
+    def delivered(key, future):
+        try:
+            return deliver(key, future)
+        finally:
+            loaded.set()
+
+    comfort._loaded = delivered
     try:
         comfort.active()
-        end = time.monotonic() + 2
-        while capture.directory.name not in comfort.known and time.monotonic() < end:
-            context = GLib.MainContext.default()
-            while context.pending():
-                context.iteration(False)
-            time.sleep(0.005)
+        while not loaded.is_set():
+            GLib.MainContext.default().iteration(True)
         assert capture.directory.name in comfort.active()
         comfort.tick()
         assert "Hidden browser call" in comfort.last_payload["body"]
@@ -133,19 +139,23 @@ def test_saved_notification_waits_for_readable_finished_audio_and_releases_its_h
     if state == "saved":
         capture.finish()
     holds, notifications = [], []
+    released = threading.Event()
+
+    def release():
+        holds.append("release")
+        released.set()
+
     app = SimpleNamespace(
         _quitting=False,
         hold=lambda: holds.append("hold"),
-        release=lambda: holds.append("release"),
+        release=release,
         send_notification=lambda identifier, _: notifications.append(identifier),
     )
     comfort = RecordingComfort(app, automatic=False)
     try:
         comfort.saved_notification(capture.directory if state != "missing" else tmp_path / "Recording-missing")
-        end = time.monotonic() + 3
-        while holds != ["hold", "release"] and time.monotonic() < end:
-            GLib.MainContext.default().iteration(False)
-            time.sleep(0.005)
+        while not released.is_set():
+            GLib.MainContext.default().iteration(True)
         assert holds == ["hold", "release"]
         assert notifications == (["saved-" + capture.directory.name] if state == "saved" else [])
     finally:
