@@ -60,11 +60,10 @@ PA
 build-aux/ci/docker-build-bounded.sh "recording audio server" docker build -q -t cassini-recording-test-audio -f tests/recording/Audio.Dockerfile tests/recording
 docker run -d --name "$container" --network=none --user "$(id -u):$(id -g)" \
     -v "$runtime:/audio" cassini-recording-test-audio > /dev/null
-for _ in $(seq 1 100); do
-    [ -S "$runtime/pulse.sock" ] && break
-    sleep .1
-done
-if [ ! -S "$runtime/pulse.sock" ]; then docker logs "$container"; exit 1; fi
+if ! /usr/bin/python3 tests/recording/pulse-ready.py "$runtime/pulse.sock"; then
+    docker logs "$container"
+    exit 1
+fi
 # The server's socket is private to this run; Chromium and GStreamer inherit it.
 export PULSE_SERVER="unix:$runtime/pulse.sock"
 unset WAYLAND_DISPLAY WAYLAND_SOCKET DBUS_SESSION_BUS_ADDRESS
