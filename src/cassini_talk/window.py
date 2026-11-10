@@ -806,9 +806,6 @@ class CassiniWindow(Adw.ApplicationWindow):
         self._stop_following()
         return False
 
-    def _on_user_drag(self, *_args):
-        self._stop_following()
-
     def _stop_following(self):
         if self.player.playing and self.settings.get_boolean("follow-along"):
             self.settings.set_boolean("follow-along", False)

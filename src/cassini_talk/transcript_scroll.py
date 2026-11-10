@@ -22,6 +22,12 @@ class TranscriptScroll:
         self.controller.connect("decelerate", self._decelerate)
         scroller.add_controller(self.controller)
         scroller.connect("unmap", lambda *_: self.stop())
+        keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        keys.connect("key-pressed", self._key)
+        scroller.add_controller(keys)
+        click = Gtk.GestureClick(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        click.connect("pressed", lambda *_: self.stop())
+        scroller.add_controller(click)
         drag = Gtk.GestureDrag(propagation_phase=Gtk.PropagationPhase.CAPTURE)
         for signal in ("drag-begin", "drag-update", "drag-end"):
             drag.connect(signal, self._drag)
@@ -36,6 +42,12 @@ class TranscriptScroll:
     def _drag(self, *_):
         self.stop()
         self.manual_scroll()
+
+    def _key(self, _controller, key, _code, _state):
+        if key in (Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Page_Up, Gdk.KEY_Page_Down, Gdk.KEY_Home, Gdk.KEY_End):
+            self.stop()
+            self.manual_scroll()
+        return False
 
     def _factor(self, controller):
         if controller.get_unit() == Gdk.ScrollUnit.WHEEL:

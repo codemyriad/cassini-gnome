@@ -128,11 +128,13 @@ def test_closing_the_reader_invalidates_pending_models(reader_class):
         _cancel_verification=Mock(),
         _uninhibit=Mock(),
         player=Mock(),
+        _transcript_scroll=Mock(),
     )
     meeting, request = object(), fake._transcript_request
     fake.meeting, fake._set_turns = meeting, Mock()
     fake._populate_properties, fake._update_subtitle = Mock(), Mock()
     assert reader_class._on_close_request(fake) is False
+    fake._transcript_scroll.stop.assert_called_once_with()
     reader_class._on_transcript_loaded(fake, 3, request, meeting, [object()], None)
     fake._set_turns.assert_not_called()
 

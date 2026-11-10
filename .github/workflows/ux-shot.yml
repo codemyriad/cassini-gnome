@@ -73,6 +73,7 @@ jobs:
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speakers.py ux-artifacts/speakers-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/wide-speakers.py ux-artifacts/wide-speakers.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/listening-rows.py ux-artifacts/listening-rows.png
+          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/transcript-scroll.py ux-artifacts/transcript-scroll.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voices.py ux-artifacts/voices-gui.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voice-preparation.py ux-artifacts/voice-preparation.png
           CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voice-models.py ux-artifacts/voice-models.png
