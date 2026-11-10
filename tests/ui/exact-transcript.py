@@ -336,14 +336,15 @@ with tempfile.TemporaryDirectory() as temporary:
         # Above the cap: real resize, same layout width and zero measurement.
         frames = Frames(window)
         widths = [page.list.layout_width]
-        original_size = window.get_width(), window.get_height()
+        original_size = window.get_default_size()
+        original_width = window.get_width()
         measured = page.list.measured_rows
         window.set_default_size(original_size[0] + 80, original_size[1])
-        until(lambda original_size=original_size: window.get_width() != original_size[0])
+        until(lambda original_width=original_width: window.get_width() != original_width)
         paint(window)
         widths.append(page.list.layout_width)
         window.set_default_size(*original_size)
-        until(lambda original_size=original_size: window.get_width() == original_size[0])
+        until(lambda original_width=original_width: window.get_width() == original_width)
         paint(window)
         widths.append(page.list.layout_width)
         frames.close()
