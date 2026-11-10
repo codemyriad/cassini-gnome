@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 import sys
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from cassini_talk.whistle_worker import PRIVACY  # noqa: E402
 assert Path(sys.modules["cassini_talk.whistle_client"].__file__).is_relative_to(args.modules)
 
 assert os.environ.get("CASSINI_WHISTLE_NETWORK_NONE") == "1", "Use the networkless container harness"
-assert set(os.listdir("/sys/class/net")) == {"lo"}, "Container must have only loopback"
+assert {name for _, name in socket.if_nameindex()} == {"lo"}, "Container must have only loopback"
 fixture = Path(__file__).with_name("jfk.wav")
 assert (
     hashlib.sha256(fixture.read_bytes()).hexdigest()
@@ -38,7 +39,9 @@ with WhistleClient(args.bundle) as client:
     assert one["pid"] == two["pid"] == child.pid != parent
     assert one["text"] == two["text"] == mac["text"], (one, two, mac)
     assert re.findall(r"\w+", one["text"].lower()) == re.findall(r"\w+", reference.lower())
-    assert 1 <= client.ready["threads"] <= 3, client.ready
+    requested_threads = int(client.worker_environment()["CASSINI_WHISTLE_THREADS"])
+    # Retain the original one-helper allowance around the requested pool cap.
+    assert 1 <= client.ready["threads"] <= requested_threads + 1, client.ready
     result = dict(
         platform="linux-x86_64",
         engineVersion="3.3.0",
@@ -51,6 +54,7 @@ with WhistleClient(args.bundle) as client:
         childPid=child.pid,
         parentPid=parent,
         threads=client.ready["threads"],
+        requestedThreads=requested_threads,
         constructorPrivacyGuard=True,
         telemetry=PRIVACY,
         network="none",

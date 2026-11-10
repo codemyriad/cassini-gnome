@@ -6,6 +6,22 @@ when the Library is reopened. Historical recordings with no transcript wait for
 **Write it down**. Received audio also requires that action; it appears in the
 Library preview and Meeting header when the meeting can be written down.
 
+D92 gives Parakeet and Whistle the same recognition default:
+`min(8, max(2, (os.cpu_count() or 1) - 2))`, using **total logical CPUs**.
+Whistle retains the `CASSINI_WHISTLE_THREADS` override. Silero stays at one
+intra-op and one inter-op thread; Nemotron and CAM++ stay at two.
+
+The same default applies to a queued recording even if another capture starts
+while it is being transcribed. There is one recognition job at a time; capture
+and GTK run outside its inference child. The count is not multiplied per track,
+and the live capture path does not run recognition. This keeps the requested
+headroom without restarting an active recognizer when recording starts. Before
+loading native pools, each recognition child lowers its CPU priority to nice 5
+(or keeps an inherited lower priority); GTK and capture priorities are unchanged.
+This also applies with no active capture: otherwise idle CPUs remain available
+to recognition, while a new recording can start without a scheduling-policy race.
+If the sandbox denies the priority adjustment, recognition still runs.
+
 The child plans and recognises each track separately. It uses the shared
 `cassini-fir-48k-16k-v1` coefficients, float64 ascending-tap accumulation and final
 float32 rounding. Stereo averages to mono first. 16 kHz passes through; other
@@ -108,7 +124,7 @@ lintian override says so. With no network, both D11 goldens pass exactly (8/8
 segments, 68/68 words, 0 ms) with the private ORT 1.31.0 on Ubuntu 26.04,
 Debian testing, Fedora 44, Tumbleweed, Arch and in the Flatpak. Alpine's ORT
 works but the glibc engine cannot load under musl, so Alpine stays a
-source/check target. ORT uses one intra-op and one inter-op thread and
+source/check target. Silero’s ORT session uses one intra-op and one inter-op thread and
 disables telemetry before import. The engine remains confined to the child;
 GTK imports neither Needle nor ORT. The spike's glibc x86_64 engine limitation
 remains until another pinned platform engine is independently validated.

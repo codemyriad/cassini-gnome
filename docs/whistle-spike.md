@@ -48,9 +48,11 @@ Python networking is blocked as well; the real inference test has no network
 interface beyond loopback, including for native code.
 
 The pinned engine has no thread-count API. A small GPL CPU-count bridge affects
-only the recognition child through `LD_PRELOAD`, defaulting to two CPUs. GTK is
-never preloaded and never imports the engine. A future UI caller must run the
-client's blocking file IO/requests on a worker thread. Replies are bounded and
+only the recognition child through `LD_PRELOAD`. D92 defaults to total logical
+CPUs minus two, with a minimum of two and a cap of eight;
+`CASSINI_WHISTLE_THREADS` remains an explicit override (1–32). GTK is never
+preloaded and never imports the engine. The transcription queue runs the
+client's blocking file IO/requests on its owner thread. Replies are bounded and
 time out even when the child sends a partial line; crashes and close reap the
 child. Unit tests exercise two requests, partial-line timeout and crash cleanup.
 
