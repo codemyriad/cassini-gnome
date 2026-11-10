@@ -72,12 +72,13 @@ def meeting_bindings():
         window=SimpleNamespace(get_application=lambda: app),
         player=SimpleNamespace(position=0),
         _can_listen=True,
+        _exact=False,
         _highlighted_rows=frozenset(),
         _header_signature=None,
         bound={},
         _colour=lambda _speaker: "#1c71d8",
     )
-    for name in ("_turn_markup", "_render_words", "_refresh_header", "_render_header"):
+    for name in ("_build_row", "_turn_markup", "_render_words", "_refresh_header", "_render_header"):
         setattr(page, name, MethodType(getattr(MeetingPage, name), page))
     container = Gtk.Box()
     item = SimpleNamespace(get_item=lambda: SimpleNamespace(turn=turn), set_child=container.append)

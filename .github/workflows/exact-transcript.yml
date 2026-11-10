@@ -1,0 +1,47 @@
+name: Exact transcript renderer
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: exact-transcript-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+jobs:
+  native-gtk:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install native GTK test dependencies
+        run: |
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 gir1.2-atspi-2.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good libglib2.0-dev-bin xvfb xauth dbus-x11 at-spi2-core fonts-cantarell fonts-inter fontconfig locales
+          sudo locale-gen en_GB.UTF-8
+      - name: Compile resources and schemas
+        run: |
+          mkdir -p _exact-build _exact-schemas exact-results
+          glib-compile-resources --sourcedir=src src/cassini-talk.gresource.xml --target=_exact-build/cassini-talk.gresource
+          cp data/io.codemyriad.CassiniTalk.gschema.xml _exact-schemas/
+          glib-compile-schemas _exact-schemas
+      - name: ListView memory baseline and exact renderer parity and budgets
+        env:
+          CASSINI_CUSTOM_BUILD: ${{ github.workspace }}/_exact-build
+          GSETTINGS_SCHEMA_DIR: ${{ github.workspace }}/_exact-schemas
+          CASSINI_RUN_TIMEOUT: "900"
+        run: |
+          CASSINI_TRANSCRIPT_RENDER=listview CASSINI_CUSTOM_OUT="$PWD/exact-results/listview.json" build-aux/ux-screenshot.sh tests/ui/exact-transcript.py exact-results/listview.png
+          CASSINI_CUSTOM_OUT="$PWD/exact-results/exact.json" build-aux/ux-screenshot.sh tests/ui/exact-transcript.py exact-results/exact.png
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          baseline = {r['name']: r for r in json.loads(Path('exact-results/listview.json').read_text())}
+          for row in json.loads(Path('exact-results/exact.json').read_text()):
+              delta = row['rssMiB'] - baseline[row['name']]['rssMiB']
+              assert delta <= 20, (row['name'], 'RSS overhead MiB', delta)
+          PY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: exact-transcript-measurements
+          path: exact-results/
