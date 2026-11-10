@@ -96,7 +96,7 @@ jobs:
           harness=$(tests/harness-image.sh tag whistle)
           if ! docker image inspect "$harness" >/dev/null 2>&1; then
             base=$(tests/harness-image.sh base whistle)
-            docker build --pull --progress=plain --target harness --build-arg BASE="$base" -t "$harness" - < tests/whistle/Containerfile
+            build-aux/ci/docker-build-bounded.sh "offline cached harness" docker build --pull --progress=plain --target harness --build-arg BASE="$base" -t "$harness" - < tests/whistle/Containerfile
           fi
           offline_job="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB"
           image=$(tests/whistle/refresh-image.sh build "$harness" "$offline_job")

@@ -105,9 +105,14 @@ def test_invalid_budget_does_not_start_a_build(builder, limit):
 
 def test_every_local_harness_build_uses_the_named_deadline():
     builds = []
-    for path in (ROOT / "tests").glob("*/run.sh"):
+    paths = [
+        *(ROOT / "tests").glob("*/run.sh"),
+        ROOT / "tests/whistle/refresh-image.sh",
+        ROOT / ".github/workflows/whistle.yml",
+    ]
+    for path in paths:
         for line in path.read_text().splitlines():
             if re.search(r"\bdocker build\s", line):
                 builds.append((path, line))
                 assert re.search(r'docker-build-bounded\.sh"? "[^"\n]+" docker build ', line), (path, line)
-    assert len(builds) == 15
+    assert len(builds) == 13
