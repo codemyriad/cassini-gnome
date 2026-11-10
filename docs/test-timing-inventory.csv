@@ -1259,8 +1259,10 @@ tests/test_diarization_queue.py,313,bounded-wait,gnome,review,"finished.wait(2, 
 tests/test_diarization_queue.py,345,bounded-wait,gnome,review,assert release.wait(10)
 tests/test_diarization_queue.py,354,bounded-wait,gnome,review,assert entered.wait(10)
 tests/test_diarization_queue.py,357,bounded-wait,gnome,review,"finished.wait(1, exactly=True)"
-tests/test_docker_build_bounded.py,48,bounded-wait,gnome,review,"timeout=15,"
-tests/test_docker_build_bounded.py,75,bounded-wait,gnome,review,"timeout = state / ""timeout"""
+tests/test_docker_build_bounded.py,53,bounded-wait,gnome,review,"timeout=15,"
+tests/test_docker_build_bounded.py,159,bounded-wait,gnome,review,"def wait(self, timeout=None):"
+tests/test_docker_build_bounded.py,194,bounded-wait,gnome,review,"stdout, stderr = process.communicate(timeout=20)"
+tests/test_docker_build_bounded.py,245,bounded-wait,gnome,review,"def wait(self, timeout=None):"
 tests/test_export.py,68,temporal-assertion,gnome,review,"assert markdown(case[""input""]).encode() == expected.encode()"
 tests/test_export.py,92,temporal-assertion,gnome,review,assert len(result) == length and all(abs(v - 0.1) < 1e-6 for v in result)
 tests/test_export.py,95,temporal-assertion,gnome,review,assert len(result) == length and max(abs(v) for v in result) <= 0.950001
@@ -1353,7 +1355,6 @@ tests/test_folder_player.py,254,temporal-assertion,gnome,review,"assert player.p
 tests/test_folder_player.py,257,temporal-assertion,gnome,review,assert not errors and player.position == stop and not player.playing
 tests/test_folder_player.py,258,temporal-assertion,gnome,review,"assert sum(samples) == (stop - 200) * 48, ""Stop must bound actual output PCM, including the 10 s cap"""
 tests/test_folder_player.py,335,temporal-assertion,gnome,review,"assert reads(end - 512, 512)[0] and not reads(end, 512)[0]"
-tests/test_harness_base.py,449,bounded-wait,gnome,review,"timeout = tmp_path / ""bin/timeout"""
 tests/test_installed_build.py,240,bounded-wait,gnome,review,release.wait(3)
 tests/test_installed_build.py,382,bounded-wait,gnome,review,assert release.wait(5)
 tests/test_installed_build.py,387,bounded-wait,gnome,review,assert finish_job.wait(5)
@@ -2101,42 +2102,28 @@ tests/ui/progress_wait.py,7,bounded-wait,gnome,review,"def until_progress(check,
 tests/ui/progress_wait.py,9,clock-read,gnome,review,deadline = clock() + timeout
 tests/ui/progress_wait.py,12,clock-read,gnome,review,now = clock()
 tests/ui/progress_wait.py,13,clock-condition,gnome,review,if now >= deadline:
-tests/ui/quit.py,39,clock-read,gnome,review,deadline = time.monotonic() + 10
-tests/ui/quit.py,43,clock-read,gnome,review,remaining = deadline - time.monotonic()
-tests/ui/quit.py,44,temporal-assertion,gnome,review,"assert remaining > 0 and selector.select(remaining), f""{mode}: no exit began: {output!r}"""
-tests/ui/quit.py,50,bounded-wait,gnome,review,output += child.communicate(timeout=10)[0]
-tests/ui/quit.py,87,bounded-wait,gnome,review,"subprocess.run([sys.executable, __file__, mode], check=True, timeout=12)"
-tests/ui/quit.py,115,clock-read,gnome,review,started = time.monotonic()
-tests/ui/quit.py,146,fixed-delay,gnome,review,time.sleep(30)
-tests/ui/quit.py,195,fixed-delay,gnome,review,time.sleep(0.3) # Keep inference alive beyond the background-close timer.
-tests/ui/quit.py,232,bounded-wait,gnome,review,"assert finish_gate.wait(5), ""Finalization was not released"""
-tests/ui/quit.py,243,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,276,clock-read,gnome,review,"assert time.monotonic() - started < 10, ""Process shutdown stalled"""
-tests/ui/quit.py,276,temporal-assertion,gnome,review,"assert time.monotonic() - started < 10, ""Process shutdown stalled"""
-tests/ui/quit.py,287,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,337,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,343,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,362,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,383,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,403,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,413,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,424,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,434,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,447,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,452,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,468,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,508,clock-read,gnome,review,closing_at = time.monotonic()
-tests/ui/quit.py,514,timer-callback,gnome,review,"GLib.timeout_add(10, drive)"
-tests/ui/quit.py,520,clock-read,gnome,review,assert result == 0 and closing_at is not None and time.monotonic() - closing_at < 0.8
-tests/ui/quit.py,520,temporal-assertion,gnome,review,assert result == 0 and closing_at is not None and time.monotonic() - closing_at < 0.8
-tests/ui/quit.py,530,clock-read,gnome,review,deadline = time.monotonic() + 2
-tests/ui/quit.py,531,clock-condition,gnome,review,while child.poll() is None and time.monotonic() < deadline:
-tests/ui/quit.py,531,clock-read,gnome,review,while child.poll() is None and time.monotonic() < deadline:
-tests/ui/quit.py,532,fixed-delay,gnome,review,time.sleep(0.005)
-tests/ui/quit.py,537,clock-condition,gnome,review,while queue_before_exit.client is not None and time.monotonic() < deadline:
-tests/ui/quit.py,537,clock-read,gnome,review,while queue_before_exit.client is not None and time.monotonic() < deadline:
-tests/ui/quit.py,538,fixed-delay,gnome,review,time.sleep(0.005)
-tests/ui/quit.py,582,clock-read,gnome,review,"print(json.dumps(dict(mode=mode, exitSeconds=time.monotonic() - closing_at, holds=app._transcription_holds)))"
+tests/ui/quit.py,53,timer-callback,gnome,review,"watchdog = threading.Timer(12, child.kill)"
+tests/ui/quit.py,107,bounded-wait,gnome,review,"subprocess.run([sys.executable, __file__, mode], check=True, timeout=12)"
+tests/ui/quit.py,207,clock-read,gnome,review,writer_released_at = time.monotonic()
+tests/ui/quit.py,286,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,329,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,379,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,385,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,404,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,425,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,445,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,455,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,466,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,476,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,489,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,494,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,510,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,550,clock-read,gnome,review,"closing_at, closing_cpu_at = time.monotonic(), time.thread_time()"
+tests/ui/quit.py,567,timer-callback,gnome,review,"GLib.timeout_add(10, drive)"
+tests/ui/quit.py,569,clock-read,gnome,review,exited_at = time.monotonic()
+tests/ui/quit.py,570,clock-read,gnome,review,exited_cpu_at = time.thread_time()
+tests/ui/quit.py,575,temporal-assertion,gnome,review,assert result == 0 and closing_at is not None
+tests/ui/quit.py,581,temporal-assertion,gnome,review,"assert exit_cpu_seconds < 0.8, (mode, ""main-thread CPU"", exit_cpu_seconds)"
 tests/ui/recording-details.py,80,clock-read,gnome,review,end = time.monotonic() + 12
 tests/ui/recording-details.py,82,clock-condition,gnome,review,while time.monotonic() < end:
 tests/ui/recording-details.py,82,clock-read,gnome,review,while time.monotonic() < end:
