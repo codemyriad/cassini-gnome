@@ -156,18 +156,19 @@ class MeetingPage(Adw.NavigationPage):
         self.lines = box(margin_start=48, margin_end=48, margin_top=8)
         center.append(self.lines)
         self.store = Gio.ListStore.new(TurnItem)
-        factory = Gtk.SignalListItemFactory()
-        factory.connect("bind", self._bind)
-        factory.connect("unbind", self._unbind)
-        self.list = Gtk.ListView(
-            model=Gtk.NoSelection.new(self.store), factory=factory, css_classes=["meeting-transcript"]
-        )
-        self.list.set_enable_rubberband(False)
         self._exact = os.environ.get("CASSINI_TRANSCRIPT_RENDER") == "custom"
         if self._exact:
             from .exact_transcript import ExactTranscript
 
             self.list = ExactTranscript(self)
+        else:
+            factory = Gtk.SignalListItemFactory()
+            factory.connect("bind", self._bind)
+            factory.connect("unbind", self._unbind)
+            self.list = Gtk.ListView(
+                model=Gtk.NoSelection.new(self.store), factory=factory, css_classes=["meeting-transcript"]
+            )
+            self.list.set_enable_rubberband(False)
         shortcut = Gtk.ShortcutController(scope=Gtk.ShortcutScope.LOCAL)
         for key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter):
             shortcut.add_shortcut(
@@ -453,8 +454,10 @@ class MeetingPage(Adw.NavigationPage):
         words.connect("activate-link", lambda _label, uri: self._word_clicked(turn, uri))
         row.append(names)
         row.append(words)
-        self._render_words(turn, words)
-        words.connect("map", lambda words: self._render_words(turn, words))
+        if not self._exact or not register:
+            self._render_words(turn, words)
+        if register:
+            words.connect("map", lambda words: self._render_words(turn, words))
         if register:
             self.bound[turn.index] = (turn, words, row)
         self._refresh_header(turn, row)
@@ -821,7 +824,7 @@ class MeetingPage(Adw.NavigationPage):
                     break
                 common += 1
             removed = len(self._turns) - common
-            additions = [TurnItem(turn) for turn in meeting.turns[common:]]
+            additions = [] if self._exact else [TurnItem(turn) for turn in meeting.turns[common:]]
             if self._exact:
                 self.list.set_turns(meeting.turns)
             elif removed or additions:

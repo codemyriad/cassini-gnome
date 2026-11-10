@@ -11,6 +11,7 @@ import faulthandler
 import json
 import os
 import resource
+import subprocess
 import sys
 import tempfile
 import time
@@ -64,6 +65,8 @@ class Frames:
         self.cpu = []
         self.intervals = []
         self.previous = None
+        self.previous_cpu = time.thread_time_ns()
+        self.between_paints_cpu = []
         self.handlers = [self.clock.connect("before-paint", self.before), self.clock.connect("after-paint", self.after)]
 
     def before(self, *_):
@@ -74,7 +77,10 @@ class Frames:
         self.previous = stamp
 
     def after(self, *_):
-        self.cpu.append((time.thread_time_ns() - self.start) / 1e6)
+        now = time.thread_time_ns()
+        self.cpu.append((now - self.start) / 1e6)
+        self.between_paints_cpu.append((now - self.previous_cpu) / 1e6)
+        self.previous_cpu = now
 
     def close(self):
         for handler in self.handlers:
@@ -171,11 +177,19 @@ def flicks(window, page, playing):
     )
 
 
+def memory_check():
+    memory = subprocess.check_output(["free", "-m"], text=True)
+    print(memory, flush=True)
+    available = int(next(line for line in memory.splitlines() if line.startswith("Mem:")).split()[-1])
+    assert available > 4000, ("RAM rule: insufficient available MB", available)
+
+
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     os.environ["CASSINI_LIBRARY_DIR"] = str(root / "EmptyLibrary")
     opus = hour_meeting(root / "Hour", mixed=True)
     only_plain = os.environ.get("CASSINI_CUSTOM_CASE") == "plain"
+    memory_check()
     long_opus = opus if only_plain else hour_meeting(root / "FourHours", mixed=True, hours=4)
     meeting = load_open_meeting(opus, root / "Hour")
     long_meeting = load_open_meeting(long_opus, root / "FourHours")
@@ -205,15 +219,27 @@ with tempfile.TemporaryDirectory() as temporary:
         if only_plain and name != "60min-no-speakers":
             continue
         print("START", name, len(model.words), len(model.turns), flush=True)
+        if name == "4h-diarized":
+            memory_check()
         frames = Frames(window)
         started = time.thread_time_ns()
+        frame_started = window.get_frame_clock().get_frame_time()
         window.open_meeting(model, external=True)
         page = window.meeting_page
         paint(window)
-        until(lambda page=page: page.list.get_mapped() and page.list.ready and bool(page.bound))
+        until(lambda page=page: page.list.get_mapped() and page.list.viewport_ready and bool(page.bound))
         first = (time.thread_time_ns() - started) / 1e6
-        until(lambda page=page: page.list.ready and bool(page.bound))
+        first_frame_ms = (window.get_frame_clock().get_frame_time() - frame_started) / 1000
+        first_rows = len(page.list.prefix) - 1
+        load_samples = []
+        while not page.list.ready:
+            paint(window)
+            load_samples.append((anchor(page), page.scroller.get_vadjustment().get_upper()))
         paint(window)
+        assert all(sample[0][0] == 0 and abs(sample[0][1] - load_samples[0][0][1]) <= 1 for sample in load_samples), (
+            load_samples
+        )
+        fully_frame_ms = (window.get_frame_clock().get_frame_time() - frame_started) / 1000
         fully = (page.list.layout_completed_cpu_ns - started) / 1e6
         frames.close()
         report = dict(
@@ -221,6 +247,14 @@ with tempfile.TemporaryDirectory() as temporary:
             words=len(model.words),
             turns=len(model.turns),
             openFirstPaintCpuMs=first,
+            openFirstPaintFrameClockMs=first_frame_ms,
+            rowsMeasuredAtFirstPaint=first_rows,
+            openFullyLaidOutFrameClockMs=fully_frame_ms,
+            openBuildSliceMaxCpuMs=page.list.build_slice_cpu_max_ns / 1e6,
+            openMeasurementCpuMs=page.list.measurement_cpu_ns / 1e6,
+            loadAnchorChanges=0,
+            loadUpperChanges=sum(b[1] != a[1] for a, b in zip(load_samples, load_samples[1:], strict=False)),
+            openWorstBetweenPaintsCpuMs=max(frames.between_paints_cpu),
             openFullyLaidOutCpuMs=fully,
             openWorstFrameCpuMs=max(frames.cpu),
             upper=page.scroller.get_vadjustment().get_upper(),
@@ -238,21 +272,54 @@ with tempfile.TemporaryDirectory() as temporary:
             window.player.thaw_notify()
         report["highlightCpuMeanMs"] = sum(costs) / len(costs)
         report["highlightCpuMaxMs"] = max(costs)
+        # Above the cap: real resize, same layout width and zero measurement.
         frames = Frames(window)
         widths = [page.list.layout_width]
         original_size = window.get_width(), window.get_height()
+        measured = page.list.measured_rows
         window.set_default_size(original_size[0] + 80, original_size[1])
-        until(lambda page=page, widths=widths: page.list.layout_width != widths[0])
+        until(lambda original_size=original_size: window.get_width() != original_size[0])
         paint(window)
         widths.append(page.list.layout_width)
         window.set_default_size(*original_size)
-        until(lambda page=page, widths=widths: page.list.layout_width == widths[0])
+        until(lambda original_size=original_size: window.get_width() == original_size[0])
         paint(window)
         widths.append(page.list.layout_width)
-        assert widths[0] != widths[1] and widths[0] == widths[2], widths
-        report["resizeWidths"] = widths
         frames.close()
+        assert widths[0] == widths[1] == widths[2], widths
+        assert page.list.measured_rows == measured
+        report["resizeAboveCapWidths"] = widths
+        report["resizeAboveCapWorstFrameCpuMs"] = max(frames.cpu)
+        # Uncached narrow width, then return to the previous cached width.
+        frames = Frames(window)
+        window.set_default_size(860, original_size[1])
+        until(lambda page=page, widths=widths: page.list._requested_width < widths[0])
+        # Cancel an in-flight rebuild, return to the still-active cached
+        # width, then resume the partial narrow index without repeating rows.
+        until(lambda page=page, model=model: page.list.measured_rows > len(model.turns))
+        partial_rows = page.list.measured_rows
+        window.set_default_size(*original_size)
+        until(lambda page=page, widths=widths: page.list._requested_width == widths[0] and page.list.ready)
+        paint(window)
+        cancelled_rows = page.list.measured_rows
+        paint(window)
+        assert page.list.measured_rows == cancelled_rows
+        window.set_default_size(860, original_size[1])
+        until(lambda page=page, widths=widths: page.list._requested_width < widths[0])
+        until(lambda page=page: page.list.ready)
+        paint(window)
+        narrow = page.list.layout_width
+        assert page.list.measured_rows == len(model.turns) * 2, "A cached turn/width was remeasured"
+        report["resizeCancelledRowsReused"] = partial_rows - len(model.turns)
+        measured = page.list.measured_rows
+        window.set_default_size(*original_size)
+        until(lambda page=page, widths=widths: page.list.layout_width == widths[0])
+        paint(window)
+        assert page.list.measured_rows == measured, "Returning to cached width remeasured rows"
+        frames.close()
+        report["resizeWidths"] = [widths[0], narrow, page.list.layout_width]
         report["resizeWorstFrameCpuMs"] = max(frames.cpu)
+        report["resizeWorstBetweenPaintsCpuMs"] = max(frames.between_paints_cpu)
         report["rssMiB"] = int(Path("/proc/self/statm").read_text().split()[1]) * os.sysconf("SC_PAGE_SIZE") / 1048576
         report["peakRssMiB"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
         report["boundRows"] = len(page.bound)
@@ -292,6 +359,10 @@ with tempfile.TemporaryDirectory() as temporary:
         ok, bounds = page.bound[target.index][2].compute_bounds(page.scroller)
         assert ok and bounds.get_y() < page.scroller.get_height() and bounds.get_y() + bounds.get_height() > 0
         report["wordActivationAndFollow"] = True
+        assert report["openFirstPaintCpuMs"] < 100, "First transcript paint CPU target missed"
+        assert report["openWorstFrameCpuMs"] < 32, "Load paint-frame CPU target missed"
+        assert report["resizeWorstFrameCpuMs"] < 32, "Uncached resize paint-frame CPU target missed"
+        assert report["resizeAboveCapWorstFrameCpuMs"] < 32, "Above-cap resize CPU target missed"
         reports.append(report)
         Path(os.environ["CASSINI_CUSTOM_OUT"]).write_text(json.dumps(reports, indent=2))
         print(json.dumps({k: v for k, v in report.items() if k not in ("paused", "playingFollowOff")}), flush=True)

@@ -1,0 +1,113 @@
+[
+  {
+    "name": "60min-diarized",
+    "words": 12803,
+    "turns": 484,
+    "openFirstPaintCpuMs": 397.910603,
+    "openFullyLaidOutCpuMs": 379.530243,
+    "openWorstFrameCpuMs": 368.704567,
+    "upper": 68685.0,
+    "paused": {
+      "reverseFrames": 0,
+      "upperChanges": 0,
+      "frames": 941,
+      "coastPixels": 2907.28,
+      "worstFrameCpuMs": 5.617639,
+      "worstFrameIntervalMs": 18.377
+    },
+    "playingFollowOff": {
+      "reverseFrames": 0,
+      "upperChanges": 0,
+      "frames": 938,
+      "coastPixels": 2907.29,
+      "worstFrameCpuMs": 4.904109,
+      "worstFrameIntervalMs": 18.591
+    },
+    "highlightCpuMeanMs": 0.11539115000000001,
+    "highlightCpuMaxMs": 0.814872,
+    "resizeWidths": [
+      788,
+      868,
+      788
+    ],
+    "resizeWorstFrameCpuMs": 349.102224,
+    "rssMiB": 146.859375,
+    "peakRssMiB": 145.98046875,
+    "boundRows": 7,
+    "wordActivationAndFollow": true
+  },
+  {
+    "name": "4h-diarized",
+    "words": 51212,
+    "turns": 1933,
+    "openFirstPaintCpuMs": 768.171636,
+    "openFullyLaidOutCpuMs": 755.805131,
+    "openWorstFrameCpuMs": 741.121027,
+    "upper": 274515.0,
+    "paused": {
+      "reverseFrames": 0,
+      "upperChanges": 0,
+      "frames": 939,
+      "coastPixels": 2907.27,
+      "worstFrameCpuMs": 5.375353,
+      "worstFrameIntervalMs": 33.332
+    },
+    "playingFollowOff": {
+      "reverseFrames": 0,
+      "upperChanges": 0,
+      "frames": 939,
+      "coastPixels": 2907.28,
+      "worstFrameCpuMs": 4.666201,
+      "worstFrameIntervalMs": 33.332
+    },
+    "highlightCpuMeanMs": 0.10557299,
+    "highlightCpuMaxMs": 1.293932,
+    "resizeWidths": [
+      788,
+      868,
+      788
+    ],
+    "resizeWorstFrameCpuMs": 714.129483,
+    "rssMiB": 158.88671875,
+    "peakRssMiB": 158.15234375,
+    "boundRows": 7,
+    "wordActivationAndFollow": true
+  },
+  {
+    "name": "60min-no-speakers",
+    "words": 12803,
+    "turns": 127,
+    "openFirstPaintCpuMs": 162.988795,
+    "openFullyLaidOutCpuMs": 155.045063,
+    "openWorstFrameCpuMs": 153.849428,
+    "upper": 49083.0,
+    "paused": {
+      "reverseFrames": 0,
+      "upperChanges": 0,
+      "frames": 937,
+      "coastPixels": 2907.28,
+      "worstFrameCpuMs": 4.25043,
+      "worstFrameIntervalMs": 33.332
+    },
+    "playingFollowOff": {
+      "reverseFrames": 0,
+      "upperChanges": 0,
+      "frames": 942,
+      "coastPixels": 2907.27,
+      "worstFrameCpuMs": 3.941449,
+      "worstFrameIntervalMs": 18.457
+    },
+    "highlightCpuMeanMs": 0.12013467,
+    "highlightCpuMaxMs": 0.927594,
+    "resizeWidths": [
+      788,
+      868,
+      788
+    ],
+    "resizeWorstFrameCpuMs": 153.790777,
+    "rssMiB": 160.37109375,
+    "peakRssMiB": 159.48046875,
+    "boundRows": 4,
+    "wordActivationAndFollow": true
+  }
+]
