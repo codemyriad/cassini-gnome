@@ -1,15 +1,15 @@
 # D88 timing audit
 
-Baseline: main `a67e8b5` (merged #306, 2026-11-10), plus this PR's scanner
+Baseline: main `3b6b9e5` (merged #306–#308, 2026-11-10), plus this PR's scanner
 regression fixtures. The inventory scans 518 tracked test source files, including
 both pinned extension copies, protocol scenarios and conformance runners. It records
-2,266 timing-related sites in 247 files: 438 clock reads, 106 fixed-delay
-references, 112 timer registrations, 97 clock conditions, 942 candidate temporal
-assertions and 571 bounded waits. GNOME owns 1,675 sites; 591 are vendored.
+2,261 timing-related sites in 247 files: 437 clock reads, 106 fixed-delay
+references, 109 timer registrations, 97 clock conditions, 941 candidate temporal
+assertions and 571 bounded waits. GNOME owns 1,670 sites; 591 are vendored.
 
 [The CSV](test-timing-inventory.csv) gives file, source line, category,
 ownership and expression. A site can occur in several categories. These are
-conservative audit candidates, **not 2,266 confirmed violations**. In particular,
+conservative audit candidates, **not 2,261 confirmed violations**. In particular,
 media timestamps, injected clock values, CPU budgets, diagnostic timestamps and
 outer hang guards retain their coverage. `review` means the area's migration
 must classify the site before changing it. Both `browser-extension/` and

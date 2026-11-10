@@ -2075,15 +2075,10 @@ tests/ui/library.py,38,clock-read,gnome,review,deadline = time.monotonic() + 8
 tests/ui/library.py,39,clock-condition,gnome,review,while time.monotonic() < deadline:
 tests/ui/library.py,39,clock-read,gnome,review,while time.monotonic() < deadline:
 tests/ui/library.py,44,fixed-delay,gnome,review,time.sleep(0.01)
-tests/ui/listening-rows.py,60,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(8, timeout)"
-tests/ui/listening-rows.py,87,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(8, lambda: (expired.append(True), loop.quit(), False)[-1])"
-tests/ui/listening-rows.py,104,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(8, lambda: expired.append(True) or False)"
-tests/ui/listening-rows.py,615,bounded-wait,gnome,review,"timeout=5,"
-tests/ui/listening-rows.py,652,bounded-wait,gnome,review,"timeout=5,"
-tests/ui/listening-rows.py,780,bounded-wait,gnome,review,"timeout=5,"
-tests/ui/listening-rows.py,782,clock-read,gnome,review,"until(window, lambda: page._follow_until > GLib.get_monotonic_time())"
-tests/ui/listening-rows.py,803,clock-read,gnome,review,assert not scroll_calls and page._follow_until > GLib.get_monotonic_time()
-tests/ui/listening-rows.py,803,temporal-assertion,gnome,review,assert not scroll_calls and page._follow_until > GLib.get_monotonic_time()
+tests/ui/listening-rows.py,108,clock-read,gnome,review,return GLib.get_monotonic_time()
+tests/ui/listening-rows.py,616,bounded-wait,gnome,review,"timeout=5,"
+tests/ui/listening-rows.py,653,bounded-wait,gnome,review,"timeout=5,"
+tests/ui/listening-rows.py,793,bounded-wait,gnome,review,"timeout=5,"
 tests/ui/listening_input.py,29,bounded-wait,gnome,review,"subprocess.run([""xdotool"", ""windowfocus"", ""--sync"", xid], check=True, timeout=5)"
 tests/ui/meeting.py,37,clock-read,gnome,review,end = time.monotonic() + 8
 tests/ui/meeting.py,39,clock-condition,gnome,review,while time.monotonic() < end:
