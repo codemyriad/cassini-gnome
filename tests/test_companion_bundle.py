@@ -8,6 +8,7 @@ import selectors
 import shlex
 import shutil
 import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -279,7 +280,14 @@ def test_kernel_lock_recovers_after_owner_is_killed_without_cleanup(tmp_path):
     # An actual process owns the open file description, then dies without any
     # shell trap/unlink. The next launch must use the same inode successfully.
     owner = subprocess.Popen(
-        ["/bin/sh", "-c", f"exec 9>>{shlex.quote(str(lock))}; flock 9; printf READY; exec sleep 30"],
+        [
+            sys.executable,
+            "-c",
+            "import fcntl, signal, sys; "
+            "held = open(sys.argv[1], 'a'); fcntl.flock(held, fcntl.LOCK_EX); "
+            "print('READY', end='', flush=True); signal.pause()",
+            str(lock),
+        ],
         stdout=subprocess.PIPE,
     )
     try:
@@ -338,45 +346,57 @@ def test_browser_reader_never_sees_missing_copy_during_publication(tmp_path, mon
     commands.mkdir()
     previous = target.parent / ".browser-companion.previous"
     real_mv = shlex.quote(shutil.which("mv"))
+    real_python = shlex.quote(sys.executable)
+    ready, release = tmp_path / "publication-ready", tmp_path / "publication-release"
+    os.mkfifo(ready)
+    os.mkfifo(release)
+    hold = (
+        f"  printf READY > {shlex.quote(str(ready))}\n"
+        f"  IFS= read -r proceed < {shlex.quote(str(release))}\n"
+        "  exit 0\nfi\n"
+    )
+    # Park immediately after the atomic exchange. For the historical two-rename
+    # implementation, park after its first move, when readers lose the path.
     script = commands / "mv"
-    # Deliberate fault injection holds the publication boundary open. The old
-    # two-rename publisher exposes ENOENT here; an exchange keeps a full copy.
     script.write_text(
         "#!/bin/sh\n"
         f'if [ "$2" = --exchange ] || {{ [ "$3" = {shlex.quote(str(target))} ] && '
         f'[ "$4" = {shlex.quote(str(previous))} ]; }}; then\n'
-        f'  {real_mv} "$@" || exit $?\n  sleep .1\n  exit 0\nfi\n'
-        f'exec {real_mv} "$@"\n'
+        f'  {real_mv} "$@" || exit $?\n' + hold + f'exec {real_mv} "$@"\n'
     )
     script.chmod(0o700)
+    # Hosts with an older mv publish through the optional Python exchange.
+    python = commands / "python3"
+    python.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = -I ] && [ "$2" = - ]; then\n'
+        f'  {real_python} "$@" || exit $?\n' + hold + f'exec {real_python} "$@"\n'
+    )
+    python.chmod(0o700)
     monkeypatch.setenv("PATH", str(commands) + os.pathsep + os.defpath)
-    stop, ready = threading.Event(), threading.Event()
-    failures, observed = [], []
 
-    def read():
-        while not stop.is_set():
-            try:
-                value = json.loads((target / "manifest.json").read_bytes())
-                assert value["version"] in ("0.2.2", "0.2.3")
-                assert (target / "app.js").read_bytes()
-                observed.append(value["version"])
-                ready.set()
-            except Exception as error:
-                failures.append(error)
-                ready.set()
-                return
+    def check_copy(version):
+        assert (target / "manifest.json").is_file(), "The stable companion path disappeared during publication"
+        assert json.loads((target / "manifest.json").read_bytes())["version"] == version
+        assert (target / "app.js").read_bytes() == f"console.log({version!r})".encode()
 
-    reader = threading.Thread(target=read)
-    reader.start()
-    try:
-        assert ready.wait(2)
-        bundle.prepare(new, destination=target)
-    finally:
-        stop.set()
-        reader.join(timeout=2)
-    assert not reader.is_alive()
-    assert not failures, repr(failures)
-    assert "0.2.2" in observed and "0.2.3" in observed
+    check_copy("0.2.2")
+    with (
+        os.fdopen(os.open(ready, os.O_RDWR | os.O_NONBLOCK), "rb", buffering=0) as entered,
+        os.fdopen(os.open(release, os.O_RDWR | os.O_NONBLOCK), "wb", buffering=0) as proceed,
+        selectors.DefaultSelector() as selector,
+        ThreadPoolExecutor(1) as executor,
+    ):
+        selector.register(entered, selectors.EVENT_READ)
+        future = executor.submit(bundle.prepare, new, destination=target)
+        try:
+            assert selector.select(5) and entered.read(5) == b"READY", "Publisher never reached the exchange boundary"
+            assert not future.done()
+            check_copy("0.2.3")
+        finally:
+            proceed.write(b"continue\n")
+        assert future.result(timeout=5) == target
+    check_copy("0.2.3")
 
 
 def test_host_without_atomic_exchange_keeps_its_existing_copy(tmp_path, monkeypatch):
