@@ -1,0 +1,1212 @@
+path,line,kind,owner,status,expression
+browser-protocol/tests/bfcache.mjs,39,clock-read,vendored,review,"async function observed(check,label){const deadline=Date.now()+15000;while(true){const value=await check();if(value)return value;assert.ok(Date.now()<deadline,'Timed out: '+label);await new Promise(resolve=>setTimeout(resolve,25));}}"
+browser-protocol/tests/bfcache.mjs,39,temporal-assertion,vendored,review,"async function observed(check,label){const deadline=Date.now()+15000;while(true){const value=await check();if(value)return value;assert.ok(Date.now()<deadline,'Timed out: '+label);await new Promise(resolve=>setTimeout(resolve,25));}}"
+browser-protocol/tests/bfcache.mjs,39,timer-callback,vendored,review,"async function observed(check,label){const deadline=Date.now()+15000;while(true){const value=await check();if(value)return value;assert.ok(Date.now()<deadline,'Timed out: '+label);await new Promise(resolve=>setTimeout(resolve,25));}}"
+browser-protocol/tests/bfcache.mjs,80,timer-callback,vendored,review,"const timer=setTimeout(()=>{browserSession.off('Target.receivedMessageFromTarget',receive);reject(Error('No worker reply: '+method));},10000);"
+browser-protocol/tests/browser_host_fixture.py,119,clock-read,vendored,review,"at = max([0, (time.monotonic() - started_at) * 1000] +"
+browser-protocol/tests/browser_host_fixture.py,146,clock-read,vendored,review,started_at = time.monotonic()
+browser-protocol/tests/call-generation.mjs,20,clock-read,vendored,review,const deadline=Date.now()+15000;
+browser-protocol/tests/call-generation.mjs,22,clock-read,vendored,review,"assert.ok(Date.now()<deadline,`Timed out: ${label}; notices=${JSON.stringify(notices)}`);"
+browser-protocol/tests/call-generation.mjs,22,temporal-assertion,vendored,review,"assert.ok(Date.now()<deadline,`Timed out: ${label}; notices=${JSON.stringify(notices)}`);"
+browser-protocol/tests/call-generation.mjs,23,timer-callback,vendored,review,"await new Promise(resolve=>setTimeout(resolve,25));"
+browser-protocol/tests/call-generation.mjs,49,clock-read,vendored,review,"await page.evaluate(({type,token})=>postMessage({channel:'cassini-control',type,token,captureLocal:false,sourceOutcomes:true,origin:Date.now(),moduleURL:location.origin+'/capture.js',workletURL:location.origin+'/pcm-worklet.js'},'*'),{type,token});"
+browser-protocol/tests/capture-real-time.mjs,71,clock-read,vendored,review,const started = Date.now();
+browser-protocol/tests/capture-real-time.mjs,72,timer-callback,vendored,review,"deadline = setTimeout(() => fail(new Error(`after ${BOUND_SECONDS} s: tone ${(frames.tone / RATE).toFixed(1)} s, ` +"
+browser-protocol/tests/capture-real-time.mjs,76,clock-read,vendored,review,"frames[id] += bytes.length / 2; arrivals[id].push([Date.now(), frames[id]]);"
+browser-protocol/tests/capture-real-time.mjs,93,clock-read,vendored,review,"window.capturing.push(await capture({ stream: await input(tone), id, label: id, kind: 'local', origin: Date.now(),"
+browser-protocol/tests/capture-real-time.mjs,106,clock-read,vendored,review,`(rate ${rate.toFixed(3)}; overall ${overall.toFixed(3)}; retries ${retries.length}; ${((Date.now() - started) / 1000).toFixed(1)} s in all)`);
+browser-protocol/tests/capture-render-stall.mjs,13,clock-read,vendored,review,// Truth is the page's monotonic clock: origin = Date.now() is read next to performance.now()
+browser-protocol/tests/capture-render-stall.mjs,14,clock-read,vendored,review,"// once, and every chunk's arrival in send() is performance.now() - that reading. A chunk arrives"
+browser-protocol/tests/capture-render-stall.mjs,134,timer-callback,vendored,review,"deadline = setTimeout(() => failWith(new Error(`bound ${BOUND} ms reached: ${JSON.stringify(counts)}`)), BOUND);"
+browser-protocol/tests/capture-render-stall.mjs,159,clock-read,vendored,review,"const a = Date.now(), p = performance.now(), b = Date.now();"
+browser-protocol/tests/capture-render-stall.mjs,161,clock-read,vendored,review,const session = () => performance.now() - originPerf;
+browser-protocol/tests/capture-render-stall.mjs,175,timer-callback,vendored,review,setInterval(() => {
+browser-protocol/tests/capture-render-stall.mjs,207,clock-read,vendored,review,const sessionNow = () => Date.now() - info.origin;
+browser-protocol/tests/capture-render-stall.mjs,218,clock-read,vendored,review,const stopBound = Date.now() + 1000;
+browser-protocol/tests/capture-render-stall.mjs,221,clock-read,vendored,review,if (Date.now() > stopBound) throw new Error(`victim ${v.pid} not stopped: state ${v.state}`);
+browser-protocol/tests/capture-render-stall.mjs,226,timer-callback,vendored,review,"if (STALL > 0) await new Promise(resolve => setTimeout(resolve, STALL * 1000)); // the stimulus, not a wait"
+browser-protocol/tests/capture-render-stall.sh,17,fixed-delay,vendored,review,"for _ in $(seq 1 100); do [ -S ""$runtime/pulse.sock"" ] && break; sleep .1; done # bound on the socket appearing"
+browser-protocol/tests/control-relay.test.mjs,128,clock-read,vendored,review,"const started = Date.now(), startedMono = monotonic();"
+browser-protocol/tests/control-relay.test.mjs,137,clock-read,vendored,review,assert.ok(frames.every(f => f.atWall >= started && f.atWall <= Date.now()));
+browser-protocol/tests/control-relay.test.mjs,139,temporal-assertion,vendored,review,"assert.ok(frames.every(f => f.atMono >= startedMono && f.atMono <= monotonic()), 'every frame carries its monotonic stamp');"
+browser-protocol/tests/control-relay.test.mjs,334,temporal-assertion,vendored,review,"assert.throws(() => resumeRequests([connection], 0, Number.MAX_SAFE_INTEGER), /control connection 1's frame 1 has no monotonic stamp/, `resumeRequests: ${what}`);"
+browser-protocol/tests/control-relay.test.mjs,459,temporal-assertion,vendored,review,"assert.deepEqual(resumeRequests(connections, 0, monotonic()).map(r => [r.requestId, r.delivered]), [['t0', true], ['t1', false]],"
+browser-protocol/tests/control_host_fixture.py,57,bounded-wait,vendored,review,thread.join(timeout=1)
+browser-protocol/tests/extension-reload.mjs,30,clock-read,vendored,review,const deadline = Date.now()+15000;
+browser-protocol/tests/extension-reload.mjs,34,clock-read,vendored,review,"assert.ok(Date.now()<deadline, `Timed out waiting for ${label}`);"
+browser-protocol/tests/extension-reload.mjs,34,temporal-assertion,vendored,review,"assert.ok(Date.now()<deadline, `Timed out waiting for ${label}`);"
+browser-protocol/tests/extension-reload.mjs,35,timer-callback,vendored,review,"await new Promise(resolve=>setTimeout(resolve,25));"
+browser-protocol/tests/extension-reload.mjs,86,clock-read,vendored,review,const deadline = Date.now() + 15000;
+browser-protocol/tests/extension-reload.mjs,91,clock-read,vendored,review,"assert.ok(Date.now() < deadline, 'replacement extension worker realm did not start');"
+browser-protocol/tests/extension-reload.mjs,91,temporal-assertion,vendored,review,"assert.ok(Date.now() < deadline, 'replacement extension worker realm did not start');"
+browser-protocol/tests/extension-reload.mjs,92,timer-callback,vendored,review,"if (!fresh) await new Promise(resolve => setTimeout(resolve, 25));"
+browser-protocol/tests/extension-reload.mjs,169,clock-read,vendored,review,const audioDeadline = Date.now() + 15000;
+browser-protocol/tests/extension-reload.mjs,173,clock-read,vendored,review,"assert.ok(Date.now() < audioDeadline, `new worker received no PCM after reload: ${JSON.stringify(await status())}`);"
+browser-protocol/tests/extension-reload.mjs,173,temporal-assertion,vendored,review,"assert.ok(Date.now() < audioDeadline, `new worker received no PCM after reload: ${JSON.stringify(await status())}`);"
+browser-protocol/tests/extension-reload.mjs,175,timer-callback,vendored,review,"await new Promise(resolve => setTimeout(resolve,25));"
+browser-protocol/tests/independent-sessions.mjs,31,bounded-wait,vendored,review,"async function until(check,label,timeout=20000){const end=Date.now()+timeout;while(Date.now()<end){const value=await check();if(value)return value;await new Promise(r=>setTimeout(r,25));}throw Error('Timed out: '+label);}"
+browser-protocol/tests/independent-sessions.mjs,31,clock-read,vendored,review,"async function until(check,label,timeout=20000){const end=Date.now()+timeout;while(Date.now()<end){const value=await check();if(value)return value;await new Promise(r=>setTimeout(r,25));}throw Error('Timed out: '+label);}"
+browser-protocol/tests/independent-sessions.mjs,31,timer-callback,vendored,review,"async function until(check,label,timeout=20000){const end=Date.now()+timeout;while(Date.now()<end){const value=await check();if(value)return value;await new Promise(r=>setTimeout(r,25));}throw Error('Timed out: '+label);}"
+browser-protocol/tests/independent-sessions.mjs,33,bounded-wait,vendored,review,"async function command(action,tabId,extra={},timeout=20000){const requestId='independent-'+(++sequence);control.write(JSON.stringify({type:'command',requestId,action,tabId,mode:'tracks',independent:true,captureLocal:false,microphone:false,...extra})+'\n');const result=await until(()=>events.find(e=>e.type==='result'&&e.requestId===requestId),requestId,timeout);assert.equal(result.ok,true,JSON.stringify(result));return result.status;}"
+browser-protocol/tests/live-folder-driver.test.mjs,45,clock-read,vendored,review,"// run's 50 ms meOn margin) and under a 2 s step, while the old reading (Date.now() - origin)"
+browser-protocol/tests/live-folder-driver.test.mjs,347,clock-read,vendored,review,"async record() { calls.record++; origin = Date.now(); },"
+browser-protocol/tests/live-folder-driver.test.mjs,458,clock-read,vendored,review,"await poll(() => Date.now() > pending.launchedWall, 'the clock passes the launch', BOUND, { pollMs: 1 });"
+browser-protocol/tests/live-folder-driver.test.mjs,460,clock-read,vendored,review,"await assert.rejects(runLiveFolder({ meeting: page, remote: page, app, worker: worker(Date.now()), out: run.out, log: () => {}, relayStartMs: 0 }),"
+browser-protocol/tests/live-folder-driver.test.mjs,476,clock-read,vendored,review,"await assert.rejects(runLiveFolder({ meeting: page, remote: page, app, worker: worker(Date.now()), out: run.out, log: line => logged.push(line) }),"
+browser-protocol/tests/live-folder-driver.test.mjs,526,timer-callback,vendored,review,"const WAIT = 'setTimeout(() => {}, 600000)';"
+browser-protocol/tests/live-folder-driver.test.mjs,589,clock-read,vendored,review,const started = Date.now();
+browser-protocol/tests/live-folder-driver.test.mjs,592,clock-read,vendored,review,assert.ok(Date.now() - started < BOUND);
+browser-protocol/tests/nextcloud-talk.mjs,45,bounded-wait,vendored,review,"async function until(check,label,timeout=30000){const deadline=Date.now()+timeout;while(Date.now()<deadline){const value=await check();if(value)return value;await new Promise(resolve=>setTimeout(resolve,50));}throw Error('Timed out: '+label);}"
+browser-protocol/tests/nextcloud-talk.mjs,45,clock-read,vendored,review,"async function until(check,label,timeout=30000){const deadline=Date.now()+timeout;while(Date.now()<deadline){const value=await check();if(value)return value;await new Promise(resolve=>setTimeout(resolve,50));}throw Error('Timed out: '+label);}"
+browser-protocol/tests/nextcloud-talk.mjs,45,timer-callback,vendored,review,"async function until(check,label,timeout=30000){const deadline=Date.now()+timeout;while(Date.now()<deadline){const value=await check();if(value)return value;await new Promise(resolve=>setTimeout(resolve,50));}throw Error('Timed out: '+label);}"
+browser-protocol/tests/nextcloud-talk.mjs,47,bounded-wait,vendored,review,"function controlEvent(check,label,timeout=30000){return new Promise((resolve,reject)=>{"
+browser-protocol/tests/nextcloud-talk.mjs,50,timer-callback,vendored,review,"const timer=setTimeout(()=>finish(null,Error('Timed out: '+label)),timeout);"
+browser-protocol/tests/nextcloud-talk.mjs,65,clock-read,vendored,review,"const record=value=>{nextcloudBrowserEvents.push({at:Date.now(),...value});if(nextcloudBrowserEvents.length>250)nextcloudBrowserEvents.shift();};"
+browser-protocol/tests/popup-toolbar.mjs,66,timer-callback,vendored,review,"const timer=setTimeout(()=>{browserSession.off('Target.receivedMessageFromTarget',receive);reject(Error(`No reply from popup: ${method}`));},10000);"
+browser-protocol/tests/popup-toolbar.mjs,83,timer-callback,vendored,review,"const timer=setTimeout(()=>{observer.disconnect();reject(Error('Popup did not finish checking'));},8000);"
+browser-protocol/tests/popup-toolbar.mjs,88,clock-read,vendored,review,"let previous=null,unchanged=0;const deadline=performance.now()+3000;"
+browser-protocol/tests/popup-toolbar.mjs,95,clock-read,vendored,review,if(performance.now()>=deadline){reject(Error('Toolbar popup size did not settle'));return;}
+browser-protocol/tests/product-topologies.mjs,32,clock-read,vendored,review,const deadline = Date.now() + 15000;
+browser-protocol/tests/product-topologies.mjs,33,clock-read,vendored,review,"while (!check()) { assert.ok(Date.now() < deadline, 'timed out waiting for recorded samples'); await new Promise(resolve => setTimeout(resolve, 25)); }"
+browser-protocol/tests/product-topologies.mjs,33,temporal-assertion,vendored,review,"while (!check()) { assert.ok(Date.now() < deadline, 'timed out waiting for recorded samples'); await new Promise(resolve => setTimeout(resolve, 25)); }"
+browser-protocol/tests/product-topologies.mjs,33,timer-callback,vendored,review,"while (!check()) { assert.ok(Date.now() < deadline, 'timed out waiting for recorded samples'); await new Promise(resolve => setTimeout(resolve, 25)); }"
+browser-protocol/tests/product-topologies.mjs,50,clock-read,vendored,review,window.fixtureOrigin = Date.now();
+browser-protocol/tests/product-topologies.mjs,61,timer-callback,vendored,review,window.prejoinClock = setInterval(async () => {
+browser-protocol/tests/product-topologies.mjs,96,clock-read,vendored,review,const joinedAt = await page.evaluate(() => Date.now() - fixtureOrigin);
+browser-protocol/tests/product-topologies.mjs,114,clock-read,vendored,review,window.rejoinStarted = performance.now(); discoveryEvidence.length = 0;
+browser-protocol/tests/product-topologies.mjs,121,clock-read,vendored,review,"const sameDocument = await page.evaluate(() => ({elapsedMs:performance.now()-rejoinStarted,"
+browser-protocol/tests/rtc-evidence-control.mjs,24,timer-callback,vendored,review,"deadline=setTimeout(()=>{fixtureObservers.delete(check);reject(Error('Timed out waiting for acknowledged worker evidence: '+options.type+' '+options.state))},15000);"
+browser-protocol/tests/rtc-evidence-observations.mjs,266,clock-read,vendored,review,"globalThis.fixturePinger=setInterval(()=>fixtureControlPort.onMessage.emit({type:'ping',seq:Date.now()}),100);"
+browser-protocol/tests/rtc-evidence-observations.mjs,266,timer-callback,vendored,review,"globalThis.fixturePinger=setInterval(()=>fixtureControlPort.onMessage.emit({type:'ping',seq:Date.now()}),100);"
+browser-protocol/tests/rtc-evidence-observations.mjs,269,clock-read,vendored,review,const stoppedAt=Date.now();
+browser-protocol/tests/rtc-evidence-observations.mjs,270,timer-callback,vendored,review,"await caller.evaluate(()=>{const last=setInterval(()=>{},60000);for(let id=1;id<=last;id++)clearInterval(id)});"
+browser-protocol/tests/rtc-evidence-observations.mjs,272,clock-read,vendored,review,"const withdrawalMs=Date.now()-stoppedAt;assert.ok(withdrawalMs<=5000,'collector freeze withdrawal '+withdrawalMs);"
+browser-protocol/tests/rtc-topology-probe.mjs,100,clock-read,vendored,review,const deadline=performance.now()+30000;
+browser-protocol/tests/rtc-topology-probe.mjs,102,clock-read,vendored,review,while(performance.now()<deadline){
+browser-protocol/tests/test_browser_host_fixture.py,34,bounded-wait,vendored,review,"self.assertEqual(process.wait(3), 0)"
+browser-protocol/tests/test_browser_host_fixture.py,41,bounded-wait,vendored,review,process.wait(3); process.stdin.close(); process.stdout.close()
+browser-protocol/tests/test_browser_host_fixture.py,64,bounded-wait,vendored,review,"self.assertEqual(process.wait(3), 0)"
+browser-protocol/tests/test_browser_host_fixture.py,77,bounded-wait,vendored,review,process.wait(3)
+browser-protocol/tests/test_library_isolation.py,73,bounded-wait,vendored,review,"env=env, capture_output=True, text=True, timeout=120)"
+browser-protocol/tests/test_library_isolation.py,84,bounded-wait,vendored,review,"env=env, input=b'', capture_output=True, timeout=30)"
+browser-protocol/tests/test_multistream.py,36,bounded-wait,vendored,review,process.wait(3)
+browser-protocol/tests/test_multistream.py,38,bounded-wait,vendored,review,process.kill(); process.wait(3)
+browser-protocol/tests/test_pinning.py,81,bounded-wait,vendored,review,"result = subprocess.run(['node', '--test', *scripts], capture_output=True, text=True, timeout=30,"
+browser-protocol/tests/test_resume_capture.py,177,bounded-wait,vendored,review,"input=struct.pack('=I',len(payload))+payload,capture_output=True,timeout=3,check=True)"
+browser-protocol/tests/webaudio-capture.mjs,108,clock-read,vendored,review,"async function observed(check,label){const deadline=Date.now()+15000;while(true){const value=await check();if(value)return value;assert.ok(Date.now()<deadline,'Timed out: '+label);await new Promise(resolve=>setTimeout(resolve,25));}}"
+browser-protocol/tests/webaudio-capture.mjs,108,temporal-assertion,vendored,review,"async function observed(check,label){const deadline=Date.now()+15000;while(true){const value=await check();if(value)return value;assert.ok(Date.now()<deadline,'Timed out: '+label);await new Promise(resolve=>setTimeout(resolve,25));}}"
+browser-protocol/tests/webaudio-capture.mjs,108,timer-callback,vendored,review,"async function observed(check,label){const deadline=Date.now()+15000;while(true){const value=await check();if(value)return value;assert.ok(Date.now()<deadline,'Timed out: '+label);await new Promise(resolve=>setTimeout(resolve,25));}}"
+tests/broker_barrier.py,40,bounded-wait,gnome,review,"assert self.changed.wait_for(lambda: not self.pending, timeout=DURABLE_BOUND), ("
+tests/broker_fixture.py,83,bounded-wait,gnome,review,"with connect(path, timeout=DURABLE_BOUND) as connection, connection.makefile(""rwb"") as stream:"
+tests/browser-setup/installed.mjs,34,clock-read,gnome,review,const deadline = Date.now() + milliseconds;
+tests/browser-setup/installed.mjs,36,clock-read,gnome,review,while (Date.now() < deadline) {
+tests/browser-setup/installed.mjs,40,timer-callback,gnome,review,"await new Promise(resolve => setTimeout(resolve, 50));"
+tests/browser-setup/installed.mjs,81,clock-read,gnome,review,const deadline = Date.now() + 5000;
+tests/browser-setup/installed.mjs,82,clock-read,gnome,review,"while (app.exitCode === null && app.signalCode === null && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));"
+tests/browser-setup/installed.mjs,82,timer-callback,gnome,review,"while (app.exitCode === null && app.signalCode === null && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));"
+tests/build-refresh/journey.py,36,bounded-wait,gnome,review,"def until(check, label, timeout=20):"
+tests/build-refresh/journey.py,60,timer-callback,gnome,review,"tick = GLib.timeout_add(10, observe)"
+tests/build-refresh/journey.py,61,timer-callback,gnome,review,"limit = GLib.timeout_add(max(1, int(timeout * 1000)), expired)"
+tests/build-refresh/journey.py,108,bounded-wait,gnome,review,"subprocess.run([str(APP)], stdout=activation_log, stderr=activation_log, check=True, timeout=10)"
+tests/build-refresh/journey.py,123,bounded-wait,gnome,review,"subprocess.run([""xdotool"", ""windowfocus"", ""--sync"", window], check=True, timeout=3)"
+tests/build-refresh/journey.py,124,bounded-wait,gnome,review,"subprocess.run([""xdotool"", ""key"", ""--clearmodifiers"", ""ctrl+w""], check=True, timeout=3)"
+tests/build-refresh/journey.py,206,bounded-wait,gnome,review,"timeout=60,"
+tests/build-refresh/journey.py,223,bounded-wait,gnome,review,"subprocess.run([""import"", ""-window"", ""root"", str(OUT / name)], check=True, timeout=3)"
+tests/build-refresh/journey.py,345,bounded-wait,gnome,review,"timeout=30,"
+tests/build-refresh/journey.py,352,bounded-wait,gnome,review,"timeout=30,"
+tests/build-refresh/journey.py,361,bounded-wait,gnome,review,"timeout=10,"
+tests/build-refresh/journey.py,375,bounded-wait,gnome,review,"timeout=10,"
+tests/build-refresh/journey.py,400,bounded-wait,gnome,review,"until(lambda: not owner(), ""clean final quit"", timeout=5)"
+tests/conftest.py,93,clock-read,gnome,review,"started=time.monotonic(),"
+tests/conftest.py,139,clock-read,gnome,review,elapsed = time.monotonic() - shard.started
+tests/dc/regenerate.py,39,bounded-wait,gnome,review,"WhistleClient(args.bundle, timeout=180)"
+tests/dc/regenerate.py,41,bounded-wait,gnome,review,"else ParakeetClient(args.bundle, args.parakeet_model, args.runtime, timeout=180)"
+tests/desktop/indicator.py,105,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(10, timeout)"
+tests/desktop/indicator.py,159,bounded-wait,gnome,review,"result = subprocess.run(command, capture_output=True, text=True, timeout=5)"
+tests/desktop/indicator.py,263,bounded-wait,gnome,review,"timeout=5,"
+tests/desktop/indicator.py,394,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/desktop/windowless.py,30,bounded-wait,gnome,review,"def until(check, label, timeout=30):"
+tests/desktop/windowless.py,31,clock-read,gnome,review,deadline = time.monotonic() + timeout
+tests/desktop/windowless.py,33,clock-condition,gnome,review,time.monotonic() < deadline
+tests/desktop/windowless.py,33,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/desktop/windowless.py,42,fixed-delay,gnome,review,time.sleep(0.05)
+tests/desktop/windowless.py,294,timer-callback,gnome,review,"GLib.timeout_add_seconds(15,lambda:loop.quit() or False)"
+tests/desktop/windowless.py,298,bounded-wait,gnome,review,"report = json.loads(subprocess.check_output([""python3"", ""-c"", program, appid], text=True, timeout=20))"
+tests/desktop/windowless.py,319,bounded-wait,gnome,review,"result = subprocess.run(command, capture_output=True, text=True, timeout=20)"
+tests/desktop/windowless.py,336,timer-callback,gnome,review,"""p.request(g);GLib.timeout_add_seconds(15,l.quit);l.run();print(json.dumps(r))"""
+tests/desktop/windowless.py,342,bounded-wait,gnome,review,"timeout=40,"
+tests/desktop/windowless.py,435,clock-read,gnome,review,"f""global._cassiniQaPointer.notify_absolute_motion(imports.gi.GLib.get_monotonic_time(),{x},{y});return true;}})()"""
+tests/desktop/windowless.py,446,temporal-assertion,gnome,review,"shell( ""(() => {const t=imports.gi.GLib.get_monotonic_time();"" ""global._cassiniQaPointer.notify_button(t,1,imports.gi.Clutter.ButtonState.PRESSED);"" ""imports.gi.GLib.idle_add(imports.gi.GLib.PRIORITY_DEFAULT_IDLE,()=>{"" ""global._cassiniQaPointer.notify_button(imports.gi.GLib.get_monotonic_time(),1,imports.gi.Clutter.ButtonState.RELEASED);"" ""return imports.gi.GLib.SOURCE_REMOVE;});return true;})()"" )"
+tests/desktop/windowless.py,447,clock-read,gnome,review,"""(() => {const t=imports.gi.GLib.get_monotonic_time();"""
+tests/desktop/windowless.py,450,clock-read,gnome,review,"""global._cassiniQaPointer.notify_button(imports.gi.GLib.get_monotonic_time(),1,imports.gi.Clutter.ButtonState.RELEASED);"""
+tests/desktop/windowless.py,502,bounded-wait,gnome,review,"until(lambda: selected(manifest, me, others), ""source selection "" + label, timeout=4)"
+tests/desktop/windowless.py,754,fixed-delay,gnome,review,time.sleep(2)
+tests/diarization/pipeline_probe.py,74,bounded-wait,gnome,review,"client = ParakeetClient(args.bundle, args.parakeet_model, runtime_path(), timeout=120)"
+tests/diarization/pipeline_probe.py,76,bounded-wait,gnome,review,"client = WhistleClient(args.bundle, timeout=120)"
+tests/diarization/queue_probe.py,44,bounded-wait,gnome,review,"def until(check, timeout=120):"
+tests/diarization/queue_probe.py,45,clock-read,gnome,review,deadline = time.monotonic() + timeout
+tests/diarization/queue_probe.py,46,clock-condition,gnome,review,time.monotonic() < deadline
+tests/diarization/queue_probe.py,46,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/diarization/queue_probe.py,49,fixed-delay,gnome,review,time.sleep(0.01)
+tests/diarization/queue_probe.py,164,bounded-wait,gnome,review,"until(lambda: queue.client is None, timeout=5)"
+tests/diarization/queue_probe.py,167,bounded-wait,gnome,review,"timeout=5,"
+tests/flatpak/companion_bridge.py,74,timer-callback,gnome,review,"tick, limit = GLib.timeout_add(20, observe), GLib.timeout_add_seconds(15, expired)"
+tests/flatpak/companion_bridge.py,93,bounded-wait,gnome,review,"timeout=20,"
+tests/flatpak/companion_bridge.py,141,fixed-delay,gnome,review,"'while [ ! -f ""$HOME/release-browser"" ] && [ -d ""$HOME"" ]; do sleep .01; done\n'"
+tests/flatpak/companion_bridge.py,164,bounded-wait,gnome,review,"""written=companion.register();child=companion.open_add(browsers[0]);assert child.wait(5)==0;"""
+tests/flatpak/companion_bridge.py,205,clock-read,gnome,review,deadline = time.monotonic() + 15
+tests/flatpak/companion_bridge.py,209,clock-read,gnome,review,"assert selector.select(max(0, deadline - time.monotonic())), ""Native pipe timed out"""
+tests/flatpak/companion_bridge.py,209,temporal-assertion,gnome,review,"selector.select(max(0, deadline - time.monotonic()))"
+tests/flatpak/companion_bridge.py,278,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/flatpak/companion_bridge.py,318,bounded-wait,gnome,review,assert audio.wait(10) == 0
+tests/flatpak/companion_bridge.py,322,bounded-wait,gnome,review,assert control.wait(10) == 0
+tests/flatpak/companion_bridge.py,351,timer-callback,gnome,review,"""GLib.timeout_add_seconds(15,lambda: (loop.quit(),False)[1]);"""
+tests/flatpak/companion_bridge.py,386,bounded-wait,gnome,review,process.wait(5)
+tests/flatpak/companion_bridge.py,389,bounded-wait,gnome,review,process.wait(5)
+tests/flatpak/companion_bridge.py,475,bounded-wait,gnome,review,"timeout=120,"
+tests/flatpak/library_persistence.py,119,bounded-wait,gnome,review,"json.loads(subprocess.check_output(command + [""write"", str(exports)], env=env, text=True, timeout=20))"
+tests/flatpak/library_persistence.py,126,bounded-wait,gnome,review,"json.loads(subprocess.check_output(command + [""read"", str(exports)], env=env, text=True, timeout=20))"
+tests/flatpak/prepare_trash_portal.py,29,bounded-wait,gnome,review,"with urllib.request.urlopen(url, timeout=30) as incoming:"
+tests/flatpak/trash.py,48,bounded-wait,gnome,review,"result = subprocess.run(base + [prefix + code], capture_output=True, text=True, timeout=30)"
+tests/flatpak/trash.py,61,bounded-wait,gnome,review,"timeout=20,"
+tests/flatpak/trash.py,121,bounded-wait,gnome,review,service.wait(5)
+tests/flatpak/trash.py,182,bounded-wait,gnome,review,"timeout=100,"
+tests/parakeet/pipeline_probe.py,36,bounded-wait,gnome,review,"with ParakeetClient(args.bundle, args.model, args.runtime, timeout=120) as client:"
+tests/parakeet/prepare_model.py,30,bounded-wait,gnome,review,"store = ModelStore(args.cache, timeout=90, user_agent=""CassiniTalk/ci-fetch (GNOME; Linux; source)"")"
+tests/parakeet/prepare_model.py,34,clock-read,gnome,review,now = time.monotonic()
+tests/parakeet/prepare_model.py,53,fixed-delay,gnome,review,"time.sleep(5 * attempt) # Backoff between transfers, not a wait for an event."
+tests/parakeet/queue_models.py,23,bounded-wait,gnome,review,"client = self.client_factory(bundle, self.model, self.runtime, timeout=120)"
+tests/parakeet/queue_probe.py,93,bounded-wait,gnome,review,"assert done.wait(120), ""Queue did not finish both Parakeet jobs"""
+tests/passive_browser_proof.py,92,bounded-wait,gnome,review,"assert barrier.wait(2), ""Real broker writer must finish before assertions"""
+tests/passive_browser_proof.py,103,bounded-wait,gnome,review,reader.join(2)
+tests/passive_browser_proof.py,104,bounded-wait,gnome,review,application.join(2)
+tests/passive_browser_proof.py,106,bounded-wait,gnome,review,browser.writer.join(2)
+tests/recording/app-control.mjs,27,bounded-wait,gnome,review,"async function poll(check, label, timeout=20000) {"
+tests/recording/app-control.mjs,28,clock-read,gnome,review,const end = Date.now() + timeout;
+tests/recording/app-control.mjs,29,clock-read,gnome,review,"while (Date.now() < end) {const value = await check(); if (value) return value; await new Promise(r => setTimeout(r, 100));}"
+tests/recording/app-control.mjs,29,timer-callback,gnome,review,"while (Date.now() < end) {const value = await check(); if (value) return value; await new Promise(r => setTimeout(r, 100));}"
+tests/recording/app-control.mjs,34,timer-callback,gnome,review,"const timer = setTimeout(() => reject(new Error('GNOME UI request timed out')), 12000);"
+tests/recording/app-control.mjs,273,timer-callback,gnome,review,window.prejoinEvidenceClock = setInterval(async () => {
+tests/recording/app-control.mjs,335,timer-callback,gnome,review,"try {await call({action: 'quit'}); ui.stdin.end(); await Promise.race([new Promise(resolve => ui.once('exit', resolve)), new Promise(resolve => setTimeout(resolve, 2000))]);} catch {}"
+tests/recording/app-exit.mjs,5,timer-callback,gnome,review,": new Promise(resolve => {const timer = setTimeout(() => resolve(false), ms); child.once('exit', () => {clearTimeout(timer); resolve(true);});});"
+tests/recording/app-exit.test.mjs,11,timer-callback,gnome,review,"const wedged = () => spawn(process.execPath, ['-e', 'setInterval(() => {}, 1 << 30)'], {stdio: ['pipe', 'pipe', 'ignore']});"
+tests/recording/app-exit.test.mjs,17,timer-callback,gnome,review,"const unanswered = () => new Promise((_, reject) => setTimeout(() => reject(new Error('GNOME UI request timed out')), 50));"
+tests/recording/browser-microphone.py,40,bounded-wait,gnome,review,assert ready.wait(2)
+tests/recording/browser-microphone.py,90,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/recording/browser-microphone.py,162,bounded-wait,gnome,review,thread.join(2)
+tests/recording/browser-ui.py,216,bounded-wait,gnome,review,if not ready.wait(10):
+tests/recording/browser.mjs,29,bounded-wait,gnome,review,"async function poll(check, description, timeout=15000) {"
+tests/recording/browser.mjs,30,clock-read,gnome,review,const deadline=Date.now()+timeout;
+tests/recording/browser.mjs,31,clock-read,gnome,review,while(Date.now()<deadline) {
+tests/recording/browser.mjs,34,timer-callback,gnome,review,"await new Promise(resolve=>setTimeout(resolve,50));"
+tests/recording/browser.mjs,101,timer-callback,gnome,review,"await new Promise(resolve=>setTimeout(resolve,35000));"
+tests/recording/browser.mjs,106,clock-read,gnome,review,const startEpoch=Date.now();
+tests/recording/browser.mjs,114,timer-callback,gnome,review,"try { await new Promise(resolve=>setTimeout(resolve,3000)); }"
+tests/recording/browser.mjs,129,clock-read,gnome,review,const muteEpoch=await meeting.evaluate(()=>{meeting.mute(true);return Date.now();});
+tests/recording/browser.mjs,143,clock-read,gnome,review,const removeEpoch=Date.now();
+tests/recording/browser.mjs,156,clock-read,gnome,review,const stopEpoch=Date.now();
+tests/recording/call-signals.mjs,25,clock-read,gnome,review,const deadline = Date.now() + 20000;
+tests/recording/call-signals.mjs,28,clock-read,gnome,review,"assert.ok(Date.now() < deadline, 'Timed out: ' + label);"
+tests/recording/call-signals.mjs,28,temporal-assertion,gnome,review,"assert.ok(Date.now() < deadline, 'Timed out: ' + label);"
+tests/recording/call-signals.mjs,29,timer-callback,gnome,review,"await new Promise(resolve => setTimeout(resolve, 50));"
+tests/recording/call-signals.mjs,34,timer-callback,gnome,review,"const timer = setTimeout(() => reject(Error('GNOME UI request timed out')), 12000);"
+tests/recording/call-signals.mjs,287,timer-callback,gnome,review,"try {await call({action:'quit'});ui.stdin.end();await new Promise(resolve=>{const timer=setTimeout(()=>{ui.kill();resolve()},4000);if(ui.exitCode!==null){clearTimeout(timer);resolve()}else ui.once('exit',()=>{clearTimeout(timer);resolve()})})} catch {ui.kill()}"
+tests/recording/companion-address.py,34,clock-read,gnome,review,deadline = time.monotonic() + 3
+tests/recording/companion-address.py,39,clock-condition,gnome,review,time.monotonic() < deadline
+tests/recording/companion-address.py,39,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/recording/companion-address.py,66,fixed-delay,gnome,review,time.sleep(0.025)
+tests/recording/companion-install.mjs,47,timer-callback,gnome,review,"const timer=setTimeout(()=>reject(new Error('App UI timed out: '+action)),12000);"
+tests/recording/companion-install.mjs,54,clock-read,gnome,review,const end=Date.now()+timeout;
+tests/recording/companion-install.mjs,55,clock-read,gnome,review,"while(Date.now()<end) {const result=await check(); if(result)return result; await new Promise(r=>setTimeout(r,100));}"
+tests/recording/companion-install.mjs,55,timer-callback,gnome,review,"while(Date.now()<end) {const result=await check(); if(result)return result; await new Promise(r=>setTimeout(r,100));}"
+tests/recording/companion-install.mjs,58,bounded-wait,gnome,review,"async function poll(check,label,timeout=20000) {"
+tests/recording/companion-install.mjs,80,timer-callback,gnome,review,"await Promise.race([exited,new Promise((_,reject)=>setTimeout(()=>reject(new Error('App did not quit')),12000))]);"
+tests/recording/companion-install.mjs,164,clock-read,gnome,review,"const started=Date.now(), seen=[];"
+tests/recording/companion-install.mjs,173,clock-read,gnome,review,"selection.paste.push({toggle,landed:landed!==null,ms:Date.now()-started,primary:seen.slice(-4)});"
+tests/recording/companion-ui.py,98,timer-callback,gnome,review,"GLib.timeout_add(20, render)"
+tests/recording/flatpak-companion.mjs,40,bounded-wait,gnome,review,"async function poll(check, label, timeout=20000) {"
+tests/recording/flatpak-companion.mjs,41,clock-read,gnome,review,const end=Date.now()+timeout;
+tests/recording/flatpak-companion.mjs,42,clock-read,gnome,review,"while(Date.now()<end) {const value=await check();if(value)return value;await new Promise(r=>setTimeout(r,100));}"
+tests/recording/flatpak-companion.mjs,42,timer-callback,gnome,review,"while(Date.now()<end) {const value=await check();if(value)return value;await new Promise(r=>setTimeout(r,100));}"
+tests/recording/flatpak-companion.mjs,73,bounded-wait,gnome,review,"await meeting.evaluate(async i=>{document.title=`Flatpak call ${i}`;await window.join(440+i*110);},i);"
+tests/recording/gst_evidence.py,89,clock-read,gnome,review,"at=time.monotonic(),"
+tests/recording/gtk.py,277,bounded-wait,gnome,review,"timeout=12,"
+tests/recording/gtk.py,299,bounded-wait,gnome,review,"timeout=3,"
+tests/recording/live-folder.mjs,46,timer-callback,gnome,review,const pressure = setInterval(async () => {
+tests/recording/live-folder.mjs,48,clock-read,gnome,review,"pressureLog.write(`${Date.now()} ${pressureFiles.map((file, i) => `${file}: ${values[i]}`).join(' ; ')}\n`);"
+tests/recording/live-folder.mjs,52,clock-read,gnome,review,"page.on('console', message => pageLog.write(`${Date.now()} ${name} ${message.type()} ${message.text().slice(0, 4000)}\n`));"
+tests/recording/live-folder.mjs,53,clock-read,gnome,review,"page.on('pageerror', error => pageLog.write(`${Date.now()} ${name} pageerror ${String(error?.stack || error).slice(0, 4000)}\n`));"
+tests/recording/live-folder.mjs,54,clock-read,gnome,review,"page.on('crash', () => pageLog.write(`${Date.now()} ${name} crash\n`));"
+tests/recording/live-folder.mjs,65,clock-read,gnome,review,const now = Date.now();
+tests/recording/live-folder.mjs,78,timer-callback,gnome,review,"const timer = setTimeout(() => reject(new Error('GNOME UI request timed out')), 12000);"
+tests/recording/live-folder.mjs,129,timer-callback,gnome,review,"await step(name, () => Promise.race([close(), new Promise((_, reject) => setTimeout(() => reject(new Error(`${name} did not close in 20 s`)), 20000).unref())]));"
+tests/recording/live-folder.mjs,262,clock-read,gnome,review,const started = Date.now();
+tests/recording/live-folder.mjs,264,clock-read,gnome,review,evidence.scenarioMs = Date.now() - started;
+tests/recording/no-frames.py,124,clock-read,gnome,review,started = time.monotonic()
+tests/recording/no-frames.py,130,bounded-wait,gnome,review,"timeout=3,"
+tests/recording/no-frames.py,133,clock-read,gnome,review,elapsed = time.monotonic() - started
+tests/recording/output-muted.py,56,timer-callback,gnome,review,"tick = GLib.timeout_add(10, check)"
+tests/recording/output-muted.py,57,timer-callback,gnome,review,"limit = GLib.timeout_add_seconds(12, expired)"
+tests/recording/output-muted.py,68,bounded-wait,gnome,review,"return subprocess.run([""pactl"", *args], check=True, capture_output=True, text=True, timeout=3).stdout.strip()"
+tests/recording/output-muted.py,114,bounded-wait,gnome,review,"assert release_query.wait(12), ""Teardown query was not released"""
+tests/recording/output-muted.py,127,bounded-wait,gnome,review,"assert query.result(timeout=3) is None, ""Retired stream's snapshot was still attributed"""
+tests/recording/output-muted.py,142,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/recording/private_pipewire.py,49,bounded-wait,gnome,review,"timeout=5,"
+tests/recording/private_pipewire.py,64,bounded-wait,gnome,review,"return subprocess.run([""pactl"", *arguments], capture_output=True, timeout=2).returncode == 0"
+tests/recording/private_pipewire.py,71,bounded-wait,gnome,review,child.wait(timeout=3)
+tests/recording/private_pipewire.py,74,bounded-wait,gnome,review,child.wait(timeout=3)
+tests/recording/readiness.py,13,bounded-wait,gnome,review,"def wait_until(check, description, *, timeout=12, diagnostics=lambda: {}):"
+tests/recording/readiness.py,15,clock-read,gnome,review,deadline = time.monotonic() + timeout
+tests/recording/readiness.py,16,clock-condition,gnome,review,time.monotonic() < deadline
+tests/recording/readiness.py,16,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/recording/readiness.py,25,fixed-delay,gnome,review,"time.sleep(0.01) # Poll interval, never a startup/capture-duration assumption."
+tests/recording/run.sh,65,fixed-delay,gnome,review,sleep .1
+tests/recording/source-changes.mjs,124,bounded-wait,gnome,review,await first.meeting.evaluate(async () => {document.title = 'Fallback browser meeting'; await window.join(440);});
+tests/recording/source-changes.mjs,125,bounded-wait,gnome,review,await first.remote.evaluate(async () => {meeting.pc.close(); await window.join(880);});
+tests/recording/sources.py,97,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/recording/sources.py,267,bounded-wait,gnome,review,"blocker = native._executor.submit(lambda: (entered.set(), release.wait(5)))"
+tests/recording/sources.py,268,bounded-wait,gnome,review,assert entered.wait(1)
+tests/recording/sources.py,270,clock-read,gnome,review,started = time.monotonic()
+tests/recording/sources.py,272,clock-read,gnome,review,assert time.monotonic() - started < 0.2
+tests/recording/sources.py,272,temporal-assertion,gnome,review,time.monotonic() - started < 0.2
+tests/recording/stall.py,81,clock-read,gnome,review,"drops.append(dict(kind=kind, samples=int(found.group(1)), at=time.monotonic()))"
+tests/recording/stall.py,252,clock-read,gnome,review,"capture.start(dict(type=""start"", captureId=name, timelineOriginMs=int(time.time() * 1000), microphone=True))"
+tests/recording/stall.py,403,bounded-wait,gnome,review,"pressed[""marked""] = capture.stop_requested.wait(5)"
+tests/recording/test-recording.py,197,bounded-wait,gnome,review,"wait_until(lambda: finished, ""the 8 s test finishes"", timeout=30, diagnostics=diagnostics)"
+tests/spectro_broker_probe.py,40,bounded-wait,gnome,review,"assert ready.wait(5), ""private broker socket was not ready"""
+tests/spectro_broker_probe.py,47,clock-read,gnome,review,"origin_ms, origin = int(time.time() * 1000), time.monotonic()"
+tests/spectro_broker_probe.py,79,clock-condition,gnome,review,"closed.wait(max(0, origin + seq * 8192 / 48000 - time.monotonic()))"
+tests/spectro_broker_probe.py,79,clock-read,gnome,review,"if closed.wait(max(0, origin + seq * 8192 / 48000 - time.monotonic())):"
+tests/spectro_broker_probe.py,105,clock-read,gnome,review,"time.monotonic(),"
+tests/spectro_broker_probe.py,139,bounded-wait,gnome,review,producer.join(5)
+tests/spectro_wm.py,38,bounded-wait,gnome,review,"[xprop, ""-root"", ""_NET_SUPPORTING_WM_CHECK""], capture_output=True, text=True, timeout=2"
+tests/spectro_wm.py,42,bounded-wait,gnome,review,"wait_until(ready, ""private window manager acquired the root window"", timeout=8)"
+tests/spectro_wm.py,47,bounded-wait,gnome,review,self.process.wait(3)
+tests/test_apt_install_bounded.py,67,bounded-wait,gnome,review,"timeout=10,"
+tests/test_bounded_run.py,65,clock-read,gnome,review,while time.monotonic() < float(sys.argv[1]):
+tests/test_bounded_run.py,66,fixed-delay,gnome,review,time.sleep(0.02)
+tests/test_bounded_run.py,92,bounded-wait,gnome,review,"timeout=30,"
+tests/test_bounded_run.py,126,bounded-wait,gnome,review,"assert line.endswith(""\n""), f""the command ended before it was ready: {run.communicate(timeout=30)}"""
+tests/test_bounded_run.py,136,bounded-wait,gnome,review,"_, errors = run.communicate(timeout=60)"
+tests/test_bounded_run.py,151,bounded-wait,gnome,review,"result = subprocess.run([str(BOUNDED), limit, ""true""], capture_output=True, text=True, timeout=30)"
+tests/test_bounded_run.py,161,bounded-wait,gnome,review,"timeout=30,"
+tests/test_bounded_run.py,179,bounded-wait,gnome,review,"timeout=30,"
+tests/test_bounded_run.py,193,clock-read,gnome,review,deadline = str(time.monotonic() + 30)
+tests/test_bounded_run.py,204,bounded-wait,gnome,review,"_, errors = run.communicate(timeout=60)"
+tests/test_bounded_run.py,240,bounded-wait,gnome,review,"assert (run.wait(timeout=60), errors.read_text()) == (137, """")"
+tests/test_bounded_run.py,283,bounded-wait,gnome,review,"assert (run.wait(timeout=60), errors.read_text()) == (7, """")"
+tests/test_bounded_run.py,290,bounded-wait,gnome,review,"subprocess.run([""systemctl"", ""--user"", ""stop"", slice_], capture_output=True, timeout=30)"
+tests/test_bounded_run.py,303,bounded-wait,gnome,review,assert run.wait(timeout=60) == 7
+tests/test_broker_barrier.py,52,bounded-wait,gnome,review,def observed_wait(timeout=None):
+tests/test_broker_barrier.py,60,bounded-wait,gnome,review,assert release.wait(2)
+tests/test_broker_barrier.py,65,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_broker_barrier.py,68,bounded-wait,gnome,review,"assert waiting.wait(2), ""Probe must wait on the held producer's completion event"""
+tests/test_broker_barrier.py,93,bounded-wait,gnome,review,assert release.wait(2)
+tests/test_broker_barrier.py,106,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_broker_barrier.py,115,bounded-wait,gnome,review,assert marker_sent.wait(2)
+tests/test_broker_identity.py,73,bounded-wait,gnome,review,process.communicate(timeout=BOUND)
+tests/test_broker_identity.py,101,clock-read,gnome,review,"assert first[""identity""][""startedAt""] <= time.time_ns() // 1_000_000"
+tests/test_broker_identity.py,101,temporal-assertion,gnome,review,"first[""identity""][""startedAt""] <= time.time_ns() // 1_000_000"
+tests/test_broker_identity.py,214,clock-read,gnome,review,"timelineOriginMs=time.time_ns() // 1_000_000,"
+tests/test_broker_logging.py,84,bounded-wait,gnome,review,"with browser_service.connect(path, timeout=2) as connection, connection.makefile(""rwb"") as stream:"
+tests/test_broker_logging.py,256,bounded-wait,gnome,review,"[sys.executable, ""-c"", launcher], env=environment(tmp_path), capture_output=True, text=True, timeout=BOUND"
+tests/test_broker_silence.py,265,bounded-wait,gnome,review,"browser_service.connect(path, timeout=0.8).close()"
+tests/test_broker_silence.py,296,bounded-wait,gnome,review,"browser_service.connect(exited, timeout=0.8)"
+tests/test_broker_silence.py,388,bounded-wait,gnome,review,assert waiting.wait(timeout=5)
+tests/test_broker_silence.py,418,bounded-wait,gnome,review,"browser_service.connect(stalled, timeout=0.8)"
+tests/test_browser_attempt_reset.py,63,bounded-wait,gnome,review,"broker.workers.submit(lambda event=event: (event.set(), release.wait(10)))"
+tests/test_browser_attempt_reset.py,64,bounded-wait,gnome,review,assert all(event.wait(1) for event in entered)
+tests/test_browser_batch_budget.py,102,bounded-wait,gnome,review,"timeout = [dict(atMs=0, side=""browser"", code=""startFailed"", detail=""timeout"")]"
+tests/test_browser_batch_budget.py,155,bounded-wait,gnome,review,assert release.wait(2)
+tests/test_browser_batch_budget.py,163,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_browser_batch_budget.py,199,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_browser_batch_budget.py,231,bounded-wait,gnome,review,thread.join(2)
+tests/test_browser_batch_budget.py,247,bounded-wait,gnome,review,assert release.wait(2)
+tests/test_browser_batch_budget.py,254,bounded-wait,gnome,review,assert entered.wait(1)
+tests/test_browser_batch_budget.py,298,clock-read,gnome,review,before = time.monotonic()
+tests/test_browser_batch_budget.py,310,clock-read,gnome,review,assert server.batch_timeout + (time.monotonic() - before) + 2 < timeout
+tests/test_browser_batch_budget.py,310,temporal-assertion,gnome,review,server.batch_timeout + (time.monotonic() - before) + 2 < timeout
+tests/test_browser_call_evidence.py,189,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_browser_capture.py,68,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_browser_capture.py,104,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_browser_capture.py,163,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_browser_capture.py,202,clock-read,gnome,review,"capture.start(dict(type=""start"", captureId=""live"", timelineOriginMs=int(time.time() * 1000), microphone=True))"
+tests/test_browser_capture.py,329,bounded-wait,gnome,review,assert release.wait(2)
+tests/test_browser_capture.py,335,bounded-wait,gnome,review,assert entered.wait(1)
+tests/test_browser_capture.py,368,temporal-assertion,gnome,review,"0 <= value[""tracks""][0][""startOffsetMs""] < 3000"
+tests/test_browser_capture.py,481,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_browser_capture.py,529,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_browser_capture.py,537,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_browser_capture.py,607,clock-read,gnome,review,"service._capture_missing_since[""hangup""] = time.monotonic() - 2.01"
+tests/test_browser_capture.py,646,clock-read,gnome,review,"service._capture_missing_since[""reload""] = time.monotonic() - 120.01"
+tests/test_browser_capture.py,674,clock-read,gnome,review,"service._capture_missing_since[""disconnected""] = time.monotonic() - 120.01"
+tests/test_browser_capture.py,688,clock-read,gnome,review,"service._capture_missing_since[""unbound""] = time.monotonic() - 100"
+tests/test_browser_capture.py,714,clock-read,gnome,review,capture.browser_lost_since = time.monotonic() - 120.01
+tests/test_browser_capture.py,739,bounded-wait,gnome,review,"assert release.wait(3), ""The peer-loss barrier was not released"""
+tests/test_browser_capture.py,771,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_browser_capture.py,813,bounded-wait,gnome,review,actor.join(5)
+tests/test_browser_capture.py,839,clock-read,gnome,review,capture.browser_lost_since = time.monotonic() - 120.01
+tests/test_browser_capture.py,867,clock-read,gnome,review,"service._capture_missing_since[""draining""] = time.monotonic() - 2.01"
+tests/test_browser_capture.py,1092,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_browser_capture.py,1164,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_browser_capture.py,1207,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_browser_connection.py,130,bounded-wait,gnome,review,assert release.wait(4)
+tests/test_browser_connection.py,136,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_browser_connection.py,148,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_browser_connection.py,149,clock-read,gnome,review,before = time.monotonic()
+tests/test_browser_connection.py,151,clock-read,gnome,review,assert time.monotonic() - before < 0.05
+tests/test_browser_connection.py,151,temporal-assertion,gnome,review,time.monotonic() - before < 0.05
+tests/test_browser_generation.py,57,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_browser_health.py,234,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_browser_health.py,236,bounded-wait,gnome,review,"with connect(path, timeout=2) as connection, connection.makefile(""rwb"") as stream:"
+tests/test_browser_health.py,240,bounded-wait,gnome,review,assert received.wait(2)
+tests/test_browser_health.py,247,bounded-wait,gnome,review,snapshot = future.result(timeout=3)
+tests/test_browser_health.py,251,bounded-wait,gnome,review,assert received.wait(2)
+tests/test_browser_heartbeat.py,53,bounded-wait,gnome,review,self.thread.join(5)
+tests/test_browser_heartbeat.py,56,bounded-wait,gnome,review,"def settle(condition, timeout=5):"
+tests/test_browser_heartbeat.py,58,clock-read,gnome,review,deadline = time.monotonic() + timeout
+tests/test_browser_heartbeat.py,60,clock-read,gnome,review,"assert time.monotonic() < deadline, ""broker did not settle"""
+tests/test_browser_heartbeat.py,60,temporal-assertion,gnome,review,time.monotonic() < deadline
+tests/test_browser_heartbeat.py,61,fixed-delay,gnome,review,time.sleep(0.001)
+tests/test_browser_heartbeat.py,137,bounded-wait,gnome,review,link.thread.join(5)
+tests/test_browser_heartbeat.py,172,bounded-wait,gnome,review,link.thread.join(5)
+tests/test_browser_heartbeat.py,194,clock-read,gnome,review,"capture.start(dict(type=""start"", captureId=""first"", callGeneration=""g1"", timelineOriginMs=int(time.time() * 1000)))"
+tests/test_browser_heartbeat.py,208,bounded-wait,gnome,review,first.thread.join(5)
+tests/test_browser_host.py,79,bounded-wait,gnome,review,"timeout=120,"
+tests/test_browser_identity.py,51,bounded-wait,gnome,review,"server.workers.submit(lambda event=event: (event.set(), release.wait(3)))"
+tests/test_browser_identity.py,52,bounded-wait,gnome,review,assert all(event.wait(1) for event in entered)
+tests/test_browser_identity.py,151,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_browser_identity.py,158,bounded-wait,gnome,review,assert entered.wait(1)
+tests/test_browser_identity_review.py,41,bounded-wait,gnome,review,"broker.workers.submit(lambda event=event: (event.set(), release.wait(5)))"
+tests/test_browser_identity_review.py,42,bounded-wait,gnome,review,assert all(event.wait(1) for event in entered)
+tests/test_browser_identity_review.py,91,bounded-wait,gnome,review,assert polling.wait(5)
+tests/test_browser_identity_review.py,118,bounded-wait,gnome,review,assert release.wait(2)
+tests/test_browser_identity_review.py,128,bounded-wait,gnome,review,assert entered.wait(1)
+tests/test_browser_identity_review.py,180,clock-read,gnome,review,before = time.monotonic()
+tests/test_browser_identity_review.py,183,clock-read,gnome,review,assert time.monotonic() - before < 0.2
+tests/test_browser_identity_review.py,183,temporal-assertion,gnome,review,time.monotonic() - before < 0.2
+tests/test_browser_identity_review.py,246,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_browser_identity_review.py,253,bounded-wait,gnome,review,assert entered.wait(1)
+tests/test_browser_identity_review.py,296,clock-read,gnome,review,broker._capture_lifecycles[capture.capture_id].closed = time.monotonic() - 2.1
+tests/test_browser_late_stop.py,161,bounded-wait,gnome,review,"assert not done.wait(0.1), ""Quit must join the pending Stop until its acknowledgement"""
+tests/test_browser_liveness.py,74,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_browser_liveness.py,112,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_browser_liveness.py,150,bounded-wait,gnome,review,sender.join(2)
+tests/test_browser_liveness.py,164,bounded-wait,gnome,review,assert browser.shut_down.wait(5)
+tests/test_browser_liveness.py,182,bounded-wait,gnome,review,assert browser.shut_down.wait(5)
+tests/test_browser_liveness.py,183,bounded-wait,gnome,review,browser.writer.join(5)
+tests/test_browser_liveness.py,236,clock-read,gnome,review,began = time.monotonic()
+tests/test_browser_liveness.py,238,clock-read,gnome,review,assert time.monotonic() - began < service.batch_timeout + 1
+tests/test_browser_liveness.py,238,temporal-assertion,gnome,review,time.monotonic() - began < service.batch_timeout + 1
+tests/test_browser_liveness.py,315,bounded-wait,gnome,review,sender.join(5)
+tests/test_browser_liveness.py,784,bounded-wait,gnome,review,assert transport.shut_down.wait(5)
+tests/test_browser_resume_policy.py,83,clock-read,gnome,review,"capture.start(dict(type=""start"", captureId=""F"", callGeneration=""call-A"", timelineOriginMs=int(time.time() * 1000)))"
+tests/test_browser_resume_policy.py,186,clock-read,gnome,review,clock = time.monotonic()
+tests/test_browser_resume_policy.py,528,bounded-wait,gnome,review,if not self.first_buffer.wait(10) or self.fails:
+tests/test_browser_resume_policy.py,565,bounded-wait,gnome,review,assert held.opening.wait(10)
+tests/test_browser_resume_policy.py,577,bounded-wait,gnome,review,closer.join(10)
+tests/test_browser_resume_policy.py,590,bounded-wait,gnome,review,closer.join(10)
+tests/test_browser_service.py,50,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_browser_service.py,62,clock-read,gnome,review,deadline = time.monotonic() + 2
+tests/test_browser_service.py,63,clock-condition,gnome,review,time.monotonic() < deadline
+tests/test_browser_service.py,63,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/test_browser_service.py,67,fixed-delay,gnome,review,time.sleep(0.01)
+tests/test_browser_service.py,367,fixed-delay,gnome,review,time.sleep(0.5)
+tests/test_browser_service.py,400,fixed-delay,gnome,review,"time.sleep(0.5) # Longer than the grace, with no packet for this call."
+tests/test_browser_service.py,642,bounded-wait,gnome,review,"assert process.wait(3) == 0, process.stderr.read().decode()"
+tests/test_browser_service.py,657,bounded-wait,gnome,review,"monkeypatch.setattr(browser_control_host, ""connect"", lambda target: connect(target, timeout=0.2))"
+tests/test_browser_service.py,676,fixed-delay,gnome,review,time.sleep(0.6) # Three connect timeouts with nothing from the broker.
+tests/test_browser_service.py,711,bounded-wait,gnome,review,"timeout=120,"
+tests/test_browser_sessions.py,17,bounded-wait,gnome,review,"self.connection = connect(path, timeout=2)"
+tests/test_browser_sessions.py,191,bounded-wait,gnome,review,"def wait(self, timeout=None):"
+tests/test_browser_sessions.py,194,bounded-wait,gnome,review,"assert collected.wait(5), ""Stop-all never collected its Stops"""
+tests/test_browser_sessions.py,216,bounded-wait,gnome,review,"assert unwound.wait(5), ""Stop-all did not wake the tab-3 Start"""
+tests/test_browser_sessions.py,253,bounded-wait,gnome,review,"connection = connect(path, timeout=2)"
+tests/test_build_refresh_application.py,198,bounded-wait,gnome,review,assert release_first.wait(2)
+tests/test_build_refresh_application.py,206,bounded-wait,gnome,review,assert first_entered.wait(2)
+tests/test_calendar_locales.py,104,bounded-wait,gnome,review,barrier.wait(timeout=2)
+tests/test_calendar_locales.py,137,bounded-wait,gnome,review,"timeout=10,"
+tests/test_call_lifecycle.py,114,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_call_lifecycle_wire.py,33,clock-read,gnome,review,"dict(type=""start"", captureId=""reload-capture"", timelineOriginMs=int(time.time() * 1000), microphone=True)"
+tests/test_call_signals_capture.py,712,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_call_signals_capture.py,734,clock-read,gnome,review,lifecycle.missing = time.monotonic() - 130
+tests/test_capture_activity.py,22,timer-callback,gnome,review,"source = GLib.timeout_add_seconds(5, lambda: expired.append(True) or GLib.SOURCE_REMOVE)"
+tests/test_capture_activity.py,102,bounded-wait,gnome,review,release.wait(2)
+tests/test_capture_activity.py,112,bounded-wait,gnome,review,"spin_until(lambda: watcher.future is None, timeout=1)"
+tests/test_capture_activity.py,117,bounded-wait,gnome,review,thread.join(2)
+tests/test_capture_activity.py,178,bounded-wait,gnome,review,thread.join(5)
+tests/test_capture_activity.py,306,bounded-wait,gnome,review,thread.join(5)
+tests/test_capture_facts.py,163,bounded-wait,gnome,review,done.wait(1)
+tests/test_capture_guard.py,59,bounded-wait,gnome,review,"[sys.executable, ""-c"", WITHOUT_GI, str(package)], env=env, capture_output=True, text=True, timeout=60"
+tests/test_capture_publication.py,49,bounded-wait,gnome,review,assert release.wait(5)
+tests/test_capture_publication.py,90,bounded-wait,gnome,review,assert release.wait(5)
+tests/test_capture_publication.py,103,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_capture_publication.py,111,bounded-wait,gnome,review,"assert result[""type""] == ""stopped"" and entered.wait(3)"
+tests/test_capture_publication.py,126,bounded-wait,gnome,review,assert capture.stopped.wait(5)
+tests/test_capture_publication.py,143,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_capture_publication.py,156,bounded-wait,gnome,review,"spin_until(lambda: bool(finished), timeout=2)"
+tests/test_capture_publication.py,186,bounded-wait,gnome,review,assert release.wait(5)
+tests/test_capture_publication.py,194,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_capture_publication.py,200,bounded-wait,gnome,review,assert entered.wait(3)
+tests/test_capture_publication.py,217,bounded-wait,gnome,review,worker.join(3)
+tests/test_capture_report.py,256,bounded-wait,gnome,review,"assert recorder_waiting.wait(3), ""Capture writer never requested the Library lock"""
+tests/test_capture_report.py,287,bounded-wait,gnome,review,"assert library_owned.wait(3), ""Other writer never acquired the Library lock"""
+tests/test_capture_report.py,289,bounded-wait,gnome,review,if not editor_done.wait(3) or not recorder_done.wait(3):
+tests/test_capture_report.py,292,bounded-wait,gnome,review,editor.join(1)
+tests/test_capture_report.py,293,bounded-wait,gnome,review,recorder.join(1)
+tests/test_capture_report.py,317,bounded-wait,gnome,review,"process.join(10) # Wait for process exit, never a fixed readiness delay."
+tests/test_capture_report.py,323,bounded-wait,gnome,review,process.join(3)
+tests/test_capture_report.py,326,bounded-wait,gnome,review,process.join(3)
+tests/test_capture_silence.py,212,timer-callback,gnome,review,"bound = GLib.timeout_add_seconds(BOUND_S, lambda: expired.append(True))"
+tests/test_capture_silence.py,349,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_capture_spectrogram.py,32,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_capture_start_metadata.py,60,bounded-wait,gnome,review,"timeout=10,"
+tests/test_ci_flatpak_dedup.py,289,bounded-wait,gnome,review,"timeout=60,"
+tests/test_ci_flatpak_dedup.py,336,bounded-wait,gnome,review,"timeout=60,"
+tests/test_companion.py,226,clock-read,gnome,review,start = time.monotonic()
+tests/test_companion.py,228,clock-read,gnome,review,assert time.monotonic() - start < 1.5
+tests/test_companion.py,228,temporal-assertion,gnome,review,time.monotonic() - start < 1.5
+tests/test_companion.py,232,bounded-wait,gnome,review,process.wait(timeout=2)
+tests/test_companion_bundle.py,186,bounded-wait,gnome,review,barrier.wait(timeout=5)
+tests/test_companion_bundle.py,195,bounded-wait,gnome,review,assert future.result(timeout=10) == target
+tests/test_companion_bundle.py,282,fixed-delay,gnome,review,"[""/bin/sh"", ""-c"", f""exec 9>>{shlex.quote(str(lock))}; flock 9; printf READY; exec sleep 30""],"
+tests/test_companion_bundle.py,288,bounded-wait,gnome,review,"assert selector.select(3), ""Lock owner never became ready"""
+tests/test_companion_bundle.py,292,bounded-wait,gnome,review,owner.wait(timeout=3)
+tests/test_companion_bundle.py,298,bounded-wait,gnome,review,owner.wait(timeout=3)
+tests/test_companion_bundle.py,348,fixed-delay,gnome,review,"f' {real_mv} ""$@"" || exit $?\n sleep .1\n exit 0\nfi\n'"
+tests/test_companion_bundle.py,372,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_companion_bundle.py,376,bounded-wait,gnome,review,reader.join(timeout=2)
+tests/test_control_reconnect.py,27,bounded-wait,gnome,review,"extension.connection = connect(path, timeout=2)"
+tests/test_control_reconnect.py,103,clock-read,gnome,review,since = time.monotonic() - seconds
+tests/test_control_reconnect.py,118,clock-read,gnome,review,started = time.monotonic()
+tests/test_control_reconnect.py,122,clock-condition,gnome,review,time.monotonic() - started < CALL_END_GRACE + 0.3
+tests/test_control_reconnect.py,122,clock-read,gnome,review,while time.monotonic() - started < CALL_END_GRACE + 0.3:
+tests/test_control_reconnect.py,127,fixed-delay,gnome,review,time.sleep(0.02)
+tests/test_control_reconnect.py,252,clock-read,gnome,review,"service._capture_lifecycles[""retained""].closed = time.monotonic() - CALL_END_GRACE - 0.1"
+tests/test_control_reconnect.py,269,clock-read,gnome,review,"capture.streams.tracks[""voice""].received_at = time.monotonic() - CALL_END_GRACE - 0.2"
+tests/test_control_reconnect.py,341,clock-read,gnome,review,lifecycle.ended = time.monotonic() - CALL_END_GRACE - 0.01
+tests/test_control_reconnect.py,357,clock-read,gnome,review,since = time.monotonic() - CALL_END_GRACE - 0.1
+tests/test_control_reconnect.py,366,temporal-assertion,gnome,review,lifecycle.missing is not None and lifecycle.missing > since
+tests/test_control_reconnect.py,392,clock-read,gnome,review,lifecycle.missing = time.monotonic() - CALL_END_GRACE - 0.1
+tests/test_control_reconnect.py,395,clock-read,gnome,review,lifecycle.missing = time.monotonic() - 120.1
+tests/test_control_reconnect.py,504,bounded-wait,gnome,review,"assert release.wait(5), ""the test never released the held inventory"""
+tests/test_control_reconnect.py,512,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_diarization_models.py,58,bounded-wait,gnome,review,models._thread.join(2)
+tests/test_diarization_models.py,156,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_diarization_models.py,167,clock-read,gnome,review,started = time.monotonic()
+tests/test_diarization_models.py,169,clock-read,gnome,review,assert time.monotonic() - started < 0.1
+tests/test_diarization_models.py,169,temporal-assertion,gnome,review,time.monotonic() - started < 0.1
+tests/test_diarization_queue.py,99,bounded-wait,gnome,review,"finished.wait(1, exactly=True)"
+tests/test_diarization_queue.py,152,bounded-wait,gnome,review,"finished.wait(1, exactly=True)"
+tests/test_diarization_queue.py,240,bounded-wait,gnome,review,"finished.wait(1, exactly=True)"
+tests/test_diarization_queue.py,269,bounded-wait,gnome,review,assert release.wait(5)
+tests/test_diarization_queue.py,296,bounded-wait,gnome,review,"finished.wait(1, exactly=True)"
+tests/test_diarization_queue.py,313,bounded-wait,gnome,review,"finished.wait(2, exactly=True)"
+tests/test_diarization_queue.py,345,bounded-wait,gnome,review,assert release.wait(10)
+tests/test_diarization_queue.py,354,bounded-wait,gnome,review,assert entered.wait(10)
+tests/test_diarization_queue.py,357,bounded-wait,gnome,review,"finished.wait(1, exactly=True)"
+tests/test_export_failures.py,42,bounded-wait,gnome,review,"assert pulling.wait(3), ""The test must fail after the pre-pull bus check"""
+tests/test_export_failures.py,50,bounded-wait,gnome,review,future.result(timeout=5)
+tests/test_flatpak_bridge.py,139,bounded-wait,gnome,review,"output = subprocess.run([manifest[""path""]], input=data, capture_output=True, check=True, timeout=5)"
+tests/test_flatpak_bridge.py,166,bounded-wait,gnome,review,"timeout=10,"
+tests/test_flatpak_bridge.py,270,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_flatpak_bridge.py,271,bounded-wait,gnome,review,"connection = connect(path, timeout=1)"
+tests/test_flatpak_bridge.py,276,bounded-wait,gnome,review,thread.join(0.8)
+tests/test_flatpak_bridge.py,280,bounded-wait,gnome,review,thread.join(2)
+tests/test_flatpak_bridge.py,283,bounded-wait,gnome,review,thread.join(2)
+tests/test_flatpak_bridge.py,293,fixed-delay,gnome,review,"'#!/bin/sh\nwhile [ ! -f ""$HOME/release"" ] && [ -d ""$HOME"" ]; do sleep .01; done\n'"
+tests/test_flatpak_bridge.py,300,bounded-wait,gnome,review,"completed = subprocess.run(command, capture_output=True, check=True, timeout=2)"
+tests/test_flatpak_bridge.py,305,clock-read,gnome,review,deadline = time.monotonic() + 3
+tests/test_flatpak_bridge.py,306,clock-condition,gnome,review,"not (host / ""broker-finished"").exists() and time.monotonic() < deadline"
+tests/test_flatpak_bridge.py,306,clock-read,gnome,review,"while not (host / ""broker-finished"").exists() and time.monotonic() < deadline:"
+tests/test_flatpak_bridge.py,307,fixed-delay,gnome,review,time.sleep(0.01)
+tests/test_flatpak_bridge.py,382,fixed-delay,gnome,review,"f'#!/bin/sh\n: > ""{entered}""\nwhile [ ! -f ""{release}"" ]; do sleep .01; done\n: > ""{finished}""\n'"
+tests/test_flatpak_bridge.py,393,bounded-wait,gnome,review,process.wait(timeout=2)
+tests/test_flatpak_bridge.py,394,clock-read,gnome,review,deadline = time.monotonic() + 2
+tests/test_flatpak_bridge.py,395,clock-condition,gnome,review,not finished.exists() and time.monotonic() < deadline
+tests/test_flatpak_bridge.py,395,clock-read,gnome,review,while not finished.exists() and time.monotonic() < deadline:
+tests/test_flatpak_bridge.py,396,fixed-delay,gnome,review,time.sleep(0.01)
+tests/test_folder_player.py,35,bounded-wait,gnome,review,"def until(predicate, timeout=5):"
+tests/test_folder_player.py,37,clock-read,gnome,review,end = time.monotonic() + timeout
+tests/test_folder_player.py,38,clock-condition,gnome,review,time.monotonic() < end
+tests/test_folder_player.py,38,clock-read,gnome,review,while time.monotonic() < end:
+tests/test_folder_player.py,43,fixed-delay,gnome,review,time.sleep(0.005)
+tests/test_installed_build.py,240,bounded-wait,gnome,review,release.wait(3)
+tests/test_installed_build.py,382,bounded-wait,gnome,review,assert release.wait(5)
+tests/test_installed_build.py,387,bounded-wait,gnome,review,assert finish_job.wait(5)
+tests/test_installed_build.py,491,bounded-wait,gnome,review,assert release.wait(5)
+tests/test_library_edits.py,107,bounded-wait,gnome,review,gate.wait(timeout=3)
+tests/test_library_edits.py,123,bounded-wait,gnome,review,worker.join(timeout=DURABLE_BOUND) # Each commits durably; a deadlock never ends.
+tests/test_library_loaded.py,94,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(5, lambda: expired.append(True) or False)"
+tests/test_library_location.py,148,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_library_location.py,154,bounded-wait,gnome,review,started.result(timeout=DURABLE_BOUND)
+tests/test_library_location.py,158,bounded-wait,gnome,review,moving.result(timeout=5)
+tests/test_library_location.py,202,bounded-wait,gnome,review,assert proceed.wait(5)
+tests/test_library_location.py,208,bounded-wait,gnome,review,assert before_publish.wait(3)
+tests/test_library_location.py,211,bounded-wait,gnome,review,switching.result(timeout=2)
+tests/test_library_location.py,215,bounded-wait,gnome,review,meeting = importing.result(timeout=5)
+tests/test_library_location.py,293,bounded-wait,gnome,review,assert release.wait(5)
+tests/test_library_monitor.py,16,bounded-wait,gnome,review,"def spin_until(predicate, timeout=4):"
+tests/test_library_monitor.py,17,clock-read,gnome,review,deadline = time.monotonic() + timeout
+tests/test_library_monitor.py,19,clock-condition,gnome,review,time.monotonic() < deadline
+tests/test_library_monitor.py,19,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/test_library_monitor.py,24,fixed-delay,gnome,review,time.sleep(0.01)
+tests/test_library_monitor.py,86,clock-read,gnome,review,deadline = time.monotonic() + 0.1
+tests/test_library_monitor.py,87,clock-condition,gnome,review,time.monotonic() < deadline
+tests/test_library_monitor.py,87,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/test_library_monitor.py,90,fixed-delay,gnome,review,time.sleep(0.005)
+tests/test_library_monitor.py,132,bounded-wait,gnome,review,"assert release.wait(3), ""Test did not release worker"""
+tests/test_library_monitor.py,235,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_library_monitor.py,356,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_library_move.py,182,bounded-wait,gnome,review,assert proceed.wait(3)
+tests/test_library_move.py,189,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_library_move.py,190,bounded-wait,gnome,review,acquired = LOCK.acquire(timeout=0.25)
+tests/test_library_move.py,195,bounded-wait,gnome,review,assert moving.result(timeout=DURABLE_BOUND).destination == target / NAME # A durable copy.
+tests/test_library_published_move.py,110,bounded-wait,gnome,review,process.join(5)
+tests/test_library_published_move.py,127,bounded-wait,gnome,review,process.join(5)
+tests/test_library_published_move.py,196,bounded-wait,gnome,review,"assert waiting.wait(5), ""Editor did not queue behind the old Library lock"""
+tests/test_library_published_move.py,201,bounded-wait,gnome,review,"assert executor.submit(location.process).result(timeout=DURABLE_BOUND)[""pending""] == []"
+tests/test_library_published_move.py,235,bounded-wait,gnome,review,"assert entered.wait(5), ""Audio staging did not start"""
+tests/test_library_published_move.py,243,bounded-wait,gnome,review,state = moving.result(timeout=10)
+tests/test_library_published_move.py,349,bounded-wait,gnome,review,"assert waiting.wait(5), ""Editor did not queue behind the mover's Library lock"""
+tests/test_library_published_move.py,360,bounded-wait,gnome,review,"assert edit.result(timeout=DURABLE_BOUND)[""title""] == ""Edit routed after crash"""
+tests/test_library_recovery.py,61,bounded-wait,gnome,review,assert release.wait(5)
+tests/test_library_recovery.py,93,bounded-wait,gnome,review,assert release.wait(5)
+tests/test_library_recovery.py,96,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_library_recovery.py,104,bounded-wait,gnome,review,"spin_until(lambda: app.holds == 0, timeout=2)"
+tests/test_library_recovery.py,129,bounded-wait,gnome,review,assert complete.wait(3)
+tests/test_library_recovery.py,183,bounded-wait,gnome,review,finished.wait(1)
+tests/test_library_recovery.py,190,bounded-wait,gnome,review,finished.wait(2)
+tests/test_library_recovery.py,246,bounded-wait,gnome,review,finished.wait(1)
+tests/test_library_recovery.py,250,bounded-wait,gnome,review,finished.wait(2)
+tests/test_library_recovery.py,351,timer-callback,gnome,review,"tick, limit = GLib.timeout_add(10, observe), GLib.timeout_add_seconds(5, expired)"
+tests/test_library_recovery.py,400,bounded-wait,gnome,review,"assert release.wait(5), ""Test did not release the first publication attempt"""
+tests/test_library_rules.py,46,bounded-wait,gnome,review,"timeout=3,"
+tests/test_library_scan_writer.py,35,bounded-wait,gnome,review,if not release.wait(10):
+tests/test_library_scan_writer.py,76,bounded-wait,gnome,review,"assert ready.wait(10), ""Writer did not fsync its partial"""
+tests/test_library_scan_writer.py,90,bounded-wait,gnome,review,writer.join(timeout=10)
+tests/test_library_v2_crash.py,84,bounded-wait,gnome,review,"result = subprocess.run([sys.executable, ""-c"", CHILD, SRC, operation, step, str(root), sid], timeout=120, env=env)"
+tests/test_library_v2_crash.py,187,bounded-wait,gnome,review,"result = subprocess.run([sys.executable, ""-c"", child, SRC, ""rename"", step, str(root), sid], timeout=120)"
+tests/test_library_v2_crash.py,205,bounded-wait,gnome,review,"subprocess.run([sys.executable, ""-c"", RECOVER, SRC, str(root)], timeout=120, env=env, check=True)"
+tests/test_library_v2_finalize.py,551,bounded-wait,gnome,review,assert release.wait(30)
+tests/test_library_v2_finalize.py,579,bounded-wait,gnome,review,assert reached.wait(30)
+tests/test_library_v2_finalize.py,581,bounded-wait,gnome,review,renaming.join(15)
+tests/test_library_v2_finalize.py,584,bounded-wait,gnome,review,mixing.join(30)
+tests/test_library_v2_finalize.py,585,bounded-wait,gnome,review,renaming.join(30)
+tests/test_library_v2_finalize.py,599,bounded-wait,gnome,review,assert reached.wait(30)
+tests/test_library_v2_finalize.py,606,bounded-wait,gnome,review,mixing.join(30)
+tests/test_library_v2_finalize.py,620,bounded-wait,gnome,review,assert reached.wait(30)
+tests/test_library_v2_finalize.py,623,bounded-wait,gnome,review,late.join(30)
+tests/test_listen.py,42,timer-callback,gnome,review,"source = GLib.timeout_add(timeout_s * 1000, lambda: expired.append(True) or GLib.SOURCE_REMOVE)"
+tests/test_listening_bar.py,205,bounded-wait,gnome,review,"timeout=10,"
+tests/test_main_loop_watchdog.py,23,fixed-delay,gnome,review,time.sleep(0.4)
+tests/test_main_loop_watchdog.py,25,timer-callback,gnome,review,"GLib.timeout_add(120, block)"
+tests/test_main_loop_watchdog.py,26,timer-callback,gnome,review,"GLib.timeout_add(800, lambda: (loop.quit(), False)[1])"
+tests/test_main_loop_watchdog.py,30,bounded-wait,gnome,review,"result = subprocess.run([sys.executable, ""-c"", script], capture_output=True, text=True, timeout=5, cwd=SOURCE)"
+tests/test_main_loop_watchdog.py,48,bounded-wait,gnome,review,"result = subprocess.run([sys.executable, ""-c"", script], capture_output=True, text=True, timeout=5, cwd=SOURCE)"
+tests/test_meeting_job_cancel.py,48,fixed-delay,gnome,review,time.sleep(30)
+tests/test_meeting_job_cancel.py,72,bounded-wait,gnome,review,worker.submit(remove_queued).result(timeout=2)
+tests/test_meeting_job_cancel.py,79,bounded-wait,gnome,review,finished.wait(3) # The two cancelled jobs and the other one.
+tests/test_meeting_job_cancel.py,118,bounded-wait,gnome,review,"assert release.wait(3), ""per-meeting cancellation did not reach the active voice client"""
+tests/test_meeting_job_cancel.py,136,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_meeting_job_cancel.py,140,bounded-wait,gnome,review,"finished.wait(2, exactly=True)"
+tests/test_meeting_trash.py,202,bounded-wait,gnome,review,"caller.submit(controller.commit, operation).result(timeout=2)"
+tests/test_meeting_trash.py,203,bounded-wait,gnome,review,assert speaker.waited.wait(2) and not removed.is_set()
+tests/test_meeting_trash.py,205,bounded-wait,gnome,review,assert export.waited.wait(2) and not removed.is_set()
+tests/test_meeting_trash.py,207,bounded-wait,gnome,review,"assert removed.wait(2), ""a failed-but-finished writer prevented Trash"""
+tests/test_model_download.py,155,bounded-wait,gnome,review,thread.join(2)
+tests/test_native_recorder.py,57,clock-read,gnome,review,deadline = time.monotonic() + 3
+tests/test_native_recorder.py,58,clock-condition,gnome,review,"""finished"" not in events and time.monotonic() < deadline"
+tests/test_native_recorder.py,58,clock-read,gnome,review,"while ""finished"" not in events and time.monotonic() < deadline:"
+tests/test_native_recorder.py,61,fixed-delay,gnome,review,time.sleep(0.005)
+tests/test_native_recorder.py,99,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_native_recorder.py,106,clock-read,gnome,review,started = time.monotonic()
+tests/test_native_recorder.py,108,clock-read,gnome,review,assert time.monotonic() - started < 0.2
+tests/test_native_recorder.py,108,temporal-assertion,gnome,review,time.monotonic() - started < 0.2
+tests/test_native_recorder.py,204,clock-read,gnome,review,started = time.monotonic()
+tests/test_native_recorder.py,206,clock-read,gnome,review,assert time.monotonic() - started < 0.2
+tests/test_native_recorder.py,206,temporal-assertion,gnome,review,time.monotonic() - started < 0.2
+tests/test_native_recorder.py,207,bounded-wait,gnome,review,"spin_until(lambda: bool(finished), timeout=3)"
+tests/test_native_sides.py,57,bounded-wait,gnome,review,self.release.wait(60) # Bound only: the test releases it.
+tests/test_native_sides.py,161,bounded-wait,gnome,review,branch.entered.wait(5) # Bound only: its state-change thread enters it.
+tests/test_native_sides.py,163,bounded-wait,gnome,review,return event.wait(5) # Bound only: the recorder signals admission.
+tests/test_native_sides.py,174,bounded-wait,gnome,review,return event.wait(5) # Bound only: a Stop or a state change wakes it.
+tests/test_native_sides.py,181,bounded-wait,gnome,review,seen = event.wait(5)
+tests/test_native_sides.py,422,bounded-wait,gnome,review,"timeout=DURABLE_BOUND,"
+tests/test_native_sides.py,512,bounded-wait,gnome,review,"recorder._open_wait = lambda event, timeout: event.wait(5) # Only the stop wakes it."
+tests/test_native_sides.py,597,bounded-wait,gnome,review,assert taps.gate[kind].wait(5) # Bound only: opens after its gate.
+tests/test_native_sides.py,622,clock-read,gnome,review,"message = dict(type=""start"", captureId=""sides"", timelineOriginMs=int(time.time() * 1000), microphone=microphone)"
+tests/test_native_sides.py,791,bounded-wait,gnome,review,"taps = Taps(barrier=threading.Barrier(2, timeout=5))"
+tests/test_native_writer_loss.py,178,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(BOUND, lambda: (loop.quit(), GLib.SOURCE_REMOVE)[1])"
+tests/test_native_writer_loss.py,493,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(BOUND, lambda: (loop.quit(), GLib.SOURCE_REMOVE)[1])"
+tests/test_native_writer_loss.py,734,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(BOUND, lambda: (loop.quit(), GLib.SOURCE_REMOVE)[1])"
+tests/test_native_writer_loss.py,849,timer-callback,gnome,review,"timer = GLib.timeout_add(BOUND * 1000, lambda: expired.append(True) or False)"
+tests/test_offline_parakeet_queue.py,68,bounded-wait,gnome,review,"finished.wait(2, exactly=True)"
+tests/test_open_meeting.py,25,clock-read,gnome,review,deadline = time.monotonic() + 3
+tests/test_open_meeting.py,26,clock-condition,gnome,review,not finished and time.monotonic() < deadline
+tests/test_open_meeting.py,26,clock-read,gnome,review,while not finished and time.monotonic() < deadline:
+tests/test_open_meeting.py,27,fixed-delay,gnome,review,time.sleep(0.005)
+tests/test_others_armed.py,366,bounded-wait,gnome,review,assert handled.wait(5) # Bound only: the retired branch's buffer was handled.
+tests/test_others_armed.py,402,bounded-wait,gnome,review,released.append(release.wait(5)) # Bound only: the test releases it.
+tests/test_others_armed.py,489,bounded-wait,gnome,review,assert done.wait(5) # Bound only: the worker's refusal has returned.
+tests/test_others_armed.py,523,bounded-wait,gnome,review,assert done.wait(5) # Bound only: the worker decided.
+tests/test_others_armed.py,597,bounded-wait,gnome,review,assert handled.wait(5) # Bound only: the retired branch's sample failed.
+tests/test_others_armed.py,721,bounded-wait,gnome,review,assert system.stopped.wait(5) # Bound only: stopped off the tap's own thread.
+tests/test_others_armed.py,755,bounded-wait,gnome,review,"assert self.release.wait(5), ""Test did not release the tap's stop"" # Bound only."
+tests/test_others_armed.py,769,bounded-wait,gnome,review,assert stopping.entered.wait(5) # Bound only: the deselect committed and now stops the tap.
+tests/test_others_armed.py,776,bounded-wait,gnome,review,worker.join(5)
+tests/test_others_armed.py,866,bounded-wait,gnome,review,assert tap.heard.wait(5) # Bound only: the late first buffer reaches append.
+tests/test_others_armed.py,885,clock-read,gnome,review,began = time.monotonic()
+tests/test_others_armed.py,887,clock-read,gnome,review,assert time.monotonic() - began < 5
+tests/test_others_armed.py,887,temporal-assertion,gnome,review,time.monotonic() - began < 5
+tests/test_others_armed.py,1050,bounded-wait,gnome,review,assert release.wait(3 * BOUND) # Bound only: the test releases it.
+tests/test_others_armed.py,1070,bounded-wait,gnome,review,assert release.wait(3 * BOUND) # Bound only: the test releases it.
+tests/test_others_armed.py,1278,bounded-wait,gnome,review,"assert read.wait(5), ""armed_sides waited on the recorder lock"""
+tests/test_output_mute.py,120,bounded-wait,gnome,review,"assert applied.wait(3), ""Muted-output observation was not persisted"""
+tests/test_output_mute.py,125,bounded-wait,gnome,review,"assert applied.wait(3), ""Unmute observation was not persisted"""
+tests/test_output_mute.py,130,bounded-wait,gnome,review,"assert applied.wait(3), ""Second muted span was not persisted"""
+tests/test_output_mute.py,161,bounded-wait,gnome,review,"assert failed.wait(3), ""The failing server query was not attempted"""
+tests/test_output_mute.py,165,bounded-wait,gnome,review,"assert applied.wait(3), ""Observer did not recover after the server returned"""
+tests/test_output_mute.py,184,bounded-wait,gnome,review,"assert release.wait(8), ""Parent did not release the staged metadata commit"""
+tests/test_output_mute.py,227,bounded-wait,gnome,review,"assert ready.wait(8), ""First process did not stage its metadata replacement"""
+tests/test_output_mute.py,229,bounded-wait,gnome,review,"assert waiting.wait(8), ""Second process never entered the cross-process metadata lock"""
+tests/test_output_mute.py,232,bounded-wait,gnome,review,process.join(8)
+tests/test_output_mute.py,242,bounded-wait,gnome,review,process.join(2)
+tests/test_output_mute.py,245,bounded-wait,gnome,review,process.join(2)
+tests/test_output_mute.py,280,bounded-wait,gnome,review,"assert release.wait(5), ""Stale Pulse query was not released"""
+tests/test_output_mute.py,291,bounded-wait,gnome,review,"assert applied.wait(3), ""Initial mute interval missing"""
+tests/test_output_mute.py,294,bounded-wait,gnome,review,"assert querying.wait(3), ""Delayed query never started"""
+tests/test_output_mute.py,297,bounded-wait,gnome,review,"assert ended.wait(3), ""Committed retirement was not persisted"""
+tests/test_output_mute.py,332,clock-read,gnome,review,capture._start_us = GLib.get_monotonic_time()
+tests/test_output_mute.py,380,bounded-wait,gnome,review,"assert release.wait(5), ""Test did not release the delayed Pulse query"""
+tests/test_output_mute.py,387,bounded-wait,gnome,review,"assert entered.wait(3), ""Device query did not start"""
+tests/test_output_mute.py,389,bounded-wait,gnome,review,"assert progressed.wait(3), ""Device query blocked the PCM/error-handler capture lock"""
+tests/test_output_mute.py,405,bounded-wait,gnome,review,"spin_until(error_handled.is_set, timeout=3)"
+tests/test_output_mute.py,410,bounded-wait,gnome,review,result = pending.result(timeout=3)
+tests/test_output_mute.py,449,bounded-wait,gnome,review,"assert release.wait(5), ""Test did not release device shutdown"""
+tests/test_output_mute.py,454,clock-read,gnome,review,capture._start_us = GLib.get_monotonic_time() - 10_000
+tests/test_output_mute.py,477,bounded-wait,gnome,review,"assert release.wait(5), ""Test did not release tap shutdown"""
+tests/test_output_mute.py,486,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_output_mute.py,509,bounded-wait,gnome,review,"assert applied.wait(3), ""Initial mute interval was not persisted"""
+tests/test_output_mute.py,513,bounded-wait,gnome,review,if not stopping.wait(3):
+tests/test_output_mute.py,517,bounded-wait,gnome,review,"assert ended.wait(3), ""History waited for device shutdown instead of the committed retirement"""
+tests/test_output_mute.py,529,bounded-wait,gnome,review,future.result(timeout=3)
+tests/test_output_mute.py,562,bounded-wait,gnome,review,"assert options == dict(check=True, capture_output=True, text=True, timeout=1)"
+tests/test_output_mute.py,584,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_output_mute.py,591,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_output_mute.py,600,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_output_mute.py,607,bounded-wait,gnome,review,"assert entered.wait(3), ""Query never reached its teardown barrier"""
+tests/test_output_mute.py,611,bounded-wait,gnome,review,assert query.result(timeout=3) is None
+tests/test_packaging_pins.py,213,bounded-wait,gnome,review,"result = subprocess.run([""sh"", ""-euc"", stub + fragment], cwd=tmp_path, capture_output=True, text=True, timeout=5)"
+tests/test_postmerge_stop.py,268,bounded-wait,gnome,review,"assert capture.stop_requested.wait(3), ""Broker Stop waited for the stalled resume-refusal writer"""
+tests/test_postmerge_stop.py,336,bounded-wait,gnome,review,"callback, args = idle.get(timeout=BOUND)"
+tests/test_reader_loading.py,40,bounded-wait,gnome,review,assert release.wait(20)
+tests/test_reader_loading.py,73,bounded-wait,gnome,review,assert entered.wait(20)
+tests/test_reader_loading.py,77,bounded-wait,gnome,review,assert delivered.wait(20)
+tests/test_reader_loading.py,87,bounded-wait,gnome,review,worker.join(20)
+tests/test_record_after_stop.py,31,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_record_after_stop.py,45,bounded-wait,gnome,review,assert release.wait(10)
+tests/test_record_after_stop.py,61,bounded-wait,gnome,review,assert entered.wait(5) # ...and so is the old capture's publication.
+tests/test_record_toggle.py,98,timer-callback,gnome,review,"source = GLib.timeout_add(bound_ms, lambda: expired.append(True) or False)"
+tests/test_record_toggle.py,230,bounded-wait,gnome,review,"assert release.wait(5), ""release the older status read"""
+tests/test_record_toggle.py,253,bounded-wait,gnome,review,"assert sampled.wait(5), ""older read sampled recording before Stop"""
+tests/test_record_toggle.py,297,bounded-wait,gnome,review,"app._browser_changed(delayed.result(timeout=5), 11)"
+tests/test_record_toggle.py,311,bounded-wait,gnome,review,responder.join(timeout=5)
+tests/test_recorder.py,15,bounded-wait,gnome,review,"def spin_until(predicate, timeout=12):"
+tests/test_recorder.py,16,clock-read,gnome,review,deadline = time.monotonic() + timeout
+tests/test_recorder.py,18,clock-condition,gnome,review,not predicate() and time.monotonic() < deadline
+tests/test_recorder.py,18,clock-read,gnome,review,while not predicate() and time.monotonic() < deadline:
+tests/test_recorder.py,21,fixed-delay,gnome,review,time.sleep(0.01)
+tests/test_recorder.py,43,clock-read,gnome,review,deadline = time.monotonic() + 0.4
+tests/test_recorder.py,44,clock-read,gnome,review,spin_until(lambda: time.monotonic() >= deadline)
+tests/test_recorder.py,86,clock-read,gnome,review,deadline = time.monotonic() + 0.5
+tests/test_recorder.py,87,clock-read,gnome,review,spin_until(lambda: time.monotonic() >= deadline)
+tests/test_recorder.py,168,bounded-wait,gnome,review,"assert release.wait(3), ""Source event never released"""
+tests/test_recorder.py,173,clock-read,gnome,review,before = time.monotonic()
+tests/test_recorder.py,175,clock-read,gnome,review,"assert time.monotonic() - before < 0.2, ""Stop waited on a streaming lock"""
+tests/test_recorder.py,175,temporal-assertion,gnome,review,time.monotonic() - before < 0.2
+tests/test_recorder.py,176,bounded-wait,gnome,review,"spin_until(entered.is_set, timeout=1)"
+tests/test_recording_comfort.py,71,clock-read,gnome,review,"_start_us=GLib.get_monotonic_time() - elapsed * 1000,"
+tests/test_recording_comfort.py,88,temporal-assertion,gnome,review,comfort.elapsed(meetings[0]) >= 125500
+tests/test_recording_comfort.py,89,temporal-assertion,gnome,review,65500 <= comfort.elapsed(meetings[1]) < 70000
+tests/test_recording_comfort.py,113,clock-read,gnome,review,end = time.monotonic() + 2
+tests/test_recording_comfort.py,114,clock-condition,gnome,review,capture.directory.name not in comfort.known and time.monotonic() < end
+tests/test_recording_comfort.py,114,clock-read,gnome,review,while capture.directory.name not in comfort.known and time.monotonic() < end:
+tests/test_recording_comfort.py,118,fixed-delay,gnome,review,time.sleep(0.005)
+tests/test_recording_comfort.py,144,clock-read,gnome,review,end = time.monotonic() + 3
+tests/test_recording_comfort.py,145,clock-condition,gnome,review,"holds != [""hold"", ""release""] and time.monotonic() < end"
+tests/test_recording_comfort.py,145,clock-read,gnome,review,"while holds != [""hold"", ""release""] and time.monotonic() < end:"
+tests/test_recording_comfort.py,147,fixed-delay,gnome,review,time.sleep(0.005)
+tests/test_recording_readiness.py,32,bounded-wait,gnome,review,"readiness.wait_until(lambda: progress.reached(0.04), ""finite synthetic frames"", timeout=3)"
+tests/test_recording_readiness.py,66,bounded-wait,gnome,review,"readiness.wait_until(lambda: False, ""silent source"", timeout=0.02, diagnostics=lambda: {""frames"": 0})"
+tests/test_recording_readiness.py,89,bounded-wait,gnome,review,"assert release.wait(3), ""Test did not release the checkpoint rename"""
+tests/test_recording_readiness.py,122,bounded-wait,gnome,review,"assert entered.wait(3), ""Checkpoint did not reach its atomic rename"""
+tests/test_recording_readiness.py,127,bounded-wait,gnome,review,"assert requested.wait(3), ""Snapshot did not wait on the writer boundary"""
+tests/test_recording_readiness.py,131,bounded-wait,gnome,review,writer.join(3)
+tests/test_recording_readiness.py,133,bounded-wait,gnome,review,observer.join(3)
+tests/test_refusal_retries.py,571,clock-read,gnome,review,"message = dict(type=""start"", captureId=""retry"", timelineOriginMs=int(time.time() * 1000), microphone=True)"
+tests/test_refusal_retries.py,671,bounded-wait,gnome,review,"self.connection = connect(path, timeout=5)"
+tests/test_refusal_vectors.py,246,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_refusal_writer.py,297,bounded-wait,gnome,review,"connection = connect(path, timeout=2)"
+tests/test_refusal_writer.py,361,clock-read,gnome,review,"capture.start(dict(type=""start"", captureId=""lost"", timelineOriginMs=int(time.time() * 1000), microphone=False))"
+tests/test_refusal_writer.py,396,bounded-wait,gnome,review,assert done.wait(5) # Bound only: the automatic start task signals its end.
+tests/test_refusal_writer.py,466,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_refusal_writer.py,552,clock-read,gnome,review,"message = dict(type=""start"", captureId=""kept"", timelineOriginMs=int(time.time() * 1000), microphone=True)"
+tests/test_refusal_writer.py,725,clock-read,gnome,review,"message = dict(type=""start"", captureId=""stopped"", timelineOriginMs=int(time.time() * 1000), microphone=True)"
+tests/test_refusal_writer.py,728,bounded-wait,gnome,review,assert all(event.wait(5) for event in entered.values()) # Bound only: both sides are opening.
+tests/test_refusal_writer.py,730,bounded-wait,gnome,review,assert capture.stop_requested.wait(5) # Bound only: the user's Stop has arrived.
+tests/test_resource_budget.py,437,bounded-wait,gnome,review,assert done.wait(30)
+tests/test_resource_budget.py,626,bounded-wait,gnome,review,assert done.wait(30)
+tests/test_resource_budget.py,755,bounded-wait,gnome,review,assert done.wait(30)
+tests/test_resume_capture_host.py,61,bounded-wait,gnome,review,assert ready.wait(2)
+tests/test_resume_capture_host.py,79,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_resume_capture_host.py,334,bounded-wait,gnome,review,thread.join(5)
+tests/test_resume_capture_host.py,374,clock-read,gnome,review,"dict(type=""start"", captureId=""F"", timelineOriginMs=int(time.time() * 1000), callGeneration=""call-A""),"
+tests/test_resume_capture_host.py,434,bounded-wait,gnome,review,"self.connection = connect(path, timeout=5)"
+tests/test_resume_capture_host.py,590,bounded-wait,gnome,review,stopper.join(5)
+tests/test_resume_capture_host.py,636,bounded-wait,gnome,review,self.thread.join(5)
+tests/test_resume_capture_host.py,652,clock-read,gnome,review,origin = int(time.time() * 1000)
+tests/test_resume_capture_host.py,682,bounded-wait,gnome,review,assert native.broker_closed.wait(5)
+tests/test_rotating_wav.py,218,bounded-wait,gnome,review,process.join(5)
+tests/test_rotating_wav.py,234,bounded-wait,gnome,review,process.join(5)
+tests/test_session_clock.py,51,clock-read,gnome,review,return time.monotonic_ns() + BASE_NS + self.step_ns
+tests/test_session_clock.py,134,clock-read,gnome,review,before = time.monotonic_ns()
+tests/test_session_clock.py,136,clock-read,gnome,review,after = time.monotonic_ns()
+tests/test_session_clock.py,175,clock-read,gnome,review,"""time.time"": ""time.time() * 1e9"","
+tests/test_session_clock.py,176,clock-read,gnome,review,"""time.time_ns"": ""time.time_ns()"","
+tests/test_session_clock.py,177,clock-read,gnome,review,"""clock_gettime_ns"": ""time.clock_gettime_ns(time.CLOCK_REALTIME)"","
+tests/test_session_clock.py,178,clock-read,gnome,review,"""clock_gettime"": ""time.clock_gettime(time.CLOCK_REALTIME) * 1e9"","
+tests/test_session_clock.py,194,clock-read,gnome,review,"sources[""GLib.get_real_time""] = ""GLib.get_real_time() * 1000"""
+tests/test_session_clock.py,198,clock-read,gnome,review,before = time.monotonic_ns()
+tests/test_session_clock.py,200,clock-read,gnome,review,after = time.monotonic_ns()
+tests/test_session_clock.py,201,temporal-assertion,gnome,review,before + BASE_NS + 2e9 - 1e6 <= read <= after + BASE_NS + 2e9 + 1e6
+tests/test_session_clock.py,203,clock-read,gnome,review,assert time.clock_gettime_ns(time.CLOCK_MONOTONIC) > 0 and wall.reads == len(sources)
+tests/test_session_clock.py,203,temporal-assertion,gnome,review,time.clock_gettime_ns(time.CLOCK_MONOTONIC) > 0 and wall.reads == len(sources)
+tests/test_session_clock.py,209,clock-read,gnome,review,origin = time.time_ns() // 1_000_000 - 1500 # The page started 1.5 s ago.
+tests/test_session_clock.py,215,clock-read,gnome,review,before = time.monotonic_ns()
+tests/test_session_clock.py,217,clock-read,gnome,review,after = time.monotonic_ns()
+tests/test_session_clock.py,218,temporal-assertion,gnome,review,"expected(origin, before) - TOLERANCE_MS <= now <= expected(origin, after) + TOLERANCE_MS"
+tests/test_session_clock.py,219,temporal-assertion,gnome,review,now >= 1500 - TOLERANCE_MS
+tests/test_session_clock.py,228,clock-read,gnome,review,before = time.monotonic_ns()
+tests/test_session_clock.py,230,clock-read,gnome,review,after = time.monotonic_ns()
+tests/test_session_clock.py,232,temporal-assertion,gnome,review,"expected(clock.origin_ms, before) - TOLERANCE_MS <= 0 <= expected(clock.origin_ms, after) + TOLERANCE_MS"
+tests/test_session_clock.py,233,temporal-assertion,gnome,review,clock.at(before) <= TOLERANCE_MS and clock.at(after) >= -TOLERANCE_MS
+tests/test_session_clock.py,242,clock-read,gnome,review,before = time.monotonic_ns()
+tests/test_session_clock.py,248,clock-read,gnome,review,assert 0 <= elapsed <= (time.monotonic_ns() - before) / 1e6 + TOLERANCE_MS
+tests/test_session_clock.py,248,temporal-assertion,gnome,review,0 <= elapsed <= (time.monotonic_ns() - before) / 1e6 + TOLERANCE_MS
+tests/test_session_clock.py,261,clock-read,gnome,review,origin = int(time.time() * 1000) - 1500
+tests/test_session_clock.py,273,temporal-assertion,gnome,review,"low <= last(session, type=""selection"", me=False)[""atMs""] <= high"
+tests/test_session_clock.py,274,temporal-assertion,gnome,review,low >= 1500 - TOLERANCE_MS
+tests/test_session_clock.py,278,clock-read,gnome,review,before = time.monotonic_ns()
+tests/test_session_clock.py,281,clock-read,gnome,review,after = time.monotonic_ns()
+tests/test_session_clock.py,284,temporal-assertion,gnome,review,"expected(origin, before) - TOLERANCE_MS <= refusal[""atMs""] <= expected(origin, after) + TOLERANCE_MS"
+tests/test_session_clock.py,287,temporal-assertion,gnome,review,"low <= capture.resume_asks[""ask-1""] <= high"
+tests/test_session_clock.py,294,clock-read,gnome,review,"offset = expected(origin, time.monotonic_ns())"
+tests/test_session_clock.py,298,temporal-assertion,gnome,review,"restored[""reason""] == ""callConnected"" and low <= restored[""atMs""] <= high + 10"
+tests/test_session_clock.py,302,temporal-assertion,gnome,review,"low <= lost[""atMs""] <= high"
+tests/test_session_clock.py,307,temporal-assertion,gnome,review,"low <= last(session, type=""end"")[""atMs""] <= high"
+tests/test_session_clock.py,311,clock-read,gnome,review,"other.start(dict(type=""start"", captureId=""next"", timelineOriginMs=int(time.time() * 1000), microphone=False))"
+tests/test_session_clock.py,342,clock-read,gnome,review,"origin = int(time.time() * 1000) - 1500 # The page's origin, 1.5 s before start."
+tests/test_session_clock.py,352,bounded-wait,gnome,review,"assert heard[-1][1].wait(5), ""the test source delivered no PCM"""
+tests/test_session_clock.py,358,temporal-assertion,gnome,review,offset >= 1500 - TOLERANCE_MS
+tests/test_session_events.py,26,bounded-wait,gnome,review,"subprocess.run([sys.executable, str(fixture / ""make.py""), str(tmp_path)], check=True, timeout=5)"
+tests/test_session_events.py,58,bounded-wait,gnome,review,"[sys.executable, str(fixture / ""make.py""), str(tmp_path), ""--case"", ""browser-off-on""], check=True, timeout=5"
+tests/test_session_events.py,212,bounded-wait,gnome,review,"timeout=5,"
+tests/test_shard_plan.py,140,bounded-wait,gnome,review,"assert subprocess.run(script, capture_output=True, timeout=60).returncode == 1"
+tests/test_shard_plan.py,187,bounded-wait,gnome,review,output = run.communicate(timeout=300)[0]
+tests/test_shared_placement.py,104,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(seconds, expire)"
+tests/test_shared_placement.py,203,bounded-wait,gnome,review,"assert done.wait(60), ""the write-down did not finish"""
+tests/test_silent_tracks.py,318,bounded-wait,gnome,review,assert done.wait(60)
+tests/test_silent_tracks.py,564,bounded-wait,gnome,review,assert done.wait(30)
+tests/test_silent_tracks.py,616,bounded-wait,gnome,review,assert cancelled.wait(30)
+tests/test_silent_tracks.py,649,bounded-wait,gnome,review,assert reading.wait(30)
+tests/test_silent_tracks.py,652,bounded-wait,gnome,review,assert gate.added.wait(30)
+tests/test_silent_tracks.py,656,bounded-wait,gnome,review,assert finished.wait(30)
+tests/test_silent_tracks.py,658,bounded-wait,gnome,review,assert trashed.wait(30)
+tests/test_sound_check.py,52,bounded-wait,gnome,review,"def spin_until(predicate, timeout=10):"
+tests/test_sound_check.py,56,timer-callback,gnome,review,"guard = GLib.timeout_add(int(timeout * 1000), lambda: expired.append(True) or False)"
+tests/test_sound_check.py,372,bounded-wait,gnome,review,"assert self.release.wait(10), ""The test did not release the preparation"""
+tests/test_sound_check.py,577,bounded-wait,gnome,review,"assert release.wait(10), ""The test did not release the folder's creation"""
+tests/test_sound_check.py,585,bounded-wait,gnome,review,assert made.wait(10)
+tests/test_sound_check.py,604,bounded-wait,gnome,review,assert recorder.entered.wait(10)
+tests/test_sound_check.py,610,bounded-wait,gnome,review,recorder.preparing.join(10)
+tests/test_sound_check.py,624,bounded-wait,gnome,review,"assert release.wait(10), ""The test did not release the preparation"""
+tests/test_sound_check.py,701,bounded-wait,gnome,review,"spin_until(lambda: finished, timeout=20)"
+tests/test_spectro_analysis.py,58,bounded-wait,gnome,review,"timeout=30,"
+tests/test_spectro_responsiveness.py,47,bounded-wait,gnome,review,"assert release.wait(4), ""test did not release the blocked producer"""
+tests/test_spectro_responsiveness.py,55,bounded-wait,gnome,review,"assert entered.wait(3), f""producer did not reach {phase} barrier"""
+tests/test_spectro_responsiveness.py,67,bounded-wait,gnome,review,gtk.result(timeout=1)
+tests/test_spectro_responsiveness.py,75,bounded-wait,gnome,review,producer.result(timeout=3)
+tests/test_spectro_responsiveness.py,95,bounded-wait,gnome,review,"assert release.wait(4), ""test did not release publication lock"""
+tests/test_spectro_responsiveness.py,100,bounded-wait,gnome,review,"assert entered.wait(3), ""publication barrier was not reached"""
+tests/test_spectro_responsiveness.py,109,bounded-wait,gnome,review,pending.result(timeout=1)
+tests/test_spectro_responsiveness.py,115,bounded-wait,gnome,review,publishing.result(timeout=3)
+tests/test_spectro_source.py,133,bounded-wait,gnome,review,future.result(timeout=3)
+tests/test_spectro_transport.py,134,bounded-wait,gnome,review,"assert suffix.wait(3), ""GTK did not dispatch an idle while its JSON line was incomplete"""
+tests/test_spectro_transport.py,153,bounded-wait,gnome,review,worker.join(timeout=3)
+tests/test_spectro_transport.py,319,bounded-wait,gnome,review,"timeout=10,"
+tests/test_spectro_transport.py,329,bounded-wait,gnome,review,"timeout=10,"
+tests/test_spectro_transport.py,343,bounded-wait,gnome,review,"timeout=10,"
+tests/test_spectro_transport.py,364,bounded-wait,gnome,review,"wait_until(read, ""the resumed view received the newest column"", timeout=10)"
+tests/test_spectro_transport.py,367,bounded-wait,gnome,review,"wait_until(lambda: not worker.is_alive(), ""the view's EOF ended its feed"", timeout=10)"
+tests/test_spectro_transport.py,372,bounded-wait,gnome,review,worker.join(5)
+tests/test_speech_models.py,50,bounded-wait,gnome,review,models._thread.join(2)
+tests/test_speech_models.py,210,bounded-wait,gnome,review,"finished.wait(2, exactly=True)"
+tests/test_speech_models.py,239,fixed-delay,gnome,review,time.sleep(10)
+tests/test_speech_models.py,242,fixed-delay,gnome,review,"while m.snapshot()[""busy""]: time.sleep(.001)"
+tests/test_speech_models.py,244,bounded-wait,gnome,review,assert entered.wait(1)
+tests/test_speech_models.py,247,clock-read,gnome,review,started = time.monotonic()
+tests/test_speech_models.py,251,bounded-wait,gnome,review,"timeout=2,"
+tests/test_speech_models.py,254,clock-read,gnome,review,assert time.monotonic() - started < 0.8
+tests/test_speech_models.py,254,temporal-assertion,gnome,review,time.monotonic() - started < 0.8
+tests/test_speech_models.py,271,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_speech_models.py,279,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_speech_models.py,283,bounded-wait,gnome,review,owner.join(2)
+tests/test_speech_models.py,288,bounded-wait,gnome,review,owner.join(2)
+tests/test_speech_models.py,298,bounded-wait,gnome,review,assert cancelled.wait(2)
+tests/test_speech_models.py,304,bounded-wait,gnome,review,assert models.download() and entered.wait(1)
+tests/test_speech_models.py,451,bounded-wait,gnome,review,waiter.join(2)
+tests/test_speech_models.py,467,bounded-wait,gnome,review,models._eligibility_thread.join(2)
+tests/test_speech_models.py,488,bounded-wait,gnome,review,models._eligibility_thread.join(2)
+tests/test_tap_stall.py,221,clock-read,gnome,review,origin = int(time.time() * 1000)
+tests/test_tap_stall.py,326,bounded-wait,gnome,review,assert release.wait(3 * BOUND) # Bound only: the test releases it.
+tests/test_tap_stall.py,369,bounded-wait,gnome,review,"def acquire(self, blocking=True, timeout=-1):"
+tests/test_tap_stall.py,411,bounded-wait,gnome,review,assert release.wait(3 * BOUND) # Bound only: the test releases it.
+tests/test_tap_stall.py,623,bounded-wait,gnome,review,"self.connection = connect(path, timeout=2)"
+tests/test_tap_stall.py,1035,temporal-assertion,gnome,review,all(pressed - slack <= end <= pressed + slack for end in ends.values())
+tests/test_track_source.py,309,bounded-wait,gnome,review,"def until(predicate, timeout=10):"
+tests/test_track_source.py,311,clock-read,gnome,review,end = time.monotonic() + timeout
+tests/test_track_source.py,312,clock-condition,gnome,review,time.monotonic() < end
+tests/test_track_source.py,312,clock-read,gnome,review,while time.monotonic() < end:
+tests/test_track_source.py,317,fixed-delay,gnome,review,time.sleep(0.005)
+tests/test_track_source.py,376,temporal-assertion,gnome,review,"abs(magnitude(actual, start, end, frequency) - magnitude(expected, start, end, frequency)) < 0.03"
+tests/test_track_source.py,460,temporal-assertion,gnome,review,"abs(magnitude(actual_pcm, start, end, frequency) - magnitude(expected_pcm, start, end, frequency)) < 0.03"
+tests/test_transcription.py,29,clock-read,gnome,review,deadline = time.monotonic() + bound
+tests/test_transcription.py,30,clock-condition,gnome,review,time.monotonic() < deadline
+tests/test_transcription.py,30,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/test_transcription.py,33,fixed-delay,gnome,review,time.sleep(0.005)
+tests/test_transcription.py,89,bounded-wait,gnome,review,completed.wait(1)
+tests/test_transcription.py,152,bounded-wait,gnome,review,"finished.wait(2, exactly=True)"
+tests/test_transcription.py,202,bounded-wait,gnome,review,"finished.wait(1, exactly=True)"
+tests/test_transcription.py,208,bounded-wait,gnome,review,"finished.wait(2, exactly=True)"
+tests/test_transcription.py,257,bounded-wait,gnome,review,finished.wait(1)
+tests/test_transcription.py,269,bounded-wait,gnome,review,finished.wait(2)
+tests/test_transcription.py,325,bounded-wait,gnome,review,finished.wait(1)
+tests/test_transcription.py,332,bounded-wait,gnome,review,"finished.wait(2, exactly=True)"
+tests/test_transcription.py,405,fixed-delay,gnome,review,time.sleep(30)
+tests/test_transcription.py,422,clock-read,gnome,review,start = time.monotonic()
+tests/test_transcription.py,424,clock-read,gnome,review,"assert time.monotonic() - start < 0.5, ""close waited for child inference on the calling thread"""
+tests/test_transcription.py,424,temporal-assertion,gnome,review,time.monotonic() - start < 0.5
+tests/test_transcription.py,425,bounded-wait,gnome,review,"finished.wait(3, exactly=True)"
+tests/test_transcription.py,591,bounded-wait,gnome,review,assert release.wait(3)
+tests/test_transcription.py,605,bounded-wait,gnome,review,finished.wait(1)
+tests/test_verified_admission.py,59,bounded-wait,gnome,review,owner.writer.join(2)
+tests/test_verified_admission.py,193,bounded-wait,gnome,review,"assert release.wait(2), ""test must release the private writer"""
+tests/test_verified_admission.py,209,bounded-wait,gnome,review,assert entered.wait(2)
+tests/test_verified_admission.py,222,bounded-wait,gnome,review,assert queued.wait(2)
+tests/test_verified_admission.py,225,bounded-wait,gnome,review,assert finished.wait(2)
+tests/test_verified_admission.py,231,bounded-wait,gnome,review,worker.join(2)
+tests/test_verified_admission.py,233,bounded-wait,gnome,review,peer.writer.join(2)
+tests/test_verified_admission.py,464,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_verified_admission.py,489,temporal-assertion,gnome,review,"stream(capture, ""system"")[""frames""] > 0"
+tests/test_verified_admission.py,540,temporal-assertion,gnome,review,current == (proof if arrival < LEASE else None)
+tests/test_verified_admission.py,742,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_verified_admission.py,786,clock-read,gnome,review,"packet[""timelineOriginMs""] = int(time.time() * 1000)"
+tests/test_verified_admission.py,791,bounded-wait,gnome,review,ended.get(timeout=5)
+tests/test_verified_admission.py,814,clock-read,gnome,review,"timelineOriginMs=int(time.time() * 1000),"
+tests/test_voice_application.py,154,bounded-wait,gnome,review,blocker.result(timeout=4)
+tests/test_voice_application.py,252,bounded-wait,gnome,review,finished.wait(1)
+tests/test_voice_id_collision.py,447,bounded-wait,gnome,review,"assert done.wait(10), ""Background preparation did not finish"""
+tests/test_voice_models.py,58,bounded-wait,gnome,review,models._thread.join(2)
+tests/test_voice_queue.py,58,bounded-wait,gnome,review,assert cancelled.wait(4)
+tests/test_voice_queue.py,76,bounded-wait,gnome,review,assert cancelled.wait(4)
+tests/test_voice_queue.py,109,bounded-wait,gnome,review,assert entered.wait(3)
+tests/test_voice_queue.py,113,bounded-wait,gnome,review,completed.wait(1)
+tests/test_voice_queue.py,180,bounded-wait,gnome,review,assert release.wait(4)
+tests/test_voice_queue.py,199,bounded-wait,gnome,review,assert entered.wait(3)
+tests/test_voice_queue.py,295,bounded-wait,gnome,review,finished.wait(1)
+tests/test_voice_queue.py,391,bounded-wait,gnome,review,assert release.wait(4)
+tests/test_voice_queue.py,406,bounded-wait,gnome,review,assert entered.wait(3)
+tests/test_voice_queue.py,414,bounded-wait,gnome,review,finished.wait(1)
+tests/test_voice_queue.py,481,bounded-wait,gnome,review,finished.wait(1)
+tests/test_voice_queue.py,482,bounded-wait,gnome,review,queue.executor.submit(lambda: None).result(timeout=4)
+tests/test_voice_source.py,675,bounded-wait,gnome,review,"assert done.wait(10), ""Background preparation did not finish"""
+tests/test_whistle_spike.py,53,bounded-wait,gnome,review,"def child_client(tmp_path, monkeypatch, script, timeout=1):"
+tests/test_whistle_spike.py,62,bounded-wait,gnome,review,"return whistle_client.WhistleClient(tmp_path, timeout=timeout)"
+tests/test_whistle_spike.py,91,fixed-delay,gnome,review,time.sleep(30)
+tests/test_whistle_spike.py,93,bounded-wait,gnome,review,"timeout=0.1,"
+tests/ui/accessible-buttons.py,54,timer-callback,gnome,review,"wake = GLib.timeout_add(50, lambda: GLib.SOURCE_CONTINUE)"
+tests/ui/accessible-buttons.py,256,clock-read,gnome,review,deadline = time.monotonic() + 10
+tests/ui/accessible-buttons.py,257,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/accessible-buttons.py,257,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/accessible-buttons.py,262,clock-read,gnome,review,remaining = deadline - time.monotonic()
+tests/ui/accessible-buttons.py,269,clock-read,gnome,review,deadline = time.monotonic() + 10
+tests/ui/accessible-buttons.py,271,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/accessible-buttons.py,271,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/accessible-buttons.py,284,fixed-delay,gnome,review,time.sleep(0.025)
+tests/ui/accessible-buttons.py,349,bounded-wait,gnome,review,assert process.wait(10) == 0
+tests/ui/accessible-buttons.py,354,bounded-wait,gnome,review,process.wait(5)
+tests/ui/background.py,17,bounded-wait,gnome,review,"result = subprocess.run([sys.executable, __file__, ""--gtk-child""], capture_output=True, text=True, timeout=70)"
+tests/ui/background.py,40,clock-read,gnome,review,end = time.monotonic() + 8
+tests/ui/background.py,41,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/background.py,41,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/background.py,50,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/background.py,182,bounded-wait,gnome,review,"subprocess.run([""xdotool"", ""windowfocus"", ""--sync"", str(xid)], check=True, timeout=3)"
+tests/ui/background.py,184,bounded-wait,gnome,review,"subprocess.run([""xdotool"", ""key"", ""--clearmodifiers"", ""Escape""], check=True, timeout=3)"
+tests/ui/build-refresh.py,54,clock-read,gnome,review,"started, stage = time.monotonic(), 0"
+tests/ui/build-refresh.py,65,clock-read,gnome,review,"assert time.monotonic() - started < 8, ""GApplication restart handoff stalled"""
+tests/ui/build-refresh.py,65,temporal-assertion,gnome,review,time.monotonic() - started < 8
+tests/ui/build-refresh.py,83,timer-callback,gnome,review,"GLib.timeout_add(20, drive)"
+tests/ui/companion-click.py,40,bounded-wait,gnome,review,"[sys.executable, __file__, ""--gtk-child""], stdout=log, stderr=subprocess.STDOUT, timeout=90"
+tests/ui/companion-click.py,88,bounded-wait,gnome,review,"def until(check, timeout=2):"
+tests/ui/companion-click.py,89,clock-read,gnome,review,end = time.monotonic() + timeout
+tests/ui/companion-click.py,90,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/companion-click.py,90,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/companion-click.py,185,bounded-wait,gnome,review,assert server_ready.wait(2)
+tests/ui/companion-click.py,221,bounded-wait,gnome,review,assert launch_release.wait(2)
+tests/ui/companion-click.py,257,clock-read,gnome,review,settled = time.monotonic()
+tests/ui/companion-click.py,258,clock-read,gnome,review,"until(lambda: time.monotonic() - settled >= 2, 3)"
+tests/ui/companion-click.py,280,clock-read,gnome,review,"gaps, ticks = [], [time.monotonic()]"
+tests/ui/companion-click.py,287,clock-read,gnome,review,now = time.monotonic()
+tests/ui/companion-click.py,292,timer-callback,gnome,review,"timer = GLib.timeout_add(10, beat)"
+tests/ui/companion-click.py,293,clock-read,gnome,review,"count, started = len(launches), time.monotonic()"
+tests/ui/companion-click.py,300,clock-read,gnome,review,until(lambda started=started: time.monotonic() - started >= 2)
+tests/ui/companion-click.py,340,temporal-assertion,gnome,review,gaps and max(gaps) < 0.1
+tests/ui/companion-click.py,352,bounded-wait,gnome,review,assert release.wait(2)
+tests/ui/companion-click.py,356,clock-read,gnome,review,before = time.monotonic()
+tests/ui/companion-click.py,360,clock-read,gnome,review,now = time.monotonic()
+tests/ui/companion-click.py,365,timer-callback,gnome,review,"timer = GLib.timeout_add(10, retry_beat)"
+tests/ui/companion-click.py,367,clock-read,gnome,review,assert time.monotonic() - before < 0.1
+tests/ui/companion-click.py,367,temporal-assertion,gnome,review,time.monotonic() - before < 0.1
+tests/ui/companion-click.py,372,clock-read,gnome,review,"until(lambda before=before: time.monotonic() - before >= 2, 3)"
+tests/ui/companion-click.py,374,temporal-assertion,gnome,review,retry_gaps and max(retry_gaps) < 0.1
+tests/ui/companion-click.py,408,bounded-wait,gnome,review,server.join(2)
+tests/ui/companion-click.py,417,bounded-wait,gnome,review,atspi.wait(5)
+tests/ui/companion-health.py,29,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(5, lambda: expired.append(True) or False)"
+tests/ui/companion-sandbox.py,34,clock-read,gnome,review,deadline = time.monotonic() + 10
+tests/ui/companion-sandbox.py,36,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/companion-sandbox.py,36,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/companion-sandbox.py,43,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/companion-sandbox.py,150,bounded-wait,gnome,review,assert release.wait(5)
+tests/ui/companion-sandbox.py,156,timer-callback,gnome,review,"timer = GLib.timeout_add(10, lambda: (beats.append(1), GLib.SOURCE_CONTINUE)[1])"
+tests/ui/companion-sandbox.py,173,bounded-wait,gnome,review,recording_worker = app._record_start_executor.submit(threading.get_ident).result(timeout=1)
+tests/ui/companion.py,57,clock-read,gnome,review,end = time.monotonic() + 2
+tests/ui/companion.py,59,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/companion.py,59,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/companion.py,66,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/companion.py,86,bounded-wait,gnome,review,future.exception(timeout=25)
+tests/ui/companion.py,126,bounded-wait,gnome,review,assert ready.wait(2)
+tests/ui/companion.py,375,bounded-wait,gnome,review,"assert release.wait(5), ""Teardown did not release the registration worker"""
+tests/ui/companion.py,403,bounded-wait,gnome,review,thread.join(2)
+tests/ui/diarization-models.py,38,clock-read,gnome,review,deadline = time.monotonic() + 8
+tests/ui/diarization-models.py,40,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/diarization-models.py,40,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/diarization-models.py,47,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/diarization-models.py,110,bounded-wait,gnome,review,assert release.wait(5)
+tests/ui/import-export.py,22,bounded-wait,gnome,review,"result = subprocess.run([sys.executable, __file__, ""--gtk-child""], capture_output=True, text=True, timeout=90)"
+tests/ui/import-export.py,52,clock-read,gnome,review,end = time.monotonic() + 12
+tests/ui/import-export.py,54,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/import-export.py,54,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/import-export.py,61,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/import-export.py,77,timer-callback,gnome,review,"bound = GLib.timeout_add_seconds(12, lambda: expired.append(True))"
+tests/ui/interjections.py,45,clock-read,gnome,review,deadline = time.monotonic() + 10
+tests/ui/interjections.py,46,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/interjections.py,46,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/interjections.py,51,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/journey-parity.py,19,bounded-wait,gnome,review,"result = subprocess.run([sys.executable, __file__, ""--gtk-child""], capture_output=True, text=True, timeout=100)"
+tests/ui/journey-parity.py,48,clock-read,gnome,review,end = time.monotonic() + 8
+tests/ui/journey-parity.py,49,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/journey-parity.py,49,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/journey-parity.py,58,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/journey-parity.py,77,bounded-wait,gnome,review,"subprocess.run([""xdotool"", ""windowfocus"", ""--sync"", str(xid)], check=True, timeout=3)"
+tests/ui/journey-parity.py,118,bounded-wait,gnome,review,"timeout=3,"
+tests/ui/journey-parity.py,120,bounded-wait,gnome,review,"subprocess.run([""xdotool"", ""click"", ""--repeat"", str(count), ""--delay"", ""80"", ""1""], check=True, timeout=3)"
+tests/ui/library-move.py,55,timer-callback,gnome,review,"tick = GLib.timeout_add(10, observe)"
+tests/ui/library-move.py,56,timer-callback,gnome,review,"limit = GLib.timeout_add_seconds(15, expired)"
+tests/ui/library-publication.py,58,timer-callback,gnome,review,"tick, limit = GLib.timeout_add(10, check), GLib.timeout_add_seconds(15, expired)"
+tests/ui/library.py,38,clock-read,gnome,review,deadline = time.monotonic() + 8
+tests/ui/library.py,39,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/library.py,39,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/library.py,44,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/listening-rows.py,60,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(8, timeout)"
+tests/ui/listening-rows.py,87,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(8, lambda: (expired.append(True), loop.quit(), False)[-1])"
+tests/ui/listening-rows.py,104,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(8, lambda: expired.append(True) or False)"
+tests/ui/listening-rows.py,615,bounded-wait,gnome,review,"timeout=5,"
+tests/ui/listening-rows.py,652,bounded-wait,gnome,review,"timeout=5,"
+tests/ui/listening-rows.py,780,bounded-wait,gnome,review,"timeout=5,"
+tests/ui/listening-rows.py,782,clock-read,gnome,review,"until(window, lambda: page._follow_until > GLib.get_monotonic_time())"
+tests/ui/listening-rows.py,803,clock-read,gnome,review,assert not scroll_calls and page._follow_until > GLib.get_monotonic_time()
+tests/ui/listening-rows.py,803,temporal-assertion,gnome,review,not scroll_calls and page._follow_until > GLib.get_monotonic_time()
+tests/ui/listening_input.py,29,bounded-wait,gnome,review,"subprocess.run([""xdotool"", ""windowfocus"", ""--sync"", xid], check=True, timeout=5)"
+tests/ui/meeting.py,37,clock-read,gnome,review,end = time.monotonic() + 8
+tests/ui/meeting.py,39,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/meeting.py,39,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/meeting.py,44,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/meeting.py,129,clock-read,gnome,review,"started, position = time.monotonic(), window.player.position"
+tests/ui/meeting.py,130,clock-read,gnome,review,until(lambda: time.monotonic() - started >= 4)
+tests/ui/meeting.py,133,temporal-assertion,gnome,review,7000 <= advance <= 9000
+tests/ui/model-notices.py,29,clock-read,gnome,review,deadline = time.monotonic() + 8
+tests/ui/model-notices.py,31,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/model-notices.py,31,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/model-notices.py,38,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/painted.py,9,bounded-wait,gnome,review,"def painted_node(window, *, scale=1, timeout=10):"
+tests/ui/painted.py,20,clock-read,gnome,review,deadline = time.monotonic() + timeout
+tests/ui/painted.py,29,clock-read,gnome,review,"assert time.monotonic() < deadline, ""Window snapshot stayed empty"""
+tests/ui/painted.py,29,temporal-assertion,gnome,review,time.monotonic() < deadline
+tests/ui/painted.py,33,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/progress_wait.py,7,bounded-wait,gnome,review,"def until_progress(check, *, progress, dispatch, timeout=55, diagnostics=lambda: """", clock=time.monotonic):"
+tests/ui/quit.py,39,clock-read,gnome,review,deadline = time.monotonic() + 10
+tests/ui/quit.py,43,clock-read,gnome,review,remaining = deadline - time.monotonic()
+tests/ui/quit.py,44,temporal-assertion,gnome,review,remaining > 0 and selector.select(remaining)
+tests/ui/quit.py,50,bounded-wait,gnome,review,output += child.communicate(timeout=10)[0]
+tests/ui/quit.py,87,bounded-wait,gnome,review,"subprocess.run([sys.executable, __file__, mode], check=True, timeout=12)"
+tests/ui/quit.py,115,clock-read,gnome,review,started = time.monotonic()
+tests/ui/quit.py,146,fixed-delay,gnome,review,time.sleep(30)
+tests/ui/quit.py,195,fixed-delay,gnome,review,time.sleep(0.3) # Keep inference alive beyond the background-close timer.
+tests/ui/quit.py,232,bounded-wait,gnome,review,"assert finish_gate.wait(5), ""Finalization was not released"""
+tests/ui/quit.py,243,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,276,clock-read,gnome,review,"assert time.monotonic() - started < 10, ""Process shutdown stalled"""
+tests/ui/quit.py,276,temporal-assertion,gnome,review,time.monotonic() - started < 10
+tests/ui/quit.py,287,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,337,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,343,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,362,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,383,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,403,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,413,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,424,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,434,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,447,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,452,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,468,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,508,clock-read,gnome,review,closing_at = time.monotonic()
+tests/ui/quit.py,514,timer-callback,gnome,review,"GLib.timeout_add(10, drive)"
+tests/ui/quit.py,520,clock-read,gnome,review,assert result == 0 and closing_at is not None and time.monotonic() - closing_at < 0.8
+tests/ui/quit.py,520,temporal-assertion,gnome,review,result == 0 and closing_at is not None and time.monotonic() - closing_at < 0.8
+tests/ui/quit.py,530,clock-read,gnome,review,deadline = time.monotonic() + 2
+tests/ui/quit.py,531,clock-condition,gnome,review,child.poll() is None and time.monotonic() < deadline
+tests/ui/quit.py,531,clock-read,gnome,review,while child.poll() is None and time.monotonic() < deadline:
+tests/ui/quit.py,532,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/quit.py,537,clock-condition,gnome,review,queue_before_exit.client is not None and time.monotonic() < deadline
+tests/ui/quit.py,537,clock-read,gnome,review,while queue_before_exit.client is not None and time.monotonic() < deadline:
+tests/ui/quit.py,538,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/quit.py,582,clock-read,gnome,review,"print(json.dumps(dict(mode=mode, exitSeconds=time.monotonic() - closing_at, holds=app._transcription_holds)))"
+tests/ui/recording-details.py,80,clock-read,gnome,review,end = time.monotonic() + 12
+tests/ui/recording-details.py,82,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/recording-details.py,82,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/recording-details.py,87,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/recording-details.py,411,bounded-wait,gnome,review,assert release.wait(4)
+tests/ui/recording.py,52,timer-callback,gnome,review,"tick, limit = GLib.timeout_add(10, check), GLib.timeout_add_seconds(10, expired)"
+tests/ui/recording.py,181,clock-read,gnome,review,app.comfort.clocks[live.key] = SilenceClock(GLib.get_monotonic_time() / 1e6 - 20)
+tests/ui/recording.py,263,clock-read,gnome,review,"_start_us=GLib.get_monotonic_time() - 65_500_000,"
+tests/ui/recording.py,495,temporal-assertion,gnome,review,"browser_app.comfort.states[key][""levels""][1] > 0"
+tests/ui/recording.py,521,clock-read,gnome,review,"_start_us=GLib.get_monotonic_time(),"
+tests/ui/refresh.py,33,clock-read,gnome,review,deadline = time.monotonic() + 8
+tests/ui/refresh.py,35,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/refresh.py,35,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/refresh.py,42,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/rename.py,21,bounded-wait,gnome,review,"result = subprocess.run([sys.executable, __file__, ""--gtk-child""], capture_output=True, text=True, timeout=90)"
+tests/ui/rename.py,44,clock-read,gnome,review,end = time.monotonic() + 10
+tests/ui/rename.py,45,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/rename.py,45,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/rename.py,54,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/rename.py,216,bounded-wait,gnome,review,"assert release.wait(8), ""GUI did not release the metadata worker"""
+tests/ui/rename.py,222,clock-read,gnome,review,started = time.monotonic()
+tests/ui/rename.py,224,clock-read,gnome,review,until(lambda started=started: time.monotonic() - started >= 1.5)
+tests/ui/search.py,33,clock-read,gnome,review,end = time.monotonic() + 12
+tests/ui/search.py,35,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/search.py,35,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/search.py,42,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/settings.py,40,clock-read,gnome,review,end = time.monotonic() + 12
+tests/ui/settings.py,42,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/settings.py,42,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/settings.py,49,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/settings.py,94,bounded-wait,gnome,review,assert ready.wait(2)
+tests/ui/settings.py,203,bounded-wait,gnome,review,thread.join(2)
+tests/ui/speakers.py,33,clock-read,gnome,review,deadline = time.monotonic() + 8
+tests/ui/speakers.py,35,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/speakers.py,35,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/speakers.py,42,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/spectrogram-browser.py,37,bounded-wait,gnome,review,"return wait_until(predicate, description, timeout=15, diagnostics=diagnostics)"
+tests/ui/spectrogram-browser.py,130,clock-read,gnome,review,"start, cpu = time.monotonic(), time.process_time()"
+tests/ui/spectrogram-browser.py,135,timer-callback,gnome,review,"GLib.timeout_add(60000, lambda: (loop.quit(), False)[1])"
+tests/ui/spectrogram-browser.py,137,clock-read,gnome,review,elapsed = time.monotonic() - start
+tests/ui/spectrogram-browser.py,229,bounded-wait,gnome,review,child.wait(15)
+tests/ui/spectrogram-browser.py,232,bounded-wait,gnome,review,child.wait(5)
+tests/ui/spectrogram-live.py,44,bounded-wait,gnome,review,"timeout=15,"
+tests/ui/spectrogram-live.py,112,clock-read,gnome,review,window.get_application().comfort.clocks[key] = SilenceClock(GLib.get_monotonic_time() / 1e6 - 21)
+tests/ui/spectrogram-live.py,153,bounded-wait,gnome,review,"assert release.wait(10), ""test did not release the native finalizer"""
+tests/ui/spectrogram-live.py,189,bounded-wait,gnome,review,"faded, ""all frozen strips rendered their final stopping opacity"", timeout=5, diagnostics=lambda: fades"
+tests/ui/spectrogram-live.py,214,bounded-wait,gnome,review,"timeout=15,"
+tests/ui/spectrogram-live.py,230,clock-read,gnome,review,"started, cpu = time.monotonic(), time.process_time()"
+tests/ui/spectrogram-live.py,234,timer-callback,gnome,review,"GLib.timeout_add(duration * 1000, lambda: (loop.quit(), False)[1])"
+tests/ui/spectrogram-live.py,236,clock-read,gnome,review,"elapsed, cpu = time.monotonic() - started, time.process_time() - cpu"
+tests/ui/spectrogram-live.py,337,temporal-assertion,gnome,review,render_state_bytes(views) <= 128 * 1024
+tests/ui/spectrogram.py,51,timer-callback,gnome,review,"tick, limit = GLib.timeout_add(10, check), GLib.timeout_add_seconds(8, timeout)"
+tests/ui/speech-models.py,39,clock-read,gnome,review,end = time.monotonic() + 8
+tests/ui/speech-models.py,41,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/speech-models.py,41,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/speech-models.py,48,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/speech-models.py,176,bounded-wait,gnome,review,"finished.wait(1, exactly=True)"
+tests/ui/status-notifier.py,25,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(5, timeout)"
+tests/ui/test-recording.py,59,clock-read,gnome,review,deadline = time.monotonic() + seconds
+tests/ui/test-recording.py,61,timer-callback,gnome,review,"heartbeat = GLib.timeout_add(10, lambda: True)"
+tests/ui/test-recording.py,64,clock-condition,gnome,review,time.monotonic() > deadline
+tests/ui/test-recording.py,64,clock-read,gnome,review,if time.monotonic() > deadline:
+tests/ui/test-recording.py,227,bounded-wait,gnome,review,"assert release_reply.wait(40), ""Test did not release the Record reply"""
+tests/ui/test-recording.py,320,clock-read,gnome,review,deadline = time.monotonic() + seconds
+tests/ui/test-recording.py,322,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/test-recording.py,322,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/test-recording.py,333,fixed-delay,gnome,review,time.sleep(0.025)
+tests/ui/test-recording.py,356,clock-read,gnome,review,deadline = time.monotonic() + seconds
+tests/ui/test-recording.py,357,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/test-recording.py,357,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/test-recording.py,362,fixed-delay,gnome,review,time.sleep(0.025)
+tests/ui/test-recording.py,400,bounded-wait,gnome,review,"assert process.wait(20) == 0, f""GTK child failed; see {log_path}"""
+tests/ui/test-recording.py,406,bounded-wait,gnome,review,process.wait(5)
+tests/ui/trash.py,34,bounded-wait,gnome,review,"def until(check, timeout=8):"
+tests/ui/trash.py,35,clock-read,gnome,review,end = time.monotonic() + timeout
+tests/ui/trash.py,37,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/trash.py,37,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/trash.py,44,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/trash.py,254,clock-read,gnome,review,"calls.append((path, time.monotonic()))"
+tests/ui/trash.py,282,clock-read,gnome,review,start = time.monotonic()
+tests/ui/trash.py,285,temporal-assertion,gnome,review,len(calls) == 1 and calls[0][1] - start >= 4.5
+tests/ui/voice-models.py,38,clock-read,gnome,review,deadline = time.monotonic() + 8
+tests/ui/voice-models.py,40,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/voice-models.py,40,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/voice-models.py,47,fixed-delay,gnome,review,time.sleep(0.01)
+tests/ui/voice-models.py,119,bounded-wait,gnome,review,assert release.wait(5)
+tests/ui/voice-preparation.py,30,clock-read,gnome,review,deadline = time.monotonic() + 8
+tests/ui/voice-preparation.py,32,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/voice-preparation.py,32,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/voice-preparation.py,39,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/voices.py,36,clock-read,gnome,review,deadline = time.monotonic() + 8
+tests/ui/voices.py,38,clock-condition,gnome,review,time.monotonic() < deadline
+tests/ui/voices.py,38,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/ui/voices.py,45,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/what-is-recorded.py,35,clock-read,gnome,review,end = time.monotonic() + 10
+tests/ui/what-is-recorded.py,37,clock-condition,gnome,review,time.monotonic() < end
+tests/ui/what-is-recorded.py,37,clock-read,gnome,review,while time.monotonic() < end:
+tests/ui/what-is-recorded.py,44,fixed-delay,gnome,review,time.sleep(0.005)
+tests/ui/wide-speakers.py,57,timer-callback,gnome,review,"timer = GLib.timeout_add_seconds(8, timeout)"
+tests/ui/wide-speakers.py,163,clock-read,gnome,review,started = time.perf_counter()
+tests/ui/wide-speakers.py,175,clock-read,gnome,review,"f""Transcript open/bind: {(time.perf_counter() - started) * 1000:.1f}ms; {len(turns)} turns, {len(words)} words"""
+tests/ux/diarization/build.py,35,bounded-wait,gnome,review,"with urllib.request.urlopen(source[""url""], timeout=60) as response:"
+tests/voices/backfill_probe.py,37,clock-read,gnome,review,deadline = time.monotonic() + 120
+tests/voices/backfill_probe.py,38,clock-condition,gnome,review,time.monotonic() < deadline
+tests/voices/backfill_probe.py,38,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/voices/backfill_probe.py,41,fixed-delay,gnome,review,time.sleep(0.01)
+tests/voices/pipeline_probe.py,151,clock-read,gnome,review,started = time.monotonic()
+tests/voices/pipeline_probe.py,177,clock-read,gnome,review,"startToReapedSeconds=time.monotonic() - started,"
+tests/whistle/pipeline_probe.py,48,bounded-wait,gnome,review,"with WhistleClient(args.bundle, timeout=120) as client:"
+tests/whistle/stream_probe.py,38,clock-read,gnome,review,started = time.monotonic()
+tests/whistle/stream_probe.py,65,clock-read,gnome,review,"seconds=time.monotonic() - started,"
+tests/whistle/stream_probe.py,79,clock-read,gnome,review,export_start = time.monotonic()
+tests/whistle/stream_probe.py,94,clock-read,gnome,review,"seconds=time.monotonic() - export_start,"
+tests/whistle/ui_probe.py,52,bounded-wait,gnome,review,"def until(check, description, timeout=120):"
+tests/whistle/ui_probe.py,54,clock-read,gnome,review,deadline = time.monotonic() + timeout
+tests/whistle/ui_probe.py,55,clock-condition,gnome,review,time.monotonic() < deadline
+tests/whistle/ui_probe.py,55,clock-read,gnome,review,while time.monotonic() < deadline:
+tests/whistle/ui_probe.py,65,fixed-delay,gnome,review,time.sleep(0.01)
+tests/whistle/ui_probe.py,249,bounded-wait,gnome,review,first_child.wait(5)
