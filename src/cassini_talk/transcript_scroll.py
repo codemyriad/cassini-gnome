@@ -65,15 +65,25 @@ class TranscriptScroll:
         self._touch_y = dy
 
     def _touch_swipe(self, _gesture, _vx, vy):
+        self.manual_scroll()
         self._start_motion(-vy)
 
     def _key(self, _controller, key, _code, state):
         if state & (Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SUPER_MASK):
             return False
         if key in (
-            Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Page_Up, Gdk.KEY_Page_Down, Gdk.KEY_Home, Gdk.KEY_End,
-            Gdk.KEY_KP_Up, Gdk.KEY_KP_Down, Gdk.KEY_KP_Page_Up, Gdk.KEY_KP_Page_Down,
-            Gdk.KEY_KP_Home, Gdk.KEY_KP_End,
+            Gdk.KEY_Up,
+            Gdk.KEY_Down,
+            Gdk.KEY_Page_Up,
+            Gdk.KEY_Page_Down,
+            Gdk.KEY_Home,
+            Gdk.KEY_End,
+            Gdk.KEY_KP_Up,
+            Gdk.KEY_KP_Down,
+            Gdk.KEY_KP_Page_Up,
+            Gdk.KEY_KP_Page_Down,
+            Gdk.KEY_KP_Home,
+            Gdk.KEY_KP_End,
         ):
             self.stop()
             self.manual_scroll()

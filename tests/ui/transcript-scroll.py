@@ -21,9 +21,10 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Gdk, Gio, GLib, Gst, Gtk  # noqa: E402
+from gi.repository import GdkX11, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from listening_input import key  # noqa: E402
 from transcript_scroll_support import hour_meeting  # noqa: E402
 
 from cassini_talk.main import CassiniApplication  # noqa: E402
@@ -60,6 +61,66 @@ def anchor(rows, scroller):
     return min(visible)
 
 
+def start_motion(motion):
+    motion.controller.emit("decelerate", 0, 16000 / motion._factor(motion.controller))
+    assert motion.motion is not None
+
+
+def real_key(window, sequence):
+    assert window.get_focus() is not None, "Key input needs a focused transcript widget"
+    released = []
+    controller = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+    controller.connect("key-released", lambda *_: released.append(True))
+    window.add_controller(controller)
+    try:
+        key(window, sequence, lambda _window, check: dispatch_until(check))
+        dispatch_until(lambda: released)
+    finally:
+        window.remove_controller(controller)
+
+
+def pointer_drag(window, widget, x, y, dy, dx=0):
+    point = Graphene.Point()
+    point.init(x, y)
+    ok, target = widget.compute_point(window, point)
+    assert ok
+    released = []
+    events = Gtk.GestureDrag(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+    for signal in ("drag-end", "cancel"):
+        events.connect(signal, lambda *_: released.append(True))
+    window.add_controller(events)
+    surface_x, surface_y = window.get_surface_transform()
+    xid = str(GdkX11.X11Surface.get_xid(window.get_surface()))
+    subprocess.run(
+        [
+            "xdotool",
+            "windowfocus",
+            "--sync",
+            xid,
+            "mousemove",
+            "--window",
+            xid,
+            str(round(target.x + surface_x)),
+            str(round(target.y + surface_y)),
+            "mousedown",
+            "1",
+            "mousemove",
+            "--window",
+            xid,
+            str(round(target.x + surface_x + dx)),
+            str(round(target.y + surface_y + dy)),
+            "mouseup",
+            "1",
+        ],
+        check=True,
+        timeout=5,
+    )
+    try:
+        dispatch_until(lambda: released)
+    finally:
+        window.remove_controller(events)
+
+
 def check_surface(name, window, view, scroller, get_rows, motion):
     dispatch_until(lambda: scroller.get_mapped() and scroller.get_height() > 0)
     paint(window)
@@ -67,7 +128,14 @@ def check_surface(name, window, view, scroller, get_rows, motion):
     paint(window)
     paint(window)
     adjustment = scroller.get_vadjustment()
-    samples, cpu = [], []
+    samples, cpu, manual = [], [], []
+    original_manual = motion.manual_scroll
+
+    def user_input():
+        manual.append(True)
+        original_manual()
+
+    motion.manual_scroll = user_input
     started = [0]
     clock = window.get_frame_clock()
     before = clock.connect("before-paint", lambda *_: started.__setitem__(0, time.thread_time_ns()))
@@ -90,24 +158,38 @@ def check_surface(name, window, view, scroller, get_rows, motion):
         return current
 
     try:
-        for direction in (1, -1):
+        assert not scroller.get_kinetic_scrolling(), "GTK absolute touch kinetic ticker is still enabled"
+        for touch, direction in ((False, 1), (False, -1), (True, 1), (True, -1)):
             previous = snapshot(direction, None)
             initial = previous
             controller = motion.controller
-            controller.emit("scroll-begin")
+            if touch:
+                motion.touch_drag.emit("drag-begin", 0, 0)
+            else:
+                controller.emit("scroll-begin")
             # Xvfb has no physical touchpad: drive the same real GTK scroll and
             # decelerate signals that receive its finger event/velocity history.
+            displacement = 0
             for delta in (1, 2, 3, 2, 1):
-                controller.emit("scroll", 0, direction * delta)
+                if touch:
+                    displacement -= direction * delta * 2.5
+                    motion.touch_drag.emit("drag-update", 0, displacement)
+                else:
+                    controller.emit("scroll", 0, direction * delta)
                 paint(window)
                 previous = snapshot(direction, previous)
             released = previous
             factor = motion._factor(controller)
-            controller.emit("decelerate", 0, direction * 16000 / factor)
+            if touch:
+                motion.touch_swipe.emit("swipe", 0, -direction * 16000)
+            else:
+                controller.emit("decelerate", 0, direction * 16000 / factor)
             assert motion.motion is not None
+            notifications = len(manual)
             while motion.motion is not None:
                 paint(window)
                 previous = snapshot(direction, previous)
+                assert len(manual) == notifications, "Inertia was reported as fresh user input"
             assert direction * (previous[0] - initial[0]) >= 2, (name, "gesture did not move content")
             assert direction * (previous[0] - released[0]) >= 2, (name, "kinetic motion was lost")
             stopped = previous
@@ -128,11 +210,27 @@ def check_surface(name, window, view, scroller, get_rows, motion):
         assert motion.motion is None and motion.tick == 0
         motion.controller.emit("decelerate", 0, 16000 / motion._factor(motion.controller))
         assert motion.motion is not None
-        motion._key(None, Gdk.KEY_Page_Down, 0, Gdk.ModifierType(0))
-        assert motion.motion is None and motion.tick == 0
+        for sequence in ("Page_Down", "KP_Page_Down"):
+            assert get_rows()[anchor(get_rows(), scroller)[0]].child_focus(Gtk.DirectionType.TAB_FORWARD)
+            start_motion(motion)
+            real_key(window, sequence)
+            assert motion.motion is None and motion.tick == 0, (name, sequence)
+        # Alt navigation belongs to listening, not manual transcript scrolling.
+        assert get_rows()[anchor(get_rows(), scroller)[0]].child_focus(Gtk.DirectionType.TAB_FORWARD)
+        start_motion(motion)
+        original = motion.motion
+        real_key(window, "alt+Down")
+        assert motion.motion is original, (name, "Alt+Down was treated as a manual scroll")
+        motion.stop()
+        paint(window)
+        scrollbar = scroller.get_vscrollbar()
+        start_motion(motion)
+        pointer_drag(window, scrollbar, scrollbar.get_width() / 2, scrollbar.get_height() / 2, 25)
+        assert motion.motion is None and motion.tick == 0, (name, "scrollbar did not take over")
         assert peak_bound[0] < 300, (name, "lost row virtualization", peak_bound[0])
     finally:
         motion.stop()
+        motion.manual_scroll = original_manual
         adjustment.disconnect(changed)
         clock.disconnect(before)
         clock.disconnect(after)
@@ -182,6 +280,39 @@ with tempfile.TemporaryDirectory() as temporary:
             reader._transcript_scroll,
         )
     ]
+    motion = reader._transcript_scroll
+    start_motion(motion)
+    reader.search_bar.set_search_mode(True)
+    reader.search_entry.set_text("internationalization")
+    dispatch_until(lambda: reader.matches)
+    reader._step_match(1)
+    assert motion.motion is None, "Search jump left momentum active"
+    target = reader.matches[reader.match_cursor][0]
+    dispatch_until(lambda: target in reader.rows and reader.rows[target].get_mapped())
+    paint(reader)
+    assert anchor(reader.rows, reader.transcript_scroller)[0] <= target
+    reader.settings.set_boolean("follow-along", False)
+    start_motion(motion)
+    reader.settings.set_boolean("follow-along", True)
+    assert motion.motion is None and reader.settings.get_boolean("follow-along")
+    start_motion(motion)
+    reader.position_scale.emit("change-value", Gtk.ScrollType.JUMP, 240000)
+    assert motion.motion is None
+    for action in ("skip-back", "skip-forward", "nudge-back", "nudge-forward"):
+        start_motion(motion)
+        reader.lookup_action(action).activate(None)
+        assert motion.motion is None, action
+    start_motion(motion)
+    reader.seek_and_play(120000)
+    assert motion.motion is None
+    dispatch_until(lambda: reader.player.playing)
+    reader.player.pause()
+    reader.settings.set_boolean("follow-along", True)
+    start_motion(motion)
+    reader.toggle_playback()
+    assert motion.motion is None and reader.settings.get_boolean("follow-along")
+    paint(reader)
+    assert reader.settings.get_boolean("follow-along"), "Coasting tick undid Play/Follow Along"
     reader.close()
     meeting = next(m for m in library.snapshot.meetings if m.published_file == opus)
     library.open_meeting(meeting)
@@ -197,6 +328,22 @@ with tempfile.TemporaryDirectory() as temporary:
             page._transcript_scroll,
         )
     )
+    start_motion(page._transcript_scroll)
+    pointer_drag(library, page.seek, page.seek.get_width() * 0.3, page.seek.get_height() / 2, 0, dx=120)
+    dispatch_until(lambda: page.timeline._dragged and not page.timeline._dragging)
+    assert page._transcript_scroll.motion is None and page._follow_until == 0
+    paint(library)
+    target = page._follow_rows.at(page.player.position)
+    assert page._reading_index == target, "Timeline seek did not select the sounding row"
+    dispatch_until(lambda: target in page.bound and page.bound[target][2].get_mapped())
+    assert page.bound[target][1].grab_focus()
+    start_motion(page._transcript_scroll)
+    real_key(library, "Return")
+    assert page._transcript_scroll.motion is None and page._follow_until == 0, "Word link left momentum active"
+    for action in ("skip-back", "skip-forward"):
+        start_motion(page._transcript_scroll)
+        library.lookup_action(action).activate(None)
+        assert page._transcript_scroll.motion is None and page._follow_until == 0, action
     Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_suffix(".json").write_text(json.dumps(results))
     app.on_quit()
     app.do_shutdown()
