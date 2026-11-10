@@ -2,14 +2,14 @@
 
 Baseline: main `1acfafd` (2026-11-10). This inventory scans all 415 tracked test
 source files, including the pinned `browser-protocol` test copy. It records
-1,211 timing-related sites in 217 files: 367 clock reads, 70 fixed-delay
-references, 89 timer registrations, 51 direct clock conditions, 65 candidate
-temporal assertions and 569 bounded waits. GNOME owns 1,114 sites; 97 are in
+1,231 timing-related sites in 220 files: 378 clock reads, 70 fixed-delay
+references, 89 timer registrations, 51 direct clock conditions, 74 candidate
+temporal assertions and 569 bounded waits. GNOME owns 1,132 sites; 99 are in
 the vendored protocol copy.
 
 [The CSV](test-timing-inventory.csv) gives file, baseline line, category,
 ownership and expression. A site can occur in several categories. These are
-conservative audit candidates, **not 1,211 confirmed violations**. In particular,
+conservative audit candidates, **not 1,231 confirmed violations**. In particular,
 media timestamps, injected clock values, diagnostic-only timestamps, memory
 budgets and generous outer hang guards must keep their domain coverage.
 `review` means the area's migration must classify the site before changing it.

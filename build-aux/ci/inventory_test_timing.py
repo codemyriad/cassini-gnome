@@ -19,12 +19,12 @@ import subprocess
 root = pathlib.Path(__file__).resolve().parents[2]
 paths = subprocess.check_output(["git", "ls-files"], cwd=root, text=True).splitlines()
 clock = re.compile(
-    r"\b(?:time\.(?:monotonic(?:_ns)?|perf_counter(?:_ns)?|time(?:_ns)?|clock_gettime(?:_ns)?)|GLib\.(?:get_monotonic_time|get_real_time)|(?:Date|performance)\.now|timeit\.(?:timeit|repeat|default_timer))\s*\("
+    r"\b(?:time\.(?:monotonic(?:_ns)?|perf_counter(?:_ns)?|time(?:_ns)?|clock_gettime(?:_ns)?)|GLib\.(?:get_monotonic_time|get_real_time)|(?:Date|performance)\.now|datetime\.(?:datetime\.)?(?:now|utcnow)|timeit\.(?:timeit|repeat|default_timer))\s*\("
 )
 sleep = re.compile(
     r"\b(?:time|asyncio)\.sleep\s*\(|\b(?:sleep|waitForTimeout)\s*\(|\bThread\.sleep\s*\(|\bsleep\s+[.0-9]"
 )
-timer = re.compile(r"\b(?:GLib\.(?:timeout_add(?:_seconds)?)|setTimeout|setInterval)\s*\(")
+timer = re.compile(r"\b(?:GLib\.(?:timeout_add(?:_seconds)?)|threading\.Timer|setTimeout|setInterval)\s*\(")
 assert_words = re.compile(
     r"elapsed|exit_seconds|deadline|latency|heartbeat|perf_counter|monotonic|wall_time|wallTime|cpu_gaps|retry_gaps|frame_gaps",
     re.I,
@@ -81,21 +81,40 @@ for rel in paths:
         continue
     aliases = {}
     for n in ast.walk(t):
-        if isinstance(n, ast.ImportFrom) and n.module in ("time", "asyncio"):
+        if isinstance(n, ast.ImportFrom) and n.module in ("time", "asyncio", "datetime", "timeit"):
             for a in n.names:
                 aliases[a.asname or a.name] = n.module + "." + a.name
+
+        elif isinstance(n, ast.Import):
+            for a in n.names:
+                if a.name in ("time", "asyncio", "datetime", "timeit"):
+                    aliases[a.asname or a.name] = a.name
 
     def names(n):
         return {x.id for x in ast.walk(n) if isinstance(x, ast.Name)}
 
     def direct(n, text=text, aliases=aliases):
         s = ast.get_source_segment(text, n) or ""
+        for alias, target in aliases.items():
+            s = re.sub(rf"\b{re.escape(alias)}\.", target + ".", s)
         return bool(
             clock.search(s)
             or any(
                 k in names(n)
                 and v.rsplit(".", 1)[-1]
-                in ("monotonic", "monotonic_ns", "perf_counter", "perf_counter_ns", "time", "time_ns")
+                in (
+                    "monotonic",
+                    "monotonic_ns",
+                    "perf_counter",
+                    "perf_counter_ns",
+                    "time",
+                    "time_ns",
+                    "clock_gettime",
+                    "clock_gettime_ns",
+                    "timeit",
+                    "repeat",
+                    "default_timer",
+                )
                 for k, v in aliases.items()
             )
         )
@@ -119,6 +138,25 @@ for rel in paths:
         if old == tainted:
             break
     for n in ast.walk(t):
+        if (
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and aliases.get(n.func.id, "").rsplit(".", 1)[-1]
+            in (
+                "monotonic",
+                "monotonic_ns",
+                "perf_counter",
+                "perf_counter_ns",
+                "time",
+                "time_ns",
+                "clock_gettime",
+                "clock_gettime_ns",
+                "timeit",
+                "repeat",
+                "default_timer",
+            )
+        ):
+            add(rel, n.lineno, "clock-read", lines[n.lineno - 1])
         if isinstance(n, ast.Assert) and (
             direct(n.test)
             or (
