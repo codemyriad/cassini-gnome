@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -22,6 +23,22 @@ if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLA
     raise SystemExit("Use build-aux/ux-screenshot.sh")
 ROOT = Path(__file__).resolve().parents[2]
 TEST_RECORDING_MODES = ("test-recording-quit", "test-recording-close", "test-recording-reactivate")
+# These clocks include recording publication and arbitrary background work,
+# after the window has already hidden. The enclosing 12 s process budget is
+# their hang guard; 0.8 s remains a latency check for direct Quit/close modes.
+BACKGROUND_COMPLETION_MODES = (
+    "keep-hidden-finish",
+    "keep-hidden-writing",
+    "keep-browser-finish",
+    "keep-browser-unscanned",
+)
+BACKGROUND_WRITING_MODES = (
+    "keep-hidden-writing",
+    "keep-browser-finish",
+    "keep-browser-player",
+    "keep-browser-companion",
+    "keep-browser-unscanned",
+)
 
 
 def test_recording_exit(mode):
@@ -115,6 +132,8 @@ busy_writing = mode in ("quit-writing", "close-writing")
 started = time.monotonic()
 phase = 0
 closing_at = None
+writer_observed = False
+writer_released_at = None
 child = None
 errors = []
 
@@ -138,12 +157,12 @@ class BusyClient(WhistleClient):
 
     def start(self):
         global child
-        script = """import json,sys,time
+        script = """import json,sys,threading
 print(json.dumps(dict(type='ready')),flush=True)
 r=json.loads(sys.stdin.readline())
 print(json.dumps(dict(type='progress',trackId=r['tracks'][0]['id'],trackOrder=0,language='en',etaMinutes=1,
 words=[dict(startMs=0,endMs=100,text='Already saved')])),flush=True)
-time.sleep(30)
+threading.Event().wait()
 """
         self.process = child = subprocess.Popen(
             [sys.executable, "-u", "-c", script], stdin=subprocess.PIPE, stdout=subprocess.PIPE
@@ -176,13 +195,32 @@ with tempfile.TemporaryDirectory() as tmp:
             "keep-browser-unscanned",
         )
     )
-    if mode in (
-        "keep-hidden-writing",
-        "keep-browser-finish",
-        "keep-browser-player",
-        "keep-browser-companion",
-        "keep-browser-unscanned",
-    ):
+    if mode in BACKGROUND_WRITING_MODES:
+        writer_entered, release_writer = threading.Event(), threading.Event()
+
+        def finish_writer():
+            global writer_released_at
+            assert not app._quitting and app._transcription_holds > 0
+            writer_released_at = time.monotonic()
+            release_writer.set()
+            return GLib.SOURCE_REMOVE
+
+        def observe_held_writer():
+            global writer_observed
+            if writer_observed or not writer_entered.is_set():
+                return GLib.SOURCE_REMOVE
+            if app._capture_background or getattr(app, "_capture_background_saving", False):
+                return GLib.SOURCE_REMOVE
+            if any(w in app.get_windows() for w in getattr(app, "_capture_hidden_windows", ())):
+                return GLib.SOURCE_REMOVE
+            # GTK must still dispatch after hidden windows retire while the
+            # writer is explicitly held. Then release it on another idle.
+            assert not app._quitting and app._transcription_holds > 0
+            writer_observed = True
+            GLib.idle_add(finish_writer)
+            return GLib.SOURCE_REMOVE
+
+        app.connect("window-removed", lambda *_: GLib.idle_add(observe_held_writer))
 
         class CompletedClient:
             def __init__(self, *args, **kwargs):
@@ -192,7 +230,11 @@ with tempfile.TemporaryDirectory() as tmp:
                 return self
 
             def process_tracks(self, tracks, progress):
-                time.sleep(0.3)  # Keep inference alive beyond the background-close timer.
+                writer_entered.set()
+                GLib.idle_add(observe_held_writer)
+                # A guard below the 9 s traceback / 12 s process budgets,
+                # not an inference latency requirement.
+                assert release_writer.wait(8), "GTK did not observe held background writing"
                 assert not app._quitting
                 return dict(words=[], languages={}, diagnostics=[])
 
@@ -200,7 +242,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 pass
 
             def cancel(self):
-                pass
+                release_writer.set()
 
         app.transcriber = TranscriptionQueue(
             lambda _: None,
@@ -223,8 +265,6 @@ with tempfile.TemporaryDirectory() as tmp:
 
     finish_gate = None
     if mode == "stop-finishing":
-        import threading
-
         finish_gate = threading.Event()
         original_finish = RecordingSession.finish
 
@@ -511,13 +551,30 @@ with tempfile.TemporaryDirectory() as tmp:
         return True
 
     queue_before_exit = app.transcriber
+    queue_closed = threading.Event()
+    if busy_writing:
+        reap_after_jobs = queue_before_exit._reap_after_jobs
+
+        def reaped(reap):
+            try:
+                reap_after_jobs(reap)
+            finally:
+                queue_closed.set()
+
+        queue_before_exit._reap_after_jobs = reaped
     GLib.timeout_add(10, drive)
     result = app.run([sys.argv[0]])
+    exited_at = time.monotonic()
     if mode in TEST_RECORDING_MODES:
         if mode == "test-recording-quit":
             app.sound_check._executor.shutdown(wait=True)  # Whatever the exit queued has run.
         print("test-recording: ran", flush=True)
-    assert result == 0 and closing_at is not None and time.monotonic() - closing_at < 0.8
+    assert result == 0 and closing_at is not None
+    exit_seconds = exited_at - closing_at
+    if mode not in BACKGROUND_COMPLETION_MODES:
+        assert exit_seconds < 0.8, (mode, exit_seconds)
+    if mode in BACKGROUND_WRITING_MODES:
+        assert writer_observed and release_writer.is_set(), "Background writing was not held alive by GTK"
     assert app._transcription_holds == 0 and not app.get_windows(), (
         app._transcription_holds,
         [(type(w).__name__, w.get_visible()) for w in app.get_windows()],
@@ -527,16 +584,12 @@ with tempfile.TemporaryDirectory() as tmp:
     if busy_writing:
         assert read_metadata(session.directory)["transcript"]["status"] == "running"
         assert b"Already saved" in (session.directory / "transcript.json").read_bytes()
-        deadline = time.monotonic() + 2
-        while child.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.005)
-        assert child.poll() is not None
-        # The latency assertion above measures GTK shutdown. The queue then
-        # flushes/reaps off GTK; keep its fixture directory alive until that
-        # cleanup finishes instead of racing rmtree against transcript writes.
-        while queue_before_exit.client is not None and time.monotonic() < deadline:
-            time.sleep(0.005)
-        assert queue_before_exit.client is None, "Queue teardown did not finish"
+        cleanup_deadline = time.monotonic() + 2
+        child.wait(timeout=2)
+        # GTK is already gone; wait within the same two-second cleanup budget
+        # rather than racing fixture removal against queued transcript writes.
+        assert queue_closed.wait(max(0, cleanup_deadline - time.monotonic())), "Queue teardown did not finish"
+        assert queue_before_exit.client is None, "Queue teardown retained the client"
     elif mode in (
         "stop-save",
         "stop-after-finish",
@@ -579,4 +632,14 @@ with tempfile.TemporaryDirectory() as tmp:
             assert read_metadata(app.recorder.session.directory)["transcript"]["status"] == "none"
     assert not errors, errors
     faulthandler.cancel_dump_traceback_later()
-    print(json.dumps(dict(mode=mode, exitSeconds=time.monotonic() - closing_at, holds=app._transcription_holds)))
+    print(
+        json.dumps(
+            dict(
+                mode=mode,
+                exitSeconds=exit_seconds,
+                holds=app._transcription_holds,
+                backgroundCompletion=mode in BACKGROUND_COMPLETION_MODES,
+                writerReleaseToExitSeconds=exited_at - writer_released_at if writer_released_at is not None else None,
+            )
+        )
+    )
