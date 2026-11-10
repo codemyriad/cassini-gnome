@@ -313,10 +313,17 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
             connection = app.browser_connection
             return connection.future is None and connection.health_future is None and not connection.force
 
+        def wait_setup():
+            # A mapped dialog can precede its DEFAULT_IDLE registration retry.
+            # First cross that queue boundary, then await the worker callbacks.
+            idle = []
+            GLib.idle_add(lambda: idle.append(True) or GLib.SOURCE_REMOVE)
+            until(lambda: idle and setup_finished())
+
         def prepare_state(state):
             # Every sheet opening schedules a real forced registration. Consume
             # its completed callback before injecting the next rendering input.
-            until(setup_finished)
+            wait_setup()
             connection = app.browser_connection
             connection.browsers = () if state == "needsBrowser" else ready_browsers
             connection.error = (
@@ -324,6 +331,22 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
             )
             app._browser_connection_changed()
             assert connection.snapshot()["phase"] == state, connection.snapshot()
+
+        # Deterministic priority-ordering regression: no worker exists yet,
+        # although the same retry as on_companion_setup is queued for idle.
+        wait_setup()
+        deferred_started = []
+
+        def deferred_setup():
+            app.retry_browser_connection(force=True)
+            deferred_started.append(True)
+            return GLib.SOURCE_REMOVE
+
+        GLib.idle_add(deferred_setup)
+        assert setup_finished(), "The pending idle must not already have a worker"
+        wait_setup()
+        assert deferred_started == [True], "Setup completion skipped its queued registration"
+        assert setup_finished()
 
         for state in ("waiting", "failed", "needsBrowser"):
             for entry in ("meeting", "preferences", "library"):
@@ -385,7 +408,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                     meter.run(settings.force_close)
                     until(lambda settings=settings: settings.closed and not settings.get_mapped())
                 settled_frame(window, page)
-                until(setup_finished)
+                wait_setup()
                 meter.check(state, entry)
                 meter = None
             if state == "failed":
@@ -411,7 +434,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                 release.set()
                 until(lambda: app.browser_connection.snapshot()["phase"] == "waiting")
                 settled_frame(window, page)
-                until(setup_finished)
+                wait_setup()
                 meter.check("failed", "retry")
                 meter = None
                 app.browser_connection.attempt = original_attempt
@@ -442,6 +465,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         adjustment.set_value(0)
         until(lambda: adjustment.get_value() == 0)
         assert page._companion.get_visible() and page._companion.is_ancestor(page)
+        wait_setup()
         assert atspi.poll() is None
         app.on_quit()
         app.do_shutdown()
