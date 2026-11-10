@@ -38,7 +38,9 @@ with WhistleClient(args.bundle) as client:
     assert one["pid"] == two["pid"] == child.pid != parent
     assert one["text"] == two["text"] == mac["text"], (one, two, mac)
     assert re.findall(r"\w+", one["text"].lower()) == re.findall(r"\w+", reference.lower())
-    assert 1 <= client.ready["threads"] <= 3, client.ready
+    requested_threads = int(client.worker_environment()["CASSINI_WHISTLE_THREADS"])
+    # Retain the original one-helper allowance around the requested pool cap.
+    assert 1 <= client.ready["threads"] <= requested_threads + 1, client.ready
     result = dict(
         platform="linux-x86_64",
         engineVersion="3.3.0",
@@ -51,6 +53,7 @@ with WhistleClient(args.bundle) as client:
         childPid=child.pid,
         parentPid=parent,
         threads=client.ready["threads"],
+        requestedThreads=requested_threads,
         constructorPrivacyGuard=True,
         telemetry=PRIVACY,
         network="none",

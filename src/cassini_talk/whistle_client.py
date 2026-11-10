@@ -13,6 +13,7 @@ import time
 from concurrent.futures import CancelledError
 from pathlib import Path
 
+from .speech_threads import recognition_threads
 from .whistle_worker import PRIVACY, verify_bundle
 
 LOG = logging.getLogger(__name__)
@@ -37,7 +38,8 @@ class WhistleClient:
     def worker_environment(self):
         env = dict(os.environ)
         env.update(PRIVACY)
-        threads = int(env.get("CASSINI_WHISTLE_THREADS", "2"))
+        override = env.get("CASSINI_WHISTLE_THREADS")
+        threads = recognition_threads() if override is None else int(override)
         if not 1 <= threads <= 32:
             raise ValueError("CASSINI_WHISTLE_THREADS must be between 1 and 32")
         env["CASSINI_WHISTLE_THREADS"] = str(threads)
