@@ -98,8 +98,7 @@ def lose(service, extension):
 
 
 def age(service, seconds, capture_id="retained"):
-    # Advance a stored deadline, not the process/socket clock. Other tests
-    # below also cross the real two-second policy threshold with real RPC.
+    # Age the stored deadlines while keeping the live socket and PCM clocks.
     since = time.monotonic() - seconds
     lifecycle = service._capture_lifecycles[capture_id]
     if lifecycle.missing is not None:
@@ -109,22 +108,24 @@ def age(service, seconds, capture_id="retained"):
         service._control_reconnects[capture_id] = replace(reconnect, since=since)
 
 
-def test_real_control_gap_over_two_seconds_keeps_browser_pcm_mic_and_folder(server):  # noqa: F811
+def test_control_gap_past_call_end_grace_keeps_browser_pcm_mic_and_folder(server):  # noqa: F811
     service, path, _ = server
     extension, client, capture = live(service, path)
     folder, microphone = capture.directory, capture.microphone
     try:
         lose(service, extension)
-        started = time.monotonic()
-        sequence = 0
-        # This is a duration assertion, not a startup sleep: PCM keeps arriving
-        # through the actual host while the independent control socket is down.
-        while time.monotonic() - started < CALL_END_GRACE + 0.3:
-            sequence += 1
+        track = capture.streams.tracks["voice"]
+        lifecycle = service._capture_lifecycles[capture.capture_id]
+        for sequence, elapsed in enumerate((0, CALL_END_GRACE - 0.1, CALL_END_GRACE + 0.3), start=1):
+            frames = track.frames
             packet(client, sequence)
+            assert track.frames == frames + 4, "the retained audio socket did not accept fresh PCM"
+            with service.lock:
+                assert capture.capture_id in service._control_reconnects
+                age(service, elapsed)
             service.policy()
-            assert not capture.browser_lost, "control-only reconnect moved healthy browser audio to system"
-            time.sleep(0.02)
+            assert lifecycle.missing is None, "a healthy control-only gap armed the page-loss timer"
+            assert not capture.browser_lost and not capture.fallback_pending
         extension = peer(path)
         wait_for(
             lambda: any(
