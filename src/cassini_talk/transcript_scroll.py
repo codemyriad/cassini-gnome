@@ -13,6 +13,16 @@ class TranscriptScroll:
         self.manual_scroll = manual_scroll
         self.motion = None
         self.tick = 0
+        scroller.set_kinetic_scrolling(False)
+        self.touch_drag = Gtk.GestureDrag(touch_only=True, propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        self.touch_swipe = Gtk.GestureSwipe(touch_only=True, propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        self.touch_drag.connect("drag-begin", self._touch_begin)
+        self.touch_drag.connect("drag-update", self._touch_update)
+        self.touch_swipe.connect("swipe", self._touch_swipe)
+        scroller.add_controller(self.touch_drag)
+        scroller.add_controller(self.touch_swipe)
+        self.touch_drag.group(self.touch_swipe)
+        self._touch_y = 0
         self.controller = Gtk.EventControllerScroll(
             flags=Gtk.EventControllerScrollFlags.BOTH_AXES | Gtk.EventControllerScrollFlags.KINETIC,
             propagation_phase=Gtk.PropagationPhase.CAPTURE,
@@ -43,8 +53,28 @@ class TranscriptScroll:
         self.stop()
         self.manual_scroll()
 
-    def _key(self, _controller, key, _code, _state):
-        if key in (Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Page_Up, Gdk.KEY_Page_Down, Gdk.KEY_Home, Gdk.KEY_End):
+    def _touch_begin(self, _gesture, _x, _y):
+        self.stop()
+        self._touch_y = 0
+        self.manual_scroll()
+
+    def _touch_update(self, gesture, _dx, dy):
+        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+        adjustment = self.scroller.get_vadjustment()
+        adjustment.set_value(adjustment.get_value() + self._touch_y - dy)
+        self._touch_y = dy
+
+    def _touch_swipe(self, _gesture, _vx, vy):
+        self._start_motion(-vy)
+
+    def _key(self, _controller, key, _code, state):
+        if state & (Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SUPER_MASK):
+            return False
+        if key in (
+            Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Page_Up, Gdk.KEY_Page_Down, Gdk.KEY_Home, Gdk.KEY_End,
+            Gdk.KEY_KP_Up, Gdk.KEY_KP_Down, Gdk.KEY_KP_Page_Up, Gdk.KEY_KP_Page_Down,
+            Gdk.KEY_KP_Home, Gdk.KEY_KP_End,
+        ):
             self.stop()
             self.manual_scroll()
         return False
@@ -71,8 +101,15 @@ class TranscriptScroll:
             or controller.get_current_event_state() & Gdk.ModifierType.SHIFT_MASK
         ):
             return
+        self.manual_scroll()
+        self._start_motion(vy * self._factor(controller))
+
+    def _start_motion(self, velocity):
+        self.stop()
+        if not velocity or not self.scroller.get_mapped():
+            return
         clock = self.scroller.get_frame_clock()
-        self.motion = KineticMotion(vy * self._factor(controller), clock.get_frame_time())
+        self.motion = KineticMotion(velocity, clock.get_frame_time())
         self.tick = self.scroller.add_tick_callback(self._frame)
 
     def _frame(self, _widget, clock):
@@ -81,7 +118,6 @@ class TranscriptScroll:
             self.tick = 0
             self.motion = None
             return GLib.SOURCE_REMOVE
-        self.manual_scroll()
         adjustment = self.scroller.get_vadjustment()
         before = adjustment.get_value()
         delta = motion.advance(clock.get_frame_time())

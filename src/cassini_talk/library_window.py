@@ -143,8 +143,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("recording-details", self.show_recording_details),
             ("undo-speaker-merge", lambda *_: self.meeting_page.undo_speaker_merge() if self.meeting_page else None),
             ("play-pause", self._play_selected),
-            ("skip-back", lambda *_: self.player.skip(-10000)),
-            ("skip-forward", lambda *_: self.player.skip(10000)),
+            ("skip-back", lambda *_: self._skip(-10000)),
+            ("skip-forward", lambda *_: self._skip(10000)),
             ("rate-up", lambda *_: self._step_rate(1)),
             ("rate-down", lambda *_: self._step_rate(-1)),
         ):
@@ -1324,6 +1324,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.play_button is not None:
             self.play_button.set_sensitive(False)
 
+    def _skip(self, delta):
+        if self.meeting_page:
+            self.meeting_page.prepare_navigation()
+        self.player.skip(delta)
+
     def _play_selected(self):
         if self.recording_page:
             return
@@ -1337,6 +1342,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         if meeting is None or not meeting.has_audio:
             return
         if self._ensure_player(meeting):
+            if self.meeting_page and not self.player.playing:
+                self.meeting_page.prepare_navigation()
             self.player.toggle()
 
     RATES = ("0.75", "1", "1.25", "1.5", "1.75", "2")

@@ -274,10 +274,10 @@ class CassiniWindow(Adw.ApplicationWindow):
             return action
 
         add("play-pause", lambda *_: self.toggle_playback())
-        add("skip-back", lambda *_: self.player.skip(-SKIP_MS))
-        add("skip-forward", lambda *_: self.player.skip(SKIP_MS))
-        add("nudge-back", lambda *_: self.player.skip(-NUDGE_MS))
-        add("nudge-forward", lambda *_: self.player.skip(NUDGE_MS))
+        add("skip-back", lambda *_: self.skip(-SKIP_MS))
+        add("skip-forward", lambda *_: self.skip(SKIP_MS))
+        add("nudge-back", lambda *_: self.skip(-NUDGE_MS))
+        add("nudge-forward", lambda *_: self.skip(NUDGE_MS))
         add("next-match", lambda *_: self._step_match(1))
         add("previous-match", lambda *_: self._step_match(-1))
         add("show-in-files", self._on_show_in_files)
@@ -446,6 +446,7 @@ class CassiniWindow(Adw.ApplicationWindow):
             self._start_verification(generation, file.get_path(), meeting)
 
     def _set_turns(self, turns, error=None):
+        self._transcript_scroll.stop()
         self.transcript_error = error
         self.turns = turns
         known = {s.id for s in self.meeting.speakers} if self.meeting else set()
@@ -678,9 +679,16 @@ class CassiniWindow(Adw.ApplicationWindow):
 
     def toggle_playback(self):
         if self.has_meeting:
+            if not self.player.playing and self.settings.get_boolean("follow-along"):
+                self._transcript_scroll.stop()
             self.player.toggle()
 
+    def skip(self, delta):
+        self._transcript_scroll.stop()
+        self.player.skip(delta)
+
     def seek_and_play(self, ms):
+        self._transcript_scroll.stop()
         self.player.seek(ms)
         if not self.player.playing:
             self.player.play()
@@ -720,6 +728,7 @@ class CassiniWindow(Adw.ApplicationWindow):
             self._inhibit_cookie = 0
 
     def _on_scale_change_value(self, _scale, _scroll, value):
+        self._transcript_scroll.stop()
         self.player.seek(int(value))
         return False
 
@@ -754,6 +763,7 @@ class CassiniWindow(Adw.ApplicationWindow):
     # Following along
 
     def _scroll_to_word(self, turn_index, word_index, center=False):
+        self._transcript_scroll.stop()
         turn = self.turns[turn_index]
         if turn.host is not None:
             turn_index, word_index = turn.host.index, max(0, turn.host.word_at(turn.start_ms))
@@ -811,6 +821,7 @@ class CassiniWindow(Adw.ApplicationWindow):
             self.settings.set_boolean("follow-along", False)
 
     def _on_follow_changed(self, settings, _key):
+        self._transcript_scroll.stop()
         if settings.get_boolean("follow-along") and self.current:
             self._scroll_to_word(*self.current, center=True)
 

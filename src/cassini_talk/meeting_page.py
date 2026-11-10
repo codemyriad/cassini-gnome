@@ -358,9 +358,16 @@ class MeetingPage(Adw.NavigationPage):
 
     def _seek(self, _scale, _scroll, value):
         if not self._updating:
-            self._transcript_scroll.stop()
-            self.player.seek(int(value))
+            self.seek_position(int(value))
         return True
+
+    def prepare_navigation(self):
+        self._transcript_scroll.stop()
+        self._follow_until = 0
+
+    def seek_position(self, value):
+        self.prepare_navigation()
+        self.player.seek(value)
 
     def _colour(self, speaker):
         palette = DARK_COLOURS if Adw.StyleManager.get_default().get_dark() else COLOURS
@@ -637,7 +644,8 @@ class MeetingPage(Adw.NavigationPage):
             word = reading_word(turn, uri)
         except (ValueError, IndexError):
             return True
-        GLib.idle_add(lambda: (self.player.seek(word.start_ms), False)[1])
+        self.prepare_navigation()
+        GLib.idle_add(lambda: (self.seek_position(word.start_ms), False)[1])
         return True
 
     def update(self, meeting):
