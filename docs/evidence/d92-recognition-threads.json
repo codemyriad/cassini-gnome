@@ -222,5 +222,23 @@
       "models.json": "6d25f7aaa6f72ba6de97b55f9e8a049c0ce6993a130f9d3e3ee508148b58abae",
       "sherpa-pins.json": "6aea80f4368a38d73289fbf739cf1a7d5d1d50cea18034f5de18af3cb792d697"
     }
+  },
+  "automaticCpuDetectionAfterReview": {
+    "unrestricted": {
+      "reported": 12,
+      "affinity": 8,
+      "quota": null,
+      "usable": 8,
+      "threads": 6,
+      "pythonCpuCountOverride": null
+    },
+    "quota4": {
+      "reported": 12,
+      "affinity": 8,
+      "quota": 4,
+      "usable": 4,
+      "threads": 2,
+      "pythonCpuCountOverride": null
+    }
   }
 }

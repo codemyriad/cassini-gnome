@@ -7,7 +7,11 @@ when the Library is reopened. Historical recordings with no transcript wait for
 Library preview and Meeting header when the meeting can be written down.
 
 D92 gives Parakeet and Whistle the same recognition default:
-`min(8, max(2, (os.cpu_count() or 1) - 2))`, using **total logical CPUs**.
+`min(8, max(2, usable_cpus - 2))`, using **logical CPUs available to the process**.
+The usable count is the minimum of `os.cpu_count()`, its affinity mask and
+visible cgroup-v2 CPU quotas (including ancestors, rounded down to whole CPUs).
+Unavailable limits are ignored; if no count is available, use one before the
+minimum. This preserves explicit Python CPU-count overrides as an upper bound.
 Whistle retains the `CASSINI_WHISTLE_THREADS` override. Silero stays at one
 intra-op and one inter-op thread; Nemotron and CAM++ stay at two.
 

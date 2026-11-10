@@ -1,8 +1,14 @@
 # D92: recognition thread headroom
 
 Parakeet and the Whistle default use
-`min(8, max(2, (os.cpu_count() or 1) - 2))`: total logical CPUs, not physical
-cores. An unavailable CPU count uses the minimum. Whistle's explicit
+`min(8, max(2, usable_cpus - 2))`: logical CPUs, not physical cores.
+After review, the coordinator approved clamping the reported `os.cpu_count()`
+by the process affinity and every visible cgroup-v2 `cpu.max` quota along its
+process path and ancestors. Fractional quota capacity is rounded down to whole
+CPUs. Missing/unreadable/malformed limits are ignored; if every source is
+unavailable, the usable count falls back to one before applying the minimum.
+A Python CPU-count override remains an upper bound. Counts are sampled during
+worker setup, without restarting an active recognizer. Whistle's explicit
 `CASSINI_WHISTLE_THREADS` override remains 1–32. Silero stays at 1/1 threads;
 Nemotron and CAM++ stay at 2. No model, decoder, audio or golden changes.
 
@@ -16,9 +22,10 @@ Before creating native pools, the child lowers its scheduling priority to nice
 reject valid transcription. Recognition need not restart when capture starts.
 
 This reserves requested pool headroom rather than CPU affinity: helper threads
-can still exist. On hosts with fewer than four CPUs the mandated minimum of two
+can still exist. On hosts with fewer than four usable CPUs the mandated minimum of two
 cannot leave two CPUs unused; lower child priority lets interactive/capture
-work run first. Explicit Whistle overrides are the user's choice.
+work run first, but it does not remove a cgroup bandwidth cap. Explicit Whistle
+overrides are the user's choice.
 
 ## Measurement method
 
@@ -36,7 +43,8 @@ observations, not pass conditions or statistically controlled speedup claims.
 
 Roy reports eight logical CPUs; the existing Ubuntu container sees twelve.
 For the measured cases `PYTHON_CPU_COUNT=8` makes Python match the host, without
-changing production code or adding a Parakeet override. Receipts assert native
+changing production code or adding a Parakeet override. These historical timing
+receipts predate the usable-CPU correction. Receipts assert native
 Parakeet count 2/6 and Whistle child environment 2/6. The candidate Whistle case
 has no `CASSINI_WHISTLE_THREADS` override. Earlier eight-thread diagnostics are
 excluded.
@@ -81,3 +89,19 @@ Machine-readable receipts are in `evidence/d92-recognition-threads.json`.
 arguments, logical-count boundaries/fallback, Whistle override/rejection,
 priority inheritance/permission failure, and isolated direct worker bootstrap.
 Source CI Ruff check/format and diff checks passed. No golden files changed.
+
+## Review correction: automatic CPU detection
+
+The timing runs above still compare the exact same 2/6 native thread counts;
+no decoder/model/data paths changed. New network-isolated container probes run
+without `PYTHON_CPU_COUNT`: reported 12 / affinity 8 / no quota selects **6**;
+with a real Docker four-CPU quota, reported 12 / affinity 8 / quota 4 selects
+**2**. Automatic detection now reaches the earlier measured counts without its
+benchmark normalization. The raw timing receipts remain unchanged as historical
+evidence. Both mappings are included in the machine-readable evidence.
+
+47 policy tests pass, including affinity/API fallback, nested/root quotas,
+malformed/missing limits, fractional quotas, cgroup namespace/escaped paths and
+both worker entry points lowering priority **before** the native constructor.
+The earlier text/timing identity comparison remains applicable at these same
+thread counts; no additional speedup is claimed by this detection change.
