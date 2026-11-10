@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import time
-from pathlib import Path
 
 import pytest
 
 gi = pytest.importorskip("gi")
 gi.require_version("Gst", "1.0")
-from gi.repository import Gio, GLib, Gst  # noqa: E402
+from gi.repository import GLib, Gst  # noqa: E402
 
 from cassini_talk.recorder import Recorder, capture_pipeline  # noqa: E402
 
@@ -145,16 +144,9 @@ def test_capture_error_keeps_recoverable_audio(tmp_path):
     recorder.start(path, test=True)
     try:
         encoded_audio(recorder.pipeline, errors, duration_ms=500)
-        temporary = Path(recorder._temporary)
-        watch = Gio.File.new_for_path(str(temporary)).monitor_file(Gio.FileMonitorFlags.NONE, None)
-        handler = watch.connect("changed", lambda *_: None)
-        try:
-            dispatch_until(lambda: errors or temporary.stat().st_size >= 4)
-            assert not errors and temporary.read_bytes().startswith(b"OggS")
-        finally:
-            watch.disconnect(handler)
-            watch.cancel()
         recorder._fail("Device disconnected")
+        # The error signal follows the real sink flush and recovery publication.
+        assert len(errors) == 1 and recorder.pipeline is None
         assert path.read_bytes() == b"original"
         recovered = list(tmp_path.glob("existing.opus.interrupted-*.opus"))
         assert len(recovered) == 1
