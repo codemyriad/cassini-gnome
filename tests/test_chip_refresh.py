@@ -21,7 +21,7 @@ def test_header_refresh_updates_chip_names_and_theme_without_replacing_rows():
     names, dark = {"a": "Ada", "b": "Ben"}, [False]
     turn = Turn(0, "a", [Word("a", 0, 400, "Before")], 0, 0, 400)
     turn.asides = [(0, Turn(1, "b", [Word("b", 200, 300, "Reply")], 1, 200, 300))]
-    words, row = SimpleNamespace(set_markup=Mock()), object()
+    words, row = SimpleNamespace(set_markup=Mock(), get_root=lambda: None), object()
     page = SimpleNamespace(
         _header_source=99,
         _header_pending=[],
@@ -31,6 +31,7 @@ def test_header_refresh_updates_chip_names_and_theme_without_replacing_rows():
         _style_manager=SimpleNamespace(get_dark=lambda: dark[0]),
         meeting=SimpleNamespace(speaker_for=lambda s: SimpleNamespace(name=names[s])),
     )
+    page._render_words = lambda turn, words: MeetingPage._render_words(page, turn, words)
     page._turn_markup = lambda t: reading_markup(t, 0, names.__getitem__, dark=dark[0])
 
     def refresh():

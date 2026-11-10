@@ -200,7 +200,10 @@ class MeetingPage(Adw.NavigationPage):
         outer.append(self.listening_bar)
         self._build_player(outer)
         self._style_manager = Adw.StyleManager.get_default()
-        self._style_signal = self._style_manager.connect("notify::dark", lambda *_: self.update(self.meeting))
+        self._style_source = 0
+        self._style_signals = [
+            self._style_manager.connect("notify::" + name, self._style_changed) for name in ("dark", "high-contrast")
+        ]
         self._signals = [
             self.player.connect("notify::" + name, self._position) for name in ("position", "playing", "duration")
         ]
@@ -214,6 +217,32 @@ class MeetingPage(Adw.NavigationPage):
         self.listening_keys = ListeningShortcuts(self)
         self.update(meeting)
         self._position()
+
+    def _style_changed(self, _manager=None, property=None):
+        if self._closed:
+            return
+        if property is not None and property.name == "dark":
+            # Preserve the existing synchronous header/navigation update.
+            self.update(self.meeting)
+        # Libadwaita notifies before replacing its stylesheet. Resolve only
+        # word colours afterwards, including when a paused page stays bound.
+        if not self._style_source:
+            self._style_source = GLib.idle_add(self._style_ready)
+
+    def _style_ready(self):
+        self._style_source = 0
+        if not self._closed:
+            for turn, words, _row in list(self.bound.values()):
+                self._render_words(turn, words)
+        return GLib.SOURCE_REMOVE
+
+    def _clear_style_refresh(self):
+        if self._style_source:
+            GLib.source_remove(self._style_source)
+            self._style_source = 0
+        for handler in self._style_signals:
+            self._style_manager.disconnect(handler)
+        self._style_signals.clear()
 
     def _companion_card(self):
         card = Gtk.Box(spacing=16, css_classes=["companion-card"])
@@ -389,12 +418,12 @@ class MeetingPage(Adw.NavigationPage):
             use_markup=True,
             css_classes=["words"],
         )
-        self._render_words(turn, words)
-        words.connect("map", lambda words: self._render_words(turn, words))
         words.connect("activate-link", lambda _label, uri: self._word_clicked(turn, uri))
         row.append(names)
         row.append(words)
         item.set_child(row)
+        self._render_words(turn, words)
+        words.connect("map", lambda words: self._render_words(turn, words))
         self.bound[turn.index] = (turn, words, row)
         self._refresh_header(turn, row)
         if turn.index in self._highlighted_rows:
@@ -467,7 +496,7 @@ class MeetingPage(Adw.NavigationPage):
                     )
                     if getattr(words, "_markup_signature", None) != signature:
                         words._markup_signature = signature
-                        words.set_markup(self._turn_markup(turn))
+                        self._render_words(turn, words)
             if GLib.get_monotonic_time() >= deadline:
                 break
         return GLib.SOURCE_CONTINUE
@@ -1187,9 +1216,7 @@ class MeetingPage(Adw.NavigationPage):
             self.speakers_dialog.close()
         if self._speaker_future is not None:
             self._speaker_future.cancel()
-        if self._style_signal:
-            self._style_manager.disconnect(self._style_signal)
-            self._style_signal = 0
+        self._clear_style_refresh()
         if self.capture._controls in self.window._capture_headers:
             self.window._capture_headers.remove(self.capture._controls)
         for handler in self._signals:

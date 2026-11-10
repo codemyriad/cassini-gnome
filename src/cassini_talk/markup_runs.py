@@ -15,8 +15,8 @@ def bridge_link_spaces(markup, colour):
     otherwise identical glyph runs into one render node per word. Matching the
     next link's foreground and alpha lets Pango join those runs again.
     """
-    rgb = "#" + "".join(f"{round(channel * 65535):04x}" for channel in colour[:3])
-    opacity = round(colour[3] * 65535)
+    rgb = "#" + "".join(f"{min(65535, max(0, round(channel * 65535))):04x}" for channel in colour[:3])
+    opacity = min(65535, max(0, round(colour[3] * 65535)))
 
     spans, cursor = [], 0
 
@@ -33,7 +33,12 @@ def bridge_link_spaces(markup, colour):
         if any(spans):
             return match[0]
         following = markup[match.end() : markup.index("</a>", match.end())]
-        alpha = "60%" if 'alpha="60%"' in following else str(opacity)
-        return f'</a><span foreground="{rgb}" alpha="{alpha}"> </span>'
+        if 'alpha="60%"' in following:
+            alpha = ' alpha="60%"'
+        elif opacity < 65535:
+            alpha = f' alpha="{opacity}"'
+        else:
+            alpha = ""
+        return f'</a><span foreground="{rgb}"{alpha}> </span>'
 
     return _SEAM.sub(seam, markup)

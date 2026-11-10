@@ -1195,6 +1195,9 @@ with tempfile.TemporaryDirectory() as temporary:
     for _turn, _words, bound_row in page.bound.values():
         headers = bound_row.get_first_child()
         assert not headers.get_first_child().get_sensitive() and not headers.get_last_child().get_sensitive()
+    from markup_runs_check import check_markup_runs
+
+    check_markup_runs(window, until)
     app.begin_exit()
     window.close()
     app.do_shutdown()
