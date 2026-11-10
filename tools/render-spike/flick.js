@@ -2,7 +2,7 @@
 // Input is synthesized on compositor paint events; no sleeps or pass budgets.
 (()=>{
  const C=imports.gi.Clutter, G=imports.gi.GLib;
- global._renderSpikePointer=C.get_default_backend().get_default_seat().create_virtual_device(C.InputDeviceType.POINTER_DEVICE);
+ if(!global._renderSpikePointer)global._renderSpikePointer=C.get_default_backend().get_default_seat().create_virtual_device(C.InputDeviceType.POINTER_DEVICE);
  global._renderSpikePointer.notify_absolute_motion(G.get_monotonic_time(),900,450);
  global._renderSpikeInput=[];
  let frame=0,stroke=0;

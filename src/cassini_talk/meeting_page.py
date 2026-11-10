@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Pushed Meeting page, with virtualised timed transcript items and transport."""
 
+import os
 from decimal import Decimal
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
@@ -158,9 +159,16 @@ class MeetingPage(Adw.NavigationPage):
         factory = Gtk.SignalListItemFactory()
         factory.connect("bind", self._bind)
         factory.connect("unbind", self._unbind)
-        self.list = Gtk.ListView(
-            model=Gtk.NoSelection.new(self.store), factory=factory, css_classes=["meeting-transcript"]
-        )
+        self._listbox_spike = os.environ.get("CASSINI_TRANSCRIPT_RENDER") == "listbox"
+        if getattr(self, "_listbox_spike", False):
+            from .listbox_spike import BoxRows, RealRows
+
+            row_type = BoxRows if os.environ.get("CASSINI_LISTBOX_CONTAINER") == "box" else RealRows
+            self.list = row_type(self, self.store)
+        else:
+            self.list = Gtk.ListView(
+                model=Gtk.NoSelection.new(self.store), factory=factory, css_classes=["meeting-transcript"]
+            )
         self.list.set_enable_rubberband(False)
         shortcut = Gtk.ShortcutController(scope=Gtk.ShortcutScope.LOCAL)
         for key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter):
@@ -426,7 +434,12 @@ class MeetingPage(Adw.NavigationPage):
         )
         time.connect("clicked", lambda *_: self.play_from(turn.start_ms))
         names.append(time)
-        words = Gtk.Label(
+        word_type = Gtk.Label
+        if getattr(self, "_listbox_spike", False) and os.environ.get("CASSINI_LISTBOX_FAST_MEASURE", "1") == "1":
+            from .listbox_spike import SpikeWords
+
+            word_type = SpikeWords
+        words = word_type(
             xalign=0,
             yalign=0,
             wrap=True,
@@ -1224,8 +1237,11 @@ class MeetingPage(Adw.NavigationPage):
         play_name = text("player.pause" if self.player.playing else "common.play")
         self.play.set_tooltip_text(play_name)
         self.play.update_property([Gtk.AccessibleProperty.LABEL], [play_name])
-        for turn, words, _row in list(self.bound.values()):
-            self._render_words(turn, words)
+        if getattr(self, "_listbox_spike", False):
+            self.list.refresh_position()
+        else:
+            for turn, words, _row in list(self.bound.values()):
+                self._render_words(turn, words)
 
     def set_recording_notice(self, line, minutes):
         signature = line, minutes
@@ -1245,6 +1261,8 @@ class MeetingPage(Adw.NavigationPage):
         self._listening_changed()
 
     def close(self):
+        if getattr(self, "_listbox_spike", False):
+            self.list.stop()
         self._closed = True
         if self._header_source:
             GLib.source_remove(self._header_source)
