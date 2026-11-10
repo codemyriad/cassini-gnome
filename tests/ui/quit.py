@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -22,6 +23,22 @@ if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLA
     raise SystemExit("Use build-aux/ux-screenshot.sh")
 ROOT = Path(__file__).resolve().parents[2]
 TEST_RECORDING_MODES = ("test-recording-quit", "test-recording-close", "test-recording-reactivate")
+# These modes finish background work after hiding. Wall timings are
+# diagnostics only; direct modes retain a GTK-thread CPU work budget.
+# The parent's 12 s process watchdog is solely an outer hang guard (D88).
+BACKGROUND_COMPLETION_MODES = (
+    "keep-hidden-finish",
+    "keep-hidden-writing",
+    "keep-browser-finish",
+    "keep-browser-unscanned",
+)
+BACKGROUND_WRITING_MODES = (
+    "keep-hidden-writing",
+    "keep-browser-finish",
+    "keep-browser-player",
+    "keep-browser-companion",
+    "keep-browser-unscanned",
+)
 
 
 def test_recording_exit(mode):
@@ -33,22 +50,25 @@ def test_recording_exit(mode):
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
         )
+        watchdog = threading.Timer(12, child.kill)
+        watchdog.daemon = True
+        watchdog.start()
         try:
             # held: GTK still runs after the exit request; ran: run() returned.
             markers, output = (b"test-recording: held", b"test-recording: ran"), b""
-            deadline = time.monotonic() + 10
             with selectors.DefaultSelector() as selector:
                 selector.register(child.stdout, selectors.EVENT_READ)
                 while not any(marker in output.splitlines() for marker in markers):
-                    remaining = deadline - time.monotonic()
-                    assert remaining > 0 and selector.select(remaining), f"{mode}: no exit began: {output!r}"
+                    selector.select()  # Readiness/EOF event; watchdog only guards a hung child.
                     chunk = os.read(child.stdout.fileno(), 4096)
                     assert chunk, f"{mode}: exited before its test was released: {output!r}"
                     output += chunk
             child.stdin.write(b"release\n")
             child.stdin.flush()
-            output += child.communicate(timeout=10)[0]
+            output += child.communicate()[0]
         finally:
+            watchdog.cancel()
+            watchdog.join()
             if child.poll() is None:
                 child.kill()
                 child.wait()
@@ -112,9 +132,11 @@ services = DesktopServices()
 mode = sys.argv[1]
 faulthandler.dump_traceback_later(9)
 busy_writing = mode in ("quit-writing", "close-writing")
-started = time.monotonic()
 phase = 0
 closing_at = None
+closing_cpu_at = None
+writer_observed = False
+writer_released_at = None
 child = None
 errors = []
 
@@ -138,12 +160,12 @@ class BusyClient(WhistleClient):
 
     def start(self):
         global child
-        script = """import json,sys,time
+        script = """import json,sys,threading
 print(json.dumps(dict(type='ready')),flush=True)
 r=json.loads(sys.stdin.readline())
 print(json.dumps(dict(type='progress',trackId=r['tracks'][0]['id'],trackOrder=0,language='en',etaMinutes=1,
 words=[dict(startMs=0,endMs=100,text='Already saved')])),flush=True)
-time.sleep(30)
+threading.Event().wait()
 """
         self.process = child = subprocess.Popen(
             [sys.executable, "-u", "-c", script], stdin=subprocess.PIPE, stdout=subprocess.PIPE
@@ -176,13 +198,32 @@ with tempfile.TemporaryDirectory() as tmp:
             "keep-browser-unscanned",
         )
     )
-    if mode in (
-        "keep-hidden-writing",
-        "keep-browser-finish",
-        "keep-browser-player",
-        "keep-browser-companion",
-        "keep-browser-unscanned",
-    ):
+    if mode in BACKGROUND_WRITING_MODES:
+        writer_entered, release_writer = threading.Event(), threading.Event()
+
+        def finish_writer():
+            global writer_released_at
+            assert not app._quitting and app._transcription_holds > 0
+            writer_released_at = time.monotonic()
+            release_writer.set()
+            return GLib.SOURCE_REMOVE
+
+        def observe_held_writer():
+            global writer_observed
+            if writer_observed or not writer_entered.is_set():
+                return GLib.SOURCE_REMOVE
+            if app._capture_background or getattr(app, "_capture_background_saving", False):
+                return GLib.SOURCE_REMOVE
+            if any(w in app.get_windows() for w in getattr(app, "_capture_hidden_windows", ())):
+                return GLib.SOURCE_REMOVE
+            # GTK must still dispatch after hidden windows retire while the
+            # writer is explicitly held. Then release it on another idle.
+            assert not app._quitting and app._transcription_holds > 0
+            writer_observed = True
+            GLib.idle_add(finish_writer)
+            return GLib.SOURCE_REMOVE
+
+        app.connect("window-removed", lambda *_: GLib.idle_add(observe_held_writer))
 
         class CompletedClient:
             def __init__(self, *args, **kwargs):
@@ -192,7 +233,11 @@ with tempfile.TemporaryDirectory() as tmp:
                 return self
 
             def process_tracks(self, tracks, progress):
-                time.sleep(0.3)  # Keep inference alive beyond the background-close timer.
+                writer_entered.set()
+                GLib.idle_add(observe_held_writer)
+                # A guard below the 9 s traceback / 12 s process budgets,
+                # not an inference latency requirement.
+                release_writer.wait()  # The parent guards a missing GTK event.
                 assert not app._quitting
                 return dict(words=[], languages={}, diagnostics=[])
 
@@ -200,7 +245,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 pass
 
             def cancel(self):
-                pass
+                release_writer.set()
 
         app.transcriber = TranscriptionQueue(
             lambda _: None,
@@ -223,13 +268,11 @@ with tempfile.TemporaryDirectory() as tmp:
 
     finish_gate = None
     if mode == "stop-finishing":
-        import threading
-
         finish_gate = threading.Event()
         original_finish = RecordingSession.finish
 
         def slow_finish(session, *args, **kwargs):
-            assert finish_gate.wait(5), "Finalization was not released"
+            finish_gate.wait()  # The parent guards a missing release event.
             return original_finish(session, *args, **kwargs)
 
         RecordingSession.finish = slow_finish
@@ -239,8 +282,8 @@ with tempfile.TemporaryDirectory() as tmp:
         from cassini_talk.native_recorder import NativeRecorder
 
         def exit_now():
-            global closing_at
-            closing_at = time.monotonic()
+            global closing_at, closing_cpu_at
+            closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
             app.on_quit() if mode == "test-recording-quit" else app.get_active_window().close()
             if mode == "test-recording-reactivate":
                 app.activate()  # A second launch while the hold delays the exit.
@@ -272,8 +315,7 @@ with tempfile.TemporaryDirectory() as tmp:
         dialog.force_close()
 
     def drive():
-        global phase, closing_at
-        assert time.monotonic() - started < 10, "Process shutdown stalled"
+        global phase, closing_at, closing_cpu_at
         if not app.get_windows():
             return True
         window = app.get_active_window()
@@ -284,7 +326,7 @@ with tempfile.TemporaryDirectory() as tmp:
             elif (session.directory / "transcript.json").exists() and b"Already saved" in (
                 session.directory / "transcript.json"
             ).read_bytes():
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 app.on_quit() if mode == "quit-writing" else window.close()
                 return False
         elif mode in ("keep-browser-finish", "keep-browser-player", "keep-browser-companion", "keep-browser-unscanned"):
@@ -334,13 +376,13 @@ with tempfile.TemporaryDirectory() as tmp:
                 if mode in ("keep-browser-player", "keep-browser-companion"):
                     phase = 1
                     return True
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 return False
             if phase == 1 and app.test_hidden_window not in app.get_windows():
                 if read_metadata(app.test_browser_session.directory)["transcript"]["status"] != "done":
                     return True
                 assert not app._capture_background and app.test_player_window.get_visible()
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 app.on_quit()
                 return False
         elif mode == "stop-error":
@@ -359,7 +401,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 assert app._capture_confirmation is None and not app._quitting
                 assert legacy.get_visible() and legacy.status.get_label().startswith("Synthetic stop failure")
                 assert legacy.recorder.pipeline is None
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 app.on_quit()
                 return False
         elif mode in TEST_RECORDING_MODES:
@@ -380,7 +422,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 LibraryWindow(app).present()
             phase = 1
             if mode in ("stop-starting", "prepare-failed"):
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 app.on_quit()
                 respond("stop")
                 if mode == "prepare-failed":
@@ -400,7 +442,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 independent = next(r for r in app.native_captures.values() if r is not app.test_primary_recorder)
                 assert independent.starting and len(app.native_captures) == 2
                 assert app.test_primary_recorder.session is finishing_session
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 respond("stop")
                 sentinel = app._capture_confirmation
                 assert sentinel is not None and app.confirm_capture_close(window)
@@ -410,7 +452,7 @@ with tempfile.TemporaryDirectory() as tmp:
         elif phase == 3 and mode == "keep-reactivate":
             if app.recorder.pipeline is None:
                 assert not getattr(app, "_capture_background", False)
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 window.close()
                 return False
         elif phase == 2 and mode.startswith("keep-"):
@@ -421,7 +463,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 app.stop_native()
                 phase = 3
             elif mode in ("keep-hidden-finish", "keep-hidden-writing"):
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 app.stop_native()
                 return False
             elif mode in ("keep-two-windows", "keep-reopen-two"):
@@ -431,7 +473,7 @@ with tempfile.TemporaryDirectory() as tmp:
             elif app.recorder.pipeline is None:
                 respond("keep")
                 assert not getattr(app, "_capture_background", False) and window.get_visible()
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 window.close()
                 return False
         elif phase == 5:
@@ -444,12 +486,12 @@ with tempfile.TemporaryDirectory() as tmp:
                 phase = 3
         elif phase == 3 and mode in ("keep-two-windows", "keep-reopen-two"):
             if not app.recorder.pipeline and not app.recorder._finishing:
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 window.close()
                 return False
         elif phase == 2 and mode == "stop-after-finish":
             if app.recorder.pipeline is None:
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 respond("stop")
                 return False
         elif (
@@ -465,7 +507,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 if mode == "indicator-quit-dialog":
                     window.close()
                     assert app._capture_confirmation is not None and app.recorder.pipeline is not None
-                closing_at = time.monotonic()
+                closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
                 app.activate_action("stop-and-quit", None)
                 return False
             if mode == "stop-interrupted":
@@ -505,19 +547,40 @@ with tempfile.TemporaryDirectory() as tmp:
                 app.stop_native()
                 phase = 2
                 return True
-            closing_at = time.monotonic()
+            closing_at, closing_cpu_at = time.monotonic(), time.thread_time()
             respond("stop")
             return False
         return True
 
     queue_before_exit = app.transcriber
+    queue_closed = threading.Event()
+    if busy_writing:
+        reap_after_jobs = queue_before_exit._reap_after_jobs
+
+        def reaped(reap):
+            try:
+                reap_after_jobs(reap)
+            finally:
+                queue_closed.set()
+
+        queue_before_exit._reap_after_jobs = reaped
     GLib.timeout_add(10, drive)
     result = app.run([sys.argv[0]])
+    exited_at = time.monotonic()
+    exited_cpu_at = time.thread_time()
     if mode in TEST_RECORDING_MODES:
         if mode == "test-recording-quit":
             app.sound_check._executor.shutdown(wait=True)  # Whatever the exit queued has run.
         print("test-recording: ran", flush=True)
-    assert result == 0 and closing_at is not None and time.monotonic() - closing_at < 0.8
+    assert result == 0 and closing_at is not None
+    exit_seconds = exited_at - closing_at  # Diagnostic only.
+    exit_cpu_seconds = exited_cpu_at - closing_cpu_at
+    if mode not in BACKGROUND_COMPLETION_MODES:
+        # Retain the direct-close work budget on the GTK thread, excluding
+        # time descheduled or waiting for another thread/process (D88).
+        assert exit_cpu_seconds < 0.8, (mode, "main-thread CPU", exit_cpu_seconds)
+    if mode in BACKGROUND_WRITING_MODES:
+        assert writer_observed and release_writer.is_set(), "Background writing was not held alive by GTK"
     assert app._transcription_holds == 0 and not app.get_windows(), (
         app._transcription_holds,
         [(type(w).__name__, w.get_visible()) for w in app.get_windows()],
@@ -527,16 +590,11 @@ with tempfile.TemporaryDirectory() as tmp:
     if busy_writing:
         assert read_metadata(session.directory)["transcript"]["status"] == "running"
         assert b"Already saved" in (session.directory / "transcript.json").read_bytes()
-        deadline = time.monotonic() + 2
-        while child.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.005)
-        assert child.poll() is not None
-        # The latency assertion above measures GTK shutdown. The queue then
-        # flushes/reaps off GTK; keep its fixture directory alive until that
-        # cleanup finishes instead of racing rmtree against transcript writes.
-        while queue_before_exit.client is not None and time.monotonic() < deadline:
-            time.sleep(0.005)
-        assert queue_before_exit.client is None, "Queue teardown did not finish"
+        # GTK is already gone. Wait for process/reaper completion events before
+        # removing fixtures; the same parent watchdog still guards this child.
+        child.wait()
+        queue_closed.wait()
+        assert queue_before_exit.client is None, "Queue teardown retained the client"
     elif mode in (
         "stop-save",
         "stop-after-finish",
@@ -579,4 +637,15 @@ with tempfile.TemporaryDirectory() as tmp:
             assert read_metadata(app.recorder.session.directory)["transcript"]["status"] == "none"
     assert not errors, errors
     faulthandler.cancel_dump_traceback_later()
-    print(json.dumps(dict(mode=mode, exitSeconds=time.monotonic() - closing_at, holds=app._transcription_holds)))
+    print(
+        json.dumps(
+            dict(
+                mode=mode,
+                exitSeconds=exit_seconds,
+                exitMainThreadCPUSeconds=exit_cpu_seconds,
+                holds=app._transcription_holds,
+                backgroundCompletion=mode in BACKGROUND_COMPLETION_MODES,
+                writerReleaseToExitSeconds=exited_at - writer_released_at if writer_released_at is not None else None,
+            )
+        )
+    )
