@@ -192,7 +192,11 @@ def test_cancellation_after_ready_terminates_the_owned_docker_child(builder):
         state = Path(builder["BUILD_STATE"])
         os.kill(int((state / "watchdog").read_text()), signal.SIGTERM)
         stdout, stderr = process.communicate(timeout=20)
-    assert process.returncode == 143 and stdout == b"" and b"cancelled by signal 15" in stderr
+    assert process.returncode == 143 and stdout == b"" and b"cancelled by signal 15" in stderr, (
+        process.returncode,
+        stdout,
+        stderr,
+    )
     with pytest.raises(ProcessLookupError):
         os.kill(int((state / "pid").read_text()), 0)
 
@@ -245,3 +249,39 @@ def test_parent_exit_and_descendant_cleanup_share_one_grace_budget():
 
     module.stop(Process(), send=lambda *_: None, pause=pauses.append, clock=lambda: logical[0])
     assert pauses == [3]
+
+
+def test_cancellation_reaps_the_build_before_cleaning_its_iid_directory(monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    module = watchdog()
+    original = module.tempfile.TemporaryDirectory
+    order = []
+
+    class Workspace:
+        def __init__(self, **kwargs):
+            self.inner = original(**kwargs)
+            self.name = self.inner.name
+
+        def __enter__(self):
+            return self.name
+
+        def __exit__(self, *_args):
+            self.cleanup()
+
+        def cleanup(self):
+            assert order == ["reaped", "output closed"], order
+            order.append("receipt removed")
+            self.inner.cleanup()
+
+    def cancelled(*_args):
+        raise module.Interrupted(signal.SIGTERM)
+
+    monkeypatch.setattr(module.tempfile, "TemporaryDirectory", Workspace)
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: SimpleNamespace(pid=4321))
+    monkeypatch.setattr(module, "ProcessEvents", lambda _: SimpleNamespace(close=lambda: order.append("output closed")))
+    monkeypatch.setattr(module, "supervise", cancelled)
+    monkeypatch.setattr(module, "stop", lambda _: order.append("reaped") or False)
+    assert module.main(["receipt race", "docker", "build", "-"]) == 143
+    assert order == ["reaped", "output closed", "receipt removed"]
+    assert "cancelled by signal 15" in capsys.readouterr().err

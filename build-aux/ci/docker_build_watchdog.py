@@ -173,39 +173,39 @@ def main(argv=None):
         flush=True,
     )
     previous = {signum: signal.signal(signum, interrupted) for signum in (signal.SIGTERM, signal.SIGINT)}
-    process, events = None, None
+    process, events, workspace = None, None, None
     try:
-        with tempfile.TemporaryDirectory(prefix="cassini-build-", dir="/tmp") as workspace:
-            receipt = Path(workspace) / "image"
-            started = time.monotonic()
-            process = subprocess.Popen(
-                ["docker", "build", "--progress=plain", "--iidfile", str(receipt), *arguments],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                bufsize=0,
-                start_new_session=True,
+        workspace = tempfile.TemporaryDirectory(prefix="cassini-build-", dir="/tmp")
+        receipt = Path(workspace.name) / "image"
+        started = time.monotonic()
+        process = subprocess.Popen(
+            ["docker", "build", "--progress=plain", "--iidfile", str(receipt), *arguments],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=0,
+            start_new_session=True,
+        )
+        events = ProcessEvents(process)
+        status, reason = supervise(events, Progress(started, stall, overall), time.monotonic, emit)
+        if reason:
+            status = 137 if stop(process) else 124
+            message = (
+                f"made no output progress for {stall}s"
+                if reason == "silence"
+                else f"exceeded its {overall}s overall limit"
             )
-            events = ProcessEvents(process)
-            status, reason = supervise(events, Progress(started, stall, overall), time.monotonic, emit)
-            if reason:
-                status = 137 if stop(process) else 124
-                message = (
-                    f"made no output progress for {stall}s"
-                    if reason == "silence"
-                    else f"exceeded its {overall}s overall limit"
-                )
-                print(f"Harness build [{name}] {message} (exit {status}); tests were not run.", file=sys.stderr)
-                return status
-            if status:
-                status = status if status > 0 else 128 - status
-                print(f"Harness build [{name}] failed (exit {status}); tests were not run.", file=sys.stderr)
-                return status
-            image = receipt.read_text().strip() if receipt.exists() else ""
-            if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
-                print(f"Harness build [{name}] returned no valid image ID", file=sys.stderr)
-                return 1
-            print(image)
-            return 0
+            print(f"Harness build [{name}] {message} (exit {status}); tests were not run.", file=sys.stderr)
+            return status
+        if status:
+            status = status if status > 0 else 128 - status
+            print(f"Harness build [{name}] failed (exit {status}); tests were not run.", file=sys.stderr)
+            return status
+        image = receipt.read_text().strip() if receipt.exists() else ""
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
+            print(f"Harness build [{name}] returned no valid image ID", file=sys.stderr)
+            return 1
+        print(image)
+        return 0
     except Interrupted as error:
         # Ignore repeated cancellation while terminating this owned group.
         for signum in previous:
@@ -219,10 +219,16 @@ def main(argv=None):
             stop(process)
         raise
     finally:
-        if events is not None:
-            events.close()
-        for signum, handler in previous.items():
-            signal.signal(signum, handler)
+        try:
+            if events is not None:
+                events.close()
+        finally:
+            try:
+                if workspace is not None:
+                    workspace.cleanup()
+            finally:
+                for signum, handler in previous.items():
+                    signal.signal(signum, handler)
 
 
 if __name__ == "__main__":
