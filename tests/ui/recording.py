@@ -327,6 +327,10 @@ with tempfile.TemporaryDirectory() as tmp:
     app._browser_snapshot = dict(statuses=[dict(recording=True, automatic=True, path=str(capture.directory))])
     current = live_meeting(capture.directory)
     app.comfort.known[current.key] = current
+    # Direct opens promote the loaded capture before activity replays the
+    # cached Library snapshot (the production _opened_file path does this).
+    # Discovery is intentionally closed here so it cannot rescue this fixture.
+    window._library_loaded(current)
     window.open_meeting(current)
     page = window.recording_page
     alert = "recording-fallback-" + current.key
@@ -337,6 +341,11 @@ with tempfile.TemporaryDirectory() as tmp:
     track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
     tap.append(bytes(9600), track["startOffsetMs"])
     app.comfort.tick()
+    # Force the one-second activity callback before the queued observation is
+    # delivered. An undiscovered capture used to disappear here, leaving this
+    # test waiting for a line on a closed page while its notification arrived.
+    window._activity_tick()
+    assert window.recording_page is page and not page._closed, "Activity replay closed the live Recording page"
     try:
         until(lambda: text("errors.othersFallback.line") in texts(page.lines) and alert in services.notifications)
     except AssertionError:
@@ -350,6 +359,10 @@ with tempfile.TemporaryDirectory() as tmp:
             expected_line=text("errors.othersFallback.line"),
             expected_alert=alert,
             lines=list(texts(page.lines)),
+            page_closed=page._closed,
+            current_page=window.recording_page is page,
+            page_line_signature=page._line_signature,
+            snapshot_has_capture=any(m.key == current.key for m in window.snapshot.meetings),
             notifications=list(services.notifications),
             statuses=app._browser_snapshot.get("statuses", []),
             activity=window._activity,
@@ -376,7 +389,7 @@ with tempfile.TemporaryDirectory() as tmp:
     app.comfort.tick()
     assert page.lines.get_last_child() is info, "Fallback info must persist across unchanged observations"
     current = live_meeting(capture.directory)
-    page.update(current)
+    window._library_loaded(current)
     window.show_recording_details()
     dialog = window.recording_details_dialog
     expected = text("details.othersFallback.cause.frameError")
@@ -428,6 +441,10 @@ with tempfile.TemporaryDirectory() as tmp:
     app._browser_snapshot = dict(statuses=[dict(recording=True, automatic=True, path=str(signal.directory))])
     current = live_meeting(signal.directory)
     app.comfort.known[current.key] = current
+    # Direct opens promote the loaded capture before activity replays the
+    # cached Library snapshot (the production _opened_file path does this).
+    # Discovery is intentionally closed here so it cannot rescue this fixture.
+    window._library_loaded(current)
     window.open_meeting(current)
     app.comfort.tick()
     assert current.capture_source == "gnome" and current.key in app.comfort.active()

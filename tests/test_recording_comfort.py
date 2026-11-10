@@ -384,8 +384,9 @@ def test_pending_signal_start_is_visible_to_capture_controls_before_its_folder_e
 
 @pytest.mark.parametrize("retired", [False, True])
 @pytest.mark.parametrize("failed_first", [False, True])
+@pytest.mark.parametrize("cached_snapshot", [False, True])
 def test_refresh_during_old_observation_is_coalesced_and_retirement_cancels_it(
-    tmp_path, monkeypatch, retired, failed_first
+    tmp_path, monkeypatch, retired, failed_first, cached_snapshot
 ):
     from concurrent.futures import Future
 
@@ -404,6 +405,9 @@ def test_refresh_during_old_observation_is_coalesced_and_retirement_cancels_it(
     app = application({}, browser=dict(statuses=[status]))
     comfort = RecordingComfort(app, automatic=False)
     comfort.known[before.key] = before
+    window = SimpleNamespace(snapshot=SimpleNamespace(meetings=(before,)), get_visible=lambda: True)
+    if cached_snapshot:
+        app.get_windows = lambda: [window]
     callbacks, jobs = [], []
 
     class ObserverQueue:
@@ -454,8 +458,14 @@ def test_refresh_during_old_observation_is_coalesced_and_retirement_cancels_it(
             assert alert not in app.notifications
             jobs[1].set_result((after, values))
             deliver()
+            comfort.active()  # A cached pre-fallback Library row must not undo the newer observation.
             assert comfort.sources(before).fallback
             assert app.notifications.count(alert) == 1
+            if cached_snapshot:
+                # An equally current scan can still supply newer metadata.
+                window.snapshot = SimpleNamespace(meetings=(replace(after, title="Renamed after fallback"),))
+                assert comfort.active()[before.key].title == "Renamed after fallback"
+                assert comfort.sources(before).fallback
             assert not comfort.futures
             assert not comfort._observe_again
         else:

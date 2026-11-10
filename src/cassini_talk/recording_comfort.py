@@ -112,9 +112,20 @@ class RecordingComfort:
             controllers.update(getattr(window, "_activity", {}))
             snapshots.append(getattr(window, "_browser_snapshot", {}))
             if getattr(window, "snapshot", None):
-                self.known.update(
-                    {m.key: m for m in window.snapshot.meetings if m.lifecycle in ("recording", "saving")}
-                )
+                for meeting in window.snapshot.meetings:
+                    if meeting.lifecycle not in ("recording", "saving"):
+                        continue
+                    previous = self.known.get(meeting.key)
+                    # Session events append as sources change. A cached Library
+                    # scan can precede our completed live observation; replaying
+                    # its shorter history must not undo an attested fallback.
+                    if (
+                        previous is not None
+                        and len(previous.capture_events) > len(meeting.capture_events)
+                        and previous.capture_events[: len(meeting.capture_events)] == meeting.capture_events
+                    ):
+                        continue
+                    self.known[meeting.key] = meeting
         for snapshot in snapshots:
             for status in snapshot.get("statuses", []):
                 if not browser_capture_busy(status) or not isinstance(status.get("path"), str):
