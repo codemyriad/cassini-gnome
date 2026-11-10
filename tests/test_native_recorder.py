@@ -33,7 +33,6 @@ def test_native_named_tracks_remain_protocol_compatible_and_checkpointed(tmp_pat
 
 
 def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatch):
-    import time
     from concurrent.futures import Future
 
     from gi.repository import GLib
@@ -46,22 +45,26 @@ def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatc
     prepared.set_result((session, space))
     recorder.starting = True
     recorder._stop_requested = False
-    events = []
+    events, errors = [], []
+    recorder.connect("error", lambda _r, message: errors.append(message))
     recorder.connect("started", lambda *_: events.append("started"))
     recorder.connect("finished", lambda *_: events.append("finished"))
-    recorder.stop()
-    monkeypatch.setattr(
-        "cassini_talk.native_recorder.Gst.parse_launch", lambda _: pytest.fail("Capture started after Stop")
-    )
-    recorder._prepared(prepared, True)
-    deadline = time.monotonic() + 3
-    while "finished" not in events and time.monotonic() < deadline:
-        while GLib.MainContext.default().pending():
-            GLib.MainContext.default().iteration(False)
-        time.sleep(0.005)
-    assert events == ["finished"]
-    assert recorder.pipeline is None and all(t["frames"] == 0 for t in session.manifest["tracks"])
-    recorder._executor.shutdown()
+    try:
+        recorder.stop()
+        monkeypatch.setattr(
+            "cassini_talk.native_recorder.Gst.parse_launch", lambda _: pytest.fail("Capture started after Stop")
+        )
+        recorder._prepared(prepared, True)
+        context = GLib.MainContext.default()
+        while "finished" not in events:
+            context.iteration(True)
+        assert not errors
+        assert events == ["finished"]
+        assert recorder.pipeline is None and all(t["frames"] == 0 for t in session.manifest["tracks"])
+
+    finally:
+        recorder._executor.shutdown()
+        recorder._bus_worker.shutdown()
 
 
 def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_path, monkeypatch):
@@ -124,23 +127,32 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
 
 
 def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp_path, monkeypatch):
-    from test_recorder import spin_until
+    from gi.repository import GLib
 
     from cassini_talk.native_recorder import NativeRecorder
 
     # A folder kept for typed content (D58 discardBlank) is finished as before.
     monkeypatch.setattr(RecordingSession, "discard", lambda _session: False)
+    monkeypatch.setattr(GLib, "get_monotonic_time", lambda: 42_000_000)
     recorder = NativeRecorder()
     recorder._start_us = 0
-    recorder.start(tmp_path, test=True)
-    recorder.stop()  # Before the prepared result reaches the main context.
+    finished, errors = [], []
+    recorder.connect("finished", lambda *_: finished.append(True))
+    recorder.connect("error", lambda _r, message: errors.append(message))
     try:
-        spin_until(lambda: recorder.session is not None and recorder.session.finished and not recorder._finishing)
+        recorder.start(tmp_path, test=True)
+        recorder.stop()  # Before the prepared result reaches the main context.
+        context = GLib.MainContext.default()
+        while not finished:
+            context.iteration(True)
+        assert not errors
+        assert recorder.session.finished and not recorder._finishing
         assert recorder.pipeline is None and all(t["frames"] == 0 for t in recorder.session.manifest["tracks"])
         end = recorder.session.manifest["events"][-1]
-        assert end["reason"] == "user" and 0 <= end["atMs"] < 5000
+        assert end["reason"] == "user" and end["atMs"] == 0
     finally:
         recorder._executor.shutdown()
+        recorder._bus_worker.shutdown()
 
 
 @pytest.mark.parametrize("empty", ["microphone", "system"])
