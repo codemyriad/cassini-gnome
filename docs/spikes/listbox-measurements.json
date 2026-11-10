@@ -1,0 +1,956 @@
+{
+  "final-lb60": {
+    "firstRowsMs": 172.786672,
+    "builtAndPaintedMs": 1002.361946,
+    "rssKiB": 172248,
+    "maxRssKiB": 171148,
+    "nativeKinetic": true,
+    "model": {
+      "words": 12825,
+      "rows": 490,
+      "namedSpeakers": 2
+    },
+    "container": "listbox",
+    "sourceHashes": {
+      "meeting_page.py": "08b9f00b1d62fd4f2f6c3784a61c227f87ae02495166d84c7f72a5c99128c7b0",
+      "listbox_spike.py": "1e4784265aaacb8244c76e95556e8d7c929ff6c4ca0b19aaaef223ced7baf61c"
+    },
+    "loadPaintCpuMs": {
+      "samples": 49,
+      "median": 10.326481,
+      "p90": 20.771936,
+      "maximum": 64.630648
+    },
+    "loadIntervalCpuMs": {
+      "samples": 49,
+      "median": 16.027487,
+      "p90": 33.371019,
+      "maximum": 111.507335
+    },
+    "scroll": {
+      "paused": {
+        "frames": 532,
+        "receivedPerFlick": [
+          5,
+          4,
+          4,
+          5,
+          5,
+          5
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 55208.0,
+        "paintCpuMs": {
+          "samples": 532,
+          "median": 5.923254999999999,
+          "p90": 10.668023,
+          "maximum": 17.422301
+        },
+        "intervalCpuMs": {
+          "samples": 532,
+          "median": 7.591591,
+          "p90": 13.675136,
+          "maximum": 101.75376
+        }
+      },
+      "playback": {
+        "frames": 391,
+        "receivedPerFlick": [
+          4,
+          4,
+          3,
+          3,
+          3,
+          3
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 55208.0,
+        "paintCpuMs": {
+          "samples": 391,
+          "median": 8.04387,
+          "p90": 17.015616,
+          "maximum": 19.669363
+        },
+        "intervalCpuMs": {
+          "samples": 391,
+          "median": 10.193028,
+          "p90": 21.156358,
+          "maximum": 26.012227
+        }
+      }
+    },
+    "highlightCpuMs": {
+      "samples": 220,
+      "median": 0.4508225,
+      "p90": 0.609606,
+      "maximum": 1.621959
+    },
+    "resize": {
+      "narrow": {
+        "paintCpuMs": {
+          "samples": 5,
+          "median": 5.870703,
+          "p90": 438.834014,
+          "maximum": 438.834014
+        },
+        "intervalCpuMs": {
+          "samples": 5,
+          "median": 12.608558,
+          "p90": 484.812842,
+          "maximum": 484.812842
+        },
+        "finalAnchor": [
+          178,
+          0
+        ],
+        "upper": 63389.0
+      },
+      "wide": {
+        "paintCpuMs": {
+          "samples": 4,
+          "median": 7.5518555,
+          "p90": 70.258148,
+          "maximum": 70.258148
+        },
+        "intervalCpuMs": {
+          "samples": 4,
+          "median": 9.852865,
+          "p90": 76.410421,
+          "maximum": 76.410421
+        },
+        "finalAnchor": [
+          202,
+          197.0
+        ],
+        "upper": 55208.0
+      }
+    },
+    "features": {
+      "wordLinks": 12825,
+      "words": 12825,
+      "sidebarSpeakers": 2,
+      "checkedSeeks": [
+        {
+          "row": 0,
+          "uri": "item:0",
+          "position": 0,
+          "highlight": true
+        },
+        {
+          "row": 1,
+          "uri": "item:0",
+          "position": 1149,
+          "highlight": true
+        },
+        {
+          "row": 5,
+          "uri": "aside:0:0",
+          "position": 17264,
+          "highlight": true
+        }
+      ],
+      "chips": 162
+    },
+    "followAnchor": [
+      44,
+      0
+    ]
+  },
+  "final-lb240": {
+    "firstRowsMs": 85.574653,
+    "builtAndPaintedMs": 33017.905919,
+    "rssKiB": 363408,
+    "maxRssKiB": 362588,
+    "nativeKinetic": true,
+    "model": {
+      "words": 52696,
+      "rows": 2000,
+      "namedSpeakers": 2
+    },
+    "container": "listbox",
+    "sourceHashes": {
+      "meeting_page.py": "08b9f00b1d62fd4f2f6c3784a61c227f87ae02495166d84c7f72a5c99128c7b0",
+      "listbox_spike.py": "1e4784265aaacb8244c76e95556e8d7c929ff6c4ca0b19aaaef223ced7baf61c"
+    },
+    "loadPaintCpuMs": {
+      "samples": 782,
+      "median": 22.8437,
+      "p90": 41.238788,
+      "maximum": 90.306962
+    },
+    "loadIntervalCpuMs": {
+      "samples": 782,
+      "median": 35.029382,
+      "p90": 63.171604,
+      "maximum": 166.530925
+    },
+    "scroll": {
+      "paused": {
+        "frames": 163,
+        "receivedPerFlick": [
+          3,
+          3,
+          3,
+          2,
+          2,
+          2
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 225977.0,
+        "paintCpuMs": {
+          "samples": 163,
+          "median": 29.025279,
+          "p90": 63.580411,
+          "maximum": 69.409841
+        },
+        "intervalCpuMs": {
+          "samples": 163,
+          "median": 37.443332,
+          "p90": 80.232905,
+          "maximum": 88.258188
+        }
+      },
+      "playback": {
+        "frames": 169,
+        "receivedPerFlick": [
+          2,
+          2,
+          2,
+          2,
+          1,
+          2
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 225977.0,
+        "paintCpuMs": {
+          "samples": 169,
+          "median": 23.900715,
+          "p90": 53.569397,
+          "maximum": 70.630432
+        },
+        "intervalCpuMs": {
+          "samples": 169,
+          "median": 32.625447,
+          "p90": 70.343345,
+          "maximum": 87.452593
+        }
+      }
+    },
+    "highlightCpuMs": {
+      "samples": 141,
+      "median": 0.406554,
+      "p90": 0.538823,
+      "maximum": 9.009796
+    },
+    "resize": {
+      "narrow": {
+        "paintCpuMs": {
+          "samples": 4,
+          "median": 36.545210000000004,
+          "p90": 1263.717266,
+          "maximum": 1263.717266
+        },
+        "intervalCpuMs": {
+          "samples": 4,
+          "median": 51.2005155,
+          "p90": 1281.839192,
+          "maximum": 1281.839192
+        },
+        "finalAnchor": [
+          272,
+          178.0
+        ],
+        "upper": 259646.0
+      },
+      "wide": {
+        "paintCpuMs": {
+          "samples": 5,
+          "median": 0.02668,
+          "p90": 239.220786,
+          "maximum": 239.220786
+        },
+        "intervalCpuMs": {
+          "samples": 5,
+          "median": 2.127409,
+          "p90": 261.375732,
+          "maximum": 261.375732
+        },
+        "finalAnchor": [
+          311,
+          4.0
+        ],
+        "upper": 225977.0
+      }
+    },
+    "features": {
+      "wordLinks": 52696,
+      "words": 52696,
+      "sidebarSpeakers": 2,
+      "checkedSeeks": [
+        {
+          "row": 0,
+          "uri": "item:0",
+          "position": 0,
+          "highlight": true
+        },
+        {
+          "row": 1,
+          "uri": "item:0",
+          "position": 1120,
+          "highlight": true
+        },
+        {
+          "row": 5,
+          "uri": "aside:0:0",
+          "position": 16822,
+          "highlight": true
+        }
+      ],
+      "chips": 665
+    },
+    "followAnchor": [
+      44,
+      0
+    ]
+  },
+  "final-lbplain": {
+    "firstRowsMs": 108.722311,
+    "builtAndPaintedMs": 490.064992,
+    "rssKiB": 147160,
+    "maxRssKiB": 146188,
+    "nativeKinetic": true,
+    "model": {
+      "words": 12141,
+      "rows": 122,
+      "namedSpeakers": 1
+    },
+    "container": "listbox",
+    "sourceHashes": {
+      "meeting_page.py": "08b9f00b1d62fd4f2f6c3784a61c227f87ae02495166d84c7f72a5c99128c7b0",
+      "listbox_spike.py": "1e4784265aaacb8244c76e95556e8d7c929ff6c4ca0b19aaaef223ced7baf61c"
+    },
+    "loadPaintCpuMs": {
+      "samples": 26,
+      "median": 6.740415499999999,
+      "p90": 11.134339,
+      "maximum": 16.791862
+    },
+    "loadIntervalCpuMs": {
+      "samples": 26,
+      "median": 15.485504500000001,
+      "p90": 26.682586,
+      "maximum": 46.60923
+    },
+    "scroll": {
+      "paused": {
+        "frames": 577,
+        "receivedPerFlick": [
+          4,
+          4,
+          5,
+          4,
+          3,
+          3
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 34670.0,
+        "paintCpuMs": {
+          "samples": 577,
+          "median": 3.519967,
+          "p90": 5.914749,
+          "maximum": 10.347509
+        },
+        "intervalCpuMs": {
+          "samples": 577,
+          "median": 4.27159,
+          "p90": 8.186277,
+          "maximum": 12.516767
+        }
+      },
+      "playback": {
+        "frames": 556,
+        "receivedPerFlick": [
+          4,
+          5,
+          4,
+          5,
+          4,
+          3
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 34670.0,
+        "paintCpuMs": {
+          "samples": 556,
+          "median": 3.6409789999999997,
+          "p90": 6.315051,
+          "maximum": 10.33183
+        },
+        "intervalCpuMs": {
+          "samples": 556,
+          "median": 4.7936405,
+          "p90": 8.751548,
+          "maximum": 13.037657
+        }
+      }
+    },
+    "highlightCpuMs": {
+      "samples": 239,
+      "median": 0.422283,
+      "p90": 0.559884,
+      "maximum": 0.741614
+    },
+    "resize": {
+      "narrow": {
+        "paintCpuMs": {
+          "samples": 4,
+          "median": 1.876527,
+          "p90": 121.886484,
+          "maximum": 121.886484
+        },
+        "intervalCpuMs": {
+          "samples": 4,
+          "median": 3.4393135,
+          "p90": 126.718687,
+          "maximum": 126.718687
+        },
+        "finalAnchor": [
+          41,
+          157.0
+        ],
+        "upper": 42068.0
+      },
+      "wide": {
+        "paintCpuMs": {
+          "samples": 4,
+          "median": 3.1142945,
+          "p90": 40.061225,
+          "maximum": 40.061225
+        },
+        "intervalCpuMs": {
+          "samples": 4,
+          "median": 4.399701,
+          "p90": 46.610796,
+          "maximum": 46.610796
+        },
+        "finalAnchor": [
+          49,
+          235.0
+        ],
+        "upper": 34670.0
+      }
+    },
+    "features": {
+      "wordLinks": 12141,
+      "words": 12141,
+      "sidebarSpeakers": 1,
+      "checkedSeeks": [
+        {
+          "row": 0,
+          "uri": "item:0",
+          "position": 0,
+          "highlight": true
+        },
+        {
+          "row": 1,
+          "uri": "item:0",
+          "position": 34815,
+          "highlight": true
+        }
+      ],
+      "chips": 0
+    },
+    "followAnchor": [
+      9,
+      0
+    ]
+  },
+  "final-box60": {
+    "firstRowsMs": 80.953503,
+    "builtAndPaintedMs": 2062.882119,
+    "rssKiB": 169928,
+    "maxRssKiB": 168940,
+    "nativeKinetic": true,
+    "model": {
+      "words": 12825,
+      "rows": 490,
+      "namedSpeakers": 2
+    },
+    "container": "box",
+    "sourceHashes": {
+      "meeting_page.py": "08b9f00b1d62fd4f2f6c3784a61c227f87ae02495166d84c7f72a5c99128c7b0",
+      "listbox_spike.py": "1e4784265aaacb8244c76e95556e8d7c929ff6c4ca0b19aaaef223ced7baf61c"
+    },
+    "loadPaintCpuMs": {
+      "samples": 99,
+      "median": 9.125164,
+      "p90": 18.552825,
+      "maximum": 34.188927
+    },
+    "loadIntervalCpuMs": {
+      "samples": 99,
+      "median": 16.87372,
+      "p90": 29.292272,
+      "maximum": 60.852959
+    },
+    "scroll": {
+      "paused": {
+        "frames": 412,
+        "receivedPerFlick": [
+          3,
+          4,
+          3,
+          5,
+          5,
+          4
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 55208.0,
+        "paintCpuMs": {
+          "samples": 412,
+          "median": 8.5034,
+          "p90": 17.785853,
+          "maximum": 21.651996
+        },
+        "intervalCpuMs": {
+          "samples": 412,
+          "median": 10.784722,
+          "p90": 22.448127,
+          "maximum": 25.871882
+        }
+      },
+      "playback": {
+        "frames": 400,
+        "receivedPerFlick": [
+          4,
+          4,
+          3,
+          4,
+          4,
+          4
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 55208.0,
+        "paintCpuMs": {
+          "samples": 400,
+          "median": 7.2245405,
+          "p90": 15.954079,
+          "maximum": 20.24709
+        },
+        "intervalCpuMs": {
+          "samples": 400,
+          "median": 9.6228825,
+          "p90": 20.133636,
+          "maximum": 25.754902
+        }
+      }
+    },
+    "highlightCpuMs": {
+      "samples": 211,
+      "median": 0.408107,
+      "p90": 0.551457,
+      "maximum": 2.102903
+    },
+    "resize": {
+      "narrow": {
+        "paintCpuMs": {
+          "samples": 4,
+          "median": 6.5004035,
+          "p90": 301.806569,
+          "maximum": 301.806569
+        },
+        "intervalCpuMs": {
+          "samples": 4,
+          "median": 9.708212499999998,
+          "p90": 313.129842,
+          "maximum": 313.129842
+        },
+        "finalAnchor": [
+          154,
+          139.0
+        ],
+        "upper": 63389.0
+      },
+      "wide": {
+        "paintCpuMs": {
+          "samples": 4,
+          "median": 6.317706,
+          "p90": 53.544217,
+          "maximum": 53.544217
+        },
+        "intervalCpuMs": {
+          "samples": 4,
+          "median": 9.429209,
+          "p90": 58.266848,
+          "maximum": 58.266848
+        },
+        "finalAnchor": [
+          177,
+          0
+        ],
+        "upper": 55208.0
+      }
+    },
+    "features": {
+      "wordLinks": 12825,
+      "words": 12825,
+      "sidebarSpeakers": 2,
+      "checkedSeeks": [
+        {
+          "row": 0,
+          "uri": "item:0",
+          "position": 0,
+          "highlight": true
+        },
+        {
+          "row": 1,
+          "uri": "item:0",
+          "position": 1149,
+          "highlight": true
+        },
+        {
+          "row": 5,
+          "uri": "aside:0:0",
+          "position": 17264,
+          "highlight": true
+        }
+      ],
+      "chips": 162
+    },
+    "followAnchor": [
+      44,
+      0
+    ]
+  },
+  "final-box240": {
+    "firstRowsMs": 140.821495,
+    "builtAndPaintedMs": 33827.854856,
+    "rssKiB": 356644,
+    "maxRssKiB": 355260,
+    "nativeKinetic": true,
+    "model": {
+      "words": 52696,
+      "rows": 2000,
+      "namedSpeakers": 2
+    },
+    "container": "box",
+    "sourceHashes": {
+      "meeting_page.py": "08b9f00b1d62fd4f2f6c3784a61c227f87ae02495166d84c7f72a5c99128c7b0",
+      "listbox_spike.py": "1e4784265aaacb8244c76e95556e8d7c929ff6c4ca0b19aaaef223ced7baf61c"
+    },
+    "loadPaintCpuMs": {
+      "samples": 767,
+      "median": 25.74308,
+      "p90": 39.756151,
+      "maximum": 86.211787
+    },
+    "loadIntervalCpuMs": {
+      "samples": 767,
+      "median": 39.757894,
+      "p90": 60.320055,
+      "maximum": 160.500843
+    },
+    "scroll": {
+      "paused": {
+        "frames": 168,
+        "receivedPerFlick": [
+          3,
+          3,
+          3,
+          2,
+          3,
+          3
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 225977.0,
+        "paintCpuMs": {
+          "samples": 168,
+          "median": 29.998855,
+          "p90": 61.471549,
+          "maximum": 66.148743
+        },
+        "intervalCpuMs": {
+          "samples": 168,
+          "median": 37.678922,
+          "p90": 76.398278,
+          "maximum": 85.08607
+        }
+      },
+      "playback": {
+        "frames": 167,
+        "receivedPerFlick": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 225977.0,
+        "paintCpuMs": {
+          "samples": 167,
+          "median": 30.810916,
+          "p90": 63.417268,
+          "maximum": 67.896077
+        },
+        "intervalCpuMs": {
+          "samples": 167,
+          "median": 36.208312,
+          "p90": 79.226857,
+          "maximum": 85.227943
+        }
+      }
+    },
+    "highlightCpuMs": {
+      "samples": 138,
+      "median": 0.4124805,
+      "p90": 0.521781,
+      "maximum": 8.433062
+    },
+    "resize": {
+      "narrow": {
+        "paintCpuMs": {
+          "samples": 5,
+          "median": 35.671032,
+          "p90": 1849.545388,
+          "maximum": 1849.545388
+        },
+        "intervalCpuMs": {
+          "samples": 5,
+          "median": 53.237792,
+          "p90": 1855.611971,
+          "maximum": 1855.611971
+        },
+        "finalAnchor": [
+          166,
+          144.0
+        ],
+        "upper": 259646.0
+      },
+      "wide": {
+        "paintCpuMs": {
+          "samples": 4,
+          "median": 20.501832999999998,
+          "p90": 190.452962,
+          "maximum": 190.452962
+        },
+        "intervalCpuMs": {
+          "samples": 4,
+          "median": 29.1320865,
+          "p90": 196.983086,
+          "maximum": 196.983086
+        },
+        "finalAnchor": [
+          190,
+          156.0
+        ],
+        "upper": 225977.0
+      }
+    },
+    "features": {
+      "wordLinks": 52696,
+      "words": 52696,
+      "sidebarSpeakers": 2,
+      "checkedSeeks": [
+        {
+          "row": 0,
+          "uri": "item:0",
+          "position": 0,
+          "highlight": true
+        },
+        {
+          "row": 1,
+          "uri": "item:0",
+          "position": 1120,
+          "highlight": true
+        },
+        {
+          "row": 5,
+          "uri": "aside:0:0",
+          "position": 16822,
+          "highlight": true
+        }
+      ],
+      "chips": 665
+    },
+    "followAnchor": [
+      44,
+      0
+    ]
+  },
+  "final-boxplain": {
+    "firstRowsMs": 90.922238,
+    "builtAndPaintedMs": 673.357134,
+    "rssKiB": 146844,
+    "maxRssKiB": 145972,
+    "nativeKinetic": true,
+    "model": {
+      "words": 12141,
+      "rows": 122,
+      "namedSpeakers": 1
+    },
+    "container": "box",
+    "sourceHashes": {
+      "meeting_page.py": "08b9f00b1d62fd4f2f6c3784a61c227f87ae02495166d84c7f72a5c99128c7b0",
+      "listbox_spike.py": "1e4784265aaacb8244c76e95556e8d7c929ff6c4ca0b19aaaef223ced7baf61c"
+    },
+    "loadPaintCpuMs": {
+      "samples": 37,
+      "median": 6.813037,
+      "p90": 8.522721,
+      "maximum": 14.89948
+    },
+    "loadIntervalCpuMs": {
+      "samples": 37,
+      "median": 15.465471,
+      "p90": 19.686185,
+      "maximum": 35.535401
+    },
+    "scroll": {
+      "paused": {
+        "frames": 547,
+        "receivedPerFlick": [
+          5,
+          4,
+          5,
+          4,
+          5,
+          4
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 34670.0,
+        "paintCpuMs": {
+          "samples": 547,
+          "median": 3.145482,
+          "p90": 5.262583,
+          "maximum": 8.493405
+        },
+        "intervalCpuMs": {
+          "samples": 547,
+          "median": 3.838886,
+          "p90": 7.10739,
+          "maximum": 10.487813
+        }
+      },
+      "playback": {
+        "frames": 588,
+        "receivedPerFlick": [
+          5,
+          5,
+          3,
+          4,
+          5,
+          5
+        ],
+        "reverseFrames": 0,
+        "reversals": [],
+        "upperVariants": 1,
+        "upper": 34670.0,
+        "paintCpuMs": {
+          "samples": 588,
+          "median": 2.1299685000000004,
+          "p90": 3.723278,
+          "maximum": 7.35223
+        },
+        "intervalCpuMs": {
+          "samples": 588,
+          "median": 2.6448165,
+          "p90": 5.057386,
+          "maximum": 8.954531
+        }
+      }
+    },
+    "highlightCpuMs": {
+      "samples": 247,
+      "median": 0.244489,
+      "p90": 0.313319,
+      "maximum": 0.431693
+    },
+    "resize": {
+      "narrow": {
+        "paintCpuMs": {
+          "samples": 4,
+          "median": 1.572666,
+          "p90": 84.733817,
+          "maximum": 84.733817
+        },
+        "intervalCpuMs": {
+          "samples": 4,
+          "median": 2.8283765,
+          "p90": 91.064747,
+          "maximum": 91.064747
+        },
+        "finalAnchor": [
+          47,
+          322.0
+        ],
+        "upper": 42068.0
+      },
+      "wide": {
+        "paintCpuMs": {
+          "samples": 4,
+          "median": 1.473695,
+          "p90": 25.761525,
+          "maximum": 25.761525
+        },
+        "intervalCpuMs": {
+          "samples": 4,
+          "median": 2.3908794999999996,
+          "p90": 30.068621,
+          "maximum": 30.068621
+        },
+        "finalAnchor": [
+          57,
+          190.0
+        ],
+        "upper": 34670.0
+      }
+    },
+    "features": {
+      "wordLinks": 12141,
+      "words": 12141,
+      "sidebarSpeakers": 1,
+      "checkedSeeks": [
+        {
+          "row": 0,
+          "uri": "item:0",
+          "position": 0,
+          "highlight": true
+        },
+        {
+          "row": 1,
+          "uri": "item:0",
+          "position": 34815,
+          "highlight": true
+        }
+      ],
+      "chips": 0
+    },
+    "followAnchor": [
+      9,
+      0
+    ]
+  }
+}

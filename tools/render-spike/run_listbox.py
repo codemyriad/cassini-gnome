@@ -4,6 +4,7 @@
 """Owned-desktop runner; commands and frame gates, no sleeps or scroll interception."""
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -151,6 +152,11 @@ def dump(name):
         args.output / name,
         model=dict(words=len(meeting.words), rows=len(meeting.turns), namedSpeakers=len(meeting.speakers)),
         renderer=args.mode,
+        container=args.container,
+        sourceHashes={
+            name: hashlib.sha256((ROOT / "src/cassini_talk" / name).read_bytes()).hexdigest()
+            for name in ("meeting_page.py", "listbox_spike.py")
+        },
         fastMeasure=args.fast_measure,
         highlightCpuMs=highlight,
         buildChunkCpuMs=page.list.build_cpu_ms if args.mode == "listbox" else [],
