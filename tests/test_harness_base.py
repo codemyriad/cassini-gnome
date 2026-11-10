@@ -85,11 +85,26 @@ elif args[:3] == ["buildx", "imagetools", "inspect"]:
         log.write(json.dumps({"reference": reference, "manifests": manifests, "raw": raw.decode(), "pulls": pulls}) + "\n")
 elif args[:2] == ["image", "inspect"]:
     if "-f" in args:
-        print("null")
+        if "Config.Labels" in args[args.index("-f")+1]:
+            labels = os.path.join(state, "labels.json")
+            print(json.load(open(labels)).get(args[-1], "") if os.path.exists(labels) else "")
+        else:
+            print("null")
     else:
         sys.exit(1)  # no harness image yet: run.sh builds it
-elif args[:1] == ["build"] and "-q" in args:
-    print("sha256:" + "0" * 64)
+elif args[:1] == ["build"]:
+    if "--iidfile" in args:
+        if os.environ.get("FAKE_REFRESH_FAIL"):
+            sys.exit(42)
+        job = args[args.index("--label")+1].split("=",1)[1]
+        image = "sha256:" + hashlib.sha256(job.encode()).hexdigest()
+        labels = os.path.join(state, "labels.json")
+        data = json.load(open(labels)) if os.path.exists(labels) else {}
+        data[image] = job
+        with open(labels,"w") as out: json.dump(data,out)
+        with open(args[args.index("--iidfile")+1],"w") as out: out.write(image+"\n")
+    elif "-q" in args:
+        print("sha256:" + "0" * 64)
 """
 # The Playwright lookup browser-setup/run.sh makes, answered with a fixture path.
 FAKE_NODE = """#!/bin/sh
@@ -223,6 +238,7 @@ def test_every_harness_stage_builds_from_the_base_the_tag_pins():
         assert re.findall(r"^ARG BASE=(.*)$", text.split("\nFROM ", 1)[0], re.M) == ["ubuntu:26.04"], name
     for script, name in RUNNERS.items():
         text = re.sub(r"\\\n\s*", " ", (ROOT / script).read_text())
+        text = re.sub(r"(?m)^[ \t]+", "", text)
         root = re.search(r'"\$(\w+)/tests/harness-image\.sh" tag ', text)[1]
         tool = f'"${root}/tests/harness-image.sh"'
         # Pinned once, exported so the tag and the prune see the same pin, and only then named.
@@ -366,3 +382,62 @@ def test_pins_are_not_sold_as_an_offline_build(docker):
     assert "offline, set" not in paragraph and "only skips that lookup" in paragraph
     for runner in RUNNERS:
         assert "docker build --pull" in (ROOT / runner).read_text(), runner
+
+
+OFFLINE_RUNNERS = [name for name, harness in RUNNERS.items() if harness == "whistle"]
+REFRESH = ROOT / "tests/whistle/refresh-image.sh"
+
+
+def test_one_job_refresh_serves_every_offline_check_without_rebuilding_or_removing_it(docker, tmp_path):
+    job = "12345-1-offline"
+    image = run(["bash", str(REFRESH), "build", "cached-harness", job], docker.env).stdout.strip()
+    shared = {**docker.env, "CASSINI_OFFLINE_HARNESS_IMAGE": image, "CASSINI_OFFLINE_HARNESS_JOB": job}
+    for script in OFFLINE_RUNNERS:
+        args = [str(value) for value in fixture_args(script, tmp_path / Path(script).parent.name)]
+        run(["bash", str(ROOT / script), *args], shared)
+    builds = [call for call in docker.calls() if call[:1] == ["build"]]
+    assert len(builds) == 1 and "--no-cache" in builds[0] and "--progress=plain" in builds[0]
+    assert "HARNESS=cached-harness" in builds[0]
+    containers = [call for call in docker.calls() if call[:1] == ["run"]]
+    assert len(containers) == 4
+    for script, call in zip(OFFLINE_RUNNERS, containers, strict=True):
+        assert image in call and call[call.index("--network") + 1] == "none"
+        if script in {"tests/diarization/run.sh", "tests/voices/run.sh"}:
+            assert "--cpus=2" in call and "--memory=2g" in call
+    assert not [call for call in docker.calls() if call[:2] == ["image", "rm"]]
+    run(["bash", str(REFRESH), "remove", image, job], docker.env)
+    assert [call for call in docker.calls() if call[:2] == ["image", "rm"]] == [["image", "rm", image]]
+
+
+def test_shared_images_from_another_job_are_neither_used_nor_removed(docker, tmp_path):
+    image = run(["bash", str(REFRESH), "build", "cached-harness", "job-one"], docker.env).stdout.strip()
+    for action in ("check", "remove"):
+        result = run(["bash", str(REFRESH), action, image, "job-two"], docker.env, check=False)
+        assert result.returncode != 0 and "another job" in result.stderr
+    script = "tests/diarization/run.sh"
+    args = [str(value) for value in fixture_args(script, tmp_path)]
+    result = run(
+        ["bash", str(ROOT / script), *args],
+        {**docker.env, "CASSINI_OFFLINE_HARNESS_IMAGE": image, "CASSINI_OFFLINE_HARNESS_JOB": "job-two"},
+        check=False,
+    )
+    assert result.returncode != 0
+    assert not [call for call in docker.calls() if call[:1] == ["run"] or call[:2] == ["image", "rm"]]
+
+
+def test_refreshed_image_requires_an_exact_id_and_job_identity(docker):
+    result = run(["bash", str(REFRESH), "check", "cached-harness:latest", "job-one"], docker.env, check=False)
+    assert result.returncode != 0 and "exact refreshed image id" in result.stderr
+    result = run(["bash", str(REFRESH), "check", "sha256:" + "a" * 64, "../other"], docker.env, check=False)
+    assert result.returncode != 0 and "identity" in result.stderr
+    assert docker.calls() == []
+
+
+def test_failed_archive_refresh_never_returns_a_cached_image(docker):
+    result = run(
+        ["bash", str(REFRESH), "build", "cached-harness", "job-one"],
+        {**docker.env, "FAKE_REFRESH_FAIL": "1"},
+        check=False,
+    )
+    assert result.returncode == 42 and result.stdout == ""
+    assert not [call for call in docker.calls() if call[:1] == ["run"] or call[:2] == ["image", "rm"]]
