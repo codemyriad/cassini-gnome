@@ -241,6 +241,8 @@ class MeetingPage(Adw.NavigationPage):
     def _style_ready(self):
         self._style_source = 0
         if not self._closed:
+            if self._exact:
+                self.list.invalidate()
             for turn, words, _row in list(self.bound.values()):
                 self._render_words(turn, words)
         return GLib.SOURCE_REMOVE
@@ -385,6 +387,7 @@ class MeetingPage(Adw.NavigationPage):
             self.player.position,
             lambda speaker: self.meeting.speaker_for(speaker).name,
             dark=Adw.StyleManager.get_default().get_dark(),
+            chip_links=self._exact,
         )
 
     def _render_words(self, turn, words):
@@ -411,7 +414,13 @@ class MeetingPage(Adw.NavigationPage):
         item.set_child(self._build_row(turn))
 
     def _build_row(self, turn, *, register=True):
-        row = Gtk.Box(spacing=16, margin_bottom=24)
+        if self._exact:
+            from .transcript_row import ExactTurnRow
+
+            row = ExactTurnRow()
+        else:
+            row = Gtk.Box(spacing=16, margin_bottom=24)
+        row._turn = turn
         names = box(5, width_request=120, valign=Gtk.Align.START)
         caption = label("", "heading", xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=16)
         name = Gtk.Button(
@@ -498,6 +507,8 @@ class MeetingPage(Adw.NavigationPage):
         if getattr(row, "_header_state", None) == state:
             return
         row._header_state = state
+        if self._exact:
+            row.update_property([Gtk.AccessibleProperty.LABEL], [speaker.name + ", " + fmt.position(turn.start_ms)])
         caption = name.get_child() if interactive else name
         caption.set_markup(f'<span foreground="{state[1]}">{GLib.markup_escape_text(speaker.name)}</span>')
         name.set_visible(not turn.continuation)
@@ -530,7 +541,7 @@ class MeetingPage(Adw.NavigationPage):
     def _queue_transcript_headers(self, signature):
         if signature == self._header_signature:
             return
-        if getattr(self, "_exact", False):
+        if getattr(self, "_exact", False) and changed_header_rows(self._turns, self._header_signature, signature):
             self.list.invalidate()
         targets = changed_header_rows(
             (turn for turn, _words, _row in self.bound.values()), self._header_signature, signature
@@ -826,7 +837,7 @@ class MeetingPage(Adw.NavigationPage):
             removed = len(self._turns) - common
             additions = [] if self._exact else [TurnItem(turn) for turn in meeting.turns[common:]]
             if self._exact:
-                self.list.set_turns(meeting.turns)
+                self.list.set_turns(meeting.turns, common)
             elif removed or additions:
                 self.store.splice(common, removed, additions)
             self._turns = meeting.turns

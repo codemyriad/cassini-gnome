@@ -31,9 +31,17 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
     vscroll_policy = GObject.Property(type=Gtk.ScrollablePolicy, default=Gtk.ScrollablePolicy.MINIMUM)
 
     def __init__(self, page):
-        super().__init__(css_classes=["meeting-transcript"], hexpand=True, vexpand=True)
+        super().__init__(
+            css_classes=["meeting-transcript"], hexpand=True, vexpand=True, accessible_role=Gtk.AccessibleRole.LIST
+        )
+        from .transcript_accessible import WordActions
+        from .transcript_navigation import TranscriptNavigation
+
         self.page = page
+        self.navigation = TranscriptNavigation(self)
+        self.word_actions = WordActions(self)
         self.items = ()
+        self._display_items = ()
         self.prefix = [0]
         self.rows = {}
         self.layout_width = -1
@@ -57,7 +65,17 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         settings = self.get_settings()
         self._font_signals = [
             (settings, settings.connect("notify::" + name, self.invalidate))
-            for name in ("gtk-font-name", "gtk-xft-dpi")
+            for name in (
+                "gtk-font-name",
+                "gtk-xft-dpi",
+                "gtk-xft-antialias",
+                "gtk-xft-hinting",
+                "gtk-xft-hintstyle",
+                "gtk-xft-rgba",
+                "gtk-theme-name",
+                "gtk-fontconfig-timestamp",
+            )
+            if settings.find_property(name) is not None
         ]
 
     def _adjustment_changed(self, *_):
@@ -69,20 +87,28 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             handler = adjustment.connect("value-changed", lambda *_: self.queue_allocate())
             self._adjustment_handler = adjustment, handler
 
-    def set_turns(self, turns):
-        self.clear_rows()
+    def set_turns(self, turns, common=0):
+        # Build the changed suffix beside the old exact index. In particular,
+        # replacing the sounding tail cannot temporarily shrink the range and
+        # clamp the old anchor before its replacement height is known.
+        self._cancel_build()
         self.items = turns
-        self._active = None
-        self.prefix = [0]
-        self.layout_width = -1
-        self.viewport_ready = False
-        self.invalidate()
+        updated = OrderedDict()
+        for width, index in self._indices.items():
+            prefix = index.prefix[: common + 1]
+            updated[width] = WidthIndex(width, prefix, len(prefix) == len(turns) + 1)
+        self._indices = updated
+        self._metric_markup = {i: value for i, value in self._metric_markup.items() if i < common}
+        self.ready = False
+        self._requested_width = -1
+        self.queue_allocate()
 
     def _cancel_build(self):
         if self._build_tick:
             self.remove_tick_callback(self._build_tick)
             self._build_tick = 0
         if self._probe:
+            self._probe.close()
             self._probe.unparent()
             self._probe = None
         self._building = None
@@ -96,9 +122,11 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self.queue_allocate()
 
     def clear_rows(self):
+        self.word_actions.clear()
         for index, row in list(self.rows.items()):
             if self.page.bound.get(index, (None, None, None))[2] is row:
                 self.page.bound.pop(index, None)
+            row.close()
             row.unparent()
         self.rows.clear()
 
@@ -119,7 +147,18 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
     def _activate(self, index):
         old_row = max(0, bisect_right(self.prefix, self._value()) - 1)
         old_offset = self._value() - self.prefix[min(old_row, len(self.prefix) - 1)]
-        self.clear_rows()
+        focused = self.navigation.focused()
+        for number, row in list(self.rows.items()):
+            if number >= len(self.items) or row._turn != self.items[number]:
+                removed = self.rows.pop(number)
+                removed.close()
+                removed.unparent()
+                self.page.bound.pop(number, None)
+                if focused == number:
+                    self.navigation.pending = (min(number, len(self.items) - 1), None) if self.items else None
+            else:
+                row.update_relation([Gtk.AccessibleRelation.SET_SIZE], [len(self.items)])
+        self._display_items = self.items
         self._active = index
         self.prefix = index.prefix
         self.layout_width = index.width
@@ -184,6 +223,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             self.layout_completed_cpu_ns = time.thread_time_ns()
             self._building = None
             if self._probe:
+                self._probe.close()
                 self._probe.unparent()
                 self._probe = None
 
@@ -220,22 +260,35 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             self.scroll_to(index)
         value = self._value()
         first = max(0, bisect_right(self.prefix, max(0, value - height)) - 1)
-        end = min(len(self.prefix) - 1, bisect_right(self.prefix, value + height * 2))
+        end = min(len(self._display_items), len(self.prefix) - 1, bisect_right(self.prefix, value + height * 2))
         needed = set(range(first, end))
+        focused = self.navigation.focused()
+        if focused is not None:
+            needed.add(focused)
         for index in self.rows.keys() - needed:
             row = self.rows.pop(index)
             self.page.bound.pop(index, None)
+            row.close()
             row.unparent()
-        for index in range(first, end):
+        for index in sorted(needed):
             row = self.rows.get(index)
             if row is None:
-                row = self.page._build_row(self.items[index])
-                row.set_parent(self)
+                row = self.page._build_row(self._display_items[index])
+                following = next((self.rows[i] for i in sorted(self.rows) if i > index), None)
+                row.insert_before(self, following)
+                row.update_relation(
+                    [Gtk.AccessibleRelation.POS_IN_SET, Gtk.AccessibleRelation.SET_SIZE], [index + 1, len(self.items)]
+                )
                 self.rows[index] = row
             point = Graphene.Point().init((width - self.layout_width) / 2, self.prefix[index] - value)
             transform = Gsk.Transform.new().translate(point)
             row.allocate(self.layout_width, self.prefix[index + 1] - self.prefix[index], -1, transform)
+        self.word_actions.update(height)
+        self.navigation.allocated()
         self.viewport_ready = bool(self.rows) and (self.prefix[-1] >= value + height or self.ready)
+
+    def do_focus(self, direction):
+        return self.navigation.focus(direction)
 
     def _value(self):
         return self.props.vadjustment.get_value() if self.props.vadjustment else 0

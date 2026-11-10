@@ -221,8 +221,9 @@ with tempfile.TemporaryDirectory() as temporary:
     os.environ["CASSINI_LIBRARY_DIR"] = str(root / "EmptyLibrary")
     opus = hour_meeting(root / "Hour", mixed=True)
     only_plain = os.environ.get("CASSINI_CUSTOM_CASE") == "plain"
+    only_hour = os.environ.get("CASSINI_CUSTOM_CASE") == "hour"
     memory_check()
-    long_opus = opus if only_plain else hour_meeting(root / "FourHours", mixed=True, hours=4)
+    long_opus = opus if only_plain or only_hour else hour_meeting(root / "FourHours", mixed=True, hours=4)
     meeting = load_open_meeting(opus, root / "Hour")
     long_meeting = load_open_meeting(long_opus, root / "FourHours")
     plain_words = tuple(replace(word, speaker="person-0") for word in meeting.words)
@@ -248,11 +249,23 @@ with tempfile.TemporaryDirectory() as temporary:
     check_measurements(window)
     reports = []
     for name, model in (("60min-diarized", meeting), ("4h-diarized", long_meeting), ("60min-no-speakers", plain)):
+        if only_hour and name != "60min-diarized":
+            continue
         if only_plain and name != "60min-no-speakers":
             continue
         print("START", name, len(model.words), len(model.turns), flush=True)
         if name == "4h-diarized":
             memory_check()
+        if os.environ.get("CASSINI_EXACT_INTERACTIONS_ONLY"):
+            window.open_meeting(model, external=True)
+            page = window.meeting_page
+            until(lambda page=page: page.list.ready and window.player._prerolled)
+            paint(window)
+            from exact_interactions import check_interactions
+
+            print(json.dumps(check_interactions(window, page, paint, until)), flush=True)
+            window.back_to_library()
+            continue
         frames = Frames(window)
         started = time.thread_time_ns()
         frame_started = window.get_frame_clock().get_frame_time()
@@ -263,6 +276,10 @@ with tempfile.TemporaryDirectory() as temporary:
             until(lambda page=page: page.list.get_mapped() and bool(page.bound))
             for _ in range(8):
                 paint(window)
+            if name == "60min-diarized":
+                from exact_interactions import accessible
+
+                print("BASELINE ATSPI", json.dumps(accessible(window, page, paint, until, baseline=True)), flush=True)
             rss = int(Path("/proc/self/statm").read_text().split()[1]) * os.sysconf("SC_PAGE_SIZE") / 1048576
             reports.append(dict(name=name, rssMiB=rss, boundRows=len(page.bound)))
             Path(os.environ["CASSINI_CUSTOM_OUT"]).write_text(json.dumps(reports, indent=2))
@@ -425,6 +442,10 @@ with tempfile.TemporaryDirectory() as temporary:
         assert report["openWorstFrameCpuMs"] < 32, "Load paint-frame CPU target missed"
         assert report["resizeWorstFrameCpuMs"] < 32, "Uncached resize paint-frame CPU target missed"
         assert report["resizeAboveCapWorstFrameCpuMs"] < 32, "Above-cap resize CPU target missed"
+        if name == "60min-diarized":
+            from exact_interactions import check_interactions
+
+            report["interactions"] = check_interactions(window, page, paint, until)
         reports.append(report)
         Path(os.environ["CASSINI_CUSTOM_OUT"]).write_text(json.dumps(reports, indent=2))
         print(

@@ -93,7 +93,7 @@ def item_markup(words, position, *, dark=False, values=None):
     )
 
 
-def reading_markup(turn, position, speaker_name, *, dark=False):
+def reading_markup(turn, position, speaker_name, *, dark=False, chip_links=False):
     """A bounded paragraph with named, individually seekable interjections."""
 
     prefixes = {id(turn): "item"}
@@ -106,8 +106,15 @@ def reading_markup(turn, position, speaker_name, *, dark=False):
     def chip(aside):
         name = speaker_name(aside.speaker)
         links = " ".join(link(aside, i) for i, value in enumerate(aside.items) if value)
+        if chip_links and aside.words:
+            target = prefixes[id(aside)] + ":0"
+            separator = f'<a href="{target}"> </a>'
+            links = separator.join(link(aside, i) for i, value in enumerate(aside.items) if value)
+            contents = f'<a href="{target}">(<b>{escape(name)}:</b> </a>{links}<a href="{target}">)</a>'
+        else:
+            contents = f'(<b>{escape(name)}:</b> {links})'
         bg, alpha = ("#ffffff", "10%") if dark else ("#000006", "7%")
-        markup = f'<span size="small" background="{bg}" bgalpha="{alpha}">(<b>{escape(name)}:</b> {links})</span>'
+        markup = f'<span size="small" background="{bg}" bgalpha="{alpha}">{contents}</span>'
         return markup, f"({name}: {aside.text})"
 
     return join_items(turn, link, chip)[0]
