@@ -103,6 +103,9 @@ class FollowClock:
     now = 10_000_000
 
     def get_monotonic_time(self):
+        # Preserve the app's independent 4 ms header-work budget.
+        if sys._getframe(1).f_code is meeting_page.MeetingPage._refresh_headers.__code__:
+            return GLib.get_monotonic_time()
         return self.now
 
     def __getattr__(self, name):
