@@ -2,10 +2,27 @@
 from types import SimpleNamespace
 
 import pytest
+from durable import DURABLE_BOUND
 
 pytest.importorskip("gi")
+from gi.repository import GLib  # noqa: E402
+
 from cassini_talk.native_recorder import space_left  # noqa: E402
 from cassini_talk.recording_session import ProtocolError, RecordingSession  # noqa: E402
+
+
+def wait_for_completion(predicate):
+    """Dispatch completion events; a hang guard makes a lost signal reportable."""
+    context, expired = GLib.MainContext.default(), []
+    guard = GLib.timeout_add(int(DURABLE_BOUND * 1000), lambda: expired.append(True) or GLib.SOURCE_REMOVE)
+    try:
+        while not predicate() and not expired:
+            context.iteration(True)
+        assert predicate(), "Native preparation did not emit finished"
+    finally:
+        source = context.find_source_by_id(guard)
+        if source is not None:
+            source.destroy()
 
 
 def test_space_estimate_keeps_larger_of_gib_or_two_percent_reserve(tmp_path):
@@ -35,8 +52,6 @@ def test_native_named_tracks_remain_protocol_compatible_and_checkpointed(tmp_pat
 def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatch):
     from concurrent.futures import Future
 
-    from gi.repository import GLib
-
     from cassini_talk.native_recorder import NativeRecorder
 
     recorder = NativeRecorder()
@@ -49,22 +64,21 @@ def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatc
     recorder.connect("error", lambda _r, message: errors.append(message))
     recorder.connect("started", lambda *_: events.append("started"))
     recorder.connect("finished", lambda *_: events.append("finished"))
+    completed = False
     try:
         recorder.stop()
         monkeypatch.setattr(
             "cassini_talk.native_recorder.Gst.parse_launch", lambda _: pytest.fail("Capture started after Stop")
         )
         recorder._prepared(prepared, True)
-        context = GLib.MainContext.default()
-        while "finished" not in events:
-            context.iteration(True)
+        wait_for_completion(lambda: "finished" in events)
         assert not errors
         assert events == ["finished"]
         assert recorder.pipeline is None and all(t["frames"] == 0 for t in session.manifest["tracks"])
-
+        completed = True
     finally:
-        recorder._executor.shutdown()
-        recorder._bus_worker.shutdown()
+        for executor in (recorder._executor, recorder._bus_worker):
+            executor.shutdown(wait=completed, cancel_futures=not completed)
 
 
 def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_path, monkeypatch):
@@ -127,8 +141,6 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
 
 
 def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp_path, monkeypatch):
-    from gi.repository import GLib
-
     from cassini_talk.native_recorder import NativeRecorder
 
     # A folder kept for typed content (D58 discardBlank) is finished as before.
@@ -139,20 +151,20 @@ def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp
     finished, errors = [], []
     recorder.connect("finished", lambda *_: finished.append(True))
     recorder.connect("error", lambda _r, message: errors.append(message))
+    completed = False
     try:
         recorder.start(tmp_path, test=True)
         recorder.stop()  # Before the prepared result reaches the main context.
-        context = GLib.MainContext.default()
-        while not finished:
-            context.iteration(True)
+        wait_for_completion(lambda: bool(finished))
         assert not errors
         assert recorder.session.finished and not recorder._finishing
         assert recorder.pipeline is None and all(t["frames"] == 0 for t in recorder.session.manifest["tracks"])
         end = recorder.session.manifest["events"][-1]
         assert end["reason"] == "user" and end["atMs"] == 0
+        completed = True
     finally:
-        recorder._executor.shutdown()
-        recorder._bus_worker.shutdown()
+        for executor in (recorder._executor, recorder._bus_worker):
+            executor.shutdown(wait=completed, cancel_futures=not completed)
 
 
 @pytest.mark.parametrize("empty", ["microphone", "system"])
