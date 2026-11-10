@@ -10,6 +10,7 @@ import sys
 import tempfile
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
@@ -27,6 +28,7 @@ from gi.repository import Adw, GdkX11, Gio, GLib, Graphene, Gst, Gtk  # noqa: E4
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from listening_input import key  # noqa: E402
 
+from cassini_talk import meeting_page  # noqa: E402
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
 from cassini_talk.i18n import LANGUAGES, using_language  # noqa: E402
 from cassini_talk.library import PreviewTurn  # noqa: E402
@@ -42,29 +44,24 @@ def until(window, check):
     if check():
         return
     loop = GLib.MainLoop()
-    expired = False
+    completed = False
 
     def frame(*_):
+        nonlocal completed
         if check():
+            completed = True
             loop.quit()
             return GLib.SOURCE_REMOVE
         return GLib.SOURCE_CONTINUE
 
-    def timeout():
-        nonlocal expired
-        expired = True
-        loop.quit()
-        return GLib.SOURCE_REMOVE
-
     callback = window.add_tick_callback(frame)
-    timer = GLib.timeout_add_seconds(8, timeout)
     window.queue_draw()
-    loop.run()
-    if expired:
-        window.remove_tick_callback(callback)
-    else:
-        GLib.source_remove(timer)
-    assert not expired and check(), "GTK row did not settle"
+    try:
+        loop.run()
+        assert check(), "GTK row completion event arrived without its state"
+    finally:
+        if not completed:
+            window.remove_tick_callback(callback)
 
 
 def focus_event(window, target, action):
@@ -83,16 +80,12 @@ def focus_event(window, target, action):
 
     attach()
     rebuilt = window.meeting_page.connect("rows-rebuilt", attach)
-    expired = []
-    timer = GLib.timeout_add_seconds(8, lambda: (expired.append(True), loop.quit(), False)[-1])
     try:
         action()
         if not entered:
             loop.run()
-        assert not expired and entered and target().has_focus(), "Focus did not return to the invoking control"
+        assert entered and target().has_focus(), "Focus did not return to the invoking control"
     finally:
-        if not expired:
-            GLib.source_remove(timer)
         window.meeting_page.disconnect(rebuilt)
         for widget, controller in controllers:
             widget.remove_controller(controller)
@@ -100,15 +93,20 @@ def focus_event(window, target, action):
 
 def dispatch_until(check):
     """Wait for a worker completion while the window is hidden, before mapping rows."""
-    expired = []
-    timer = GLib.timeout_add_seconds(8, lambda: expired.append(True) or False)
-    try:
-        while not check():
-            assert not expired, "the actual direct Open completion did not arrive"
-            GLib.MainContext.default().iteration(True)
-    finally:
-        if not expired:
-            GLib.source_remove(timer)
+    while not check():
+        GLib.MainContext.default().iteration(True)
+
+
+class FollowClock:
+    """Inject only the Meeting page policy clock; GTK/GStreamer keep real clocks."""
+
+    now = 10_000_000
+
+    def get_monotonic_time(self):
+        return self.now
+
+    def __getattr__(self, name):
+        return getattr(GLib, name)
 
 
 def labels(widget):
@@ -774,37 +772,50 @@ with tempfile.TemporaryDirectory() as temporary:
     point.init(page.scroller.get_width() / 2, page.scroller.get_height() / 2)
     ok, pointer = page.scroller.compute_point(window, point)
     assert ok
-    subprocess.run(
-        ["xdotool", "mousemove", "--window", xid, str(round(pointer.x + dx)), str(round(pointer.y + dy)), "click", "4"],
-        check=True,
-        timeout=5,
-    )
-    until(window, lambda: page._follow_until > GLib.get_monotonic_time())
-    scroll_calls.clear()
-    window.player.play()
-    try:
-        until(window, lambda: window.listen.index == 127)
-    except AssertionError:
-        print(
-            dict(
-                stage="auto advance",
-                index=window.listen.index,
-                count=window.listen.count,
-                speaker=window.listen.speaker,
-                position=window.player.position,
-                playing=window.player.playing,
-                span=window.player._span,
-                last=window.listen._span_last,
-            ),
-            flush=True,
+    # Wheel input and auto-advance are event-gated; the four-second policy
+    # interval is asserted on a fixed clock, independent of host scheduling.
+    with patch.object(meeting_page, "GLib", FollowClock()):
+        subprocess.run(
+            [
+                "xdotool",
+                "mousemove",
+                "--window",
+                xid,
+                str(round(pointer.x + dx)),
+                str(round(pointer.y + dy)),
+                "click",
+                "4",
+            ],
+            check=True,
+            timeout=5,
         )
-        raise
-    window.player.pause()
-    assert not scroll_calls and page._follow_until > GLib.get_monotonic_time()
-    focus = window.get_focus()
-    assert window.listen.previous_turn()
-    assert page._follow_until == 0 and window.get_focus() is focus
-    window.player.pause()
+        until(window, lambda: page._follow_until != 0)
+        assert page._follow_until == FollowClock.now + 4_000_000
+        scroll_calls.clear()
+        window.player.play()
+        try:
+            until(window, lambda: window.listen.index == 127)
+        except AssertionError:
+            print(
+                dict(
+                    stage="auto advance",
+                    index=window.listen.index,
+                    count=window.listen.count,
+                    speaker=window.listen.speaker,
+                    position=window.player.position,
+                    playing=window.player.playing,
+                    span=window.player._span,
+                    last=window.listen._span_last,
+                ),
+                flush=True,
+            )
+            raise
+        window.player.pause()
+        assert not scroll_calls and page._follow_until == FollowClock.now + 4_000_000
+        focus = window.get_focus()
+        assert window.listen.previous_turn()
+        assert page._follow_until == 0 and window.get_focus() is focus
+        window.player.pause()
 
     def reading_visible():
         index = min(page._turn_rows[window.listen.turn.index])
