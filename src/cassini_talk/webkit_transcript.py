@@ -170,10 +170,19 @@ class WebKitTranscript(Gtk.Box):
             self.evaluate(f"cassini.listening({json.dumps(state)})")
 
     def close(self):
+        if self._closed:
+            return
         self._closed = True
         self.manager.disconnect(self._message_handler)
         self.view.disconnect(self._policy_handler)
         self.manager.unregister_script_message_handler("cassini", None)
         self.view.stop_loading()
         self.remove(self.view)
+        # Navigation pages can stay alive after being popped. Release the
+        # embedded page now rather than retaining a WebProcess with the page.
+        self.view.terminate_web_process()
+        self.view.run_dispose()
+        self.view = None
+        self.manager = None
+        self.session = None
         self.page = None

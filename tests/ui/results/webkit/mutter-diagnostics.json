@@ -1,0 +1,389 @@
+[
+  {
+    "case": "hour",
+    "mode": "mutter-finger",
+    "attempts": 12,
+    "moving": 0,
+    "gestures": [
+      {
+        "playback": false,
+        "flick": 0,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 1,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 2,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 3,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 4,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 5,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 0,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 1,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 2,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 3,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 4,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 5,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 34215.0,
+        "final": 34215.0,
+        "coast": -0.0,
+        "moved": false
+      }
+    ],
+    "nativeKineticCertified": false
+  },
+  {
+    "case": "four-hour",
+    "mode": "mutter-finger",
+    "attempts": 12,
+    "moving": 0,
+    "gestures": [
+      {
+        "playback": false,
+        "flick": 0,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 1,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 2,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 3,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 4,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 5,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 0,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 1,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 2,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 3,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 4,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 5,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 136811.0,
+        "final": 136811.0,
+        "coast": -0.0,
+        "moved": false
+      }
+    ],
+    "nativeKineticCertified": false
+  },
+  {
+    "case": "hour-plain",
+    "mode": "mutter-finger",
+    "attempts": 12,
+    "moving": 0,
+    "gestures": [
+      {
+        "playback": false,
+        "flick": 0,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 1,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 2,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 3,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 4,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": false,
+        "flick": 5,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 0,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 1,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 2,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 3,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": -0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 4,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": 0.0,
+        "moved": false
+      },
+      {
+        "playback": true,
+        "flick": 5,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 21263.0,
+        "final": 21263.0,
+        "coast": -0.0,
+        "moved": false
+      }
+    ],
+    "nativeKineticCertified": false
+  }
+]

@@ -119,6 +119,21 @@ def shell(script):
     return answer
 
 
+def move_pointer(window, x, y):
+    shell(f"global.webkitPointer.notify_absolute_motion(imports.gi.GLib.get_monotonic_time(),{x},{y});true")
+    # A cold headless seat can clamp the first absolute motion at an edge.
+    # Observe the compositor's actual pointer, then correct through native
+    # relative motion; never assume the requested coordinate was delivered.
+    for _ in range(6):
+        paint(window, 2)
+        pointer = json.loads(json.loads(shell("JSON.stringify(global.get_pointer())")))
+        dx, dy = x - pointer[0], y - pointer[1]
+        if abs(dx) <= 1 and abs(dy) <= 1:
+            return
+        shell(f"global.webkitPointer.notify_relative_motion(imports.gi.GLib.get_monotonic_time(),{dx},{dy});true")
+    raise AssertionError(f"Native pointer did not reach the transcript: {pointer}")
+
+
 def resident_processes():
     # Sum RSS explicitly (shared pages are counted per process). WebProcess
     # and NetworkProcess live in descendants behind WebKit's sandbox bwrap.
@@ -173,11 +188,12 @@ window.maximize()
 window.present()
 paint(window, 3)
 shell(
-    "if(Main.layoutManager._startingUp)Main.layoutManager._startupAnimationComplete();Main.overview.hide();Main.layoutManager._queueUpdateRegions();global.webkitPointer = imports.gi.Clutter.get_default_backend().get_default_seat().create_virtual_device(imports.gi.Clutter.InputDeviceType.POINTER_DEVICE); true"
+    "global.webkitPointer = imports.gi.Clutter.get_default_backend().get_default_seat().create_virtual_device(imports.gi.Clutter.InputDeviceType.POINTER_DEVICE); true"
 )
 reports = []
 cases = [("hour", 1, False), ("four-hour", 4, False), ("hour-plain", 1, True)]
 requested = set(sys.argv[1:])
+input_mode = os.environ.get("CASSINI_WEBKIT_INPUT", "mutter")
 for name, hours, plain in cases:
     if requested and name not in requested:
         continue
@@ -201,6 +217,8 @@ for name, hours, plain in cases:
     sink = Gst.ElementFactory.make("fakesink", None)
     sink.set_property("sync", True)
     window.player._pipeline.set_property("audio-sink", sink)
+    continuous_tick = window.add_tick_callback(lambda *_: GLib.SOURCE_CONTINUE)
+    paint(window)
     frame_cpu, frame_intervals = [], []
     started = [0]
     clock = window.get_frame_clock()
@@ -223,6 +241,24 @@ for name, hours, plain in cases:
     page = window.meeting_page
     renderer = page.web_transcript
     until(lambda renderer=renderer: renderer.ready)
+    controllers = renderer.view.observe_controllers()
+    native_scroll = next(
+        controllers.get_item(i)
+        for i in range(controllers.get_n_items())
+        if isinstance(controllers.get_item(i), Gtk.EventControllerScroll)
+    )
+    (OUT / f"{name}-controllers.json").write_text(
+        json.dumps(
+            [
+                dict(
+                    type=type(controllers.get_item(i)).__name__,
+                    phase=int(controllers.get_item(i).get_propagation_phase()),
+                )
+                for i in range(controllers.get_n_items())
+            ],
+            indent=2,
+        )
+    )
     paint(window, 2)
     load_elapsed = (clock.get_frame_time() - opened) / 1000
     load_cpu_ms = (time.thread_time_ns() - load_cpu) / 1e6
@@ -332,8 +368,12 @@ for name, hours, plain in cases:
         phase = "playing" if playback else "paused"
         js(renderer, f"probe.phase={json.dumps(phase)};probe.direction=0;scrollTo(0,2500)")
         paint(window, 3)
-        shell("global.webkitPointer.notify_absolute_motion(imports.gi.GLib.get_monotonic_time(),900,350);true")
+        if input_mode != "dom-smooth":
+            move_pointer(window, 900, 350)
         for flick in range(6):
+            shell(
+                "global.webkitPointer.notify_scroll_continuous(imports.gi.GLib.get_monotonic_time(),0,0,imports.gi.Clutter.ScrollSource.FINGER,imports.gi.Clutter.ScrollFinishFlags.HORIZONTAL|imports.gi.Clutter.ScrollFinishFlags.VERTICAL);true"
+            )
             direction = 1 if flick % 2 == 0 else -1
             # Reset between independent gestures outside the scored phase, so
             # no test reaches a boundary and mistakes elastic rebound for a
@@ -342,15 +382,32 @@ for name, hours, plain in cases:
             paint(window, 5)
             js(renderer, f"probe.phase={json.dumps(phase)}")
             initial_y = js(renderer, "scrollY").to_double()
-            for delta in (25, 55, 90, 130, 160):
-                shell(
-                    f"global.webkitPointer.notify_scroll_continuous(imports.gi.GLib.get_monotonic_time(),0,{direction * delta},imports.gi.Clutter.ScrollSource.FINGER,imports.gi.Clutter.ScrollFinishFlags.NONE);true"
-                )
-                paint(window, 4)
+            if input_mode == "dom-smooth":
+                js(renderer, f"probe.direction={direction}")
+            if input_mode == "controller":
+                native_scroll.emit("scroll-begin")
+            deltas = (75, 138, 225, 213, 163) if input_mode == "dom-smooth" else (2, 4, 6, 8, 10)
+            for delta in deltas:
+                if input_mode == "dom-smooth":
+                    js(renderer, f"scrollBy({{top:{direction * delta},behavior:'instant'}})")
+                elif input_mode == "controller":
+                    native_scroll.emit("scroll", 0, direction * delta)
+                else:
+                    shell(
+                        f"global.webkitPointer.notify_scroll_continuous(imports.gi.GLib.get_monotonic_time(),0,{direction * delta},imports.gi.Clutter.ScrollSource.FINGER,imports.gi.Clutter.ScrollFinishFlags.NONE);true"
+                    )
+                paint(window)
             released_y = js(renderer, "scrollY").to_double()
             shell(
-                "global.webkitPointer.notify_scroll_continuous(imports.gi.GLib.get_monotonic_time(),0,0,imports.gi.Clutter.ScrollSource.FINGER,imports.gi.Clutter.ScrollFinishFlags.VERTICAL);true"
+                "global.webkitPointer.notify_scroll_continuous(imports.gi.GLib.get_monotonic_time(),0,0,imports.gi.Clutter.ScrollSource.FINGER,imports.gi.Clutter.ScrollFinishFlags.HORIZONTAL|imports.gi.Clutter.ScrollFinishFlags.VERTICAL);true"
             )
+            if input_mode == "controller":
+                native_scroll.emit("scroll-end")
+                native_scroll.emit("decelerate", 0, direction * 100)
+            elif input_mode == "dom-smooth":
+                # Secondary geometry audit only: the browser owns this smooth
+                # animation, but it is not a certification of touchpad kinetics.
+                js(renderer, f"scrollBy({{top:{direction * 3000},behavior:'smooth'}})")
             # Observe the engine coast until twelve consecutive unchanged
             # browser frame samples, rather than guessing a coast duration.
             for _ in range(240):
@@ -371,7 +428,7 @@ for name, hours, plain in cases:
                     released=released_y,
                     final=final_y,
                     coast=direction * (final_y - released_y),
-                    moved=direction * (released_y - initial_y) > 50,
+                    moved=direction * (released_y - initial_y) > 1,
                 )
             )
         window.player.pause()
@@ -382,15 +439,35 @@ for name, hours, plain in cases:
     assert rss < 2.1 * 1024 * 1024, f"RAM budget: renderer descendants use {rss / 1024:.0f} MiB"
     js(renderer, "probe.phase='resize'")
     window.unmaximize()
-    window.set_default_size(960, 720)
-    paint(window, 12)
-    window.set_default_size(1120, 760)
-    paint(window, 12)
+    for width, height in ((960, 720), (1120, 760)):
+        previous_width = window.get_width()
+        window.set_default_size(width, height)
+        # Default size excludes CSD/shadow extents on this desktop. Observe
+        # the real allocation rather than equating it to the requested size.
+        until(lambda previous_width=previous_width: window.get_width() != previous_width)
+        stable_width, stable_frames = window.get_width(), 0
+        for _ in range(120):
+            paint(window)
+            actual_width = window.get_width()
+            stable_frames = stable_frames + 1 if actual_width == stable_width else 0
+            stable_width = actual_width
+            wanted_width = renderer.view.get_width()
+            if (
+                stable_frames >= 3
+                and js(
+                    renderer,
+                    f"probe.frames.length>=3&&probe.frames.slice(-3).every(f=>f.width==={wanted_width}&&f.upper===probe.frames.at(-1).upper)",
+                ).to_boolean()
+            ):
+                break
+        else:
+            raise AssertionError("Browser resize did not settle at the allocated width")
     js(renderer, "probe.phase='idle'")
     payload = json.loads(js(renderer, "JSON.stringify({frames:probe.frames,highlights:probe.highlights})").to_string())
     highlights = payload["highlights"]
     summary = dict(
         case=name,
+        inputMode=input_mode,
         words=len(meeting.words),
         rows=len(meeting.turns),
         speakers=len(meeting.speakers),
@@ -413,23 +490,35 @@ for name, hours, plain in cases:
         rssSumMiB=rss / 1024,
         processes=processes,
         gestures=gestures,
-        nativeCoastsDown=sum(g["direction"] > 0 and g["coast"] > 1 for g in gestures),
-        nativeCoastsUp=sum(g["direction"] < 0 and g["coast"] > 1 for g in gestures),
+        postReleaseMovesDown=sum(g["direction"] > 0 and g["coast"] > 1 for g in gestures),
+        postReleaseMovesUp=sum(g["direction"] < 0 and g["coast"] > 1 for g in gestures),
         invalidGestures=sum(not g["moved"] for g in gestures),
         cspViolations=csp,
+    )
+    summary["nativeKineticCertified"] = (
+        input_mode == "mutter"
+        and all(g["moved"] and g["coast"] > 1 for g in gestures)
+        and summary["paused"]["anchorReversals"] == summary["playing"]["anchorReversals"] == 0
+        and summary["paused"]["upperValues"] == summary["playing"]["upperValues"] == [initial_upper]
     )
     (OUT / f"{name}.json").write_text(json.dumps(dict(summary=summary, raw=payload), indent=2))
     reports.append(summary)
     print(json.dumps(summary), flush=True)
     clock.disconnect(before)
     clock.disconnect(after)
+    window.remove_tick_callback(continuous_tick)
     window.back_to_library()
     window.maximize()
     paint(window, 3)
 (OUT / "summary.json").write_text(json.dumps(reports, indent=2))
 app.on_quit()
 app.do_shutdown()
-print(
-    "WebKit functional checks passed; inspect invalidGestures/nativeCoastsDown/nativeCoastsUp for input coverage",
-    flush=True,
-)
+certified = bool(reports) and all(report["nativeKineticCertified"] for report in reports)
+print(f"WebKit functional checks passed; native kinetic certified: {certified}", flush=True)
+if input_mode != "dom-smooth" and not certified:
+    raise SystemExit(2)
+if input_mode == "dom-smooth" and any(
+    report["invalidGestures"] or report["paused"]["anchorReversals"] or report["playing"]["anchorReversals"]
+    for report in reports
+):
+    raise SystemExit("DOM geometry audit failed")

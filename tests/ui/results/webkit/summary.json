@@ -1,0 +1,698 @@
+[
+  {
+    "case": "hour",
+    "inputMode": "dom-smooth",
+    "words": 12441,
+    "rows": 484,
+    "speakers": 2,
+    "loadReadyFrameMs": 533.544,
+    "loadMainThreadCpuMs": 139.484517,
+    "loadWorstGtkFrameCpuMs": 8.819556,
+    "firstPaintObservedUpperBoundMs": 550.21,
+    "fullyLaidOutMs": 533.544,
+    "loadWorstGtkFrameIntervalMs": 133.336,
+    "initialUpper": 68431.0,
+    "paused": {
+      "frames": 197,
+      "reversals": 0,
+      "anchorReversals": 0,
+      "upperValues": [
+        68431
+      ],
+      "worstFrameIntervalMs": 17
+    },
+    "playing": {
+      "frames": 198,
+      "reversals": 0,
+      "anchorReversals": 0,
+      "upperValues": [
+        68431
+      ],
+      "worstFrameIntervalMs": 17
+    },
+    "resize": {
+      "frames": 8,
+      "reversals": 0,
+      "anchorReversals": 0,
+      "upperValues": [
+        68431,
+        73187,
+        74927
+      ],
+      "worstFrameIntervalMs": 95
+    },
+    "highlightJsMaxMs": 1,
+    "highlightCalls": 65,
+    "highlightJsMeanMs": 0.03076923076923077,
+    "highlightIpcSubmitMaxCpuMs": 0.114054,
+    "highlightIpcSubmitMeanCpuMs": 0.027626870588235295,
+    "mainThreadWorstGtkFrameCpuMs": 10.274173,
+    "rssSumMiB": 670.6328125,
+    "processes": [
+      {
+        "pid": 267,
+        "rssKiB": 258280,
+        "name": "python3"
+      },
+      {
+        "pid": 302,
+        "rssKiB": 17116,
+        "name": "python3"
+      },
+      {
+        "pid": 313,
+        "rssKiB": 33364,
+        "name": "python3"
+      },
+      {
+        "pid": 393,
+        "rssKiB": 51132,
+        "name": "WebKitNetworkPr"
+      },
+      {
+        "pid": 400,
+        "rssKiB": 2212,
+        "name": "bwrap"
+      },
+      {
+        "pid": 401,
+        "rssKiB": 1688,
+        "name": "bwrap"
+      },
+      {
+        "pid": 402,
+        "rssKiB": 6452,
+        "name": "xdg-dbus-proxy"
+      },
+      {
+        "pid": 405,
+        "rssKiB": 2192,
+        "name": "bwrap"
+      },
+      {
+        "pid": 406,
+        "rssKiB": 1528,
+        "name": "bwrap"
+      },
+      {
+        "pid": 407,
+        "rssKiB": 312764,
+        "name": "WebKitWebProces"
+      }
+    ],
+    "gestures": [
+      {
+        "playback": false,
+        "flick": 0,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 35029.0,
+        "final": 38029.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 1,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 33401.0,
+        "final": 30401.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 2,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 35029.0,
+        "final": 38029.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 3,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 33401.0,
+        "final": 30401.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 4,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 35029.0,
+        "final": 38029.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 5,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 33401.0,
+        "final": 30401.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 0,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 35029.0,
+        "final": 38029.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 1,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 33401.0,
+        "final": 30401.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 2,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 35029.0,
+        "final": 38029.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 3,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 33401.0,
+        "final": 30401.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 4,
+        "direction": 1,
+        "initial": 34215.0,
+        "released": 35029.0,
+        "final": 38029.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 5,
+        "direction": -1,
+        "initial": 34215.0,
+        "released": 33401.0,
+        "final": 30401.0,
+        "coast": 3000.0,
+        "moved": true
+      }
+    ],
+    "postReleaseMovesDown": 6,
+    "postReleaseMovesUp": 6,
+    "invalidGestures": 0,
+    "cspViolations": [
+      "connect-src",
+      "img-src"
+    ],
+    "nativeKineticCertified": false
+  },
+  {
+    "case": "four-hour",
+    "inputMode": "dom-smooth",
+    "words": 49794,
+    "rows": 1935,
+    "speakers": 2,
+    "loadReadyFrameMs": 1516.985,
+    "loadMainThreadCpuMs": 230.165273,
+    "loadWorstGtkFrameCpuMs": 4.984028,
+    "firstPaintObservedUpperBoundMs": 1533.651,
+    "fullyLaidOutMs": 1516.985,
+    "loadWorstGtkFrameIntervalMs": 216.671,
+    "initialUpper": 273622.0,
+    "paused": {
+      "frames": 195,
+      "reversals": 0,
+      "anchorReversals": 0,
+      "upperValues": [
+        273622
+      ],
+      "worstFrameIntervalMs": 17
+    },
+    "playing": {
+      "frames": 194,
+      "reversals": 0,
+      "anchorReversals": 0,
+      "upperValues": [
+        273622
+      ],
+      "worstFrameIntervalMs": 18
+    },
+    "resize": {
+      "frames": 7,
+      "reversals": 0,
+      "anchorReversals": 0,
+      "upperValues": [
+        273622,
+        292617,
+        299577
+      ],
+      "worstFrameIntervalMs": 390
+    },
+    "highlightJsMaxMs": 1,
+    "highlightCalls": 67,
+    "highlightJsMeanMs": 0.05970149253731343,
+    "highlightIpcSubmitMaxCpuMs": 0.053099,
+    "highlightIpcSubmitMeanCpuMs": 0.028422395348837212,
+    "mainThreadWorstGtkFrameCpuMs": 9.118881,
+    "rssSumMiB": 986.015625,
+    "processes": [
+      {
+        "pid": 267,
+        "rssKiB": 321668,
+        "name": "python3"
+      },
+      {
+        "pid": 302,
+        "rssKiB": 17116,
+        "name": "python3"
+      },
+      {
+        "pid": 313,
+        "rssKiB": 33364,
+        "name": "python3"
+      },
+      {
+        "pid": 529,
+        "rssKiB": 51248,
+        "name": "WebKitNetworkPr"
+      },
+      {
+        "pid": 535,
+        "rssKiB": 2308,
+        "name": "bwrap"
+      },
+      {
+        "pid": 536,
+        "rssKiB": 1564,
+        "name": "bwrap"
+      },
+      {
+        "pid": 538,
+        "rssKiB": 6380,
+        "name": "xdg-dbus-proxy"
+      },
+      {
+        "pid": 541,
+        "rssKiB": 2468,
+        "name": "bwrap"
+      },
+      {
+        "pid": 542,
+        "rssKiB": 1648,
+        "name": "bwrap"
+      },
+      {
+        "pid": 543,
+        "rssKiB": 571916,
+        "name": "WebKitWebProces"
+      }
+    ],
+    "gestures": [
+      {
+        "playback": false,
+        "flick": 0,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 137625.0,
+        "final": 140625.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 1,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 135997.0,
+        "final": 132997.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 2,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 137625.0,
+        "final": 140625.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 3,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 135997.0,
+        "final": 132997.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 4,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 137625.0,
+        "final": 140625.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 5,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 135997.0,
+        "final": 132997.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 0,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 137625.0,
+        "final": 140625.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 1,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 135997.0,
+        "final": 132997.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 2,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 137625.0,
+        "final": 140625.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 3,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 135997.0,
+        "final": 132997.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 4,
+        "direction": 1,
+        "initial": 136811.0,
+        "released": 137625.0,
+        "final": 140625.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 5,
+        "direction": -1,
+        "initial": 136811.0,
+        "released": 135997.0,
+        "final": 132997.0,
+        "coast": 3000.0,
+        "moved": true
+      }
+    ],
+    "postReleaseMovesDown": 6,
+    "postReleaseMovesUp": 6,
+    "invalidGestures": 0,
+    "cspViolations": [
+      "connect-src",
+      "img-src"
+    ],
+    "nativeKineticCertified": false
+  },
+  {
+    "case": "hour-plain",
+    "inputMode": "dom-smooth",
+    "words": 12441,
+    "rows": 123,
+    "speakers": 1,
+    "loadReadyFrameMs": 400.546,
+    "loadMainThreadCpuMs": 62.225453,
+    "loadWorstGtkFrameCpuMs": 4.241443,
+    "firstPaintObservedUpperBoundMs": 417.212,
+    "fullyLaidOutMs": 400.546,
+    "loadWorstGtkFrameIntervalMs": 50.001,
+    "initialUpper": 42527.0,
+    "paused": {
+      "frames": 196,
+      "reversals": 0,
+      "anchorReversals": 0,
+      "upperValues": [
+        42527
+      ],
+      "worstFrameIntervalMs": 17
+    },
+    "playing": {
+      "frames": 196,
+      "reversals": 0,
+      "anchorReversals": 0,
+      "upperValues": [
+        42527
+      ],
+      "worstFrameIntervalMs": 17
+    },
+    "resize": {
+      "frames": 7,
+      "reversals": 0,
+      "anchorReversals": 0,
+      "upperValues": [
+        42527,
+        46529,
+        47167
+      ],
+      "worstFrameIntervalMs": 77
+    },
+    "highlightJsMaxMs": 1.0000000000009095,
+    "highlightCalls": 65,
+    "highlightJsMeanMs": 0.06153846153846154,
+    "highlightIpcSubmitMaxCpuMs": 0.060153,
+    "highlightIpcSubmitMeanCpuMs": 0.027506619047619047,
+    "mainThreadWorstGtkFrameCpuMs": 8.77824,
+    "rssSumMiB": 679.921875,
+    "processes": [
+      {
+        "pid": 267,
+        "rssKiB": 320620,
+        "name": "python3"
+      },
+      {
+        "pid": 302,
+        "rssKiB": 17116,
+        "name": "python3"
+      },
+      {
+        "pid": 313,
+        "rssKiB": 33364,
+        "name": "python3"
+      },
+      {
+        "pid": 641,
+        "rssKiB": 51416,
+        "name": "WebKitNetworkPr"
+      },
+      {
+        "pid": 647,
+        "rssKiB": 2320,
+        "name": "bwrap"
+      },
+      {
+        "pid": 648,
+        "rssKiB": 1580,
+        "name": "bwrap"
+      },
+      {
+        "pid": 650,
+        "rssKiB": 6416,
+        "name": "xdg-dbus-proxy"
+      },
+      {
+        "pid": 653,
+        "rssKiB": 2328,
+        "name": "bwrap"
+      },
+      {
+        "pid": 654,
+        "rssKiB": 1640,
+        "name": "bwrap"
+      },
+      {
+        "pid": 657,
+        "rssKiB": 259440,
+        "name": "WebKitWebProces"
+      }
+    ],
+    "gestures": [
+      {
+        "playback": false,
+        "flick": 0,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 22077.0,
+        "final": 25077.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 1,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 20449.0,
+        "final": 17449.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 2,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 22077.0,
+        "final": 25077.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 3,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 20449.0,
+        "final": 17449.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 4,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 22077.0,
+        "final": 25077.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": false,
+        "flick": 5,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 20449.0,
+        "final": 17449.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 0,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 22077.0,
+        "final": 25077.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 1,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 20449.0,
+        "final": 17449.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 2,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 22077.0,
+        "final": 25077.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 3,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 20449.0,
+        "final": 17449.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 4,
+        "direction": 1,
+        "initial": 21263.0,
+        "released": 22077.0,
+        "final": 25077.0,
+        "coast": 3000.0,
+        "moved": true
+      },
+      {
+        "playback": true,
+        "flick": 5,
+        "direction": -1,
+        "initial": 21263.0,
+        "released": 20449.0,
+        "final": 17449.0,
+        "coast": 3000.0,
+        "moved": true
+      }
+    ],
+    "postReleaseMovesDown": 6,
+    "postReleaseMovesUp": 6,
+    "invalidGestures": 0,
+    "cspViolations": [
+      "connect-src",
+      "img-src"
+    ],
+    "nativeKineticCertified": false
+  }
+]

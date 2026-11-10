@@ -49,10 +49,19 @@ trap 'kill "$shell_pid" 2>/dev/null || true' EXIT
 export WAYLAND_DISPLAY=wayland-0
 ready=0
 for _ in $(seq 300); do
-    if [[ -S "$XDG_RUNTIME_DIR/wayland-0" ]] && gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval 'if(Main.layoutManager._startingUp)Main.layoutManager._startupAnimationComplete();Main.overview.hide();Main.layoutManager._queueUpdateRegions();true' >/dev/null 2>&1; then ready=1; break; fi
+    status=$(gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval '!Main.layoutManager._startingUp' 2>/dev/null) || status=
+    if [[ -S "$XDG_RUNTIME_DIR/wayland-0" && $status == "(true, 'true')" ]]; then ready=1; break; fi
     sleep .1
 done
 [[ $ready == 1 ]] || { echo "Private compositor did not become ready" >&2; exit 1; }
+gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval 'Main.overview.hide();true' >/dev/null
+ready=0
+for _ in $(seq 100); do
+    status=$(gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval '!Main.overview.visible && Main.modalCount===0' 2>/dev/null) || status=
+    if [[ $status == "(true, 'true')" ]]; then ready=1; break; fi
+    sleep .1
+done
+[[ $ready == 1 ]] || { echo "Private compositor input grab did not clear" >&2; exit 1; }
 mkdir -p /mnt/output/build/src
 cd /mnt/source
 glib-compile-resources src/cassini-talk.gresource.xml --sourcedir=src --target=/mnt/output/build/src/cassini-talk.gresource

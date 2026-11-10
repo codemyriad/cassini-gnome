@@ -15,7 +15,7 @@ window.probe = {
       const row = rows[Math.min(lo,rows.length-1)];
       this.frames.push({time, dt: last === undefined ? 0 : time-last,
         phase:this.phase, direction:this.direction, y:scrollY,
-        upper:document.documentElement.scrollHeight,
+        upper:document.documentElement.scrollHeight, width:innerWidth,
         anchor:row ? [+row.dataset.row,-row.getBoundingClientRect().top] : [-1,0]});
       last = time;
       requestAnimationFrame(frame);
