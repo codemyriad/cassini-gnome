@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # catalogs so the installed-package smoke can validate all six languages.
 RUN printf 'path-include=/usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n' > /etc/dpkg/dpkg.cfg.d/zz-cassini-locales
 # Bound mirror acquisition and reject incomplete indexes instead of using stale ones.
-RUN printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "15";' 'Acquire::https::Timeout "15";' 'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/80cassini-network
+RUN printf '%s\n' 'Acquire::Retries "5";' 'Acquire::Retries::Delay "true";' 'Acquire::Retries::Delay::Maximum "5";' 'Acquire::http::Timeout "15";' 'Acquire::https::Timeout "15";' 'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/80cassini-network
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential devscripts equivs lintian && rm -rf /var/lib/apt/lists/*
 COPY control /tmp/control

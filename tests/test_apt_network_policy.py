@@ -17,7 +17,9 @@ DOCKERFILES = (
     "build-aux/deb/Dockerfile",
 )
 POLICY = {
-    "Acquire::Retries": "3",
+    "Acquire::Retries": "5",
+    "Acquire::Retries::Delay": "true",
+    "Acquire::Retries::Delay::Maximum": "5",
     "Acquire::http::Timeout": "15",
     "Acquire::https::Timeout": "15",
     "APT::Update::Error-Mode": "any",
@@ -32,11 +34,11 @@ def test_container_apt_policy_precedes_all_network_calls_and_survives_refresh(na
     settings = dict(re.findall(r"'([\w:-]+) \"([^\"]+)\";'", before))
     assert all(settings.get(key) == value for key, value in POLICY.items())
     assert "/etc/apt/apt.conf.d/80cassini-network" in before
-    assert text.index("FROM ") < before.index('Acquire::Retries "3";')
+    assert text.index("FROM ") < before.index('Acquire::Retries "5";')
     if "FROM ${HARNESS}" in text:
         # The cacheable harness owns the file, so the refreshed stage inherits
         # it. Its Dockerfile participates in the existing harness cache key.
-        assert before.index('Acquire::Retries "3";') < text.index("FROM ${HARNESS}")
+        assert before.index('Acquire::Retries "5";') < text.index("FROM ${HARNESS}")
         assert "RUN apt-get update && apt-get -y --no-install-recommends dist-upgrade" in text
 
 
