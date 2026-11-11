@@ -49,7 +49,15 @@ step "align container snapshot"
 retry sh build-aux/ci/prepare_tumbleweed.sh
 
 step "install-deps"
-retry sh build-aux/install-deps.sh --all --yes
+# Fedora recommends GPU drivers, portals and audio daemons that this headless
+# source gate never uses. Keep every declared runtime/build dependency, the
+# full suite and the strict plugin/startup smoke below. Other images retain
+# their existing package selection.
+if command -v dnf >/dev/null 2>&1; then
+  retry sh build-aux/install-deps.sh --all --yes --required-only
+else
+  retry sh build-aux/install-deps.sh --all --yes
+fi
 
 step "meson setup"
 meson setup /build/b --prefix=/usr

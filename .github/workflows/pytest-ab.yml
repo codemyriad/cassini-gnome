@@ -8,9 +8,14 @@ on:
       - 'meson_options.txt'
 permissions:
   contents: read
+concurrency:
+  group: pytest-ab-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 jobs:
   ten-pairs:
-    if: github.head_ref == 'perf/d82-two-cuts'
+    # One evidence run is already active on this immutable experiment head.
+    # Checkpoints must not duplicate its ten pairs. Remove after adoption.
+    if: github.head_ref == 'perf/d82-two-cuts' && github.event.pull_request.head.sha == '01586ab5accc690ccfc910a4305a35d441c3767e'
     runs-on: ubuntu-26.04
     container: ubuntu:26.04
     # Ten controlled pairs, not failed-job retries. Individual Meson limits
