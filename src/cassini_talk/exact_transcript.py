@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from gi.repository import GLib, GObject, Graphene, Gsk, Gtk
 
 from . import ux_formats as fmt
+from .transcript_accessible import WordActions
+from .transcript_navigation import TranscriptNavigation
 
 # Includes the existing 120 px name column. CSS outer padding is separate.
 COLUMN_CAP = 720
@@ -33,9 +35,6 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         super().__init__(
             css_classes=["meeting-transcript"], hexpand=True, vexpand=True, accessible_role=Gtk.AccessibleRole.LIST
         )
-        from .transcript_accessible import WordActions
-        from .transcript_navigation import TranscriptNavigation
-
         self.page = page
         self._closed = False
         self.navigation = TranscriptNavigation(self)
