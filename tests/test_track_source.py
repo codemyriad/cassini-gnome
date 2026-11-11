@@ -13,14 +13,14 @@ import math
 import os
 import shutil
 import sys
-import time
 import wave
 
 import pytest
+from playback_events import wait_for_playback
 
 gi = pytest.importorskip("gi")
 gi.require_version("Gst", "1.0")
-from gi.repository import GLib, Gst  # noqa: E402
+from gi.repository import Gst  # noqa: E402
 
 Gst.init(None)
 
@@ -306,18 +306,6 @@ def test_decoder_is_trimmed_and_seeks_sample_exactly(tmp_path):
         decoder.close()
 
 
-def until(predicate, timeout=10):
-    context = GLib.MainContext.default()
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        while context.pending():
-            context.iteration(False)
-        if predicate():
-            return
-        time.sleep(0.005)
-    assert predicate(), "GStreamer did not reach the expected state"
-
-
 def play(meeting, seek=None):
     from cassini_talk.folder_player import FolderPlayer
 
@@ -338,13 +326,13 @@ def play(meeting, seek=None):
     try:
         assert FolderPlayer.can_play(meeting)
         player.load_tracks(meeting.tracks)
-        until(lambda: player._prerolled or errors)
+        wait_for_playback(lambda: player._prerolled or errors, "preroll")
         assert not errors
         if seek is not None:
             player.seek(seek)
-            until(lambda: player._pending_seek is None or errors)
+            wait_for_playback(lambda: player._pending_seek is None or errors, "seek completion")
         player.play()
-        until(lambda: player._at_end or errors)
+        wait_for_playback(lambda: player._at_end or errors, "EOS")
         assert not errors
         return array.array("h", b"".join(chunks)), player.duration
     finally:
