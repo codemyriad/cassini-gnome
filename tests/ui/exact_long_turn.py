@@ -2,18 +2,29 @@
 """Native frame budgets for one four-hour viewer paragraph with 899 replies."""
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
+from gi.repository import GLib
 from transcript_long_turn import long_turn_words
 
 from cassini_talk.meeting_text import reading_turns, speaker_turns
 
 
-def check_long_turn(window, model, frames_type, paint, until, flicks):
+def long_turn_meeting(model):
     words = long_turn_words()
-    turns = reading_turns(words)
-    assert len(turns) == 1
-    model = replace(model, words=words, turns=turns, listening_turns=speaker_turns(words))
+    return replace(model, words=words, turns=reading_turns(words), listening_turns=speaker_turns(words))
+
+
+def check_long_turn(window, model, frames_type, paint, until, flicks):
+    # Match production loading and keep fixture preparation out of the UI
+    # thread without retaining its extra model during the earlier RSS checks.
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(long_turn_meeting, model)
+        future.add_done_callback(lambda _: GLib.idle_add(lambda: GLib.SOURCE_REMOVE))
+        until(future.done)
+        model = future.result()
+    assert len(model.turns) == 1
     frames = frames_type(window)
     started = time.thread_time_ns()
     window.open_meeting(model, external=True)
@@ -25,8 +36,8 @@ def check_long_turn(window, model, frames_type, paint, until, flicks):
     paint(window)
     frames.close()
     report = dict(
-        words=len(words),
-        semanticRows=len(turns),
+        words=len(model.words),
+        semanticRows=len(model.turns),
         layoutRows=len(page._turns),
         openFirstPaintCpuMs=first,
         openWorstFrameCpuMs=max(frames.cpu),
