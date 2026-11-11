@@ -18,7 +18,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -53,26 +52,29 @@ signal.pause()
 """
 # Hidden from the sweep's marker scan: a detached process with an empty environment
 # (or one that rewrites it for its title, as Chromium does), not dumpable (its /proc
-# entries belong to root), that keeps forking and exiting. It holds the descriptor
-# until its deadline, so end of file means every generation is gone.
+# entries belong to root). It forks before acknowledging readiness. The hidden
+# child holds the descriptor until the sweep kills it or the test closes its
+# release pipe. EOF after the wrapper exits proves the sweep reached the child.
 HIDDEN = r"""
 import os, signal, subprocess, sys
-ready, ending, deadline = int(sys.argv[1]), sys.argv[2], sys.argv[3]
-hopper = r'''
-import ctypes, os, signal, sys, time
-ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE: 0
+ready, ending, finish, release = int(sys.argv[1]), sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+hidden_child = r'''
+import ctypes, os, signal, sys
+ready, release = map(int, sys.argv[1:])
+assert ctypes.CDLL(None).prctl(4, 0, 0, 0, 0) == 0  # PR_SET_DUMPABLE: 0
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
-while time.monotonic() < float(sys.argv[1]):
-    time.sleep(0.02)
-    if os.fork():
-        os._exit(0)
+if os.fork():
+    os._exit(0)
+os.write(ready, b"ready\n")
+os.read(release, 1)
 '''
 subprocess.Popen(
-    [sys.executable, "-c", hopper, deadline], start_new_session=True, env={}, pass_fds=[ready],
+    [sys.executable, "-c", hidden_child, str(ready), str(release)], start_new_session=True, env={}, pass_fds=[ready, release],
     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-os.write(ready, b"ready\n")
 os.close(ready)
+os.close(release)
 if ending == "done":
+    assert os.read(finish, 1) == b"x"
     sys.exit(7)
 signal.pause()
 """
@@ -189,24 +191,32 @@ def test_every_wrapper_refuses_a_limit_that_bounds_nothing(script, tmp_path):
 def test_the_sweep_kills_what_it_cannot_recognise(ending):
     limit, expected = ENDINGS[ending]
     ready, writer = os.pipe()
+    finish, finish_writer = os.pipe()
+    release, release_writer = os.pipe()
     env = {**os.environ, "CASSINI_BOUNDED_RUN_MECHANISM": "sweep", "CASSINI_BOUNDED_RUN_KILL_AFTER": "1"}
-    deadline = str(time.monotonic() + 30)
     run = subprocess.Popen(
-        [str(BOUNDED), str(limit), sys.executable, "-c", HIDDEN, str(writer), ending, deadline],
-        pass_fds=[writer],
+        [str(BOUNDED), str(limit), sys.executable, "-c", HIDDEN, str(writer), ending, str(finish), str(release)],
+        pass_fds=[writer, finish, release],
         env=env,
         stderr=subprocess.PIPE,
         text=True,
     )
     os.close(writer)
+    os.close(finish)
+    os.close(release)
     try:
         assert select.select([ready], [], [], 30)[0] and os.read(ready, 64) == b"ready\n"
+        if ending == "done":
+            os.write(finish_writer, b"x")
         _, errors = run.communicate(timeout=60)
         assert (run.returncode, errors) == (expected, "")
-        # Only the run's processes hold the pipe: end of file once none is left.
-        assert select.select([ready], [], [], 10)[0], "a hidden process outlived the run"
+        # The wrapper has returned. EOF must already be ready while the test
+        # still holds the release pipe open.
+        assert select.select([ready], [], [], 0)[0], "a hidden process outlived the run"
         assert os.read(ready, 64) == b""
     finally:
+        os.close(finish_writer)
+        os.close(release_writer)
         os.close(ready)
         if run.poll() is None:
             run.kill()
