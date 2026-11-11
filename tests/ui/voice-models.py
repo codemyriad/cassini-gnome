@@ -33,6 +33,45 @@ from cassini_talk.model_download import ModelStore  # noqa: E402
 from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
 from cassini_talk.voice_models import VoiceModels  # noqa: E402
 
+
+def retry_with_delayed_ready_notification(app, dialog):
+    models = app.voice_models
+    entered, release = threading.Event(), threading.Event()
+    check_runtime = models._check_runtime
+
+    def held_runtime(directory):
+        GLib.idle_add(entered.set)
+        assert release.wait(18), "the test did not release the voice runtime probe"
+        return check_runtime(directory)
+
+    with patch.object(models, "_check_runtime", held_runtime):
+        try:
+            dialog.voice_action.emit("clicked")
+            dispatch_until(entered.is_set, "the voice retry did not enter its runtime probe")
+            assert models.snapshot()["busy"] and dialog.voice_status.get_label() == "Downloaded"
+            assert dialog.voice_action.get_label() == "Remove"
+            release.set()
+            # Finish the real worker while GTK still displays the intermediate
+            # state. Its completion notifications remain queued on this context.
+            models._thread.join(18)
+            assert not models._thread.is_alive(), "the voice runtime retry did not finish"
+            assert not models.snapshot()["busy"] and dialog.voice_status.get_label() == "Downloaded"
+            dispatch_until(
+                lambda: (
+                    not models.snapshot()["busy"]
+                    and dialog.voice_status.get_label() == "On"
+                    and dialog.voice_action.get_label() == "Remove"
+                    and not dialog.voice_remove.get_visible()
+                ),
+                "the voice runtime retry did not reach its rendered ready state",
+            )
+            assert dialog.voice_status.get_label() == "On" and not dialog.voice_remove.get_visible(), (
+                "voice retry accepted the intermediate Downloaded state"
+            )
+        finally:
+            release.set()
+
+
 fixture = remote.__wrapped__()
 server = next(fixture)
 try:
@@ -128,7 +167,11 @@ try:
             server.mode = "normal"
             dialog.voice_action.emit("clicked")
             dispatch_until(
-                lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Remove"
+                lambda: (
+                    not app.voice_models.snapshot()["busy"]
+                    and dialog.voice_status.get_label() == "On"
+                    and dialog.voice_action.get_label() == "Remove"
+                )
             )
             assert dialog.voice_status.get_label() == "On" and dialog.voice_action.get_label() == "Remove"
             assert app.recording_settings.get_string("speech-model") == "whistle"
@@ -136,11 +179,7 @@ try:
             app.voice_models._change(ready=False, error=True, runtime_error=True)
             dispatch_until(lambda: dialog.voice_action.get_label() == "Try again")
             assert dialog.voice_remove.get_visible() and not dialog.voice_line.get_visible()
-            dialog.voice_action.emit("clicked")
-            dispatch_until(
-                lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Remove"
-            )
-            assert dialog.voice_status.get_label() == "On" and not dialog.voice_remove.get_visible()
+            retry_with_delayed_ready_notification(app, dialog)
             dialog.voice_action.emit("clicked")
             dispatch_until(
                 lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Download"
