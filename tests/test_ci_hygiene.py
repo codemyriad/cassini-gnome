@@ -2,11 +2,14 @@
 """G13/G14: every job and every local test run has a time budget, and CI runs on pushes to main only."""
 
 import fnmatch
+import importlib.util
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
+import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -689,7 +692,8 @@ def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
     for name in ("recording", "boards", "offline"):
         assert re.search(r"^    needs: \[changes, build\]$", ci[name], re.M) and "meson-tests" not in ci[name], name
     assert "needs: [source, deb, rpm-arch, meson-tests]" in ci["pytest-coverage"]
-    assert 'test "$MESON_TESTS" = success ||' in ci["pytest-coverage"]
+    for var in ("SOURCE", "DEB", "RPM_ARCH", "MESON_TESTS"):
+        assert f'test "${var}" = success ||' in ci["pytest-coverage"]
     (tests,) = dict(jobs(WORKFLOWS / "meson-tests.yml")).values()
     products = dict(jobs(WORKFLOWS / "build.yml"))["products"]
     for line in ("meson test -C _build-core --print-errorlogs", "meson compile -C _build-core cassini-talk-pot"):
@@ -701,3 +705,102 @@ def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
     # The same minimal environment as the products' build.
     install = re.compile(r"- name: Install build tools \(minimal source-validation environment\)\n(?:        .*\n)+")
     assert install.search(tests)[0] == install.search(products)[0]
+
+
+def _load_rpm_canary_guard():
+    spec = importlib.util.spec_from_file_location(
+        "check_rpm_canary_wheel", ROOT / "build-aux/ci/check_rpm_canary_wheel.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_rpm_canary_guard_runs_pinned_abi_and_skips_unpinned_until_pypi_ships_wheel(tmp_path, monkeypatch):
+    guard = _load_rpm_canary_guard()
+    canary = (WORKFLOWS / "rpm-canary.yml").read_text()
+    assert "python3 build-aux/ci/check_rpm_canary_wheel.py" in canary
+    assert (
+        "if: steps.canary-abi.outputs.should_build == 'true'\n        run: build-aux/rpm/build.sh fedora:latest"
+        in canary
+    )
+
+    pins = ROOT / "whistle/pins.json"
+    spec = ROOT / "build-aux/rpm/cassini-talk.spec"
+
+    # 1. Pinned ABI (cp314) builds immediately without querying PyPI.
+    out_pinned = tmp_path / "out_pinned"
+    rc = guard.evaluate(
+        "cp314",
+        pins,
+        spec,
+        github_output=out_pinned,
+        fetcher=lambda: pytest.fail("Pinned ABI must not query PyPI"),
+    )
+    assert rc == 0 and out_pinned.read_text().strip() == "should_build=true"
+
+    # 2. Unpinned ABI (cp315) with no non-yanked PyPI wheel skips cleanly.
+    out_skip = tmp_path / "out_skip"
+    summary_skip = tmp_path / "summary_skip"
+    pypi_without_cp315 = {
+        "releases": {
+            "1.31.0": [
+                {"filename": "onnxruntime-1.31.0-cp314-cp314-manylinux_2_28_x86_64.whl", "yanked": False},
+                {"filename": "onnxruntime-1.31.0-cp315-cp315-manylinux_2_28_x86_64.whl", "yanked": True},
+            ]
+        }
+    }
+    rc = guard.evaluate(
+        "cp315",
+        pins,
+        spec,
+        github_output=out_skip,
+        step_summary=summary_skip,
+        fetcher=lambda: pypi_without_cp315,
+    )
+    assert rc == 0 and out_skip.read_text().strip() == "should_build=false"
+    assert "no cp315 manylinux x86_64 wheel on PyPI yet" in summary_skip.read_text()
+
+    # 3. Once PyPI ships a non-yanked cp315 wheel, the canary fails loudly to prompt pinning.
+    summary_ready = tmp_path / "summary_ready"
+    pypi_with_cp315 = {
+        "releases": {
+            "1.32.0": [
+                {"filename": "onnxruntime-1.32.0-cp315-cp315-manylinux_2_28_x86_64.whl", "yanked": False},
+            ]
+        }
+    }
+    rc = guard.evaluate("cp315", pins, spec, step_summary=summary_ready, fetcher=lambda: pypi_with_cp315)
+    assert rc == 1 and "onnxruntime-1.32.0-cp315-cp315-manylinux_2_28_x86_64.whl" in summary_ready.read_text()
+
+    # 4. Bounded retry recovers from HTTP 503 and rejects truncated Content-Length responses.
+    payload = json.dumps(pypi_without_cp315).encode("utf-8")
+    calls = []
+
+    class _FakeResp:
+        def __init__(self, body: bytes, length: int):
+            self.headers = {"Content-Length": str(length)}
+            self._body = body
+
+        def read(self, limit: int) -> bytes:
+            assert limit == int(self.headers["Content-Length"])
+            return self._body[:limit]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def fake_urlopen(req, timeout=10.0):
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(req.full_url, 503, "Service Unavailable", {}, io.BytesIO(b""))
+        if len(calls) == 2:
+            return _FakeResp(payload[:10], len(payload))
+        return _FakeResp(payload, len(payload))
+
+    monkeypatch.setattr(guard.urllib.request, "urlopen", fake_urlopen)
+    sleeps = []
+    assert guard.fetch_pypi_json(sleep_fn=sleeps.append) == pypi_without_cp315
+    assert len(calls) == 3 and sleeps == [2.0, 4.0]
