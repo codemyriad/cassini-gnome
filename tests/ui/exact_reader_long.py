@@ -43,8 +43,8 @@ def check_search_supersession(window, file, paint, until):
 
 def check_long_reader(window, paint, until):
     def project():
-        words = (Word("person-2", 0, 500, "Introduction."),) + tuple(
-            replace(word, start_ms=word.start_ms + 1000, end_ms=word.end_ms + 1000) for word in long_turn_words()
+        words = tuple(Word("person-2", i * 61000, i * 61000 + 500, "Introduction.") for i in range(20)) + tuple(
+            replace(word, start_ms=word.start_ms + 1220000, end_ms=word.end_ms + 1220000) for word in long_turn_words()
         )
         oversized_chip = reader_turns(
             [Word("person-0", 0, 1000, "Opening.")]
@@ -72,6 +72,8 @@ def check_long_reader(window, paint, until):
         paint(window)
         until(lambda: view.viewport_ready)
         first = (thread_time_ns() - start) / 1e6
+        host = next(turn for turn in turns if len(turn.words) > 70000)
+        assert turns.visible_index[host.index] not in view.visible_rows
         assert 0 in view.rows and view._value() == 0 and not view.ready
         until(lambda: view.ready)
         paint(window)
@@ -87,9 +89,8 @@ def check_long_reader(window, paint, until):
     )
     assert first < 100 and max(cpu) < 32 and report["buildSliceMaxCpuMs"] < 32, report
     # Both a late host word and a late folded chip still use original URIs.
-    host = turns[1]
-    chip = host.asides[-10][1]
-    for key in ((host.index, len(host.words) - 100), (chip.index, 0)):
+    chip = host.asides[len(host.asides) * 3 // 4][1]
+    for key in ((host.index, len(host.words) * 3 // 4), (chip.index, 0)):
         window._scroll_to_word(*key, center=True)
         until(lambda: window._word_scroll is None)
         paint(window)
