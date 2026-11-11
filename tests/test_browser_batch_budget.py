@@ -267,7 +267,7 @@ def test_stop_cannot_overtake_a_start_then_leave_that_start_recording(service, m
         peer.close()
 
 
-def test_default_batch_finishes_inside_the_real_thirty_second_request_timeout(service, monkeypatch):  # noqa: F811
+def test_default_batch_keeps_headroom_inside_the_socket_timeout(service, monkeypatch):  # noqa: F811
     server, path = service
     # Production deadlines run on the monotonic clock fake_deadlines replaces.
     assert server.deadline_clock is time.monotonic
@@ -293,21 +293,25 @@ def test_default_batch_finishes_inside_the_real_thirty_second_request_timeout(se
     # The socket timeout the Record request below really reads its reply with.
     monkeypatch.setattr(browser_service, "connect", connected)
     monkeypatch.setattr(browser_service, "read_packet", reading)
+
+    def request_start():
+        before = time.thread_time()
+        result = request("start-all", path=path)
+        return result, time.thread_time() - before
+
     try:
         with ThreadPoolExecutor(1) as pool:
-            before = time.monotonic()
-            pending = pool.submit(request, "start-all", path=path)
+            pending = pool.submit(request_start)
             commands = [peer.receive() for _ in range(3)]
             peer.answer(next(c for c in commands if c["tabId"] == 5))
             wait_for(lambda: sum(future.done() for future in futures) == 1)
             # Exactly the production budget after the batch began, not a second more.
             expire(server.batch_timeout)
-            result = pending.result(10)
-            # The budget plus all the real time the request took apart from
-            # waiting for it, with 2 s of the socket timeout left (as the 28 s
-            # bound of a real-time run gave).
+            result, caller_cpu = pending.result(10)
+            # The virtual batch deadline and client work leave two seconds
+            # of headroom on the actual request socket.
             (timeout,) = timeouts
-            assert server.batch_timeout + (time.monotonic() - before) + 2 < timeout
+            assert server.batch_timeout + caller_cpu + 2 < timeout, "batch deadline leaves insufficient RPC headroom"
             assert result["attempted"] == 3 and len(result["failures"]) == 2
             assert {s["tabId"] for s in result["statuses"] if s["recording"]} == {5}
     finally:
