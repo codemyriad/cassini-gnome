@@ -2,11 +2,14 @@
 """G13/G14: every job and every local test run has a time budget, and CI runs on pushes to main only."""
 
 import fnmatch
+import importlib.util
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
+import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -436,6 +439,7 @@ def test_runner_variables_move_the_intended_jobs():
             ("meson-tests.yml", "meson-tests"),
             ("packages.yml", "arch"),
             ("packages.yml", "rpm"),
+            ("rpm-canary.yml", "preflight"),
             ("rpm-canary.yml", "rpm"),
             ("source.yml", "distros"),
             ("source.yml", "lint-and-test"),
@@ -689,7 +693,8 @@ def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
     for name in ("recording", "boards", "offline"):
         assert re.search(r"^    needs: \[changes, build\]$", ci[name], re.M) and "meson-tests" not in ci[name], name
     assert "needs: [source, deb, rpm-arch, meson-tests]" in ci["pytest-coverage"]
-    assert 'test "$MESON_TESTS" = success ||' in ci["pytest-coverage"]
+    for var in ("SOURCE", "DEB", "RPM_ARCH", "MESON_TESTS"):
+        assert f'test "${var}" = success ||' in ci["pytest-coverage"]
     (tests,) = dict(jobs(WORKFLOWS / "meson-tests.yml")).values()
     products = dict(jobs(WORKFLOWS / "build.yml"))["products"]
     for line in ("meson test -C _build-core --print-errorlogs", "meson compile -C _build-core cassini-talk-pot"):
@@ -724,3 +729,198 @@ def test_playwright_browser_caches_use_runner_temp_isolation():
     recording_jobs = dict(jobs(WORKFLOWS / "recording.yml"))
     for name in ("capture", "live-folder"):
         assert "sudo build-aux/ci/apt-install-bounded.sh " in recording_jobs[name], name
+
+
+def _load_rpm_canary_guard():
+    spec = importlib.util.spec_from_file_location(
+        "check_rpm_canary_wheel", ROOT / "build-aux/ci/check_rpm_canary_wheel.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_rpm_canary_workflow_separates_preflight_so_rpm_build_is_visibly_skipped():
+    canary_jobs = dict(jobs(WORKFLOWS / "rpm-canary.yml"))
+    assert list(canary_jobs) == ["preflight", "rpm"]
+    preflight = canary_jobs["preflight"]
+    rpm = canary_jobs["rpm"]
+    assert "should_build: ${{ steps.canary-abi.outputs.should_build }}" in preflight
+    assert "python3 build-aux/ci/check_rpm_canary_wheel.py" in preflight
+    assert "build-aux/rpm/build.sh" not in preflight
+    assert "name: Build .rpm (fedora:latest)" in rpm
+    assert re.search(r"^    needs: preflight$", rpm, re.M)
+    assert re.search(r"^    if: needs\.preflight\.outputs\.should_build == 'true'$", rpm, re.M)
+    assert "      - run: build-aux/whistle-cache.sh\n      - run: build-aux/rpm/build.sh fedora:latest" in rpm
+    assert not re.search(r"^        if:", rpm, re.M)
+
+
+def test_rpm_canary_guard_runs_pinned_abi_and_skips_unpinned_until_pypi_ships_wheel(tmp_path, monkeypatch):
+    guard = _load_rpm_canary_guard()
+    pins = ROOT / "whistle/pins.json"
+    spec = ROOT / "build-aux/rpm/cassini-talk.spec"
+
+    # 1. Pinned ABI (cp314) builds immediately without querying PyPI.
+    out_pinned = tmp_path / "out_pinned"
+    rc = guard.evaluate(
+        "cp314",
+        pins,
+        spec,
+        github_output=out_pinned,
+        fetcher=lambda: pytest.fail("Pinned ABI must not query PyPI"),
+    )
+    assert rc == 0 and out_pinned.read_text().strip() == "should_build=true"
+
+    # 2. Unpinned ABI (cp315) with a verified PyPI lookup proving no wheel exists skips cleanly.
+    out_skip = tmp_path / "out_skip"
+    summary_skip = tmp_path / "summary_skip"
+    pypi_without_cp315 = {
+        "releases": {
+            "1.31.0": [
+                {"filename": "onnxruntime-1.31.0-cp314-cp314-manylinux_2_28_x86_64.whl", "yanked": False},
+                {"filename": "onnxruntime-1.31.0-cp315-cp315-manylinux_2_28_x86_64.whl", "yanked": True},
+            ]
+        }
+    }
+    rc = guard.evaluate(
+        "cp315",
+        pins,
+        spec,
+        github_output=out_skip,
+        step_summary=summary_skip,
+        fetcher=lambda: pypi_without_cp315,
+    )
+    assert rc == 0 and out_skip.read_text().strip() == "should_build=false"
+    assert "no cp315 manylinux x86_64 wheel on PyPI yet" in summary_skip.read_text()
+
+    # 3. Once PyPI ships a non-yanked cp315 wheel, preflight fails loudly to prompt pinning.
+    out_ready = tmp_path / "out_ready"
+    summary_ready = tmp_path / "summary_ready"
+    pypi_with_cp315 = {
+        "releases": {
+            "1.32.0": [
+                {"filename": "onnxruntime-1.32.0-cp315-cp315-manylinux_2_28_x86_64.whl", "yanked": False},
+            ]
+        }
+    }
+    rc = guard.evaluate(
+        "cp315",
+        pins,
+        spec,
+        github_output=out_ready,
+        step_summary=summary_ready,
+        fetcher=lambda: pypi_with_cp315,
+    )
+    assert rc == 1 and out_ready.read_text().strip() == "should_build=false"
+    assert "onnxruntime-1.32.0-cp315-cp315-manylinux_2_28_x86_64.whl" in summary_ready.read_text()
+
+    # 4. Pin mismatches between whistle/pins.json and cassini-talk.spec fail preflight in both directions.
+    pins_with_cp315 = tmp_path / "pins_mismatch.json"
+    pins_data = json.loads(pins.read_text())
+    pins_data["onnxruntime"]["wheels"]["cp315"] = {"url": "https://example.invalid/ort.whl", "sha256": "0" * 64}
+    pins_with_cp315.write_text(json.dumps(pins_data))
+    out_mismatch_a = tmp_path / "out_mismatch_a"
+    summary_mismatch_a = tmp_path / "summary_mismatch_a"
+    rc = guard.evaluate(
+        "cp315",
+        pins_with_cp315,
+        spec,
+        github_output=out_mismatch_a,
+        step_summary=summary_mismatch_a,
+        fetcher=lambda: pytest.fail("Pin mismatch must fail before querying PyPI"),
+    )
+    assert rc == 1 and out_mismatch_a.read_text().strip() == "should_build=false"
+    assert "pin mismatch" in summary_mismatch_a.read_text()
+
+    spec_with_cp315 = tmp_path / "cassini-talk-mismatch.spec"
+    spec_with_cp315.write_text(spec.read_text() + '\n%if "%{?python3_version_nodots}" == "315"\n%endif\n')
+    out_mismatch_b = tmp_path / "out_mismatch_b"
+    rc = guard.evaluate(
+        "cp315",
+        pins,
+        spec_with_cp315,
+        github_output=out_mismatch_b,
+        fetcher=lambda: pytest.fail("Pin mismatch must fail before querying PyPI"),
+    )
+    assert rc == 1 and out_mismatch_b.read_text().strip() == "should_build=false"
+
+    # 5. Bounded retry recovers from HTTP 503 and rejects truncated Content-Length responses.
+    payload = json.dumps(pypi_without_cp315).encode("utf-8")
+    calls = []
+
+    class _FakeResp:
+        def __init__(self, body: bytes, length: int | None):
+            self.headers = {} if length is None else {"Content-Length": str(length)}
+            self._body = body
+
+        def read(self, limit: int) -> bytes:
+            if "Content-Length" in self.headers:
+                assert limit == int(self.headers["Content-Length"])
+            return self._body[:limit]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def fake_urlopen_recovers(req, timeout=10.0):
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(req.full_url, 503, "Service Unavailable", {}, io.BytesIO(b""))
+        if len(calls) == 2:
+            return _FakeResp(payload[:10], len(payload))
+        return _FakeResp(payload, len(payload))
+
+    monkeypatch.setattr(guard.urllib.request, "urlopen", fake_urlopen_recovers)
+    sleeps = []
+    assert guard.fetch_pypi_json(sleep_fn=sleeps.append) == pypi_without_cp315
+    assert len(calls) == 3 and sleeps == [2.0, 4.0]
+
+    # 6. Exhausted transient PyPI errors fail preflight (never skip green when availability is unproven).
+    exhausted_sleeps = []
+    monkeypatch.setattr(
+        guard.urllib.request,
+        "urlopen",
+        lambda req, timeout=10.0: (_ for _ in ()).throw(
+            urllib.error.HTTPError(req.full_url, 503, "Service Unavailable", {}, io.BytesIO(b""))
+        ),
+    )
+    out_exhausted = tmp_path / "out_exhausted"
+    summary_exhausted = tmp_path / "summary_exhausted"
+    rc = guard.evaluate(
+        "cp315",
+        pins,
+        spec,
+        github_output=out_exhausted,
+        step_summary=summary_exhausted,
+        fetcher=lambda: guard.fetch_pypi_json(sleep_fn=exhausted_sleeps.append),
+    )
+    assert rc == 1 and out_exhausted.read_text().strip() == "should_build=false"
+    assert exhausted_sleeps == [2.0, 4.0]
+    assert "PyPI wheel check failed" in summary_exhausted.read_text()
+
+    # 7. Malformed PyPI responses (invalid JSON, missing 'releases', oversized Content-Length, HTTP 404) fail preflight.
+    for idx, bad_opener in enumerate(
+        (
+            lambda _req, timeout=10.0: _FakeResp(b"{not-json", 9),
+            lambda _req, timeout=10.0: _FakeResp(b'{"info": {}}', 12),
+            lambda _req, timeout=10.0: _FakeResp(b"{}", guard.MAX_RESPONSE_BYTES + 5),
+            lambda req, timeout=10.0: (_ for _ in ()).throw(
+                urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, io.BytesIO(b""))
+            ),
+        )
+    ):
+        monkeypatch.setattr(guard.urllib.request, "urlopen", bad_opener)
+        out_bad = tmp_path / f"out_bad_{idx}"
+        summary_bad = tmp_path / f"summary_bad_{idx}"
+        rc = guard.evaluate(
+            "cp315",
+            pins,
+            spec,
+            github_output=out_bad,
+            step_summary=summary_bad,
+            fetcher=lambda: guard.fetch_pypi_json(sleep_fn=lambda _s: None),
+        )
+        assert rc == 1 and out_bad.read_text().strip() == "should_build=false", idx
+        assert "PyPI wheel check failed" in summary_bad.read_text(), idx

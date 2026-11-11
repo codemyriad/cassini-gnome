@@ -192,6 +192,12 @@ class MeetingTrash:
                     dialog.cancel()
                 if getattr(dialog, "future", None):
                     waits.append(dialog.future)
+            zip_dialog = getattr(window, "zip_export_dialog", None)
+            if zip_dialog and meeting.directory.absolute() in getattr(zip_dialog, "active_directories", ()):
+                if not zip_dialog.closed:
+                    zip_dialog.cancel()
+                if getattr(zip_dialog, "future", None):
+                    waits.append(zip_dialog.future)
             if getattr(window, "snapshot", None):
                 values = list(window.snapshot.meetings)
                 index = next((i for i, value in enumerate(values) if value.key == meeting.key), None)
