@@ -176,7 +176,7 @@ cp -p %{SOURCE7} .sherpa-cache/libsherpa-onnx-c-api.so
 cp -p %{SOURCE8} .sherpa-cache/CASSINI-SHA256SUMS
 
 %build
-%meson -Dpackaging=rpm -Dwhistle=enabled -Dwhistle_cache=.whistle-cache -Dsherpa=enabled -Dsherpa_cache=.sherpa-cache
+%meson -Dpackaging=rpm -Dpytest_parallel=true -Dwhistle=enabled -Dwhistle_cache=.whistle-cache -Dsherpa=enabled -Dsherpa_cache=.sherpa-cache
 %meson_build
 
 %install
@@ -203,7 +203,7 @@ echo "%%dir %{_datadir}/cassini-talk" >> %{name}.lang
 # A missing GTK/Adw typelib fails the check instead of skipping the
 # application tests (G11: CI's Source job relies on this one).
 export CASSINI_TEST_REQUIRE_GTK=1
-%meson_test
+%meson_test --num-processes=2
 # CI keeps the test logs (durations, junit): build-aux/rpm/build.sh defines
 # cassini_test_logs, since rpm >= 4.20 removes the build directory afterwards.
 %{?cassini_test_logs:cp -a %{_vpath_builddir}/meson-logs/. %{cassini_test_logs}/}
