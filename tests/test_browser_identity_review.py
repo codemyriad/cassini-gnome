@@ -170,17 +170,26 @@ def test_enabling_auto_during_worker_overlap_does_not_duplicate_an_active_call(s
         new.close()
 
 
-def test_a_departed_call_fails_stale_record_immediately_while_browser_is_still_connected(service):  # noqa: F811
+def test_a_departed_call_fails_stale_record_without_waiting_for_a_reconnect(service, monkeypatch):  # noqa: F811
     broker, path = service
-    broker.command_timeout = 0.3
     extension = peer(path)
     identifier = request(path=path)["meetings"][0]["id"]
+    reconnect_waits = []
+
+    def unexpected_wait(timeout):
+        reconnect_waits.append(timeout)
+        return True  # Let the RPC return so the assertion can report the unexpected wait.
+
     try:
         inventory(extension, ())
-        before = time.monotonic()
-        with pytest.raises(ValueError, match="meeting is no longer available"):
+        assert no_command(broker, extension.connection, extension.stream)
+        monkeypatch.setattr(broker.closed, "wait", unexpected_wait)
+        with pytest.raises(ValueError) as rejected:
             request("start", path=path, id=identifier)
-        assert time.monotonic() - before < 0.2
+        assert not reconnect_waits, "the stale Start waited for a reconnect"
+        assert "meeting is no longer available" in str(rejected.value)
+        assert request(path=path)["browsers"] == 1
+        assert no_command(broker, extension.connection, extension.stream)
     finally:
         extension.close()
 
