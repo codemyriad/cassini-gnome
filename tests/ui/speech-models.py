@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -35,18 +34,24 @@ from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
 from cassini_talk.speech_models import SpeechModels  # noqa: E402
 
 
-def until(check):
-    end = time.monotonic() + 8
+def until(check, message="Model GUI did not settle"):
     context = GLib.MainContext.default()
-    while time.monotonic() < end:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.01)
-    assert check(), "Model GUI did not settle"
+    expired = False
+
+    def expire(*_args):
+        nonlocal expired
+        expired = True
+        return GLib.SOURCE_REMOVE
+
+    guard = GLib.timeout_source_new_seconds(18)
+    guard.set_callback(expire)
+    guard.attach(context)
+    try:
+        while not check() and not expired:
+            context.iteration(True)
+        assert check(), message
+    finally:
+        guard.destroy()
 
 
 def capture(window, suffix):
@@ -122,7 +127,10 @@ try:
             until(lambda: dialog.parakeet_suggestion.get_visible())
             app.speech_models.capable = lambda: False
             app.speech_models.refresh_suggestion()
-            until(lambda: not dialog.parakeet_suggestion.get_visible())
+            until(
+                lambda: not dialog.parakeet_suggestion.get_visible(),
+                "Settings did not remove the ineligible Parakeet suggestion",
+            )
             app.speech_models.capable = lambda: True
             app.speech_models.refresh_suggestion()
             until(lambda: dialog.parakeet_suggestion.get_visible())
