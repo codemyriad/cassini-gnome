@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D96 import-side transaction: streaming, cancellable, bounded per archive and batch."""
 
+import shutil
 import tempfile
 import zipfile
 import zlib
@@ -10,7 +11,7 @@ from pathlib import Path, PurePosixPath
 
 from . import archive_import
 from .export_audio import check_cancel
-from .received import import_one, regular_input
+from .received import IMPORT_LOCK, import_one, regular_input
 
 DECODE_ERRORS = (OSError, ValueError, RuntimeError, EOFError, zipfile.BadZipFile, zlib.error)
 
@@ -21,7 +22,10 @@ METHODS = {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
 
 
 def supported(entry):
-    return PurePosixPath(entry.filename).suffix.lower() in SUPPORTED and entry.compress_type in METHODS
+    if archive_import.is_directory(entry) or archive_import.is_macos_metadata(entry):
+        return False
+    norm = archive_import.normalized_entry_path(archive_import.entry_name(entry))
+    return PurePosixPath(norm).suffix.lower() in SUPPORTED and entry.compress_type in METHODS
 
 
 @dataclass
@@ -43,6 +47,16 @@ class Result:
     last_key: str | None = None
     # Bounded by entries; codes/filenames only, never transcript/model objects.
     errors: list[tuple[str, str]] = field(default_factory=list)
+
+
+def _rollback_archive_publications(published_dirs, dedup_index):
+    by_sha = dedup_index.get("by_sha", {}) if dedup_index else {}
+    with IMPORT_LOCK:
+        for directory in published_dirs:
+            for candidates in by_sha.values():
+                while directory in candidates:
+                    candidates.remove(directory)
+            shutil.rmtree(directory, ignore_errors=True)
 
 
 def import_files(paths, root=None, *, cancel=None, progress=None):
@@ -79,6 +93,7 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
         else:
             result.duplicates += 1
         result.last_key = meeting.key
+        return meeting, added
 
     try:
         selected = []
@@ -103,35 +118,62 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
             try:
                 if path.suffix.lower() == ".zip":
                     archive_budget = Budget()
-                    with regular_input(path) as incoming:
-                        cd_offset = archive_import.preflight(incoming)
-                        with zipfile.ZipFile(incoming) as archive:
-                            entries = archive_import.entries(archive, archive_budget, cd_offset=cd_offset)
-                            files = [entry for entry in entries if not entry.is_dir()]
-                            result.total += len(files) - 1
-                            if not any(supported(entry) for entry in files):
-                                result.errors.append((path.name, "empty"))
-                            report()
-                            for entry in entries:
-                                check_cancel(cancel)
-                                if entry.is_dir():
-                                    continue
-                                if not supported(entry):
-                                    result.ignored += 1
-                                    report()
-                                    continue
-                                try:
-                                    with tempfile.TemporaryDirectory(prefix="cassini-zip-import-") as folder:
-                                        extracted = archive_import.extract(
-                                            archive, entry, folder, cancel, budget=archive_budget
-                                        )
-                                        parent = PurePosixPath(entry.filename).parent.name or path.stem
-                                        import_path(extracted, entry.file_size, parent)
-                                except (CancelledError, archive_import.ArchiveError):
-                                    raise
-                                except DECODE_ERRORS:
-                                    failed(entry.filename, "damaged")
+                    saved_state = (
+                        result.total,
+                        result.imported,
+                        result.duplicates,
+                        result.ignored,
+                        result.failed,
+                        result.last_key,
+                        len(result.errors),
+                    )
+                    published_in_archive = []
+                    try:
+                        with regular_input(path) as incoming:
+                            cd_offset = archive_import.preflight(incoming)
+                            with zipfile.ZipFile(incoming) as archive:
+                                entries = archive_import.entries(archive, archive_budget, cd_offset=cd_offset)
+                                files = [entry for entry in entries if not archive_import.is_directory(entry)]
+                                result.total += len(files) - 1
+                                if not any(supported(entry) for entry in files):
+                                    result.errors.append((path.name, "empty"))
                                 report()
+                                for entry in entries:
+                                    check_cancel(cancel)
+                                    if archive_import.is_directory(entry):
+                                        continue
+                                    if not supported(entry):
+                                        result.ignored += 1
+                                        report()
+                                        continue
+                                    norm_name = archive_import.normalized_entry_path(archive_import.entry_name(entry))
+                                    try:
+                                        with tempfile.TemporaryDirectory(prefix="cassini-zip-import-") as folder:
+                                            extracted = archive_import.extract(
+                                                archive, entry, folder, cancel, budget=archive_budget
+                                            )
+                                            parent = PurePosixPath(norm_name).parent.name or path.stem
+                                            meeting, added = import_path(extracted, entry.file_size, parent)
+                                            if added:
+                                                published_in_archive.append(meeting.directory)
+                                    except (CancelledError, archive_import.ArchiveError):
+                                        raise
+                                    except DECODE_ERRORS:
+                                        failed(norm_name, "damaged")
+                                    report()
+                    except archive_import.ArchiveError:
+                        if published_in_archive:
+                            _rollback_archive_publications(published_in_archive, dedup_index)
+                        (
+                            result.total,
+                            result.imported,
+                            result.duplicates,
+                            result.ignored,
+                            result.failed,
+                            result.last_key,
+                        ) = saved_state[:6]
+                        del result.errors[saved_state[6] :]
+                        raise
                 elif path.suffix.lower() in SUPPORTED:
                     with regular_input(path) as source:
                         size = source.seek(0, 2)

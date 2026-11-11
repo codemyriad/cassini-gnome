@@ -137,18 +137,24 @@ the byte and ratio bounds are enforced again on the bytes actually read:
 - Any entry with uncompressed-to-compressed ratio above 100:1 refuses the
   archive (`import.zip.failed.tooLarge`), both in directory metadata and while
   inflating raw deflate streams in bounded chunks.
-- Encrypted archives (traditional PKWARE, strong encryption or WinZip AES, in
-  central or local headers) are refused without prompting
-  (`import.zip.failed.encrypted`).
-- Absolute paths, `..` components, backslashes, drive prefixes, NUL bytes or
-  special file modes refuse the whole archive before importing anything
-  (`import.zip.failed.unsafePaths`). Safe entries extract by bounded basename
-  into a private `0700` temporary directory with `0600` files and preserve their
-  archive folder hint.
-- Nested archives and unsupported formats/methods are never opened and are
-  counted in `import.summary.unsupported`; an archive with no supported Opus
-  entry reports `import.zip.failed.empty`; unreadable or overlapping-header
-  archives report `import.zip.failed.damaged`.
+- Encrypted archives (traditional PKWARE, strong encryption `0x0017` or WinZip
+  AES method `99` / extra `0x9901`, in central or local headers) are refused
+  without prompting (`import.zip.failed.encrypted`).
+- Leading `/` or `\`, `..` components, Windows drive prefixes (`^[A-Za-z]:`),
+  NUL bytes or special file modes refuse the whole archive before importing
+  anything (`import.zip.failed.unsafePaths`). Valid filenames containing `:`
+  and Windows relative paths using `\` separators are normalized and extracted
+  by bounded basename into a private `0700` temporary directory with `0600`
+  files while preserving their archive folder hint.
+- ZIP64 end-record `0xFFFF` / `0xFFFFFFFF` sentinels and local-vs-central
+  general-purpose bit flag differences are accepted. Directory entries count
+  toward the 2,000-entry directory cap without inflating file or unsupported
+  counts. macOS `__MACOSX/` and `._` AppleDouble sidecars, nested archives and
+  unsupported formats/methods are never opened and are counted in
+  `import.summary.unsupported`; an archive with no supported Opus entry reports
+  `import.zip.failed.empty`; unreadable or overlapping-header archives report
+  `import.zip.failed.damaged`. Any whole-archive runtime limit violation rolls
+  back notes staged from that archive so nothing from a refused archive remains.
 - Batch deduplication indexes existing `Received-*` SHA-256 metadata once per
   batch ($O(M + N)$) while still re-verifying full file bytes on every digest
   match, preserving committed notes on cancellation or later member failure.

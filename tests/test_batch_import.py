@@ -67,7 +67,19 @@ def test_archive_basename_and_folder_are_not_replaced_with_private_staging_names
 
 
 @pytest.mark.parametrize(
-    "name", ["../escape.opus", "/escape.opus", "C:/escape.opus", "folder\\escape.opus", "a/../../escape.opus"]
+    "name",
+    [
+        "../escape.opus",
+        "..\\escape.opus",
+        "/escape.opus",
+        "\\escape.opus",
+        "\\\\server\\share\\escape.opus",
+        "C:/escape.opus",
+        "C:\\escape.opus",
+        "C:escape.opus",
+        "folder\\..\\escape.opus",
+        "a/../../escape.opus",
+    ],
 )
 def test_unsafe_entry_rejects_archive_before_any_document_is_published(tmp_path, name):
     path = zip_file(tmp_path / "Unsafe.zip", [("Safe.opus", ONE.read_bytes()), (name, TWO.read_bytes())])
@@ -543,3 +555,285 @@ def test_bulk_dedup_metadata_reads_scale_linearly_instead_of_quadratically(tmp_p
     large_reads = len(reads)
     assert (res_large.imported, res_large.duplicates) == (30, 2)
     assert large_reads <= 25, large_reads
+
+
+@pytest.mark.parametrize(
+    "eocd_disks,loc_disks",
+    [
+        ((0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFF), 1),
+        ((0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFF), 0),
+        ((0xFFFF, 0xFFFF, 1, 1, None, None), 1),
+        ((0, 0, 0xFFFF, 1, None, None), 1),
+    ],
+)
+def test_zip64_all_ffff_sentinels_and_libarchive_locator_are_accepted(tmp_path, eocd_disks, loc_disks):
+    path = zip_file(tmp_path / "Sentinels.zip", [("English.opus", ONE.read_bytes())])
+    data = path.read_bytes()
+    at = data.rindex(b"PK\x05\x06")
+    _, disk, cd_disk, per_disk, count, length, offset, comment = struct.unpack("<4s4H2LH", data[at:])
+    end64 = struct.pack("<4sQ2H2L4Q", b"PK\x06\x06", 44, 45, 45, disk, cd_disk, per_disk, count, length, offset)
+    locator = struct.pack("<4sLQL", b"PK\x06\x07", 0, at, loc_disks)
+    d0, d1, d2, d3, d4, d5 = eocd_disks
+    end = struct.pack(
+        "<4s4H2LH",
+        b"PK\x05\x06",
+        d0,
+        d1,
+        d2,
+        d3,
+        length if d4 is None else d4,
+        offset if d5 is None else d5,
+        comment,
+    )
+    path.write_bytes(data[:at] + end64 + locator + end)
+    res = batch_import.import_files([path], tmp_path / "Library")
+    assert res.imported == 1 and res.failed == 0
+
+
+def test_classic_65535_count_without_zip64_and_unsentineled_zip64_smuggling_report_limit(tmp_path, monkeypatch):
+    # Classic non-ZIP64 EOCD with 65,535 entries (no PK\x06\x07 locator) is tooLarge ("limit"), not "damaged".
+    classic_max = zip_file(tmp_path / "Classic65535.zip", [("English.opus", ONE.read_bytes())])
+    smuggled = zip_file(tmp_path / "Smuggled64.zip", [("English.opus", ONE.read_bytes())])
+    raw = bytearray(classic_max.read_bytes())
+    at = raw.rindex(b"PK\x05\x06")
+    struct.pack_into("<HH", raw, at + 8, 0xFFFF, 0xFFFF)
+    classic_max.write_bytes(raw)
+
+    # Unsentineled ZIP64 locator + oversized ZIP64 directory cannot bypass preflight into ZipFile._EndRecData64.
+    base = smuggled.read_bytes()
+    eocd_at = base.rindex(b"PK\x05\x06")
+    _, disk, cd_disk, per_disk, count, length, offset, comment = struct.unpack("<4s4H2LH", base[eocd_at:])
+    huge_dir = archive_import.MAX_DIRECTORY + 1
+    end64 = struct.pack("<4sQ2H2L4Q", b"PK\x06\x06", 44, 45, 45, 0, 0, 1, 1, huge_dir, offset)
+    locator = struct.pack("<4sLQL", b"PK\x06\x07", 0, eocd_at, 1)
+    unsentineled_end = struct.pack("<4s4H2LH", b"PK\x05\x06", disk, cd_disk, per_disk, count, length, offset, comment)
+    smuggled.write_bytes(base[:eocd_at] + end64 + locator + unsentineled_end)
+
+    monkeypatch.setattr(zipfile, "ZipFile", lambda *_a, **_kw: pytest.fail("ZipFile opened oversized archive"))
+    assert batch_import.import_files([classic_max], tmp_path / "Lib1").errors == [("Classic65535.zip", "limit")]
+    assert batch_import.import_files([smuggled], tmp_path / "Lib2").errors == [("Smuggled64.zip", "limit")]
+
+
+def test_macos_finder_sidecars_and_directory_entries_match_d96_counts(tmp_path):
+    unix_dir = zipfile.ZipInfo("UnixDir")
+    unix_dir.create_system = 3
+    unix_dir.external_attr = (stat.S_IFDIR | 0o755) << 16
+    finder = zip_file(
+        tmp_path / "Finder.zip",
+        [
+            ("Meetings/", b""),
+            ("Meetings/Standup.opus", ONE.read_bytes()),
+            ("__MACOSX/", b""),
+            ("__MACOSX/Meetings/", b""),
+            ("__MACOSX/Meetings/._Standup.opus", b"\x00\x05\x16\x07AppleDouble"),
+            ("Meetings/._ResourceFork.opus", b"\x00\x05\x16\x07AppleDouble"),
+            ("WindowsDir\\", b""),
+            (unix_dir, b""),
+        ],
+        compression=zipfile.ZIP_DEFLATED,
+    )
+    res = batch_import.import_files([finder], tmp_path / "LibFinder")
+    assert (res.total, res.imported, res.ignored, res.failed) == (3, 1, 2, 0)
+    assert not res.errors
+
+    # Archive with only Finder sidecars and directories reports empty, with 0 failed.
+    sidecar_only = zip_file(
+        tmp_path / "FinderEmpty.zip",
+        [("__MACOSX/", b""), ("__MACOSX/._Note.opus", b"\x00\x05\x16\x07AppleDouble")],
+    )
+    empty_res = batch_import.import_files([sidecar_only], tmp_path / "LibFinderEmpty")
+    assert (empty_res.imported, empty_res.ignored, empty_res.failed) == (0, 1, 0)
+    assert empty_res.errors == [("FinderEmpty.zip", "empty")]
+
+    dirs_only = zip_file(tmp_path / "DirsOnly.zip", [("Meetings/", b""), ("Sub\\Nested\\", b"")])
+    dirs_res = batch_import.import_files([dirs_only], tmp_path / "LibDirsOnly")
+    assert (dirs_res.imported, dirs_res.ignored, dirs_res.failed) == (0, 0, 0)
+    assert dirs_res.errors == [("DirsOnly.zip", "empty")]
+
+
+def test_local_vs_central_flag_differences_are_tolerated_while_unsafe_local_names_are_refused(tmp_path):
+    # Local bit 3 (0x08) + deflate level bits 1-2 (0x06) + omitted UTF-8 bit 11 (0x800) vs central 0x800.
+    path = zip_file(
+        tmp_path / "MixedFlags.zip",
+        [("Réunion/Café.opus", ONE.read_bytes()), ("Second.opus", TWO.read_bytes())],
+        compression=zipfile.ZIP_DEFLATED,
+    )
+    raw = bytearray(path.read_bytes())
+    # First local header: clear 0x800, set 0x08 | 0x06, zero local crc/sizes.
+    struct.pack_into("<H", raw, 6, 0x000E)
+    struct.pack_into("<3L", raw, 14, 0, 0, 0)
+    # Second entry: set 0x08 in central header only, keep 0x00 in local header.
+    second_cd = raw.rindex(b"PK\x01\x02")
+    second_flags = struct.unpack_from("<H", raw, second_cd + 8)[0] | 0x0008
+    struct.pack_into("<H", raw, second_cd + 8, second_flags)
+    path.write_bytes(raw)
+    res = batch_import.import_files([path], tmp_path / "LibFlags")
+    assert res.imported == 2 and res.failed == 0
+
+    # Unsafe Info-ZIP Unicode Path extra (0x7075) in central header refuses archive as unsafe.
+    import zlib
+
+    unsafe_unicode = zip_file(tmp_path / "UnicodeEscape.zip", [("Safe.opus", ONE.read_bytes())])
+    raw_u = bytearray(unsafe_unicode.read_bytes())
+    evil_utf8 = b"../escape.opus"
+    upath_payload = struct.pack("<BL", 1, zlib.crc32(b"Safe.opus") & 0xFFFFFFFF) + evil_utf8
+    extra_7075 = struct.pack("<HH", 0x7075, len(upath_payload)) + upath_payload
+    cd_at = raw_u.rindex(b"PK\x01\x02")
+    eocd_at = raw_u.rindex(b"PK\x05\x06")
+    struct.pack_into("<H", raw_u, cd_at + 30, len(extra_7075))
+    cd_entry_end = eocd_at
+    new_raw = bytes(raw_u[:cd_entry_end]) + extra_7075 + bytes(raw_u[eocd_at:])
+    new_eocd_at = new_raw.rindex(b"PK\x05\x06")
+    patched = bytearray(new_raw)
+    old_cd_len = struct.unpack_from("<L", patched, new_eocd_at + 12)[0]
+    struct.pack_into("<L", patched, new_eocd_at + 12, old_cd_len + len(extra_7075))
+    unsafe_unicode.write_bytes(patched)
+    assert batch_import.import_files([unsafe_unicode], tmp_path / "LibUnicode").errors == [
+        ("UnicodeEscape.zip", "unsafe")
+    ]
+
+
+@pytest.mark.parametrize("location,extra_id", [("central", 0x9901), ("local", 0x9901), ("central", 0x0017)])
+def test_winzip_aes_0x9901_and_strong_encryption_extras_refuse_archive_as_encrypted(tmp_path, location, extra_id):
+    # Writer leaves method=8 and flag_bits=0, signaling encryption via extra field 0x9901 or 0x0017.
+    path = zip_file(
+        tmp_path / f"Enc-{location}-{extra_id:04x}.zip",
+        [("First.opus", ONE.read_bytes()), ("Secret.opus", TWO.read_bytes())],
+        compression=zipfile.ZIP_DEFLATED,
+    )
+    raw = bytearray(path.read_bytes())
+    extra_record = struct.pack("<HH7s", extra_id, 7, b"\x02\x00AE\x03\x08\x00")
+    cd2 = raw.rindex(b"PK\x01\x02")
+    eocd = raw.rindex(b"PK\x05\x06")
+    if location == "central":
+        struct.pack_into("<H", raw, cd2 + 30, len(extra_record))
+        rebuilt = bytearray(bytes(raw[:eocd]) + extra_record + bytes(raw[eocd:]))
+        new_eocd = rebuilt.rindex(b"PK\x05\x06")
+        cd_len = struct.unpack_from("<L", rebuilt, new_eocd + 12)[0]
+        struct.pack_into("<L", rebuilt, new_eocd + 12, cd_len + len(extra_record))
+        path.write_bytes(rebuilt)
+    else:
+        lh2 = struct.unpack_from("<L", raw, cd2 + 42)[0]
+        fname_len, old_extra_len = struct.unpack_from("<HH", raw, lh2 + 26)
+        assert old_extra_len == 0
+        struct.pack_into("<H", raw, lh2 + 28, len(extra_record))
+        insert_at = lh2 + 30 + fname_len
+        rebuilt = bytearray(bytes(raw[:insert_at]) + extra_record + bytes(raw[insert_at:]))
+        new_eocd = rebuilt.rindex(b"PK\x05\x06")
+        cd_off = struct.unpack_from("<L", rebuilt, new_eocd + 16)[0]
+        struct.pack_into("<L", rebuilt, new_eocd + 16, cd_off + len(extra_record))
+        path.write_bytes(rebuilt)
+    res = batch_import.import_files([path], tmp_path / "LibExtraEnc")
+    assert res.imported == 0 and res.errors == [(path.name, "encrypted")]
+
+
+def test_colon_filenames_and_windows_backslash_separators_import_and_keep_folder_hints(tmp_path):
+    archive = zip_file(
+        tmp_path / "CrossPlatform.zip",
+        [
+            ("Notes: Q4/10:30 Standup.opus", ONE.read_bytes()),
+            ("Meetings\\", b""),
+            ("Meetings\\Afternoon\\14:00 Review.ogg", TWO.read_bytes()),
+        ],
+        compression=zipfile.ZIP_DEFLATED,
+    )
+    root = tmp_path / "LibCrossPlatform"
+    res = batch_import.import_files([archive], root)
+    assert (res.total, res.imported, res.ignored, res.failed) == (2, 2, 0, 0)
+    by_name = {}
+    for directory in documents(root):
+        rec = json.loads((directory / "meeting.json").read_text())["received"]
+        by_name[rec["originalName"]] = rec.get("originalFolderName")
+    assert by_name == {
+        "10:30 Standup.opus": "Notes: Q4",
+        "14:00 Review.opus": "Afternoon",
+    }
+
+
+def test_padded_compress_size_bomb_and_second_member_runtime_limit_refuse_and_rollback_archive(tmp_path):
+    import zlib
+
+    # Build a >100:1 deflate stream (~45 bytes -> 15,000 bytes), then pad 900 trailing bytes after Z_STREAM_END
+    # so declared compress_size (~945) vs file_size (15,000) looks like ~16:1 in Central Directory.
+    bomb_plain = b"B" * 15_000
+    comp = zlib.compressobj(9, zlib.DEFLATED, -15)
+    deflated = comp.compress(bomb_plain) + comp.flush()
+    assert len(bomb_plain) > len(deflated) * 100
+    padded = deflated + (b"\x00" * 1_000)
+    assert len(bomb_plain) <= len(padded) * 100
+
+    # Put a valid .opus FIRST in the same archive: whole-archive refusal must leave 0 notes from this archive!
+    good_bytes = ONE.read_bytes()
+    good_crc = zlib.crc32(good_bytes) & 0xFFFFFFFF
+    good_name = b"FirstValid.opus"
+    lh1 = struct.pack(
+        "<4s5H3L2H", b"PK\x03\x04", 20, 0, 0, 0, 0, good_crc, len(good_bytes), len(good_bytes), len(good_name), 0
+    )
+    entry1 = lh1 + good_name + good_bytes
+
+    bomb_crc = zlib.crc32(bomb_plain) & 0xFFFFFFFF
+    bomb_name = b"PaddedBomb.opus"
+    lh2 = struct.pack(
+        "<4s5H3L2H", b"PK\x03\x04", 20, 0, 8, 0, 0, bomb_crc, len(padded), len(bomb_plain), len(bomb_name), 0
+    )
+    lh2_offset = len(entry1)
+    entry2 = lh2 + bomb_name + padded
+
+    cd_offset = len(entry1) + len(entry2)
+    ch1 = (
+        struct.pack(
+            "<4s6H3L5H2L",
+            b"PK\x01\x02",
+            20,
+            20,
+            0,
+            0,
+            0,
+            0,
+            good_crc,
+            len(good_bytes),
+            len(good_bytes),
+            len(good_name),
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+        + good_name
+    )
+    ch2 = (
+        struct.pack(
+            "<4s6H3L5H2L",
+            b"PK\x01\x02",
+            20,
+            20,
+            0,
+            8,
+            0,
+            0,
+            bomb_crc,
+            len(padded),
+            len(bomb_plain),
+            len(bomb_name),
+            0,
+            0,
+            0,
+            0,
+            0,
+            lh2_offset,
+        )
+        + bomb_name
+    )
+    eocd = struct.pack("<4s4H2LH", b"PK\x05\x06", 0, 0, 2, 2, len(ch1) + len(ch2), cd_offset, 0)
+    archive_path = tmp_path / "PaddedBomb.zip"
+    archive_path.write_bytes(entry1 + entry2 + ch1 + ch2 + eocd)
+
+    # Seed one pre-existing note in Library to verify rollback never touches pre-existing documents.
+    root = tmp_path / "LibRollback"
+    existing = received.import_received(TWO, root)
+    res = batch_import.import_files([archive_path], root)
+    assert res.imported == 0 and res.failed == 1
+    assert res.errors == [("PaddedBomb.zip", "limit")]
+    assert [d.name for d in documents(root)] == [existing.directory.name]
