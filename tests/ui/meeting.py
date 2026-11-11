@@ -225,7 +225,7 @@ with tempfile.TemporaryDirectory() as temporary:
             # slower hosted layout, rather than depending on timer alignment.
             window._activity_tick()
             assert page.meeting.words is words
-            assert page.list.items is current.turns
+            assert page.list.items is getattr(current.turns, "layout", current.turns)
 
         # The real GTK label folds a brief reply at the original seam, and
         # its link still seeks the reply's own audio rather than the host's.

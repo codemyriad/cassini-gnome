@@ -87,6 +87,8 @@ class WordActions:
                 button.update_property([Gtk.AccessibleProperty.DESCRIPTION], [description])
         zero = Graphene.Point().init(0, 0)
         for number, row in view.rows.items():
+            if number not in view.visible_rows:
+                continue
             top = view.prefix[number] - view._value()
             if top >= height or view.prefix[number + 1] - view._value() <= 0:
                 continue

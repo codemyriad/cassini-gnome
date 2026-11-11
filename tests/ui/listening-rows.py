@@ -1040,8 +1040,9 @@ with tempfile.TemporaryDirectory() as temporary:
     assert bar.buttons["name"].get_sensitive()
     assert not bar.merge.get_sensitive() and not bar.actions.lookup_action("merge").get_enabled()
     assert page._highlighted_rows == page._turn_rows[window.listen.turn.index]
-    assert page._highlighted_rows == frozenset(t.index for t in one_speaker.turns)
-    assert page.list.items is one_speaker.turns
+    layout = getattr(one_speaker.turns, "layout", one_speaker.turns)
+    assert page._highlighted_rows == frozenset(t.index for t in layout)
+    assert page.list.items is layout
     window._library_scanned(original_snapshot)
     bar.body.announce = announce
     window.listen.stop()
