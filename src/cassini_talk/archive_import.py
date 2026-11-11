@@ -255,12 +255,10 @@ def _safe_target_name(filename):
     return trimmed + suffix
 
 
-def extract(archive, entry, folder, cancel=None, *, budget=None):
-    """One generated private destination; enforces byte and 100:1 bounds on actual read."""
+def _stream_entry(archive, entry, outgoing, cancel=None, *, budget=None):
     check_cancel(cancel)
     name = entry_name(entry)
     directory = is_directory(entry)
-    target = Path(folder) / _safe_target_name(name)
     stream = archive.fp
     end_bound = stream.seek(0, os.SEEK_END)
     payload_offset = _local_payload_offset(stream, entry, name, end_bound, directory=directory)
@@ -278,66 +276,85 @@ def extract(archive, entry, folder, cancel=None, *, budget=None):
         if budget is not None and hasattr(budget, "read_bytes"):
             budget.read_bytes += count
 
-    with target.open("xb") as outgoing:
-        os.chmod(target, 0o600)
+    def emit(chunk):
+        nonlocal written, crc
+        if not chunk:
+            return
+        check_cancel(cancel)
+        written += len(chunk)
+        record_read(len(chunk))
+        if current_read() > max_bytes or written > ratio_limit:
+            raise ArchiveError("limit")
+        if outgoing is not None and written <= entry.file_size:
+            crc = zlib.crc32(chunk, crc)
+            outgoing.write(chunk)
 
-        def emit(chunk):
-            nonlocal written, crc
-            if not chunk:
-                return
+    if entry.compress_type == zipfile.ZIP_STORED:
+        remaining = entry.compress_size
+        while remaining > 0:
             check_cancel(cancel)
-            written += len(chunk)
-            record_read(len(chunk))
-            if current_read() > max_bytes or written > ratio_limit:
-                raise ArchiveError("limit")
-            if written <= entry.file_size:
-                crc = zlib.crc32(chunk, crc)
-                outgoing.write(chunk)
-
-        if entry.compress_type == zipfile.ZIP_STORED:
-            remaining = entry.compress_size
-            while remaining > 0:
-                check_cancel(cancel)
-                chunk = stream.read(min(BLOCK, remaining))
-                if not chunk:
-                    raise zipfile.BadZipFile("Truncated stored entry")
-                remaining -= len(chunk)
-                emit(chunk)
-        elif entry.compress_type == zipfile.ZIP_DEFLATED:
-            inflater = zlib.decompressobj(-15)
-            remaining = entry.compress_size
-            raw_consumed = 0
-            while remaining > 0 or inflater.unconsumed_tail:
-                check_cancel(cancel)
-                if inflater.unconsumed_tail:
-                    raw = inflater.unconsumed_tail
-                else:
-                    raw = stream.read(min(READ_BLOCK, remaining))
-                    if not raw:
-                        raise zipfile.BadZipFile("Truncated deflate entry")
-                    remaining -= len(raw)
-                    raw_consumed += len(raw)
-                cap = min(BLOCK, max(1, min(ratio_limit - written, max_bytes - current_read()) + 1))
-                emit(inflater.decompress(raw, cap))
-                if inflater.eof:
-                    actual_compressed = raw_consumed - len(inflater.unused_data) - len(inflater.unconsumed_tail)
-                    if written > actual_compressed * max_ratio:
-                        raise ArchiveError("limit")
-                    if inflater.unused_data or remaining > 0:
-                        raise zipfile.BadZipFile("Trailing bytes in deflate entry")
-                    break
+            chunk = stream.read(min(BLOCK, remaining))
+            if not chunk:
+                raise zipfile.BadZipFile("Truncated stored entry")
+            remaining -= len(chunk)
+            emit(chunk)
+    elif entry.compress_type == zipfile.ZIP_DEFLATED:
+        inflater = zlib.decompressobj(-15)
+        remaining = entry.compress_size
+        raw_consumed = 0
+        while remaining > 0 or inflater.unconsumed_tail:
+            check_cancel(cancel)
+            if inflater.unconsumed_tail:
+                raw = inflater.unconsumed_tail
+            else:
+                raw = stream.read(min(READ_BLOCK, remaining))
+                if not raw:
+                    raise zipfile.BadZipFile("Truncated deflate entry")
+                remaining -= len(raw)
+                raw_consumed += len(raw)
+            cap = min(BLOCK, max(1, min(ratio_limit - written, max_bytes - current_read()) + 1))
+            emit(inflater.decompress(raw, cap))
+            if inflater.eof:
+                emit(inflater.flush())
+                actual_compressed = raw_consumed - len(inflater.unused_data) - len(inflater.unconsumed_tail)
+                if written > actual_compressed * max_ratio:
+                    raise ArchiveError("limit")
+                if inflater.unused_data or remaining > 0:
+                    raise zipfile.BadZipFile("Trailing bytes in deflate entry")
+                break
+        else:
             emit(inflater.flush())
             actual_compressed = raw_consumed - len(inflater.unused_data) - len(inflater.unconsumed_tail)
             if written > actual_compressed * max_ratio:
                 raise ArchiveError("limit")
             if not inflater.eof:
                 raise zipfile.BadZipFile("Incomplete deflate entry")
-        else:
-            raise zipfile.BadZipFile("Unsupported compression method")
-    if written != entry.file_size or (crc & 0xFFFFFFFF) != entry.CRC:
+    else:
+        raise zipfile.BadZipFile("Unsupported compression method")
+    if outgoing is not None and (written != entry.file_size or (crc & 0xFFFFFFFF) != entry.CRC):
         raise zipfile.BadZipFile("Corrupt archive entry")
     check_cancel(cancel)
+
+
+def extract(archive, entry, folder, cancel=None, *, budget=None):
+    """One generated private destination; enforces byte and 100:1 bounds on actual read."""
+    check_cancel(cancel)
+    target = Path(folder) / _safe_target_name(entry_name(entry))
+    with target.open("xb") as outgoing:
+        os.chmod(target, 0o600)
+        _stream_entry(archive, entry, outgoing, cancel=cancel, budget=budget)
     return target
+
+
+def drain_ignored(archive, entry, cancel=None, *, budget=None):
+    """Stream stored/deflated ignored entries into a discard sink to enforce runtime bounds."""
+    check_cancel(cancel)
+    if entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+        return
+    try:
+        _stream_entry(archive, entry, None, cancel=cancel, budget=budget)
+    except (zipfile.BadZipFile, zlib.error):
+        return
 
 
 def preflight(stream):

@@ -376,26 +376,37 @@ def test_duplicate_verification_rejects_a_file_that_grows_during_the_hash(tmp_pa
 def test_ratio_over_100_to_1_refuses_archive_in_directory_and_on_actual_bytes(tmp_path, monkeypatch):
     import zlib
 
-    # 1. Directory ratio boundary: exact 100:1 passes, 100:1 + 1 byte refuses whole archive before First.opus imports.
+    # 1. Directory and runtime ratio boundary: genuine 100:1 passes, 100:1 + 1 byte refuses whole archive before First.opus imports.
+    def _deflated_size(units):
+        probe = zip_file(
+            tmp_path / f"_probe_{units}.zip",
+            [("Pad.bin", b"A" * (units * 100))],
+            compression=zipfile.ZIP_DEFLATED,
+        )
+        with zipfile.ZipFile(probe) as zf:
+            return zf.getinfo("Pad.bin").compress_size
+
+    exact_units = next(c for c in range(5, 100) if _deflated_size(c) == c)
     exact = zip_file(
         tmp_path / "ExactRatio.zip",
-        [("First.opus", ONE.read_bytes()), ("Pad.bin", b"A" * 50_000)],
+        [("First.opus", ONE.read_bytes()), ("Pad.bin", b"A" * (exact_units * 100))],
         compression=zipfile.ZIP_DEFLATED,
     )
-    data = bytearray(exact.read_bytes())
-    cd = data.rindex(b"PK\x01\x02")
-    comp_size = struct.unpack_from("<L", data, cd + 20)[0]
-    struct.pack_into("<L", data, cd + 24, comp_size * 100)
-    exact.write_bytes(data)
+    with zipfile.ZipFile(exact) as check_zf:
+        pad_info = check_zf.getinfo("Pad.bin")
+        assert pad_info.file_size == pad_info.compress_size * 100
     ok_res = batch_import.import_files([exact], tmp_path / "LibExactRatio")
     assert ok_res.imported == 1 and ok_res.ignored == 1 and ok_res.failed == 0
 
     over = tmp_path / "OverRatio.zip"
-    data_over = bytearray(data)
+    data_over = bytearray(exact.read_bytes())
+    cd = data_over.rindex(b"PK\x01\x02")
+    comp_size = struct.unpack_from("<L", data_over, cd + 20)[0]
     struct.pack_into("<L", data_over, cd + 24, comp_size * 100 + 1)
     over.write_bytes(data_over)
     bad_res = batch_import.import_files([over], tmp_path / "LibOverRatio")
     assert bad_res.imported == 0 and bad_res.errors == [("OverRatio.zip", "limit")]
+    assert documents(tmp_path / "LibOverRatio") == []
 
     # 2. Forged directory file_size hiding >100:1 deflate expansion is refused on bytes actually read.
     raw_bomb = b"A" * 100_000
@@ -1005,3 +1016,150 @@ def test_concurrent_imports_update_digest_cache_and_deduplicate_on_archive_commi
     assert (zip_results[0].imported, zip_results[0].duplicates, zip_results[0].failed) == (1, 1, 0)
     assert len(documents(root_zip)) == 2
     assert not list(root_zip.glob(".received-*"))
+
+
+def _build_raw_zip(path: Path, raw_entries: list[tuple[bytes, int, bytes, int, int]]) -> Path:
+    """Write a raw single-disk ZIP from (name_bytes, method, payload, declared_uncompressed, ext_attr)."""
+    import zlib
+
+    local_parts = []
+    central_parts = []
+    offset = 0
+    for name_bytes, method, payload, declared_size, ext_attr in raw_entries:
+        crc = zlib.crc32(payload) & 0xFFFFFFFF
+        lh = (
+            struct.pack(
+                "<4s5H3L2H",
+                b"PK\x03\x04",
+                20,
+                0,
+                method,
+                0,
+                0,
+                crc,
+                len(payload),
+                declared_size,
+                len(name_bytes),
+                0,
+            )
+            + name_bytes
+            + payload
+        )
+        ch = (
+            struct.pack(
+                "<4s6H3L5H2L",
+                b"PK\x01\x02",
+                (3 << 8) | 20,
+                20,
+                0,
+                method,
+                0,
+                0,
+                crc,
+                len(payload),
+                declared_size,
+                len(name_bytes),
+                0,
+                0,
+                0,
+                0,
+                ext_attr,
+                offset,
+            )
+            + name_bytes
+        )
+        local_parts.append(lh)
+        central_parts.append(ch)
+        offset += len(lh)
+    cd_bytes = b"".join(central_parts)
+    eocd = struct.pack("<4s4H2LH", b"PK\x05\x06", 0, 0, len(raw_entries), len(raw_entries), len(cd_bytes), offset, 0)
+    path.write_bytes(b"".join(local_parts) + cd_bytes + eocd)
+    return path
+
+
+def test_ignored_members_enforce_runtime_byte_and_completed_stream_ratio_limits_with_zero_publications(
+    tmp_path, monkeypatch
+):
+    import zlib
+
+    good_bytes = ONE.read_bytes()
+    first_member = (b"First.opus", zipfile.ZIP_STORED, good_bytes, len(good_bytes), 0o100644 << 16)
+
+    # >100:1 deflate stream (~45 bytes -> 20,000 bytes).
+    bomb_plain = b"Z" * 20_000
+    comp = zlib.compressobj(9, zlib.DEFLATED, -15)
+    bomb_deflated = comp.compress(bomb_plain) + comp.flush()
+    assert len(bomb_plain) > len(bomb_deflated) * 100
+    padded_deflated = bomb_deflated + (b"\x00" * 1_000)
+    assert len(bomb_plain) <= len(padded_deflated) * 100
+
+    ignored_targets = [
+        ("forged-unsupported", b"ignored.txt", bomb_deflated, 16, 0o100644 << 16),
+        ("forged-macosx-sidecar", b"__MACOSX/._Second.opus", bomb_deflated, 16, 0o100644 << 16),
+        ("forged-directory", b"hidden/", bomb_deflated, 0, 0o040755 << 16),
+        ("padded-unsupported", b"ignored.txt", padded_deflated, len(bomb_plain), 0o100644 << 16),
+        ("padded-macosx-sidecar", b"__MACOSX/._Second.opus", padded_deflated, len(bomb_plain), 0o100644 << 16),
+        ("padded-directory", b"hidden/", padded_deflated, 0, 0o040755 << 16),
+    ]
+
+    for label, name_bytes, payload, declared_size, ext_attr in ignored_targets:
+        archive_path = _build_raw_zip(
+            tmp_path / f"{label}.zip",
+            [first_member, (name_bytes, zipfile.ZIP_DEFLATED, payload, declared_size, ext_attr)],
+        )
+        root = tmp_path / f"Lib-{label}"
+        first_staged, release_ignored = threading.Event(), threading.Event()
+        outcomes = []
+
+        def on_progress(state, staged_ev=first_staged, release_ev=release_ignored):
+            if state.imported == 1 and not staged_ev.is_set():
+                staged_ev.set()
+                assert release_ev.wait(30), "ignored-member gate timed out"
+
+        worker = threading.Thread(
+            target=lambda p=archive_path, r=root, cb=on_progress, out=outcomes: out.append(
+                batch_import.import_files([p], r, progress=cb)
+            )
+        )
+        worker.start()
+        try:
+            assert first_staged.wait(30), f"first recording was not staged for {label}"
+            assert documents(root) == [], f"staged recording leaked before ignored validation in {label}"
+        finally:
+            release_ignored.set()
+            worker.join(30)
+
+        assert len(outcomes) == 1
+        res = outcomes[0]
+        assert (res.imported, res.duplicates, res.ignored, res.failed) == (0, 0, 0, 1), label
+        assert res.errors == [(archive_path.name, "limit")], label
+        assert documents(root) == [], f"valid first recording was published despite {label}"
+        assert not list(root.glob(".received-*")), label
+
+    # Cumulative MAX_BYTES across valid First.opus + stored ignored member + forged-size <=100:1 deflated ignored member.
+    modest_plain = bytes((i * 73 + 19) & 0xFF for i in range(60)) + (b"M" * 440)
+    modest_comp = zlib.compressobj(6, zlib.DEFLATED, -15)
+    modest_deflated = modest_comp.compress(modest_plain) + modest_comp.flush()
+    assert len(modest_plain) == 500 and len(modest_plain) <= len(modest_deflated) * 100
+
+    stored_pad = b"P" * 600
+    monkeypatch.setattr(archive_import, "MAX_BYTES", len(good_bytes) + 1_000)
+    for suffix_label, tail_name, tail_attr in (
+        ("cum-unsupported", b"ignored2.txt", 0o100644 << 16),
+        ("cum-macosx", b"__MACOSX/._Tail.opus", 0o100644 << 16),
+        ("cum-dir", b"tail/", 0o040755 << 16),
+    ):
+        cum_zip = _build_raw_zip(
+            tmp_path / f"{suffix_label}.zip",
+            [
+                first_member,
+                (b"stored_pad.txt", zipfile.ZIP_STORED, stored_pad, len(stored_pad), 0o100644 << 16),
+                (tail_name, zipfile.ZIP_DEFLATED, modest_deflated, 0, tail_attr),
+            ],
+        )
+        cum_root = tmp_path / f"Lib-{suffix_label}"
+        cum_res = batch_import.import_files([cum_zip], cum_root)
+        assert (cum_res.imported, cum_res.duplicates, cum_res.ignored, cum_res.failed) == (0, 0, 0, 1), suffix_label
+        assert cum_res.errors == [(cum_zip.name, "limit")], suffix_label
+        assert documents(cum_root) == [], suffix_label
+        assert not list(cum_root.glob(".received-*")), suffix_label
