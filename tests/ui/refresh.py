@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -29,18 +28,24 @@ from cassini_talk.open_meeting import load_open_meeting  # noqa: E402
 from cassini_talk.player import Player  # noqa: E402
 
 
-def until(check):
-    deadline = time.monotonic() + 8
+def until(check, message="Playback refresh condition timed out"):
     context = GLib.MainContext.default()
-    while time.monotonic() < deadline:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.01)
-    assert check(), "Playback refresh condition timed out"
+    expired = False
+
+    def expire(*_args):
+        nonlocal expired
+        expired = True
+        return GLib.SOURCE_REMOVE
+
+    guard = GLib.timeout_source_new_seconds(18)
+    guard.set_callback(expire)
+    guard.attach(context)
+    try:
+        while not check() and not expired:
+            context.iteration(True)
+        assert check(), message
+    finally:
+        guard.destroy()
 
 
 with tempfile.TemporaryDirectory() as temporary:
@@ -105,7 +110,9 @@ with tempfile.TemporaryDirectory() as temporary:
         for refreshed in (replace(snapshot, meetings=()), replace(snapshot, meetings=(), unavailable=True), snapshot):
             window._list_signature = None
             window._updated(refreshed)
-            assert window.meeting_page is page and window.player.playing and window._loaded_key == loaded
+            assert window.meeting_page is page and window.player.playing and window._loaded_key == loaded, (
+                "Library refresh interrupted external playback"
+            )
         # Background selection may be a live row without playable audio.
         row = window.rows.get_first_child()
         while row:
@@ -118,7 +125,7 @@ with tempfile.TemporaryDirectory() as temporary:
         # Actual asynchronous monitor delivery keeps both transport and rows live.
         previous = window.snapshot
         window.monitor.refresh()
-        until(lambda previous=previous: window.snapshot is not previous)
+        until(lambda previous=previous: window.snapshot is not previous, "the Library monitor did not deliver its scan")
         assert window.meeting_page is page and window.player.playing and window._loaded_key == loaded
         window.back_to_library()
     first_row = window.rows.get_first_child()
