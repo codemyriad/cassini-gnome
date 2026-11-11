@@ -5,6 +5,7 @@ import json
 import time
 
 import pytest
+from durable import DURABLE_BOUND
 
 gi = pytest.importorskip("gi")
 from gi.repository import Gio, GLib  # noqa: E402
@@ -75,20 +76,23 @@ def test_monitor_handles_new_root_atomic_metadata_and_capture_activity(tmp_path)
             session.finish()
 
 
-def test_monitor_stops_delivering_after_close(tmp_path):
+def test_monitor_cancels_queued_refresh_on_close(tmp_path):
     snapshots = []
-    monitor = LibraryMonitor(snapshots.append, tmp_path, debounce_ms=10)
-    monitor.refresh()
-    monitor.close()
-    session = RecordingSession(tmp_path, "No callback after close")
-    session.finish()
+    monitor = LibraryMonitor(snapshots.append, tmp_path)
     context = GLib.MainContext.default()
-    deadline = time.monotonic() + 0.1
-    while time.monotonic() < deadline:
-        while context.pending():
-            context.iteration(False)
-        time.sleep(0.005)
-    assert snapshots == []
+    try:
+        monitor.refresh()
+        timer = context.find_source_by_id(monitor._timer)
+        assert timer is not None and monitor._future is None
+        # Close must destroy this source even if it is already ready to dispatch.
+        timer.set_ready_time(0)
+        monitor.close()
+        assert timer.is_destroyed(), "Close left the queued refresh source attached"
+        monitor.refresh_now()
+        assert monitor._timer == 0 and monitor._future is None
+        assert snapshots == []
+    finally:
+        monitor.close()
 
 
 def test_failed_watch_does_not_prevent_scan_or_explicit_retry(tmp_path, monkeypatch):
@@ -226,25 +230,52 @@ def test_close_during_worker_scan_suppresses_late_delivery(tmp_path, monkeypatch
     import threading
 
     entered, release = threading.Event(), threading.Event()
-    snapshots = []
-    monitor = LibraryMonitor(snapshots.append, tmp_path, debounce_ms=1)
-    original = monitor.scanner.scan
+    snapshots, completions = [], []
+    monitor = LibraryMonitor(snapshots.append, tmp_path)
+    original_scan = monitor.scanner.scan
+    original_complete = monitor._complete
 
     def scan(**kwargs):
         entered.set()
-        assert release.wait(3)
-        return original(**kwargs)
+        assert release.wait(DURABLE_BOUND), "Close waited for the held Library scan"
+        return original_scan(**kwargs)
+
+    def complete(future):
+        result = original_complete(future)
+        completions.append(future)
+        return result
 
     monkeypatch.setattr(monitor.scanner, "scan", scan)
+    monkeypatch.setattr(monitor, "_complete", complete)
+    context = GLib.MainContext.default()
+    guard = None
     try:
-        monitor.refresh()
-        spin_until(entered.is_set)
+        monitor.refresh_now()
+        future = monitor._future
+        assert future is not None and entered.wait(DURABLE_BOUND), "Library scan did not enter the held worker"
         monitor.close()
+        assert not future.done(), "Close must return while the Library scan is held"
+        assert snapshots == [] and completions == []
         release.set()
-        spin_until(lambda: monitor._future is None)
-        assert not snapshots
+
+        expired = []
+
+        def expire():
+            expired.append(True)
+            return GLib.SOURCE_REMOVE
+
+        guard = context.find_source_by_id(GLib.timeout_add(int(DURABLE_BOUND * 1000), expire))
+        while not completions and not expired:
+            context.iteration(True)
+        assert completions == [future], "The held Library scan did not dispatch its completion"
+        _snapshot, _roots, _targets, created, _late = future.result()
+        assert snapshots == [], "Close allowed the late Library snapshot through"
+        assert created and all(watch.is_cancelled() for watch in created.values())
+        assert monitor._future is None
     finally:
         release.set()
+        if guard is not None:
+            guard.destroy()
         monitor.close()
 
 

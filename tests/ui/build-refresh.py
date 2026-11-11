@@ -7,8 +7,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
+from unittest.mock import patch
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
     raise SystemExit("Use build-aux/ux-screenshot.sh")
@@ -22,6 +22,7 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.library_window import LibraryWindow  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 from cassini_talk.recording_session import RecordingSession  # noqa: E402
 
@@ -51,7 +52,7 @@ with tempfile.TemporaryDirectory() as temporary:
     # opening any capture device in this handoff-only test.
     app._record_current = lambda: records.append(True)
     app.connect("startup", lambda *_args: startups.append(app._auto_recording_held))
-    started, stage = time.monotonic(), 0
+    opened_file = LibraryWindow._opened_file
 
     def callback_error(kind, value, tb):
         errors.append(str(value))
@@ -60,29 +61,39 @@ with tempfile.TemporaryDirectory() as temporary:
 
     sys.excepthook = callback_error
 
-    def drive():
-        global stage
-        assert time.monotonic() - started < 8, "GApplication restart handoff stalled"
-        if stage == 0:
-            window = app.get_active_window()
-            if window is None or window.meeting_page is None:
-                return True
-            assert window.meeting_page.meeting.directory == meeting.directory
-            assert records == [True] and startups == [True]
-            assert not app._resume_record and not app._resume_background and not app._resume_automatic
-            app.activate()  # A later grid activation must not repeat Record.
-            assert records == [True]
-            window.close()  # No Watch poll has run, but automatic intent keeps us alive.
-            stage = 1
-            return True
+    def check_background():
         assert not app.get_windows() and app._auto_recording_held and not app._quitting
         completed.append(True)
         app.finish_quit()
-        return False
+        return GLib.SOURCE_REMOVE
 
-    GLib.timeout_add(20, drive)
+    def check_open(window):
+        assert window.meeting_page and window.meeting_page.meeting.directory == meeting.directory
+        assert records == [True] and startups == [True], "Open must consume the single Record intent"
+        assert not app._resume_record and not app._resume_background and not app._resume_automatic
+        app.activate()  # A later grid activation must not repeat Record.
+        assert records == [True]
+        app.connect("window-removed", lambda *_: GLib.idle_add(check_background))
+        window.close()  # Automatic intent must keep the windowless app alive.
+        return GLib.SOURCE_REMOVE
+
+    def observe_open(window, future, file):
+        result = opened_file(window, future, file)
+        GLib.idle_add(check_open, window)
+        return result
+
+    def watchdog(*_args):
+        raise AssertionError("GApplication restart handoff did not complete")
+
+    guard = GLib.timeout_source_new_seconds(18)
+    guard.set_callback(watchdog)
+    guard.attach(GLib.MainContext.default())
     # File arguments make GApplication call Open rather than Activate.
-    result = app.run([sys.argv[0], str(meeting.directory)])
+    try:
+        with patch.object(LibraryWindow, "_opened_file", observe_open):
+            result = app.run([sys.argv[0], str(meeting.directory)])
+    finally:
+        guard.destroy()
     assert result == 0 and completed and not errors
     assert records == [True] and not app._auto_recording_held
 print("PASS actual Open handoff: files + Record once; automatic held at startup and after immediate window close")

@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import time
-
+from durable import Finished
 from test_library import ROOT, capture, fingerprint
 
 from cassini_talk.open_meeting import load_open_meeting
@@ -18,15 +17,13 @@ def test_external_folder_is_read_only_and_queue_enforces_library_boundary(tmp_pa
     )
     assert meeting.has_audio and not meeting.metadata_editable and not meeting.can_write_down
     assert meeting.lifecycle == "saved", "an outside copy must not inherit a Library capture's live state"
-    finished = []
-    queue = TranscriptionQueue(lambda _: None, finished.append, bundle=tmp_path)
+    finished = Finished()
+    queue = TranscriptionQueue(lambda _: None, finished, bundle=tmp_path)
     try:
         assert queue.enqueue(session.directory)
-        deadline = time.monotonic() + 3
-        while not finished and time.monotonic() < deadline:
-            time.sleep(0.005)
+        finished.wait(exactly=True)
         assert finished == [session.directory]
-        assert fingerprint(session.directory) == before
+        assert fingerprint(session.directory) == before, "Transcription wrote to an external folder"
         assert not (session.directory / "meeting.json").exists()
     finally:
         queue.close()
