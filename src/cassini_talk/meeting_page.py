@@ -7,8 +7,12 @@ from decimal import Decimal
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
 
 from . import ux_formats as fmt
+from .exact_transcript import ExactTranscript
 from .i18n import language, using_language
 from .inline_line import InlineLine
+from .listening_bar import ListeningBar
+from .listening_shortcuts import ListeningShortcuts
+from .listening_timeline import ListeningTimeline
 from .markup_runs import bridge_link_spaces
 from .meeting_text import (
     COLOURS,
@@ -22,6 +26,8 @@ from .meeting_text import (
     speaking_shares,
 )
 from .strings import plural, text
+from .transcript_label import TranscriptLabel
+from .transcript_row import ExactTurnRow
 
 
 def box(spacing=0, **kwargs):
@@ -158,8 +164,6 @@ class MeetingPage(Adw.NavigationPage):
         self.store = Gio.ListStore.new(TurnItem)
         self._exact = os.environ.get("CASSINI_TRANSCRIPT_RENDER") != "listview"
         if self._exact:
-            from .exact_transcript import ExactTranscript
-
             self.list = ExactTranscript(self)
         else:
             factory = Gtk.SignalListItemFactory()
@@ -210,8 +214,6 @@ class MeetingPage(Adw.NavigationPage):
         self._companion.set_margin_start(48)
         self._companion.set_margin_end(48)
         center.insert_child_after(self._companion, self.lines)
-        from .listening_bar import ListeningBar
-
         self._listen_origin = None
         self.speakers.connect("map", self._schedule_rows_ready)
         self._merge_transition = None
@@ -235,8 +237,6 @@ class MeetingPage(Adw.NavigationPage):
             window.listen.connect(signal, self._listening_changed) for signal in ("changed", "stopped")
         ]
         self._listen_signals.append(window.listen.connect("requested", self._listening_requested))
-        from .listening_shortcuts import ListeningShortcuts
-
         self.listening_keys = ListeningShortcuts(self)
         self.update(meeting)
         self._position()
@@ -336,8 +336,6 @@ class MeetingPage(Adw.NavigationPage):
         self.seek.set_hexpand(True)
         self.seek.update_property([Gtk.AccessibleProperty.LABEL], [text("player.a11y")])
         self.seek.connect("change-value", self._seek)
-        from .listening_timeline import ListeningTimeline
-
         self.timeline = ListeningTimeline(self, self.seek)
         bar.append(self.timeline)
         self.total = label(fmt.position(self.meeting.duration_ms or 0), "small", "dim-label")
@@ -428,12 +426,7 @@ class MeetingPage(Adw.NavigationPage):
         item.set_child(self._build_row(turn))
 
     def _build_row(self, turn, *, register=True):
-        if self._exact:
-            from .transcript_row import ExactTurnRow
-
-            row = ExactTurnRow()
-        else:
-            row = Gtk.Box(spacing=16, margin_bottom=24)
+        row = ExactTurnRow() if self._exact else Gtk.Box(spacing=16, margin_bottom=24)
         row._turn = turn
         names = box(5, width_request=120, valign=Gtk.Align.START)
         caption = label("", "heading", xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=16)
@@ -459,12 +452,7 @@ class MeetingPage(Adw.NavigationPage):
         )
         time.connect("clicked", lambda *_: self.play_from(turn.start_ms))
         names.append(time)
-        if self._exact:
-            from .transcript_label import TranscriptLabel
-
-            label_type = TranscriptLabel
-        else:
-            label_type = Gtk.Label
+        label_type = TranscriptLabel if self._exact else Gtk.Label
         words = label_type(
             xalign=0,
             yalign=0,

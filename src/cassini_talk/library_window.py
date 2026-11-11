@@ -17,6 +17,7 @@ from .i18n import gettext as _
 from .library import LibrarySnapshot, _sort, meeting_id
 from .library_monitor import LibraryMonitor
 from .listen import ListenController
+from .meeting_page import MeetingPage
 from .meeting_text import row_caption
 from .player import Player
 from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
@@ -1398,9 +1399,6 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.open_meeting(self.selected)
 
     def open_meeting(self, meeting, *, external=False):
-        from .meeting_page import MeetingPage
-        from .recording_page import RecordingPage
-
         if (
             self.recording_page
             and self.recording_page.meeting.key == meeting.key
@@ -1412,6 +1410,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._stop_playback()
         self._external_meeting = external
         if meeting.lifecycle in ("recording", "saving"):
+            from .recording_page import RecordingPage
+
             self.recording_page = RecordingPage(self, meeting)
             self.navigation.push(self.recording_page)
             self._refresh_export()
