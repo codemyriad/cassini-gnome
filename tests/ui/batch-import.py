@@ -282,6 +282,37 @@ with tempfile.TemporaryDirectory() as temporary:
 
     window._activity = {}
     live_session.finish()
+    window.monitor.refresh_now()
+    until(lambda: len(window.snapshot.meetings) == 5 and all(m.lifecycle == "saved" for m in window.snapshot.meetings))
+
+    # Single-file Open shares the serial cassini-import queue with batch/ZIP imports and never duplicates.
+    fourth = tmp / "Fourth English meeting.opus"
+    fifth = tmp / "Fifth English meeting.opus"
+    for target, label in [(fourth, "Fourth synthetic meeting"), (fifth, "Fifth synthetic meeting")]:
+        with two.open("rb") as incoming, target.open("wb") as outgoing:
+            rewrite_tags(incoming, outgoing, dict(tags, TITLE=label, COMMENT=label))
+    fourth_archive = tmp / "Fourth archive.zip"
+    with zipfile.ZipFile(fourth_archive, "w", compression=zipfile.ZIP_STORED) as output:
+        output.writestr("Fourth.opus", fourth.read_bytes())
+    entered.clear()
+    release.clear()
+    scanned.clear()
+    with patch.object(archive_import, "preflight", held_preflight):
+        window.open_files([Gio.File.new_for_path(str(fifth)), Gio.File.new_for_path(str(fourth_archive))])
+        try:
+            until(entered.is_set)
+            # Trigger single-file Open while the batch holds window._import_executor.
+            window.open_files([Gio.File.new_for_path(str(fourth))])
+            assert window._opening_files == 2
+            with patch.object(window.monitor.scanner, "scan", observed_scan):
+                window.monitor.refresh_now()
+                until(scanned.is_set)
+            # Only third + fifth + initial two (= 4) Received folders are on disk so far; single-file fourth is queued.
+            assert len(list(root.glob("Received-*"))) == 4
+        finally:
+            release.set()
+        until(lambda: not window._opening_files and not window._pending_selection)
+    assert len(window.snapshot.meetings) == 7 and len(list(root.glob("Received-*"))) == 5
     window.close()
     app.comfort.close()
 print("PASS D96 picker batching, actual ZIP import/export, Trash pruning, independent monitor and cancellation")

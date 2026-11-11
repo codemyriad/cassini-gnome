@@ -51,6 +51,8 @@ def test_entry_naming_and_case_insensitive_collision_deduplication():
     assert unique_entry_name("BUDGET REVIEW", seen) == "BUDGET REVIEW 3.opus"
     assert unique_entry_name("10:30 Standup", seen) == "10:30 Standup.opus"
     assert unique_entry_name("C: Quarterly Plan", seen) == "C- Quarterly Plan.opus"
+    assert unique_entry_name(". .C: ._Quarterly Plan", seen) == "C- ._Quarterly Plan.opus"
+    assert unique_entry_name(". ._SidecarLike", seen) == "_SidecarLike.opus"
     assert unique_entry_name("..hidden/path\\name\n", seen) == "hidden-path-name-.opus"
     assert unique_entry_name("...", seen) == "Untitled meeting.opus"
     assert unique_entry_name("", seen) == "Untitled meeting 2.opus"

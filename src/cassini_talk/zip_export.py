@@ -42,12 +42,21 @@ def exportable_meetings(snapshot, *, trash=None):
 
 
 def entry_stem(title):
-    stem = file_stem(title or "").lstrip(".").strip() or "Untitled meeting"
-    if len(stem) >= 2 and stem[0].isascii() and stem[0].isalpha() and stem[1] == ":":
-        stem = stem[0] + "-" + stem[2:]
+    stem = file_stem(title or "")
+    while True:
+        cleaned = stem.lstrip(". ").rstrip()
+        if len(cleaned) >= 2 and cleaned[0].isascii() and cleaned[0].isalpha() and cleaned[1] == ":":
+            cleaned = cleaned[0] + "-" + cleaned[2:]
+        if cleaned == stem:
+            break
+        stem = cleaned
+    stem = stem or "Untitled meeting"
     while len(stem.encode("utf-8")) > 230:
         stem = stem[:-1]
-    return stem.strip() or "Untitled meeting"
+    stem = stem.lstrip(". ").rstrip() or "Untitled meeting"
+    if len(stem) >= 2 and stem[0].isascii() and stem[0].isalpha() and stem[1] == ":":
+        stem = stem[0] + "-" + stem[2:]
+    return stem.lstrip(". ").rstrip() or "Untitled meeting"
 
 
 def unique_entry_name(title, seen, suffix="opus"):
@@ -78,11 +87,20 @@ def _can_copy_verbatim(meeting, embedded):
     metadata = meeting.metadata or {}
     if metadata.get("title") is not None or metadata.get("titleSource") not in (None, "meeting-window"):
         return False
-    if metadata.get("speakers") or metadata.get("speakerMerges") or metadata.get("quoteOverride") is not None:
+    if (
+        metadata.get("speakers")
+        or metadata.get("speakerMerges")
+        or metadata.get("turnGaps")
+        or metadata.get("silentTracks")
+        or metadata.get("quoteOverride") is not None
+    ):
         return False
     reference = (metadata.get("transcript") or {}).get("reference")
-    if reference is not None and reference.get("kind") != "embedded":
-        return False
+    if reference is not None:
+        if reference.get("kind") != "embedded":
+            return False
+        if reference.get("transcriptId", embedded.default_transcript_id) != embedded.default_transcript_id:
+            return False
     if embedded.state == portable.State.PLAIN_AUDIO:
         return not meeting.notes and reference is None
     if embedded.state in (portable.State.UNVERIFIED, portable.State.OK):

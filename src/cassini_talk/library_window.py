@@ -58,6 +58,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.rename_dialog = None
         self._pending_selection = None
         self._opening_files = 0
+        self._import_cancels = set()
         self._import_dialogs = set()
         self._import_executor = None
         self._list_signature = None
@@ -1531,9 +1532,20 @@ class LibraryWindow(Adw.ApplicationWindow):
 
         self.set_title(self.meeting_page.meeting.title if self.meeting_page else text("app.name"))
 
-    def open_files(self, files):
-        from concurrent.futures import ThreadPoolExecutor
+    @staticmethod
+    def _is_folder_open_path(path):
+        return path is not None and (
+            path.name == "session.json" or (not path.suffix and path.name.startswith(("Recording-", "Received-")))
+        )
 
+    def _ensure_import_executor(self):
+        if getattr(self, "_import_executor", None) is None:
+            from concurrent.futures import ThreadPoolExecutor
+
+            self._import_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-import")
+        return self._import_executor
+
+    def open_files(self, files):
         from .import_dialog import ImportDialog
 
         files = tuple(files)
@@ -1542,27 +1554,22 @@ class LibraryWindow(Adw.ApplicationWindow):
         imports = []
         for file in files:
             path = Path(file.get_path()) if file.get_path() else None
-            if path is not None and (
-                path.name == "session.json" or not path.suffix and path.name.startswith(("Recording-", "Received-"))
-            ):
+            if LibraryWindow._is_folder_open_path(path):
                 self.open_file(file)
             else:
                 imports.append(str(path) if path else None)
         if imports:
-            if self._import_executor is None:
-                self._import_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-import")
+            self._ensure_import_executor()
             ImportDialog(self, tuple(imports))
 
     def open_file(self, file):
-        path = file.get_path()
-        if path and Path(path).suffix.lower() == ".zip":
-            from concurrent.futures import ThreadPoolExecutor
-
+        raw_path = file.get_path()
+        path_hint = Path(raw_path) if raw_path else None
+        if path_hint is not None and path_hint.suffix.lower() == ".zip":
             from .import_dialog import ImportDialog
 
-            if self._import_executor is None:
-                self._import_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-import")
-            return ImportDialog(self, (path,))
+            self._ensure_import_executor()
+            return ImportDialog(self, (raw_path,))
         from .open_meeting import load_open_meeting
         from .received import import_received
 
@@ -1573,21 +1580,42 @@ class LibraryWindow(Adw.ApplicationWindow):
                 path, self.monitor.scanner.root, scanner=self.monitor.scanner, capture_activity=activity
             )
 
-        def opened():
+        if LibraryWindow._is_folder_open_path(path_hint):
+
+            def opened_folder():
+                return load(Path(file.get_path())), False
+
+            self._opening_files += 1
+            future = self.monitor._executor.submit(opened_folder)
+            future.add_done_callback(lambda f: GLib.idle_add(self._opened_file, f, file))
+            return
+
+        from threading import Event
+
+        cancel = Event()
+        cancels = getattr(self, "_import_cancels", None)
+        if cancels is not None:
+            cancels.add(cancel)
+
+        def opened_import():
             if not file.get_path():
                 raise ValueError("The recording is not available as a local file")
             path = Path(file.get_path())
-            if path.is_dir() or path.name == "session.json":
-                return load(path), False
-            imported = import_received(path)
-            return load(imported.directory), True
+            if path.is_dir():
+                return self.monitor._executor.submit(lambda: (load(path), False)).result()
+            return import_received(path, cancel=cancel), True
 
         self._opening_files += 1
-        future = self.monitor._executor.submit(opened)
-        future.add_done_callback(lambda f: GLib.idle_add(self._opened_file, f, file))
+        future = self._ensure_import_executor().submit(opened_import)
+        future.add_done_callback(lambda f: GLib.idle_add(self._opened_file, f, file, cancel))
 
-    def _opened_file(self, future, file):
+    def _opened_file(self, future, file, cancel=None):
+        from concurrent.futures import CancelledError
+
         self._opening_files -= 1
+        cancels = getattr(self, "_import_cancels", None)
+        if cancels is not None and cancel is not None:
+            cancels.discard(cancel)
         if self.monitor._closed:
             return False
         try:
@@ -1609,6 +1637,8 @@ class LibraryWindow(Adw.ApplicationWindow):
                     self.monitor.watch_meeting(meeting.directory)
                     self._library_loaded(meeting)
                 self.open_meeting(meeting, external=not watched)
+        except CancelledError:
+            return False
         except (OSError, ValueError) as error:
             # Import failed: retain the Library and show its diagnostic. Opening
             # the readable header in the legacy player would disguise a failed
@@ -1663,6 +1693,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._spectro_handlers.clear()
         self.listen.stop()
         self.player.shutdown()
+        for cancel in tuple(self._import_cancels):
+            cancel.set()
         for dialog in tuple(self._import_dialogs):
             dialog.cancel()
         if self._import_executor is not None:

@@ -670,8 +670,86 @@ def test_local_vs_central_flag_differences_are_tolerated_while_unsafe_local_name
     res = batch_import.import_files([path], tmp_path / "LibFlags")
     assert res.imported == 2 and res.failed == 0
 
-    # Unsafe Info-ZIP Unicode Path extra (0x7075) in central header refuses archive as unsafe.
+    # Reverse UTF-8 mismatch: CP437 bytes (e.g. Caf\x82.opus) with central flags=0 and local flags=0x800,
+    # plus mixed-encoding entry (central CP437 flags=0, local UTF-8 flags=0x800 for same name).
     import zlib
+
+    def raw_zip_entry(local_name, local_flags, central_name, central_flags, payload, offset):
+        crc = zlib.crc32(payload) & 0xFFFFFFFF
+        lh = (
+            struct.pack(
+                "<4s5H3L2H",
+                b"PK\x03\x04",
+                20,
+                local_flags,
+                0,
+                0,
+                0,
+                crc,
+                len(payload),
+                len(payload),
+                len(local_name),
+                0,
+            )
+            + local_name
+            + payload
+        )
+        ch = (
+            struct.pack(
+                "<4s6H3L5H2L",
+                b"PK\x01\x02",
+                20,
+                20,
+                central_flags,
+                0,
+                0,
+                0,
+                crc,
+                len(payload),
+                len(payload),
+                len(central_name),
+                0,
+                0,
+                0,
+                0,
+                0,
+                offset,
+            )
+            + central_name
+        )
+        return lh, ch
+
+    cp437_cafe = "Café.opus".encode("cp437")
+    assert cp437_cafe == b"Caf\x82.opus"
+    lh1, ch1 = raw_zip_entry(cp437_cafe, 0x0800, cp437_cafe, 0x0000, ONE.read_bytes(), 0)
+    lh2, ch2 = raw_zip_entry(
+        "Réunion.opus".encode(),
+        0x0800,
+        "Réunion.opus".encode("cp437"),
+        0x0000,
+        TWO.read_bytes(),
+        len(lh1),
+    )
+    cd_off = len(lh1) + len(lh2)
+    eocd = struct.pack("<4s4H2LH", b"PK\x05\x06", 0, 0, 2, 2, len(ch1) + len(ch2), cd_off, 0)
+    rev_path = tmp_path / "ReverseFlags.zip"
+    rev_path.write_bytes(lh1 + lh2 + ch1 + ch2 + eocd)
+    rev_root = tmp_path / "LibRevFlags"
+    rev_res = batch_import.import_files([rev_path], rev_root)
+    assert rev_res.imported == 2 and rev_res.failed == 0
+    assert {json.loads((p / "meeting.json").read_text())["received"]["originalName"] for p in documents(rev_root)} == {
+        "Café.opus",
+        "Réunion.opus",
+    }
+
+    # Unsafe CP437 local path with local_flags=0x800 must still be refused as unsafe.
+    bad_lh, bad_ch = raw_zip_entry(b"..\\Caf\x82.opus", 0x0800, b"Safe.opus", 0x0000, ONE.read_bytes(), 0)
+    bad_eocd = struct.pack("<4s4H2LH", b"PK\x05\x06", 0, 0, 1, 1, len(bad_ch), len(bad_lh), 0)
+    bad_rev = tmp_path / "UnsafeRev.zip"
+    bad_rev.write_bytes(bad_lh + bad_ch + bad_eocd)
+    assert batch_import.import_files([bad_rev], tmp_path / "LibUnsafeRev").errors == [("UnsafeRev.zip", "unsafe")]
+
+    # Unsafe Info-ZIP Unicode Path extra (0x7075) in central header refuses archive as unsafe.
 
     unsafe_unicode = zip_file(tmp_path / "UnicodeEscape.zip", [("Safe.opus", ONE.read_bytes())])
     raw_u = bytearray(unsafe_unicode.read_bytes())
@@ -837,3 +915,93 @@ def test_padded_compress_size_bomb_and_second_member_runtime_limit_refuse_and_ro
     assert res.imported == 0 and res.failed == 1
     assert res.errors == [("PaddedBomb.zip", "limit")]
     assert [d.name for d in documents(root)] == [existing.directory.name]
+
+    # Event-gated overlap: while member 1 is staged and before member 2 triggers runtime limit rollback,
+    # a concurrent single-file import of the identical recording must succeed and survive rollback.
+    overlap_root = tmp_path / "LibOverlapRollback"
+    first_staged, release_bomb = threading.Event(), threading.Event()
+    archive_outcome = []
+
+    def gated_progress(state):
+        if state.imported == 1 and not first_staged.is_set():
+            first_staged.set()
+            assert release_bomb.wait(30), "overlap gate timed out"
+
+    worker = threading.Thread(
+        target=lambda: archive_outcome.append(
+            batch_import.import_files([archive_path], overlap_root, progress=gated_progress)
+        )
+    )
+    worker.start()
+    try:
+        assert first_staged.wait(30), "first archive member was never staged"
+        assert documents(overlap_root) == [], "uncommitted archive member became visible before validation completed"
+        standalone = received.import_received(ONE, overlap_root)
+        assert [d.name for d in documents(overlap_root)] == [standalone.directory.name]
+    finally:
+        release_bomb.set()
+        worker.join(30)
+    assert len(archive_outcome) == 1
+    assert archive_outcome[0].imported == 0 and archive_outcome[0].failed == 1
+    assert archive_outcome[0].errors == [("PaddedBomb.zip", "limit")]
+    assert [d.name for d in documents(overlap_root)] == [standalone.directory.name]
+    assert (standalone.directory / "001-minimal-v1.opus").read_bytes() == ONE.read_bytes()
+    assert not list(overlap_root.glob(".received-*"))
+
+
+def test_concurrent_imports_update_digest_cache_and_deduplicate_on_archive_commit(tmp_path):
+    # Case 1: Batch [ONE, TWO] paused after ONE; standalone import of TWO runs before batch continues to TWO.
+    root = tmp_path / "LibConcurrentBatch"
+    after_one, proceed_two = threading.Event(), threading.Event()
+    batch_results = []
+
+    def on_batch_progress(state):
+        if state.imported == 1 and not after_one.is_set():
+            after_one.set()
+            assert proceed_two.wait(30), "batch gate timed out"
+
+    t_batch = threading.Thread(
+        target=lambda: batch_results.append(batch_import.import_files([ONE, TWO], root, progress=on_batch_progress))
+    )
+    t_batch.start()
+    try:
+        assert after_one.wait(30), "batch did not finish first item"
+        standalone_two = received.import_received(TWO, root)
+        assert standalone_two.directory.exists()
+    finally:
+        proceed_two.set()
+        t_batch.join(30)
+    assert len(batch_results) == 1
+    assert (batch_results[0].imported, batch_results[0].duplicates, batch_results[0].failed) == (1, 1, 0)
+    assert len(documents(root)) == 2
+    assert batch_results[0].last_key == standalone_two.key
+
+    # Case 2: Valid archive [ONE, TWO] paused after staging ONE; standalone import of ONE runs before archive commits.
+    valid_zip = zip_file(
+        tmp_path / "ValidPair.zip", [("First.opus", ONE.read_bytes()), ("Second.opus", TWO.read_bytes())]
+    )
+    root_zip = tmp_path / "LibConcurrentZip"
+    staged_one, proceed_zip = threading.Event(), threading.Event()
+    zip_results = []
+
+    def on_zip_progress(state):
+        if state.imported == 1 and not staged_one.is_set():
+            staged_one.set()
+            assert proceed_zip.wait(30), "zip gate timed out"
+
+    t_zip = threading.Thread(
+        target=lambda: zip_results.append(batch_import.import_files([valid_zip], root_zip, progress=on_zip_progress))
+    )
+    t_zip.start()
+    try:
+        assert staged_one.wait(30), "archive did not stage first item"
+        assert documents(root_zip) == []
+        standalone_one = received.import_received(ONE, root_zip)
+        assert standalone_one.directory.exists()
+    finally:
+        proceed_zip.set()
+        t_zip.join(30)
+    assert len(zip_results) == 1
+    assert (zip_results[0].imported, zip_results[0].duplicates, zip_results[0].failed) == (1, 1, 0)
+    assert len(documents(root_zip)) == 2
+    assert not list(root_zip.glob(".received-*"))
