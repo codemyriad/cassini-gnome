@@ -17,6 +17,27 @@ dispatch_wait = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dispatch_wait)
 
 
+class _ObservedFuture(Future):
+    def __init__(self):
+        super().__init__()
+        self.wait_entered = threading.Event()
+
+    def exception(self, timeout=None):
+        self.wait_entered.set()
+        return super().exception(timeout=timeout)
+
+
+class _ObservedPool(ThreadPoolExecutor):
+    def __init__(self):
+        super().__init__(max_workers=1)
+        self.wait_entered = threading.Event()
+
+    def shutdown(self, wait=True, *, cancel_futures=False):
+        if wait:
+            self.wait_entered.set()
+        return super().shutdown(wait=wait, cancel_futures=cancel_futures)
+
+
 def _gated_writer(directory: Path, name: str):
     entered = threading.Event()
     release = threading.Event()
@@ -32,15 +53,13 @@ def _gated_writer(directory: Path, name: str):
     return entered, release, completed, write
 
 
-def test_drain_app_workers_waits_for_all_inflight_fixture_writers_before_tempdir_cleanup():
+def test_drain_app_workers_waits_for_each_worker_barrier_individually():
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
-        gates = []
 
-        def spawn_future(name: str) -> Future:
+        def spawn_future(name: str):
             entered, release, completed, write = _gated_writer(root, name)
-            gates.append((entered, release, completed))
-            future = Future()
+            future = _ObservedFuture()
 
             def run():
                 assert future.set_running_or_notify_cancel()
@@ -53,17 +72,16 @@ def test_drain_app_workers_waits_for_all_inflight_fixture_writers_before_tempdir
 
             threading.Thread(target=run, daemon=True).start()
             assert entered.wait(5)
-            return future
+            return future, release, completed
 
         def spawn_pool(name: str):
             entered, release, completed, write = _gated_writer(root, name)
-            gates.append((entered, release, completed))
-            pool = ThreadPoolExecutor(max_workers=1)
-            future = pool.submit(write)
+            pool = _ObservedPool()
+            pool.submit(write)
             assert entered.wait(5)
-            return pool, future
+            return pool, release, completed
 
-        setup_future = spawn_future("companion-setup.txt")
+        setup_future, setup_release, setup_done = spawn_future("companion-setup.txt")
         discarded = []
         setup_dialog = SimpleNamespace(
             closed=False,
@@ -71,7 +89,8 @@ def test_drain_app_workers_waits_for_all_inflight_fixture_writers_before_tempdir
             discard=lambda: discarded.append(True),
         )
 
-        settings_pool, settings_future = spawn_pool("settings.txt")
+        settings_pool, settings_pool_release, settings_pool_done = spawn_pool("settings-pool.txt")
+        settings_future, settings_future_release, settings_future_done = spawn_future("settings-future.txt")
         settings_closed = []
         settings_dialog = SimpleNamespace(
             closed=False,
@@ -81,8 +100,8 @@ def test_drain_app_workers_waits_for_all_inflight_fixture_writers_before_tempdir
             _closed=lambda: settings_closed.append("closed"),
         )
 
-        conn_future = spawn_future("browser-connection.txt")
-        health_future = spawn_future("browser-health.txt")
+        conn_future, conn_release, conn_done = spawn_future("browser-connection.txt")
+        health_future, health_release, health_done = spawn_future("browser-health.txt")
         conn_closed = []
         connection = SimpleNamespace(
             future=conn_future,
@@ -90,7 +109,8 @@ def test_drain_app_workers_waits_for_all_inflight_fixture_writers_before_tempdir
             close=lambda: conn_closed.append(True),
         )
 
-        watch_pool, watch_future = spawn_pool("browser-watch.txt")
+        watch_pool, watch_pool_release, watch_pool_done = spawn_pool("browser-watch-pool.txt")
+        watch_future, watch_future_release, watch_future_done = spawn_future("browser-watch-future.txt")
         watch_closed = []
         watch = SimpleNamespace(
             executor=watch_pool,
@@ -98,24 +118,29 @@ def test_drain_app_workers_waits_for_all_inflight_fixture_writers_before_tempdir
             close=lambda: watch_closed.append(True),
         )
 
-        pub_entered, pub_release, pub_completed, pub_write = _gated_writer(root, "publication.txt")
-        gates.append((pub_entered, pub_release, pub_completed))
+        monitor_pool, monitor_release, monitor_done = spawn_pool("monitor.txt")
+        activity_pool, activity_release, activity_done = spawn_pool("activity.txt")
+        search_pool, search_release, search_done = spawn_pool("search.txt")
+
+        pub_entered, pub_release, pub_done, pub_write = _gated_writer(root, "publication.txt")
         pub_future = library_publication._ENCODER.submit(pub_write)
         assert pub_entered.wait(5)
 
-        recovery_pool, _ = spawn_pool("recovery.txt")
-        trash_pool, _ = spawn_pool("trash.txt")
-        monitor_pool, _ = spawn_pool("monitor.txt")
-        activity_pool, _ = spawn_pool("activity.txt")
-        search_pool, _ = spawn_pool("search.txt")
-        service_pool, _ = spawn_pool("service-worker.txt")
+        recovery_pool, recovery_release, recovery_done = spawn_pool("recovery.txt")
+        trash_pool, trash_release, trash_done = spawn_pool("trash.txt")
+        service_pool, service_pool_release, service_pool_done = spawn_pool("service-worker.txt")
 
         service_closed = threading.Event()
+        service_release = threading.Event()
         service_exited = threading.Event()
-        service_thread = threading.Thread(
-            target=lambda: (assert_wait := service_closed.wait(5), service_exited.set(), assert_wait),
-            daemon=True,
-        )
+
+        def run_service():
+            assert service_closed.wait(5)
+            assert service_release.wait(5)
+            (root / "service-thread.txt").write_text("ok", encoding="utf-8")
+            service_exited.set()
+
+        service_thread = threading.Thread(target=run_service, daemon=True)
         service_thread.start()
         service = SimpleNamespace(closed=service_closed, workers=service_pool)
 
@@ -163,18 +188,81 @@ def test_drain_app_workers_waits_for_all_inflight_fixture_writers_before_tempdir
         drainer = threading.Thread(target=run_drain, daemon=True)
         drainer.start()
 
-        # Drain must block while writers are still in flight, then finish cleanly once released.
-        assert not drain_done.is_set()
-        for _, release, _ in gates:
-            release.set()
+        # Verify each sequential barrier blocks the drainer before advancing to the next stage.
+        steps = [
+            (setup_future.wait_entered, settings_pool.wait_entered, setup_release, setup_done),
+            (settings_pool.wait_entered, settings_future.wait_entered, settings_pool_release, settings_pool_done),
+            (settings_future.wait_entered, conn_future.wait_entered, settings_future_release, settings_future_done),
+            (conn_future.wait_entered, health_future.wait_entered, conn_release, conn_done),
+            (health_future.wait_entered, watch_pool.wait_entered, health_release, health_done),
+            (watch_pool.wait_entered, watch_future.wait_entered, watch_pool_release, watch_pool_done),
+            (watch_future.wait_entered, monitor_pool.wait_entered, watch_future_release, watch_future_done),
+            (monitor_pool.wait_entered, activity_pool.wait_entered, monitor_release, monitor_done),
+            (activity_pool.wait_entered, search_pool.wait_entered, activity_release, activity_done),
+        ]
+        try:
+            for current_entered, next_entered, release, completed in steps:
+                assert current_entered.wait(5)
+                assert not next_entered.is_set()
+                assert not drain_done.is_set()
+                release.set()
+                assert completed.wait(5)
 
-        drainer.join(5)
-        assert drain_done.is_set()
-        assert not drain_errors, drain_errors
-        assert discarded == [True]
-        assert settings_closed == ["force", "closed"]
-        assert conn_closed == [True]
-        assert watch_closed == [True]
-        assert pub_future.done()
-        assert service_exited.is_set()
-        assert all(completed.is_set() for _, _, completed in gates)
+            assert search_pool.wait_entered.wait(5)
+            assert not recovery_pool.wait_entered.is_set()
+            search_release.set()
+            assert search_done.wait(5)
+
+            # After search_pool finishes, drainer must block on library_publication._ENCODER before recovery_pool.
+            assert not recovery_pool.wait_entered.is_set()
+            assert not drain_done.is_set()
+            pub_release.set()
+            assert pub_done.wait(5)
+
+            assert recovery_pool.wait_entered.wait(5)
+            assert not trash_pool.wait_entered.is_set()
+            recovery_release.set()
+            assert recovery_done.wait(5)
+
+            assert trash_pool.wait_entered.wait(5)
+            assert not service_closed.is_set()
+            trash_release.set()
+            assert trash_done.wait(5)
+
+            assert service_closed.wait(5)
+            assert not service_pool.wait_entered.is_set()
+            service_release.set()
+            assert service_exited.wait(5)
+
+            assert service_pool.wait_entered.wait(5)
+            assert not drain_done.is_set()
+            service_pool_release.set()
+            assert service_pool_done.wait(5)
+
+            drainer.join(5)
+            assert drain_done.is_set()
+            assert not drain_errors, drain_errors
+            assert discarded == [True]
+            assert settings_closed == ["force", "closed"]
+            assert conn_closed == [True]
+            assert watch_closed == [True]
+            assert pub_future.done()
+        finally:
+            for gate in (
+                setup_release,
+                settings_pool_release,
+                settings_future_release,
+                conn_release,
+                health_release,
+                watch_pool_release,
+                watch_future_release,
+                monitor_release,
+                activity_release,
+                search_release,
+                pub_release,
+                recovery_release,
+                trash_release,
+                service_release,
+                service_pool_release,
+            ):
+                gate.set()

@@ -32,7 +32,7 @@ def child():
         Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource"))
     )
     from dispatch_wait import drain_app_workers
-    from progress_wait import until_progress
+    from progress_wait import until_context_progress
 
     from cassini_talk.folder_player import FolderPlayer
     from cassini_talk.library_window import LibraryWindow
@@ -49,39 +49,17 @@ def child():
     search_pages = []
 
     def until(check):
-        context = GLib.MainContext.default()
-        guard = None
-        observed = None
-
-        def rearm():
-            nonlocal guard, observed
-            current = len(events)
-            if guard is not None and current == observed:
-                return
-            if guard is not None:
-                guard.destroy()
-            observed = current
-            guard = GLib.timeout_source_new_seconds(55)
-            guard.set_callback(lambda *_: GLib.SOURCE_REMOVE)
-            guard.attach(context)
-
-        def dispatch():
-            rearm()
-            context.iteration(True)
-
-        try:
-            until_progress(
-                check,
-                progress=lambda: len(events),
-                dispatch=dispatch,
-                diagnostics=lambda: (
-                    f"events[-1]={events[-1] if events else None}; "
-                    f"playing={window.player.playing}; position={window.player.position}"
-                ),
-            )
-        finally:
-            if guard is not None:
-                guard.destroy()
+        until_context_progress(
+            check,
+            context=GLib.MainContext.default(),
+            timeout_source_ms=GLib.timeout_source_new,
+            source_remove=GLib.SOURCE_REMOVE,
+            progress=lambda: len(events),
+            diagnostics=lambda: (
+                f"events[-1]={events[-1] if events else None}; "
+                f"playing={window.player.playing}; position={window.player.position}"
+            ),
+        )
 
     with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as cleanup:
         app = window = None
