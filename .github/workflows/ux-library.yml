@@ -6,7 +6,7 @@ permissions:
   contents: read
 jobs:
   golden-vectors-and-reader:
-    runs-on: ubuntu-26.04
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
