@@ -13,6 +13,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from . import portable
+from .export_audio import check_cancel
 from .library import LibraryScanner, library_root
 from .library_schema import valid
 from .meeting_store import atomic_json, read_metadata
@@ -21,9 +22,18 @@ from .open_meeting import load_open_meeting
 IMPORT_LOCK = threading.Lock()
 
 
-def sha256_file(path):
+def sha256_file(path, cancel=None):
+    digest = hashlib.sha256()
     with regular_input(path) as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+        remaining = os.fstat(stream.fileno()).st_size
+        while remaining:
+            check_cancel(cancel)
+            block = stream.read(min(1024 * 1024, remaining))
+            if not block:
+                raise ValueError("Recording changed while being imported")
+            remaining -= len(block)
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def regular_input(path):
@@ -34,7 +44,13 @@ def regular_input(path):
     return os.fdopen(descriptor, "rb")
 
 
-def import_received(path, root=None):
+def import_received(path, root=None, *, cancel=None):
+    return import_one(path, root, cancel=cancel)[0]
+
+
+def import_one(path, root=None, *, cancel=None, expected_bytes=None, original_folder=None):
+    """Return (meeting, newly_imported), with chunk cancellation and exact-byte dedup."""
+    check_cancel(cancel)
     original = Path(path).absolute()
     if (
         original.suffix.lower() not in (".opus", ".ogg")
@@ -58,9 +74,20 @@ def import_received(path, root=None):
             copied = stage / copy_name
             with regular_input(original) as source, copied.open("xb") as output:
                 before = os.fstat(source.fileno())
+                if expected_bytes is not None and before.st_size != expected_bytes:
+                    raise ValueError("Recording changed while being imported")
+                written = 0
                 os.chmod(copied, 0o600)
                 digest = hashlib.sha256()
-                while block := source.read(1024 * 1024):
+                while written < before.st_size:
+                    check_cancel(cancel)
+                    block = source.read(min(1024 * 1024, before.st_size - written))
+                    if not block:
+                        raise ValueError("Recording changed while being imported")
+                    check_cancel(cancel)
+                    written += len(block)
+                    if expected_bytes is not None and written > expected_bytes:
+                        raise ValueError("Recording changed while being imported")
                     digest.update(block)
                     output.write(block)
                 after = os.fstat(source.fileno())
@@ -80,16 +107,18 @@ def import_received(path, root=None):
                 candidates.extend(current.iterdir() if current.exists() else ())
                 candidates.extend(Path(e["source"]) for e in state["pending"])
             for directory in dict.fromkeys(candidates):
+                check_cancel(cancel)
                 if directory.is_symlink() or not directory.is_dir() or not directory.name.startswith("Received-"):
                     continue
                 try:
                     value = read_metadata(directory)
                     received = value["received"]
                     current = directory / received["originalName"]
-                    if received["sha256"] == sha and not current.is_symlink() and sha256_file(current) == sha:
-                        return _meeting(directory)
+                    if received["sha256"] == sha and not current.is_symlink() and sha256_file(current, cancel) == sha:
+                        return _meeting(directory), False
                 except (OSError, ValueError, KeyError):
                     continue
+            check_cancel(cancel)
             opened = load_open_meeting(copied, root)
             if not opened.has_audio:
                 raise ValueError("The recording has no complete playable Opus stream")
@@ -115,7 +144,7 @@ def import_received(path, root=None):
                 quoteOverride=None,
                 received=dict(originalName=copy_name, importedAtMs=time.time_ns() // 1000000, sha256=sha),
             )
-            folder = original.parent.name
+            folder = original.parent.name if original_folder is None else original_folder
             if folder and folder not in (".", "..") and "\\" not in folder and len(folder) <= 255:
                 try:
                     folder.encode("utf-8")
@@ -131,9 +160,10 @@ def import_received(path, root=None):
             ):
                 raise ValueError("Received recording metadata exceeds limit")
             atomic_json(stage / "meeting.json", metadata)
-            published = _publish_import(stage, identifier, requested_root)
+            check_cancel(cancel)
+            published = _publish_import(stage, identifier, requested_root, cancel=cancel)
             try:
-                return _meeting(published)
+                return _meeting(published), True
             except BaseException:
                 # A failed first scan must not leave an invisible, undedupable
                 # Received folder behind. This UUID was created by this import.
@@ -148,7 +178,9 @@ def _meeting(directory):
     meeting = next(
         (
             m
-            for m in LibraryScanner(directory.parent).scan(changed_directories={directory}).meetings
+            for m in LibraryScanner(directory.parent, include_published=False)
+            .scan(changed_directories={directory})
+            .meetings
             if m.directory == directory
         ),
         None,
@@ -158,7 +190,7 @@ def _meeting(directory):
     return meeting
 
 
-def _publish_import(stage, identifier, root):
+def _publish_import(stage, identifier, root, *, cancel=None):
     from contextlib import nullcontext
 
     from .library_location import routing
@@ -167,12 +199,18 @@ def _publish_import(stage, identifier, root):
     current = stage
     try:
         while True:
+            check_cancel(cancel)
             target_root = library_root(root).resolve()
             target_root.mkdir(parents=True, exist_ok=True, mode=0o700)
             if current.parent != target_root:
                 replacement = Path(tempfile.mkdtemp(prefix=".received-", dir=target_root))
                 try:
-                    shutil.copytree(current, replacement, dirs_exist_ok=True, copy_function=_copy_file)
+                    shutil.copytree(
+                        current,
+                        replacement,
+                        dirs_exist_ok=True,
+                        copy_function=lambda source, target: _copy_file(source, target, cancelled=cancel),
+                    )
                 except BaseException:
                     shutil.rmtree(replacement)
                     raise
