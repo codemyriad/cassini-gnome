@@ -325,3 +325,90 @@ def test_flatpak_unbacked_destination_and_nonregular_source_rejected(tmp_path, m
     with pytest.raises((OSError, ValueError)):
         export_meetings_zip((replace(one, audio_file=symlink),), tmp_path / "Out")
     assert not list((tmp_path / "Out").iterdir())
+
+
+def test_untrusted_and_zero_word_states_preserve_original_or_seal_edits(tmp_path):
+    lib = tmp_path / "Library"
+    future_doc = import_received(OPUS / "015-unknown-major-version.opus", lib)
+    stale_doc = import_received(OPUS / "010-stale-audio.opus", lib)
+    broken_doc = import_received(OPUS / "006-missing-chunk.opus", lib)
+
+    # Build a true 0-word verified Cassini .opus document and import it into lib.
+    seed_lib = tmp_path / "SeedLibrary"
+    seed_plain = import_received(OPUS / "002-plain-audio.opus", seed_lib)
+    update_metadata(seed_plain.directory, title="Initial Silent Doc", titleSource="user")
+    seed_scanned = LibraryScanner(seed_lib).scan().meetings[0]
+    seed_zip = export_meetings_zip((seed_scanned,), tmp_path / "SeedOut")
+    seed_opus = tmp_path / "Initial Silent Doc.opus"
+    with zipfile.ZipFile(seed_zip) as zf:
+        seed_opus.write_bytes(zf.read("Initial Silent Doc.opus"))
+    zero_word_doc = import_received(seed_opus, lib)
+    assert zero_word_doc.transcript == "none"
+
+    # Unedited UNKNOWN_FORMAT, STALE_AUDIO, INVALID, and 0-word OK documents preserve exact bytes and deduplicate.
+    raw_archive = export_meetings_zip((future_doc, stale_doc, broken_doc, zero_word_doc), tmp_path / "RawOut")
+    with zipfile.ZipFile(raw_archive) as zf:
+        raw_shas = {hashlib.sha256(zf.read(info.filename)).hexdigest() for info in zf.infolist()}
+    assert raw_shas == {
+        hashlib.sha256((OPUS / "015-unknown-major-version.opus").read_bytes()).hexdigest(),
+        hashlib.sha256((OPUS / "010-stale-audio.opus").read_bytes()).hexdigest(),
+        hashlib.sha256((OPUS / "006-missing-chunk.opus").read_bytes()).hexdigest(),
+        hashlib.sha256(seed_opus.read_bytes()).hexdigest(),
+    }
+    dedup_result = batch_import.import_files([raw_archive], lib)
+    assert (dedup_result.imported, dedup_result.duplicates, dedup_result.failed, dedup_result.ignored) == (0, 4, 0, 0)
+
+    # Locally transcribing an INVALID document and renaming a 0-word OK document both seal verified OK documents.
+    atomic_json(
+        broken_doc.directory / "transcript.json",
+        dict(
+            format=portable.WORDS_FORMAT,
+            language="en",
+            items=[
+                dict(speaker="s1", startMs=0, endMs=40, text="Recovered"),
+                dict(speaker="s1", startMs=45, endMs=80, text="speech."),
+            ],
+        ),
+    )
+    update_metadata(
+        broken_doc.directory,
+        title="Recovered Meeting",
+        titleSource="user",
+        transcript=dict(status="done", reference=dict(REFERENCE)),
+        speakers=[dict(id="s1", name="Nadia", provenance="user", colourIndex=0)],
+    )
+    update_metadata(
+        zero_word_doc.directory,
+        title="Renamed Silent Meeting",
+        titleSource="user",
+    )
+
+    scanned = {m.directory: m for m in LibraryScanner(lib).scan().meetings}
+    sealed_archive = export_meetings_zip(
+        (scanned[broken_doc.directory], scanned[zero_word_doc.directory]),
+        tmp_path / "SealedOut",
+    )
+    extracted = tmp_path / "SealedExtracted"
+    extracted.mkdir()
+    with zipfile.ZipFile(sealed_archive) as zf:
+        by_name = {}
+        for info in zf.infolist():
+            assert info.compress_type == zipfile.ZIP_STORED
+            target = extracted / info.filename
+            target.write_bytes(zf.read(info.filename))
+            parsed = portable.read_meeting(str(target))
+            assert portable.verify_audio(str(target), parsed).state == portable.State.OK
+            by_name[info.filename] = parsed
+
+    recovered = by_name["Recovered Meeting.opus"]
+    assert [w.text for w in portable.load_words(recovered, recovered.default_transcript_id)] == [
+        "Recovered",
+        "speech.",
+    ]
+    assert any(s["label"] == "Nadia" for s in recovered.manifest["speakers"])
+
+    silent_renamed = by_name["Renamed Silent Meeting.opus"]
+    assert silent_renamed.manifest["meeting"]["title"] == "Renamed Silent Meeting"
+    assert silent_renamed.default_transcript_id is None or not portable.load_words(
+        silent_renamed, silent_renamed.default_transcript_id
+    )

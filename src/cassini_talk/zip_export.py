@@ -20,7 +20,7 @@ from .exporting import (
     write_cassini_opus,
 )
 from .portable_context import embedded_notes
-from .received import regular_input
+from .received import regular_input, sha256_file
 
 CHUNK = 1024 * 1024
 
@@ -101,9 +101,9 @@ def _can_copy_verbatim(meeting, embedded):
             return False
         if reference.get("transcriptId", embedded.default_transcript_id) != embedded.default_transcript_id:
             return False
-    if embedded.state == portable.State.PLAIN_AUDIO:
+    if embedded.state in (portable.State.PLAIN_AUDIO, portable.State.UNKNOWN_FORMAT, portable.State.INVALID):
         return not meeting.notes and reference is None
-    if embedded.state in (portable.State.UNVERIFIED, portable.State.OK):
+    if embedded.state in (portable.State.UNVERIFIED, portable.State.OK, portable.State.STALE_AUDIO):
         return tuple(meeting.notes) == tuple(embedded_notes(embedded))
     return False
 
@@ -164,14 +164,23 @@ def _stage_single_meeting(meeting, directory, max_bytes, *, tz=None, cancel=None
             with regular_input(meeting.audio_file):
                 pass
             embedded = portable.read_meeting(str(meeting.audio_file))
-            if _can_copy_verbatim(meeting, embedded) and (
-                embedded.state == portable.State.PLAIN_AUDIO
-                or portable.verify_audio(
-                    str(meeting.audio_file), embedded, cancelled=lambda: bool(cancel and cancel.is_set())
-                ).state
-                == portable.State.OK
-            ):
-                verbatim = True
+            if _can_copy_verbatim(meeting, embedded):
+                transcript_meta = (meeting.metadata or {}).get("transcript") or {}
+                if (
+                    embedded.state in (portable.State.UNVERIFIED, portable.State.OK)
+                    and transcript_meta.get("status") != "damaged"
+                ):
+                    verbatim = (
+                        portable.verify_audio(
+                            str(meeting.audio_file),
+                            embedded,
+                            cancelled=lambda: bool(cancel and cancel.is_set()),
+                        ).state
+                        == portable.State.OK
+                    )
+                else:
+                    received_sha = ((meeting.metadata or {}).get("received") or {}).get("sha256")
+                    verbatim = received_sha is None or sha256_file(meeting.audio_file, cancel=cancel) == received_sha
         with os.fdopen(fd, "wb") as output:
             fd = None
             if verbatim:
