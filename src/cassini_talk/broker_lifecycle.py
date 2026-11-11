@@ -21,7 +21,7 @@ LOG = logging.getLogger(__name__)
 
 
 @contextlib.contextmanager
-def handover(path, cancelled=None):
+def handover(path, cancelled=None, *, clock=time.monotonic):
     """Serialize clients across retirement, lock release and replacement readiness."""
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if path.parent.stat().st_uid != os.getuid() or path.parent.stat().st_mode & 0o077:
@@ -32,7 +32,7 @@ def handover(path, cancelled=None):
     try:
         if os.fstat(descriptor).st_uid != os.getuid() or not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise PermissionError("Browser startup lock must be an owned regular file")
-        deadline = time.monotonic() + 15
+        deadline = clock() + 15
         while True:
             if cancelled is not None and cancelled.is_set():
                 raise CancelledError()
@@ -40,7 +40,7 @@ def handover(path, cancelled=None):
                 fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
-                if time.monotonic() >= deadline:
+                if clock() >= deadline:
                     raise TimeoutError("Browser service handover is still in progress") from None
                 (cancelled or threading.Event()).wait(0.025)
         yield
@@ -100,8 +100,8 @@ def _legacy_process(pid, uid, path):
         return False
 
 
-def _released(path, cancelled):
-    deadline = time.monotonic() + 5
+def _released(path, cancelled, *, clock=time.monotonic):
+    deadline = clock() + 5
     from .installed_build import _open_regular
 
     try:
@@ -117,7 +117,7 @@ def _released(path, cancelled):
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                if time.monotonic() >= deadline:
+                if clock() >= deadline:
                     raise TimeoutError("The older browser service has not finished closing") from None
                 # A filesystem lock has no notification fd. Bound this worker
                 # wait, and let a cancelled watcher interrupt it immediately.
@@ -127,39 +127,40 @@ def _released(path, cancelled):
                 return
 
 
-def _await_peer_close(connection, cancelled):
+def _await_peer_close(connection, cancelled, *, clock=time.monotonic):
     """Wait boundedly for a one-shot status peer to finish flushing and close its stream.
 
-    Closing our client socket and sending SIGINT while a legacy broker is still returning
-    from SocketIO.write() inside BufferedRandom.flush() raises KeyboardInterrupt before the
-    write buffer advances; unwinding `with connection.makefile("rwb")` then flushes onto the
-    closed socket and terminates the retiring broker with BrokenPipeError (exit status 1).
+    Returns True when peer EOF (or socket reset) is observed, False when the 0.5 s bound
+    expires with the peer stream still open. Keeping `connection` open across retirement
+    signalling and `_released` ensures that even on the timeout path, a legacy broker
+    unwinding `with connection.makefile("rwb")` after SIGINT flushes into an open peer
+    instead of failing with BrokenPipeError (exit status 1).
     """
-    deadline = time.monotonic() + 0.5
+    deadline = clock() + 0.5
     while True:
         if cancelled is not None and cancelled.is_set():
             raise CancelledError()
-        remaining = deadline - time.monotonic()
+        remaining = deadline - clock()
         if remaining <= 0:
-            return
+            return False
         connection.settimeout(min(0.05, remaining))
         try:
             if not connection.recv(4096):
-                return
+                return True
         except TimeoutError:
             continue
         except OSError:
-            return
+            return True
 
 
-def reusable(connection, path, *, cancelled=None):
+def reusable(connection, path, *, cancelled=None, clock=time.monotonic):
     """True: retain this listener; False: it retired and released its lock."""
     from .browser_service import connect, request
 
     try:
         status, (pid, uid, _gid) = inspect(connection)
     except OSError:
-        _released(path, cancelled)
+        _released(path, cancelled, clock=clock)
         return False
     if busy(status):
         return True  # Active audio never waits for optional installed-build discovery.
@@ -168,64 +169,69 @@ def reusable(connection, path, *, cancelled=None):
         return True
     if cancelled is not None and cancelled.is_set():
         raise CancelledError()
-    if status.get("idleShutdown") is True:
-        try:
-            result = request("shutdown", path=path, identity=status.get("identity"))
-        except OSError:
-            _released(path, cancelled)
-            return False
-        if result.get("shutdown") is not True:
-            return True  # A capture started, or a different broker took over.
-    else:
-        # A pidfd pins the socket peer's process across /proc checks and the
-        # final status read, so a recycled PID can never be signalled.
-        try:
-            descriptor = os.pidfd_open(pid)
-        except (AttributeError, OSError):
-            return True
-        try:
+    with contextlib.ExitStack() as resources:
+        if status.get("idleShutdown") is True:
+            try:
+                result = request("shutdown", path=path, identity=status.get("identity"))
+            except OSError:
+                _released(path, cancelled, clock=clock)
+                return False
+            if result.get("shutdown") is not True:
+                return True  # A capture started, or a different broker took over.
+        else:
+            # A pidfd pins the socket peer's process across /proc checks and the
+            # final status read, so a recycled PID can never be signalled.
+            try:
+                descriptor = os.pidfd_open(pid)
+            except (AttributeError, OSError):
+                return True
+            resources.callback(os.close, descriptor)
             if not _legacy_process(pid, uid, path):
                 return True
             try:
                 again = connect(path, timeout=0.5)
             except OSError:
-                _released(path, cancelled)
+                _released(path, cancelled, clock=clock)
                 return False
-            with again:
-                try:
-                    latest, peer = inspect(again)
-                except OSError:
-                    _released(path, cancelled)
-                    return False
-                if peer[:2] != (pid, uid) or busy(latest) or broker_identity.matches(latest.get("identity"), local):
-                    return True
-                _await_peer_close(again, cancelled)
-                if cancelled is not None and cancelled.is_set():
-                    raise CancelledError()
-                with contextlib.suppress(ProcessLookupError):
-                    signal.pidfd_send_signal(descriptor, signal.SIGINT)
-        finally:
-            os.close(descriptor)
-    LOG.info("Retiring idle browser service from a different build (pid %s)", pid)
-    _released(path, cancelled)
-    return False
+            resources.enter_context(again)
+            try:
+                latest, peer = inspect(again)
+            except OSError:
+                _released(path, cancelled, clock=clock)
+                return False
+            if peer[:2] != (pid, uid) or busy(latest) or broker_identity.matches(latest.get("identity"), local):
+                return True
+            peer_closed = _await_peer_close(again, cancelled, clock=clock)
+            if cancelled is not None and cancelled.is_set():
+                raise CancelledError()
+            if not peer_closed:
+                LOG.warning(
+                    "Legacy browser service (pid %s) did not close its status stream within 0.5 s; "
+                    "holding status socket open until lock release",
+                    pid,
+                )
+            with contextlib.suppress(ProcessLookupError):
+                signal.pidfd_send_signal(descriptor, signal.SIGINT)
+        LOG.info("Retiring idle browser service from a different build (pid %s)", pid)
+        _released(path, cancelled, clock=clock)
+        return False
 
 
-def retire_idle(path=None):
+def retire_idle(path=None, *, clock=time.monotonic):
     """BuildRefresh retires an old idle service without spawning a replacement."""
     from .browser_service import service_path
 
     target = Path(path or service_path())
-    with handover(target):
-        return _retire_idle(target)
+    with handover(target, clock=clock):
+        return _retire_idle(target, clock=clock)
 
 
-def _retire_idle(target):
+def _retire_idle(target, *, clock=time.monotonic):
     from .browser_service import BROKER_ABSENT, connect
 
     try:
         with connect(target, timeout=0.5) as connection:
-            if not reusable(connection, target):
+            if not reusable(connection, target, clock=clock):
                 return False
         with connect(target, timeout=0.5) as connection:
             status, _peer = inspect(connection)

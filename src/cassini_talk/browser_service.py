@@ -173,15 +173,15 @@ def connect(path=None, *, timeout=30):
 BROKER_ABSENT = (FileNotFoundError, ConnectionRefusedError)
 
 
-def ensure_service(path=None, *, cancelled=None, absent=None):
+def ensure_service(path=None, *, cancelled=None, absent=None, clock=time.monotonic):
     from .broker_lifecycle import handover
 
     target = Path(path or service_path())
-    with handover(target, cancelled):
-        return _ensure_service(target, cancelled=cancelled, absent=absent)
+    with handover(target, cancelled, clock=clock):
+        return _ensure_service(target, cancelled=cancelled, absent=absent, clock=clock)
 
 
-def _ensure_service(path=None, *, cancelled=None, absent=None):
+def _ensure_service(path=None, *, cancelled=None, absent=None, clock=time.monotonic):
     """The broker's socket, spawning a broker if none answers. absent(error),
     if given, hears at once that the first connect found no broker
     (BROKER_ABSENT), before the spawn and its wait of up to 5 s: an exiting
@@ -192,7 +192,7 @@ def _ensure_service(path=None, *, cancelled=None, absent=None):
         from .broker_lifecycle import reusable
 
         with connect(target, timeout=0.5) as connection:
-            if reusable(connection, target, cancelled=cancelled):
+            if reusable(connection, target, cancelled=cancelled, clock=clock):
                 return target
     except BROKER_ABSENT as error:
         if absent is not None:
@@ -203,7 +203,7 @@ def _ensure_service(path=None, *, cancelled=None, absent=None):
         return target
     from .broker_lifecycle import _released
 
-    _released(target, cancelled)
+    _released(target, cancelled, clock=clock)
     if cancelled is not None and cancelled.is_set():
         raise CancelledError()
     # A filesystem lock in serve() elects one process if browser and app start together.
