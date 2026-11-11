@@ -147,8 +147,10 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                                 for entry in entries:
                                     check_cancel(cancel)
                                     if archive_import.is_directory(entry):
+                                        archive_import.drain_ignored(archive, entry, cancel, budget=archive_budget)
                                         continue
                                     if not supported(entry):
+                                        archive_import.drain_ignored(archive, entry, cancel, budget=archive_budget)
                                         result.ignored += 1
                                         report()
                                         continue
