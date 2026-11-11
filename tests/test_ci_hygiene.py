@@ -2,11 +2,13 @@
 """G13/G14: every job and every local test run has a time budget, and CI runs on pushes to main only."""
 
 import fnmatch
+import json
 import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -130,40 +132,104 @@ def test_release_metadata_runs_in_lint_and_release_preparation_has_no_pr_trigger
 
 
 # Runner selection: the CM_RUNNER / CM_RUNNER_DESKTOP repository variables move a job to the
-# cm-hetzner runners (Ubuntu 26.04 job containers) only when set to exactly "hetzner". The labels
-# are a constant; the variable is never parsed, so any other value (unset, empty, a typo, JSON)
-# keeps the pinned GitHub image instead of failing the expression or queueing for missing labels.
+# cm-hetzner runners (Ubuntu 26.04 job containers) only on allowlisted events (push, schedule,
+# workflow_dispatch, and same-repository pull_request) and only when set to exactly "hetzner".
+# The labels are a constant; the variable is never parsed, so any other value (unset, empty, a
+# typo, JSON), any fork pull request, or any unallowlisted event (pull_request_target,
+# workflow_run, issue_comment, etc.) keeps the pinned GitHub image instead of running untrusted
+# code on self-hosted runners, failing the expression, or queueing forever.
 CM_HETZNER = ["self-hosted", "cm-hetzner"]
+EVENT_ALLOWLIST = (
+    r"\(github\.event_name == 'push' \|\| github\.event_name == 'schedule' \|\| "
+    r"github\.event_name == 'workflow_dispatch' \|\| "
+    r"\(github\.event_name == 'pull_request' && "
+    r"github\.event\.pull_request\.head\.repo\.full_name == github\.repository\)\)"
+)
 RUNNER_SELECTOR = re.compile(
-    r"^\$\{\{ vars\.(?P<var>CM_RUNNER(?:_DESKTOP)?) == 'hetzner' && "
+    rf"^\$\{{\{{ {EVENT_ALLOWLIST} && vars\.(?P<var>CM_RUNNER(?:_DESKTOP)?) == 'hetzner' && "
     r"fromJSON\('\[\"self-hosted\",\"cm-hetzner\"\]'\) \|\| 'ubuntu-26\.04' \}\}$"
 )
 CM_RUNNER_PINNED = (
-    "${{ vars.CM_RUNNER == 'hetzner' && fromJSON('[\"self-hosted\",\"cm-hetzner\"]') || 'ubuntu-26.04' }}"
+    "${{ (github.event_name == 'push' || github.event_name == 'schedule' || "
+    "github.event_name == 'workflow_dispatch' || "
+    "(github.event_name == 'pull_request' && "
+    "github.event.pull_request.head.repo.full_name == github.repository)) && "
+    "vars.CM_RUNNER == 'hetzner' && fromJSON('[\"self-hosted\",\"cm-hetzner\"]') || 'ubuntu-26.04' }}"
 )
 
 
-def select_runner(runs_on, variables):
-    """What GitHub picks for a runs-on value, given the repository variables (a model of the
-    expression above: `==` compares strings case-insensitively, an unset variable is '')."""
-    match = RUNNER_SELECTOR.match(runs_on)
-    if match is None:
+class _CIString(str):
+    """GitHub Actions string comparison (`==` / `!=`) is case-insensitive."""
+
+    def __eq__(self, other):
+        return isinstance(other, str) and self.casefold() == other.casefold()
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
+class _NullContext:
+    """GitHub Actions dereferences missing/null context properties to null instead of raising."""
+
+    def __getattr__(self, _name):
+        return self
+
+    def __bool__(self):
+        return False
+
+
+_NULL = _NullContext()
+
+
+def select_runner(
+    runs_on,
+    variables,
+    *,
+    event_name="push",
+    head_repo="codemyriad/cassini-gnome",
+    repository="codemyriad/cassini-gnome",
+):
+    """Evaluate a job's runs-on expression under GitHub Actions event, repo, and vars contexts."""
+    if not (runs_on.startswith("${{") and runs_on.endswith("}}")):
         return runs_on
-    return CM_HETZNER if (variables.get(match["var"]) or "").casefold() == "hetzner" else "ubuntu-26.04"
+    expr = runs_on.removeprefix("${{").removesuffix("}}").strip()
+    expr = expr.replace("&&", " and ").replace("||", " or ")
+    repo_obj = _NULL if head_repo is None else SimpleNamespace(full_name=_CIString(head_repo))
+    event = SimpleNamespace(pull_request=SimpleNamespace(head=SimpleNamespace(repo=repo_obj)))
+    github = SimpleNamespace(
+        event_name=_CIString(event_name),
+        repository=_CIString(repository),
+        event=event if event_name in ("pull_request", "pull_request_target") else _NULL,
+    )
+    vars_ns = SimpleNamespace(
+        CM_RUNNER=_CIString(variables.get("CM_RUNNER") or ""),
+        CM_RUNNER_DESKTOP=_CIString(variables.get("CM_RUNNER_DESKTOP") or ""),
+    )
+    return eval(expr, {"__builtins__": {}}, {"github": github, "vars": vars_ns, "fromJSON": json.loads})
+
+
+def job_runs_on_values():
+    """(workflow, job, runs-on) for every job with a runs-on key; block forms are joined."""
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        text = workflow.read_text()
+        if "\njobs:\n" not in text:
+            continue
+        for job_name, block in jobs(workflow):
+            lines = block.splitlines()
+            for i, line in enumerate(lines):
+                if match := re.match(r"^    runs-on:(.*)$", line):
+                    value = [match.group(1).strip()]
+                    for following in lines[i + 1 :]:
+                        if not following.startswith("      "):
+                            break
+                        value.append(following.strip())
+                    yield workflow.name, job_name, "\n".join(v for v in value if v)
 
 
 def runs_on_values():
     """(workflow, runs-on) for every job; a block runs-on (a YAML list or mapping) is joined into one string."""
-    for workflow in sorted(WORKFLOWS.glob("*.yml")):
-        lines = workflow.read_text().splitlines()
-        for i, line in enumerate(lines):
-            if match := re.match(r"^    runs-on:(.*)$", line):
-                value = [match.group(1).strip()]
-                for following in lines[i + 1 :]:
-                    if not following.startswith("      "):
-                        break
-                    value.append(following.strip())
-                yield workflow.name, "\n".join(v for v in value if v)
+    for workflow_name, _job_name, value in job_runs_on_values():
+        yield workflow_name, value
 
 
 def test_package_builds_run_on_the_pinned_runner_image():
@@ -297,45 +363,116 @@ def test_runner_variables_only_select_constant_labels():
             assert "fromJSON(vars" not in value, (name, value)
 
 
-def test_runner_selection_falls_back_to_github_for_every_other_value():
-    moved = [(name, value) for name, value in runs_on_values() if "vars." in value]
+def test_runner_selection_falls_back_to_github_for_every_other_value_and_for_fork_prs():
+    moved = [(wf, job, value) for wf, job, value in job_runs_on_values() if "vars." in value]
     assert moved, "no job reads a runner variable"
-    for name, value in moved:
+    for wf, job, value in moved:
+        where = f"{wf}:{job}"
         var = RUNNER_SELECTOR.match(value)["var"]
-        for setting in (
-            None,
-            "",
-            " ",
-            "garbage{",
-            '["self-hosted","cm-hetzner"]',
-            '["self-hosted","cm-hetzner-typo"]',
-            "hetzner-typo",
-            "true",
-            "github",
+        for event_name, head_repo in (
+            ("push", None),
+            ("schedule", None),
+            ("workflow_dispatch", None),
+            ("pull_request", "codemyriad/cassini-gnome"),
         ):
-            variables = {} if setting is None else {var: setting}
-            assert select_runner(value, variables) == "ubuntu-26.04", (name, setting)
-        for setting in ("hetzner", "Hetzner"):
-            assert select_runner(value, {var: setting}) == CM_HETZNER, (name, setting)
-        # One variable never moves the other variable's jobs.
-        other = "CM_RUNNER_DESKTOP" if var == "CM_RUNNER" else "CM_RUNNER"
-        assert select_runner(value, {other: "hetzner"}) == "ubuntu-26.04", (name, other)
+            for setting in (
+                None,
+                "",
+                " ",
+                "garbage{",
+                '["self-hosted","cm-hetzner"]',
+                '["self-hosted","cm-hetzner-typo"]',
+                "hetzner-typo",
+                "true",
+                "github",
+            ):
+                variables = {} if setting is None else {var: setting}
+                assert select_runner(value, variables, event_name=event_name, head_repo=head_repo) == "ubuntu-26.04", (
+                    where,
+                    event_name,
+                    setting,
+                )
+            for setting in ("hetzner", "Hetzner"):
+                assert select_runner(value, {var: setting}, event_name=event_name, head_repo=head_repo) == CM_HETZNER, (
+                    where,
+                    event_name,
+                    setting,
+                )
+            # One variable never moves the other variable's jobs.
+            other = "CM_RUNNER_DESKTOP" if var == "CM_RUNNER" else "CM_RUNNER"
+            assert (
+                select_runner(value, {other: "hetzner"}, event_name=event_name, head_repo=head_repo) == "ubuntu-26.04"
+            ), (where, event_name, other)
+        # Fork PRs (and deleted-fork PRs) never run on self-hosted runners even when both variables are set.
+        both_enabled = {"CM_RUNNER": "hetzner", "CM_RUNNER_DESKTOP": "hetzner"}
+        for untrusted_head in ("fork/cassini-gnome", "codemyriad/other-repo", "", None):
+            assert (
+                select_runner(value, both_enabled, event_name="pull_request", head_repo=untrusted_head)
+                == "ubuntu-26.04"
+            ), (where, untrusted_head)
+        # Prohibited or unallowlisted events never select self-hosted runners, even for same-repo payloads.
+        for prohibited_event in (
+            "pull_request_target",
+            "workflow_run",
+            "issue_comment",
+            "release",
+            "merge_group",
+            "repository_dispatch",
+            "",
+        ):
+            for candidate_head in ("codemyriad/cassini-gnome", "fork/cassini-gnome", None):
+                assert (
+                    select_runner(value, both_enabled, event_name=prohibited_event, head_repo=candidate_head)
+                    == "ubuntu-26.04"
+                ), (where, prohibited_event, candidate_head)
 
 
 def test_runner_variables_move_the_intended_jobs():
     expected = {
-        "CM_RUNNER": {"build.yml", "deb.yml", "packages.yml", "flatpak.yml", "source.yml", "rpm-canary.yml"},
-        "CM_RUNNER_DESKTOP": {"recording.yml", "ux-shot.yml", "whistle.yml"},
+        "CM_RUNNER": {
+            ("build.yml", "products"),
+            ("deb.yml", "build"),
+            ("flatpak.yml", "flatpak"),
+            ("meson-tests.yml", "meson-tests"),
+            ("packages.yml", "arch"),
+            ("packages.yml", "rpm"),
+            ("rpm-canary.yml", "rpm"),
+            ("source.yml", "distros"),
+            ("source.yml", "lint-and-test"),
+            ("ux-library.yml", "golden-vectors-and-reader"),
+        },
+        "CM_RUNNER_DESKTOP": {
+            ("background-apps.yml", "desktop"),
+            ("recording.yml", "capture"),
+            ("recording.yml", "live-folder"),
+            ("ux-shot.yml", "current-window"),
+            ("whistle.yml", "pinned-offline-recognition"),
+        },
+    }
+    hosted_only = {
+        ("ci.yml", "changes"),
+        ("ci.yml", "pytest-coverage"),
+        ("exact-transcript.yml", "native-gtk"),
+        ("release-check.yml", "metadata"),
+        ("release.yml", "deb"),
+        ("release.yml", "main-inputs"),
+        ("release.yml", "packages"),
+        ("release.yml", "publish"),
     }
     found = {"CM_RUNNER": set(), "CM_RUNNER_DESKTOP": set()}
-    for name, value in runs_on_values():
+    unmoved = set()
+    for wf, job, value in job_runs_on_values():
         if match := RUNNER_SELECTOR.match(value):
-            found[match["var"]].add(name)
+            found[match["var"]].add((wf, job))
+        else:
+            unmoved.add((wf, job))
+            assert "vars." not in value, (wf, job, value)
     assert found == expected
+    assert unmoved == hosted_only
     # Release workflows always run on GitHub-hosted runners.
-    for name, value in runs_on_values():
-        if name.startswith("release"):
-            assert "vars." not in value, (name, value)
+    for wf, job, value in job_runs_on_values():
+        if wf.startswith("release"):
+            assert "vars." not in value, (wf, job, value)
 
 
 def test_every_runs_on_is_a_hosted_image_or_the_selector():

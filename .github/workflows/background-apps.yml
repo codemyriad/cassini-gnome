@@ -16,7 +16,7 @@ permissions:
 jobs:
   desktop:
     name: GNOME 50 / installed deb and Flatpak
-    runs-on: ubuntu-26.04
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
