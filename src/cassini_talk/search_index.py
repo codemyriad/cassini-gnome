@@ -301,13 +301,14 @@ class SearchIndex:
         titles = {}
         for key, marked in self.db.execute(title_sql, [phrase + "*", *filter_params]):
             self._check_cancelled()
-            meeting = self.current[key]
-            if speaker and not any(s.name.casefold() == speaker.casefold() for s in meeting.speakers):
-                continue
             titles[key] = marked_markup(marked)
         spoken_keys = {hit.key for hit in result}
         result = [replace(hit, title_markup=titles.get(hit.key, "")) for hit in result]
         for key in titles.keys() - spoken_keys:
+            # D14 filters by the matched turn's speaker. Untimed titles do
+            # not acquire attribution from the meeting's participant list.
+            if speaker:
+                continue
             turns = self.turns[key]
             preview = turns[0].text if turns else ""
             # A title has no timed word or speaker. Start at zero and keep it

@@ -18,8 +18,10 @@ mobile apps already search titles, including notes without a transcript:
 A separate FTS title index adds title matches and last-token title completion.
 A title-only result has no timed word or speaker and starts playback at zero.
 When words also match, their result positions are retained and the title is
-highlighted without adding another result. Date, ownership and speaker filters
-also restrict title results. Renames update the title index without rebuilding
+highlighted without adding another result. Date and ownership filters restrict
+title results. D14's speaker filter remains turn-scoped, so title-only results
+are excluded when a speaker is selected; a title never inherits a participant's
+attribution. Renames update the title index without rebuilding
 spoken rows; old transcript-only caches gain the additive title table on sync.
 No meeting files or shared contract files change.
 

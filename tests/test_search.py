@@ -509,15 +509,17 @@ def test_title_filters_use_same_date_ownership_and_speaker_scope(index):
     index.sync(LibrarySnapshot(meetings=meetings))
     all_hits = search(index, "supplier")
     assert len(all_hits) == len(meetings)
-    selected = search(index, "supplier", speaker="marta", date="today", own=True)
+    selected = search(index, "supplier", date="today", own=True)
     expected = {
         m.key
         for m in meetings
         if m.origin == "own"
         and date_range("today", NOW, "Europe/Rome")[0] <= m.started_at_ms < date_range("today", NOW, "Europe/Rome")[1]
-        and any(s.name.casefold() == "marta" for s in m.speakers)
     }
     assert {hit.key for hit in selected} == expected and expected
+    # D14: a title has no turn speaker, even if Marta participated.
+    assert any(s.name.casefold() == "marta" for m in meetings for s in m.speakers)
+    assert not search(index, "supplier", speaker="marta")
     assert not search(index, "supplier", speaker="absent")
 
 
