@@ -6,7 +6,7 @@ import threading
 import time
 
 import pytest
-from test_transcription import until
+from durable import DURABLE_BOUND
 
 from cassini_talk import companion
 from cassini_talk.browser_connection import Backoff, BrowserConnection
@@ -18,6 +18,7 @@ class Clock:
         self.next_id = 0
         self.timers = {}
         self.posted = []
+        self.posted_changed = threading.Condition()
 
     def later(self, delay, call):
         self.next_id += 1
@@ -25,11 +26,16 @@ class Clock:
         return self.next_id
 
     def post(self, call, *args):
-        self.posted.append((call, args))
+        with self.posted_changed:
+            self.posted.append((call, args))
+            self.posted_changed.notify_all()
 
     def finish(self):
-        until(lambda: bool(self.posted))
-        call, args = self.posted.pop(0)
+        with self.posted_changed:
+            assert self.posted_changed.wait_for(lambda: bool(self.posted), DURABLE_BOUND), (
+                "BrowserConnection did not post callback"
+            )
+            call, args = self.posted.pop(0)
         call(*args)
 
     def advance(self, seconds):
@@ -127,13 +133,13 @@ def test_trigger_during_io_is_single_flight_and_close_never_waits_for_host():
         threads.append(threading.get_ident())
         assert threads[-1] != main
         entered.set()
-        assert release.wait(4)
+        assert release.wait(DURABLE_BOUND), "Test did not release the held host operation"
         return ()
 
     controller = clock.connection(blocked, lambda: changes.append(threading.get_ident()))
     try:
         controller.trigger()
-        assert entered.wait(2)
+        assert entered.wait(DURABLE_BOUND), "BrowserConnection did not enter the host operation"
         controller.trigger()
         controller.trigger()
         assert len(threads) == 1 and controller.snapshot()["phase"] == "settingUp"
@@ -141,17 +147,25 @@ def test_trigger_during_io_is_single_flight_and_close_never_waits_for_host():
         clock.finish()
         clock.finish()
         assert len(threads) == 2 and controller.snapshot()["phase"] == "waiting"
-        assert all(t == main for t in changes)
+        assert changes == [main, main, main]
         entered.clear()
         release.clear()
         controller.trigger()
-        assert entered.wait(2)
-        before = time.monotonic()
+        assert entered.wait(DURABLE_BOUND), "BrowserConnection did not enter the host operation"
+        active = controller.future
+        assert active.running()
+        before_cpu = time.thread_time_ns()
         controller.close()
-        assert time.monotonic() - before < 0.05
+        # Preserve the original 50 ms synchronous-work ceiling as thread CPU;
+        # event ordering detects joining/blocking; durable bounds only escape hangs.
+        assert time.thread_time_ns() - before_cpu < 50_000_000
+        assert controller.closed and active.running() and not release.is_set()
         count = len(changes)
+        assert count == 4 and changes == [main] * count
         release.set()
         clock.finish()
+        assert active.result() == () and not clock.posted
+        assert controller.future is None
         assert len(changes) == count
     finally:
         release.set()
