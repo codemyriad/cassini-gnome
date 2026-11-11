@@ -1,0 +1,44 @@
+# Exact transcript renderer, Library Meeting page
+
+The Library Meeting page uses the exact-height Gtk.Scrollable by default. For one release, launch with `CASSINI_TRANSCRIPT_RENDER=listview cassini-talk` to use the previous renderer. GTK handles touchpad and touchscreen gestures, friction and overshoot; no replacement scroll controller is installed.
+
+A reusable GTK/Pango probe builds an append-only pixel prefix in 4 ms CPU slices. A worker splits oversized viewer paragraphs into physical continuation blocks of at most 128 timed words, including replies. These blocks retain original timed atoms and chip targets, suppress intermediate paragraph margins and repeated speaker names, and bound each label’s measurement and accessibility parsing. The semantic D84 paragraphs remain available for export, search and the ListView fallback. The first viewport paints before indexing finishes. Previously published rows do not shift as the range extends below them. Uncached resize widths build a replacement in the background and swap it around the current row. The displayed index remains active until the replacement covers the current anchor row, pixel offset and viewport. It swaps in one allocation and continues indexing below the viewport. Hand scrolling during rebuilding updates the anchor used for that swap. The native regression checks every painted frame through invalidation, manual scrolling and an uncached resize that abandons a partial index. Font and chip-name changes refresh the displayed rows and their exact heights in the same allocation while the replacement builds. Logarithmic prefix corrections preserve the deep anchor without walking the unrendered suffix. Every painted frame is checked with actual font and chip-name metric changes, including hand scrolling. Three complete/partial width indices and per-turn metric markup are cached. The centered column caps at 720 px including headers. Its expanding text label skips an unused unwrapped natural-width layout; GTK retains the styled minimum, and every real height-for-width measurement stays native.
+
+The regular `Exact transcript renderer` workflow runs the native GTK UI test, fresh ListView memory baseline, and budgets: first transcript paint <100 ms UI CPU, load/scroll/resize paint frames <32 ms, highlight <2 ms, RSS <= ListView +20 MiB. The fixture generator uses synthetic English only: 12,803 words / 484 rows and 51,212 / 1,933, plus the hour without diarization and one four-hour paragraph containing 72,899 words and 899 replies. It checks finger/coast in both directions, native touch-only drag/swipe, paused/playing, and the visible anchor during incremental indexing. Measured row heights must agree with live widgets. This is native-handler signal injection; physical hardware routing is not certified by a headless test.
+
+Keyboard navigation covers arrows, Page Up/Down, Home/End, keypad variants and chronological Tab traversal, including unrealized rows. Alt, Ctrl and Shift combinations propagate. A focused row stays realized. Unchanged row widgets and accessible actions survive running-recording suffix replacement; a changed suffix preserves its anchor by its first timed atom, falling back to the last unchanged row if that atom was replaced. New navigation and hand scrolling cancel obsolete deferred scrolling. Live replacement preserves a still-valid keyboard request together with its deferred scroll, so its eventual focus target is visible. Touchscreen follow pause observes GTK's existing native gestures without claiming their sequences. Playback updates only visible rows; a retained overscan widget refreshes its highlight before its first visible paint.
+
+The existing Meeting GtkLabels are not selectable and the page has no inline search/highlight controls. Library search routes a timed seek into the page. Native label link clipboard actions remain available; whole-document selection is not added. The standalone window will follow in a separate PR.
+
+## Accessibility
+
+Both renderers expose native GtkLabel Text and Hypertext. On tested GTK 4.22, native virtual hyperlink children have no AT-SPI Action; their hyperlink object points back to the label, whose first action copies text. The exact renderer additionally exposes named native link buttons for visible timed words. These nonvisual buttons cannot intercept pointer events or take keyboard focus, and their native click action invokes the existing word seek. Native Text paints first. New parsing, word geometry and supplemental Action creation share a 2 ms CPU deadline and resume across frames. Parsing yields between bounded text tokens while preserving escaped entities and UTF-8 offsets. Word geometry is cached per row, width and style generation rather than querying Pango on every scroll allocation. Only our escaped canonical markup is parsed, without importing a general-purpose HTML parser on opening. The row exposes its position and total set size; a group wraps its ordinary header and text. An independent AT-SPI process reads the text and activates a word, with the GUI verifying the resulting seek. Offscreen turns remain virtualized. Headless accessibility coverage does not certify a particular screen reader's speech presentation.
+
+## Local before/after
+
+Fresh processes in the same private Xvfb environment with pinned fonts. Frame and tick figures are UI-thread CPU milliseconds.
+
+| Fixture | ListView RSS MiB | Exact RSS MiB | First viewport | Worst load frame | Worst scroll frame | Worst resize frame | Worst highlight tick |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 60 min diarized | 261.9 | 233.0 | 60.3 | 15.1 | 10.7 | 15.8 | 0.83 |
+| 4 h diarized | 286.7 | 254.1 | 49.8 | 13.9 | 10.5 | 15.3 | 0.66 |
+| 60 min without speakers | 287.9 | 260.5 | 26.8 | 12.9 | 10.9 | 10.5 | 0.97 |
+
+All modes had zero reversed frames. The hosted workflow exercises the default with the environment variable unset, and uses the escape hatch for its ListView baseline. The normal Meeting, listening rows and wide speakers journeys run against the default renderer.
+
+## Checked bug classes
+
+Reviewed [cassini-ux/review/BUG-CLASSES.md](https://github.com/codemyriad/cassini-ux/blob/main/review/BUG-CLASSES.md):
+
+- 1 (long inputs): worker-built bounded continuation blocks cover exceptionally long rejoined paragraphs and oversized chips. One append per block/width, counters prohibit remeasurement after cancellation/cache return; 4x-length indexing CPU scaling is bounded in the UI test.
+- 2 (UI thread): no synchronous whole transcript widget/index rebuild; work yields once per frame. Actual paint-frame budgets are asserted. Cold page construction outside paint may exceed 32 ms, as the spike reported; no end-to-end deadline guarantee is claimed.
+- 3 (cache keys): indices are scoped to the model/header generation, width, font/DPI/scale. Theme, font/DPI/scale, header/language and live-tail changes invalidate the affected geometry; the UI test exercises rename, theme and font changes.
+- 4/5/6 (ordering, word identity, zero-duration): retain unchanged FollowRows and reading_word projections; all original timed word and aside URIs are resolved in the UI test, with D84/transcript unit tests unchanged.
+- 7/8/9/13 (chip hits, chip-only speakers, search, localization): retain the production row builder/sidebar/catalog; interaction checks cover synthetic chip hits, chip-only speaker actions and no-inline-search parity.
+- 10–12, 14–16: no preview, format/export, I/O, download or storage changes.
+- 17: measurements use thread CPU/frame-clock gates, never wall-clock pass conditions.
+- 18/19: container and interaction changes land together, so the default never ships without keyboard, accessibility and live-tail support. Keep the combined PR draft until exact-head CI and budgets pass.
+
+## Reproduce
+
+Compile the resource into a private directory (`glib-compile-resources --sourcedir=src src/cassini-talk.gresource.xml --target=.../cassini-talk.gresource`) and compile the settings schema. Set `CASSINI_CUSTOM_BUILD`, `GSETTINGS_SCHEMA_DIR`, `CASSINI_CUSTOM_OUT` and run `build-aux/ux-screenshot.sh tests/ui/exact-transcript.py output.png`. Run once with `CASSINI_TRANSCRIPT_RENDER=listview` for the baseline, then without it for the exact renderer. JSON output includes CPU, frame-clock latency, RSS and raw anchor samples. On roy, obey the >4000 MB available rule, acquire the shared heavy lock, use one private QA desktop and stop it afterward; no local Docker builds.

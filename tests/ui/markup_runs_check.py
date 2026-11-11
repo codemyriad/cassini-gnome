@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Actual Pango runs and pixels, including a paused page's style changes."""
 
-from types import SimpleNamespace
-
 from gi.repository import Adw, Gsk, Gtk
 
 from cassini_talk.markup_runs import bridge_link_spaces
@@ -19,7 +17,8 @@ def check_markup_runs(window, until):
     probe = Gtk.Window(default_width=700, transient_for=window)
     container = Gtk.Box(css_classes=["meeting-transcript"])
     probe.set_child(container)
-    page._bind(None, SimpleNamespace(get_item=lambda: SimpleNamespace(turn=turn), set_child=container.append))
+    row = page._build_row(turn)
+    container.append(row)
     _, words, _ = page.bound[key]
     words.add_css_class("glyph-run-probe")
     manager = Adw.StyleManager.get_default()
@@ -106,6 +105,9 @@ def check_markup_runs(window, until):
         print("PASS glyph runs high contrast", before[0], after[0], flush=True)
     finally:
         page.bound.pop(key, None)
+        if page._exact:
+            row.close()
+        container.remove(row)
         probe.destroy()
         Gtk.StyleContext.remove_provider_for_display(window.get_display(), provider)
         page.player.position = old_position

@@ -97,7 +97,8 @@ with tempfile.TemporaryDirectory() as temporary:
     window._connect_player()
     window.open_meeting(meeting)
     page = window.meeting_page
-    until(lambda: len(page.bound) == 5 and window.player._prerolled)
+    assert page._exact
+    until(lambda: page.list.ready and len(page.bound) == 5 and window.player._prerolled)
     assert all(v in labels(page.speakers) for v in ["43%", "36%", "21%", "Named by you", "Not named yet"])
     # Imported recognition metadata has no corresponding local saved voice.
     assert "Recognised from saved voices" not in labels(page.speakers)
@@ -224,7 +225,7 @@ with tempfile.TemporaryDirectory() as temporary:
             # slower hosted layout, rather than depending on timer alignment.
             window._activity_tick()
             assert page.meeting.words is words
-            assert page.store.get_n_items() == len(current.turns)
+            assert page.list.items is getattr(current.turns, "layout", current.turns)
 
         # The real GTK label folds a brief reply at the original seam, and
         # its link still seeks the reply's own audio rather than the host's.
@@ -259,14 +260,15 @@ with tempfile.TemporaryDirectory() as temporary:
                     candidates.append((turn.index, bounds.get_y()))
             return min(candidates)
 
-        stable = page.store.get_item(1)
         anchor = visible_anchor()
+        stable = page.bound[anchor[0]][2]
         grown = timed + (Word(meeting.speakers[0].id, 400000, 400900, "New words"),)
         show_synthetic(grown)
         frames = []
         page.list.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
         until(lambda: len(frames) >= 2)
-        assert page.store.get_item(1) is stable
+        until(lambda: page.list.ready)
+        assert page.bound[anchor[0]][2] is stable
         after = visible_anchor()
         assert after[0] == anchor[0] and abs(after[1] - anchor[1]) < 2, (after, anchor)
         # Resuming after reading elsewhere must return to the active turn, even

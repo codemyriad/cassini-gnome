@@ -700,16 +700,16 @@ with tempfile.TemporaryDirectory() as temporary:
         key(window, "shift+Tab", until)
         until(window, lambda before=before: window.get_focus() is not before)
         focused = window.get_focus()
-        if any(focused is row.get_parent() for _t, _w, row in page.bound.values()):
+        if any(focused is row for _t, _w, row in page.bound.values()):
             break
     else:
         raise AssertionError("Tab did not reach the transcript list item")
-    assert not any(row.get_focusable() for _t, _w, row in page.bound.values())
+    assert page._exact and all(row.get_focusable() for _t, _w, row in page.bound.values())
     before = window.get_focus()
     key(window, "Up", until)
     until(window, lambda: window.get_focus() is not before)
     focused = window.get_focus()
-    keyboard_turn = next(t for t, _w, row in page.bound.values() if focused is row.get_parent())
+    keyboard_turn = next(t for t, _w, row in page.bound.values() if focused is row)
     key(window, "shift+Return", until)
     until(window, lambda: starts)
     assert starts[0] == keyboard_turn.start_ms
@@ -887,13 +887,15 @@ with tempfile.TemporaryDirectory() as temporary:
     )
     # Renaming must preserve transcript model items and focused header widgets.
     until(window, reading_visible)
-    splices, headers, input_seen = [], [], []
-    model_item = page.store.get_item(0)
-    splice_handler = page.store.connect("items-changed", lambda *_: splices.append(True))
+    headers, input_seen = [], []
+    model = page.list.items
+    focused_row = page.bound[page._reading_index][2]
+    focused_index = page._reading_index
     refresh_header = page._refresh_header
 
     def observed_header(turn, row):
-        headers.append(turn.index)
+        if page.bound.get(turn.index, (None, None, None))[2] is row:
+            headers.append(turn.index)
         if len(headers) == 1:
             GLib.idle_add(lambda: input_seen.append(len(headers)) or False, priority=GLib.PRIORITY_DEFAULT)
         return refresh_header(turn, row)
@@ -927,7 +929,8 @@ with tempfile.TemporaryDirectory() as temporary:
         input_seen,
         len(headers),
     )
-    assert not splices and page.store.get_item(0) is model_item
+    assert page.list.items is model
+    assert page.bound[focused_index][2] is focused_row
     page._refresh_header = refresh_header
     assert bar.name.get_text() == "Dana" and not announcements
     # A single-speaker meeting exposes Name but never an empty Merge menu.
@@ -950,9 +953,8 @@ with tempfile.TemporaryDirectory() as temporary:
     assert any(turn.speaker == "host" for turn in stale_merged.preview_turns)
     # Exercise a fresh real GTK bind with a genuinely absent speaker id.
     # This is separate from the rescan's no-splice/widget-retention guarantee.
-    factory = page.list.get_factory()
-    page.list.set_factory(None)
-    page.list.set_factory(factory)
+    page.list.clear_rows()
+    page.list.queue_allocate()
     until(window, lambda: page.bound and any(turn.speaker == "host" for turn, _words, _row in page.bound.values()))
     assert any(turn.speaker == "host" for turn, _words, _row in page.bound.values())
     host_turn = next(t for t in stale_merged.listening_turns if t.speaker == "host")
@@ -1009,8 +1011,7 @@ with tempfile.TemporaryDirectory() as temporary:
             if turn.speaker == "host"
         ),
     )
-    assert not splices and page.store.get_item(0) is model_item
-    page.store.disconnect(splice_handler)
+    assert page.list.items is model
     section = bar.merge_model.get_item_link(0, Gio.MENU_LINK_SECTION)
     assert section is not None and section.get_n_items() == 1
     assert (
@@ -1039,8 +1040,9 @@ with tempfile.TemporaryDirectory() as temporary:
     assert bar.buttons["name"].get_sensitive()
     assert not bar.merge.get_sensitive() and not bar.actions.lookup_action("merge").get_enabled()
     assert page._highlighted_rows == page._turn_rows[window.listen.turn.index]
-    assert page._highlighted_rows == frozenset(t.index for t in one_speaker.turns)
-    assert page.store.get_n_items() == len(one_speaker.turns)
+    layout = getattr(one_speaker.turns, "layout", one_speaker.turns)
+    assert page._highlighted_rows == frozenset(t.index for t in layout)
+    assert page.list.items is layout
     window._library_scanned(original_snapshot)
     bar.body.announce = announce
     window.listen.stop()

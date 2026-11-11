@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Keyboard traversal of exact transcript rows, including unrealized rows."""
+
+from bisect import bisect_right
+
+from gi.repository import Gdk, Gtk
+
+
+class TranscriptNavigation:
+    def __init__(self, view):
+        self.view = view
+        self.pending = None
+        keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        keys.connect("key-pressed", self.key)
+        view.add_controller(keys)
+
+    def focused(self):
+        focus = self.view.get_root().get_focus() if self.view.get_root() else None
+        return next(
+            (i for i, row in self.view.rows.items() if focus is row or focus is not None and focus.is_ancestor(row)),
+            None,
+        )
+
+    def request(self, index, direction=None):
+        if not self.view.items:
+            return False
+        index = min(len(self.view.items) - 1, max(0, index))
+        self.view.page._hand_scroll()
+        self.pending = index, direction
+        self.view.scroll_to(index)
+        self.view.queue_allocate()
+        return True
+
+    def allocated(self):
+        if self.pending and self.pending[0] in self.view.rows and self.view.rows[self.pending[0]].get_child_visible():
+            index, direction = self.pending
+            self.pending = None
+            row = self.view.rows[index]
+            if direction is None or not row.child_focus(direction):
+                row.grab_focus()
+
+    def key(self, _keys, key, _code, modifiers):
+        if modifiers & (
+            Gdk.ModifierType.ALT_MASK
+            | Gdk.ModifierType.SUPER_MASK
+            | Gdk.ModifierType.CONTROL_MASK
+            | Gdk.ModifierType.SHIFT_MASK
+        ):
+            return False
+        aliases = {
+            Gdk.KEY_KP_Up: Gdk.KEY_Up,
+            Gdk.KEY_KP_Down: Gdk.KEY_Down,
+            Gdk.KEY_KP_Left: Gdk.KEY_Left,
+            Gdk.KEY_KP_Right: Gdk.KEY_Right,
+            Gdk.KEY_KP_Home: Gdk.KEY_Home,
+            Gdk.KEY_KP_End: Gdk.KEY_End,
+            Gdk.KEY_KP_Page_Up: Gdk.KEY_Page_Up,
+            Gdk.KEY_KP_Page_Down: Gdk.KEY_Page_Down,
+        }
+        key = aliases.get(key, key)
+        current = self.focused()
+        if current is None:
+            current = max(0, bisect_right(self.view.prefix, self.view._value()) - 1)
+        if key in (Gdk.KEY_Up, Gdk.KEY_Down):
+            return self.request(current + (1 if key == Gdk.KEY_Down else -1))
+        if key in (Gdk.KEY_Home, Gdk.KEY_End):
+            return self.request(0 if key == Gdk.KEY_Home else len(self.view.items) - 1)
+        if key in (Gdk.KEY_Page_Up, Gdk.KEY_Page_Down):
+            adjustment = self.view.props.vadjustment
+            delta = adjustment.get_page_size() * (1 if key == Gdk.KEY_Page_Down else -1)
+            index = max(0, bisect_right(self.view.prefix, adjustment.get_value() + delta) - 1)
+            if key == Gdk.KEY_Page_Down and index <= current:
+                index = current + 1
+            return self.request(index)
+        if key in (Gdk.KEY_Left, Gdk.KEY_Right):
+            # Keep GtkLabel's own per-word/link focus traversal.
+            focus = self.view.get_root().get_focus()
+            if isinstance(focus, Gtk.Label):
+                return False
+            row = self.view.rows.get(current)
+            return bool(
+                row and row.child_focus(Gtk.DirectionType.LEFT if key == Gdk.KEY_Left else Gtk.DirectionType.RIGHT)
+            )
+        return False
+
+    def focus(self, direction):
+        if direction not in (Gtk.DirectionType.TAB_FORWARD, Gtk.DirectionType.TAB_BACKWARD):
+            return Gtk.Widget.do_focus(self.view, direction)
+        current = self.focused()
+        forward = direction == Gtk.DirectionType.TAB_FORWARD
+        if current is not None:
+            if self.view.rows[current].child_focus(direction):
+                return True
+            next_row = current + (1 if forward else -1)
+            return 0 <= next_row < len(self.view.items) and self.request(next_row, direction)
+        if self.pending:
+            # GTK can ask the container to take focus while the old focused
+            # row is being removed. Let allocation restore the pending row.
+            return True
+        if self.view.visible_rows:
+            return self.request(self.view.visible_rows[0 if forward else -1])
+        return False

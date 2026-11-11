@@ -183,10 +183,11 @@ with tempfile.TemporaryDirectory() as temporary:
     rebound_words = tuple(replace(word, speaker=speakers[-1].id) for word in many.words)
     rebound = replace(many, words=rebound_words, turns=reading_turns(rebound_words))
     page.update(rebound)
-    assert page.store.get_item(0).turn is rebound.turns[0]
+    layout = getattr(rebound.turns, "layout", rebound.turns)
+    assert page._exact and page.list.items is layout
     until(
         window,
-        lambda: 0 in page.bound and page.bound[0][0] is rebound.turns[0],
+        lambda: 0 in page.bound and page.bound[0][0] is layout[0],
         "Turn 0 rebound to the long speaker name",
     )
     assert minimum(page) <= 980, minimum(page)

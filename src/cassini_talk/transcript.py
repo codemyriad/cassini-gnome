@@ -405,6 +405,18 @@ def join_items(turn: Turn, link, chip) -> tuple[str, list[int]]:
         asides.setdefault(after, []).append(aside)
     parts, offsets = [], []
     length = 0
+
+    def append_chips(after):
+        nonlocal length
+        for aside in asides.get(after, ()):
+            markup, plain = chip(aside)
+            if parts:
+                parts.append(" ")
+                length += 1
+            parts.append(markup)
+            length += len(plain.encode())
+
+    append_chips(-1)  # A GTK continuation can begin with a folded reply.
     for i, value in enumerate(turn.items):
         if value:
             if parts:
@@ -415,13 +427,7 @@ def join_items(turn: Turn, link, chip) -> tuple[str, list[int]]:
             length += len(value.encode())
         else:
             offsets.append(length)
-        for aside in asides.get(i, ()):
-            markup, plain = chip(aside)
-            if parts:
-                parts.append(" ")
-                length += 1
-            parts.append(markup)
-            length += len(plain.encode())
+        append_chips(i)
     return "".join(parts), offsets
 
 

@@ -17,7 +17,8 @@ def page_type():
     return MeetingPage
 
 
-def test_style_notifications_defer_and_coalesce_before_reading_the_new_css(monkeypatch):
+@pytest.mark.parametrize("exact", [False, True])
+def test_style_notifications_defer_and_coalesce_before_reading_the_new_css(monkeypatch, exact):
     page_class = page_type()
     from gi.repository import GLib
 
@@ -25,12 +26,14 @@ def test_style_notifications_defer_and_coalesce_before_reading_the_new_css(monke
     monkeypatch.setattr(GLib, "idle_add", lambda callback: callbacks.append(callback) or 12)
     page = SimpleNamespace(
         _closed=False,
+        _exact=False,
         _style_source=0,
         meeting=object(),
         update=Mock(),
         bound={0: ("turn", "words", "row")},
         _render_words=Mock(),
     )
+    page._exact, page.list = exact, Mock()
     page._style_ready = lambda: page_class._style_ready(page)
     page_class._style_changed(page)
     page_class._style_changed(page)
@@ -39,6 +42,7 @@ def test_style_notifications_defer_and_coalesce_before_reading_the_new_css(monke
     assert callbacks[0]() == GLib.SOURCE_REMOVE
     page.update.assert_not_called()
     page._render_words.assert_called_once_with("turn", "words")
+    assert page.list.invalidate.call_count == int(exact)
     assert page._style_source == 0
 
 
@@ -65,6 +69,7 @@ def test_dark_headers_update_synchronously_but_word_colours_wait_for_css(monkeyp
     monkeypatch.setattr(GLib, "idle_add", lambda callback: callbacks.append(callback) or 12)
     page = SimpleNamespace(
         _closed=False,
+        _exact=False,
         _style_source=0,
         meeting=object(),
         update=Mock(),
