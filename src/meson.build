@@ -144,6 +144,8 @@ talk_sources = files(
   'cassini_talk/meeting_time.py',
   'cassini_talk/exporting.py',
   'cassini_talk/export_dialog.py',
+  'cassini_talk/zip_export.py',
+  'cassini_talk/zip_export_dialog.py',
   'cassini_talk/received.py',
   'cassini_talk/archive_import.py',
   'cassini_talk/batch_import.py',

@@ -55,7 +55,7 @@ def assumed_zero(tracks):
     return tuple(placed(track) for track in tracks)
 
 
-def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
+def _require_export_directory(directory):
     directory = Path(directory).expanduser().absolute()
     from .companion import in_flatpak
     from .library_location import _host_storage
@@ -65,8 +65,96 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
         # Only a portal/host-backed destination is an export destination.
         raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), directory)
     directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _fsync_directory(directory):
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def write_cassini_opus(meeting, output, directory, *, tz=None, cancel=None):
+    policy = None
+    original = None
+    if meeting.lifecycle != "saved":
+        raise ValueError("Only saved recordings can be exported")
+    encoded = None
+    try:
+        if meeting.origin == "own" and meeting.audio_file is None:
+            # D19's export-only recovery policy does not alter the
+            # Library model, capture metadata or playback alignment.
+            tracks = assumed_zero(meeting.tracks)
+            policy = encode_choice(
+                [
+                    dict(
+                        codec="pcm",
+                        sampleRate=t.sample_rate,
+                        speechBitrateBps=None,
+                        empty=t.frames < t.sample_rate,
+                    )
+                    for t in meeting.tracks
+                ]
+            )
+            audio_fd, audio_name = tempfile.mkstemp(prefix=".cassini-audio-", suffix=".opus", dir=directory)
+            os.close(audio_fd)
+            encoded = Path(audio_name)
+            encode_pcm(tracks, encoded, policy, cancel)
+            audio_path = encoded
+        else:
+            audio_path = meeting.audio_file
+            if audio_path is None:
+                raise ValueError("Meeting has no audio")
+        with regular_input(audio_path) as audio:
+            trusted_source = False
+            if meeting.audio_file is not None:
+                original = portable.interpret(*portable.read_header(audio))
+                trusted_source = original.state == portable.State.PLAIN_AUDIO
+                audio.seek(0)
+            digest = portable.compute_audio_digest(audio, cancelled=lambda: bool(cancel and cancel.is_set()))
+            if original and original.manifest:
+                integrity = original.manifest["integrity"]
+                if integrity.get("opusAudioSha256") == digest["sha256"] and all(
+                    integrity.get(k) == digest[k] for k in ("channels", "sampleCount", "durationMs")
+                ):
+                    policy = original.manifest.get("audioEncode")
+                    trusted_source = True
+            tags, _manifest = descriptors(
+                meeting,
+                digest,
+                policy=policy,
+                tz=tz,
+                allow_recording_start=trusted_source or meeting.audio_file is None,
+                recorded_at_local=original.recorded_at_local if original and trusted_source else None,
+                recorded_date=original.meeting_start["value"]
+                if original
+                and trusted_source
+                and original.meeting_start
+                and original.meeting_start["source"] != "recordedAtLocal"
+                else None,
+            )
+            rewrite_tags(audio, output, tags, cancel)
+    finally:
+        if encoded:
+            encoded.unlink(missing_ok=True)
+
+
+def verify_cassini_opus(path, *, cancel=None):
+    portable_meeting = portable.read_meeting(str(path))
+    if (
+        portable.verify_audio(str(path), portable_meeting, cancelled=lambda: bool(cancel and cancel.is_set())).state
+        != portable.State.OK
+    ):
+        raise ValueError("Exported audio did not verify")
+    portable.load_words(portable_meeting, portable_meeting.default_transcript_id)
+
+
+def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
+    directory = _require_export_directory(directory)
     check_cancel(cancel)
-    stage = encoded = None
+    stage = None
     try:
         fd, name = tempfile.mkstemp(prefix=".cassini-export-", dir=directory)
         stage = Path(name)
@@ -74,85 +162,17 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
             if kind == "markdown":
                 output.write(markdown(model_projection(meeting, tz=tz)).encode())
             elif kind == "cassini":
-                policy = None
-                original = None
-                if meeting.lifecycle != "saved":
-                    raise ValueError("Only saved recordings can be exported")
-                if meeting.origin == "own" and meeting.audio_file is None:
-                    # D19's export-only recovery policy does not alter the
-                    # Library model, capture metadata or playback alignment.
-                    tracks = assumed_zero(meeting.tracks)
-                    policy = encode_choice(
-                        [
-                            dict(
-                                codec="pcm",
-                                sampleRate=t.sample_rate,
-                                speechBitrateBps=None,
-                                empty=t.frames < t.sample_rate,
-                            )
-                            for t in meeting.tracks
-                        ]
-                    )
-                    audio_fd, audio_name = tempfile.mkstemp(prefix=".cassini-audio-", suffix=".opus", dir=directory)
-                    os.close(audio_fd)
-                    encoded = Path(audio_name)
-                    encode_pcm(tracks, encoded, policy, cancel)
-                    audio_path = encoded
-                else:
-                    audio_path = meeting.audio_file
-                    if audio_path is None:
-                        raise ValueError("Meeting has no audio")
-                with regular_input(audio_path) as audio:
-                    trusted_source = False
-                    if meeting.audio_file is not None:
-                        original = portable.interpret(*portable.read_header(audio))
-                        trusted_source = original.state == portable.State.PLAIN_AUDIO
-                        audio.seek(0)
-                    digest = portable.compute_audio_digest(audio, cancelled=lambda: bool(cancel and cancel.is_set()))
-                    if original and original.manifest:
-                        integrity = original.manifest["integrity"]
-                        if integrity.get("opusAudioSha256") == digest["sha256"] and all(
-                            integrity.get(k) == digest[k] for k in ("channels", "sampleCount", "durationMs")
-                        ):
-                            policy = original.manifest.get("audioEncode")
-                            trusted_source = True
-                    tags, _manifest = descriptors(
-                        meeting,
-                        digest,
-                        policy=policy,
-                        tz=tz,
-                        allow_recording_start=trusted_source or meeting.audio_file is None,
-                        recorded_at_local=original.recorded_at_local if original and trusted_source else None,
-                        recorded_date=original.meeting_start["value"]
-                        if original
-                        and trusted_source
-                        and original.meeting_start
-                        and original.meeting_start["source"] != "recordedAtLocal"
-                        else None,
-                    )
-                    rewrite_tags(audio, output, tags, cancel)
+                write_cassini_opus(meeting, output, directory, tz=tz, cancel=cancel)
             else:
                 raise ValueError("Unknown export format")
             output.flush()
             os.fsync(output.fileno())
         check_cancel(cancel)
         if kind == "cassini":
-            portable_meeting = portable.read_meeting(str(stage))
-            if (
-                portable.verify_audio(
-                    str(stage), portable_meeting, cancelled=lambda: bool(cancel and cancel.is_set())
-                ).state
-                != portable.State.OK
-            ):
-                raise ValueError("Exported audio did not verify")
-            portable.load_words(portable_meeting, portable_meeting.default_transcript_id)
+            verify_cassini_opus(stage, cancel=cancel)
         check_cancel(cancel)
         result = _publish(stage, directory, file_stem(meeting.title), "md" if kind == "markdown" else "opus")
-        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        _fsync_directory(directory)
         return result
     except InterruptedError:
         # The portable reader uses InterruptedError for its cancellation hook;
@@ -162,5 +182,3 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
     finally:
         if stage:
             stage.unlink(missing_ok=True)
-        if encoded:
-            encoded.unlink(missing_ok=True)

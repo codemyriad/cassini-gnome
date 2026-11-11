@@ -8,7 +8,9 @@ from gi.repository import Gtk
 from cassini_talk.batch_import import Result
 from cassini_talk.i18n import using_language
 from cassini_talk.import_dialog import ImportDialog
-from cassini_talk.strings import text
+from cassini_talk.library import LibrarySnapshot
+from cassini_talk.strings import plural, text
+from cassini_talk.zip_export_dialog import ZipExportDialog
 
 
 class HeldFuture:
@@ -83,4 +85,58 @@ def check_import_bindings():
         crashing._done(boom_future)
         assert window._pending_selection == "Received-two" and window.refreshes == [True]
         assert window.messages == ["Imported 2 · 1 file could not be imported"]
-    print("PASS: D96 real progress, result, queued-cancel and exception widget bindings")
+
+    # Localized ZipExportDialog bindings: all/selected visibility, progress and plural completion toast.
+    from pathlib import Path
+
+    fake_meetings = (
+        SimpleNamespace(
+            key="Received-1",
+            title="Standup",
+            lifecycle="saved",
+            has_audio=True,
+            published_missing=False,
+            directory=Path("/tmp/Received-1"),
+        ),
+        SimpleNamespace(
+            key="Received-2",
+            title="Retro",
+            lifecycle="saved",
+            has_audio=True,
+            published_missing=False,
+            directory=Path("/tmp/Received-2"),
+        ),
+    )
+    added_toasts = []
+    export_window = SimpleNamespace(
+        snapshot=LibrarySnapshot(meetings=fake_meetings),
+        tz=None,
+        toasts=SimpleNamespace(add_toast=added_toasts.append),
+        toast=lambda msg: added_toasts.append(msg),
+        _refresh_export=lambda: None,
+        get_application=lambda: SimpleNamespace(
+            recording_settings=SimpleNamespace(get_string=lambda _k: "", set_string=lambda _k, _v: None),
+            meeting_trash=SimpleNamespace(hides=lambda _d: False),
+        ),
+    )
+    with using_language("it"):
+        zip_dialog = ZipExportDialog(export_window)
+        assert zip_dialog.get_title() == text("export.zip.all")
+        assert zip_dialog.export_all_button.get_label() == text("export.zip.all")
+        assert zip_dialog.export_selected_button.get_label() == text("export.zip.selected")
+        assert zip_dialog.export_selected_button.get_visible()
+        zip_dialog.checks["Received-1"].set_active(False)
+        zip_dialog.checks["Received-2"].set_active(False)
+        assert not zip_dialog.export_selected_button.get_visible()
+        zip_dialog.checks["Received-2"].set_active(True)
+        assert zip_dialog.export_selected_button.get_visible()
+        zip_dialog._progress(2, 2)
+        assert zip_dialog.progress_label.get_label() == text("export.zip.progress", done=2, total=2)
+        zip_dialog._target_count = 2
+        done_future = HeldFuture()
+        done_future.value = Path("/tmp/Cassini.zip")
+        zip_dialog._done(done_future)
+        assert added_toasts[-1].get_title() == plural("export.zip.done", 2)
+        assert added_toasts[-1].get_button_label() == text("common.show")
+        zip_dialog._closed()
+    print("PASS: D96 real progress, result, queued-cancel, ZIP export and exception widget bindings")
