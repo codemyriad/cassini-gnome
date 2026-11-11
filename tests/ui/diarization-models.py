@@ -9,7 +9,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -34,18 +33,24 @@ from cassini_talk.model_download import ModelStore  # noqa: E402
 from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
 
 
-def until(check):
-    deadline = time.monotonic() + 8
+def until(check, message="Diarization controls did not settle"):
     context = GLib.MainContext.default()
-    while time.monotonic() < deadline:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.01)
-    assert check(), "Diarization controls did not settle"
+    expired = False
+
+    def expire(*_args):
+        nonlocal expired
+        expired = True
+        return GLib.SOURCE_REMOVE
+
+    guard = GLib.timeout_source_new_seconds(18)
+    guard.set_callback(expire)
+    guard.attach(context)
+    try:
+        while not check() and not expired:
+            context.iteration(True)
+        assert check(), message
+    finally:
+        guard.destroy()
 
 
 fixture = remote.__wrapped__()
@@ -106,21 +111,24 @@ try:
             original = store.download
 
             def held(*args, **kwargs):
-                entered.set()
-                assert release.wait(5)
+                GLib.idle_add(entered.set)
+                assert release.wait(18), "the test did not release the model download"
                 return original(*args, **kwargs)
 
             with patch.object(store, "download", held):
                 dialog.nemotron_action.emit("clicked")
-                until(entered.is_set)
-                assert dialog.nemotron_action.get_label() == "Cancel" and dialog.nemotron_progress.get_visible()
-                dialog.nemotron_action.emit("clicked")
-                release.set()
+                try:
+                    until(entered.is_set, "the model download did not enter")
+                    assert dialog.nemotron_action.get_label() == "Cancel" and dialog.nemotron_progress.get_visible()
+                    dialog.nemotron_action.emit("clicked")
+                finally:
+                    release.set()
                 until(
                     lambda: (
                         not app.diarization_models.snapshot()["busy"]
                         and dialog.nemotron_action.get_label() == "Download"
-                    )
+                    ),
+                    "the cancelled model download did not return to Download",
                 )
                 assert not app.diarization_models.snapshot()["downloaded"]
                 assert dialog.nemotron_action.get_label() == "Download"
