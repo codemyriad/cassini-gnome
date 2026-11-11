@@ -68,7 +68,7 @@ def test_finalize_publishes_a_valid_library_file_and_meeting_json_at_one_revisio
     meeting = portable.read_meeting(str(path))
     value = meeting.manifest
     assert value["meeting"]["title"] == meeting.tags["TITLE"] == "Weekly sync"
-    assert meeting.tags["DATE"] == "2026-10-30T18:02:41+01:00"
+    assert meeting.tags["DATE"] == "2026-10-30T17:02:41Z"
     assert value["meeting"]["recordedAtLocal"] == "2026-10-30T18:02:41"
     assert value["audio"]["channels"] == 1 and value["audio"]["sampleCount"] == 2 * RATE
     assert value["audioEncode"]["bitrateBps"] == 64000
@@ -125,7 +125,7 @@ def test_unknown_offsets_are_mixed_at_zero_and_marked(tmp_path):
     # No recorded offset: the Library device's zone (CEST in July) and legacy-device-tz.
     assert result.name.startswith("2026-07-01--12.00-")
     assert value["x"]["codemyriad.io"]["namePrefixSource"] == "legacy-device-tz"
-    assert portable.read_meeting(str(tmp_path / result.name)).tags["DATE"] == "2026-07-01T12:00:00+02:00"
+    assert portable.read_meeting(str(tmp_path / result.name)).tags["DATE"] == "2026-07-01T10:00:00Z"
 
 
 # ---- §9.2 Ogg structure, two tag rewrites and a rename ----------------------------------

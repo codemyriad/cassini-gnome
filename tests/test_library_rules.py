@@ -208,7 +208,8 @@ def test_same_uuid_under_both_prefixes_keeps_two_rows_with_distinct_internal_key
     (destination / "meeting.json").write_text(json.dumps(metadata))
     rows = library.scan_library(tmp_path).meetings
     assert len(rows) == 2 and rows[0].id == rows[1].id == session.manifest["id"]
-    assert [r.key for r in rows] == sorted([session.directory.name, destination.name])
+    assert [r.key for r in rows] == [session.directory.name, destination.name]
+    assert rows[1].display_start is None  # D95: importing plain audio does not date its recording.
 
 
 def test_unknown_duration_omits_duration_without_inventing_copy():

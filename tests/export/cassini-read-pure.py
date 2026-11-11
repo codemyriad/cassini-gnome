@@ -14,7 +14,7 @@ the audio, so the best state it can report is `unverified`.
 
 SPDX-License-Identifier: CC0-1.0
 """
-import base64, binascii, hashlib, json, struct, sys, zlib
+import base64, binascii, datetime, hashlib, json, re, struct, sys, zlib
 
 FIRST_READ = 1 << 20        # enough for most files; doubled until OpusTags ends
 INFLATE_CEILING = 64 << 20  # no chunk set legitimately inflates past this
@@ -109,6 +109,41 @@ def chunks(t, prefix, count, sha256=None, raw_bytes=None):
         raise ValueError(f"{prefix}*: payload is not JSON: {exc}") from None
 
 
+RFC3339_OFFSET = re.compile(r"(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2}:\d{2})(\.\d+)?([Zz]|[+-]\d{2}:\d{2})")
+
+
+def _instant(text):
+    """RFC 3339 with an offset -> aware datetime, else None."""
+    m = RFC3339_OFFSET.fullmatch((text or "").strip())
+    if not m:
+        return None
+    frac = (m.group(3) or ".0")[:7].ljust(7, "0")      # microseconds at most
+    zone = "+00:00" if m.group(4) in ("Z", "z") else m.group(4)
+    try:
+        return datetime.datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}{frac}{zone}")
+    except ValueError:
+        return None
+
+
+def meeting_start(tags, manifest):
+    """When the meeting happened, as SPEC.md 'When the meeting happened' says:
+    (source, value), or (None, None). recordedAtUtc first; then a DATE with an
+    offset that is not createdAtUtc; then recordedAtLocal as an unconverted
+    label. createdAtUtc is when the file was stamped and is never the answer."""
+    meeting = manifest.get("meeting") or {}
+    utc = meeting.get("recordedAtUtc")
+    if isinstance(utc, str) and _instant(utc) and utc.strip().endswith("Z"):
+        return "recordedAtUtc", utc.strip()
+    date = _instant(tags.get("DATE"))
+    created = _instant(meeting.get("createdAtUtc"))
+    if date and date != created:
+        return "DATE", tags["DATE"].strip()
+    local = meeting.get("recordedAtLocal")
+    if isinstance(local, str) and local:
+        return "recordedAtLocal", local
+    return None, None
+
+
 def read(data):
     """Ogg bytes -> dict with state, manifest, words, transcript notes, bytes_used."""
     try:
@@ -148,7 +183,8 @@ def read(data):
         except (KeyError, ValueError, TypeError) as exc:
             notes.append(f"{e['id']}: unavailable, {exc}")     # this body, not the file
     return {"state": "unverified", "manifest": manifest, "words": words,
-            "default": want, "notes": notes, "used": used}
+            "default": want, "notes": notes, "used": used,
+            "when": meeting_start(t, manifest)}
 
 
 def read_file(path):
@@ -179,6 +215,8 @@ if __name__ == "__main__":
     m = r["manifest"]
     print(f'{m["meeting"]["title"]} - {m["meeting"]["durationMs"] / 1000:.0f} s, '
           f'default transcript {r["default"]!r}')
+    source, value = r["when"]
+    print(f"recorded {value} ({source})" if source else "recorded: unknown")
     for note in r["notes"]:
         print(f"  {note}")
     print(f"all of it came from the first {r['used']} of {total} bytes "

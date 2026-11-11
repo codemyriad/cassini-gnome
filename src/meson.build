@@ -141,6 +141,7 @@ talk_sources = files(
   'cassini_talk/export_audio.py',
   'cassini_talk/portable_context.py',
   'cassini_talk/portable_writer.py',
+  'cassini_talk/meeting_time.py',
   'cassini_talk/exporting.py',
   'cassini_talk/export_dialog.py',
   'cassini_talk/received.py',
