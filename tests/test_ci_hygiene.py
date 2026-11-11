@@ -132,22 +132,28 @@ def test_release_metadata_runs_in_lint_and_release_preparation_has_no_pr_trigger
 
 
 # Runner selection: the CM_RUNNER / CM_RUNNER_DESKTOP repository variables move a job to the
-# cm-hetzner runners (Ubuntu 26.04 job containers) only on non-fork runs and only when set to
-# exactly "hetzner". The labels are a constant; the variable is never parsed, so any other value
-# (unset, empty, a typo, JSON) or any fork pull request keeps the pinned GitHub image instead of
-# running untrusted fork code on self-hosted runners, failing the expression, or queueing forever.
+# cm-hetzner runners (Ubuntu 26.04 job containers) only on allowlisted events (push, schedule,
+# workflow_dispatch, and same-repository pull_request) and only when set to exactly "hetzner".
+# The labels are a constant; the variable is never parsed, so any other value (unset, empty, a
+# typo, JSON), any fork pull request, or any unallowlisted event (pull_request_target,
+# workflow_run, issue_comment, etc.) keeps the pinned GitHub image instead of running untrusted
+# code on self-hosted runners, failing the expression, or queueing forever.
 CM_HETZNER = ["self-hosted", "cm-hetzner"]
-FORK_GUARD = (
-    r"\(github\.event_name != 'pull_request' \|\| "
-    r"github\.event\.pull_request\.head\.repo\.full_name == github\.repository\)"
+EVENT_ALLOWLIST = (
+    r"\(github\.event_name == 'push' \|\| github\.event_name == 'schedule' \|\| "
+    r"github\.event_name == 'workflow_dispatch' \|\| "
+    r"\(github\.event_name == 'pull_request' && "
+    r"github\.event\.pull_request\.head\.repo\.full_name == github\.repository\)\)"
 )
 RUNNER_SELECTOR = re.compile(
-    rf"^\$\{{\{{ {FORK_GUARD} && vars\.(?P<var>CM_RUNNER(?:_DESKTOP)?) == 'hetzner' && "
+    rf"^\$\{{\{{ {EVENT_ALLOWLIST} && vars\.(?P<var>CM_RUNNER(?:_DESKTOP)?) == 'hetzner' && "
     r"fromJSON\('\[\"self-hosted\",\"cm-hetzner\"\]'\) \|\| 'ubuntu-26\.04' \}\}$"
 )
 CM_RUNNER_PINNED = (
-    "${{ (github.event_name != 'pull_request' || "
-    "github.event.pull_request.head.repo.full_name == github.repository) && "
+    "${{ (github.event_name == 'push' || github.event_name == 'schedule' || "
+    "github.event_name == 'workflow_dispatch' || "
+    "(github.event_name == 'pull_request' && "
+    "github.event.pull_request.head.repo.full_name == github.repository)) && "
     "vars.CM_RUNNER == 'hetzner' && fromJSON('[\"self-hosted\",\"cm-hetzner\"]') || 'ubuntu-26.04' }}"
 )
 
@@ -193,7 +199,7 @@ def select_runner(
     github = SimpleNamespace(
         event_name=_CIString(event_name),
         repository=_CIString(repository),
-        event=event if event_name == "pull_request" else _NULL,
+        event=event if event_name in ("pull_request", "pull_request_target") else _NULL,
     )
     vars_ns = SimpleNamespace(
         CM_RUNNER=_CIString(variables.get("CM_RUNNER") or ""),
@@ -404,6 +410,21 @@ def test_runner_selection_falls_back_to_github_for_every_other_value_and_for_for
                 select_runner(value, both_enabled, event_name="pull_request", head_repo=untrusted_head)
                 == "ubuntu-26.04"
             ), (where, untrusted_head)
+        # Prohibited or unallowlisted events never select self-hosted runners, even for same-repo payloads.
+        for prohibited_event in (
+            "pull_request_target",
+            "workflow_run",
+            "issue_comment",
+            "release",
+            "merge_group",
+            "repository_dispatch",
+            "",
+        ):
+            for candidate_head in ("codemyriad/cassini-gnome", "fork/cassini-gnome", None):
+                assert (
+                    select_runner(value, both_enabled, event_name=prohibited_event, head_repo=candidate_head)
+                    == "ubuntu-26.04"
+                ), (where, prohibited_event, candidate_head)
 
 
 def test_runner_variables_move_the_intended_jobs():
