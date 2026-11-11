@@ -6,6 +6,13 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from time import thread_time_ns
 
+from exact_budgets import (
+    FIRST_PAINT_CEILING_MS,
+    FIRST_PAINT_TARGET_MS,
+    FRAME_CPU_CEILING_MS,
+    FRAME_CPU_TARGET_MS,
+    check_cpu_budget,
+)
 from gi.repository import GLib
 from transcript_long_turn import long_turn_words
 
@@ -87,7 +94,27 @@ def check_long_reader(window, paint, until):
         worstFrameCpuMs=max(cpu),
         buildSliceMaxCpuMs=view.build_slice_cpu_max_ns / 1e6,
     )
-    assert first < 100 and max(cpu) < 32 and report["buildSliceMaxCpuMs"] < 32, report
+    check_cpu_budget(
+        "longStandaloneReader",
+        "firstPaintCpuMs",
+        first,
+        target_ms=FIRST_PAINT_TARGET_MS,
+        ceiling_ms=FIRST_PAINT_CEILING_MS,
+    )
+    check_cpu_budget(
+        "longStandaloneReader",
+        "worstFrameCpuMs",
+        report["worstFrameCpuMs"],
+        target_ms=FRAME_CPU_TARGET_MS,
+        ceiling_ms=FRAME_CPU_CEILING_MS,
+    )
+    check_cpu_budget(
+        "longStandaloneReader",
+        "buildSliceMaxCpuMs",
+        report["buildSliceMaxCpuMs"],
+        target_ms=FRAME_CPU_TARGET_MS,
+        ceiling_ms=FRAME_CPU_CEILING_MS,
+    )
     # Both a late host word and a late folded chip still use original URIs.
     chip = host.asides[len(host.asides) * 3 // 4][1]
     for key in ((host.index, len(host.words) * 3 // 4), (chip.index, 0)):

@@ -1,13 +1,14 @@
 #!/bin/sh
 # Install the packages needed to build and/or run Cassini talk, using the
 # distribution's own package manager (apt, dnf, zypper, pacman or apk).
-#   build-aux/install-deps.sh [--all|--build|--runtime] [--yes] [--dry-run]
+#   build-aux/install-deps.sh [--all|--build|--runtime] [--yes] [--dry-run] [--required-only]
 #     --all       build and runtime dependencies (default)
 #     --build     C compiler, meson, ninja, gettext, glib tools, validators, pytest
 #     --runtime   python3, PyGObject, GTK 4, libadwaita, GStreamer plugins,
 #                 and NumPy for writing meetings down
 #     --yes       do not ask for confirmation
 #     --dry-run   print the install command instead of running it
+#     --required-only  DNF only: omit weak dependencies (CI source validation)
 # The app needs GTK >= 4.18 and libadwaita >= 1.8; older distributions
 # install fine but cannot run it (see build-aux/check-distros.sh). Writing
 # down also needs the pinned engine (meson -Dwhistle=enabled, glibc x86_64),
@@ -16,7 +17,7 @@
 # shellcheck disable=SC2086 # $y is an optional flag, deliberately unquoted
 set -eu
 
-set_build=0 set_runtime=0 dry_run=0 yes=0
+set_build=0 set_runtime=0 dry_run=0 yes=0 required_only=0
 for arg in "$@"; do
   case $arg in
     --all) set_build=1 set_runtime=1 ;;
@@ -24,7 +25,8 @@ for arg in "$@"; do
     --runtime) set_runtime=1 ;;
     --dry-run|-n) dry_run=1 ;;
     --yes|-y) yes=1 ;;
-    -h|--help) sed -n '2,13s/^# \{0,1\}//p' "$0"; exit 0 ;;
+    --required-only) required_only=1 ;;
+    -h|--help) sed -n '2,16s/^# \{0,1\}//p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
   esac
 done
@@ -65,6 +67,7 @@ for id in ${ID:-} ${ID_LIKE:-}; do
   esac
   [ -n "$family" ] && break
 done
+[ "$required_only" = 0 ] || [ "$family" = dnf ] || unknown "error: --required-only currently supports DNF only."
 [ -n "$family" ] || unknown "error: unsupported distribution '${ID:-?}' (ID_LIKE='${ID_LIKE:-}')."
 if [ -e /run/ostree-booted ]; then
   unknown "error: this is an image-based system (ostree); install the packages inside a toolbox or distrobox container instead."
@@ -147,6 +150,8 @@ case $family in
     fi ;;
   dnf)
     [ $yes = 1 ] && y=-y || y=
+    # Keep the developer/desktop default; only the explicit CI mode opts out.
+    [ "$required_only" = 0 ] || set -- --setopt=install_weak_deps=False "$@"
     run dnf install $y "$@" ;;
   zypper)
     [ $yes = 1 ] && y=--non-interactive || y=

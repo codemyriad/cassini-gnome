@@ -5,6 +5,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
+from exact_budgets import (
+    FIRST_PAINT_CEILING_MS,
+    FIRST_PAINT_TARGET_MS,
+    FRAME_CPU_CEILING_MS,
+    FRAME_CPU_TARGET_MS,
+    check_cpu_budget,
+)
 from gi.repository import GLib
 from transcript_long_turn import long_turn_words
 
@@ -43,12 +50,30 @@ def check_long_turn(window, model, frames_type, paint, until, flicks):
         openWorstFrameCpuMs=max(frames.cpu),
         buildSliceMaxCpuMs=page.list.build_slice_cpu_max_ns / 1e6,
     )
-    assert first < 100, report
-    assert report["openWorstFrameCpuMs"] < 32, report
-    assert report["buildSliceMaxCpuMs"] < 32, report
+    check_cpu_budget(
+        "longRejoinedTurn",
+        "openFirstPaintCpuMs",
+        first,
+        target_ms=FIRST_PAINT_TARGET_MS,
+        ceiling_ms=FIRST_PAINT_CEILING_MS,
+    )
+    check_cpu_budget(
+        "longRejoinedTurn",
+        "openWorstFrameCpuMs",
+        report["openWorstFrameCpuMs"],
+        target_ms=FRAME_CPU_TARGET_MS,
+        ceiling_ms=FRAME_CPU_CEILING_MS,
+    )
+    check_cpu_budget(
+        "longRejoinedTurn",
+        "buildSliceMaxCpuMs",
+        report["buildSliceMaxCpuMs"],
+        target_ms=FRAME_CPU_TARGET_MS,
+        ceiling_ms=FRAME_CPU_CEILING_MS,
+    )
     until(lambda: window.player._prerolled)
-    report["paused"] = flicks(window, page, False)
-    report["playingFollowOff"] = flicks(window, page, True)
+    report["paused"] = flicks(window, page, False, label="longRejoinedTurn.paused")
+    report["playingFollowOff"] = flicks(window, page, True, label="longRejoinedTurn.playingFollowOff")
     frames = frames_type(window)
     original = window.get_default_size()
     width = page.list.layout_width
@@ -60,7 +85,13 @@ def check_long_turn(window, model, frames_type, paint, until, flicks):
     paint(window)
     frames.close()
     report["resizeWorstFrameCpuMs"] = max(frames.cpu)
-    assert report["resizeWorstFrameCpuMs"] < 32, report
+    check_cpu_budget(
+        "longRejoinedTurn",
+        "resizeWorstFrameCpuMs",
+        report["resizeWorstFrameCpuMs"],
+        target_ms=FRAME_CPU_TARGET_MS,
+        ceiling_ms=FRAME_CPU_CEILING_MS,
+    )
     # Seek/follow deep inside the semantic paragraph and activate a real chip.
     target = next(row for row in reversed(page._turns[:-10]) if row.asides)
     word = target.asides[0][1].words[0]

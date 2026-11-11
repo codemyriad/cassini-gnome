@@ -72,14 +72,14 @@ sha256sums=('SKIP'
 _srcdir=$pkgname-$pkgver
 
 build() {
-  arch-meson "$_srcdir" build -Dpackaging=arch -Dwhistle=enabled -Dwhistle_cache="$srcdir" -Dsherpa=enabled -Dsherpa_cache="$srcdir"
+  arch-meson "$_srcdir" build -Dpackaging=arch -Dpytest_parallel=true -Dwhistle=enabled -Dwhistle_cache="$srcdir" -Dsherpa=enabled -Dsherpa_cache="$srcdir"
   meson compile -C build
 }
 
 check() {
   # A missing GTK/Adw typelib fails the check instead of skipping the
   # application tests (G11: CI's Source job relies on this one).
-  CASSINI_TEST_REQUIRE_GTK=1 meson test -C build --print-errorlogs
+  CASSINI_TEST_REQUIRE_GTK=1 meson test -C build --num-processes=2 --print-errorlogs
 }
 
 package() {
