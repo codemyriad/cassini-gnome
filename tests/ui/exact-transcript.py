@@ -39,6 +39,15 @@ Gio.resources_register(
         + "/cassini-talk.gresource"
     )
 )
+from exact_budgets import (  # noqa: E402
+    FIRST_PAINT_CEILING_MS,
+    FIRST_PAINT_TARGET_MS,
+    FRAME_CPU_CEILING_MS,
+    FRAME_CPU_TARGET_MS,
+    HIGHLIGHT_CPU_CEILING_MS,
+    HIGHLIGHT_CPU_TARGET_MS,
+    check_cpu_budget,
+)
 from exact_interactions import native_scroll  # noqa: E402
 from transcript_measurements import check_measurements  # noqa: E402
 from transcript_scroll_support import hour_meeting  # noqa: E402
@@ -110,7 +119,7 @@ def anchor(page):
     return min(visible)
 
 
-def flicks(window, page, playing, touch=False):
+def flicks(window, page, playing, touch=False, label="scroll"):
     adjustment = page.scroller.get_vadjustment()
     assert page.scroller.get_kinetic_scrolling()
     controllers, bubble, capture = native_scroll(page)
@@ -177,7 +186,13 @@ def flicks(window, page, playing, touch=False):
     if playing:
         page.player.pause()
     assert coast > 0, "Native kinetic coast did not run"
-    assert max(frames.cpu) < 32, ("Scroll frame CPU budget", max(frames.cpu))
+    check_cpu_budget(
+        label,
+        "scrollWorstFrameCpuMs",
+        max(frames.cpu),
+        target_ms=FRAME_CPU_TARGET_MS,
+        ceiling_ms=FRAME_CPU_CEILING_MS,
+    )
     if not BASELINE:
         assert reverse == 0, ("Visible anchor reversed", reverse)
     if not BASELINE:
@@ -328,10 +343,10 @@ with tempfile.TemporaryDirectory() as temporary:
         )
         print("OPEN_PROFILE", json.dumps(report), flush=True)
         until(lambda: window.player._prerolled)
-        report["paused"] = flicks(window, page, False)
-        report["playingFollowOff"] = flicks(window, page, True)
-        report["touchPaused"] = flicks(window, page, False, touch=True)
-        report["touchPlaying"] = flicks(window, page, True, touch=True)
+        report["paused"] = flicks(window, page, False, label=f"{name}.paused")
+        report["playingFollowOff"] = flicks(window, page, True, label=f"{name}.playingFollowOff")
+        report["touchPaused"] = flicks(window, page, False, touch=True, label=f"{name}.touchPaused")
+        report["touchPlaying"] = flicks(window, page, True, touch=True, label=f"{name}.touchPlaying")
         costs = []
         for i in range(200):
             window.player.freeze_notify()
@@ -342,7 +357,13 @@ with tempfile.TemporaryDirectory() as temporary:
             window.player.thaw_notify()
         report["highlightCpuMeanMs"] = sum(costs) / len(costs)
         report["highlightCpuMaxMs"] = max(costs)
-        assert max(costs) < 2, ("Highlight CPU budget", max(costs))
+        check_cpu_budget(
+            name,
+            "highlightCpuMaxMs",
+            max(costs),
+            target_ms=HIGHLIGHT_CPU_TARGET_MS,
+            ceiling_ms=HIGHLIGHT_CPU_CEILING_MS,
+        )
         # A retained overscan row skips playback work until it enters the
         # viewport. Its first painted frame must already highlight the seek.
         outside = next(i for i in sorted(page.bound) if i >= page.list.visible_rows.stop)
@@ -445,13 +466,35 @@ with tempfile.TemporaryDirectory() as temporary:
         ok, bounds = page.bound[target.index][2].compute_bounds(page.scroller)
         assert ok and bounds.get_y() < page.scroller.get_height() and bounds.get_y() + bounds.get_height() > 0
         report["wordActivationAndFollow"] = True
-        assert report["openFirstPaintCpuMs"] < 100, (
-            "First transcript paint CPU target missed",
+        assert report["openFirstPaintCpuMs"] < report["openFullyLaidOutCpuMs"], report
+        check_cpu_budget(
+            name,
+            "openFirstPaintCpuMs",
             report["openFirstPaintCpuMs"],
+            target_ms=FIRST_PAINT_TARGET_MS,
+            ceiling_ms=FIRST_PAINT_CEILING_MS,
         )
-        assert report["openWorstFrameCpuMs"] < 32, "Load paint-frame CPU target missed"
-        assert report["resizeWorstFrameCpuMs"] < 32, "Uncached resize paint-frame CPU target missed"
-        assert report["resizeAboveCapWorstFrameCpuMs"] < 32, "Above-cap resize CPU target missed"
+        check_cpu_budget(
+            name,
+            "openWorstFrameCpuMs",
+            report["openWorstFrameCpuMs"],
+            target_ms=FRAME_CPU_TARGET_MS,
+            ceiling_ms=FRAME_CPU_CEILING_MS,
+        )
+        check_cpu_budget(
+            name,
+            "resizeWorstFrameCpuMs",
+            report["resizeWorstFrameCpuMs"],
+            target_ms=FRAME_CPU_TARGET_MS,
+            ceiling_ms=FRAME_CPU_CEILING_MS,
+        )
+        check_cpu_budget(
+            name,
+            "resizeAboveCapWorstFrameCpuMs",
+            report["resizeAboveCapWorstFrameCpuMs"],
+            target_ms=FRAME_CPU_TARGET_MS,
+            ceiling_ms=FRAME_CPU_CEILING_MS,
+        )
         if name == "60min-diarized":
             from exact_interactions import check_interactions
 
@@ -486,7 +529,7 @@ with tempfile.TemporaryDirectory() as temporary:
             json.dumps(
                 {
                     mode: {k: v for k, v in report[mode].items() if k != "samples"}
-                    for mode in ("paused", "playingFollowOff")
+                    for mode in ("paused", "playingFollowOff", "touchPaused", "touchPlaying")
                 }
             ),
             flush=True,
