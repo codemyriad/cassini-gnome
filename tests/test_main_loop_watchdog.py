@@ -13,21 +13,68 @@ SOURCE = Path(__file__).resolve().parents[1] / "src"
 
 def test_stall_dumps_all_threads_once_and_recovers():
     script = """
-import logging, time
+import logging
+import threading
+from types import SimpleNamespace
+
 from gi.repository import GLib
-from cassini_talk.main_loop_watchdog import MainLoopWatchdog
-logging.basicConfig(level=logging.WARNING)
-watchdog = MainLoopWatchdog()
+from cassini_talk import main_loop_watchdog
+
 loop = GLib.MainLoop()
+clock_changed = threading.Condition()
+now = 0.0
+checks_while_blocked = 0
+checked = []
+
+def monotonic():
+    global checks_while_blocked
+    with clock_changed:
+        if now == 0.3:
+            checks_while_blocked += 1
+            clock_changed.notify_all()
+        return now
+
+main_loop_watchdog.time = SimpleNamespace(monotonic=monotonic)
+
 def block():
-    time.sleep(0.4)
-    return False
-GLib.timeout_add(120, block)
-GLib.timeout_add(800, lambda: (loop.quit(), False)[1])
-loop.run()
-watchdog.close()
+    global now
+    with clock_changed:
+        now = 0.3
+        # One check reports the stall. The next check must suppress a second
+        # report. Entering the third check proves the second one has returned.
+        checked.append(clock_changed.wait_for(lambda: checks_while_blocked >= 3, 5))
+        now = 0.31
+    if not checked[0]:
+        loop.quit()
+    return GLib.SOURCE_REMOVE
+
+class Watchdog(main_loop_watchdog.MainLoopWatchdog):
+    first_beat = True
+
+    def _beat(self):
+        keep = super()._beat()
+        if self.first_beat:
+            self.first_beat = False
+            GLib.idle_add(block)
+        return keep
+
+class StopAfterRecovery(logging.Handler):
+    def emit(self, record):
+        if record.getMessage().startswith("main loop recovered"):
+            GLib.idle_add(loop.quit)
+
+logging.basicConfig(level=logging.WARNING)
+main_loop_watchdog.LOG.addHandler(StopAfterRecovery())
+watchdog = Watchdog()
+try:
+    loop.run()
+    assert checked == [True], "watchdog did not check the blocked main context"
+finally:
+    watchdog.close()
+    watchdog._thread.join(2)
+    assert not watchdog._thread.is_alive()
 """
-    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=5, cwd=SOURCE)
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=15, cwd=SOURCE)
     assert result.returncode == 0, result.stderr
     assert result.stderr.count("main loop stalled") == 1, result.stderr
     assert result.stderr.count("Current thread") == 1, result.stderr
