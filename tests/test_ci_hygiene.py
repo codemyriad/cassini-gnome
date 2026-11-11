@@ -443,6 +443,7 @@ def test_runner_variables_move_the_intended_jobs():
         },
         "CM_RUNNER_DESKTOP": {
             ("background-apps.yml", "desktop"),
+            ("exact-transcript.yml", "native-gtk"),
             ("recording.yml", "capture"),
             ("recording.yml", "live-folder"),
             ("ux-shot.yml", "current-window"),
@@ -452,7 +453,6 @@ def test_runner_variables_move_the_intended_jobs():
     hosted_only = {
         ("ci.yml", "changes"),
         ("ci.yml", "pytest-coverage"),
-        ("exact-transcript.yml", "native-gtk"),
         ("release-check.yml", "metadata"),
         ("release.yml", "deb"),
         ("release.yml", "main-inputs"),
