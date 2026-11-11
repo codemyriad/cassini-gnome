@@ -39,6 +39,7 @@ Gio.resources_register(
         + "/cassini-talk.gresource"
     )
 )
+from exact_interactions import native_scroll  # noqa: E402
 from transcript_measurements import check_measurements  # noqa: E402
 from transcript_scroll_support import hour_meeting  # noqa: E402
 
@@ -107,21 +108,6 @@ def anchor(page):
             visible.append((index, -bounds.get_y()))
     assert visible
     return min(visible)
-
-
-def native_scroll(page):
-    controllers = page.scroller.observe_controllers()
-    native = [
-        controllers.get_item(i)
-        for i in range(controllers.get_n_items())
-        if isinstance(controllers.get_item(i), Gtk.EventControllerScroll)
-        and controllers.get_item(i).get_flags() & Gtk.EventControllerScrollFlags.KINETIC
-        and not controllers.get_item(i).get_flags() & Gtk.EventControllerScrollFlags.DISCRETE
-    ]
-    assert len(native) == 2, native
-    bubble = next(c for c in native if c.get_propagation_phase() == Gtk.PropagationPhase.BUBBLE)
-    capture = next(c for c in native if c.get_propagation_phase() == Gtk.PropagationPhase.CAPTURE)
-    return controllers, bubble, capture
 
 
 def flicks(window, page, playing, touch=False):

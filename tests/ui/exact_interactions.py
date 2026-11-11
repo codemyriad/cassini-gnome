@@ -55,6 +55,21 @@ def accessible(window, page, paint, until, baseline=False):
     return json.loads(output)
 
 
+def native_scroll(page):
+    controllers = page.scroller.observe_controllers()
+    native = [
+        controllers.get_item(i)
+        for i in range(controllers.get_n_items())
+        if isinstance(controllers.get_item(i), Gtk.EventControllerScroll)
+        and controllers.get_item(i).get_flags() & Gtk.EventControllerScrollFlags.KINETIC
+        and not controllers.get_item(i).get_flags() & Gtk.EventControllerScrollFlags.DISCRETE
+    ]
+    assert len(native) == 2, native
+    bubble = next(c for c in native if c.get_propagation_phase() == Gtk.PropagationPhase.BUBBLE)
+    capture = next(c for c in native if c.get_propagation_phase() == Gtk.PropagationPhase.CAPTURE)
+    return controllers, bubble, capture
+
+
 def check_interactions(window, page, paint, until):
     model = page.meeting
     view = page.list
@@ -82,28 +97,11 @@ def check_interactions(window, page, paint, until):
     ok, bounds = view.rows[0].compute_bounds(page.scroller)
     assert ok and bounds.get_x() >= 48 and abs(bounds.get_y() - 22) <= 1, bounds
 
-    # Start a rebuild with an anchor that needs several rows to be measured.
-    view.props.vadjustment.set_value(view.prefix[10] + 7)
-    paint(window)
-    retained_rows = dict(view.rows)
-    view.invalidate()
-    paint(window)
-    assert view._active is view._building and not view.ready
-    until(lambda: view._pending_anchor is None)
-    assert abs(view._value() - view.prefix[10] - 7) <= 1
-    assert not view.ready
-    assert all(view.rows.get(i) is row for i, row in retained_rows.items())
+    from exact_rebuild import check_rebuild
 
-    # Resize again while that replacement is still partial. It must keep
-    # publishing measured rows and restore the same logical anchor.
-    old_index = view._active
     old_width, old_height = window.get_default_size()
-    window.set_default_size(860, old_height)
-    until(lambda: view._active is not old_index)
-    assert view._active is view._building and not view.ready
-    until(lambda: view._pending_anchor is None)
-    assert abs(view._value() - view.prefix[10] - 7) <= 1
-
+    old_layout_width = view.layout_width
+    result["rebuildFrames"] = check_rebuild(window, page, paint, until, native_scroll)
     far = len(model.turns) - 1
     view.scroll_to(far)
     assert view._pending_scroll == far
@@ -116,12 +114,15 @@ def check_interactions(window, page, paint, until):
     view.props.vadjustment.set_value(view.prefix[10] + 7)
     view.scroll_to(far)
     assert view._pending_scroll == far
+    view.navigation.pending = (10, None)
     view.set_turns(view.items, len(view.items))
+    assert view.navigation.pending == (10, None)
+    view.navigation.pending = None
     assert view._pending_scroll is None
     until(lambda: view.ready)
     assert abs(view._value() - view.prefix[10] - 7) <= 1
     window.set_default_size(old_width, old_height)
-    until(lambda: view.ready and view._requested_width == old_index.width)
+    until(lambda: view.ready and view._requested_width == old_layout_width)
     paint(window)
     result["reindexAnchor"] = True
     # Baseline GtkLabels are not selectable; do not promise whole-document copy.
@@ -362,6 +363,21 @@ def check_interactions(window, page, paint, until):
     assert view._metric_markup[host.index].count('href="aside:0:0"') >= 3
     actual = page.bound[host.index][2].measure(Gtk.Orientation.VERTICAL, view.layout_width).natural
     assert actual == view.prefix[host.index + 1] - view.prefix[host.index]
+    probe = page._build_row(host, register=False)
+    probe.set_child_visible(False)
+    probe.set_parent(view)
+    try:
+        probe.get_last_child().set_markup(page._turn_markup(host, position=-1))
+        page._refresh_header(host, probe)
+        real_row = page.bound[host.index][2]
+        for width in (360, 480, view.layout_width):
+            assert tuple(probe.measure(Gtk.Orientation.VERTICAL, width)) == tuple(
+                real_row.measure(Gtk.Orientation.VERTICAL, width)
+            ), ("Linked chip probe differs from bridged real row", width)
+    finally:
+        probe.close()
+        probe.unparent()
+    result["chipProbeHeightParity"] = True
     result["chipHits"] = True
     # A speaker present only in a folded reply stays in the actionable sidebar.
     reply = host.asides[0][1]
