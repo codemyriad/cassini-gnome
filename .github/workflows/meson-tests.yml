@@ -10,7 +10,7 @@ permissions:
 jobs:
   meson-tests:
     name: Meson tests (minimal environment)
-    runs-on: ubuntu-26.04
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     container: ubuntu:26.04
     # 3.4-4.5 min on the last main pushes (D66: 2-4x p95).
     timeout-minutes: 15

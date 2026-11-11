@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   capture:
-    runs-on: ${{ vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     # p95 is 13.5 min; a slow apt mirror once took 14.5 min of a 20 min budget (G10).
     timeout-minutes: 30
     steps:
@@ -111,7 +111,7 @@ jobs:
   # any job or step that hides its failure. pressure.log in the uploaded evidence tells
   # a stalled machine apart.
   live-folder:
-    runs-on: ubuntu-26.04
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
