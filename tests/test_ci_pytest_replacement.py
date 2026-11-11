@@ -59,7 +59,7 @@ CHECK_STEP = """
             --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
-          name: pytest-ran-${{ steps.pytest.outputs.slug }}
+          name: pytest-ran-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
 """
@@ -73,18 +73,19 @@ SOURCE_STEP = """
       # G11: from this job's own Meson logs, the node ids its pytest ran
       # (fedora:latest's are the reference every package job must cover),
       # or, whatever made it skip, a pytest-skipped marker that CI's Pytest
-      # coverage gate requires a package job's proof for.
+      # coverage gate requires a package job's proof for. Only run after
+      # check-distros.sh succeeds so a failure before pytest never uploads a
+      # skip marker; suffix run_attempt so re-runs supersede stale markers.
       - name: Record which pytest tests ran here
         id: pytest
-        if: ${{ !cancelled() }}
         run: |
           . build-aux/container.sh
-          python3 build-aux/ci/check_pytest_ran.py --source "$CASSINI_TEST_LOGS" --slug "$(image_slug "${{ matrix.image }}")" \\
+          python3 build-aux/ci/check_pytest_ran.py --source "$CASSINI_TEST_LOGS" \\
+            --install-outcome "$CASSINI_INSTALL_OUTCOME" --slug "$(image_slug "${{ matrix.image }}")" \\
             --export "$RUNNER_TEMP/pytest" --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
         with:
-          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}
+          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
 """
@@ -237,7 +238,7 @@ def arch_array(pkgbuild, name):
 def problems(files):
     found = []
     source = jobs(files[".github/workflows/source.yml"])["distros"]
-    if re.search(r"^    (?:if|needs):", source, re.M) or "exclude:" in source:
+    if re.search(r"^    (?:if|needs):", source, re.M) or "exclude:" in source or "continue-on-error" in source:
         found.append("Source job or matrix can omit coverage proofs")
     entries = re.findall(r'^          - image: (\S+)\n(?:            pytest-in: "([^"]+)"\n)?', source, re.M)
     skipped = {image: job for image, job in entries if job}
@@ -247,7 +248,12 @@ def problems(files):
         found.append("Source has a pytest-in this guard cannot read")
     if source.count("CASSINI_SKIP_PYTEST:") != 1 or SKIP_ENV not in source:
         found.append("Source skips pytest other than through the job's pytest-in")
-    if SOURCE_STEP not in source:
+    if (
+        'echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"' not in source
+        or 'echo "CASSINI_INSTALL_OUTCOME=$RUNNER_TEMP/install-outcome" >> "$GITHUB_ENV"' not in source
+    ):
+        found.append("Source does not isolate install outcome from test-writable logs")
+    if not re.search(re.escape(SOURCE_STEP) + r"(?!        )", source):
         found.append("Source does not record from its own logs whether its pytest ran")
     distros = files["build-aux/check-distros.sh"]
     if distros.count("CASSINI_SKIP_PYTEST") != 4 or 'if [ "${CASSINI_SKIP_PYTEST:-}" = 1 ]; then' not in distros:
@@ -617,13 +623,33 @@ MUTATIONS = {
     ),
     "source pytest record dropped": (
         "source.yml",
-        "          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}\n",
-        "          name: pytest-nodes-${{ steps.pytest.outputs.slug }}\n",
+        "          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}\n",
+        "          name: pytest-nodes-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}\n",
     ),
-    "source records only on success": (
+    "source uploads marker after failed build": (
         "source.yml",
-        "        if: ${{ !cancelled() }}\n        run: |\n          . build",
-        "        run: |\n          . build",
+        "        id: pytest\n        run: |\n          . build",
+        "        id: pytest\n        if: ${{ !cancelled() }}\n        run: |\n          . build",
+    ),
+    "source drops run_attempt suffix": (
+        "source.yml",
+        "          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}\n",
+        "          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}\n",
+    ),
+    "source omits --install-outcome": (
+        "source.yml",
+        '            --install-outcome "$CASSINI_INSTALL_OUTCOME" --slug',
+        "            --slug",
+    ),
+    "source shares meson-logs with install outcome": (
+        "source.yml",
+        'echo "CASSINI_INSTALL_OUTCOME=$RUNNER_TEMP/install-outcome" >> "$GITHUB_ENV"',
+        'echo "CASSINI_INSTALL_OUTCOME=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"',
+    ),
+    "source continue-on-error": (
+        "source.yml",
+        "    timeout-minutes: 30\n",
+        "    timeout-minutes: 30\n    continue-on-error: true\n",
     ),
     "check-distros skips fedora on its own": (
         "build-aux/check-distros.sh",
