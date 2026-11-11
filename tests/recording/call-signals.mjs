@@ -4,12 +4,13 @@
 // uses an explicitly controlled trusted adapter, not real-site qualification.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {spawn} from 'node:child_process';
+import {execFile, spawn} from 'node:child_process';
 import {cp, mkdir, mkdtemp, readFile, writeFile, chmod, rm} from 'node:fs/promises';
 import {createWriteStream} from 'node:fs';
 import {createInterface} from 'node:readline';
 import path from 'node:path';
 import os from 'node:os';
+import {promisify} from 'node:util';
 import {chromium} from 'playwright';
 assert.equal(process.env.CASSINI_ISOLATED_AUDIO, '1', 'Use the private recording harness');
 assert.ok(!process.env.WAYLAND_DISPLAY);
@@ -98,9 +99,18 @@ try {
  ui.stderr.pipe(createWriteStream(path.join(artifacts,'gnome-ui.log')));
  createInterface({input:ui.stdout}).on('line',line=>{try {pending.shift()?.(JSON.parse(line))}catch {evidence.console.push(line)}});
  await until(async () => (await call()).shortcutBound,'private GNOME app ready');
+ const virtualMic=path.join(root,'tests/recording/virtual-microphone.py');
+ evidence.tonesReady={};
  for(const [kind,hz,channels] of [['microphone',660,1],['desktop',440,2]]) {
-  const tone=spawn('/usr/bin/python3',['-c',`import gi,signal\ngi.require_version('Gst','1.0')\nfrom gi.repository import Gst,GLib\nGst.init(None)\np=Gst.parse_launch('audiotestsrc is-live=true freq=${hz} volume=0.2 ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=${channels} ! pulsesink device=cassini_${kind} sync=false')\nloop=GLib.MainLoop()\nsignal.signal(signal.SIGTERM,lambda *_:loop.quit())\np.set_state(Gst.State.PLAYING)\ntry:loop.run()\nfinally:p.set_state(Gst.State.NULL)\n`],{stdio:['ignore','ignore','pipe']});
+  const sink=`cassini_${kind}`;
+  const tone=spawn('/usr/bin/python3',[virtualMic,'produce','--sink',sink,'--hz',String(hz),'--channels',String(channels)],{stdio:['ignore','ignore','pipe']});
   tone.stderr.pipe(createWriteStream(path.join(artifacts,kind+'.log')));tones.push(tone);
+  try {
+   const {stdout}=await promisify(execFile)('/usr/bin/python3',[virtualMic,'probe','--sink',sink,'--hz',String(hz)],{timeout:18000,killSignal:'SIGKILL'});
+   evidence.tonesReady[kind]=JSON.parse(stdout);
+  } catch (error) {
+   throw new Error(`Virtual ${kind} fixture failed before browser capture: ${error.message}. See ${kind}.log and pulse-server.log.`,{cause:error});
+  }
  }
  const fixtureExtension=path.join(profile,'fixture-extension');
  await cp(extension,fixtureExtension,{recursive:true});

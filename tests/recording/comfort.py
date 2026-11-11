@@ -31,6 +31,7 @@ from desktop_services import DesktopServices  # noqa: E402
 from gi.repository import GdkX11, Gio, Gst  # noqa: E402
 from gst_evidence import GstEvidence  # noqa: E402
 from readiness import PCMProgress, wait_until  # noqa: E402
+from teardown import drain_recording_app  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(args.build.resolve() / "src/cassini-talk.gresource")))
 from cassini_talk import native_recorder  # noqa: E402
@@ -348,14 +349,14 @@ finally:
             (artifacts / "comfort-pipeline.dot").write_text(
                 Gst.debug_bin_to_dot_data(app.recorder.pipeline, Gst.DebugGraphDetails.ALL)
             )
-        library = Path(private.name) / "Library"
-        if library.exists():
-            shutil.copytree(library, artifacts / "comfort-recordings")
     if app and app.recorder and app.recorder.pipeline is not None:
         app.stop_native()
         wait_until(lambda: app.recorder.pipeline is None, "failure cleanup finalizes capture", diagnostics=diagnostics)
-    if app and app.comfort:
-        app.comfort.close()
+    drain_recording_app(app)
+    if not report:
+        library = Path(private.name) / "Library"
+        if library.exists():
+            shutil.copytree(library, artifacts / "comfort-recordings")
     for observer in observers:
         observer.close()
     for pipeline in probes + producers:

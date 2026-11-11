@@ -32,6 +32,7 @@ jobs:
       - run: |
           echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
           echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"
       # The pinned writing-down artifacts (whistle/pins.json), downloaded once
       # per pin set; the package builds read them and never download.
       - uses: actions/cache@v6
@@ -120,7 +121,7 @@ jobs:
       - uses: actions/cache@v6
         if: matrix.base == 'ubuntu:26.04'
         with:
-          path: ~/.cache/ms-playwright
+          path: ${{ runner.temp }}/ms-playwright
           key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}
       - name: Prepare the pinned browser startup harness
         if: matrix.base == 'ubuntu:26.04'

@@ -4,7 +4,7 @@
 // run by the driver after Stop and before the app quits.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {execFileSync, spawn} from 'node:child_process';
+import {execFile, execFileSync, spawn} from 'node:child_process';
 import {createServer} from 'node:http';
 import {createConnection} from 'node:net';
 import {createWriteStream} from 'node:fs';
@@ -12,6 +12,7 @@ import {copyFile, mkdtemp, mkdir, readFile, readdir, writeFile, rm} from 'node:f
 import os from 'node:os';
 import path from 'node:path';
 import {createInterface} from 'node:readline';
+import {promisify} from 'node:util';
 import {chromium} from 'playwright';
 assert.equal(process.env.CASSINI_ISOLATED_AUDIO, '1', 'Use private recording harness');
 assert.ok(!process.env.WAYLAND_DISPLAY);
@@ -206,8 +207,15 @@ try {
  createInterface({input: ui.stdout}).on('line', line => {try {pending.shift()?.(JSON.parse(line));} catch {evidence.console.push(line);}});
  ui.on('exit', code => {evidence.uiExit = code;});
  await poll(async () => (await call()).status === 'Library', 'GNOME Library window', 30000);
- microphone = spawn('/usr/bin/python3', ['-c', `import gi,signal\ngi.require_version('Gst','1.0')\nfrom gi.repository import Gst,GLib\nGst.init(None)\np=Gst.parse_launch('audiotestsrc is-live=true freq=${MICROPHONE_HZ} volume=0.2 ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=1 ! pulsesink device=cassini_microphone sync=false')\nloop=GLib.MainLoop()\nsignal.signal(signal.SIGTERM,lambda *_:loop.quit())\np.set_state(Gst.State.PLAYING)\ntry: loop.run()\nfinally:p.set_state(Gst.State.NULL)\n`], {stdio: ['ignore', 'ignore', 'pipe']});
+ const virtualMic = path.join(root, 'tests/recording/virtual-microphone.py');
+ microphone = spawn('/usr/bin/python3', [virtualMic, 'produce', '--sink', 'cassini_microphone', '--hz', String(MICROPHONE_HZ), '--channels', '1'], {stdio: ['ignore', 'ignore', 'pipe']});
  microphone.stderr.pipe(createWriteStream(path.join(artifacts, 'microphone-producer.log')));
+ try {
+  const {stdout} = await promisify(execFile)('/usr/bin/python3', [virtualMic, 'probe', '--sink', 'cassini_microphone', '--hz', String(MICROPHONE_HZ)], {timeout: 18000, killSignal: 'SIGKILL'});
+  evidence.microphoneReady = JSON.parse(stdout);
+ } catch (error) {
+  throw new Error(`Virtual microphone fixture failed before browser capture: ${error.message}. See microphone-producer.log and pulse-server.log.`, {cause: error});
+ }
  const flags = ['--no-sandbox', '--ozone-platform=x11', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns'];
  context = await chromium.launchPersistentContext(profile, {channel: 'chromium', headless: false, ignoreDefaultArgs: ['--mute-audio'], args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...flags]});
  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');

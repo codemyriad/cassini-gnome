@@ -34,6 +34,7 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gio, Gst  # noqa: E402
 from gst_evidence import GstEvidence  # noqa: E402
 from readiness import PCMProgress, wait_until  # noqa: E402
+from teardown import recording_app_teardown  # noqa: E402
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[2] / name) for name in ("src", "tests")]
 from desktop_services import DesktopServices  # noqa: E402
@@ -134,7 +135,22 @@ try:
         o.close()
     for m in monitors:
         m.set_state(Gst.State.NULL)
-    with tempfile.TemporaryDirectory() as directory:
+
+    def _stop_active():
+        if app.recorder and app.recorder.pipeline is not None:
+            app.stop_native()
+            wait_until(
+                lambda: app.recorder.pipeline is None, "failure cleanup finalizes capture", diagnostics=diagnostics
+            )
+
+    def _on_failure():
+        evidence.setdefault("readiness", diagnostics())
+        subprocess.run(["import", "-window", "root", str(artifacts / "failure.png")], check=False)
+
+    with (
+        tempfile.TemporaryDirectory() as directory,
+        recording_app_teardown(app, on_error=_on_failure, stop_active=_stop_active),
+    ):
         os.environ["CASSINI_LIBRARY_DIR"] = directory
         # Route the live monitor to this private Library without ending and
         # reusing a shut-down GApplication/executor in the same process.
@@ -314,11 +330,13 @@ except BaseException:
     evidence["failure"] = traceback.format_exc()
     for producer in locals().get("producers", []):
         producer.set_state(Gst.State.NULL)
-    subprocess.run(["import", "-window", "root", str(artifacts / "failure.png")], check=False)
+    if not (artifacts / "failure.png").exists():
+        subprocess.run(["import", "-window", "root", str(artifacts / "failure.png")], check=False)
     raise
 finally:
     trace.checkpoint("complete" if evidence["passed"] else "failed", app.recorder.pipeline if app.recorder else None)
     trace.close()
-    evidence["readiness"] = diagnostics()
+    services.close()
+    evidence.setdefault("readiness", diagnostics())
     evidence["callbackErrors"] = callback_errors
     (artifacts / "results.json").write_text(json.dumps(evidence, indent=2) + "\n")
