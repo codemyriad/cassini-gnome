@@ -2,8 +2,11 @@
 """Every painted rebuild frame preserves the current viewport and manual input."""
 
 from bisect import bisect_right
+from dataclasses import replace
 
 from gi.repository import Gtk
+
+from cassini_talk.meeting_text import reading_turns, speaker_turns
 
 
 def check_rebuild(window, page, paint, until, native_scroll):
@@ -78,4 +81,107 @@ def check_rebuild(window, page, paint, until, native_scroll):
     finally:
         clock.disconnect(handler)
     assert len(samples) > 4
+    return len(samples)
+
+
+def check_pending_focus(window, model, paint, until):
+    window.back_to_library()
+    window.open_meeting(model, external=True)
+    page = window.meeting_page
+    view = page.list
+    paint(window)
+    assert not view.ready
+    target = len(view.items) - 5
+    assert target + 1 >= len(view.prefix)
+    assert view.navigation.request(target)
+    last = model.words[-1]
+    words = (*model.words, replace(last, text="continued", start_ms=last.end_ms + 1000, end_ms=last.end_ms + 1500))
+    grown = replace(model, words=words, turns=reading_turns(words), listening_turns=speaker_turns(words))
+    page.update(grown)
+    until(lambda: view.navigation.focused() == target)
+    paint(window)
+    row = view.rows[target]
+    ok, bounds = row.compute_bounds(page.scroller)
+    assert ok and bounds.get_y() >= 0 and bounds.get_y() + bounds.get_height() <= page.scroller.get_height(), (
+        "Surviving keyboard request focused an offscreen row",
+        target,
+        bounds.get_y(),
+        bounds.get_height(),
+        page.scroller.get_height(),
+    )
+    assert view.navigation.pending is None and view._pending_scroll is None
+    return True
+
+
+def check_presentation(window, page, model, paint, until, native_scroll):
+    """Real metric changes must agree with retained allocations on every frame."""
+    view = page.list
+    until(lambda: view.ready)
+    deep = next(turn.index for turn in view.items[len(view.items) // 2 :] if turn.asides)
+    view.props.vadjustment.set_value(view.prefix[deep] + 7)
+    paint(window)
+    expected = [deep, 7]
+    failures = []
+    samples = []
+
+    def observe(*_):
+        index = bisect_right(view.prefix, view._value()) - 1
+        offset = view._value() - view.prefix[index]
+        sample = (index, offset)
+        samples.append(sample)
+        if index != expected[0] or abs(offset - expected[1]) > 1:
+            failures.append(("anchor", tuple(expected), sample))
+        for number in view.visible_rows:
+            row = view.rows[number]
+            natural = row.measure(Gtk.Orientation.VERTICAL, view.layout_width).natural
+            allocated = view.prefix[number + 1] - view.prefix[number]
+            if natural != allocated:
+                failures.append(("height", number, natural, allocated))
+
+    def rebuild(change):
+        old = view._active
+        change()
+        paint(window)
+        assert view._active is old, "Fixture did not exercise retained geometry"
+        _, bubble, capture = native_scroll(page)
+        page._hand_scroll()
+        capture.emit("scroll-begin")
+        bubble.emit("scroll-begin")
+        if not capture.emit("scroll", 0, 0.1):
+            bubble.emit("scroll", 0, 0.1)
+        bubble.emit("scroll-end")
+        index = bisect_right(view.prefix, view._value()) - 1
+        expected[:] = index, view._value() - view.prefix[index]
+        until(lambda: view.ready)
+        paint(window)
+        assert not failures, failures[:8]
+
+    clock = window.get_frame_clock()
+    handler = clock.connect("after-paint", observe)
+    provider = Gtk.CssProvider()
+    provider.load_from_data(b".meeting-transcript .words { font-size: 22px; }")
+    display = window.get_display()
+    before = view.prefix[deep + 1] - view.prefix[deep]
+    try:
+
+        def enlarge():
+            Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+            view.invalidate()
+
+        rebuild(enlarge)
+        assert view.prefix[deep + 1] - view.prefix[deep] > before
+        rebuild(lambda: (Gtk.StyleContext.remove_provider_for_display(display, provider), view.invalidate()))
+        before = view.prefix[deep + 1] - view.prefix[deep]
+        renamed = replace(
+            model,
+            speakers=tuple(
+                replace(s, name=("A considerably longer synthetic speaker name " * 12)) for s in model.speakers
+            ),
+        )
+        rebuild(lambda: page.update(renamed))
+        assert view.prefix[deep + 1] - view.prefix[deep] > before
+        rebuild(lambda: page.update(model))
+    finally:
+        clock.disconnect(handler)
+        Gtk.StyleContext.remove_provider_for_display(display, provider)
     return len(samples)

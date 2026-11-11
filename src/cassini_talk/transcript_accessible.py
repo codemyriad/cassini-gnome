@@ -7,8 +7,8 @@ pointer handling or adding duplicate keyboard stops. Only visible words exist.
 """
 
 import re
-import time
 from html import unescape
+from time import thread_time_ns
 
 from gi.repository import GLib, Graphene, Gsk, Gtk, Pango
 
@@ -85,7 +85,7 @@ class WordActions:
         if not view.viewport_ready:
             self._retry()
             return
-        deadline = time.thread_time_ns() + 2_000_000
+        deadline = thread_time_ns() + 2_000_000
         missing = False
         pending_rows = set()
         signature = getattr(view.page, "_header_signature", None)
@@ -110,7 +110,7 @@ class WordActions:
             lx, ly = words.get_layout_offsets()
             geometry_key = self.generation, plain, view.layout_width, origin.x, origin.y, lx, ly
             if getattr(row, "_action_geometry_key", None) != geometry_key:
-                if time.thread_time_ns() >= deadline:
+                if thread_time_ns() >= deadline:
                     missing = True
                     pending_rows.add(number)
                     continue
@@ -118,7 +118,7 @@ class WordActions:
                 row._action_geometry = []
                 row._action_pending = LinkSpans.scan(words.get_label())
             layout = words.get_layout()
-            while row._action_pending is not None and time.thread_time_ns() < deadline:
+            while row._action_pending is not None and thread_time_ns() < deadline:
                 try:
                     span = next(row._action_pending)
                 except StopIteration:
@@ -156,7 +156,7 @@ class WordActions:
                         button.unparent()
                     button = None
                 if button is None:
-                    if time.thread_time_ns() >= deadline:
+                    if thread_time_ns() >= deadline:
                         missing = True
                         continue
                     button = Gtk.Button(
@@ -178,7 +178,7 @@ class WordActions:
                     self.buttons[key] = button
                 # Existing action placement must not starve later rows of
                 # their share of new parsing/geometry/creation work.
-                placement_started = time.thread_time_ns()
+                placement_started = thread_time_ns()
                 if button.get_parent() is not row:
                     if button.get_parent():
                         button.unparent()
@@ -189,7 +189,7 @@ class WordActions:
                 button.allocate(
                     width, word_height, -1, Gsk.Transform.new().translate(Graphene.Point().init(x, local_y))
                 )
-                deadline += time.thread_time_ns() - placement_started
+                deadline += thread_time_ns() - placement_started
 
         for key in self.buttons.keys() - needed:
             button = self.buttons[key]
