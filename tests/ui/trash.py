@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from contextlib import suppress
 from pathlib import Path
 from unittest.mock import patch
@@ -24,25 +23,31 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 gi.require_version("GdkX11", "4.0")
-from gi.repository import Adw, Gdk, GdkX11, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, GdkX11, Gio, GLib, GObject, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk import meeting_trash as module  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 
 
-def until(check, timeout=8):
-    end = time.monotonic() + timeout
+def until(check, message="Trash GUI did not reach expected state"):
     context = GLib.MainContext.default()
-    while time.monotonic() < end:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.005)
-    assert check(), "Trash GUI did not reach expected state"
+    expired = False
+
+    def expire(*_args):
+        nonlocal expired
+        expired = True
+        return GLib.SOURCE_REMOVE
+
+    guard = GLib.timeout_source_new_seconds(18)
+    guard.set_callback(expire)
+    guard.attach(context)
+    try:
+        while not check() and not expired:
+            context.iteration(True)
+        assert check(), message
+    finally:
+        guard.destroy()
 
 
 def capture(window, suffix):
@@ -251,7 +256,7 @@ with tempfile.TemporaryDirectory() as temporary:
     destination.mkdir()
 
     def native(path):
-        calls.append((path, time.monotonic()))
+        calls.append(path)
         if fail:
             raise GLib.Error.new_literal(
                 Gio.io_error_quark(), "generated unsupported drive", Gio.IOErrorEnum.NOT_SUPPORTED
@@ -278,11 +283,23 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda: any(m.key == budget.key for m in window.snapshot.meetings))
         assert budget.directory.exists() and not calls and window.selected.key == budget.key
 
-        # Real five-second AdwToast timeout, no manual dismissal and no fixed sleep.
-        start = time.monotonic()
-        controller.request(budget, window)
-        until(lambda: not controller.operations)
-        assert len(calls) == 1 and calls[0][1] - start >= 4.5
+        # Let AdwToast expire on its own. Verify the configured Undo duration
+        # and that the actual dismissed signal starts the Trash operation.
+        dismissed = GObject.signal_lookup("dismissed", Adw.Toast)
+        commits = []
+        commit = controller.commit
+
+        def observed_commit(operation):
+            hint = GObject.signal_get_invocation_hint(operation.toast)
+            commits.append(hint is not None and hint.signal_id == dismissed)
+            return commit(operation)
+
+        with patch.object(controller, "commit", observed_commit):
+            controller.request(budget, window)
+            assert controller.toast.get_timeout() == 5
+            assert budget.directory.exists() and not calls
+            until(lambda: not controller.operations, "the dismissed Undo toast did not commit Trash")
+        assert commits == [True] and calls == [budget.directory]
         assert not budget.directory.exists()
         until(lambda: budget.directory in controller.absent)
         (destination / budget.directory.name).rename(budget.directory)
