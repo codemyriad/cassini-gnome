@@ -179,6 +179,7 @@ def reusable(connection, path, *, cancelled=None, clock=None):
     if cancelled is not None and cancelled.is_set():
         raise CancelledError()
     with contextlib.ExitStack() as resources:
+        signalled = False
         if status.get("idleShutdown") is True:
             try:
                 result = request("shutdown", path=path, identity=status.get("identity"))
@@ -221,8 +222,13 @@ def reusable(connection, path, *, cancelled=None, clock=None):
                 )
             with contextlib.suppress(ProcessLookupError):
                 signal.pidfd_send_signal(descriptor, signal.SIGINT)
+                signalled = True
         LOG.info("Retiring idle browser service from a different build (pid %s)", pid)
-        _wait_released(path, cancelled, clock)
+        # Once SIGINT is sent, defer cancellation until the bounded lock-release wait
+        # finishes so `again` stays open across the legacy broker's unwinding flush.
+        _wait_released(path, None if signalled else cancelled, clock)
+        if signalled and cancelled is not None and cancelled.is_set():
+            raise CancelledError()
         return False
 
 
