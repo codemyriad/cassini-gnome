@@ -18,6 +18,7 @@ OUTPUT = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_suffix(".json")
 def child():
     import shutil
     from dataclasses import replace
+    from math import ceil
 
     import gi
 
@@ -47,21 +48,26 @@ def child():
 
     def until(check):
         context = GLib.MainContext.default()
-        # Wake only to check the bound when no GTK/AT-SPI event arrives. D-Bus
-        # calls are dispatched immediately instead of waiting on a sleep poll.
-        wake = GLib.timeout_add(50, lambda: GLib.SOURCE_CONTINUE)
+        # Dispatch normal GTK/AT-SPI work. A single source wakes the context
+        # at the current step deadline if none of that work arrives.
+        wake = GLib.timeout_source_new(0)
+        wake.set_callback(lambda *_: GLib.SOURCE_REMOVE)
+        wake.set_ready_time(-1)
+        wake.attach(context)
         try:
             until_progress(
                 check,
                 progress=lambda: len(events),
                 dispatch=lambda: context.iteration(True),
+                wake_at=lambda deadline: wake.set_ready_time(ceil(deadline * 1_000_000)),
+                clock=lambda: GLib.get_monotonic_time() / 1_000_000,
                 diagnostics=lambda: (
                     f"events[-1]={events[-1] if events else None}; "
                     f"playing={window.player.playing}; position={window.player.position}"
                 ),
             )
         finally:
-            GLib.source_remove(wake)
+            wake.destroy()
 
     with tempfile.TemporaryDirectory() as temporary:
         tmp = Path(temporary)

@@ -4,9 +4,10 @@
 import time
 
 
-def until_progress(check, *, progress, dispatch, timeout=55, diagnostics=lambda: "", clock=time.monotonic):
+def until_progress(check, *, progress, dispatch, wake_at, timeout=55, diagnostics=lambda: "", clock=time.monotonic):
     observed = progress()
     deadline = clock() + timeout
+    wake_at(deadline)
     while not check():
         dispatch()
         now = clock()
@@ -16,3 +17,4 @@ def until_progress(check, *, progress, dispatch, timeout=55, diagnostics=lambda:
         if current != observed:
             observed = current
             deadline = now + timeout
+            wake_at(deadline)
