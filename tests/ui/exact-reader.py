@@ -47,7 +47,7 @@ def until(check):
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     os.environ["CASSINI_LIBRARY_DIR"] = str(root / "library")
-    file = Gio.File.new_for_path(str(hour_meeting(root / "Hour", mixed=True)))
+    file = Gio.File.new_for_path(str(hour_meeting(root / "Hour", mixed=True, hours=4)))
     app = CassiniApplication("com.gocassini.ExactReaderTest", "test", "development")
     app.transcription_enabled = False
     app.register(None)
@@ -97,7 +97,7 @@ with tempfile.TemporaryDirectory() as temporary:
     window.player.disconnect(handler)
 
     host = target.host.index if target.host is not None else turn_index
-    action_key = window.visible_index[host], f"w:{turn_index}/{word_index}"
+    action_key = window.turns.word_rows[(turn_index, word_index)], f"w:{turn_index}/{word_index}"
     until(lambda: action_key in view.word_actions.buttons)
     window.player.seek(0)
     view.word_actions.buttons[action_key].emit("clicked")
@@ -152,6 +152,10 @@ with tempfile.TemporaryDirectory() as temporary:
     window.open_file(file)
     assert not view.rows and all(row.get_parent() is None for row in old_rows)
     until(lambda: view.viewport_ready)
+    from exact_reader_long import check_long_reader, check_search_supersession
+
+    check_search_supersession(window, file, paint, until)
+    check_long_reader(window, paint, until)
     window.close()
     app.do_shutdown()
 print("PASS standalone exact reader: pending search, word seek, native coast, document reset")

@@ -57,6 +57,8 @@ class TurnRow(Gtk.Box):
         self.window = window
         self.turn = None
         self.offsets: list[int] = []
+        self.link_offsets = {}
+        self._offset_turn = None
 
         header = Gtk.Box(spacing=8)
         self.dot = Gtk.Box(css_classes=["speaker-dot"], valign=Gtk.Align.CENTER)
@@ -117,7 +119,16 @@ class TurnRow(Gtk.Box):
             return
         markup, self.offsets = self.window.turn_markup(turn)
         self.words.set_markup(markup)
-        if turn.index in self.window.active_turns:
+        if self.window._exact_transcript and self._offset_turn is not turn:
+            from .transcript_accessible import LinkSpans
+
+            self.link_offsets = {uri: start for uri, start, _value in LinkSpans(markup).spans}
+            self._offset_turn = turn
+        source = turn.index
+        if self.window._exact_transcript:
+            word = turn.words[0] if turn.words else turn.asides[0][1].words[0]
+            source = self.window.turns.word_keys[id(word)][0]
+        if source in self.window.active_turns:
             self.add_css_class("current")
         else:
             self.remove_css_class("current")
@@ -360,7 +371,7 @@ class CassiniWindow(Adw.ApplicationWindow):
             row.update_property(
                 [Gtk.AccessibleProperty.LABEL], [self.speaker_label(turn.speaker) + ", " + format_time(turn.start_ms)]
             )
-            self.bound[self.visible_index[turn.index]] = turn, body.words, row
+            self.bound[turn.index] = turn, body.words, row
         return row
 
     def _refresh_header(self, turn, row):
@@ -376,18 +387,24 @@ class CassiniWindow(Adw.ApplicationWindow):
         probe.body.bind(turn, render=False)
         probe.body.words.set_markup(markup)
 
-    def _realized_turn(self, index):
+    def _realized_turn(self, index, word_index=None):
         if self._exact_transcript:
-            entry = self.bound.get(self.visible_index.get(index))
+            position = (
+                self.turns.word_rows.get((index, word_index))
+                if word_index is not None
+                else self.visible_index.get(index)
+            )
+            entry = self.bound.get(position)
             return entry[2].body if entry else None
         return self.rows.get(index)
 
     def _render_words(self, turn, _words):
-        self._realized_turn(turn.index).render()
+        self.bound[turn.index][2].body.render()
 
     def _word_clicked(self, turn, uri):
-        row = self._realized_turn(turn.index)
-        if row is not None:
+        entry = self.bound.get(turn.index)
+        if entry is not None:
+            row = entry[2].body
             row._on_activate_link(row.words, uri)
 
     def _hand_scroll(self, *_):
@@ -657,8 +674,12 @@ class CassiniWindow(Adw.ApplicationWindow):
     # The transcript list
 
     def _rebuild_store(self):
-        visible = transcript.visible_turns(self.turns)
-        self.visible_index = {turn.index: i for i, turn in enumerate(visible)}
+        if self._exact_transcript:
+            visible = getattr(self.turns, "layout", ())
+            self.visible_index = getattr(self.turns, "visible_index", {})
+        else:
+            visible = transcript.visible_turns(self.turns)
+            self.visible_index = {turn.index: i for i, turn in enumerate(visible)}
         self.rows = {}
         self._cancel_transcript_scroll()
         if self._exact_transcript:
@@ -726,19 +747,19 @@ class CassiniWindow(Adw.ApplicationWindow):
             self.matches[self.match_cursor] if not geometry and 0 <= self.match_cursor < len(self.matches) else None
         )
 
-        displayed = {owner.index: owner.items for owner in [turn] + [aside for _, aside in turn.asides]}
+        displayed = {id(owner): owner.items for owner in [turn] + [aside for _, aside in turn.asides]}
 
         current_items = {
-            owner.index: owner.word_at(position)
+            id(owner): owner.word_at(position)
             for owner in [turn] + [aside for _, aside in turn.asides]
-            if not geometry and owner.index in self.active_turns
+            if not geometry and owner.is_active(position)
         }
 
         def word_link(owner, i):
             word = owner.words[i]
-            current = current_items.get(owner.index, -1)
+            current = current_items.get(id(owner), -1)
             attrs = []
-            key = (owner.index, i)
+            key = self.turns.word_keys[id(word)] if self._exact_transcript else (owner.index, i)
             if key == focused:
                 attrs.append('background="#e5a50a" bgalpha="80%"')
             elif not geometry and key in self.match_set:
@@ -749,25 +770,30 @@ class CassiniWindow(Adw.ApplicationWindow):
                 attrs.append('fgalpha="60%"')
             if word.low_confidence:
                 attrs.append('style="italic"')
-            text = GLib.markup_escape_text(displayed[owner.index][i])
+            text = GLib.markup_escape_text(displayed[id(owner)][i])
             inner = f"<span {' '.join(attrs)}>{text}</span>" if attrs else text
-            return f'<a href="w:{owner.index}/{i}">{inner}</a>'
+            return f'<a href="w:{key[0]}/{key[1]}">{inner}</a>'
 
         def chip(aside):
             name = self.speaker_label(aside.speaker)
             on = aside.is_active(position)
             bg = accent if on else ("#ffffff" if dark else "#000006")
             alpha = current_alpha if on else ("10%" if dark else "7%")
-            links = " ".join(word_link(aside, j) for j, value in enumerate(displayed[aside.index]) if value)
-            markup = (
-                f'<span size="small" background="{bg}" bgalpha="{alpha}">'
-                f"(<b>{GLib.markup_escape_text(name)}:</b> {links})</span>"
-            )
+            links = " ".join(word_link(aside, j) for j, value in enumerate(displayed[id(aside)]) if value)
+            opening = f"(<b>{GLib.markup_escape_text(name)}:</b> " if getattr(aside, "opens", True) else ""
+            closing = ")" if getattr(aside, "closes", True) else ""
+            markup = f'<span size="small" background="{bg}" bgalpha="{alpha}">{opening}{links}{closing}</span>'
             return markup, f"({name}: {aside.text})"
 
         return transcript.join_items(turn, word_link, chip)
 
     def _render_turns(self, indexes):
+        if self._exact_transcript:
+            indexes = set(indexes)
+            for number, (_turn, _words, row) in self.bound.items():
+                if self.turns.row_owners.get(number, set()) & indexes:
+                    row.body.render()
+            return
         for index in indexes:
             turn = self.turns[index] if 0 <= index < len(self.turns) else None
             if turn is None:
@@ -780,7 +806,8 @@ class CassiniWindow(Adw.ApplicationWindow):
     def _on_style_changed(self, *_args):
         if self._exact_transcript:
             self._exact_transcript.invalidate()
-            self._render_turns([turn.index for turn, _, _ in self.bound.values()])
+            for turn, words, _row in self.bound.values():
+                self._render_words(turn, words)
         else:
             self._render_turns(list(self.rows))
 
@@ -864,14 +891,24 @@ class CassiniWindow(Adw.ApplicationWindow):
     # Following along
 
     def _scroll_to_word(self, turn_index, word_index, center=False):
+        self._cancel_transcript_scroll()
         turn = self.turns[turn_index]
-        if turn.host is not None:
+        if turn.host is not None and not self._exact_transcript:
             turn_index, word_index = turn.host.index, max(0, turn.host.word_at(turn.start_ms))
-        position = self.visible_index.get(turn_index)
+        position = (
+            self.turns.word_rows.get((turn_index, word_index))
+            if self._exact_transcript
+            else self.visible_index.get(turn_index)
+        )
         if position is None:
             return
-        row = self._realized_turn(turn_index)
-        if row is None or not row.get_mapped() or not row.offsets or row.words.get_width() <= 0:
+        row = self._realized_turn(turn_index, word_index)
+        if (
+            row is None
+            or not row.get_mapped()
+            or (row._offset_turn is not row.turn if self._exact_transcript else not row.offsets)
+            or row.words.get_width() <= 0
+        ):
             if self._exact_transcript:
                 self._exact_transcript.scroll_to(position)
                 self._word_scroll = turn_index, word_index, center
@@ -883,7 +920,11 @@ class CassiniWindow(Adw.ApplicationWindow):
             return
         self._cancel_word_scroll()
         layout = row.words.get_layout()
-        offset = row.offsets[min(max(word_index, 0), len(row.offsets) - 1)]
+        offset = (
+            row.link_offsets.get(f"w:{turn_index}/{word_index}", 0)
+            if self._exact_transcript
+            else row.offsets[min(max(word_index, 0), len(row.offsets) - 1)]
+        )
         rect = layout.index_to_pos(offset)
         point = Graphene.Point()
         point.init(0, rect.y / Pango.SCALE)
@@ -907,8 +948,13 @@ class CassiniWindow(Adw.ApplicationWindow):
 
     def _scroll_when_allocated(self, *_):
         turn_index, word_index, center = self._word_scroll
-        row = self._realized_turn(turn_index)
-        if row is None or not row.get_mapped() or not row.offsets or row.words.get_width() <= 0:
+        row = self._realized_turn(turn_index, word_index)
+        if (
+            row is None
+            or not row.get_mapped()
+            or (row._offset_turn is not row.turn if self._exact_transcript else not row.offsets)
+            or row.words.get_width() <= 0
+        ):
             return GLib.SOURCE_CONTINUE
         self._word_scroll_tick = 0
         self._scroll_to_word(turn_index, word_index, center)
@@ -968,10 +1014,12 @@ class CassiniWindow(Adw.ApplicationWindow):
             self.view_stack.set_visible_child_name("transcript")
             self.search_entry.grab_focus()
         else:
+            self._cancel_transcript_scroll()
             self.search_entry.set_text("")
             self._refresh_search()
 
     def _on_search_changed(self, _entry):
+        self._cancel_transcript_scroll()
         self._refresh_search()
         if self.matches:
             self.match_cursor = -1
