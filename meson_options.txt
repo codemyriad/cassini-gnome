@@ -25,6 +25,8 @@ option('store_listing_public', type: 'boolean', value: false,
 option('packaging', type: 'combo', choices: ['source', 'deb', 'rpm', 'arch', 'flatpak'], value: 'source',
   description: 'How this build is shipped; named in the model download User-Agent (D54)')
 
-# D68/R91: opt-in only until the measured ten-run A/B is clean.
+# D68/R91: verified in 10 alternating A/B pairs (run 42979843921); keep false by
+# default so bare local `meson test` stays serial, and pair -Dpytest_parallel=true
+# with an explicit `--num-processes=2` in package and source CI.
 option('pytest_parallel', type: 'boolean', value: false,
   description: 'Allow pytest shards to overlap; run meson test with --num-processes=2')

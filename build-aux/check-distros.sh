@@ -60,7 +60,7 @@ else
 fi
 
 step "meson setup"
-meson setup /build/b --prefix=/usr
+meson setup /build/b --prefix=/usr -Dpytest_parallel=true
 
 step "meson test"
 # Every test registered, from the introspection JSON (the --list text
@@ -70,7 +70,7 @@ python3 build-aux/ci/check_meson_tests.py /build/tests.json
 if [ "${CASSINI_SKIP_PYTEST:-}" = 1 ]; then
   meson test -C /build/b --print-errorlogs --no-suite pytest
 else
-  meson test -C /build/b --print-errorlogs
+  meson test -C /build/b --num-processes=2 --print-errorlogs
 fi
 
 step "meson install"

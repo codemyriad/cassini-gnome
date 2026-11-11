@@ -46,11 +46,11 @@ KEEPS_PYTEST = {"fedora:latest", "alpine:edge"}
 RULES_CHECK = [
     "override_dh_auto_test:",
     "ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))",
-    "\tCASSINI_TEST_REQUIRE_GTK=1 meson test -C obj-$(DEB_HOST_GNU_TYPE) --print-errorlogs",
+    "\tCASSINI_TEST_REQUIRE_GTK=1 meson test -C obj-$(DEB_HOST_GNU_TYPE) --num-processes=2 --print-errorlogs",
     "endif",
 ]
-SPEC_CHECK = ["export CASSINI_TEST_REQUIRE_GTK=1", "%meson_test"]
-ARCH_CHECK = ["check() {", "CASSINI_TEST_REQUIRE_GTK=1 meson test -C build --print-errorlogs", "}"]
+SPEC_CHECK = ["export CASSINI_TEST_REQUIRE_GTK=1", "%meson_test --num-processes=2"]
+ARCH_CHECK = ["check() {", "CASSINI_TEST_REQUIRE_GTK=1 meson test -C build --num-processes=2 --print-errorlogs", "}"]
 CHECK_STEP = """
       - name: Require the whole pytest suite to have run and passed
         id: pytest
@@ -475,8 +475,21 @@ MUTATIONS = {
         "gir1.2-gtk-4.0 <pkg.cassini.never>",
     ),
     "deb image gone": ("deb.yml", '["ubuntu:26.04", "debian:testing"]', '["ubuntu:26.04"]'),
-    "rpm --no-suite": ("build-aux/rpm/cassini-talk.spec", "%meson_test\n", "%meson_test --no-suite pytest\n"),
-    "rpm || :": ("build-aux/rpm/cassini-talk.spec", "%meson_test\n", "%meson_test || :\n"),
+    "rpm --no-suite": (
+        "build-aux/rpm/cassini-talk.spec",
+        "%meson_test --num-processes=2\n",
+        "%meson_test --num-processes=2 --no-suite pytest\n",
+    ),
+    "rpm || :": (
+        "build-aux/rpm/cassini-talk.spec",
+        "%meson_test --num-processes=2\n",
+        "%meson_test --num-processes=2 || :\n",
+    ),
+    "rpm unbounded workers": (
+        "build-aux/rpm/cassini-talk.spec",
+        "%meson_test --num-processes=2\n",
+        "%meson_test\n",
+    ),
     "rpm no GTK guard": ("build-aux/rpm/cassini-talk.spec", "export CASSINI_TEST_REQUIRE_GTK=1\n", ""),
     "rpm meson_test redefined": ("build-aux/rpm/cassini-talk.spec", "%check\n", "%define meson_test true\n%check\n"),
     "rpm --nocheck": ("build-aux/rpm/build.sh", '"$@" "$spec"', '"$@" --nocheck "$spec"'),
@@ -492,14 +505,14 @@ MUTATIONS = {
     ),
     "arch --no-suite": (
         "build-aux/arch/PKGBUILD",
-        "-C build --print-errorlogs",
-        "-C build --print-errorlogs --no-suite pytest",
+        "-C build --num-processes=2 --print-errorlogs",
+        "-C build --num-processes=2 --print-errorlogs --no-suite pytest",
     ),
     "arch no GTK guard": ("build-aux/arch/PKGBUILD", "  CASSINI_TEST_REQUIRE_GTK=1 meson", "  meson"),
     "arch || true": (
         "build-aux/arch/PKGBUILD",
-        "-C build --print-errorlogs\n}",
-        "-C build --print-errorlogs || true\n}",
+        "-C build --num-processes=2 --print-errorlogs\n}",
+        "-C build --num-processes=2 --print-errorlogs || true\n}",
     ),
     "arch --nocheck": ("build-aux/arch/build.sh", '"makepkg -s --noconfirm"', '"makepkg -s --noconfirm --nocheck"'),
     "arch BUILDENV": ("build-aux/arch/PKGBUILD", "options=(", "BUILDENV=(!check)\noptions=("),
@@ -709,3 +722,58 @@ def test_every_way_to_narrow_or_drop_the_replacement_run_fails_the_guard(name):
     at = starts[occurrence[0]] if occurrence else starts[0]
     files[path] = text[:at] + new + text[at + len(old) :]
     assert set(problems(files)) - set(problems(read())), name  # A new problem, not an old one.
+
+
+D82_FILES = (
+    "meson_options.txt",
+    "src/meson.build",
+    "debian/rules",
+    "build-aux/rpm/cassini-talk.spec",
+    "build-aux/arch/PKGBUILD",
+    "build-aux/check-distros.sh",
+    ".github/workflows/meson-tests.yml",
+)
+
+
+def d82_parallel_problems(texts):
+    issues = []
+    if "option('pytest_parallel', type: 'boolean', value: false," not in texts["meson_options.txt"]:
+        issues.append("meson_options.txt must keep pytest_parallel defaulting to false")
+    if "is_parallel: get_option('pytest_parallel')," not in texts["src/meson.build"]:
+        issues.append("src/meson.build must wire pytest shards to get_option('pytest_parallel')")
+    for rel in D82_FILES[2:]:
+        content = texts[rel]
+        if "-Dpytest_parallel=true" not in content:
+            issues.append(f"{rel}: missing -Dpytest_parallel=true")
+        if "--num-processes=2" not in content:
+            issues.append(f"{rel}: missing bounded --num-processes=2")
+    return issues
+
+
+def test_d82_bounded_two_worker_pytest_and_fedora_required_deps():
+    import subprocess
+
+    assert not (ROOT / ".github/workflows/pytest-ab.yml").exists()
+    texts = {rel: (ROOT / rel).read_text() for rel in D82_FILES}
+    assert d82_parallel_problems(texts) == []
+
+    d82_mutations = [
+        (
+            "meson_options.txt",
+            "option('pytest_parallel', type: 'boolean', value: false,",
+            "option('pytest_parallel', type: 'boolean', value: true,",
+        ),
+        ("src/meson.build", "get_option('pytest_parallel')", "false"),
+        *((rel, token, "") for rel in D82_FILES[2:] for token in ("-Dpytest_parallel=true", "--num-processes=2")),
+    ]
+    for rel, old, new in d82_mutations:
+        mutated = dict(texts)
+        assert mutated[rel].count(old) == 1, (rel, old)
+        mutated[rel] = mutated[rel].replace(old, new, 1)
+        assert d82_parallel_problems(mutated), (rel, old)
+
+    help_out = subprocess.check_output(["sh", str(ROOT / "build-aux/install-deps.sh"), "--help"], text=True)
+    assert "--required-only" in help_out and "shellcheck" not in help_out
+    distros = (ROOT / "build-aux/check-distros.sh").read_text()
+    assert "build-aux/install-deps.sh --all --yes --required-only" in distros
+    assert "build-aux/install-deps.sh --all --yes\n" in distros

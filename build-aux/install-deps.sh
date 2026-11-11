@@ -26,7 +26,7 @@ for arg in "$@"; do
     --dry-run|-n) dry_run=1 ;;
     --yes|-y) yes=1 ;;
     --required-only) required_only=1 ;;
-    -h|--help) sed -n '2,13s/^# \{0,1\}//p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,16s/^# \{0,1\}//p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
   esac
 done
