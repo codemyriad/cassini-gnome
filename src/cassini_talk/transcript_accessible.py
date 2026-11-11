@@ -87,6 +87,7 @@ class WordActions:
             return
         deadline = time.thread_time_ns() + 2_000_000
         missing = False
+        pending_rows = set()
         with using_language(view.page._header_signature[-1] if view.page._header_signature else language()):
             description = text("player.playFromHere")
         if getattr(self, "description", None) != description:
@@ -110,6 +111,7 @@ class WordActions:
             if getattr(row, "_action_geometry_key", None) != geometry_key:
                 if time.thread_time_ns() >= deadline:
                     missing = True
+                    pending_rows.add(number)
                     continue
                 row._action_geometry_key = geometry_key
                 row._action_geometry = []
@@ -140,6 +142,7 @@ class WordActions:
                 )
             if row._action_pending is not None:
                 missing = True
+                pending_rows.add(number)
             previous = row.body
             for uri, value, x, local_y, width, word_height in row._action_geometry:
                 if top + local_y + word_height <= 0 or top + local_y >= height:
@@ -172,6 +175,9 @@ class WordActions:
                     )
                     button.insert_after(row, previous)
                     self.buttons[key] = button
+                # Existing action placement must not starve later rows of
+                # their share of new parsing/geometry/creation work.
+                placement_started = time.thread_time_ns()
                 if button.get_parent() is not row:
                     if button.get_parent():
                         button.unparent()
@@ -182,9 +188,14 @@ class WordActions:
                 button.allocate(
                     width, word_height, -1, Gsk.Transform.new().translate(Graphene.Point().init(x, local_y))
                 )
+                deadline += time.thread_time_ns() - placement_started
 
         for key in self.buttons.keys() - needed:
-            button = self.buttons.pop(key)
+            button = self.buttons[key]
+            if key[0] in pending_rows and button._word_turn == view.rows[key[0]]._turn:
+                # Preserve accessible identity while replacement geometry yields.
+                continue
+            self.buttons.pop(key)
             if button.get_parent():
                 button.unparent()
 

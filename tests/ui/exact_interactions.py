@@ -103,6 +103,14 @@ def check_interactions(window, page, paint, until):
         )
     )
     until(lambda: bool(actions.buttons))
+    action_key, stable_action = next(iter(actions.buttons.items()))
+    actions.generation += 1
+    clock = iter((0, 0, 0))
+    with patch.object(transcript_accessible.time, "thread_time_ns", side_effect=lambda: next(clock, 2_000_000)):
+        actions.update(view._viewport_height)
+    assert actions.buttons.get(action_key) is stable_action, "Deferred geometry discarded an unchanged word action"
+    until(lambda: getattr(first_row, "_action_pending", True) is None)
+    assert actions.buttons.get(action_key) is stable_action
     result["accessibleParsingYields"] = True
     # Real GtkScrolledWindow touch gestures pause follow without a replacement
     # controller or a claimed sequence. Both touch drag and swipe are observed.
