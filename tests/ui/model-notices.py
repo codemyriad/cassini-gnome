@@ -5,7 +5,6 @@
 import json
 import os
 import sys
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,26 +17,12 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Gio, GLib, Gtk  # noqa: E402
+from dispatch_wait import dispatch_until  # noqa: E402
+from gi.repository import Gio, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.main import CassiniApplication  # noqa: E402
 from cassini_talk.model_download import ModelStore, model_root  # noqa: E402
-
-
-def until(check):
-    deadline = time.monotonic() + 8
-    context = GLib.MainContext.default()
-    while time.monotonic() < deadline:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.01)
-    assert check(), "About did not settle"
-
 
 notice = model_root() / "NOTICE.txt"
 notice.parent.mkdir(parents=True)
@@ -46,7 +31,7 @@ app = CassiniApplication("com.gocassini.ModelNoticesTest", "test", "development"
 app.register(None)
 app.activate()
 window = app.get_active_window()
-until(lambda: not window._pending)
+dispatch_until(lambda: not window._pending, "About’s Library did not finish loading")
 
 
 def labels(widget):
