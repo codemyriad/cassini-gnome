@@ -134,10 +134,16 @@
           "format": "date-time",
           "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
         },
+        "recordedAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+          "description": "The instant of playback position 0 of this file's audio. A word's wall-clock time is this plus its startMs. Absent when the producer does not know it."
+        },
         "recordedAtLocal": {
           "type": "string",
           "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$",
-          "description": "Wall-clock time at the recording site, no offset. A label, not an instant."
+          "description": "Wall-clock time at the recording site, no offset. A label, not an instant. Written only by a producer that knows the site's zone."
         },
         "processedAtUtc": {
           "type": "string",

@@ -932,7 +932,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.key,
             meeting.title,
             fmt.preview_subtitle(
-                meeting.started_at_ms,
+                meeting.display_start,
                 meeting.duration_ms,
                 now_ms=self.now_ms,
                 tz=self.tz,
@@ -978,7 +978,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                         (
                             m.key,
                             m.title,
-                            fmt.row_time(m.started_at_ms, tz=self.tz),
+                            fmt.row_time(m.display_start, tz=self.tz),
                             m.badge().kind if m.badge() else None,
                             m.badge().text if m.badge() and m.lifecycle != "recording" else None,
                             m.row_texts(),
@@ -1118,7 +1118,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         box = vertical(4, margin_start=11, margin_end=11, margin_top=9, margin_bottom=9)
         top = Gtk.Box(spacing=8)
         top.append(label(meeting.title, "heading", xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
-        top.append(label(fmt.row_time(meeting.started_at_ms, tz=self.tz), "small", "dim-label"))
+        top.append(label(fmt.row_time(meeting.display_start, tz=self.tz), "small", "dim-label"))
         box.append(top)
         meta = Gtk.Box(spacing=6)
         elapsed = self.get_application().comfort.elapsed(meeting)
@@ -1193,7 +1193,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         headline.append(
             label(
                 fmt.preview_subtitle(
-                    meeting.started_at_ms,
+                    meeting.display_start,
                     meeting.duration_ms,
                     now_ms=self.now_ms,
                     tz=self.tz,

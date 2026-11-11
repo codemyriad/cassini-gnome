@@ -702,7 +702,7 @@ class MeetingPage(Adw.NavigationPage):
         self.window.set_title(meeting.title)
         self.headline.set_subtitle(
             fmt.preview_subtitle(
-                meeting.started_at_ms,
+                meeting.display_start,
                 meeting.duration_ms,
                 now_ms=self.window.now_ms,
                 tz=self.window.tz,

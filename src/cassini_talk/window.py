@@ -1142,7 +1142,8 @@ class CassiniWindow(Adw.ApplicationWindow):
         meeting = self.meeting
         parts = []
         if meeting and meeting.is_readable:
-            date = format_date(meeting.recorded_at_local, local=True) or format_date(meeting.created_at)
+            start = meeting.meeting_start
+            date = format_date(start["value"], local=start["source"] == "recordedAtLocal") if start else ""
             if date:
                 parts.append(date)
             count = len(self._speaker_ids())
@@ -1181,7 +1182,8 @@ class CassiniWindow(Adw.ApplicationWindow):
         duration = meeting.duration_ms or self.player.duration
         if duration:
             recording.add(property_row(_("Duration"), format_time(duration)))
-        recorded = format_date(meeting.recorded_at_local, local=True, time=True)
+        start = meeting.meeting_start
+        recorded = format_date(start["value"], local=start["source"] == "recordedAtLocal", time=True) if start else ""
         if recorded:
             recording.add(property_row(_("Recorded"), recorded))
         created = format_date(meeting.created_at, time=True)
@@ -1342,5 +1344,9 @@ def format_date(value, local=False, time=False):
         return None
     text = calendar_formats.full_date(date(dt.get_year(), dt.get_month(), dt.get_day_of_month()))
     if time:
-        text = f"{text} {fmt.row_time(dt.to_unix() * 1000, tz=fmt.local_timezone(dt.get_timezone().get_identifier()))}"
+        wall = (
+            f"{dt.get_year():04d}-{dt.get_month():02d}-{dt.get_day_of_month():02d}T"
+            f"{dt.get_hour():02d}:{dt.get_minute():02d}:{dt.get_second():02d}"
+        )
+        text = f"{text} {fmt.row_time(wall, tz='UTC')}"
     return text

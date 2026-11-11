@@ -123,15 +123,21 @@ def excerpt_markup(marked, *, limit=220, selected=False):
     return output + ("…" if hi < len(plain) else "")
 
 
-def date_range(choice, now_ms, tz):
+def calendar_range(choice, now_ms, tz):
     if choice == "any":
         return None
     days = {"today": 1, "week": 7, "month": 30}[choice]
     zone = ZoneInfo(tz) if isinstance(tz, str) else tz
     today = datetime.fromtimestamp(now_ms / 1000, zone).date()
-    lower = datetime.combine(today - timedelta(days=days - 1), time.min, zone)
-    upper = datetime.combine(today + timedelta(days=1), time.min, zone)
-    return int(lower.timestamp() * 1000), int(upper.timestamp() * 1000)
+    return today - timedelta(days=days - 1), today + timedelta(days=1)
+
+
+def date_range(choice, now_ms, tz):
+    dates = calendar_range(choice, now_ms, tz)
+    if dates is None:
+        return None
+    zone = ZoneInfo(tz) if isinstance(tz, str) else tz
+    return tuple(int(datetime.combine(day, time.min, zone).timestamp() * 1000) for day in dates)
 
 
 class SearchIndex:
@@ -183,6 +189,10 @@ class SearchIndex:
                         body, key UNINDEXED, turn UNINDEXED, speaker UNINDEXED, tokenize='unicode61'
                     );
                 """)
+                columns = {row[1] for row in db.execute("PRAGMA table_info(meetings)")}
+                for column, kind in (("started_local", "TEXT"), ("sort_started", "INTEGER")):
+                    if column not in columns:
+                        db.execute(f"ALTER TABLE meetings ADD COLUMN {column} {kind}")
                 db.execute(
                     "CREATE VIRTUAL TABLE IF NOT EXISTS titles USING fts5(body, key UNINDEXED, tokenize='unicode61')"
                 )
@@ -220,7 +230,14 @@ class SearchIndex:
                 # Scanner keeps immutable word tuples alive. Polling capture levels
                 # never hashes or rewrites an unchanged transcript.
                 old = self.signatures.get(key)
-                signature = (meeting.words, meeting.speakers, meeting.started_at_ms, meeting.origin, meeting.turn_gaps)
+                signature = (
+                    meeting.words,
+                    meeting.speakers,
+                    meeting.display_start,
+                    meeting.created_at_ms,
+                    meeting.origin,
+                    meeting.turn_gaps,
+                )
                 if old is not None and old[0] is meeting.words and old[1:] == signature[1:]:
                     continue
                 labels = {s.id: s.name for s in meeting.speakers}
@@ -250,7 +267,9 @@ class SearchIndex:
                             scoped[offset : offset + len(shown)] = shown
                     rows.extend(("".join(scoped), key, i, name) for name, scoped in scopes.items())
                 fingerprint = hashlib.sha256(
-                    json.dumps([rows, meeting.started_at_ms, meeting.origin], ensure_ascii=False).encode()
+                    json.dumps(
+                        [rows, meeting.display_start, meeting.sort_time, meeting.origin], ensure_ascii=False
+                    ).encode()
                 ).hexdigest()
                 next_turns[key] = turns
                 next_signatures[key] = signature
@@ -259,8 +278,15 @@ class SearchIndex:
                 self.db.execute("DELETE FROM hits WHERE key = ?", (key,))
                 self.db.executemany("INSERT INTO hits(body,key,turn,speaker) VALUES (?,?,?,?)", rows)
                 self.db.execute(
-                    "INSERT OR REPLACE INTO meetings VALUES (?,?,?,?)",
-                    (key, fingerprint, meeting.started_at_ms, meeting.origin),
+                    "INSERT OR REPLACE INTO meetings(key,fingerprint,started,origin,started_local,sort_started) VALUES (?,?,?,?,?,?)",
+                    (
+                        key,
+                        fingerprint,
+                        meeting.started_at_ms,
+                        meeting.origin,
+                        meeting.recorded_at_local if meeting.started_at_ms is None else None,
+                        meeting.sort_time,
+                    ),
                 )
         self.turns, self.signatures = next_turns, next_signatures
         self.current = meetings
@@ -284,13 +310,17 @@ class SearchIndex:
         if own:
             filters.append("meetings.origin = 'own'")
         if bounds := date_range(date, now_ms, tz):
-            filters.append("meetings.started >= ? AND meetings.started < ?")
+            filters.append(
+                "((meetings.started >= ? AND meetings.started < ?) OR "
+                "(meetings.started IS NULL AND meetings.started_local >= ? AND meetings.started_local < ?))"
+            )
             filter_params.extend(bounds)
+            filter_params.extend(day.isoformat() + "T00:00:00" for day in calendar_range(date, now_ms, tz))
         conditions = ["hits MATCH ?", "hits.speaker = ?", *filters]
         params = [phrase, speaker.casefold() if speaker else "", *filter_params]
         sql = """SELECT hits.key, hits.turn, highlight(hits,0,char(1),char(2))
                  FROM hits JOIN meetings ON meetings.key=hits.key WHERE """ + " AND ".join(conditions)
-        sql += " ORDER BY meetings.started IS NULL, meetings.started DESC, meetings.key, CAST(hits.turn AS INTEGER)"
+        sql += " ORDER BY meetings.sort_started IS NULL, meetings.sort_started DESC, meetings.key, CAST(hits.turn AS INTEGER)"
         result = []
         for key, turn_index, marked in self.db.execute(sql, params):
             self._check_cancelled()
@@ -353,8 +383,8 @@ class SearchIndex:
             )
         result.sort(
             key=lambda hit: (
-                self.current[hit.key].started_at_ms is None,
-                -(self.current[hit.key].started_at_ms or 0),
+                self.current[hit.key].sort_time is None,
+                -(self.current[hit.key].sort_time or 0),
                 hit.key,
                 hit.turn,
             )

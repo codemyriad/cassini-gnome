@@ -10,8 +10,8 @@ absent). The capture writers must have stopped (§4.1); the mixdown runs without
 
 - the mono 48 kHz D8 mixdown (§4.3/§4.4), checked by G12 and the format's digest,
   its playable length equal to the timeline within one Opus frame (G13);
-- TITLE, manifest meeting.title = the displayed title; DATE = the start with its
-  offset, seconds floored (§11 Q8); meeting.recordedAtLocal from a known start;
+- TITLE, manifest meeting.title = the displayed title; D95 recordedAtUtc, its
+  mirror and DATE = playback position 0; recordedAtLocal only with a site zone;
 - the default `words` transcript with the empty body (§3) and no speakers yet;
 - x["codemyriad.io"] (x-schema.json, MAPPING.md) at the new revision, the notes at
   x["gocassini.com"].notes and, for an unknown offset, its recovery marker (D19).
@@ -122,12 +122,13 @@ def start_of(session, meeting, zone, now):
     if instant is None:
         return prefix, source, None, None
     local = (instant + timedelta(minutes=minutes)).replace(microsecond=0, tzinfo=None)
-    sign = "-" if minutes < 0 else "+"
-    date = local.strftime("%Y-%m-%dT%H:%M:%S") + f"{sign}{abs(minutes) // 60:02d}:{abs(minutes) % 60:02d}"
-    return prefix, source, date, local.strftime("%Y-%m-%dT%H:%M:%S")
+    from ..meeting_time import utc
+
+    known_zone = names.valid_offset(offset)
+    return prefix, source, utc(start), local.strftime("%Y-%m-%dT%H:%M:%S") if known_zone else None
 
 
-def library_manifest(*, digest, title, created, recorded_at_local, choice, words_ref, extension):
+def library_manifest(*, digest, title, created, recorded_at_local, choice, words_ref, extension, recorded_at_utc=None):
     shape = dict(
         sampleRate=48000,
         channels=digest["channels"],
@@ -135,6 +136,8 @@ def library_manifest(*, digest, title, created, recorded_at_local, choice, words
         durationMs=digest["durationMs"],
     )
     meeting = dict(id="mtg_" + digest["sha256"], title=title, createdAtUtc=created, durationMs=shape["durationMs"])
+    if recorded_at_utc is not None:
+        meeting["recordedAtUtc"] = recorded_at_utc
     if recorded_at_local is not None:
         meeting["recordedAtLocal"] = recorded_at_local
     manifest = dict(
@@ -166,6 +169,7 @@ class Plan:
     recorded_at_local: str | None
     extension: dict
     assumed: bool
+    recorded_at_utc: str | None = None
 
 
 def plan(session, meeting, timeline, *, zone, now, untitled):
@@ -199,6 +203,7 @@ def plan(session, meeting, timeline, *, zone, now, untitled):
         recorded_at_local=recorded_at_local,
         extension=extension,
         assumed=assumed,
+        recorded_at_utc=date,
     )
 
 
@@ -211,11 +216,12 @@ def tag(audio_path, stage, digest, plan, choice, now):
         title=plan.title,
         created=created,
         recorded_at_local=plan.recorded_at_local,
+        recorded_at_utc=plan.recorded_at_utc,
         choice=choice,
         words_ref=words_ref,
         extension=plan.extension,
     )
-    tags = file_tags(manifest, words_tags, date=plan.date or created)
+    tags = file_tags(manifest, words_tags)
     with open(audio_path, "rb") as audio, open(stage, "xb") as output:
         rewrite_tags(audio, output, tags)
         output.flush()

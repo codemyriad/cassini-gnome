@@ -92,7 +92,7 @@ def test_missing_manifest_descriptor_damages_received_body_but_keeps_audio(tmp_p
     assert meeting.transcript == "damaged" and meeting.error.id == "transcript-damaged"
     assert meeting.error.action is None and meeting.badge().kind == "received"
     assert meeting.duration_ms == 2040000 and meeting.audio_file == original and meeting.has_audio
-    assert meeting.started_at_ms == metadata["received"]["importedAtMs"]
+    assert meeting.started_at_ms is None  # D95: import time is not recording provenance.
     assert meeting.quote_line is None and not meeting.speakers and not meeting.can_write_down
     assert original.read_bytes() == before
     with asset.open("rb") as positive, original.open("rb") as negative:
