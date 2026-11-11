@@ -12,7 +12,6 @@ import json
 import logging
 import struct
 import threading
-import time
 
 import pytest
 
@@ -868,12 +867,13 @@ def test_a_silent_system_tap_starts_armed_and_stops_without_waiting(silent_devic
     tap.stop()
 
 
-def test_a_never_heard_system_tap_stops_at_once(silent_device):
+def test_a_never_heard_system_tap_stops_without_an_eos_drain(silent_device, monkeypatch):
     from cassini_talk.native_tap import NativeTap
     from cassini_talk.session_clock import SessionClock
 
     tap = NativeTap("system", SessionClock(0), lambda *_a, **_k: None, lambda _m: None, test=True)
     tap.start()
+    assert not tap.received and not tap.ended.is_set()
     # Like a Pulse read on a suspended monitor, this device never lets an EOS through.
     pad = silent_device[0].get_by_name("device").get_static_pad("src")
     pad.add_probe(
@@ -882,9 +882,25 @@ def test_a_never_heard_system_tap_stops_at_once(silent_device):
             Gst.PadProbeReturn.DROP if info.get_event().type == Gst.EventType.EOS else Gst.PadProbeReturn.OK
         ),
     )
-    began = time.monotonic()
-    tap.stop()  # No EOS to drain from a device that never delivered: no 10 s timeout.
-    assert time.monotonic() - began < 5
+    wait_for_drain = tap.ended.wait
+    drain_checks = []
+
+    def already_ended(timeout):
+        ended = tap.ended.is_set()
+        drain_checks.append(ended)
+        assert ended, "silent tap Stop tried to wait for an EOS drain"
+        return wait_for_drain(timeout)
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(tap.ended, "wait", already_ended)
+            tap.stop()
+        assert drain_checks == [True]
+        assert tap.pipeline is None and tap.closed.is_set() and not tap.timed_out
+    finally:
+        if tap.pipeline is not None:
+            tap.ended.set()
+            tap.stop()
 
 
 def test_a_tap_stop_sealed_drops_what_its_device_delivers_after_stop(silent_device):
