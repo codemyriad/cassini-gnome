@@ -8,7 +8,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import traceback
 from pathlib import Path
 
@@ -147,10 +146,9 @@ try:
         evidence.setdefault("readiness", diagnostics())
         subprocess.run(["import", "-window", "root", str(artifacts / "failure.png")], check=False)
 
-    with (
-        tempfile.TemporaryDirectory() as directory,
-        recording_app_teardown(app, on_error=_on_failure, stop_active=_stop_active),
-    ):
+    with recording_app_teardown(
+        app, prefix="cassini-gtk-", on_error=_on_failure, stop_active=_stop_active
+    ) as directory:
         os.environ["CASSINI_LIBRARY_DIR"] = directory
         # Route the live monitor to this private Library without ending and
         # reusing a shut-down GApplication/executor in the same process.

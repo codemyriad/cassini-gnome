@@ -5,14 +5,20 @@
 Scripts that drive CassiniApplication via register()/activate() without app.run()
 do not enter do_shutdown(), and production begin_exit()/close() calls use
 shutdown(wait=False) so GTK never blocks on worker threads. Before deleting a
-TemporaryDirectory Library, tests must join every worker and drain the shared
-library_publication._ENCODER queue so no background encode or recovery sweep
-races shutil.rmtree() on Library/.cassini.
+test Library directory, tests must join every worker within a bounded deadline
+and retain the directory if any writer or active capture cannot be stopped.
 """
 
+import shutil
 import sys
+import tempfile
+import threading
 import time
-from contextlib import contextmanager
+from concurrent.futures import CancelledError
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from contextlib import contextmanager, suppress
+from pathlib import Path
+from types import FunctionType
 
 
 def _glib():
@@ -32,16 +38,18 @@ def _pump_glib():
     return progressed
 
 
-def _await_capture_guard_idle(app, deadline):
+def _await_capture_guard_idle(app, deadline, clock, outstanding):
     if app is None:
         return
     while getattr(app, "_capture_exiting", False) or getattr(app, "_capture_background_saving", False):
-        remaining = deadline - time.monotonic()
+        remaining = deadline - clock()
         if remaining <= 0:
-            raise TimeoutError("Timed out waiting for capture_guard close/background save to finish")
+            outstanding.append("app.capture_guard")
+            return
         glib = _glib()
         if glib is None:
-            raise RuntimeError("GLib main context is required while capture_guard save is in flight")
+            outstanding.append("app.capture_guard[no-glib-context]")
+            return
         context = glib.MainContext.default()
         source = glib.timeout_add(max(1, int(remaining * 1000)), lambda: False)
         try:
@@ -61,32 +69,114 @@ def _unique(items):
     return ordered
 
 
+def _unique_named(pairs):
+    seen = set()
+    ordered = []
+    for label, item in pairs:
+        if item is not None and id(item) not in seen:
+            seen.add(id(item))
+            ordered.append((label, item))
+    return ordered
+
+
 def _call_if(target, method):
     fn = getattr(target, method, None)
     if callable(fn):
         fn()
 
 
-def _drain_encoder(deadline):
+def _shutdown_now(executor):
+    shutdown = getattr(executor, "shutdown", None)
+    if not callable(shutdown):
+        return
+    try:
+        shutdown(wait=False, cancel_futures=True)
+    except TypeError:
+        shutdown(wait=False)
+
+
+def _join_executor(label, executor, deadline, clock, outstanding):
+    threads = getattr(executor, "_threads", None)
+    if threads is not None:
+        joined = set()
+        while True:
+            pending = [
+                thread
+                for thread in tuple(threads)
+                if thread not in joined and thread is not threading.current_thread() and thread.is_alive()
+            ]
+            if not pending:
+                return
+            for thread in pending:
+                joined.add(thread)
+                remaining = max(0.0, deadline - clock())
+                thread.join(timeout=remaining)
+                if thread.is_alive():
+                    outstanding.append(f"{label}[{thread.name}]")
+            if any(thread.is_alive() for thread in pending):
+                return
+        return
+
+    shutdown = getattr(executor, "shutdown", None)
+    if callable(shutdown):
+        done = threading.Event()
+
+        def _wait():
+            try:
+                shutdown(wait=True)
+            finally:
+                done.set()
+
+        waiter = threading.Thread(target=_wait, name=f"drain-{label}", daemon=True)
+        waiter.start()
+        if not done.wait(timeout=max(0.0, deadline - clock())):
+            outstanding.append(label)
+
+
+def _join_future(label, future, deadline, clock, outstanding):
+    if future is None or not callable(getattr(future, "done", None)) or future.done():
+        return
+    remaining = max(0.0, deadline - clock())
+    with suppress(CancelledError, FuturesTimeoutError, TimeoutError):
+        future.exception(timeout=remaining)
+    if not future.done():
+        outstanding.append(label)
+
+
+def _publication_encoder():
     try:
         from cassini_talk import library_publication
     except ImportError:
         library_publication = sys.modules.get("cassini_talk.library_publication")
-    encoder = getattr(library_publication, "_ENCODER", None) if library_publication is not None else None
+    return getattr(library_publication, "_ENCODER", None) if library_publication is not None else None
+
+
+def _encoder_appears_idle(encoder):
     if encoder is None:
-        return
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise TimeoutError("Timed out before draining library_publication._ENCODER")
-    encoder.submit(lambda: None).result(timeout=remaining)
+        return True
+    threads = getattr(encoder, "_threads", None)
+    queue = getattr(encoder, "_work_queue", None)
+    return threads is not None and len(threads) == 0 and queue is not None and queue.empty()
 
 
-def drain_recording_app(app, *, timeout=25):
-    """Stop open UI surfaces and join every background worker before rm -rf."""
-    deadline = time.monotonic() + timeout
+def _record_encoder_timeout(encoder, probe, outstanding):
+    probe.cancel()
+    threads = [t.name for t in tuple(getattr(encoder, "_threads", ())) if t.is_alive()]
+    detail = f"[{', '.join(threads)}]" if threads else ""
+    outstanding.append(f"library_publication._ENCODER{detail}")
+
+
+def drain_recording_app(app, *, timeout=25, clock=time.monotonic):
+    """Stop open UI surfaces and join every background worker within `timeout`."""
+    deadline = clock() + timeout
+    outstanding = []
     _pump_glib()
+
+    encoder = _publication_encoder()
+    initial_probe = None if _encoder_appears_idle(encoder) else encoder.submit(lambda: None)
+
     if app is not None:
-        _await_capture_guard_idle(app, deadline)
+        _await_capture_guard_idle(app, deadline, clock, outstanding)
         windows = list(app.get_windows()) if callable(getattr(app, "get_windows", None)) else []
         recorders = _unique([getattr(app, "recorder", None), *(getattr(w, "recorder", None) for w in windows)])
         for recorder in recorders:
@@ -175,53 +265,153 @@ def drain_recording_app(app, *, timeout=25):
             )
             if not busy:
                 _call_if(recorder, "close")
+            else:
+                outstanding.append(
+                    "recorder("
+                    f"pipeline={getattr(recorder, 'pipeline', None) is not None}, "
+                    f"starting={bool(getattr(recorder, 'starting', False))}, "
+                    f"stopping={bool(getattr(recorder, 'stopping', False))}, "
+                    f"finishing={bool(getattr(recorder, '_finishing', False))})"
+                )
 
-        producer_executors = _unique(
+        producer_executors = _unique_named(
             [
-                *(getattr(r, "_executor", None) for r in recorders),
-                *(getattr(r, "_bus_worker", None) for r in recorders),
-                getattr(library_recovery, "executor", None),
-                getattr(library_relocator, "executor", None),
-                getattr(voice_backfill, "executor", None),
-                getattr(sound_check, "_executor", None),
-                getattr(comfort, "editor", None),
-                getattr(comfort, "executor", None),
-                *(getattr(m, "_executor", None) for m in window_monitors),
-                *(getattr(p, "_executor", None) for p in search_pages),
-                *(getattr(d, "executor", None) for d in export_dialogs),
-                *(getattr(s, "executor", None) for s in activity_sources),
-                *import_executors,
-                getattr(settings_dialog, "executor", None),
-                getattr(browser_watch, "executor", None),
-                getattr(browser_activity, "executor", None),
-                getattr(app, "_record_start_executor", None),
-                getattr(transcriber, "preparer", None),
-                getattr(transcriber, "executor", None),
+                *((f"recorder[{i}]._executor", getattr(r, "_executor", None)) for i, r in enumerate(recorders)),
+                *((f"recorder[{i}]._bus_worker", getattr(r, "_bus_worker", None)) for i, r in enumerate(recorders)),
+                ("library_recovery.executor", getattr(library_recovery, "executor", None)),
+                ("library_relocator.executor", getattr(library_relocator, "executor", None)),
+                ("voice_backfill.executor", getattr(voice_backfill, "executor", None)),
+                ("sound_check._executor", getattr(sound_check, "_executor", None)),
+                ("comfort.editor", getattr(comfort, "editor", None)),
+                ("comfort.executor", getattr(comfort, "executor", None)),
+                *(
+                    (f"window.monitor[{i}]._executor", getattr(m, "_executor", None))
+                    for i, m in enumerate(window_monitors)
+                ),
+                *((f"search_page[{i}]._executor", getattr(p, "_executor", None)) for i, p in enumerate(search_pages)),
+                *((f"export_dialog[{i}].executor", getattr(d, "executor", None)) for i, d in enumerate(export_dialogs)),
+                *(
+                    (f"activity_source[{i}].executor", getattr(s, "executor", None))
+                    for i, s in enumerate(activity_sources)
+                ),
+                *((f"window[{i}]._import_executor", imp) for i, imp in enumerate(import_executors)),
+                ("settings_dialog.executor", getattr(settings_dialog, "executor", None)),
+                ("browser_watch.executor", getattr(browser_watch, "executor", None)),
+                ("browser_activity.executor", getattr(browser_activity, "executor", None)),
+                ("app._record_start_executor", getattr(app, "_record_start_executor", None)),
+                ("transcriber.preparer", getattr(transcriber, "preparer", None)),
+                ("transcriber.executor", getattr(transcriber, "executor", None)),
             ]
         )
-        for executor in producer_executors:
-            if callable(getattr(executor, "shutdown", None)):
-                executor.shutdown(wait=True)
+        for _label, executor in producer_executors:
+            _shutdown_now(executor)
+        for label, executor in producer_executors:
+            _join_executor(label, executor, deadline, clock, outstanding)
+
+        for label, future in (
+            ("companion_setup.future", getattr(companion_setup, "future", None)),
+            ("settings_dialog._future", getattr(settings_dialog, "_future", None)),
+            ("browser_connection.future", getattr(browser_connection, "future", None)),
+            ("browser_connection.health_future", getattr(browser_connection, "health_future", None)),
+            ("browser_watch.future", getattr(browser_watch, "future", None)),
+        ):
+            _join_future(label, future, deadline, clock, outstanding)
 
         _pump_glib()
         trash_executor = getattr(meeting_trash, "executor", None)
-        if callable(getattr(trash_executor, "shutdown", None)):
-            trash_executor.shutdown(wait=True)
+        if trash_executor is not None:
+            _shutdown_now(trash_executor)
+            _join_executor("meeting_trash.executor", trash_executor, deadline, clock, outstanding)
 
-    _drain_encoder(deadline)
+    encoder_timed_out = False
+    if initial_probe is not None and not initial_probe.done():
+        try:
+            initial_probe.result(timeout=max(0.0, deadline - clock()))
+        except FuturesTimeoutError:
+            _record_encoder_timeout(encoder, initial_probe, outstanding)
+            encoder_timed_out = True
+
+    if not encoder_timed_out and not outstanding and not _encoder_appears_idle(encoder):
+        final_probe = encoder.submit(lambda: None)
+        if not final_probe.done():
+            try:
+                final_probe.result(timeout=max(0.0, deadline - clock()))
+            except FuturesTimeoutError:
+                _record_encoder_timeout(encoder, final_probe, outstanding)
+
     _pump_glib()
+    if outstanding:
+        raise TimeoutError(
+            f"Recording teardown exceeded {timeout}s budget; outstanding workers: {', '.join(outstanding)}"
+        )
+
+
+def _resolve_app(app):
+    return app() if isinstance(app, FunctionType) else app
 
 
 @contextmanager
-def recording_app_teardown(app, *, on_error=None, stop_active=None, timeout=25):
-    """Exit inner to TemporaryDirectory() so workers finish before shutil.rmtree."""
+def recording_app_teardown(
+    app,
+    *,
+    directory=None,
+    prefix="cassini-recording-",
+    on_error=None,
+    stop_active=None,
+    after_drain_on_error=None,
+    before_cleanup=None,
+    timeout=25,
+    clock=time.monotonic,
+):
+    """Manage a test Library directory so rmtree never runs while writers remain active."""
+    target_dir = Path(directory) if directory is not None else Path(tempfile.mkdtemp(prefix=prefix))
+    body_error = None
+    hook_errors = []
+    stop_error = None
+    drain_error = None
     try:
-        yield
-    except BaseException:
+        yield str(target_dir)
+    except BaseException as exc:
+        body_error = exc
         if on_error is not None:
-            on_error()
-        raise
+            try:
+                on_error()
+            except BaseException as hook_exc:
+                hook_errors.append(hook_exc)
     finally:
         if stop_active is not None:
-            stop_active()
-        drain_recording_app(app, timeout=timeout)
+            try:
+                stop_active()
+            except BaseException as stop_exc:
+                stop_error = stop_exc
+        try:
+            drain_recording_app(_resolve_app(app), timeout=timeout, clock=clock)
+        except BaseException as drain_exc:
+            drain_error = drain_exc
+        failed = body_error is not None or stop_error is not None or drain_error is not None or bool(hook_errors)
+        if failed and after_drain_on_error is not None:
+            try:
+                after_drain_on_error(target_dir)
+            except BaseException as after_exc:
+                hook_errors.append(after_exc)
+        if before_cleanup is not None:
+            try:
+                before_cleanup()
+            except BaseException as cleanup_exc:
+                hook_errors.append(cleanup_exc)
+        writers_stopped = stop_error is None and drain_error is None
+        if writers_stopped:
+            shutil.rmtree(target_dir)
+        else:
+            note = f"Retained recording test directory because writers remained active or stop failed: {target_dir}"
+            for err in (drain_error, stop_error, body_error, *hook_errors):
+                if err is not None and hasattr(err, "add_note"):
+                    err.add_note(note)
+                    break
+        errors = [err for err in (body_error, *hook_errors, stop_error, drain_error) if err is not None]
+        if len(errors) == 1:
+            raise errors[0]
+        if len(errors) > 1:
+            if all(isinstance(err, Exception) for err in errors):
+                raise ExceptionGroup("Recording scenario and teardown failed", errors) from None
+            raise BaseExceptionGroup("Recording scenario and teardown failed", errors) from None

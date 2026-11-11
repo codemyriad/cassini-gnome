@@ -16,7 +16,6 @@ import shutil
 import stat
 import subprocess
 import sys
-import tempfile
 import threading
 import traceback
 from pathlib import Path
@@ -227,12 +226,12 @@ try:
                 lambda: app.recorder.pipeline is None, "failure cleanup finalizes capture", diagnostics=diagnostics
             )
 
-    with (
-        tempfile.TemporaryDirectory() as library,
-        recording_app_teardown(
-            app, on_error=lambda: evidence.setdefault("readiness", diagnostics()), stop_active=_stop_active
-        ),
-    ):
+    with recording_app_teardown(
+        app,
+        prefix="cassini-test-recording-",
+        on_error=lambda: evidence.setdefault("readiness", diagnostics()),
+        stop_active=_stop_active,
+    ) as library:
         os.environ["CASSINI_LIBRARY_DIR"] = library
         window = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
         window.monitor.refresh_now()
