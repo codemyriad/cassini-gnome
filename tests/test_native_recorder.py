@@ -190,6 +190,8 @@ def test_preparation_stop_end_time_uses_this_start_not_an_old_recorder_clock(tmp
 
 @pytest.mark.parametrize("empty", ["microphone", "system"])
 def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_path, monkeypatch, empty):
+    import threading
+
     from gi.repository import Gst
 
     from cassini_talk.native_recorder import NativeRecorder
@@ -220,9 +222,17 @@ def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_
         result.get_by_name(kind).connect("new-sample", recorder._sample, kind)
         return result
 
-    import time
-
     from test_recorder import spin_until
+
+    retired_on = []
+    retire = recorder._retire_armed
+
+    def observe_retirement(pipeline, *, keep_received=False):
+        if keep_received:
+            retired_on.append(threading.get_ident())
+        return retire(pipeline, keep_received=keep_received)
+
+    monkeypatch.setattr(recorder, "_retire_armed", observe_retirement)
 
     def select(me, others):
         future = recorder.select(me, others)
@@ -246,10 +256,10 @@ def test_stop_keeps_healthy_pcm_when_an_empty_source_never_acknowledges_eos(tmp_
         identifier = recorder._track_ids[empty]
         spin_until(lambda: recorder.session.writers[recorder._track_ids[healthy]].frames >= 9600)
         saved = (recorder.session.directory / f"track-{healthy}.wav").read_bytes()[44:]
-        started = time.monotonic()
         recorder.stop()
-        assert time.monotonic() - started < 0.2
-        spin_until(lambda: bool(finished), timeout=3)
+        wait_for_completion(lambda: bool(finished))
+        assert len(retired_on) == 1, "Stop did not retire empty sources exactly once"
+        assert retired_on[0] != threading.get_ident(), "Stop retired empty sources on the caller thread"
         assert not errors
         assert recorder.session.manifest["state"] == "completed"
         assert all(track["ended"] for track in recorder.session.manifest["tracks"])
