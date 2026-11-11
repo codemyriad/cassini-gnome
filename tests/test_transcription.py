@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
-from durable import Changes, Finished, durable
+from durable import DURABLE_BOUND, Changes, Finished, durable
 from test_library import capture, write_metadata
 
 from cassini_talk.library import LibraryScanner
@@ -391,44 +391,68 @@ def test_close_cancels_real_busy_child_without_blocking_or_failing_partial_work(
 
     sessions = [capture(tmp_path) for _ in range(3)]
     children, finished, changes = [], Finished(), Changes()
+    owner_leaving, release_owner, owner_timed_out = (threading.Event() for _ in range(3))
 
     def factory(bundle, **kwargs):
         client = child_client(
             tmp_path,
             monkeypatch,
-            """import json,sys,time
+            """import json,signal,sys
 print(json.dumps(dict(type='ready')),flush=True)
 request=json.loads(sys.stdin.readline())
 track=request['tracks'][0]
 print(json.dumps(dict(type='progress',trackId=track['id'],trackOrder=0,language='en',etaMinutes=1,
 words=[dict(text='Preserved',startMs=100,endMs=200)])),flush=True)
-time.sleep(30)
+signal.pause()
 """,
+            timeout=2 * DURABLE_BOUND,
         )
+        process_tracks = client.process_tracks
+
+        def held_process_tracks(*args):
+            try:
+                return process_tracks(*args)
+            finally:
+                owner_leaving.set()
+                if not release_owner.wait(DURABLE_BOUND):
+                    owner_timed_out.set()
+
+        monkeypatch.setattr(client, "process_tracks", held_process_tracks)
         children.append(client)
         return client
 
     queue = TranscriptionQueue(changes, finished, client_factory=factory, bundle=tmp_path)
-    for session in sessions:
-        assert queue.enqueue(session.directory)
-    first = sessions[0].directory
-    changes.wait(
-        lambda: (first / "transcript.json").exists() and b"Preserved" in (first / "transcript.json").read_bytes(),
-        "the first job did not publish its partial words",
-    )
-    until(lambda: all((s.directory / "meeting.json").exists() for s in sessions))
-    partial = (first / "transcript.json").read_bytes()
-    child = children[0].process
-    start = time.monotonic()
-    queue.close()
-    assert time.monotonic() - start < 0.5, "close waited for child inference on the calling thread"
-    finished.wait(3, exactly=True)
-    until(lambda: child.poll() is not None)
-    assert len(set(finished)) == 3 and not queue.pending
-    assert read_metadata(first)["transcript"]["status"] == "running"
-    assert (first / "transcript.json").read_bytes() == partial
-    assert all(read_metadata(s.directory)["transcript"]["status"] == "queued" for s in sessions[1:])
-    assert not queue.enqueue(first)
+    try:
+        for session in sessions:
+            assert queue.enqueue(session.directory)
+        first = sessions[0].directory
+        changes.wait(
+            lambda: (first / "transcript.json").exists() and b"Preserved" in (first / "transcript.json").read_bytes(),
+            "the first job did not publish its partial words",
+        )
+        changes.wait(
+            lambda: all(read_metadata(s.directory)["transcript"]["status"] == "queued" for s in sessions[1:]),
+            "the waiting jobs did not publish their queue state",
+        )
+        partial = (first / "transcript.json").read_bytes()
+        child = children[0].process
+        assert child is not None and child.poll() is None and not owner_leaving.is_set()
+        start = time.thread_time()
+        queue.close()
+        assert time.thread_time() - start < 0.5, "close used too much caller CPU"
+        durable(owner_leaving, "the active recognition worker observed cancellation")
+        assert not owner_timed_out.is_set() and first in queue.pending, "close waited for the held recognition owner"
+        release_owner.set()
+        finished.wait(3, exactly=True)
+        child.wait(timeout=DURABLE_BOUND)
+        assert len(set(finished)) == 3 and not queue.pending
+        assert read_metadata(first)["transcript"]["status"] == "running"
+        assert (first / "transcript.json").read_bytes() == partial
+        assert all(read_metadata(s.directory)["transcript"]["status"] == "queued" for s in sessions[1:])
+        assert not queue.enqueue(first)
+    finally:
+        release_owner.set()
+        queue.close()
     # A queued resume must not erase already published words while it waits.
     resumed = TranscriptionQueue(lambda _: None, lambda _: None, bundle=tmp_path)
     try:

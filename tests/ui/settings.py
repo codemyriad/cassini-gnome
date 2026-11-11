@@ -9,7 +9,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,7 +21,8 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Gio, GLib, Gst, Gtk  # noqa: E402
+from dispatch_wait import dispatch_until  # noqa: E402
+from gi.repository import Gio, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.browser_service import BrowserService, request, send_packet  # noqa: E402
@@ -37,17 +37,7 @@ from desktop_services import DesktopServices  # noqa: E402
 
 
 def until(check):
-    end = time.monotonic() + 12
-    context = GLib.MainContext.default()
-    while time.monotonic() < end:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.01)
-    assert check(), "Settings GUI condition timed out"
+    dispatch_until(check, "Settings GUI did not complete")
 
 
 def labels(widget):

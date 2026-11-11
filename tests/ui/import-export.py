@@ -10,7 +10,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -35,6 +34,7 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
+from dispatch_wait import dispatch_until  # noqa: E402
 from gi.repository import Gdk, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
 from painted import painted_node  # noqa: E402
 
@@ -49,17 +49,7 @@ from cassini_talk.player import Player  # noqa: E402
 
 
 def until(check):
-    end = time.monotonic() + 12
-    context = GLib.MainContext.default()
-    while time.monotonic() < end:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.01)
-    assert check(), "Import/export GUI condition timed out"
+    dispatch_until(check, "Import/export GUI did not complete")
 
 
 def labels(widget, *, visible=False):

@@ -1,7 +1,8 @@
 // Real extension -> native hosts -> broker -> Library, using private devices only.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {spawn, execFileSync} from 'node:child_process';
+import {spawn, execFile, execFileSync} from 'node:child_process';
+import {promisify} from 'node:util';
 import {createServer} from 'node:http';
 import {mkdtemp, mkdir, readFile, readdir, writeFile, chmod, rm} from 'node:fs/promises';
 import path from 'node:path';
@@ -120,10 +121,18 @@ try {
  createInterface({input: ui.stdout}).on('line', line => {try {pending.shift()?.(JSON.parse(line));} catch {evidence.console.push(line);}});
  ui.on('exit', code => {evidence.uiExit = code;});
  await poll(async () => (await call()).shortcutBound, 'private portal shortcut bound before browser startup');
- microphone = spawn('/usr/bin/python3', ['-c', `import gi,signal\ngi.require_version('Gst','1.0')\nfrom gi.repository import Gst,GLib\nGst.init(None)\np=Gst.parse_launch('audiotestsrc is-live=true freq=660 volume=0.2 ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=1 ! pulsesink device=cassini_microphone sync=false')\nloop=GLib.MainLoop()\nsignal.signal(signal.SIGTERM,lambda *_:loop.quit())\np.set_state(Gst.State.PLAYING)\ntry: loop.run()\nfinally:p.set_state(Gst.State.NULL)\n`], {stdio: ['ignore', 'ignore', 'pipe']});
+ const virtualMic = path.join(root, 'tests/recording/virtual-microphone.py');
+ microphone = spawn('/usr/bin/python3', [virtualMic, 'produce'], {stdio: ['ignore', 'ignore', 'pipe']});
  microphone.stderr.pipe(createWriteStream(path.join(artifacts, 'microphone-producer.log')));
  execFileSync('pactl', ['--server', process.env.PULSE_SERVER, 'set-sink-mute', 'cassini_desktop', '1']);
  assert.match(execFileSync('pactl', ['--server', process.env.PULSE_SERVER, 'get-sink-mute', 'cassini_desktop'], {encoding: 'utf8'}), /yes/);
+ // Observe real PCM through an independent Pulse client before opening any call.
+ try {
+  const {stdout} = await promisify(execFile)('/usr/bin/python3', [virtualMic, 'probe'], {timeout: 18000, killSignal: 'SIGKILL'});
+  evidence.microphoneReady = JSON.parse(stdout);
+ } catch (error) {
+  throw new Error(`Virtual microphone fixture failed before browser capture: ${error.message}. See microphone-producer.log and pulse-server.log.`, {cause: error});
+ }
  const flags = ['--no-sandbox', '--ozone-platform=x11', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
  context = await chromium.launchPersistentContext(profile, {channel: 'chromium', headless: false, ignoreDefaultArgs: ['--mute-audio'], args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...flags]});
  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');

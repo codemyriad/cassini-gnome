@@ -10,6 +10,7 @@ from pathlib import Path
 from .parakeet_abi import SherpaOnnxOfflineRecognizerConfig, SherpaOnnxOfflineRecognizerResult
 from .parakeet_model import verify_model
 from .sherpa_runtime import PINS, verify_runtime
+from .speech_threads import recognition_threads
 
 
 def round_ms(seconds):
@@ -86,7 +87,7 @@ class Parakeet:
         config.model_config.tokens = self.paths[3]
         config.model_config.model_type = b"nemo_transducer"
         config.model_config.provider = b"cpu"
-        config.model_config.num_threads = 2
+        config.model_config.num_threads = recognition_threads()
         config.decoding_method = b"greedy_search"
         self.recognizer = api.SherpaOnnxCreateOfflineRecognizer(C.byref(config))
         if not self.recognizer:

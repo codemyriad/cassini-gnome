@@ -2,6 +2,7 @@
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import pytest
 from broker_fixture import stop_broker
@@ -356,18 +357,39 @@ def test_quitting_cassini_does_not_count_as_stopping_the_call(service):
 def test_a_new_call_at_the_stopped_address_after_a_reconnect_is_new(service, monkeypatch):
     from cassini_talk import browser_service
 
-    _, path = service
-    monkeypatch.setattr(browser_service, "STOPPED_CALL_REPORT_WINDOW", 0.3)
-    connection, stream = browser(path, "4242:99")
+    broker, path = service
+    instance = "4242:99"
+    key = (instance, 3)
+    connection, stream = browser(path, instance)
     request("configure", path=path, autoRecord=True)
     stop_automatic_call(path, stream)
     # The call ended while disconnected; later a call starts at the same address.
     connection, stream = reconnect(path, connection, stream, meetings=[])
     try:
-        time.sleep(0.5)
+        with broker.lock:
+            assert key in broker.stopped_calls
+        # Keep connection identity and the verified owner stamp intact.
+        elapsed = browser_service.STOPPED_CALL_REPORT_WINDOW + 1
+        assert elapsed < browser_service.STOPPED_CALL_GRACE
+        later = time.monotonic() + elapsed
+        broker_time = SimpleNamespace(**{**vars(time), "monotonic": lambda: later})
+        monkeypatch.setattr(browser_service, "time", broker_time)
+        inventory_applied = threading.Event()
+        update = broker.update
+
+        def observe_inventory(browser, packet):
+            update(browser, packet)
+            if packet.get("type") == "meetings" and any(
+                row.get("callGeneration") == "new-call" for row in packet["meetings"]
+            ):
+                inventory_applied.set()
+
+        monkeypatch.setattr(broker, "update", observe_inventory)
         new_call = dict(meeting(), callGeneration="new-call")
         send_packet(stream, dict(type="meetings", meetings=[new_call]))
-        send_packet(stream, dict(type="callSignals", browserInstance="4242:99", sequence=1, tabs=[signal(new_call)]))
+        send_packet(stream, dict(type="callSignals", browserInstance=instance, sequence=1, tabs=[signal(new_call)]))
+        durable(inventory_applied, "the replacement call inventory was not applied")
+        assert key not in broker.stopped_calls, "the late inventory retained the old stopped call"
         assert read_packet(stream)["action"] == "start"
     finally:
         stream.close()
@@ -390,23 +412,47 @@ def test_a_stopped_call_that_ended_while_connected_is_new_after_a_reconnect(serv
 
 
 def test_a_quiet_stopped_call_stays_stopped_while_its_link_is_up(service, monkeypatch):
+    from broker_barrier import BrokerBarrier
+
     from cassini_talk import browser_service
 
-    _, path = service
-    monkeypatch.setattr(browser_service, "STOPPED_CALL_GRACE", 0.3)
-    connection, stream = browser(path, "4242:99")
-    request("configure", path=path, autoRecord=True)
-    stop_automatic_call(path, stream)
-    time.sleep(0.5)  # Longer than the grace, with no packet for this call.
-    # Another browser's inventory runs the expiry; then this link reconnects.
-    other, other_stream = browser(path, "5151:12", meetings=[meeting(7)])
+    broker, path = service
+    barrier = BrokerBarrier(broker)
+    instance = "4242:99"
+    key = (instance, 3)
+    connection, stream = browser(path, instance)
+    other = other_stream = None
     try:
-        assert read_packet(other_stream)["tabId"] == 7
-        connection, stream = reconnect(path, connection, stream)
-        assert no_command(connection, stream), "the stopped call was started again"
+        request("configure", path=path, autoRecord=True)
+        stop_automatic_call(path, stream)
+        with broker.lock:
+            _, stopped_at = broker.stopped_calls[key]
+        expire = broker._expire_stopped
+        expiry_observed = threading.Event()
+
+        def advance_expiry(_now):
+            expire(stopped_at + browser_service.STOPPED_CALL_GRACE + 1)
+            expiry_observed.set()
+
+        # Only the other browser reports inventory, after the stopped call's grace.
+        with monkeypatch.context() as patch:
+            patch.setattr(broker, "_expire_stopped", advance_expiry)
+            other, other_stream = browser(path, "5151:12", meetings=[meeting(7)])
+            command = read_packet(other_stream)
+            assert (command["action"], command["tabId"]) == ("start", 7)
+            assert expiry_observed.is_set()
+            with broker.lock:
+                assert key in broker.stopped_calls, "inventory expired a still-reported stopped call"
+        send_packet(
+            other_stream,
+            dict(type="result", requestId=command["requestId"], ok=True, status=dict(recording=True, tabId=7)),
+        )
+        connection, stream = reconnect(path, connection, stream, instance=instance)
+        assert barrier.no_command(connection, stream), "the stopped call was started again"
     finally:
         for closable in (stream, connection, other_stream, other):
-            closable.close()
+            if closable is not None:
+                closable.close()
 
 
 def test_other_profile_and_restarted_browser_do_not_inherit_a_stopped_call(service):
@@ -646,15 +692,22 @@ def test_control_host_relays_commands_over_native_framing(service):
             process.wait()
 
 
-def test_control_host_survives_an_idle_broker(service, monkeypatch):
+def test_control_host_does_not_keep_the_connect_timeout_on_an_idle_link(service, monkeypatch):
     import os
 
     from cassini_talk import browser_control_host
     from cassini_talk.recording_session import read_message, write_message
 
     _, path = service
-    # Shorten the connect timeout so a link that kept it would fail within the test.
-    monkeypatch.setattr(browser_control_host, "connect", lambda target: connect(target, timeout=0.2))
+    links = []
+
+    def open_link(target):
+        link = connect(target, timeout=5)
+        assert link.gettimeout() == 5
+        links.append(link)
+        return link
+
+    monkeypatch.setattr(browser_control_host, "connect", open_link)
     incoming_read, incoming_write = os.pipe()
     outgoing_read, outgoing_write = os.pipe()
     with (
@@ -673,9 +726,10 @@ def test_control_host_survives_an_idle_broker(service, monkeypatch):
             ]:
                 write_message(to_host, packet)
             listing = wait_for(lambda: s if (s := request(path=path))["meetings"] else None)
-            time.sleep(0.6)  # Three connect timeouts with nothing from the broker.
-            # A dropped link leaves the broker without this browser and its meetings.
-            assert request(path=path)["meetings"] == listing["meetings"], "the control link dropped while idle"
+            # Published inventory proves the real host has finished connection setup.
+            (link,) = links
+            assert link.gettimeout() is None, "the control host retained the dial timeout on its idle link"
+            assert request(path=path)["meetings"] == listing["meetings"]
             with ThreadPoolExecutor(2) as commands:
                 result = commands.submit(request, "start", path=path, id=listing["meetings"][0]["id"])
                 command = commands.submit(read_message, from_host).result(2)
