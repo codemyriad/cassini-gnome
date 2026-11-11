@@ -57,9 +57,10 @@ def main():
                 ["meson", "configure", str(args.build), f"-Dpytest_parallel={str(parallel).lower()}"],
                 args.output / f"{name}-configure.log",
             )
+            print(f"Starting {name}: complete Meson suite, two worker slots", flush=True)
             started = time.monotonic()
             run(
-                ["meson", "test", "-C", str(args.build), "--num-processes=2", "--print-errorlogs"],
+                ["meson", "test", "-C", str(args.build), "--num-processes=2", "--maxfail=1", "--print-errorlogs"],
                 args.output / f"{name}.log",
             )
             elapsed = time.monotonic() - started
