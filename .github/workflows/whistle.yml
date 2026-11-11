@@ -10,7 +10,7 @@ permissions:
   contents: read
 jobs:
   pinned-offline-recognition:
-    runs-on: ${{ vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7

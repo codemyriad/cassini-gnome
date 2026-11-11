@@ -23,7 +23,7 @@ permissions:
 jobs:
   products:
     name: Meson build profiles
-    runs-on: ${{ vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     container: ubuntu:26.04
     # About 1.5 min without the tests, 2.5 with a cold pin cache (D66: 2-4x p95).
     timeout-minutes: 10
