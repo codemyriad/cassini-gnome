@@ -17,14 +17,21 @@ from .strings import text
 
 # This consumes only our escaped, canonical reading_markup output. It avoids
 # importing/general-purpose HTML parsing on the first transcript opening.
-_TOKENS = re.compile(r"<[^>]*>|[^<]+")
+# Canonical escaped markup has short entities. Split plain text into bounded
+# tokens so even a long name yields between small parsing steps.
+_TOKENS = re.compile(r"<[^>]*>|&[^;<&]{1,16};|[^<&]{1,256}|&")
 
 
 class LinkSpans:
     def __init__(self, markup):
+        self.spans = [span for span in self.scan(markup) if span is not None]
+
+    @staticmethod
+    def scan(markup):
+        """Yield after each token, returning completed timed-word links."""
         offset, current, seen = 0, None, set()
-        self.spans = []
         for match in _TOKENS.finditer(markup):
+            span = None
             token = match[0]
             if token.startswith('<a href="'):
                 current = [token[9:-2], offset, [], False]
@@ -32,16 +39,18 @@ class LinkSpans:
                 current[3] = True
             elif token == "</a>" and current:
                 uri, start, parts, synthetic = current
-                value = "".join(parts)
-                if value.strip() and not synthetic and not uri.endswith(":anchor") and uri not in seen:
-                    self.spans.append((uri, start, value))
-                    seen.add(uri)
+                if not synthetic and not uri.endswith(":anchor") and uri not in seen:
+                    value = "".join(parts)
+                    if value.strip():
+                        span = uri, start, value
+                        seen.add(uri)
                 current = None
             elif not token.startswith("<"):
                 value = unescape(token)
-                if current:
+                if current and not current[3]:
                     current[2].append(value)
                 offset += len(value.encode())
+            yield span
 
 
 class WordActions:
@@ -100,24 +109,38 @@ class WordActions:
             lx, ly = words.get_layout_offsets()
             geometry_key = self.generation, plain, view.layout_width, origin.x, origin.y, lx, ly
             if getattr(row, "_action_geometry_key", None) != geometry_key:
-                layout = words.get_layout()
-                geometry = []
-                for uri, start, value in LinkSpans(words.get_label()).spans:
-                    rect = layout.index_to_pos(start)
-                    last = layout.index_to_pos(start + len(value[:-1].encode()))
-                    left = min(rect.x, rect.x + rect.width, last.x, last.x + last.width) / Pango.SCALE
-                    right = max(rect.x, rect.x + rect.width, last.x, last.x + last.width) / Pango.SCALE
-                    geometry.append(
-                        (
-                            uri,
-                            value,
-                            origin.x + lx + left,
-                            origin.y + ly + rect.y / Pango.SCALE,
-                            max(1, round(right - left)),
-                            max(1, round(rect.height / Pango.SCALE)),
-                        )
+                if time.thread_time_ns() >= deadline:
+                    missing = True
+                    continue
+                row._action_geometry_key = geometry_key
+                row._action_geometry = []
+                row._action_pending = LinkSpans.scan(words.get_label())
+            layout = words.get_layout()
+            while row._action_pending is not None and time.thread_time_ns() < deadline:
+                try:
+                    span = next(row._action_pending)
+                except StopIteration:
+                    row._action_pending = None
+                    break
+                if span is None:
+                    continue
+                uri, start, value = span
+                rect = layout.index_to_pos(start)
+                last = layout.index_to_pos(start + len(value[:-1].encode()))
+                left = min(rect.x, rect.x + rect.width, last.x, last.x + last.width) / Pango.SCALE
+                right = max(rect.x, rect.x + rect.width, last.x, last.x + last.width) / Pango.SCALE
+                row._action_geometry.append(
+                    (
+                        uri,
+                        value,
+                        origin.x + lx + left,
+                        origin.y + ly + rect.y / Pango.SCALE,
+                        max(1, round(right - left)),
+                        max(1, round(rect.height / Pango.SCALE)),
                     )
-                row._action_geometry_key, row._action_geometry = geometry_key, geometry
+                )
+            if row._action_pending is not None:
+                missing = True
             previous = row.body
             for uri, value, x, local_y, width, word_height in row._action_geometry:
                 if top + local_y + word_height <= 0 or top + local_y >= height:

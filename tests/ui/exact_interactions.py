@@ -6,7 +6,9 @@ import os
 import subprocess
 import sys
 from dataclasses import replace
+from html import escape
 from pathlib import Path
+from unittest.mock import patch
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
@@ -74,10 +76,34 @@ def check_interactions(window, page, paint, until):
     model = page.meeting
     view = page.list
     result = {}
+    from cassini_talk import transcript_accessible
     from cassini_talk.transcript_accessible import LinkSpans
 
     markup = '<a href="item:0">é&lt;&amp;</a> <a href="aside:0:0">(<b>A:</b> </a><a href="aside:0:0">hi</a>'
     assert LinkSpans(markup).spans == [("item:0", 0, "é<&"), ("aside:0:0", 9, "hi")]
+    long_word = "é<&" * 200
+    markup = f'<a href="item:0">{escape(long_word)}</a> <a href="item:1">next</a>'
+    assert LinkSpans(markup).spans == [("item:0", 0, long_word), ("item:1", len(long_word.encode()) + 1, "next")]
+    actions = view.word_actions
+    actions.clear()
+    actions.generation += 1
+    # Allow one token, then exhaust the CPU budget. Parsing/geometry must
+    # resume on a later frame, with the complete word action available after it.
+    clock = iter((0, 0, 0))
+    with patch.object(transcript_accessible.time, "thread_time_ns", side_effect=lambda: next(clock, 2_000_000)):
+        actions.update(view._viewport_height)
+    first_row = next(row for i, row in view.rows.items() if i in view.visible_rows)
+    assert first_row._action_pending is not None and not first_row._action_geometry
+    assert not actions.buttons
+    until(
+        lambda: all(
+            getattr(view.rows[i], "_action_geometry_key", (None,))[0] == actions.generation
+            and getattr(view.rows[i], "_action_pending", True) is None
+            for i in view.visible_rows
+        )
+    )
+    until(lambda: bool(actions.buttons))
+    result["accessibleParsingYields"] = True
     # Real GtkScrolledWindow touch gestures pause follow without a replacement
     # controller or a claimed sequence. Both touch drag and swipe are observed.
     controllers = page.scroller.observe_controllers()
@@ -206,8 +232,10 @@ def check_interactions(window, page, paint, until):
     view.scroll_to(10)
     paint(window)
     turn, words, row = page.bound[10]
+    until(lambda: bool(getattr(row, "_action_geometry", None)))
     # A clipped first line remains visible and must retain its word action.
     uri, _value, _x, y, _width, height = row._action_geometry[0]
+    until(lambda: (10, uri) in view.word_actions.buttons)
     view.props.vadjustment.set_value(view.prefix[10] + y + height / 2)
     paint(window)
     assert (10, uri) in view.word_actions.buttons
