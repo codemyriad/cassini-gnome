@@ -136,6 +136,7 @@
 
 /* UX3: native colours, with speaker colours confined to the reading page. */
 .meeting-transcript { background: @view_bg_color; color: @view_fg_color; padding: 22px 48px; }
+.transcript-word-action { min-width: 0; min-height: 0; padding: 0; border: 0; }
 .meeting-transcript row { padding: 0; background: transparent; }
 .companion-card { background: alpha(@accent_bg_color, 0.13); border-radius: 10px; padding: 16px; margin-bottom: 22px; }
 .companion-card image { color: @accent_bg_color; }

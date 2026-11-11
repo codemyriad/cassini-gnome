@@ -48,8 +48,6 @@ class WordActions:
     def __init__(self, view):
         self.view, self.buttons = view, {}
         self.generation, self._tick = 0, 0
-        self.style = Gtk.CssProvider()
-        self.style.load_from_string(".transcript-word-action { min-width: 0; min-height: 0; padding: 0; border: 0; }")
 
     def _retry(self):
         if not self._tick:
@@ -140,7 +138,6 @@ class WordActions:
                         accessible_role=Gtk.AccessibleRole.LINK,
                         css_classes=["transcript-word-action"],
                     )
-                    button.get_style_context().add_provider(self.style, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
                     button._word_turn = row._turn
                     button.update_property(
                         [Gtk.AccessibleProperty.LABEL, Gtk.AccessibleProperty.DESCRIPTION],

@@ -25,8 +25,8 @@ class TranscriptNavigation:
         if not self.view.items:
             return False
         index = min(len(self.view.items) - 1, max(0, index))
-        self.pending = index, direction
         self.view.page._hand_scroll()
+        self.pending = index, direction
         self.view.scroll_to(index)
         self.view.queue_allocate()
         return True
@@ -40,8 +40,13 @@ class TranscriptNavigation:
                 row.grab_focus()
 
     def key(self, _keys, key, _code, modifiers):
-        if modifiers & (Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SUPER_MASK):
-            return False  # Alt arrows belong to ListenController.
+        if modifiers & (
+            Gdk.ModifierType.ALT_MASK
+            | Gdk.ModifierType.SUPER_MASK
+            | Gdk.ModifierType.CONTROL_MASK
+            | Gdk.ModifierType.SHIFT_MASK
+        ):
+            return False
         aliases = {
             Gdk.KEY_KP_Up: Gdk.KEY_Up,
             Gdk.KEY_KP_Down: Gdk.KEY_Down,
@@ -80,6 +85,10 @@ class TranscriptNavigation:
 
     def focus(self, direction):
         previous = self.focused()
+        if previous is None and self.pending:
+            # GTK can ask the container to take focus while the old focused
+            # row is being removed. Let allocation restore the pending row.
+            return True
         if (
             previous is None
             and self.view.visible_rows

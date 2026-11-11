@@ -57,6 +57,9 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self._build_tick = 0
         self._adjustment_handler = None
         self._pending_scroll = None
+        self._pending_anchor = None
+        self._display_common = None
+        self._replace_active = False
         self.connect("notify::vadjustment", self._adjustment_changed)
         self.set_overflow(Gtk.Overflow.HIDDEN)
         self.connect("notify::scale-factor", self.invalidate)
@@ -91,7 +94,10 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         # Build the changed suffix beside the old exact index. In particular,
         # replacing the sounding tail cannot temporarily shrink the range and
         # clamp the old anchor before its replacement height is known.
+        self._pending_scroll = None
+        self.navigation.pending = None
         self._cancel_build()
+        self._display_common = common if self._display_common is None else min(self._display_common, common)
         self.items = turns
         updated = OrderedDict()
         for width, index in self._indices.items():
@@ -111,7 +117,8 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self.prefix = [0]
         self.visible_rows = range(0)
         self.viewport_ready = False
-        self._pending_scroll = self.navigation.pending = None
+        self.cancel_pending_scroll()
+        self._display_common = None
         self.invalidate()
         if self.props.vadjustment:
             self.props.vadjustment.set_value(0)
@@ -130,6 +137,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self.word_actions.generation += 1
         self._cancel_build()
         self._indices.clear()
+        self._replace_active = True
         self._metric_markup.clear()
         self._requested_width = -1
         self.ready = False
@@ -160,26 +168,39 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         return (0, 360, -1, -1) if orientation == Gtk.Orientation.HORIZONTAL else (0, 100, -1, -1)
 
     def _activate(self, index):
-        old_row = max(0, bisect_right(self.prefix, self._value()) - 1)
-        old_offset = self._value() - self.prefix[min(old_row, len(self.prefix) - 1)]
+        if self._pending_anchor is None and len(self.prefix) > 1:
+            value = self._value()
+            row = bisect_right(self.prefix, value) - 1
+            self._pending_anchor = row, value - self.prefix[row]
+        if self._pending_anchor is not None and self._display_common is not None:
+            row, offset = self._pending_anchor
+            # Reading rows are renumbered on every projection. Beyond the
+            # common prefix, the old ordinal can refer to unrelated words.
+            same_start = (
+                row < min(len(self._display_items), len(self.items))
+                and self._display_items[row].words[0] == self.items[row].words[0]
+            )
+            if row >= self._display_common and not same_start:
+                row, offset = max(0, self._display_common - 1), 0
+            self._pending_anchor = (row, offset) if self.items else None
+        self._display_common = None
+        self._replace_active = False
+        self.viewport_ready = False
         focused = self.navigation.focused()
         for number, row in list(self.rows.items()):
             if number >= len(self.items) or row._turn != self.items[number]:
+                if focused == number:
+                    self.navigation.pending = (min(number, len(self.items) - 1), None) if self.items else None
                 removed = self.rows.pop(number)
                 removed.close()
                 removed.unparent()
                 self.page.bound.pop(number, None)
-                if focused == number:
-                    self.navigation.pending = (min(number, len(self.items) - 1), None) if self.items else None
             else:
                 row.update_relation([Gtk.AccessibleRelation.SET_SIZE], [len(self.items)])
         self._display_items = self.items
         self._active = index
         self.prefix = index.prefix
         self.layout_width = index.width
-        if self.props.vadjustment and old_row + 1 < len(self.prefix):
-            offset = min(old_offset, max(0, self.prefix[old_row + 1] - self.prefix[old_row] - 1))
-            self._restore_value = self.prefix[old_row] + offset
 
     def _start_index(self, width):
         self._cancel_build()
@@ -192,13 +213,17 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         while len(self._indices) > 3:
             self._indices.popitem(last=False)
         self.ready = index.complete
-        if (self._active is None or index.complete) and self._active is not index:
+        if self._active is not index and (
+            self._active is None or not self._active.complete or self._replace_active or index.complete
+        ):
             self._activate(index)
         if index.complete:
             return
         self._building = index
         if self.items:
             self._probe = self.page._build_row(self.items[0], register=False)
+            self._probe.update_state([Gtk.AccessibleState.HIDDEN], [True])
+            self._probe.set_focusable(False)
             self._probe.set_child_visible(False)
             self._probe.set_parent(self)
         if not self.items:
@@ -268,15 +293,28 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         # Initial load: append only below the existing, immutable prefix.
         if target.complete and self._active is not target:
             self._activate(target)
-        value = getattr(self, "_restore_value", self._value())
-        if hasattr(self, "_restore_value"):
-            del self._restore_value
+        value = self._value()
+        upper = max(height, self.prefix[-1])
+        if self._pending_anchor is not None:
+            row, offset = self._pending_anchor
+            if row + 1 < len(self.prefix):
+                offset = min(offset, max(0, self.prefix[row + 1] - self.prefix[row] - 1))
+                goal = self.prefix[row] + offset
+                # Wait for enough measured rows below the anchor to keep GTK
+                # from clamping it, then restore it once.
+                if goal <= upper - height or self._active.complete:
+                    value = goal
+                    self._pending_anchor = None
         adjustment = self.props.vadjustment
         if adjustment:
-            adjustment.configure(value, 0, max(height, self.prefix[-1]), 40, height * 0.9, height)
+            adjustment.configure(value, 0, upper, 40, height * 0.9, height)
         if self.props.hadjustment:
             self.props.hadjustment.configure(0, 0, width, 40, width * 0.9, width)
-        if self._pending_scroll is not None and self._pending_scroll + 1 < len(self.prefix):
+        if (
+            self._display_common is None
+            and self._pending_scroll is not None
+            and self._pending_scroll + 1 < len(self.prefix)
+        ):
             index = self._pending_scroll
             self._pending_scroll = None
             self.scroll_to(index)
@@ -295,7 +333,12 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         needed = set(range(first, end))
         focused = self.navigation.focused()
         if focused is not None:
-            needed.add(focused)
+            if focused + 1 < len(self.prefix):
+                needed.add(focused)
+            else:
+                self.navigation.pending = focused, None
+        if self.navigation.pending and self.navigation.pending[0] + 1 < len(self.prefix):
+            needed.add(self.navigation.pending[0])
         for index in self.rows.keys() - needed:
             row = self.rows.pop(index)
             self.page.bound.pop(index, None)
@@ -331,11 +374,15 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
 
     def cancel_pending_scroll(self):
         self._pending_scroll = None
+        self._pending_anchor = None
+        self.navigation.pending = None
 
     def scroll_to(self, index, *_args):
         if not 0 <= index < len(self.items):
             return
-        if index + 1 >= len(self.prefix):
+        self._pending_anchor = None
+        self._pending_scroll = None
+        if self._display_common is not None or index + 1 >= len(self.prefix):
             self._pending_scroll = index
             return
         if 0 <= index < len(self.items) and self.props.vadjustment:
