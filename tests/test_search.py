@@ -72,9 +72,11 @@ def test_filters_and_literal_phrase(index):
 def test_index_updates_removal_timing_and_unchanged_no_rewrite(index):
     meetings = tuple(index.current.values())
     index.sync(LibrarySnapshot(meetings=meetings))
-    writes = index.db.total_changes
+    spoken_rows = list(index.db.execute("SELECT rowid,body,key,turn,speaker FROM hits"))
+    turns = dict(index.turns)
     index.sync(LibrarySnapshot(meetings=tuple(replace(m, title=m.title + " renamed") for m in meetings)))
-    assert index.db.total_changes == writes
+    assert list(index.db.execute("SELECT rowid,body,key,turn,speaker FROM hits")) == spoken_rows
+    assert all(index.turns[key] is value for key, value in turns.items())
     selected = next(m for m in meetings if m.title == "Budget review")
     first = selected.words[0]
     changed = replace(
@@ -201,7 +203,9 @@ def test_cancelled_sync_rolls_back_database_and_all_memory_then_can_retry(index,
     original = tuple(index.current.values())
     old_hits = search(index, speaker="Marta")
     old_turns, old_signatures, old_current = index.turns, index.signatures, index.current
-    updates = tuple(replace(m, words=(Word("new", 10, 20, "replacement"),)) for m in original)
+    updates = tuple(
+        replace(m, title="Replacement title", words=(Word("new", 10, 20, "replacement"),)) for m in original
+    )
     calls = 0
     check = index._check_cancelled
 
@@ -219,6 +223,7 @@ def test_cancelled_sync_rolls_back_database_and_all_memory_then_can_retry(index,
     assert search(index, speaker="Marta") == old_hits
     index.sync(LibrarySnapshot(meetings=updates))
     assert len(search(index, "replacement")) == len(updates)
+    assert len(search(index, "replacement title")) == len(updates)
     assert not search(index, "budget")
 
 
@@ -452,3 +457,108 @@ def test_a_hit_after_a_gap_seeks_with_the_runs_quote_pairing(index):
     assert [len(t.words) for t in index.turns[meeting.key]] == [1, 3]
     assert [h.position_ms for h in search(index, "I")] == [2200]
     assert [h.position_ms for h in search(index, "agree")] == [2400]
+
+
+# Parity with Android NoteSearchTest and iOS NoteSearchTests, approved by D35.7.
+def test_title_only_match_marks_title_not_the_spoken_preview(index):
+    meeting = next(m for m in index.current.values() if m.words)
+    meeting = replace(meeting, title="Supplier <meeting> & team")
+    index.sync(LibrarySnapshot(meetings=(meeting,)))
+    (hit,) = search(index, "suppl")
+    assert hit.key == meeting.key and hit.turn == -1 and hit.position_ms == 0
+    assert not hit.speaker and not hit.marked
+    assert ">Supplier</span> &lt;meeting&gt; &amp; team" in hit.title_markup
+    assert "background=" not in hit.quote_markup
+    assert not search(index, "Supplier OR impossible")
+
+
+def test_audio_only_meeting_is_found_by_title_and_has_no_fictitious_speaker(index):
+    meeting = replace(next(iter(index.current.values())), title="Interview Marco", words=(), transcript="none")
+    index.sync(LibrarySnapshot(meetings=(meeting,)))
+    (hit,) = search(index, "marco")
+    assert (hit.key, hit.turn, hit.position_ms, hit.speaker) == (meeting.key, -1, 0, "")
+    assert hit.title_markup and not hit.quote_markup and not hit.context_markup
+    assert not index.turns[meeting.key]
+
+
+@pytest.mark.parametrize("word_count", [0, 100_000])
+def test_rename_refreshes_title_without_rebuilding_spoken_rows(index, monkeypatch, word_count):
+    from cassini_talk import search_index
+
+    meeting = replace(next(m for m in index.current.values() if m.words), title="Old name")
+    if word_count:
+        meeting = replace(
+            meeting,
+            words=tuple(Word("long", n * 400, n * 400 + 200, "spoken") for n in range(word_count)),
+            duration_ms=word_count * 400,
+        )
+    index.sync(LibrarySnapshot(meetings=(meeting,)))
+    assert search(index, "old")
+    spoken_rows = list(index.db.execute("SELECT rowid,body,key,turn,speaker FROM hits"))
+    turns = index.turns[meeting.key]
+    monkeypatch.setattr(search_index, "search_turns", lambda *_a, **_k: pytest.fail("Rename rebuilt transcript rows"))
+    index.sync(LibrarySnapshot(meetings=(replace(meeting, title="Supplier meeting"),)))
+    assert not search(index, "old")
+    assert search(index, "suppl")[0].key == meeting.key
+    assert index.turns[meeting.key] is turns
+    assert list(index.db.execute("SELECT rowid,body,key,turn,speaker FROM hits")) == spoken_rows
+
+
+def test_title_filters_use_same_date_ownership_and_speaker_scope(index):
+    meetings = tuple(replace(m, title="Supplier meeting", words=()) for m in index.current.values())
+    index.sync(LibrarySnapshot(meetings=meetings))
+    all_hits = search(index, "supplier")
+    assert len(all_hits) == len(meetings)
+    selected = search(index, "supplier", speaker="marta", date="today", own=True)
+    expected = {
+        m.key
+        for m in meetings
+        if m.origin == "own"
+        and date_range("today", NOW, "Europe/Rome")[0] <= m.started_at_ms < date_range("today", NOW, "Europe/Rome")[1]
+        and any(s.name.casefold() == "marta" for s in m.speakers)
+    }
+    assert {hit.key for hit in selected} == expected and expected
+    assert not search(index, "supplier", speaker="absent")
+
+
+def test_title_and_word_matches_share_results_and_keep_word_seek(index):
+    hits = search(index, "budget", speaker="Marta")
+    assert len(hits) == 4
+    assert [h.position_ms for h in hits] == [4000, 872000, 1870000, 527000]
+    assert all(hit.turn >= 0 for hit in hits)
+    budget = [h for h in hits if index.current[h.key].title == "Budget review"]
+    assert budget and all(">Budget</span>" in h.title_markup for h in budget)
+
+
+def test_removed_unavailable_and_reopened_title_index_matches_snapshot(index):
+    meeting = replace(next(iter(index.current.values())), title="Supplier meeting", words=())
+    index.sync(LibrarySnapshot(meetings=(meeting,)))
+    root, cache = meeting.directory.parent, index.path.parent
+    reopened = SearchIndex(root, cache)
+    try:
+        reopened.sync(LibrarySnapshot(meetings=(meeting,)))
+        assert [h.key for h in search(reopened, "supplier")] == [meeting.key]
+        reopened.sync(LibrarySnapshot(meetings=()))
+        assert not search(reopened, "supplier")
+        reopened.sync(LibrarySnapshot(meetings=(meeting,)))
+        reopened.sync(LibrarySnapshot(unavailable=True))
+        assert not search(reopened, "supplier")
+    finally:
+        reopened.close()
+
+
+def test_existing_transcript_cache_gains_title_search_without_rewriting_words(index, scanner):
+    meeting = replace(next(m for m in index.current.values() if m.words), title="Supplier meeting")
+    index.sync(LibrarySnapshot(meetings=(meeting,)))
+    spoken_rows = list(index.db.execute("SELECT rowid,body,key,turn,speaker FROM hits"))
+    # An installed pre-parity cache has only meetings/hits. Preserve that real
+    # cache's spoken rows while the additive title index is populated on sync.
+    with index.db:
+        index.db.execute("DROP TABLE titles")
+    reopened = SearchIndex(scanner.root, index.path.parent)
+    try:
+        reopened.sync(LibrarySnapshot(meetings=(meeting,)))
+        assert [hit.key for hit in search(reopened, "suppl")] == [meeting.key]
+        assert list(reopened.db.execute("SELECT rowid,body,key,turn,speaker FROM hits")) == spoken_rows
+    finally:
+        reopened.close()

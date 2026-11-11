@@ -31,3 +31,11 @@ def test_result_speaker_uses_the_matched_chip_word_and_keeps_old_hits_compatible
     args = ("m", 0, "reply", 900, "", "", "")
     assert search_page.SearchPage._speaker(page, SearchHit(*args, speaker="chip")) == "chip"
     assert search_page.SearchPage._speaker(page, SearchHit(*args)) == "host"
+
+
+def test_title_result_has_no_speaker_even_without_any_transcript_rows():
+    from cassini_talk.search_index import SearchHit
+
+    page = SimpleNamespace(_meetings={}, _turns={})
+    hit = SearchHit("audio-only", -1, "", 0, "", "", "", title_markup="Interview")
+    assert search_page.SearchPage._speaker(page, hit) is None
