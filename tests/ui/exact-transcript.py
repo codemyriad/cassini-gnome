@@ -232,12 +232,6 @@ with tempfile.TemporaryDirectory() as temporary:
         listening_turns=speaker_turns(plain_words),
         speakers=(),
     )
-    long_paragraph = None
-    if not BASELINE and not only_plain and not only_hour:
-        from exact_long_turn import long_turn_meeting
-
-        # Prepare synthetic data before starting the UI, like the other fixtures.
-        long_paragraph = long_turn_meeting(long_meeting)
     app = CassiniApplication("com.gocassini.ExactTranscriptTest", "test", "development")
     app.transcription_enabled = False
     app.register(None)
@@ -500,7 +494,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert reports[1]["openMeasurementCpuMs"] < 8 * reports[0]["openMeasurementCpuMs"], "Superlinear indexing"
         from exact_long_turn import check_long_turn
 
-        reports[1]["longRejoinedTurn"] = check_long_turn(window, long_paragraph, Frames, paint, until, flicks)
+        reports[1]["longRejoinedTurn"] = check_long_turn(window, long_meeting, Frames, paint, until, flicks)
         print(
             "LONG_REJOINED_TURN",
             json.dumps(

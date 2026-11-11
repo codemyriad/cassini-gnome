@@ -2,8 +2,10 @@
 """Native frame budgets for one four-hour viewer paragraph with 899 replies."""
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
+from gi.repository import GLib
 from transcript_long_turn import long_turn_words
 
 from cassini_talk.meeting_text import reading_turns, speaker_turns
@@ -15,6 +17,13 @@ def long_turn_meeting(model):
 
 
 def check_long_turn(window, model, frames_type, paint, until, flicks):
+    # Match production loading and keep fixture preparation out of the UI
+    # thread without retaining its extra model during the earlier RSS checks.
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(long_turn_meeting, model)
+        future.add_done_callback(lambda _: GLib.idle_add(lambda: GLib.SOURCE_REMOVE))
+        until(future.done)
+        model = future.result()
     assert len(model.turns) == 1
     frames = frames_type(window)
     started = time.thread_time_ns()
