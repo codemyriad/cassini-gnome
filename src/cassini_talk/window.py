@@ -55,6 +55,7 @@ class TurnRow(Gtk.Box):
     def __init__(self, window, *, exact=False):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2, css_classes=["turn"])
         self.window = window
+        self._exact = exact
         self.turn = None
         self.offsets: list[int] = []
         self.link_offsets = {}
@@ -119,13 +120,13 @@ class TurnRow(Gtk.Box):
             return
         markup, self.offsets = self.window.turn_markup(turn)
         self.words.set_markup(markup)
-        if self.window._exact_transcript and self._offset_turn is not turn:
+        if self._exact and self._offset_turn is not turn:
             from .transcript_accessible import LinkSpans
 
             self.link_offsets = {uri: start for uri, start, _value in LinkSpans(markup).spans}
             self._offset_turn = turn
         source = turn.index
-        if self.window._exact_transcript:
+        if self._exact:
             word = turn.words[0] if turn.words else turn.asides[0][1].words[0]
             source = self.window.turns.word_keys[id(word)][0]
         if source in self.window.active_turns:
