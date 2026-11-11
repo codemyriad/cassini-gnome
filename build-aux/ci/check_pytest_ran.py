@@ -3,7 +3,7 @@
 """Prove which pytest tests ran where, and gate every skipped suite on it (G11, D20).
 
     check_pytest_ran.py LOGS --export DIR [--github-output FILE]
-    check_pytest_ran.py --source LOGS --slug SLUG --export DIR [--github-output FILE]
+    check_pytest_ran.py --source LOGS [--install-outcome DIR] --slug SLUG --export DIR [--github-output FILE]
     check_pytest_ran.py --gate DIR
 
 A Source distro job leaves pytest to the package job of the same image.
@@ -79,6 +79,8 @@ MESON_RUNS = {
 # The Source job whose node ids every package job must have run: it keeps the
 # whole suite, with GTK, outside any package build.
 REFERENCE = "fedora-latest"
+ALPINE_CANARY = "alpine-edge"
+ARTIFACT_RE = re.compile(r"^pytest-(nodes|skipped|infra-skipped|ran)-(.+?)(?:-attempt-([1-9]\d*))?$")
 # os-release fields that name a release; rolling distributions change
 # VERSION_ID between two pulls of the same tag.
 RELEASE = ("ID", "VERSION_CODENAME", "VERSION_ID")
@@ -256,44 +258,185 @@ def slug(directory):
     return re.sub(r"\.\d+$", "", re.sub(r"^(deb|rpm|arch|distro)-", "", Path(directory).name))
 
 
-def source(logs, image, shards, out):
-    """("nodes" or "skipped", slug) for a Source job, from its own logs."""
+def infra_problems(image, path):
+    path = Path(path)
+    if image != ALPINE_CANARY:
+        return [f"infrastructure skip is only allowed for {ALPINE_CANARY}, not {image}"]
+    marker = path / "infra-skipped.json"
+    if not marker.is_file():
+        return [f"{image}: missing infra-skipped.json"]
+    try:
+        data = json.loads(marker.read_text())
+    except ValueError:
+        return [f"{image}: invalid infra-skipped.json"]
+    if not isinstance(data, dict):
+        return [f"{image}: invalid infra-skipped.json"]
+    if (
+        data.get("image") != "alpine:edge"
+        or data.get("step") != "install-deps"
+        or data.get("reason") != "apk-upstream-mirror"
+    ):
+        return [f"{image}: infrastructure skip only accepts alpine:edge install-deps apk-upstream-mirror, got {data!r}"]
+    detail = data.get("detail")
+    if not isinstance(detail, str) or not detail.startswith("ERROR: "):
+        return [f"{image}: infrastructure skip missing upstream apk ERROR detail"]
+    if os_release(path / "os-release").get("ID") != "alpine":
+        return [f"{image}: infrastructure skip os-release is not alpine"]
+    present = {entry.name for entry in path.iterdir()}
+    if present != {"infra-skipped.json", "os-release"}:
+        return [f"{image}: infrastructure skip cannot accompany unexpected files {sorted(present)}"]
+    return []
+
+
+def _paths_overlap(first, second):
+    left, right = Path(first).resolve(), Path(second).resolve()
+    return left == right or left.is_relative_to(right) or right.is_relative_to(left)
+
+
+def resolve_artifacts(directory):
+    """Select only the highest attempt's artifact per (producer, image)."""
+    directory = Path(directory)
+    selected, grouped, found = {}, {}, []
+    if not directory.is_dir():
+        return selected, found
+    for path in sorted(p for p in directory.iterdir() if p.is_dir()):
+        match = ARTIFACT_RE.match(path.name)
+        if match is None:
+            found.append(f"unexpected pytest artifact directory: {path.name}")
+            continue
+        kind, image, attempt_text = match.groups()
+        attempt = int(attempt_text) if attempt_text else 0
+        producer = "ran" if kind == "ran" else "source"
+        grouped.setdefault((producer, image), []).append((attempt, kind, path))
+    for (producer, image), entries in sorted(grouped.items()):
+        latest = max(attempt for attempt, _, _ in entries)
+        chosen = [(kind, path) for attempt, kind, path in entries if attempt == latest]
+        if len(chosen) > 1:
+            found.append(
+                f"conflicting {producer} artifacts for {image} at attempt {latest}: {[p.name for _, p in chosen]}"
+            )
+            continue
+        kind, path = chosen[0]
+        selected[f"pytest-{kind}-{image}"] = path
+    return selected, found
+
+
+def source(logs, image, shards, out, *, install_outcome=None):
+    """("nodes", "skipped" or "infra-skipped", slug) for a Source job, from its own logs."""
+    logs_root = Path(logs) if logs else None
+    if logs_root and install_outcome is not None and _paths_overlap(logs_root, install_outcome):
+        raise ValueError(f"{image}: install-outcome {install_outcome} overlaps test-writable logs {logs}")
+    if logs_root and logs_root.is_dir() and any(logs_root.rglob("infra-skipped.json")):
+        raise ValueError(f"{image}: untrusted infra-skipped.json inside test-writable logs {logs}")
+    outcome_dir = Path(install_outcome) / f"distro-{image}" if install_outcome is not None else None
+    if outcome_dir is not None and image == ALPINE_CANARY:
+        if not outcome_dir.is_dir():
+            raise ValueError(f"{image}: missing trusted install outcome directory {outcome_dir}")
+        if (outcome_dir / "infra-skipped.json").exists():
+            if bad := infra_problems(image, outcome_dir):
+                raise ValueError("; ".join(bad))
+            image_logs = (
+                [
+                    p
+                    for p in logs_root.iterdir()
+                    if slug(p) == image or any(slug(c) == image for c in ([p] if p.is_file() else p.rglob("*")))
+                ]
+                if logs_root and logs_root.is_dir()
+                else []
+            )
+            if image_logs:
+                raise ValueError(
+                    f"{image}: trusted install infra-skip cannot accompany test logs {[p.name for p in image_logs]}"
+                )
+            out.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(outcome_dir / "infra-skipped.json", out / "infra-skipped.json")
+            shutil.copyfile(outcome_dir / "os-release", out / "os-release")
+            return "infra-skipped", image
+        outcome_file = outcome_dir / "outcome.json"
+        if not outcome_file.is_file():
+            raise ValueError(f"{image}: missing trusted install outcome in {outcome_dir}")
+        try:
+            outcome = json.loads(outcome_file.read_text())
+        except ValueError as exc:
+            raise ValueError(f"{image}: invalid trusted install outcome in {outcome_file}") from exc
+        if (
+            not isinstance(outcome, dict)
+            or outcome.get("image") != "alpine:edge"
+            or outcome.get("step") != "install-deps"
+            or outcome.get("status") != "installed"
+        ):
+            raise ValueError(f"{image}: install stage did not complete normally: {outcome!r}")
+    elif outcome_dir is not None and outcome_dir.exists():
+        raise ValueError(f"{image}: unexpected install outcome directory {outcome_dir} for non-canary image")
+    directories = (
+        [p.parent for p in logs_root.rglob("testlog.json") if slug(p.parent) == image]
+        if logs_root and logs_root.is_dir()
+        else []
+    )
+    if len(directories) != 1:
+        raise ValueError(
+            f"{image}: {len(directories)} Meson testlog.json directories under {logs}, not 1 (job failed before meson test)"
+        )
+    runs = shard_runs(directories[0], shards)
+    if failed := [
+        f"{name}:{entry.get('result')}"
+        for name, items in sorted(runs.items())
+        for entry in items
+        if entry.get("result") != "OK"
+    ]:
+        raise ValueError(f"{image}: failed pytest shard in Source logs: {failed}")
     out.mkdir(parents=True, exist_ok=True)
-    directories = [p.parent for p in Path(logs).rglob("testlog.json") if slug(p.parent) == image] if logs else []
-    ran = False
-    if len(directories) == 1:
-        runs = shard_runs(directories[0], shards)
-        ran = all(len(runs.get(f"pytest-{i}", [])) == 1 for i in range(1, shards + 1))
-        if ran:
-            export(directories[0], shards, out)
-        elif (directories[0] / "os-release").is_file():
+    ran = all(len(runs.get(f"pytest-{i}", [])) == 1 for i in range(1, shards + 1))
+    if ran:
+        export(directories[0], shards, out)
+    else:
+        if (directories[0] / "os-release").is_file():
             shutil.copyfile(directories[0] / "os-release", out / "os-release")
-    if not ran:
         (out / "skipped").write_text(f"{image}: pytest-1 .. pytest-{shards} did not all run\n")
     return ("nodes" if ran else "skipped"), image
 
 
 def gate(directory):
     """Reject missing matrix jobs before comparing releases and test cases."""
-    directory = Path(directory)
+    selected, found = resolve_artifacts(directory)
+    if found:
+        return found
+    for name, path in sorted(selected.items()):
+        if name.startswith("pytest-infra-skipped-"):
+            found.extend(infra_problems(name.removeprefix("pytest-infra-skipped-"), path))
+    if found:
+        return found
     missing = []
+    canary_infra = f"pytest-infra-skipped-{ALPINE_CANARY}"
     for name in REQUIRED_ARTIFACTS:
+        if name == f"pytest-nodes-{ALPINE_CANARY}" and canary_infra in selected:
+            continue
         record = "skipped" if name.startswith("pytest-skipped-") else "nodes.json"
-        if not (directory / name / record).is_file():
+        if name not in selected or not (selected[name] / record).is_file():
             missing.append(f"missing required execution proof: {name}/{record}")
-    return missing or compare_proofs(directory)
+    return missing or compare_proofs(directory, selected=selected)
 
 
-def compare_proofs(directory):
+def compare_proofs(directory, *, selected=None):
     """Compare the proofs present; gate also requires the complete matrix."""
-    directory = Path(directory)
-    found = []
-    artifacts = {p.name: p for p in directory.iterdir() if p.is_dir()} if directory.is_dir() else {}
+    if selected is None:
+        artifacts, found = resolve_artifacts(directory)
+        if found:
+            return found
+    else:
+        artifacts, found = selected, []
 
     def kind(prefix):
         return {name.removeprefix(prefix): path for name, path in artifacts.items() if name.startswith(prefix)}
 
-    skipped, ran, sources = kind("pytest-skipped-"), kind("pytest-ran-"), kind("pytest-nodes-")
+    skipped, ran, sources, infra = (
+        kind("pytest-skipped-"),
+        kind("pytest-ran-"),
+        kind("pytest-nodes-"),
+        kind("pytest-infra-skipped-"),
+    )
+    for image, path in sorted(infra.items()):
+        found.extend(infra_problems(image, path))
     for image, path in sorted(skipped.items()):
         if image not in ran:
             found.append(f"Source skipped pytest on {image} and no package job proved it ran there")
@@ -336,20 +479,36 @@ def main(argv=None):
     parser.add_argument("--export", type=Path, help="write the node ids and os-release here")
     parser.add_argument("--github-output", type=Path)
     parser.add_argument("--source", action="store_true", help="LOGS are a Source distro job's")
+    parser.add_argument("--install-outcome", type=Path, help="--source: host-only install outcome directory")
     parser.add_argument("--slug", help="--source: the image slug of this job's matrix image")
     parser.add_argument("--gate", type=Path, help="the downloaded pytest-* artifacts, one directory each")
     args = parser.parse_args(argv)
     if args.gate:
-        return report(gate(args.gate))
+        found = gate(args.gate)
+        if not found:
+            selected, _ = resolve_artifacts(args.gate)
+            canary_infra = selected.get(f"pytest-infra-skipped-{ALPINE_CANARY}")
+            if canary_infra is not None:
+                detail = json.loads((canary_infra / "infra-skipped.json").read_text())["detail"]
+                print(f"::warning::Pytest coverage accepted alpine:edge install infrastructure skip: {detail}")
+        return report(found)
     shards = shard_count()
     if args.source:
         if not args.slug or not args.export:
             parser.error("--source needs --slug and --export")
-        kind, image = source(args.logs, args.slug, shards, args.export)
+        try:
+            kind, image = source(args.logs, args.slug, shards, args.export, install_outcome=args.install_outcome)
+        except ValueError as exc:
+            return report([str(exc)])
         if args.github_output:
             with args.github_output.open("a") as output:
                 output.write(f"kind={kind}\nslug={image}\n")
-        print(f"{image}: ran pytest-1 .. pytest-{shards}" if kind == "nodes" else f"{image}: skipped pytest")
+        if kind == "nodes":
+            print(f"{image}: ran pytest-1 .. pytest-{shards}")
+        elif kind == "infra-skipped":
+            print(f"::warning::{image}: upstream install infrastructure skip")
+        else:
+            print(f"{image}: skipped pytest")
         return 0
     if args.logs is None:
         parser.error("LOGS, --source or --gate is required")
