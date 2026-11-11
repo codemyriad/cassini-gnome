@@ -416,6 +416,21 @@ def test_rpc_selection_stops_only_its_sources_and_retains_browser_span_identity(
         client.close()
 
 
+def ended_tracks(session, count):
+    """Build the limit fixture in one real durable transaction, before the tested action."""
+    with session.change([]):
+        for index in range(count):
+            identifier = f"ended-{index}"
+            session.add_track(identifier, "Old", "remote", 48000, 1)
+            session.end_track(identifier)
+    committed = {track["id"]: track for track in json.loads((session.directory / "session.json").read_text())["tracks"]}
+    for index in range(count):
+        track = committed[f"ended-{index}"]
+        assert track["ended"] and track["frames"] == 0
+        with wave.open(str(session.directory / track["file"])) as wav:
+            assert (wav.getnframes(), wav.getframerate(), wav.getnchannels()) == (0, 48000, 1)
+
+
 def test_source_limit_failure_keeps_last_applied_choice_and_tracks(server):
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
@@ -424,9 +439,7 @@ def test_source_limit_failure_keeps_last_applied_choice_and_tracks(server):
         remote(client, "remote")
         capture = service.captures["limit"]
         with capture.lock:
-            for index in range(63):
-                capture.host.session.add_track(f"ended-{index}", "Old", "remote", 48000, 1)
-                capture.host.session.end_track(f"ended-{index}")
+            ended_tracks(capture.host.session, 63)
         before = (capture.directory / "session.json").read_bytes()
         with pytest.raises(ValueError, match="64 sources"):
             request("selection", path=path, directory=str(capture.directory), me=True, others=False)
@@ -463,9 +476,7 @@ def test_rejected_change_restores_browser_pcm_after_stream_selection(server, mon
         session = capture.host.session
         if failure == "track-limit-race":
             with capture.lock:
-                for i in range(62):
-                    session.add_track(f"ended-{i}", "Old", "remote", 48000, 1)
-                    session.end_track(f"ended-{i}")
+                ended_tracks(session, 62)
         else:
             add_native = capture._add_native
 
