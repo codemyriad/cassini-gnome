@@ -177,6 +177,8 @@ class Meeting:
     def meeting_start(self):
         from .meeting_time import selected
 
+        if self.manifest is None and self.state != State.PLAIN_AUDIO:
+            return None
         return selected(self.manifest, self.tags)
 
     @property

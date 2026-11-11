@@ -1344,5 +1344,9 @@ def format_date(value, local=False, time=False):
         return None
     text = calendar_formats.full_date(date(dt.get_year(), dt.get_month(), dt.get_day_of_month()))
     if time:
-        text = f"{text} {fmt.row_time(dt.to_unix() * 1000, tz=fmt.local_timezone(dt.get_timezone().get_identifier()))}"
+        wall = (
+            f"{dt.get_year():04d}-{dt.get_month():02d}-{dt.get_day_of_month():02d}T"
+            f"{dt.get_hour():02d}:{dt.get_minute():02d}:{dt.get_second():02d}"
+        )
+        text = f"{text} {fmt.row_time(wall, tz='UTC')}"
     return text

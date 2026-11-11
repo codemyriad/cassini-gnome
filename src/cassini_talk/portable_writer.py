@@ -63,7 +63,9 @@ def recording_date(value):
     return instant.isoformat() if instant else None
 
 
-def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None, recorded_date=None):
+def descriptors(
+    meeting, digest, *, policy=None, tz=None, recorded_at_local=None, recorded_date=None, allow_recording_start=True
+):
     stored = all(getattr(word, "text_is_stored", False) for word in meeting.words)
     ordered = meeting.words
     if not stored and meeting.transcript == "done":
@@ -97,7 +99,7 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
     capture_date = recording_date(recorded_date)
     started = None
     capture_date = utc(capture_date)
-    if meeting.origin == "own" and meeting.published_file is None and meeting.started_at_ms is not None:
+    if capture_date is None and allow_recording_start and meeting.origin == "own" and meeting.started_at_ms is not None:
         instant = datetime.fromtimestamp(meeting.started_at_ms / 1000, UTC)
         capture_date = utc(instant.isoformat())
         offset = meeting.recording_offset_minutes

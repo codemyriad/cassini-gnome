@@ -117,6 +117,8 @@ def check_portable(path):
     )
     value = portable.read_meeting(str(path))
     assert portable.verify_audio(str(path), value).state == portable.State.OK
+    start = value.meeting_start
+    assert ((start["source"], start["value"]) if start else (None, None)) == result["when"]
     return result, value
 
 

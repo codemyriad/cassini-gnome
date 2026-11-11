@@ -52,6 +52,8 @@ def test_vector(vector_id):
             # The metadata-profile expectation; a full reader may then reach ok.
             assert check.state in (State.UNVERIFIED, State.OK)
 
+    if meeting.state in (State.INVALID, State.UNKNOWN_FORMAT):
+        assert meeting.meeting_start is None
     if not meeting.is_readable:
         assert meeting.manifest is None
         return

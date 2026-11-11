@@ -181,3 +181,129 @@ def test_multi_term_title_date_filter_uses_same_d95_time_as_word_hits(tmp_path, 
         assert bool(index.query("suppl meet", date="today", now_ms=START.timestamp() * 1000, tz="UTC")) == (
             label is not None
         )
+
+
+@pytest.mark.parametrize("number", ["005", "009", "015", "019", "020", "022"])
+def test_bad_or_unknown_cassini_manifest_never_promotes_its_date_tag(tmp_path, number):
+    from cassini_talk.received import import_received
+
+    path = next((VECTORS / "opus").glob(number + "-*.opus"))
+    document = portable.read_meeting(str(path))
+    assert document.state in (portable.State.INVALID, portable.State.UNKNOWN_FORMAT)
+    assert document.tags.get("DATE") and document.meeting_start is None
+    assert load_open_meeting(path).display_start is None
+    root = tmp_path / "Imported"
+    assert import_received(path, root).display_start is None
+    (rebuilt,) = LibraryScanner(root).scan().meetings
+    assert rebuilt.display_start is None
+    assert projection(rebuilt)["startMs"] is None
+
+
+def test_pure_selector_distinguishes_unreadable_cassini_from_plain_audio():
+    tags = {"DATE": "2026-11-09T09:40:48Z"}
+    assert meeting_time.selected(None, tags) == {"source": "DATE", "value": tags["DATE"]}
+    assert meeting_time.selected(None, dict(tags, cassini_format="org.cassini.portable-meeting/99")) is None
+
+
+def rewrite_manifest(path, update):
+    document = portable.read_meeting(str(path))
+    manifest = deepcopy(document.manifest)
+    update(manifest)
+    tags = dict(document.tags)
+    tags.pop("CASSINI_RECORDED_AT_UTC", None)
+    tags["DATE"] = manifest["meeting"]["createdAtUtc"]
+    tags.update(chunk_set("CASSINI_PAYLOAD_", manifest, MANIFEST_MIME)[0])
+    staged = path.with_suffix(".partial")
+    with path.open("rb") as incoming, staged.open("wb") as outgoing:
+        rewrite_tags(incoming, outgoing, tags)
+    staged.replace(path)
+
+
+@pytest.mark.parametrize("label", [None, "2026-11-09T10:31:48"])
+def test_own_legacy_publication_keeps_capture_instant_over_a_wall_label_and_reexports_it(tmp_path, label):
+    pytest.importorskip("numpy")
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gst", "1.0")
+    from library_v2_support import simple_session
+
+    from cassini_talk.exporting import export_meeting
+    from cassini_talk.library_v2.finalize import finalize
+
+    root = tmp_path / "Original"
+    root.mkdir()
+    sid, _ = simple_session(root, 0.1, created=START.isoformat().replace("+00:00", "Z"))
+    publication = finalize(root, sid, now=START + timedelta(minutes=9), zone="Europe/Rome")
+    path = root / publication.name
+
+    def legacy(manifest):
+        manifest["meeting"].pop("recordedAtUtc")
+        manifest["meeting"].pop("recordedAtLocal", None)
+        if label:
+            manifest["meeting"]["recordedAtLocal"] = label
+
+    rewrite_manifest(path, legacy)
+    (meeting,) = LibraryScanner(root).scan().meetings
+    assert meeting.published_file == path
+    assert meeting.started_at_ms == int(START.timestamp() * 1000)
+    exported = export_meeting(meeting, tmp_path / "Exports")
+    result = portable.read_meeting(str(exported))
+    assert result.recorded_at_ms == int(START.timestamp() * 1000)
+    assert result.tags["DATE"] == result.tags["CASSINI_RECORDED_AT_UTC"] == result.manifest["meeting"]["recordedAtUtc"]
+
+
+@pytest.mark.parametrize("origin", ["own", "received"])
+def test_stale_audio_export_does_not_resign_any_recording_time(tmp_path, origin):
+    from cassini_talk.exporting import export_meeting
+
+    path = tmp_path / "Stale synthetic meeting.opus"
+    shutil.copyfile(VECTORS / "opus/010-stale-audio.opus", path)
+
+    def stamp(manifest):
+        manifest["meeting"]["recordedAtUtc"] = "2026-11-09T09:31:48Z"
+        manifest["meeting"]["recordedAtLocal"] = "2026-11-09T10:31:48"
+
+    rewrite_manifest(path, stamp)
+    embedded = portable.read_meeting(str(path))
+    assert portable.verify_audio(str(path), embedded).state == portable.State.STALE_AUDIO
+    model = replace(load_open_meeting(path), origin=origin, published_file=path)
+    assert model.started_at_ms is not None
+    exported = export_meeting(model, tmp_path / "Exports")
+    result = portable.read_meeting(str(exported))
+    assert "recordedAtUtc" not in result.manifest["meeting"]
+    assert "recordedAtLocal" not in result.manifest["meeting"]
+    assert "CASSINI_RECORDED_AT_UTC" not in result.tags
+    assert result.tags["DATE"] == result.created_at and result.meeting_start is None
+
+
+@pytest.mark.parametrize(
+    "choice,day,expected",
+    [
+        ("today", (2026, 3, 8), True),
+        ("today", (2026, 3, 7), False),
+        ("week", (2026, 3, 14), True),
+        ("month", (2026, 4, 6), True),
+    ],
+)
+def test_label_calendar_bounds_do_not_move_with_midnight_dst(tmp_path, choice, day, expected):
+    from zoneinfo import ZoneInfo
+
+    model = replace(
+        load_open_meeting(changed_file(tmp_path, local="2026-03-08T00:30:00")), title="Supplier weekly meeting"
+    )
+    zone = ZoneInfo("America/Havana")
+    now = datetime(*day, 12, tzinfo=zone).timestamp() * 1000
+    with closing(SearchIndex(tmp_path / "Library", tmp_path / "cache")) as index:
+        index.sync(LibrarySnapshot(meetings=(model,)))
+        for query in ("One", "suppl meet"):
+            assert bool(index.query(query, date=choice, now_ms=now, tz=zone)) is expected
+
+
+@pytest.mark.parametrize("number", ["027", "028", "029"])
+def test_independent_pinned_reader_agrees_on_when(number):
+    import runpy
+
+    read_file = runpy.run_path(str(Path(__file__).parent / "export/cassini-read-pure.py"))["read_file"]
+    path = next((VECTORS / "opus").glob(number + "-*.opus"))
+    result, _ = read_file(path)
+    ours = portable.read_meeting(str(path)).meeting_start
+    assert (ours["source"], ours["value"]) == result["when"]

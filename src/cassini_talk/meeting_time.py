@@ -40,6 +40,8 @@ def milliseconds(value):
 
 
 def selected(manifest, tags):
+    if not manifest and any(key.upper() == "CASSINI_FORMAT" for key in tags):
+        return None
     meeting = manifest.get("meeting", {}) if manifest else {}
     value = meeting.get("recordedAtUtc")
     if isinstance(value, str) and value.endswith("Z") and absolute(value):

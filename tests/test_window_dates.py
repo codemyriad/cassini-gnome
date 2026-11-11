@@ -44,6 +44,8 @@ def window(tmp_path_factory):
         ("+02:00", "Tuesday 27 October 2026 03:00"),
         (":/usr/share/zoneinfo/Europe/Rome", "Tuesday 27 October 2026 02:00"),
         ("Europe/Rome", "Tuesday 27 October 2026 02:00"),
+        ("JST-9", "Tuesday 27 October 2026 10:00"),
+        ("CET-1CEST,M3.5.0,M10.5.0/3", "Tuesday 27 October 2026 02:00"),
     ],
 )
 def test_created_time_accepts_numeric_and_path_local_zones(window, monkeypatch, zone, expected):

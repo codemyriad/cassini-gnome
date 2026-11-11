@@ -123,15 +123,21 @@ def excerpt_markup(marked, *, limit=220, selected=False):
     return output + ("…" if hi < len(plain) else "")
 
 
-def date_range(choice, now_ms, tz):
+def calendar_range(choice, now_ms, tz):
     if choice == "any":
         return None
     days = {"today": 1, "week": 7, "month": 30}[choice]
     zone = ZoneInfo(tz) if isinstance(tz, str) else tz
     today = datetime.fromtimestamp(now_ms / 1000, zone).date()
-    lower = datetime.combine(today - timedelta(days=days - 1), time.min, zone)
-    upper = datetime.combine(today + timedelta(days=1), time.min, zone)
-    return int(lower.timestamp() * 1000), int(upper.timestamp() * 1000)
+    return today - timedelta(days=days - 1), today + timedelta(days=1)
+
+
+def date_range(choice, now_ms, tz):
+    dates = calendar_range(choice, now_ms, tz)
+    if dates is None:
+        return None
+    zone = ZoneInfo(tz) if isinstance(tz, str) else tz
+    return tuple(int(datetime.combine(day, time.min, zone).timestamp() * 1000) for day in dates)
 
 
 class SearchIndex:
@@ -309,8 +315,7 @@ class SearchIndex:
                 "(meetings.started IS NULL AND meetings.started_local >= ? AND meetings.started_local < ?))"
             )
             filter_params.extend(bounds)
-            zone = ZoneInfo(tz) if isinstance(tz, str) else tz
-            filter_params.extend(datetime.fromtimestamp(ms / 1000, zone).strftime("%Y-%m-%dT%H:%M:%S") for ms in bounds)
+            filter_params.extend(day.isoformat() + "T00:00:00" for day in calendar_range(date, now_ms, tz))
         conditions = ["hits MATCH ?", "hits.speaker = ?", *filters]
         params = [phrase, speaker.casefold() if speaker else "", *filter_params]
         sql = """SELECT hits.key, hits.turn, highlight(hits,0,char(1),char(2))
