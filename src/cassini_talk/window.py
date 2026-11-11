@@ -363,6 +363,12 @@ class CassiniWindow(Adw.ApplicationWindow):
             self.bound[self.visible_index[turn.index]] = turn, body.words, row
         return row
 
+    def _refresh_header(self, turn, row):
+        row.body.bind(turn, render=False)
+        row.update_property(
+            [Gtk.AccessibleProperty.LABEL], [self.speaker_label(turn.speaker) + ", " + format_time(turn.start_ms)]
+        )
+
     def _metric_transcript_markup(self, turn):
         return self.turn_markup(turn, geometry=True)[0]
 
