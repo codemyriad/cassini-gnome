@@ -80,7 +80,8 @@ SOURCE_STEP = """
         id: pytest
         run: |
           . build-aux/container.sh
-          python3 build-aux/ci/check_pytest_ran.py --source "$CASSINI_TEST_LOGS" --slug "$(image_slug "${{ matrix.image }}")" \\
+          python3 build-aux/ci/check_pytest_ran.py --source "$CASSINI_TEST_LOGS" \\
+            --install-outcome "$CASSINI_INSTALL_OUTCOME" --slug "$(image_slug "${{ matrix.image }}")" \\
             --export "$RUNNER_TEMP/pytest" --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
@@ -247,6 +248,11 @@ def problems(files):
         found.append("Source has a pytest-in this guard cannot read")
     if source.count("CASSINI_SKIP_PYTEST:") != 1 or SKIP_ENV not in source:
         found.append("Source skips pytest other than through the job's pytest-in")
+    if (
+        'echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"' not in source
+        or 'echo "CASSINI_INSTALL_OUTCOME=$RUNNER_TEMP/install-outcome" >> "$GITHUB_ENV"' not in source
+    ):
+        found.append("Source does not isolate install outcome from test-writable logs")
     if not re.search(re.escape(SOURCE_STEP) + r"(?!        )", source):
         found.append("Source does not record from its own logs whether its pytest ran")
     distros = files["build-aux/check-distros.sh"]
@@ -629,6 +635,16 @@ MUTATIONS = {
         "source.yml",
         "          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}\n",
         "          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}\n",
+    ),
+    "source omits --install-outcome": (
+        "source.yml",
+        '            --install-outcome "$CASSINI_INSTALL_OUTCOME" --slug',
+        "            --slug",
+    ),
+    "source shares meson-logs with install outcome": (
+        "source.yml",
+        'echo "CASSINI_INSTALL_OUTCOME=$RUNNER_TEMP/install-outcome" >> "$GITHUB_ENV"',
+        'echo "CASSINI_INSTALL_OUTCOME=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"',
     ),
     "source continue-on-error": (
         "source.yml",

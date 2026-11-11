@@ -65,7 +65,9 @@ jobs:
       CASSINI_SKIP_PYTEST: ${{ matrix.pytest-in && '1' || '' }}
     steps:
       - uses: actions/checkout@v7
-      - run: echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
+      - run: |
+          echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
+          echo "CASSINI_INSTALL_OUTCOME=$RUNNER_TEMP/install-outcome" >> "$GITHUB_ENV"
       - name: Name the job that runs this image's pytest suite
         if: matrix.pytest-in
         run: echo "::notice::pytest suite skipped here; ${{ matrix.pytest-in }} runs it in ${{ matrix.image }}"
@@ -82,7 +84,8 @@ jobs:
         id: pytest
         run: |
           . build-aux/container.sh
-          python3 build-aux/ci/check_pytest_ran.py --source "$CASSINI_TEST_LOGS" --slug "$(image_slug "${{ matrix.image }}")" \
+          python3 build-aux/ci/check_pytest_ran.py --source "$CASSINI_TEST_LOGS" \
+            --install-outcome "$CASSINI_INSTALL_OUTCOME" --slug "$(image_slug "${{ matrix.image }}")" \
             --export "$RUNNER_TEMP/pytest" --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:

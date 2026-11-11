@@ -3,7 +3,7 @@
 """Prove which pytest tests ran where, and gate every skipped suite on it (G11, D20).
 
     check_pytest_ran.py LOGS --export DIR [--github-output FILE]
-    check_pytest_ran.py --source LOGS --slug SLUG --export DIR [--github-output FILE]
+    check_pytest_ran.py --source LOGS [--install-outcome DIR] --slug SLUG --export DIR [--github-output FILE]
     check_pytest_ran.py --gate DIR
 
 A Source distro job leaves pytest to the package job of the same image.
@@ -277,13 +277,20 @@ def infra_problems(image, path):
         or data.get("reason") != "apk-upstream-mirror"
     ):
         return [f"{image}: infrastructure skip only accepts alpine:edge install-deps apk-upstream-mirror, got {data!r}"]
-    if not isinstance(data.get("detail"), str) or not data["detail"].strip():
-        return [f"{image}: infrastructure skip missing upstream error detail"]
+    detail = data.get("detail")
+    if not isinstance(detail, str) or not detail.startswith("ERROR: "):
+        return [f"{image}: infrastructure skip missing upstream apk ERROR detail"]
     if os_release(path / "os-release").get("ID") != "alpine":
         return [f"{image}: infrastructure skip os-release is not alpine"]
-    if (path / "nodes.json").exists() or (path / "testlog.json").exists():
-        return [f"{image}: infrastructure skip cannot accompany build or test logs"]
+    present = {entry.name for entry in path.iterdir()}
+    if present != {"infra-skipped.json", "os-release"}:
+        return [f"{image}: infrastructure skip cannot accompany unexpected files {sorted(present)}"]
     return []
+
+
+def _paths_overlap(first, second):
+    left, right = Path(first).resolve(), Path(second).resolve()
+    return left == right or left.is_relative_to(right) or right.is_relative_to(left)
 
 
 def resolve_artifacts(directory):
@@ -314,28 +321,58 @@ def resolve_artifacts(directory):
     return selected, found
 
 
-def source(logs, image, shards, out):
+def source(logs, image, shards, out, *, install_outcome=None):
     """("nodes", "skipped" or "infra-skipped", slug) for a Source job, from its own logs."""
     logs_root = Path(logs) if logs else None
+    if logs_root and install_outcome is not None and _paths_overlap(logs_root, install_outcome):
+        raise ValueError(f"{image}: install-outcome {install_outcome} overlaps test-writable logs {logs}")
+    if logs_root and logs_root.is_dir() and any(logs_root.rglob("infra-skipped.json")):
+        raise ValueError(f"{image}: untrusted infra-skipped.json inside test-writable logs {logs}")
+    outcome_dir = Path(install_outcome) / f"distro-{image}" if install_outcome is not None else None
+    if outcome_dir is not None and image == ALPINE_CANARY:
+        if not outcome_dir.is_dir():
+            raise ValueError(f"{image}: missing trusted install outcome directory {outcome_dir}")
+        if (outcome_dir / "infra-skipped.json").exists():
+            if bad := infra_problems(image, outcome_dir):
+                raise ValueError("; ".join(bad))
+            image_logs = (
+                [
+                    p
+                    for p in logs_root.iterdir()
+                    if slug(p) == image or any(slug(c) == image for c in ([p] if p.is_file() else p.rglob("*")))
+                ]
+                if logs_root and logs_root.is_dir()
+                else []
+            )
+            if image_logs:
+                raise ValueError(
+                    f"{image}: trusted install infra-skip cannot accompany test logs {[p.name for p in image_logs]}"
+                )
+            out.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(outcome_dir / "infra-skipped.json", out / "infra-skipped.json")
+            shutil.copyfile(outcome_dir / "os-release", out / "os-release")
+            return "infra-skipped", image
+        outcome_file = outcome_dir / "outcome.json"
+        if not outcome_file.is_file():
+            raise ValueError(f"{image}: missing trusted install outcome in {outcome_dir}")
+        try:
+            outcome = json.loads(outcome_file.read_text())
+        except ValueError as exc:
+            raise ValueError(f"{image}: invalid trusted install outcome in {outcome_file}") from exc
+        if (
+            not isinstance(outcome, dict)
+            or outcome.get("image") != "alpine:edge"
+            or outcome.get("step") != "install-deps"
+            or outcome.get("status") != "installed"
+        ):
+            raise ValueError(f"{image}: install stage did not complete normally: {outcome!r}")
+    elif outcome_dir is not None and outcome_dir.exists():
+        raise ValueError(f"{image}: unexpected install outcome directory {outcome_dir} for non-canary image")
     directories = (
         [p.parent for p in logs_root.rglob("testlog.json") if slug(p.parent) == image]
         if logs_root and logs_root.is_dir()
         else []
     )
-    infra_dirs = (
-        [p.parent for p in logs_root.rglob("infra-skipped.json") if slug(p.parent) == image]
-        if logs_root and logs_root.is_dir()
-        else []
-    )
-    if infra_dirs:
-        if directories or len(infra_dirs) != 1:
-            raise ValueError(f"{image}: conflicting testlog.json and infra-skipped.json under {logs}")
-        if bad := infra_problems(image, infra_dirs[0]):
-            raise ValueError("; ".join(bad))
-        out.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(infra_dirs[0] / "infra-skipped.json", out / "infra-skipped.json")
-        shutil.copyfile(infra_dirs[0] / "os-release", out / "os-release")
-        return "infra-skipped", image
     if len(directories) != 1:
         raise ValueError(
             f"{image}: {len(directories)} Meson testlog.json directories under {logs}, not 1 (job failed before meson test)"
@@ -442,6 +479,7 @@ def main(argv=None):
     parser.add_argument("--export", type=Path, help="write the node ids and os-release here")
     parser.add_argument("--github-output", type=Path)
     parser.add_argument("--source", action="store_true", help="LOGS are a Source distro job's")
+    parser.add_argument("--install-outcome", type=Path, help="--source: host-only install outcome directory")
     parser.add_argument("--slug", help="--source: the image slug of this job's matrix image")
     parser.add_argument("--gate", type=Path, help="the downloaded pytest-* artifacts, one directory each")
     args = parser.parse_args(argv)
@@ -459,7 +497,7 @@ def main(argv=None):
         if not args.slug or not args.export:
             parser.error("--source needs --slug and --export")
         try:
-            kind, image = source(args.logs, args.slug, shards, args.export)
+            kind, image = source(args.logs, args.slug, shards, args.export, install_outcome=args.install_outcome)
         except ValueError as exc:
             return report([str(exc)])
         if args.github_output:
