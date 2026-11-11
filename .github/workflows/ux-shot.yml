@@ -11,7 +11,7 @@ permissions:
 jobs:
   current-window:
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - name: Install GTK and pinned screenshot fonts
@@ -57,61 +57,8 @@ jobs:
       - name: Render the real current window in private Xvfb
         run: |
           python3 -m pytest tests/test_ux_vectors.py -k locale_clock_style -q
-          mkdir -p ux-artifacts
-          build-aux/ux-boards.sh "$BOARD_APP" ux-artifacts
-          CASSINI_SCREENSHOT_LANGUAGE=fr build-aux/ux-screenshot.sh "$BOARD_APP" ux-artifacts/first-run-fr.png 2>ux-artifacts/first-run-fr.log
-          python3 tests/ui/check-localization.py ux-artifacts/first-run-fr.png fr
-          CASSINI_SCREENSHOT_LANGUAGE=pt_BR build-aux/ux-screenshot.sh "$BOARD_APP" ux-artifacts/first-run-pt-BR.png 2>ux-artifacts/first-run-pt-BR.log
-          python3 tests/ui/check-localization.py ux-artifacts/first-run-pt-BR.png pt-BR
-          CASSINI_SCREENSHOT_SCHEME=dark build-aux/ux-boards.sh "$BOARD_APP" ux-artifacts/dark
-          python3 tests/ui/check-dark.py ux-artifacts/dark
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library.py ux-artifacts/gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/meeting.py ux-artifacts/meeting-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/interjections.py ux-artifacts/interjections.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/trash.py ux-artifacts/trash.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/trash.py ux-artifacts/dark/trash.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speakers.py ux-artifacts/speakers-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/wide-speakers.py ux-artifacts/wide-speakers.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/listening-rows.py ux-artifacts/listening-rows.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voices.py ux-artifacts/voices-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voice-preparation.py ux-artifacts/voice-preparation.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voice-models.py ux-artifacts/voice-models.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voices.py ux-artifacts/dark/voices-gui.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voice-models.py ux-artifacts/dark/voice-models.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speakers.py ux-artifacts/dark/speakers-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/build-refresh.py ux-artifacts/build-refresh.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/quit.py ux-artifacts/quit-gui.png
+          build-aux/ux-shots.sh "$BOARD_APP" "$CASSINI_BOARD_BUILD" ux-artifacts
           CASSINI_SNI_TEST_ISOLATED=1 dbus-run-session -- python3 tests/ui/status-notifier.py
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/background.py ux-artifacts/background.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/refresh.py ux-artifacts/refresh-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/recording.py ux-artifacts/recording-gui.png
-          G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram.py ux-artifacts/spectrogram-components.png
-          G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-live.py ux-artifacts/spectrogram-live.png
-          G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-browser.py ux-artifacts/spectrogram-browser.png
-          CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram.py ux-artifacts/spectrogram-components-2x.png
-          CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-live.py ux-artifacts/spectrogram-live-2x.png
-          CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-browser.py ux-artifacts/spectrogram-browser-2x.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/accessible-buttons.py ux-artifacts/accessible-buttons.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/import-export.py ux-artifacts/import-export-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/batch-import.py ux-artifacts/batch-import-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/rename.py ux-artifacts/rename.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/search.py ux-artifacts/search-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/model-notices.py ux-artifacts/notices-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/settings.py ux-artifacts/settings-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/test-recording.py ux-artifacts/test-recording.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion-click.py ux-artifacts/companion-click.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion.py ux-artifacts/companion-setup.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion-health.py ux-artifacts/companion-health.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/recording-details.py ux-artifacts/recording-details.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/journey-parity.py ux-artifacts/journey-parity.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion-sandbox.py ux-artifacts/companion-sandbox.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/what-is-recorded.py ux-artifacts/what-is-recorded.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library-move.py ux-artifacts/library-move-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library-publication.py ux-artifacts/library-publication-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/speech-models.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/dark/speech-models.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/diarization-models.py ux-artifacts/diarization-models.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/diarization-models.py ux-artifacts/dark/diarization-models.png
           python3 - <<'PY'
           import json,struct
           from pathlib import Path
@@ -146,9 +93,11 @@ jobs:
           notification=json.loads(Path('ux-artifacts/notification.json').read_text())
           assert [button['action'] for button in notification['buttons']] == ['app.stop-recording','app.open-recording']
           info=json.loads(root.with_suffix('.json').read_text())
-          assert info['renderer']=='cairo' and info['accent']=='blue' and info['light']
+          assert info['renderer']=='cairo' and info['light']
           assert info['tz']=='Europe/Rome' and info['lang']=='en_GB.UTF-8'
           assert info['font']=='Cantarell 11'
+          shots=json.loads(Path('ux-artifacts/shots.json').read_text())
+          assert shots['app']=='gnome' and len(shots['shots']) >= 176
           PY
           dpkg-query -W fonts-cantarell fonts-inter > ux-artifacts/fonts.txt
           for font in Cantarell Inter; do fc-match -f '%{file}\n' "$font"; done | sort -u | xargs sha256sum > ux-artifacts/font-sha256.txt

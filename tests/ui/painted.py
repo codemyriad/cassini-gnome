@@ -6,6 +6,23 @@ import time
 from gi.repository import GLib, Gtk
 
 
+def apply_screenshot_scheme():
+    """Apply light or dark colour scheme from CASSINI_SCREENSHOT_SCHEME."""
+    import os
+
+    import gi
+
+    gi.require_version("Adw", "1")
+    from gi.repository import Adw
+
+    Adw.init()
+    Adw.StyleManager.get_default().set_color_scheme(
+        Adw.ColorScheme.FORCE_DARK
+        if os.environ.get("CASSINI_SCREENSHOT_SCHEME") == "dark"
+        else Adw.ColorScheme.FORCE_LIGHT
+    )
+
+
 def painted_node(window, *, scale=1, timeout=10):
     """Snapshot the window once GTK has painted it, as spectrogram-live does.
 

@@ -89,15 +89,21 @@ def until(predicate):
 
 
 def shot(window, name):
-    frames = []
-    window.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 3)[1])
-    window.queue_draw()
-    until(lambda: len(frames) >= 2)
-    node = painted_node(window)
-    texture = window.get_renderer().render_texture(node, node.get_bounds())
-    assert (texture.get_width(), texture.get_height()) == (1120, 720)
-    target = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_name(f"recording-details-{name}.png")
-    assert texture.save_to_png(str(target))
+    manager = Adw.StyleManager.get_default()
+    try:
+        for scheme, extra in ((Adw.ColorScheme.FORCE_LIGHT, ""), (Adw.ColorScheme.FORCE_DARK, "-dark")):
+            manager.set_color_scheme(scheme)
+            frames = []
+            window.add_tick_callback(lambda *_, frames=frames: (frames.append(True), len(frames) < 3)[1])
+            window.queue_draw()
+            until(lambda frames=frames: len(frames) >= 2)
+            node = painted_node(window)
+            texture = window.get_renderer().render_texture(node, node.get_bounds())
+            assert (texture.get_width(), texture.get_height()) == (1120, 720)
+            target = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_name(f"recording-details-{name}{extra}.png")
+            assert texture.save_to_png(str(target))
+    finally:
+        manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
 
 
 def escape(dialog):
@@ -275,9 +281,6 @@ with tempfile.TemporaryDirectory() as temporary:
             state["source_problem"] = False
             page.update_status()
             assert not source_warning_visible()
-            Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-            shot(window, "browser-fallback-dark")
-            Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
             live["problemKind"] = "io"
             write_json(paths[key] / "session.json", live)
             until(lambda dialog=dialog: dict(dialog.report.health)["Reported issue"] == "io")

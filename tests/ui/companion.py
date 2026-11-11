@@ -81,14 +81,20 @@ def visible_labels(widget):
 
 def shot(window, suffix):
     target = Path(os.environ["CASSINI_SCREENSHOT_OUT"])
-    frames = []
-    window.add_tick_callback(lambda *_: (frames.append(1), len(frames) < 3)[1])
-    window.queue_draw()
-    until(lambda: len(frames) >= 2)
-    node = painted_node(window)
-    texture = window.get_renderer().render_texture(node, node.get_bounds())
-    assert (texture.get_width(), texture.get_height()) == (1120, 720)
-    assert texture.save_to_png(str(target.with_name(target.stem + suffix + ".png")))
+    manager = Adw.StyleManager.get_default()
+    try:
+        for scheme, extra in ((Adw.ColorScheme.FORCE_LIGHT, ""), (Adw.ColorScheme.FORCE_DARK, "-dark")):
+            manager.set_color_scheme(scheme)
+            frames = []
+            window.add_tick_callback(lambda *_, frames=frames: (frames.append(1), len(frames) < 3)[1])
+            window.queue_draw()
+            until(lambda frames=frames: len(frames) >= 2)
+            node = painted_node(window)
+            texture = window.get_renderer().render_texture(node, node.get_bounds())
+            assert (texture.get_width(), texture.get_height()) == (1120, 720)
+            assert texture.save_to_png(str(target.with_name(target.stem + suffix + extra + ".png")))
+    finally:
+        manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
 
 
 with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as cleanup:
@@ -195,9 +201,6 @@ with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as clean
     assert copied_waiting == [str(expected_folder)]
     assert not dialog.done.get_sensitive(), "Preparing/copying a folder is not an extension handshake"
     shot(window, "-pending")
-    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-    shot(window, "-pending-dark")
-    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
     # D39's default Add is a real guide backed by the stable private copy.
     companion_bundle.store_listing_public = lambda: False
     dialog.render()
@@ -352,8 +355,6 @@ with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as clean
         assert dialog.local_dialog.done.get_sensitive(), "Only the real existing connection enables Done"
         dialog.local_dialog.force_close()
         shot(window, "-connected")
-        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-        shot(window, "-connected-dark")
     until(lambda: not dialog.done.get_sensitive())
     assert not dialog.connect_button.get_visible()
     dialog.force_close()

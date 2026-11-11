@@ -27,7 +27,7 @@ gi.require_version("Graphene", "1.0")
 from dispatch_wait import dispatch_until  # noqa: E402
 from gi.repository import Gio, Graphene, Gtk  # noqa: E402
 from import_bindings import check_import_bindings  # noqa: E402
-from painted import painted_node  # noqa: E402
+from painted import apply_screenshot_scheme, painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk import archive_import, portable, zip_export  # noqa: E402
@@ -83,6 +83,7 @@ with tempfile.TemporaryDirectory() as temporary:
     )
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     os.environ.update(GSETTINGS_SCHEMA_DIR=str(schemas), CASSINI_LIBRARY_DIR=str(root))
+    apply_screenshot_scheme()
     app = CassiniApplication("com.gocassini.BatchImportTest", "test", "development")
     app.register(None)
     app.activate()

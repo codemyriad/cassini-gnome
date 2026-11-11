@@ -25,6 +25,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib, Gtk  # noqa: E402
+from painted import apply_screenshot_scheme  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.export_dialog import ExportDialog  # noqa: E402
@@ -90,6 +91,7 @@ with tempfile.TemporaryDirectory() as temporary:
         CASSINI_SCREENSHOT_ACTIVITY=str(root / "fixtures/main/activity.json"),
         CASSINI_SCREENSHOT_NOW="1793107080000",
     )
+    apply_screenshot_scheme()
     app = CassiniApplication("com.gocassini.WideSpeakersTest", "test", "development")
     app.register(None)
     app.activate()
