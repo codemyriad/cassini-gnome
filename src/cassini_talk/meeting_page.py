@@ -477,6 +477,14 @@ class MeetingPage(Adw.NavigationPage):
             words.add_css_class("listen-current")
         return row
 
+    def _metric_transcript_markup(self, turn):
+        return self._turn_markup(turn, position=-1)
+
+    def _set_probe_turn(self, turn, probe, markup):
+        probe.get_last_child().set_markup(markup)
+        self._refresh_header(turn, probe)
+        probe.get_first_child().get_last_child().set_label(fmt.position(turn.start_ms))
+
     def _refresh_header(self, turn, row):
         # Idle callbacks run outside a caller's temporary locale context.
         with using_language(self._header_signature[-1] if self._header_signature else language()):

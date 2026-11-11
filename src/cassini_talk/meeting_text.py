@@ -190,12 +190,31 @@ def reader_turns(words, gaps=None):
     The visible rows are exactly reading_turns. Its older link/search protocol
     addresses every owner by list index, so append the chips with unique indices.
     """
-    rows = list(reading_turns(words, gaps))
+    reading = reading_turns(words, gaps)
+    rows = ReaderRows(reading)
     for row in tuple(rows):
         for _after, aside in row.asides:
             aside.index = len(rows)
             rows.append(aside)
+    rows.layout = getattr(reading, "layout", reading)
+    rows.word_keys = {id(word): (owner.index, i) for owner in rows for i, word in enumerate(owner.words)}
+    rows.word_rows = {}
+    rows.row_owners = {}
+    rows.visible_index = {}
+    for row in rows.layout:
+        owners = set()
+        for owner in [row] + [aside for _, aside in row.asides]:
+            for word in owner.words:
+                key = rows.word_keys[id(word)]
+                rows.word_rows[key] = row.index
+                owners.add(key[0])
+                rows.visible_index.setdefault(key[0], row.index)
+        rows.row_owners[row.index] = owners
     return rows
+
+
+class ReaderRows(list):
+    """Semantic search/seek owners and their worker-built bounded GTK rows."""
 
 
 def load_reader_turns(meeting, transcript_id):

@@ -55,6 +55,8 @@ def test_projection_runs_on_a_worker_and_is_only_applied_on_delivery(reader_clas
         _populate_properties=Mock(),
         _update_subtitle=Mock(),
         _cancel_verification=Mock(),
+        _cancel_transcript_scroll=Mock(),
+        _exact_transcript=Mock(),
         main_stack=Mock(),
         set_title=Mock(),
         toast=Mock(),
@@ -79,6 +81,8 @@ def test_projection_runs_on_a_worker_and_is_only_applied_on_delivery(reader_clas
         callback(*args)
         if initial:
             fake._on_loaded.assert_called_once_with(2, file, meeting, rows, None)
+            fake._cancel_transcript_scroll.assert_called_once_with()
+            fake._exact_transcript.reset_turns.assert_called_once_with(())
         else:
             fake._set_turns.assert_called_once_with(rows, None)
     finally:
@@ -118,6 +122,7 @@ def test_stale_projection_never_overwrites_the_current_reader(reader_class, stal
 
 def test_closing_the_reader_invalidates_pending_models(reader_class):
     app = SimpleNamespace(confirm_capture_close=lambda _window: False, window_closing=Mock())
+    touch = Mock()
     fake = SimpleNamespace(
         get_application=lambda: app,
         _generation=3,
@@ -126,6 +131,12 @@ def test_closing_the_reader_invalidates_pending_models(reader_class):
         is_maximized=lambda: False,
         settings=Mock(),
         _cancel_verification=Mock(),
+        _cancel_transcript_scroll=Mock(),
+        _exact_transcript=Mock(),
+        _follow_signal=11,
+        _transcript_style_signals=[12, 13],
+        style_manager=Mock(),
+        _touch_scroll_signals=[(touch, 14)],
         _uninhibit=Mock(),
         player=Mock(),
     )
@@ -133,6 +144,13 @@ def test_closing_the_reader_invalidates_pending_models(reader_class):
     fake.meeting, fake._set_turns = meeting, Mock()
     fake._populate_properties, fake._update_subtitle = Mock(), Mock()
     assert reader_class._on_close_request(fake) is False
+    fake._cancel_transcript_scroll.assert_called_once_with()
+    fake._exact_transcript.close.assert_called_once_with()
+    fake.settings.disconnect.assert_called_once_with(11)
+    fake.style_manager.disconnect.assert_any_call(12)
+    fake.style_manager.disconnect.assert_any_call(13)
+    touch.disconnect.assert_called_once_with(14)
+    assert not fake._transcript_style_signals and not fake._touch_scroll_signals
     reader_class._on_transcript_loaded(fake, 3, request, meeting, [object()], None)
     fake._set_turns.assert_not_called()
 

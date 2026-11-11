@@ -40,6 +40,11 @@ jobs:
               delta = row['rssMiB'] - baseline[row['name']]['rssMiB']
               assert delta <= 20, (row['name'], 'RSS overhead MiB', delta)
           PY
+      - name: Standalone default reader search, word seek and native scroll
+        env:
+          CASSINI_CUSTOM_BUILD: ${{ github.workspace }}/_exact-build
+          GSETTINGS_SCHEMA_DIR: ${{ github.workspace }}/_exact-schemas
+        run: build-aux/ux-screenshot.sh tests/ui/exact-reader.py exact-results/reader.png
       - uses: actions/upload-artifact@v7
         if: always()
         with:

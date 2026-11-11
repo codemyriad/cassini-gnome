@@ -88,7 +88,8 @@ class WordActions:
         deadline = thread_time_ns() + 2_000_000
         missing = False
         pending_rows = set()
-        with using_language(view.page._header_signature[-1] if view.page._header_signature else language()):
+        signature = getattr(view.page, "_header_signature", None)
+        with using_language(signature[-1] if signature else language()):
             description = text("player.playFromHere")
         if getattr(self, "description", None) != description:
             self.description = description
