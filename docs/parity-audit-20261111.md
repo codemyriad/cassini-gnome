@@ -15,7 +15,9 @@ mobile apps already search titles, including notes without a transcript:
 - [Android title-only, rename and audio-only tests](https://github.com/codemyriad/cassini-android/blob/c46dbb3bb4d18f2963c3debddd30899d1a097b17/data/src/test/kotlin/io/codemyriad/cassini/data/db/NoteSearchTest.kt).
 - [iOS matching title-only, rename and audio-only tests](https://github.com/codemyriad/cassini-ios/blob/7ac55e88bb1c1baad6c3d261a7889dc0f8fffb7f/Packages/CassiniNotebook/Tests/CassiniNotebookTests/Library/NoteSearchTests.swift).
 
-A separate FTS title index adds title matches and last-token title completion.
+A separate FTS title index adds title matches using the mobile term/token rules:
+whitespace-separated prefix phrases match independently with AND. Punctuation
+inside one term splits adjacent tokens, with prefix completion on its last token.
 A title-only result has no timed word or speaker and starts playback at zero.
 When words also match, their result positions are retained and the title is
 highlighted without adding another result. Date and ownership filters restrict
@@ -25,7 +27,9 @@ attribution. Renames update the title index without rebuilding
 spoken rows; old transcript-only caches gain the additive title table on sync.
 No meeting files or shared contract files change.
 
-Validation: 37 unit cases, including cache upgrade, rename invalidation, filter
+Validation: 94 Search unit cases, including multi-term prefixes, nonadjacent
+terms, case/accent folding in all six supported locales, literal operators,
+Unicode whitespace, combining marks, cache upgrade, rename invalidation, filter
 scope, escaping, audio-only results and unchanged spoken-word seeks. The real
 Search Board exercises metadata rename, displayed title markup, removal of the
 transcript reference, playback and Open Meeting. Omitting production title

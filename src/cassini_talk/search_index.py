@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import stat
+import unicodedata
 from bisect import bisect_left
 from dataclasses import dataclass, replace
 from datetime import datetime, time, timedelta
@@ -62,6 +63,30 @@ class SearchHit:
     context_markup: str
     speaker: str = ""
     title_markup: str = ""
+
+
+def title_match_query(value):
+    """Android/iOS terms: independent prefix phrases, joined with AND.
+
+    Whitespace separates phrases. Punctuation inside a term separates adjacent
+    tokens; only that phrase's last token is a prefix. Keep combining marks
+    attached to letters/digits, and never interpret typed operators as syntax.
+    FTS5 puts the prefix star outside the quoted phrase (FTS4 puts it inside).
+    """
+    phrases = []
+    for term in value.split():
+        tokens, token = [], []
+        for char in term:
+            if char.isalpha() or char.isdecimal() or (token and unicodedata.category(char).startswith("M")):
+                token.append(char)
+            elif token:
+                tokens.append("".join(token))
+                token.clear()
+        if token:
+            tokens.append("".join(token))
+        if tokens:
+            phrases.append('"' + " ".join(tokens) + '"*')
+    return " AND ".join(phrases) or None
 
 
 def marked_markup(value, *, selected=False):
@@ -299,9 +324,10 @@ class SearchIndex:
                        FROM titles JOIN meetings ON meetings.key=titles.key WHERE """
         title_sql += " AND ".join(["titles MATCH ?", *filters])
         titles = {}
-        for key, marked in self.db.execute(title_sql, [phrase + "*", *filter_params]):
-            self._check_cancelled()
-            titles[key] = marked_markup(marked)
+        if title_expression := title_match_query(query):
+            for key, marked in self.db.execute(title_sql, [title_expression, *filter_params]):
+                self._check_cancelled()
+                titles[key] = marked_markup(marked)
         spoken_keys = {hit.key for hit in result}
         result = [replace(hit, title_markup=titles.get(hit.key, "")) for hit in result]
         for key in titles.keys() - spoken_keys:

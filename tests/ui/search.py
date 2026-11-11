@@ -197,7 +197,7 @@ with tempfile.TemporaryDirectory() as temporary:
     target = next(m for m in window.snapshot.meetings if m.title == "Budget review" and m.origin == "own")
     update_metadata(target.directory, title="Supplier <meeting> & team", titleSource="user")
     window.monitor.refresh_now()
-    fresh.entry.set_text("suppl")
+    fresh.entry.set_text("suppl team")
     until(
         lambda: (
             not fresh.pending
@@ -208,7 +208,8 @@ with tempfile.TemporaryDirectory() as temporary:
         )
     )
     assert fresh.hit.turn == -1 and fresh.hit.position_ms == 0
-    assert ">Supplier</span> &lt;meeting&gt; &amp; team" in fresh.hit.title_markup
+    assert ">Supplier</span> &lt;meeting&gt; &amp;" in fresh.hit.title_markup
+    assert ">team</span>" in fresh.hit.title_markup
     assert "background=" not in fresh.hit.quote_markup
     assert fresh._speaker(fresh.hit) is None
     assert "Supplier <meeting> & team" in labels(fresh.context)

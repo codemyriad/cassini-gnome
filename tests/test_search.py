@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Real FTS, D14 local dates/AND filters, immutable snapshot updates and cache recovery."""
 
+import html
+import re
 import shutil
+import unicodedata
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +14,7 @@ import pytest
 import test_library_vectors
 
 from cassini_talk import ux_formats as fmt
+from cassini_talk.i18n import using_language
 from cassini_talk.library import LibraryScanner, LibrarySnapshot
 from cassini_talk.portable import Word
 from cassini_talk.search_index import SearchIndex, date_range, marked_markup
@@ -564,3 +568,73 @@ def test_existing_transcript_cache_gains_title_search_without_rewriting_words(in
         assert list(reopened.db.execute("SELECT rowid,body,key,turn,speaker FROM hits")) == spoken_rows
     finally:
         reopened.close()
+
+
+TITLE_LANGUAGES = [
+    ("en", "Café Supplier weekly meeting", ("supplier", "meeting"), ("suppl", "meet"), "café"),
+    ("it", "Riunione settimanale del fornitore al caffè", ("riunione", "fornitore"), ("riun", "forn"), "caffè"),
+    ("fr", "Réunion hebdomadaire du fournisseur au café", ("reunion", "fournisseur"), ("reun", "fourn"), "café"),
+    ("es", "Reunión semanal del proveedor en el café", ("reunion", "proveedor"), ("reun", "prove"), "café"),
+    ("pt-BR", "Reunião semanal do fornecedor no café", ("reuniao", "fornecedor"), ("reun", "forn"), "café"),
+    ("pt-PT", "Reunião semanal com o fornecedor no café", ("reuniao", "fornecedor"), ("reun", "forn"), "café"),
+]
+
+
+@pytest.mark.parametrize("variant", ["prefixes", "nonadjacent", "reversed", "uppercase", "accents", "decomposed"])
+@pytest.mark.parametrize(
+    "language,title,whole,prefixes,accented", TITLE_LANGUAGES, ids=[row[0] for row in TITLE_LANGUAGES]
+)
+def test_mobile_multi_term_title_rules_in_every_language(index, language, title, whole, prefixes, accented, variant):
+    queries = {
+        "prefixes": " ".join(prefixes),
+        "nonadjacent": " ".join(whole),
+        "reversed": " ".join(reversed(prefixes)),
+        "uppercase": " ".join(prefixes).upper(),
+        "accents": unicodedata.normalize("NFD", accented).encode("ascii", "ignore").decode() + " " + prefixes[0],
+        "decomposed": unicodedata.normalize("NFD", accented) + "\u00a0" + prefixes[0],
+    }
+    if variant == "decomposed":
+        title = unicodedata.normalize("NFD", title)
+    meeting = replace(next(iter(index.current.values())), title=title, words=(), transcript="none")
+    with using_language(language):
+        index.sync(LibrarySnapshot(meetings=(meeting,)))
+        (hit,) = search(index, queries[variant])
+        assert (hit.key, hit.turn, hit.position_ms, hit.speaker) == (meeting.key, -1, 0, "")
+        assert hit.title_markup.count("<span ") >= 2
+        assert html.unescape(re.sub(r"<[^>]+>", "", hit.title_markup)) == title
+        assert not hit.quote_markup and not hit.marked
+        assert not search(index, prefixes[0] + " definitelyabsent")
+
+
+@pytest.mark.parametrize(
+    "title,query,found",
+    [
+        ("Supplier weekly meeting", "suppl meet", True),
+        ("Supplier weekly meeting", "supplier meeting", True),
+        ("Supplier weekly meeting", "suppl , meet", True),
+        ("Supplier weekly meeting", '"suppl" (meet*)', True),
+        ("Supplier weekly meeting", "suppl OR meet", False),
+        ("Supplier or weekly meeting", "suppl OR meet", True),
+        ("Supplier and weekly meeting", "suppl AND meet", True),
+        ("Supplier weekly meeting", "suppl AND meet", False),
+        ("Supplier weekly meeting", "suppl NOT absent", False),
+        ("Supplier weekly meeting", "NEAR(supplier,meeting)", False),
+        ("Supplier weekly meeting", "suppl -meet", True),
+        ("E-mail weekly delivery at café", "e-mail deliv caf.", True),
+        ("E weekly mail delivery", "e-mail deliv", False),
+        ("Mail weekly delivery", "e-mail deliv", False),
+        ("Supplier weekly meeting", "* ^ : ( ) ,", False),
+        ("Supplier weekly meeting", "\u0301", False),
+        ("Supplier weekly meeting", "suppl\u3000meet", True),
+        ("Supplier weekly meeting", "suppl \u0301 meet", True),
+        ("Supplier weekly meeting", "suppl Ⅳ meet", True),
+        ("Supplier NOT weekly meeting", "suppl NOT meet", True),
+        ("Supplier near weekly meeting", "suppl NEAR meet", True),
+    ],
+)
+def test_title_terms_keep_mobile_punctuation_and_literal_operator_rules(index, title, query, found):
+    meeting = replace(next(iter(index.current.values())), title=title, words=(), transcript="none")
+    index.sync(LibrarySnapshot(meetings=(meeting,)))
+    hits = search(index, query)
+    assert bool(hits) is found
+    assert all(hit.turn == -1 and not hit.speaker for hit in hits)
