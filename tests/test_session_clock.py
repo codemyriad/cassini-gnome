@@ -203,34 +203,40 @@ def test_the_fake_wall_steps_and_counts_every_wall_reading_of_the_app(wall):
     assert time.clock_gettime_ns(time.CLOCK_MONOTONIC) > 0 and wall.reads == len(sources)
 
 
-def test_the_mapping_reads_the_wall_clock_once_and_never_again(wall):
-    from cassini_talk.session_clock import SessionClock
+def mapping_inputs(monkeypatch, monotonic_ms, wall_ns):
+    from cassini_talk import session_clock
 
-    origin = time.time_ns() // 1_000_000 - 1500  # The page started 1.5 s ago.
-    wall.go(0, 0)
+    stamps = iter(tick * 1_000_000 for tick in monotonic_ms)
+    wall_reads = []
+
+    def wall():
+        reading = wall_ns + len(wall_reads) * 250_000_000
+        wall_reads.append(reading)
+        return reading
+
+    monkeypatch.setattr(session_clock, "time", types.SimpleNamespace(monotonic_ns=lambda: next(stamps), time_ns=wall))
+    return session_clock.SessionClock, wall_reads
+
+
+def test_the_mapping_reads_the_wall_clock_once_and_never_again(monkeypatch):
+    wall_ns = BASE_NS + 10_000_000_000
+    SessionClock, reads = mapping_inputs(monkeypatch, (2000, 2004, 2252), wall_ns)
+    origin = wall_ns // 1_000_000 - 1500  # The page started 1.5 s ago.
     clock = SessionClock(origin)
-    assert wall.reads == 1
-    wall.step(2000)
-    wall.drift_ns = 250_000_000
-    before = time.monotonic_ns()
-    now = clock.now()
-    after = time.monotonic_ns()
-    assert expected(origin, before) - TOLERANCE_MS <= now <= expected(origin, after) + TOLERANCE_MS
-    assert now >= 1500 - TOLERANCE_MS
-    assert clock.at(before) == pytest.approx(expected(origin, before), abs=TOLERANCE_MS)
-    assert wall.reads == 1, "reading the session clock never reads the wall clock"
+    assert clock.origin_ms == origin
+    assert clock.at(2_002_000_000) == 1500, "the wall read maps to the bracket midpoint"
+    assert clock.now() == 1750
+    assert reads == [wall_ns], "reading the session clock never reads the wall clock"
 
 
-def test_an_origin_gnome_picks_is_mapped_from_the_same_wall_reading(wall):
-    from cassini_talk.session_clock import SessionClock
-
-    wall.go(0, 0)
-    before = time.monotonic_ns()
+def test_an_origin_gnome_picks_is_mapped_from_the_same_wall_reading(monkeypatch):
+    wall_ns = BASE_NS + 3_000_250_000
+    SessionClock, reads = mapping_inputs(monkeypatch, (1000, 1004), wall_ns)
     clock = SessionClock()
-    after = time.monotonic_ns()
-    assert wall.reads == 1
-    assert expected(clock.origin_ms, before) - TOLERANCE_MS <= 0 <= expected(clock.origin_ms, after) + TOLERANCE_MS
-    assert clock.at(before) <= TOLERANCE_MS and clock.at(after) >= -TOLERANCE_MS
+    assert clock.origin_ms == BASE_NS // 1_000_000 + 3000
+    assert clock.at(1_002_000_000) == 0.25, "rounding the origin preserves the submillisecond offset"
+    assert clock.at(1_001_750_000) == 0
+    assert reads == [wall_ns]
 
 
 def test_a_stand_in_origin_gnome_picks_is_mapped_from_its_own_reading(policy, wall):  # noqa: F811
