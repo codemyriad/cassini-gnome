@@ -183,16 +183,22 @@ def _local_payload_offset(stream, entry, expected_name, cd_offset, *, directory=
     _inspect_extra(local_extra, raw_name, directory=directory)
     if local_method != entry.compress_type:
         raise ArchiveError("damaged")
-    try:
-        local_decoded = raw_name.decode("utf-8" if (local_flags & 0x800) else "cp437")
-        central_decoded = raw_name.decode("utf-8" if (entry.flag_bits & 0x800) else "cp437")
-    except UnicodeDecodeError as error:
-        raise ArchiveError("damaged") from error
-    _validate_entry_name(local_decoded, directory=directory)
-    if not (
-        _names_match(local_decoded, expected_name, directory=directory)
-        or _names_match(central_decoded, expected_name, directory=directory)
+    decoded_candidates = []
+    for encoding in dict.fromkeys(
+        (
+            "utf-8" if (local_flags & 0x800) else "cp437",
+            "utf-8" if (entry.flag_bits & 0x800) else "cp437",
+        )
     ):
+        try:
+            decoded_candidates.append(raw_name.decode(encoding))
+        except UnicodeDecodeError:
+            continue
+    if not decoded_candidates:
+        raise ArchiveError("damaged")
+    for candidate in decoded_candidates:
+        _validate_entry_name(candidate, directory=directory)
+    if not any(_names_match(candidate, expected_name, directory=directory) for candidate in decoded_candidates):
         raise ArchiveError("damaged")
     return payload_offset
 

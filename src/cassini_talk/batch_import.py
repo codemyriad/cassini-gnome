@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D96 import-side transaction: streaming, cancellable, bounded per archive and batch."""
 
-import shutil
 import tempfile
 import zipfile
 import zlib
@@ -11,7 +10,7 @@ from pathlib import Path, PurePosixPath
 
 from . import archive_import
 from .export_audio import check_cancel
-from .received import IMPORT_LOCK, import_one, regular_input
+from .received import commit_staged, discard_staged, import_one, regular_input, stage_one
 
 DECODE_ERRORS = (OSError, ValueError, RuntimeError, EOFError, zipfile.BadZipFile, zlib.error)
 
@@ -49,23 +48,13 @@ class Result:
     errors: list[tuple[str, str]] = field(default_factory=list)
 
 
-def _rollback_archive_publications(published_dirs, dedup_index):
-    by_sha = dedup_index.get("by_sha", {}) if dedup_index else {}
-    with IMPORT_LOCK:
-        for directory in published_dirs:
-            for candidates in by_sha.values():
-                while directory in candidates:
-                    candidates.remove(directory)
-            shutil.rmtree(directory, ignore_errors=True)
-
-
 def import_files(paths, root=None, *, cancel=None, progress=None):
     """Use on a worker. Keep successful files on cancellation or another failure.
 
     Only ZIP and currently supported Opus inputs are handled. Nested archives
     are ignored and counted in unsupported. Private extraction disappears on
-    every exit; the existing importer owns publication, byte-digest dedup and
-    partial-copy rollback.
+    every exit; archive members stay privately staged until whole-archive
+    validation completes so rollback never touches published Library documents.
     """
     result, batch_budget = Result(), Budget()
     dedup_index = {}
@@ -127,7 +116,24 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                         result.last_key,
                         len(result.errors),
                     )
-                    published_in_archive = []
+                    staged_archive = []
+                    staged_by_sha = {}
+
+                    def commit_archive(pending=staged_archive):
+                        while pending:
+                            item, norm_name = pending.pop(0)
+                            try:
+                                meeting, added = commit_staged(item, dedup_index=dedup_index)
+                            except DECODE_ERRORS:
+                                result.imported -= 1
+                                failed(norm_name, "damaged")
+                                continue
+                            if not added:
+                                result.imported -= 1
+                                result.duplicates += 1
+                            if result.last_key == item.expected_key or result.last_key is None:
+                                result.last_key = meeting.key
+
                     try:
                         with regular_input(path) as incoming:
                             cd_offset = archive_import.preflight(incoming)
@@ -153,17 +159,36 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                                                 archive, entry, folder, cancel, budget=archive_budget
                                             )
                                             parent = PurePosixPath(norm_name).parent.name or path.stem
-                                            meeting, added = import_path(extracted, entry.file_size, parent)
+                                            meeting, added, staged_item = stage_one(
+                                                extracted,
+                                                root,
+                                                cancel=cancel,
+                                                expected_bytes=entry.file_size,
+                                                original_folder=parent,
+                                                dedup_index=dedup_index,
+                                                staged_by_sha=staged_by_sha,
+                                            )
                                             if added:
-                                                published_in_archive.append(meeting.directory)
+                                                staged_archive.append((staged_item, norm_name))
+                                                result.imported += 1
+                                                result.last_key = staged_item.expected_key
+                                            else:
+                                                result.duplicates += 1
+                                                result.last_key = (
+                                                    meeting.key if meeting is not None else staged_item.expected_key
+                                                )
                                     except (CancelledError, archive_import.ArchiveError):
                                         raise
                                     except DECODE_ERRORS:
                                         failed(norm_name, "damaged")
                                     report()
+                        commit_archive()
+                    except CancelledError:
+                        commit_archive()
+                        raise
                     except archive_import.ArchiveError:
-                        if published_in_archive:
-                            _rollback_archive_publications(published_in_archive, dedup_index)
+                        discard_staged([item for item, _ in staged_archive])
+                        staged_archive.clear()
                         (
                             result.total,
                             result.imported,
@@ -174,6 +199,10 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                         ) = saved_state[:6]
                         del result.errors[saved_state[6] :]
                         raise
+                    finally:
+                        if staged_archive:
+                            discard_staged([item for item, _ in staged_archive])
+                            staged_archive.clear()
                 elif path.suffix.lower() in SUPPORTED:
                     with regular_input(path) as source:
                         size = source.seek(0, 2)
