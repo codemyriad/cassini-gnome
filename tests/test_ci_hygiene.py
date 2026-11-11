@@ -708,6 +708,29 @@ def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
     assert install.search(tests)[0] == install.search(products)[0]
 
 
+def test_playwright_browser_caches_use_runner_temp_isolation():
+    # Self-hosted runners have a different GITHUB_WORKSPACE depth relative to ~
+    # than GitHub-hosted runners and may run concurrent jobs under one user;
+    # Playwright browsers must live under runner.temp, never ~/.cache.
+    cache_jobs = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        text = workflow.read_text()
+        assert "~/.cache/ms-playwright" not in text, workflow.name
+        if "\njobs:\n" not in text:
+            continue
+        for name, block in jobs(workflow):
+            if "playwright install" in block:
+                cache_jobs.append(f"{workflow.name}:{name}")
+                env_pos = block.index('PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"')
+                cache_pos = block.index("path: ${{ runner.temp }}/ms-playwright")
+                install_pos = block.index("playwright install")
+                assert env_pos < install_pos and cache_pos < install_pos, (workflow.name, name)
+    assert cache_jobs == ["deb.yml:build", "recording.yml:capture", "recording.yml:live-folder"]
+    recording_jobs = dict(jobs(WORKFLOWS / "recording.yml"))
+    for name in ("capture", "live-folder"):
+        assert "sudo build-aux/ci/apt-install-bounded.sh " in recording_jobs[name], name
+
+
 def _load_rpm_canary_guard():
     spec = importlib.util.spec_from_file_location(
         "check_rpm_canary_wheel", ROOT / "build-aux/ci/check_rpm_canary_wheel.py"
