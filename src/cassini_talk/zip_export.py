@@ -20,7 +20,7 @@ from .exporting import (
     write_cassini_opus,
 )
 from .portable_context import embedded_notes
-from .received import regular_input, sha256_file
+from .received import regular_input
 
 CHUNK = 1024 * 1024
 
@@ -72,18 +72,116 @@ def unique_entry_name(title, seen, suffix="opus"):
         number += 1
 
 
-def _has_private_library_extension(meeting):
-    ours = (meeting.extensions or {}).get("codemyriad.io")
+_TRANSIENT_METADATA_KEYS = frozenset({"published", "etaMinutes", "error", "transcript"})
+
+
+def _valid_ours(manifest):
+    if not isinstance(manifest, dict):
+        return None
+    extension = manifest.get("x")
+    if not isinstance(extension, dict):
+        return None
+    ours = extension.get("codemyriad.io")
     if isinstance(ours, dict) and ours.get("schema") == 1:
         from .library_v2.xschema import valid
 
-        return valid(ours)
-    return False
+        if valid(ours):
+            return ours
+    return None
 
 
-def _can_copy_verbatim(meeting, embedded):
-    if meeting.origin != "received" or meeting.audio_file is None or _has_private_library_extension(meeting):
+def _embedded_extensions(embedded):
+    if embedded.manifest and isinstance(embedded.manifest.get("x"), dict):
+        return embedded.manifest["x"]
+    return {}
+
+
+def _default_titles(meeting, embedded):
+    from .strings import text
+
+    candidates = []
+    if embedded.manifest and isinstance(embedded.manifest.get("meeting"), dict):
+        candidates.append(embedded.manifest["meeting"].get("title"))
+    candidates.append(embedded.tags.get("TITLE"))
+    received = (meeting.metadata or {}).get("received")
+    if isinstance(received, dict) and isinstance(received.get("originalName"), str):
+        candidates.append(Path(received["originalName"]).stem)
+    if meeting.audio_file is not None:
+        candidates.append(Path(meeting.audio_file).stem)
+    cleaned = [value.strip() for value in candidates if isinstance(value, str) and value.strip()]
+    allowed = set(cleaned)
+    if not cleaned:
+        allowed.add(text("library.untitled"))
+    return allowed
+
+
+def _reference_matches_embedded(reference, embedded):
+    if reference is None:
+        return True
+    if not isinstance(reference, dict) or reference.get("kind") != "embedded":
         return False
+    return reference.get("transcriptId", embedded.default_transcript_id) == embedded.default_transcript_id
+
+
+def _word_tuples(words):
+    return [(w.speaker, w.start_ms, w.end_ms, w.text, bool(w.low_confidence)) for w in words]
+
+
+def _can_copy_published_ours(meeting, embedded, ours, verified_state, file_words, words_damaged):
+    from .library import _speakers
+    from .library_v2 import xschema
+    from .speaker_merges import apply_merges
+    from .strings import text
+
+    embedded_x = _embedded_extensions(embedded)
+    if dict(meeting.extensions or {}) != embedded_x:
+        return False
+    committed = xschema.rebuild(ours, embedded_x.get(xschema.NOTES_DOMAIN), session_exists=False)
+    actual = dict(meeting.metadata or {})
+    if {k: v for k, v in actual.items() if k not in _TRANSIENT_METADATA_KEYS} != {
+        k: v for k, v in committed.items() if k not in _TRANSIENT_METADATA_KEYS
+    }:
+        return False
+    committed_tx = committed.get("transcript")
+    committed_ref = committed_tx.get("reference") if isinstance(committed_tx, dict) else None
+    transcript_meta = actual.get("transcript")
+    actual_status = transcript_meta.get("status") if isinstance(transcript_meta, dict) else None
+    reference = transcript_meta.get("reference") if isinstance(transcript_meta, dict) else None
+    if (
+        reference != committed_ref
+        and actual_status not in ("queued", "running")
+        and not _reference_matches_embedded(reference, embedded)
+    ):
+        return False
+    if tuple(meeting.notes) != tuple(committed.get("notes", [])):
+        return False
+    raw_title = (
+        (embedded.manifest or {}).get("meeting", {}).get("title")
+        or embedded.tags.get("TITLE")
+        or Path(meeting.published_file).stem
+    )
+    raw_title = raw_title.strip() if isinstance(raw_title, str) else ""
+    expected_title = raw_title or text("library.untitled")
+    if meeting.title != expected_title:
+        return False
+    known_speakers = [s["id"] for s in committed.get("speakers", []) if isinstance(s, dict) and "id" in s]
+    known_speakers.extend(s.id for s in embedded.speakers)
+    expected_words = tuple(apply_merges(file_words, committed.get("speakerMerges", []), known_speakers))
+    if verified_state != portable.State.OK or words_damaged:
+        if not meeting.words:
+            return True
+        return (
+            not words_damaged
+            and all(getattr(word, "text_is_stored", False) for word in meeting.words)
+            and _word_tuples(meeting.words) == _word_tuples(expected_words)
+        )
+    if _word_tuples(meeting.words) != _word_tuples(expected_words):
+        return False
+    expected_speakers = _speakers(expected_words, committed.get("speakers", []), embedded, stored_labels=True)
+    return [(s.id, s.name) for s in meeting.speakers] == [(s.id, s.name) for s in expected_speakers]
+
+
+def _can_copy_standalone_or_received(meeting, embedded, verified_state, file_words, words_damaged):
     metadata = meeting.metadata or {}
     if metadata.get("title") is not None or metadata.get("titleSource") not in (None, "meeting-window"):
         return False
@@ -95,17 +193,65 @@ def _can_copy_verbatim(meeting, embedded):
         or metadata.get("quoteOverride") is not None
     ):
         return False
-    reference = (metadata.get("transcript") or {}).get("reference")
-    if reference is not None:
-        if reference.get("kind") != "embedded":
-            return False
-        if reference.get("transcriptId", embedded.default_transcript_id) != embedded.default_transcript_id:
-            return False
-    if embedded.state in (portable.State.PLAIN_AUDIO, portable.State.UNKNOWN_FORMAT, portable.State.INVALID):
-        return not meeting.notes and reference is None
-    if embedded.state in (portable.State.UNVERIFIED, portable.State.OK, portable.State.STALE_AUDIO):
-        return tuple(meeting.notes) == tuple(embedded_notes(embedded))
-    return False
+    transcript_meta = metadata.get("transcript")
+    reference = transcript_meta.get("reference") if isinstance(transcript_meta, dict) else None
+    if not _reference_matches_embedded(reference, embedded):
+        return False
+    if meeting.title not in _default_titles(meeting, embedded):
+        return False
+    if dict(meeting.extensions or {}) != _embedded_extensions(embedded):
+        return False
+    if verified_state == portable.State.OK and not words_damaged:
+        return tuple(meeting.notes) == tuple(embedded_notes(embedded)) and _word_tuples(meeting.words) == _word_tuples(
+            file_words
+        )
+    expected_notes = (
+        () if "notes" not in metadata and meeting.published_file is not None else tuple(embedded_notes(embedded))
+    )
+    if tuple(meeting.notes) != expected_notes:
+        return False
+    if not meeting.words:
+        return True
+    return (
+        not words_damaged
+        and all(getattr(word, "text_is_stored", False) for word in meeting.words)
+        and _word_tuples(meeting.words) == _word_tuples(file_words)
+    )
+
+
+def _can_copy_verbatim(meeting, embedded, verified_state, file_words, words_damaged):
+    if meeting.audio_file is None:
+        return False
+    published = meeting.published_file is not None and Path(meeting.published_file) == Path(meeting.audio_file)
+    if not published and meeting.origin != "received":
+        return False
+    if published:
+        ours = _valid_ours(embedded.manifest)
+        if ours is not None:
+            return _can_copy_published_ours(meeting, embedded, ours, verified_state, file_words, words_damaged)
+    return _can_copy_standalone_or_received(meeting, embedded, verified_state, file_words, words_damaged)
+
+
+def _inspect_source(meeting, cancel):
+    with regular_input(meeting.audio_file):
+        pass
+    embedded = portable.read_meeting(str(meeting.audio_file))
+    if embedded.state in (portable.State.UNVERIFIED, portable.State.OK):
+        verified_state = portable.verify_audio(
+            str(meeting.audio_file),
+            embedded,
+            cancelled=lambda: bool(cancel and cancel.is_set()),
+        ).state
+    else:
+        verified_state = embedded.state
+    file_words = ()
+    words_damaged = False
+    if embedded.is_readable and embedded.default_transcript_id is not None:
+        try:
+            file_words = tuple(portable.load_words(embedded, embedded.default_transcript_id))
+        except ValueError:
+            words_damaged = True
+    return embedded, verified_state, file_words, words_damaged
 
 
 def _copy_regular_bounded(source, output, max_bytes, cancel):
@@ -160,34 +306,23 @@ def _stage_single_meeting(meeting, directory, max_bytes, *, tz=None, cancel=None
     try:
         os.chmod(item, 0o600)
         verbatim = False
-        if meeting.origin == "received" and meeting.audio_file is not None:
-            with regular_input(meeting.audio_file):
-                pass
-            embedded = portable.read_meeting(str(meeting.audio_file))
-            if _can_copy_verbatim(meeting, embedded):
-                transcript_meta = (meeting.metadata or {}).get("transcript") or {}
-                if (
-                    embedded.state in (portable.State.UNVERIFIED, portable.State.OK)
-                    and transcript_meta.get("status") != "damaged"
-                ):
-                    verbatim = (
-                        portable.verify_audio(
-                            str(meeting.audio_file),
-                            embedded,
-                            cancelled=lambda: bool(cancel and cancel.is_set()),
-                        ).state
-                        == portable.State.OK
-                    )
-                else:
-                    received_sha = ((meeting.metadata or {}).get("received") or {}).get("sha256")
-                    verbatim = received_sha is None or sha256_file(meeting.audio_file, cancel=cancel) == received_sha
+        if meeting.audio_file is not None:
+            embedded, verified_state, file_words, words_damaged = _inspect_source(meeting, cancel)
+            verbatim = _can_copy_verbatim(meeting, embedded, verified_state, file_words, words_damaged)
         with os.fdopen(fd, "wb") as output:
             fd = None
             if verbatim:
                 with regular_input(meeting.audio_file) as source:
                     size, crc = _copy_regular_bounded(source, output, max_bytes, cancel)
                 return item, size, crc
-            write_cassini_opus(meeting, output, directory, tz=tz, cancel=cancel)
+            write_cassini_opus(
+                meeting,
+                output,
+                directory,
+                tz=tz,
+                cancel=cancel,
+                preserve_stored_transcript=True,
+            )
             output.flush()
             os.fsync(output.fileno())
         check_cancel(cancel)

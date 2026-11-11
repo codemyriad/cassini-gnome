@@ -76,7 +76,7 @@ def _fsync_directory(directory):
         os.close(fd)
 
 
-def write_cassini_opus(meeting, output, directory, *, tz=None, cancel=None):
+def write_cassini_opus(meeting, output, directory, *, tz=None, cancel=None, preserve_stored_transcript=False):
     policy = None
     original = None
     if meeting.lifecycle != "saved":
@@ -134,6 +134,7 @@ def write_cassini_opus(meeting, output, directory, *, tz=None, cancel=None):
                 and original.meeting_start
                 and original.meeting_start["source"] != "recordedAtLocal"
                 else None,
+                preserve_stored_transcript=preserve_stored_transcript,
             )
             rewrite_tags(audio, output, tags, cancel)
     finally:

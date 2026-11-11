@@ -63,12 +63,36 @@ def recording_date(value):
     return instant.isoformat() if instant else None
 
 
+def _has_exportable_words(meeting, *, preserve_stored_transcript=False):
+    if meeting.transcript == "damaged" or not meeting.words:
+        return False
+    if meeting.transcript == "done":
+        return True
+    if getattr(meeting, "published_file", None) is not None:
+        return True
+    if all(getattr(word, "text_is_stored", False) for word in meeting.words):
+        return True
+    if preserve_stored_transcript:
+        transcript = (meeting.metadata or {}).get("transcript")
+        return isinstance(transcript, dict) and transcript.get("reference") is not None
+    return False
+
+
 def descriptors(
-    meeting, digest, *, policy=None, tz=None, recorded_at_local=None, recorded_date=None, allow_recording_start=True
+    meeting,
+    digest,
+    *,
+    policy=None,
+    tz=None,
+    recorded_at_local=None,
+    recorded_date=None,
+    allow_recording_start=True,
+    preserve_stored_transcript=False,
 ):
-    stored = all(getattr(word, "text_is_stored", False) for word in meeting.words)
+    export_words = _has_exportable_words(meeting, preserve_stored_transcript=preserve_stored_transcript)
+    stored = bool(meeting.words) and all(getattr(word, "text_is_stored", False) for word in meeting.words)
     ordered = meeting.words
-    if not stored and meeting.transcript == "done":
+    if not stored and export_words:
         ordered = sorted(meeting.words, key=lambda word: word.start_ms)
     items = (
         [
@@ -81,7 +105,7 @@ def descriptors(
             )
             for w in ordered
         ]
-        if meeting.transcript == "done"
+        if export_words
         else []
     )
     if not stored:
