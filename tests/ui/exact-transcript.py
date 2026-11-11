@@ -206,6 +206,7 @@ with tempfile.TemporaryDirectory() as temporary:
     opus = hour_meeting(root / "Hour", mixed=True)
     only_plain = os.environ.get("CASSINI_CUSTOM_CASE") == "plain"
     only_hour = os.environ.get("CASSINI_CUSTOM_CASE") == "hour"
+    only_long = os.environ.get("CASSINI_CUSTOM_CASE") == "long"
     memory_check()
     long_opus = opus if only_plain or only_hour else hour_meeting(root / "FourHours", mixed=True, hours=4)
     meeting = load_open_meeting(opus, root / "Hour")
@@ -236,6 +237,8 @@ with tempfile.TemporaryDirectory() as temporary:
         if only_hour and name != "60min-diarized":
             continue
         if only_plain and name != "60min-no-speakers":
+            continue
+        if only_long and name != "4h-diarized":
             continue
         print("START", name, len(model.words), len(model.turns), flush=True)
         if name == "4h-diarized":
@@ -453,6 +456,14 @@ with tempfile.TemporaryDirectory() as temporary:
             from exact_interactions import check_interactions
 
             report["interactions"] = check_interactions(window, page, paint, until)
+        if name == "4h-diarized":
+            from exact_interactions import native_scroll
+            from exact_rebuild import check_presentation, check_rebuild
+
+            page.player.pause()
+            page._follow_until = GLib.get_monotonic_time() + 3600_000_000
+            report["deepRebuildFrames"] = check_rebuild(window, page, paint, until, native_scroll)
+            report["deepPresentationFrames"] = check_presentation(window, page, model, paint, until, native_scroll)
         reports.append(report)
         Path(os.environ["CASSINI_CUSTOM_OUT"]).write_text(json.dumps(reports, indent=2))
         print(
