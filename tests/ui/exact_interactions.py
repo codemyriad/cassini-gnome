@@ -90,7 +90,7 @@ def check_interactions(window, page, paint, until):
     # Allow one token, then exhaust the CPU budget. Parsing/geometry must
     # resume on a later frame, with the complete word action available after it.
     clock = iter((0, 0, 0))
-    with patch.object(transcript_accessible.time, "thread_time_ns", side_effect=lambda: next(clock, 2_000_000)):
+    with patch.object(transcript_accessible, "thread_time_ns", side_effect=lambda: next(clock, 2_000_000)):
         actions.update(view._viewport_height)
     first_row = next(row for i, row in view.rows.items() if i in view.visible_rows)
     assert first_row._action_pending is not None and not first_row._action_geometry
@@ -106,7 +106,7 @@ def check_interactions(window, page, paint, until):
     action_key, stable_action = next(iter(actions.buttons.items()))
     actions.generation += 1
     clock = iter((0, 0, 0))
-    with patch.object(transcript_accessible.time, "thread_time_ns", side_effect=lambda: next(clock, 2_000_000)):
+    with patch.object(transcript_accessible, "thread_time_ns", side_effect=lambda: next(clock, 2_000_000)):
         actions.update(view._viewport_height)
     assert actions.buttons.get(action_key) is stable_action, "Deferred geometry discarded an unchanged word action"
     until(lambda: getattr(first_row, "_action_pending", True) is None)
