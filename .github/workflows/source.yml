@@ -75,18 +75,18 @@ jobs:
       # G11: from this job's own Meson logs, the node ids its pytest ran
       # (fedora:latest's are the reference every package job must cover),
       # or, whatever made it skip, a pytest-skipped marker that CI's Pytest
-      # coverage gate requires a package job's proof for.
+      # coverage gate requires a package job's proof for. Only run after
+      # check-distros.sh succeeds so a failure before pytest never uploads a
+      # skip marker; suffix run_attempt so re-runs supersede stale markers.
       - name: Record which pytest tests ran here
         id: pytest
-        if: ${{ !cancelled() }}
         run: |
           . build-aux/container.sh
           python3 build-aux/ci/check_pytest_ran.py --source "$CASSINI_TEST_LOGS" --slug "$(image_slug "${{ matrix.image }}")" \
             --export "$RUNNER_TEMP/pytest" --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
         with:
-          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}
+          name: pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
       # G3: the Meson test logs (testlog.txt with each shard's --durations,

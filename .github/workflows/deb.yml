@@ -62,7 +62,7 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
-          name: pytest-ran-${{ steps.pytest.outputs.slug }}
+          name: pytest-ran-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
       # G3: the Meson test logs (testlog.txt with each shard's --durations,

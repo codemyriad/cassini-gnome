@@ -236,20 +236,27 @@ def test_a_source_job_records_its_nodes_or_a_skip_from_its_own_logs(tmp_path, en
     assert (out / "os-release").read_text() == FEDORA
 
 
-def test_a_source_job_without_logs_for_its_image_records_a_skip(tmp_path, capsys):
+def test_a_source_job_that_failed_before_pytest_refuses_to_write_a_skip_marker(tmp_path, capsys):
     check = module()
     logs(tmp_path, name="distro-fedora-latest.1")
-    assert check.source(tmp_path / "logs", "alpine-edge", SHARDS, tmp_path / "out")[0] == "skipped"
+    with pytest.raises(ValueError, match="failed before meson test"):
+        check.source(tmp_path / "logs", "alpine-edge", SHARDS, tmp_path / "out")
+    assert not (tmp_path / "out").exists()
     output = tmp_path / "github-output"
     argv = ["--source", str(tmp_path / "missing"), "--slug", "alpine-edge", "--export", str(tmp_path / "out2")]
-    assert check.main([*argv, "--github-output", str(output)]) == 0
-    assert output.read_text() == "kind=skipped\nslug=alpine-edge\n"
+    assert check.main([*argv, "--github-output", str(output)]) == 1
+    assert "failed before meson test" in capsys.readouterr().out
+    assert not output.exists() and not (tmp_path / "out2").exists()
+    logs(tmp_path / "failed_shard", replace(2, result="FAIL"), name="distro-alpine-edge.1", release="ID=alpine\n")
+    with pytest.raises(ValueError, match="failed pytest shard"):
+        check.source(tmp_path / "failed_shard/logs", "alpine-edge", SHARDS, tmp_path / "out3")
+    assert not (tmp_path / "out3").exists()
 
 
 def artifacts(tmp_path, kinds):
     """The gate's download: one directory per artifact name."""
     root = tmp_path / "pytest"
-    root.mkdir()
+    root.mkdir(parents=True)
     for name, (release, listed) in kinds.items():
         directory = root / name
         directory.mkdir()
@@ -383,3 +390,202 @@ def test_missing_source_and_its_package_cannot_hide_each_other(tmp_path):
     assert check.compare_proofs(root) == []  # The old gate silently accepted it.
     assert len(check.gate(root)) == 2
     assert check.main(["--gate", str(root)]) == 1
+
+
+ALPINE = "ID=alpine\nVERSION_ID=3.24.0_alpha20261101\n"
+ALPINE_INFRA_MARKER = {
+    "image": "alpine:edge",
+    "step": "install-deps",
+    "reason": "apk-upstream-mirror",
+    "detail": "ERROR: onetbb-2023.2.0-r0: v2 package integrity error",
+}
+
+
+def write_infra_skip(directory, marker=ALPINE_INFRA_MARKER, release=ALPINE):
+    directory.mkdir(parents=True, exist_ok=True)
+    if marker is not None:
+        (directory / "infra-skipped.json").write_text(json.dumps(marker) + "\n")
+    if release is not None:
+        (directory / "os-release").write_text(release)
+    return directory
+
+
+def test_rerun_attempt_artifacts_supersede_stale_skip_markers(tmp_path):
+    check = module()
+    # Partial re-run ("Re-run failed jobs"): other jobs keep attempt 1, while
+    # alpine-edge left a stale skip marker on attempt 1 and passed on attempt 2.
+    attempt1 = {f"{name}-attempt-1": value for name, value in full_matrix().items() if not name.endswith("alpine-edge")}
+    attempt1["pytest-skipped-alpine-edge-attempt-1"] = (ALPINE, None)
+    attempt1["pytest-nodes-alpine-edge-attempt-2"] = (ALPINE, FULL)
+    root = artifacts(tmp_path / "rerun_pass", attempt1)
+    assert check.gate(root) == []
+    assert check.main(["--gate", str(root)]) == 0
+
+    # Stale infra-skip on attempt 1 superseded by passing nodes on attempt 2.
+    root_infra = artifacts(
+        tmp_path / "rerun_from_infra",
+        {
+            **{k: v for k, v in attempt1.items() if not k.startswith("pytest-skipped-alpine-edge")},
+        },
+    )
+    write_infra_skip(root_infra / "pytest-infra-skipped-alpine-edge-attempt-1")
+    assert check.gate(root_infra) == []
+
+    # Reverse direction: passing attempt 1 must NOT mask a skip on attempt 2.
+    regressed = {
+        f"{name}-attempt-1": value for name, value in full_matrix().items() if not name.endswith("alpine-edge")
+    }
+    regressed["pytest-nodes-alpine-edge-attempt-1"] = (ALPINE, FULL)
+    regressed["pytest-skipped-alpine-edge-attempt-2"] = (ALPINE, None)
+    root_regressed = artifacts(tmp_path / "rerun_regressed", regressed)
+    assert any("pytest-nodes-alpine-edge/nodes.json" in p for p in check.gate(root_regressed))
+    assert check.main(["--gate", str(root_regressed)]) == 1
+
+    # Same-attempt conflicting markers must fail explicitly.
+    same_attempt = dict(full_matrix())
+    same_attempt["pytest-skipped-alpine-edge"] = (ALPINE, None)
+    root_conflict = artifacts(tmp_path / "same_attempt", same_attempt)
+    assert any("conflicting source artifacts for alpine-edge" in p for p in check.gate(root_conflict))
+
+
+def test_alpine_edge_install_infra_skip_accepted_only_for_alpine_install_failures(tmp_path, capsys):
+    check = module()
+    # Source export + full gate acceptance for genuine alpine:edge install failure.
+    write_infra_skip(tmp_path / "meson-logs/distro-alpine-edge.1")
+    out, gh_out = tmp_path / "exported", tmp_path / "gh-output"
+    assert (
+        check.main(
+            [
+                "--source",
+                str(tmp_path / "meson-logs"),
+                "--slug",
+                "alpine-edge",
+                "--export",
+                str(out),
+                "--github-output",
+                str(gh_out),
+            ]
+        )
+        == 0
+    )
+    assert gh_out.read_text() == "kind=infra-skipped\nslug=alpine-edge\n"
+    assert "::warning::alpine-edge: upstream install infrastructure skip" in capsys.readouterr().out
+
+    kinds = {f"{k}-attempt-1": v for k, v in full_matrix().items() if k != "pytest-nodes-alpine-edge"}
+    root = artifacts(tmp_path / "gate_ok", kinds)
+    write_infra_skip(root / "pytest-infra-skipped-alpine-edge-attempt-1")
+    assert check.gate(root) == []
+    assert check.main(["--gate", str(root)]) == 0
+    assert "::warning::Pytest coverage accepted alpine:edge install infrastructure skip" in capsys.readouterr().out
+
+    # Rejected on every other distro even with identical marker contents.
+    for other in ("fedora-latest", "debian-testing", "ubuntu-26.04", "archlinux-latest"):
+        bad_root = artifacts(
+            tmp_path / f"other_{other}",
+            {k: v for k, v in full_matrix().items() if not k.endswith(other) or k.startswith("pytest-ran-")},
+        )
+        write_infra_skip(bad_root / f"pytest-infra-skipped-{other}")
+        assert any("only allowed for alpine-edge" in p for p in check.gate(bad_root)), other
+
+    # Rejected on alpine-edge for build, test, smoke, wrong reason, empty detail, or wrong os-release.
+    invalid_cases = [
+        (dict(ALPINE_INFRA_MARKER, step="meson setup"), ALPINE, "install-deps"),
+        (dict(ALPINE_INFRA_MARKER, step="meson test"), ALPINE, "install-deps"),
+        (dict(ALPINE_INFRA_MARKER, step="runtime smoke test"), ALPINE, "install-deps"),
+        (dict(ALPINE_INFRA_MARKER, reason="test-flake"), ALPINE, "apk-upstream-mirror"),
+        (dict(ALPINE_INFRA_MARKER, detail="   "), ALPINE, "detail"),
+        (dict(ALPINE_INFRA_MARKER, image="fedora:latest"), ALPINE, "alpine:edge"),
+        (ALPINE_INFRA_MARKER, DEBIAN, "os-release"),
+        (None, ALPINE, "missing infra-skipped.json"),
+    ]
+    for idx, (marker, rel, expected_msg) in enumerate(invalid_cases):
+        bad_root = artifacts(
+            tmp_path / f"bad_alpine_{idx}",
+            {k: v for k, v in full_matrix().items() if k != "pytest-nodes-alpine-edge"},
+        )
+        write_infra_skip(bad_root / "pytest-infra-skipped-alpine-edge", marker=marker, release=rel)
+        found = check.gate(bad_root)
+        assert found and any(expected_msg in p for p in found), (idx, found)
+
+
+def test_alpine_edge_install_script_switches_mirror_and_marks_only_upstream_install_failures(tmp_path):
+    import os
+    import subprocess
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    sleep_bin = bin_dir / "sleep"
+    sleep_bin.write_text("#!/bin/sh\nexit 0\n")
+    sleep_bin.chmod(0o755)
+
+    def run_case(name, behavior):
+        case_dir = tmp_path / name
+        logs_dir = case_dir / "logs"
+        cache_dir = case_dir / "cache"
+        logs_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "stale.apk").write_text("corrupt")
+        repos = case_dir / "repositories"
+        repos.write_text(
+            "https://dl-cdn.alpinelinux.org/alpine/edge/main\nhttps://dl-cdn.alpinelinux.org/alpine/edge/community\n"
+        )
+        installer = case_dir / "install-deps.sh"
+        installer.write_text(f"#!/bin/sh\nset -eu\n{behavior}\n")
+        installer.chmod(0o755)
+        env = dict(
+            os.environ,
+            PATH=f"{bin_dir}:{os.environ['PATH']}",
+            CASSINI_INSTALL_DEPS=str(installer),
+            ALPINE_REPOS_FILE=str(repos),
+            ALPINE_APK_CACHE=str(cache_dir),
+            ALPINE_INFRA_SKIP_DIR=str(logs_dir),
+            CASSINI_ALPINE_FALLBACK_MIRROR="https://mirrors.edge.kernel.org/alpine",
+        )
+        proc = subprocess.run(
+            ["sh", str(ROOT / "build-aux/ci/alpine_edge_install.sh")],
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        return proc, repos, logs_dir, cache_dir
+
+    # 1. Primary mirror fails integrity -> fallback mirror succeeds -> exit 0, no infra-skip.
+    proc, repos, logs_dir, cache_dir = run_case(
+        "fallback_ok",
+        f"""
+if grep -q 'dl-cdn.alpinelinux.org' "{tmp_path}/fallback_ok/repositories"; then
+  echo "ERROR: onetbb-2023.2.0-r0: v2 package integrity error" >&2
+  exit 1
+fi
+exit 0
+""",
+    )
+    assert proc.returncode == 0
+    assert "https://mirrors.edge.kernel.org/alpine/edge/main" in repos.read_text()
+    assert not (cache_dir / "stale.apk").exists()
+    assert not (logs_dir / "infra-skipped.json").exists()
+    assert "switching to fallback mirror" in proc.stderr
+
+    # 2. Both mirrors fail with upstream apk integrity/fetch errors -> exit 75 + infra-skipped.json.
+    proc, repos, logs_dir, _ = run_case(
+        "both_fail_upstream",
+        'echo "ERROR: onetbb-2023.2.0-r0: v2 package integrity error" >&2; exit 1',
+    )
+    assert proc.returncode == 75
+    assert "::warning::alpine:edge canary infrastructure skip" in proc.stderr
+    marker = json.loads((logs_dir / "infra-skipped.json").read_text())
+    assert marker == {
+        "image": "alpine:edge",
+        "step": "install-deps",
+        "reason": "apk-upstream-mirror",
+        "detail": "ERROR: onetbb-2023.2.0-r0: v2 package integrity error",
+    }
+
+    # 3. Non-upstream apk error (our own broken package name) -> exit 1 immediately, no fallback or skip!
+    proc, repos, logs_dir, _ = run_case(
+        "our_packaging_bug",
+        'echo "ERROR: unable to select packages: cassini-typo-pkg (no such package)" >&2; exit 2',
+    )
+    assert proc.returncode == 2
+    assert "dl-cdn.alpinelinux.org" in repos.read_text()
+    assert not (logs_dir / "infra-skipped.json").exists()

@@ -49,7 +49,18 @@ step "align container snapshot"
 retry sh build-aux/ci/prepare_tumbleweed.sh
 
 step "install-deps"
-retry sh build-aux/install-deps.sh --all --yes
+if [ -f /etc/alpine-release ] && grep -q "/alpine/edge/" /etc/apk/repositories 2>/dev/null; then
+  sh build-aux/ci/alpine_edge_install.sh || {
+    status=$?
+    if [ "$status" = 75 ] && { [ ! -d /logs ] || [ -f /logs/infra-skipped.json ]; }; then
+      step "infra-skip-install-deps"
+      exit 0
+    fi
+    exit "$status"
+  }
+else
+  retry sh build-aux/install-deps.sh --all --yes
+fi
 
 step "meson setup"
 meson setup /build/b --prefix=/usr
@@ -134,6 +145,8 @@ for image in "$@"; do
   problems=$(sed -n 's/^@@problems //p' "$log" | tail -n 1)
   if [ "$(cat "$log.status")" = 0 ] && [ "$step" = ok ]; then
     verdict=PASS note=$versions
+  elif [ "$image" = "alpine:edge" ] && [ "$(cat "$log.status")" = 0 ] && [ "$step" = "infra-skip-install-deps" ] && { [ -z "$logs" ] || [ -f "$logs/infra-skipped.json" ]; }; then
+    verdict=SKIP note="upstream apk install failure on primary and fallback mirrors"
   else
     verdict=FAIL note="at '${step:-start}'${problems:+: $problems}${versions:+ ($versions)}"
   fi
