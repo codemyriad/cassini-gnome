@@ -2,6 +2,7 @@
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import pytest
 from broker_fixture import stop_broker
@@ -356,18 +357,39 @@ def test_quitting_cassini_does_not_count_as_stopping_the_call(service):
 def test_a_new_call_at_the_stopped_address_after_a_reconnect_is_new(service, monkeypatch):
     from cassini_talk import browser_service
 
-    _, path = service
-    monkeypatch.setattr(browser_service, "STOPPED_CALL_REPORT_WINDOW", 0.3)
-    connection, stream = browser(path, "4242:99")
+    broker, path = service
+    instance = "4242:99"
+    key = (instance, 3)
+    connection, stream = browser(path, instance)
     request("configure", path=path, autoRecord=True)
     stop_automatic_call(path, stream)
     # The call ended while disconnected; later a call starts at the same address.
     connection, stream = reconnect(path, connection, stream, meetings=[])
     try:
-        time.sleep(0.5)
+        with broker.lock:
+            assert key in broker.stopped_calls
+        # Keep connection identity and the verified owner stamp intact.
+        elapsed = browser_service.STOPPED_CALL_REPORT_WINDOW + 1
+        assert elapsed < browser_service.STOPPED_CALL_GRACE
+        later = time.monotonic() + elapsed
+        broker_time = SimpleNamespace(**{**vars(time), "monotonic": lambda: later})
+        monkeypatch.setattr(browser_service, "time", broker_time)
+        inventory_applied = threading.Event()
+        update = broker.update
+
+        def observe_inventory(browser, packet):
+            update(browser, packet)
+            if packet.get("type") == "meetings" and any(
+                row.get("callGeneration") == "new-call" for row in packet["meetings"]
+            ):
+                inventory_applied.set()
+
+        monkeypatch.setattr(broker, "update", observe_inventory)
         new_call = dict(meeting(), callGeneration="new-call")
         send_packet(stream, dict(type="meetings", meetings=[new_call]))
-        send_packet(stream, dict(type="callSignals", browserInstance="4242:99", sequence=1, tabs=[signal(new_call)]))
+        send_packet(stream, dict(type="callSignals", browserInstance=instance, sequence=1, tabs=[signal(new_call)]))
+        durable(inventory_applied, "the replacement call inventory was not applied")
+        assert key not in broker.stopped_calls, "the late inventory retained the old stopped call"
         assert read_packet(stream)["action"] == "start"
     finally:
         stream.close()
