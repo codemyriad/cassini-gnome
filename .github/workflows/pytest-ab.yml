@@ -1,0 +1,33 @@
+name: Pytest shard A-B experiment
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/pytest-ab.yml'
+      - 'build-aux/ci/measure_pytest_parallel.py'
+      - 'src/meson.build'
+      - 'meson_options.txt'
+permissions:
+  contents: read
+jobs:
+  ten-pairs:
+    if: github.head_ref == 'perf/d82-two-cuts'
+    runs-on: ubuntu-26.04
+    container: ubuntu:26.04
+    # Ten controlled pairs, not failed-job retries. Individual Meson limits
+    # remain in force; this outer bound retains artifacts before job expiry.
+    timeout-minutes: 120
+    env:
+      CASSINI_TEST_REQUIRE_GTK: '1'
+      PYTEST_ADDOPTS: '-o faulthandler_timeout=60'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the same full source-test dependencies
+        run: build-aux/install-deps.sh --all --yes
+      - name: Ten alternating full-suite serial and two-worker pairs
+        run: python3 build-aux/ci/measure_pytest_parallel.py --pairs 10
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pytest-ab-ten-pairs
+          path: pytest-ab/
+          if-no-files-found: error
