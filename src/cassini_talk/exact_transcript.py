@@ -131,7 +131,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
 
     def invalidate(self, *_args):
         self.word_actions.generation += 1
-        self._display_dirty = True
+        self._display_dirty = len(self.prefix) > 1
         self._cancel_build()
         self._indices.clear()
         self._metric_markup.clear()

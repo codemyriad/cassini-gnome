@@ -463,7 +463,10 @@ with tempfile.TemporaryDirectory() as temporary:
             page.player.pause()
             page._follow_until = GLib.get_monotonic_time() + 3600_000_000
             report["deepRebuildFrames"] = check_rebuild(window, page, paint, until, native_scroll)
-            report["deepPresentationFrames"] = check_presentation(window, page, model, paint, until, native_scroll)
+            report["fontChangeScroll"] = {}
+            report["deepPresentationFrames"] = check_presentation(
+                window, page, model, paint, until, native_scroll, report["fontChangeScroll"]
+            )
             window.set_default_size(*original_size)
             until(lambda page=page, widths=widths: page.list.ready and page.list.layout_width == widths[0])
             paint(window)
