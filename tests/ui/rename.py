@@ -11,7 +11,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,6 +30,7 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 gi.require_version("GdkX11", "4.0")
 gi.require_version("Gsk", "4.0")
+from dispatch_wait import dispatch_until  # noqa: E402
 from gi.repository import GdkX11, Gio, GLib, Gtk  # noqa: E402
 from painted import painted_node  # noqa: E402
 
@@ -41,18 +41,9 @@ from cassini_talk.strings import text  # noqa: E402
 
 
 def until(check):
-    end = time.monotonic() + 10
-    while time.monotonic() < end:
-        context = GLib.MainContext.default()
-        context.iteration(False)  # Poll native X11 input, not only already-ready idle/timer sources.
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.005)
-    if not check():
+    try:
+        dispatch_until(check, "Rename UI condition timed out")
+    except AssertionError:
         dialog = globals().get("dialog")
         print(
             "Native key events:",
@@ -75,7 +66,7 @@ def until(check):
                 ),
                 flush=True,
             )
-        raise AssertionError("Rename UI condition timed out")
+        raise
 
 
 def widgets(widget):

@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,6 +19,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
+from dispatch_wait import dispatch_until  # noqa: E402
 from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
@@ -30,17 +30,7 @@ from cassini_talk.meeting_store import read_metadata  # noqa: E402
 
 
 def until(check):
-    deadline = time.monotonic() + 8
-    context = GLib.MainContext.default()
-    while time.monotonic() < deadline:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.005)
-    assert check(), "Speaker GUI did not settle"
+    dispatch_until(check, "Speaker GUI did not complete")
 
 
 def labels(widget):

@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,7 +22,8 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
+from dispatch_wait import dispatch_until  # noqa: E402
+from gi.repository import Adw, Gio, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-talk.gresource")))
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
@@ -33,16 +33,8 @@ from cassini_talk.player import Player  # noqa: E402
 from cassini_talk.strings import text  # noqa: E402
 
 
-def until(predicate):
-    context = GLib.MainContext.default()
-    deadline = time.monotonic() + 8
-    while time.monotonic() < deadline:
-        while context.pending():
-            context.iteration(False)
-        if predicate():
-            return
-        time.sleep(0.01)
-    raise AssertionError("GUI condition timed out")
+def until(check):
+    dispatch_until(check, "Library GUI did not complete")
 
 
 def walk(widget):
