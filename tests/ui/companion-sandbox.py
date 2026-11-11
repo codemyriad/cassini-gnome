@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """No unusable companion actions in Flatpak; Record keeps the native sound path."""
 
+import contextlib
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,6 +21,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
+from dispatch_wait import dispatch_until, drain_app_workers, finish_worker  # noqa: E402
 from gi.repository import Gio, GLib  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
@@ -31,20 +32,10 @@ from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
 
 
 def until(check):
-    deadline = time.monotonic() + 10
-    context = GLib.MainContext.default()
-    while time.monotonic() < deadline:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.005)
-    assert check(), "Sandbox companion gate did not settle"
+    dispatch_until(check, "Sandbox companion gate did not settle")
 
 
-with tempfile.TemporaryDirectory() as temporary:
+with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as cleanup:
     tmp = Path(temporary)
     schemas = tmp / "schemas"
     schemas.mkdir()
@@ -79,11 +70,30 @@ with tempfile.TemporaryDirectory() as temporary:
         patch.object(LibraryWindow, "_activity_tick", activity_tick),
         patch("cassini_talk.companion_bundle.store_listing_public", return_value=True),
     ):
+        app = window = first_connection = None
+        settings_dialogs = []
+
+        def teardown():
+            if first_connection is not None:
+                first_connection.close()
+                finish_worker(first_connection.future)
+                finish_worker(first_connection.health_future)
+            if window is not None and window.get_visible():
+                window.close()
+            if app is not None and not getattr(app, "_exit_begun", False):
+                app.do_shutdown()
+            drain_app_workers(app, windows=(window,), settings_dialogs=settings_dialogs)
+
+        cleanup.callback(teardown)
         app = CassiniApplication("com.gocassini.CompanionSandboxTest", "test", "development")
         app.register(None)
+        first_connection = app.browser_connection
         app.activate()
         window = app.get_active_window()
         until(lambda: not window._pending)
+        if first_connection is not None:
+            first_connection.close()
+            finish_worker(first_connection.future)
         app.browser_connection = BrowserConnection(app._browser_connection_changed, available=False)
         app.retry_browser_connection()
         assert not app.browser_companion_available and app.browser_watch is None
@@ -94,6 +104,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert not window.first_companion.get_visible()
         assert app.on_companion_setup() is None
         dialog = SettingsDialog(app)
+        settings_dialogs.append(dialog)
         dialog.present(window)
         assert dialog.browser.get_title() == "Not set up"
         assert not dialog.browser_setup.get_visible() and not dialog.automatic.get_visible()
@@ -147,11 +158,13 @@ with tempfile.TemporaryDirectory() as temporary:
             assert threads[-1] != main_thread
             if len(threads) == 1:
                 entered.set()
+                GLib.idle_add(lambda: GLib.SOURCE_REMOVE)
                 assert release.wait(5)
                 raise OSError("Transient host activation timeout")
             return (tmp / "host-config", tmp / "host-data", "/usr/bin/flatpak", {})
 
         settings = app.settings_dialog = SettingsDialog(app)
+        settings_dialogs.append(settings)
         settings.present(window)
         timer = GLib.timeout_add(10, lambda: (beats.append(1), GLib.SOURCE_CONTINUE)[1])
         try:
@@ -195,6 +208,7 @@ with tempfile.TemporaryDirectory() as temporary:
             until(lambda: settings.closed)
         window.close()
         app.do_shutdown()
+        teardown()
     print(
         "PASS Flatpak gate, native recording clock/meters without bridge, responsive host probe and retry enabling controls"
     )

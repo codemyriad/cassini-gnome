@@ -16,6 +16,7 @@ OUTPUT = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_suffix(".json")
 
 
 def child():
+    import contextlib
     import shutil
     from dataclasses import replace
 
@@ -30,7 +31,8 @@ def child():
     Gio.resources_register(
         Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource"))
     )
-    from progress_wait import until_progress
+    from dispatch_wait import drain_app_workers
+    from progress_wait import until_context_progress
 
     from cassini_talk.folder_player import FolderPlayer
     from cassini_talk.library_window import LibraryWindow
@@ -44,26 +46,32 @@ def child():
     from cassini_talk.strings import text
 
     events = []
+    search_pages = []
 
     def until(check):
-        context = GLib.MainContext.default()
-        # Wake only to check the bound when no GTK/AT-SPI event arrives. D-Bus
-        # calls are dispatched immediately instead of waiting on a sleep poll.
-        wake = GLib.timeout_add(50, lambda: GLib.SOURCE_CONTINUE)
-        try:
-            until_progress(
-                check,
-                progress=lambda: len(events),
-                dispatch=lambda: context.iteration(True),
-                diagnostics=lambda: (
-                    f"events[-1]={events[-1] if events else None}; "
-                    f"playing={window.player.playing}; position={window.player.position}"
-                ),
-            )
-        finally:
-            GLib.source_remove(wake)
+        until_context_progress(
+            check,
+            context=GLib.MainContext.default(),
+            timeout_source_ms=GLib.timeout_source_new,
+            source_remove=GLib.SOURCE_REMOVE,
+            progress=lambda: len(events),
+            diagnostics=lambda: (
+                f"events[-1]={events[-1] if events else None}; "
+                f"playing={window.player.playing}; position={window.player.position}"
+            ),
+        )
 
-    with tempfile.TemporaryDirectory() as temporary:
+    with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as cleanup:
+        app = window = None
+
+        def teardown():
+            if window is not None and window.get_visible():
+                window.close()
+            if app is not None and not getattr(app, "_exit_begun", False):
+                app.do_shutdown()
+            drain_app_workers(app, windows=(window,), search_pages=search_pages)
+
+        cleanup.callback(teardown)
         tmp = Path(temporary)
         subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(tmp / "fixtures")], check=True)
         schemas = tmp / "schemas"
@@ -141,6 +149,7 @@ def child():
             window.back_to_library()
             window.activate_action("win.search", None)
             page = window.search_page
+            search_pages.append(page)
 
             def search_updated(page):
                 if page.entry.get_text() == "budget" and page.hits:
@@ -209,6 +218,7 @@ def child():
         window.player.pause()
         app.on_quit()
         app.do_shutdown()
+        teardown()
 
 
 def parent():
@@ -223,10 +233,7 @@ def parent():
     Atspi.set_timeout(1000, 1000)
 
     def drain():
-        context = GLib.MainContext.default()
-        for _ in range(64):
-            if not context.pending():
-                break
+        while context.pending():
             context.iteration(False)
 
     def buttons():
@@ -258,15 +265,19 @@ def parent():
             assert not pipe_closed and process.poll() is None, (
                 f"GTK child exited before {expected_event}; see {log_path}"
             )
+            if context.pending():
+                continue
             context.iteration(True)
 
     def find_button(name):
+        nonlocal atspi_dirty
         print(f"AT-SPI waiting for {name}", flush=True)
         while True:
             drain()
             assert not pipe_closed and process.poll() is None, (
                 f"GTK child exited before button {name!r}; see {log_path}"
             )
+            atspi_dirty = False
             try:
                 target = next((button for button in buttons() if button.get_name() == name), None)
                 if target and target.get_state_set().contains(Atspi.StateType.SENSITIVE):
@@ -275,6 +286,8 @@ def parent():
                     return target, action
             except GLib.Error:
                 pass  # A replaced page can invalidate its old accessible objects.
+            if atspi_dirty or context.pending():
+                continue
             # Accessibility publication and child pipe events wake this context.
             # The screenshot process watchdog is the only elapsed-time bound.
             context.iteration(True)
@@ -306,6 +319,7 @@ def parent():
         event_fd, child_event_fd = os.pipe()
         context = GLib.MainContext.default()
         pipe_closed = False
+        atspi_dirty = False
 
         def child_event(_fd, _condition):
             nonlocal pipe_closed
@@ -314,8 +328,12 @@ def parent():
             pipe_closed = True
             return GLib.SOURCE_REMOVE
 
+        def mark_atspi_dirty(*_):
+            nonlocal atspi_dirty
+            atspi_dirty = True
+
         event_watch = GLib.io_add_watch(event_fd, GLib.IO_IN | GLib.IO_HUP, child_event)
-        listener = Atspi.EventListener.new(lambda *_: None)
+        listener = Atspi.EventListener.new(mark_atspi_dirty)
         event_types = ("object:children-changed", "object:state-changed", "object:property-change", "window")
         for event_type in event_types:
             assert listener.register(event_type), event_type

@@ -218,3 +218,22 @@ for (const [stamp] of arrivals) assert.ok(stamp<deadline);
         (5, "temporal-assertion"),
         (8, "temporal-assertion"),
     } <= kinds(source, "cjs")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/ui/companion.py",
+        "tests/ui/companion-sandbox.py",
+        "tests/ui/accessible-buttons.py",
+    ],
+)
+def test_companion_and_accessible_ui_observers_have_no_polling_sleeps_or_clock_loops(path):
+    found = {row[2] for row in inventory.scan_text(path, (ROOT / path).read_text())}
+    assert not (found & {"fixed-delay", "clock-read", "clock-condition"}), (path, found)
+
+
+def test_accessible_buttons_observer_has_no_periodic_step_timer():
+    path = "tests/ui/accessible-buttons.py"
+    found = {row[2] for row in inventory.scan_text(path, (ROOT / path).read_text())}
+    assert "timer-callback" not in found

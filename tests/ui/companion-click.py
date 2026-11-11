@@ -63,6 +63,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
+from dispatch_wait import drain_app_workers  # noqa: E402
 from gi.repository import Adw, Gio, GLib  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "src"))
@@ -202,6 +203,8 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
     ready_watch = Gio.File.new_for_path(str(ready)).monitor_file(Gio.FileMonitorFlags.NONE, None)
     ready_watch.connect("changed", lambda *_: None)
     atspi = subprocess.Popen([sys.executable, __file__, "--listener", str(ready)])
+    app = window = service = server = None
+    setup_dialogs, settings_dialogs, activity_sources, gate_releases = [], [], [], []
     try:
         until(ready.exists)
         ready_watch.cancel()
@@ -267,6 +270,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         original_connect = socket.socket.connect
         guards.enter_context(patch.object(socket.socket, "connect", worker_only(original_connect)))
         launches, launch_entered, launch_release = [], threading.Event(), threading.Event()
+        gate_releases.append(launch_release)
 
         def open_add(browser):
             assert threading.get_ident() != MAIN
@@ -283,12 +287,28 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         app.register(None)
         app.activate()
         window = app.get_active_window()
+
+        def setup_finished():
+            connection = app.browser_connection
+            watch = app.browser_watch
+            return (
+                connection.future is None
+                and connection.health_future is None
+                and not connection.force
+                and (watch is None or (watch.future is None and watch._delivered_profiles is not None))
+            )
+
         until(
             lambda: (
-                not window._pending and app.browser_watch and app.browser_connection.snapshot()["phase"] == "waiting"
+                not window._pending
+                and app.browser_watch is not None
+                and app.browser_watch.lease is not None
+                and setup_finished()
+                and app.browser_connection.snapshot()["phase"] == "waiting"
             )
         )
         assert isinstance(window._activity_source, BrowserActivity)
+        activity_sources.append(window._activity_source)
         assert app.browser_watch.lease is not None
         assert (
             len(list((Path(os.environ["XDG_CONFIG_HOME"]) / "google-chrome/NativeMessagingHosts").glob("*.json"))) == 2
@@ -308,10 +328,6 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         # finish. The first dialog itself is deliberately never pre-created.
         settled_frame(window, page)
         ready_browsers = app.browser_connection.browsers
-
-        def setup_finished():
-            connection = app.browser_connection
-            return connection.future is None and connection.health_future is None and not connection.force
 
         def wait_setup():
             # A mapped dialog can precede its DEFAULT_IDLE registration retry.
@@ -353,6 +369,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                 prepare_state(state)
                 if entry == "preferences":
                     settings = app.settings_dialog = SettingsDialog(app)
+                    settings_dialogs.append(settings)
                     settings.present(window)
                     settings.set_visible_page_name("browserCompanion")
                     until(settings.get_mapped)
@@ -368,6 +385,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                 count = len(launches)
                 meter.run(button.emit, "clicked")
                 dialog = app.companion_setup
+                setup_dialogs.append(dialog)
                 until(dialog.get_mapped)
                 assert window.get_visible_dialog() is dialog
                 assert len(page.meeting.words) > 3000
@@ -413,10 +431,12 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                 meter = None
             if state == "failed":
                 dialog = app.on_companion_setup(parent=window)
+                setup_dialogs.append(dialog)
                 until(dialog.get_mapped)
                 prepare_state("failed")
                 assert dialog.connect_button.get_sensitive()
                 entered, release = threading.Event(), threading.Event()
+                gate_releases.append(release)
                 original_attempt = app.browser_connection.attempt
 
                 def delayed_attempt(
@@ -441,8 +461,10 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
                 dialog.force_close()
                 until(lambda dialog=dialog: dialog.closed)
         orphan = app.companion_setup = CompanionSetup(app)
+        setup_dialogs.append(orphan)
         assert orphan.get_root() is None and not orphan.closed
         replacement = app.on_companion_setup(parent=window)
+        setup_dialogs.append(replacement)
         until(replacement.get_mapped)
         assert replacement is not orphan and orphan.closed and not orphan.timer
         replacement.force_close()
@@ -451,8 +473,10 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         other.present()
         until(other.get_mapped)
         previous = app.on_companion_setup(parent=other)
+        setup_dialogs.append(previous)
         until(previous.get_mapped)
         replacement = app.on_companion_setup(parent=window)
+        setup_dialogs.append(replacement)
         until(replacement.get_mapped)
         assert replacement is not previous and previous.closed and not previous.timer
         assert replacement.get_root() is window and window.get_visible_dialog() is replacement
@@ -470,15 +494,36 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         app.on_quit()
         app.do_shutdown()
         guards.close()
-        service.closed.set()
-        server.join()
-        assert not server.is_alive()
+        drain_app_workers(
+            app,
+            windows=(window,),
+            setup_dialogs=setup_dialogs,
+            settings_dialogs=settings_dialogs,
+            activity_sources=activity_sources,
+            service=service,
+            service_thread=server,
+        )
         print(
             "PASS setup click gate: live private broker/watch/activity, AT-SPI listener, no GTK blocking calls",
             flush=True,
         )
     finally:
         ready_watch.cancel()
+        for gate in gate_releases:
+            gate.set()
         guards.close()
+        if window is not None and window.get_visible():
+            window.close()
+        if app is not None and not getattr(app, "_exit_begun", False):
+            app.do_shutdown()
+        drain_app_workers(
+            app,
+            windows=(window,),
+            setup_dialogs=setup_dialogs,
+            settings_dialogs=settings_dialogs,
+            activity_sources=activity_sources,
+            service=service,
+            service_thread=server,
+        )
         atspi.terminate()
         atspi.wait()
