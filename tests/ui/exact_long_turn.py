@@ -9,11 +9,13 @@ from transcript_long_turn import long_turn_words
 from cassini_talk.meeting_text import reading_turns, speaker_turns
 
 
-def check_long_turn(window, model, frames_type, paint, until, flicks):
+def long_turn_meeting(model):
     words = long_turn_words()
-    turns = reading_turns(words)
-    assert len(turns) == 1
-    model = replace(model, words=words, turns=turns, listening_turns=speaker_turns(words))
+    return replace(model, words=words, turns=reading_turns(words), listening_turns=speaker_turns(words))
+
+
+def check_long_turn(window, model, frames_type, paint, until, flicks):
+    assert len(model.turns) == 1
     frames = frames_type(window)
     started = time.thread_time_ns()
     window.open_meeting(model, external=True)
@@ -25,8 +27,8 @@ def check_long_turn(window, model, frames_type, paint, until, flicks):
     paint(window)
     frames.close()
     report = dict(
-        words=len(words),
-        semanticRows=len(turns),
+        words=len(model.words),
+        semanticRows=len(model.turns),
         layoutRows=len(page._turns),
         openFirstPaintCpuMs=first,
         openWorstFrameCpuMs=max(frames.cpu),
