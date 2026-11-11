@@ -152,7 +152,7 @@ def test_minimal_container_without_python3_rewrites_mirrors_and_rejects_missing_
     binaries = tmp_path / "minimal-bin"
     binaries.mkdir()
     _write_mock_apt(binaries)
-    for tool in ("bash", "timeout", "sed", "grep", "cmp", "cat", "cp", "rm", "mkdir", "chmod", "mktemp", "basename"):
+    for tool in ("bash", "timeout", "sed", "grep", "cat", "cp", "rm", "mkdir", "chmod", "mktemp"):
         found = shutil.which(tool)
         assert found is not None, tool
         (binaries / tool).symlink_to(found)

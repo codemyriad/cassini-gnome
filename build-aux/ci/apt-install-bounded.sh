@@ -70,7 +70,7 @@ rewrite_ubuntu_mirrors() {
     done < <(sed -nE 's/.*mirror\+file:([^[:space:]]+).*/\1/p' "$src")
   done
 
-  local tmp_raw tmp_out path base line
+  local tmp_raw tmp_out path base line old_text new_text
   tmp_raw="$(mktemp)"
   tmp_out="$(mktemp)"
 
@@ -85,7 +85,7 @@ rewrite_ubuntu_mirrors() {
         "$path" > "$tmp_raw"
     fi
 
-    base="$(basename "$path")"
+    base="${path##*/}"
     case "$base" in
       apt-mirrors*)
         : > "$tmp_out"
@@ -100,7 +100,9 @@ rewrite_ubuntu_mirrors() {
         ;;
     esac
 
-    if ! cmp -s "$path" "$tmp_out"; then
+    old_text="$(cat "$path"; printf x)"
+    new_text="$(cat "$tmp_out"; printf x)"
+    if [ "$old_text" != "$new_text" ]; then
       cat "$tmp_out" > "$path"
       printf 'Network retry: %s in %s\n' "$label" "$path"
     fi
