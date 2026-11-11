@@ -21,8 +21,9 @@ LOG = logging.getLogger(__name__)
 
 
 @contextlib.contextmanager
-def handover(path, cancelled=None, *, clock=time.monotonic):
+def handover(path, cancelled=None, *, clock=None):
     """Serialize clients across retirement, lock release and replacement readiness."""
+    now = clock or time.monotonic
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if path.parent.stat().st_uid != os.getuid() or path.parent.stat().st_mode & 0o077:
         raise PermissionError("Browser service directory must be private to this user")
@@ -32,7 +33,7 @@ def handover(path, cancelled=None, *, clock=time.monotonic):
     try:
         if os.fstat(descriptor).st_uid != os.getuid() or not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise PermissionError("Browser startup lock must be an owned regular file")
-        deadline = clock() + 15
+        deadline = now() + 15
         while True:
             if cancelled is not None and cancelled.is_set():
                 raise CancelledError()
@@ -40,7 +41,7 @@ def handover(path, cancelled=None, *, clock=time.monotonic):
                 fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
-                if clock() >= deadline:
+                if now() >= deadline:
                     raise TimeoutError("Browser service handover is still in progress") from None
                 (cancelled or threading.Event()).wait(0.025)
         yield
@@ -100,8 +101,9 @@ def _legacy_process(pid, uid, path):
         return False
 
 
-def _released(path, cancelled, *, clock=time.monotonic):
-    deadline = clock() + 5
+def _released(path, cancelled, *, clock=None):
+    now = clock or time.monotonic
+    deadline = now() + 5
     from .installed_build import _open_regular
 
     try:
@@ -117,7 +119,7 @@ def _released(path, cancelled, *, clock=time.monotonic):
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                if clock() >= deadline:
+                if now() >= deadline:
                     raise TimeoutError("The older browser service has not finished closing") from None
                 # A filesystem lock has no notification fd. Bound this worker
                 # wait, and let a cancelled watcher interrupt it immediately.
@@ -127,7 +129,13 @@ def _released(path, cancelled, *, clock=time.monotonic):
                 return
 
 
-def _await_peer_close(connection, cancelled, *, clock=time.monotonic):
+def _wait_released(path, cancelled, clock):
+    if clock is None:
+        return _released(path, cancelled)
+    return _released(path, cancelled, clock=clock)
+
+
+def _await_peer_close(connection, cancelled, *, clock=None):
     """Wait boundedly for a one-shot status peer to finish flushing and close its stream.
 
     Returns True when peer EOF (or socket reset) is observed, False when the 0.5 s bound
@@ -136,11 +144,12 @@ def _await_peer_close(connection, cancelled, *, clock=time.monotonic):
     unwinding `with connection.makefile("rwb")` after SIGINT flushes into an open peer
     instead of failing with BrokenPipeError (exit status 1).
     """
-    deadline = clock() + 0.5
+    now = clock or time.monotonic
+    deadline = now() + 0.5
     while True:
         if cancelled is not None and cancelled.is_set():
             raise CancelledError()
-        remaining = deadline - clock()
+        remaining = deadline - now()
         if remaining <= 0:
             return False
         connection.settimeout(min(0.05, remaining))
@@ -153,14 +162,14 @@ def _await_peer_close(connection, cancelled, *, clock=time.monotonic):
             return True
 
 
-def reusable(connection, path, *, cancelled=None, clock=time.monotonic):
+def reusable(connection, path, *, cancelled=None, clock=None):
     """True: retain this listener; False: it retired and released its lock."""
     from .browser_service import connect, request
 
     try:
         status, (pid, uid, _gid) = inspect(connection)
     except OSError:
-        _released(path, cancelled, clock=clock)
+        _wait_released(path, cancelled, clock)
         return False
     if busy(status):
         return True  # Active audio never waits for optional installed-build discovery.
@@ -174,7 +183,7 @@ def reusable(connection, path, *, cancelled=None, clock=time.monotonic):
             try:
                 result = request("shutdown", path=path, identity=status.get("identity"))
             except OSError:
-                _released(path, cancelled, clock=clock)
+                _wait_released(path, cancelled, clock)
                 return False
             if result.get("shutdown") is not True:
                 return True  # A capture started, or a different broker took over.
@@ -191,13 +200,13 @@ def reusable(connection, path, *, cancelled=None, clock=time.monotonic):
             try:
                 again = connect(path, timeout=0.5)
             except OSError:
-                _released(path, cancelled, clock=clock)
+                _wait_released(path, cancelled, clock)
                 return False
             resources.enter_context(again)
             try:
                 latest, peer = inspect(again)
             except OSError:
-                _released(path, cancelled, clock=clock)
+                _wait_released(path, cancelled, clock)
                 return False
             if peer[:2] != (pid, uid) or busy(latest) or broker_identity.matches(latest.get("identity"), local):
                 return True
@@ -213,25 +222,27 @@ def reusable(connection, path, *, cancelled=None, clock=time.monotonic):
             with contextlib.suppress(ProcessLookupError):
                 signal.pidfd_send_signal(descriptor, signal.SIGINT)
         LOG.info("Retiring idle browser service from a different build (pid %s)", pid)
-        _released(path, cancelled, clock=clock)
+        _wait_released(path, cancelled, clock)
         return False
 
 
-def retire_idle(path=None, *, clock=time.monotonic):
+def retire_idle(path=None, *, clock=None):
     """BuildRefresh retires an old idle service without spawning a replacement."""
     from .browser_service import service_path
 
     target = Path(path or service_path())
-    with handover(target, clock=clock):
-        return _retire_idle(target, clock=clock)
+    guard = handover(target) if clock is None else handover(target, clock=clock)
+    with guard:
+        return _retire_idle(target) if clock is None else _retire_idle(target, clock=clock)
 
 
-def _retire_idle(target, *, clock=time.monotonic):
+def _retire_idle(target, *, clock=None):
     from .browser_service import BROKER_ABSENT, connect
 
     try:
         with connect(target, timeout=0.5) as connection:
-            if not reusable(connection, target, clock=clock):
+            retained = reusable(connection, target) if clock is None else reusable(connection, target, clock=clock)
+            if not retained:
                 return False
         with connect(target, timeout=0.5) as connection:
             status, _peer = inspect(connection)

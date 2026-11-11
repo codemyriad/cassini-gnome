@@ -230,9 +230,11 @@ def _gated_legacy_retirement(private, monkeypatch, *, ignore_sigint=False):
         state.sigint_state = (state.final_socket.eof_seen, state.final_socket.closed)
         return real_send_signal(pidfd, sig, *args)
 
-    def spy_released(path, cancelled, *, clock=time.monotonic):
+    def spy_released(path, cancelled, *, clock=None):
         before = state.final_socket.closed if state.final_socket is not None else None
         try:
+            if clock is None:
+                return real_released(path, cancelled)
             return real_released(path, cancelled, clock=clock)
         finally:
             after = state.final_socket.closed if state.final_socket is not None else None
@@ -295,13 +297,16 @@ def test_legacy_broker_status_flush_completes_before_retirement_sigint(private, 
     with _gated_legacy_retirement(private, monkeypatch) as (old, in_flight_r, release_w, state):
         with ThreadPoolExecutor(1) as executor:
             ensuring = executor.submit(browser_service.ensure_service, private, clock=state.clock)
-            readable(in_flight_r)
-            assert os.read(in_flight_r, 1) == b"1"
-            assert state.final_socket_ready.wait(BOUND)
-            assert state.final_socket.entering_recv.wait(BOUND)
-            assert state.sigint_state is None
-            assert not state.final_socket.eof_seen and not state.final_socket.closed
-            os.write(release_w, b"1")
+            try:
+                readable(in_flight_r)
+                assert os.read(in_flight_r, 1) == b"1"
+                assert state.final_socket_ready.wait(BOUND)
+                assert state.final_socket.entering_recv.wait(BOUND)
+                assert state.sigint_state is None
+                assert not state.final_socket.eof_seen and not state.final_socket.closed
+            finally:
+                with contextlib.suppress(OSError):
+                    os.write(release_w, b"1")
             ensuring.result(BOUND)
         rc = old.wait(BOUND)
         _stdout, stderr = old.communicate(timeout=BOUND)
