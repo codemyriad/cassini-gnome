@@ -32,7 +32,7 @@ class TranscriptNavigation:
         return True
 
     def allocated(self):
-        if self.pending and self.pending[0] in self.view.rows:
+        if self.pending and self.pending[0] in self.view.rows and self.view.rows[self.pending[0]].get_child_visible():
             index, direction = self.pending
             self.pending = None
             row = self.view.rows[index]

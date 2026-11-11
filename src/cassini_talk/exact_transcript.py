@@ -44,6 +44,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self._display_items = ()
         self.prefix = [0]
         self.rows = {}
+        self._retained_rows = set()
         self.visible_rows = range(0)
         self.layout_width = -1
         self.ready = False
@@ -140,6 +141,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             row.close()
             row.unparent()
         self.rows.clear()
+        self._retained_rows.clear()
 
     def close(self):
         self._closed = True
@@ -187,6 +189,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
                 self.page.bound.pop(number, None)
             else:
                 row.update_relation([Gtk.AccessibleRelation.SET_SIZE], [len(self.items)])
+        self._retained_rows = set(self.rows)
         self._display_items = self.items
         self._active = index
         self.prefix = index.prefix
@@ -323,6 +326,12 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             first = max(0, min(first - 1, bisect_right(self.prefix, value - height / 2) - 1))
             end = min(len(self.prefix) - 1, max(end + 1, bisect_right(self.prefix, value + height * 1.5)))
         needed = set(range(first, end))
+        if self._active.complete:
+            self._retained_rows.clear()
+        else:
+            # Keep the pre-rebuild widgets until the replacement prefix is
+            # complete. Header refreshes preserve their signal/focus identity.
+            needed.update(self._retained_rows & self.rows.keys())
         focused = self.navigation.focused()
         if focused is not None:
             if focused + 1 < len(self.prefix):
@@ -338,6 +347,9 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             row.unparent()
         for index in sorted(needed):
             row = self.rows.get(index)
+            if index + 1 >= len(self.prefix):
+                row.set_child_visible(False)
+                continue
             if row is None:
                 row = self.page._build_row(self._display_items[index])
                 following = next((self.rows[i] for i in sorted(self.rows) if i > index), None)
@@ -351,6 +363,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
                 # playback ticks. Refresh a retained row before it paints.
                 turn, words, _ = self.page.bound[index]
                 self.page._render_words(turn, words)
+            row.set_child_visible(True)
             point = Graphene.Point().init((width - self.layout_width) / 2, self.prefix[index] - value)
             transform = Gsk.Transform.new().translate(point)
             row.allocate(self.layout_width, self.prefix[index + 1] - self.prefix[index], -1, transform)
@@ -382,4 +395,5 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
 
     def do_snapshot(self, snapshot):
         for row in self.rows.values():
-            self.snapshot_child(row, snapshot)
+            if row.get_child_visible():
+                self.snapshot_child(row, snapshot)

@@ -85,12 +85,14 @@ def check_interactions(window, page, paint, until):
     # Start a rebuild with an anchor that needs several rows to be measured.
     view.props.vadjustment.set_value(view.prefix[10] + 7)
     paint(window)
+    retained_rows = dict(view.rows)
     view.invalidate()
     paint(window)
     assert view._active is view._building and not view.ready
     until(lambda: view._pending_anchor is None)
     assert abs(view._value() - view.prefix[10] - 7) <= 1
     assert not view.ready
+    assert all(view.rows.get(i) is row for i, row in retained_rows.items())
 
     # Resize again while that replacement is still partial. It must keep
     # publishing measured rows and restore the same logical anchor.
