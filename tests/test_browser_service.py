@@ -646,15 +646,22 @@ def test_control_host_relays_commands_over_native_framing(service):
             process.wait()
 
 
-def test_control_host_survives_an_idle_broker(service, monkeypatch):
+def test_control_host_does_not_keep_the_connect_timeout_on_an_idle_link(service, monkeypatch):
     import os
 
     from cassini_talk import browser_control_host
     from cassini_talk.recording_session import read_message, write_message
 
     _, path = service
-    # Shorten the connect timeout so a link that kept it would fail within the test.
-    monkeypatch.setattr(browser_control_host, "connect", lambda target: connect(target, timeout=0.2))
+    links = []
+
+    def open_link(target):
+        link = connect(target, timeout=5)
+        assert link.gettimeout() == 5
+        links.append(link)
+        return link
+
+    monkeypatch.setattr(browser_control_host, "connect", open_link)
     incoming_read, incoming_write = os.pipe()
     outgoing_read, outgoing_write = os.pipe()
     with (
@@ -673,9 +680,10 @@ def test_control_host_survives_an_idle_broker(service, monkeypatch):
             ]:
                 write_message(to_host, packet)
             listing = wait_for(lambda: s if (s := request(path=path))["meetings"] else None)
-            time.sleep(0.6)  # Three connect timeouts with nothing from the broker.
-            # A dropped link leaves the broker without this browser and its meetings.
-            assert request(path=path)["meetings"] == listing["meetings"], "the control link dropped while idle"
+            # Published inventory proves the real host has finished connection setup.
+            (link,) = links
+            assert link.gettimeout() is None, "the control host retained the dial timeout on its idle link"
+            assert request(path=path)["meetings"] == listing["meetings"]
             with ThreadPoolExecutor(2) as commands:
                 result = commands.submit(request, "start", path=path, id=listing["meetings"][0]["id"])
                 command = commands.submit(read_message, from_host).result(2)
