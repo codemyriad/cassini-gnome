@@ -136,6 +136,10 @@ def check_interactions(window, page, paint, until):
     old_width, old_height = window.get_default_size()
     old_layout_width = view.layout_width
     result["rebuildFrames"] = check_rebuild(window, page, paint, until, native_scroll)
+    previous = view._active
+    view.invalidate()
+    until(lambda: view._active is not previous)
+    assert not view.ready
     far = len(model.turns) - 1
     view.scroll_to(far)
     assert view._pending_scroll == far
@@ -442,6 +446,9 @@ def check_interactions(window, page, paint, until):
     result["accessible"] = accessible(window, page, paint, until)
     from exact_rebuild import check_pending_focus, check_presentation
 
-    result["presentationFrames"] = check_presentation(window, page, model, paint, until, native_scroll)
+    result["fontChangeScroll"] = {}
+    result["presentationFrames"] = check_presentation(
+        window, page, model, paint, until, native_scroll, result["fontChangeScroll"]
+    )
     result["pendingFocusLive"] = check_pending_focus(window, model, paint, until)
     return result
