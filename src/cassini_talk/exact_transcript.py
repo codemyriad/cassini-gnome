@@ -167,7 +167,8 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             # common prefix, the old ordinal can refer to unrelated words.
             same_start = (
                 row < min(len(self._display_items), len(self.items))
-                and self._display_items[row].words[0] == self.items[row].words[0]
+                and self._display_items[row].first_word == self.items[row].first_word
+                and self._display_items[row].words[:1] == self.items[row].words[:1]
             )
             if row >= self._display_common and not same_start:
                 row, offset = max(0, self._display_common - 1), 0

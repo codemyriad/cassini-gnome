@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """R12: shares from timed items, and timing-preserving transcript markup."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from html import escape
 
@@ -105,17 +105,24 @@ def reading_markup(turn, position, speaker_name, *, dark=False, chip_links=False
 
     def chip(aside):
         name = speaker_name(aside.speaker)
-        links = " ".join(link(aside, i) for i, value in enumerate(aside.items) if value)
+        part = isinstance(aside, LayoutChip)
+        opening = not part or aside.opens
+        closing = not part or aside.closes
+        prefix = f"(<b>{escape(name)}:</b> " if opening else ""
+        suffix = ")" if closing else ""
+        separator = " "
         if chip_links and aside.words:
-            target = prefixes[id(aside)] + ":0"
-            separator = f'<a href="{target}"> </a>'
-            links = separator.join(link(aside, i) for i, value in enumerate(aside.items) if value)
-            contents = f'<a href="{target}">(<b>{escape(name)}:</b> </a>{links}<a href="{target}">)</a>'
-        else:
-            contents = f"(<b>{escape(name)}:</b> {links})"
+            target = prefixes[id(aside)] + (":anchor" if part else ":0")
+
+            def hit(value):
+                return f'<a href="{target}">{value}</a>' if value else ""
+
+            prefix, suffix, separator = hit(prefix), hit(suffix), hit(separator)
+        links = separator.join(link(aside, i) for i, value in enumerate(aside.items) if value)
         bg, alpha = ("#ffffff", "10%") if dark else ("#000006", "7%")
-        markup = f'<span size="small" background="{bg}" bgalpha="{alpha}">{contents}</span>'
-        return markup, f"({name}: {aside.text})"
+        markup = f'<span size="small" background="{bg}" bgalpha="{alpha}">{prefix}{links}{suffix}</span>'
+        plain = (f"({name}: " if opening else "") + aside.text + (")" if closing else "")
+        return markup, plain
 
     return join_items(turn, link, chip)[0]
 
@@ -126,7 +133,10 @@ def reading_word(turn, uri):
     if len(parts) == 2 and parts[0] == "item":
         owner, index = turn, int(parts[1])
     elif len(parts) == 3 and parts[0] == "aside" and 0 <= int(parts[1]) < len(turn.asides):
-        owner, index = turn.asides[int(parts[1])][1], int(parts[2])
+        owner = turn.asides[int(parts[1])][1]
+        if parts[2] == "anchor" and isinstance(owner, LayoutChip):
+            return owner.anchor
+        index = int(parts[2])
     else:
         raise ValueError("Unknown transcript link")
     if not 0 <= index < len(owner.words):
@@ -318,10 +328,133 @@ class FollowRows:
         return min(sounding, point) if sounding >= 0 and point >= 0 else max(sounding, point)
 
 
+# GTK measures and parses one label at a time. Keep its work independent of
+# the length of a rejoined viewer paragraph.
+LAYOUT_WORD_LIMIT = 128
+
+
+@dataclass(slots=True, kw_only=True)
+class LayoutRow(Turn):
+    has_more: bool
+
+
+@dataclass(slots=True, kw_only=True)
+class LayoutChip(Turn):
+    anchor: Word
+    opens: bool
+    closes: bool
+
+
+def _split_layout_row(row, index):
+    """Slice a viewer paragraph for GTK without changing its timed atoms."""
+    words, values, indices, fragments, asides = [], [], [], [], []
+    used = 0
+    start_index = index
+
+    def emit(has_more):
+        atoms = words + [word for _, aside in asides for word in aside.words]
+        return LayoutRow(
+            index,
+            row.speaker,
+            words.copy(),
+            indices[0] if indices else asides[0][1].first_word,
+            min(word.start_ms for word in atoms),
+            max(word.end_ms for word in atoms),
+            asides=asides.copy(),
+            fragments=fragments.copy(),
+            word_indices=indices.copy(),
+            display=tuple(values),
+            over=row.over if index == start_index else [],
+            continuation=row.continuation or index != start_index,
+            has_more=has_more,
+        )
+
+    def advance():
+        nonlocal index, used
+        yield emit(True)
+        index += 1
+        used = 0
+        for buffer in (words, values, indices, fragments, asides):
+            buffer.clear()
+
+    display = row.items
+    source_indices = row.word_indices or list(range(row.first_word, row.first_word + len(row.words)))
+    chips = {}
+    for after, aside in row.asides:
+        chips.setdefault(after, []).append(aside)
+    for first, last in row.fragments or [(0, len(row.words))]:
+        fragment_start = len(words)
+        for i in range(first, last):
+            required = 1 + sum(len(aside.words) for aside in chips.get(i, ()))
+            if used and used + required > LAYOUT_WORD_LIMIT:
+                if fragment_start < len(words):
+                    fragments.append((fragment_start, len(words)))
+                yield from advance()
+                fragment_start = 0
+            words.append(row.words[i])
+            values.append(display[i])
+            indices.append(source_indices[i])
+            used += 1
+            for aside in chips.get(i, ()):
+                count = len(aside.words)
+                if used + count <= LAYOUT_WORD_LIMIT:
+                    asides.append((len(words) - 1, aside))
+                    used += count
+                    continue
+                # Keep a whole chip together when it fits. A larger chip
+                # continues with one opening and closing and the same hit target.
+                if fragment_start < len(words):
+                    fragments.append((fragment_start, len(words)))
+                yield from advance()
+                fragment_start = 0
+                aside_display = aside.items
+                aside_indices = aside.word_indices or list(range(aside.first_word, aside.first_word + count))
+                for start in range(0, count, LAYOUT_WORD_LIMIT):
+                    if start:
+                        yield from advance()
+                    end = min(start + LAYOUT_WORD_LIMIT, count)
+                    if start == 0 and end == count:
+                        part = aside
+                    else:
+                        part = LayoutChip(
+                            aside.index,
+                            aside.speaker,
+                            aside.words[start:end],
+                            aside_indices[start],
+                            aside.words[start].start_ms,
+                            aside.words[end - 1].end_ms,
+                            word_indices=aside_indices[start:end],
+                            display=aside_display[start:end],
+                            anchor=aside.words[0],
+                            opens=start == 0,
+                            closes=end == count,
+                        )
+                    asides.append((-1, part))
+                    used = end - start
+        if fragment_start < len(words):
+            fragments.append((fragment_start, len(words)))
+    if used:
+        yield emit(False)
+
+
+def _layout_rows(rows):
+    result = []
+    for row in rows:
+        if len(row.words) + sum(len(aside.words) for _, aside in row.asides) > LAYOUT_WORD_LIMIT:
+            result.extend(_split_layout_row(row, len(result)))
+        else:
+            result.append(row if row.index == len(result) else replace(row, index=len(result)))
+    return result
+
+
 class ReadingRows(tuple):
     """Rows and their worker-built playback lookup share one lifetime."""
 
-    def __new__(cls, rows):
+    def __new__(cls, rows, *, build_layout=True):
         result = super().__new__(cls, rows)
         result.follow = FollowRows(result)
+        if build_layout and any(
+            len(row.words) + sum(len(aside.words) for _, aside in row.asides) > LAYOUT_WORD_LIMIT for row in result
+        ):
+            result.layout = ReadingRows(_layout_rows(result), build_layout=False)
         return result
