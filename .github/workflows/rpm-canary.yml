@@ -1,8 +1,11 @@
 name: RPM canary (fedora:latest)
 
 # D66 rule 3: a moving target runs nightly outside the merge gate. ci.yml and
-# green_main.py never see this workflow. When it turns green, packages.yml can
-# move its fedora pin back to fedora:latest.
+# green_main.py never see this workflow. While fedora:latest ships a Python ABI
+# for which upstream onnxruntime has published no PyPI wheel yet, `preflight`
+# proves that absence and `rpm` ("Build .rpm (fedora:latest)") is visibly
+# skipped; if PyPI publishes a wheel (or the lookup fails), `preflight` fails,
+# and once pinned and the RPM build passes, packages.yml can return to fedora:latest.
 on:
   schedule:
     - cron: "37 3 * * *"
@@ -15,8 +18,35 @@ env:
   CONTAINER_ENGINE: docker
 
 jobs:
+  preflight:
+    name: Check fedora:latest Python ABI wheel
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
+    timeout-minutes: 10
+    outputs:
+      should_build: ${{ steps.canary-abi.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check whether fedora:latest Python ABI has an ONNX Runtime wheel
+        id: canary-abi
+        run: |
+          . build-aux/container.sh
+          container_pull fedora:latest
+          abi=$(container_run -v "$PWD/build-aux/ci:/ci:ro$Z" fedora:latest sh -ec '
+            . /ci/retry.sh
+            command -v python3 >/dev/null 2>&1 || retry dnf -y -q --setopt=install_weak_deps=False install python3 >&2
+            python3 -c "import sys; print(f\"cp{sys.version_info.major}{sys.version_info.minor}\")"
+          ')
+          python3 build-aux/ci/check_rpm_canary_wheel.py \
+            --abi "$abi" \
+            --pins whistle/pins.json \
+            --spec build-aux/rpm/cassini-talk.spec \
+            --github-output "$GITHUB_OUTPUT" \
+            --step-summary "$GITHUB_STEP_SUMMARY"
+
   rpm:
     name: Build .rpm (fedora:latest)
+    needs: preflight
+    if: needs.preflight.outputs.should_build == 'true'
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 30
     steps:

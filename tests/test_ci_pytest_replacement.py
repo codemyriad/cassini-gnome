@@ -104,6 +104,18 @@ GATE = """
           path: ${{ runner.temp }}/pytest
       - name: Every skipped pytest suite ran in full in a package job of the same release
         run: python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/pytest"
+      - name: Source and package callers ran and passed
+        if: ${{ !cancelled() }}
+        env:
+          SOURCE: ${{ needs.source.result }}
+          DEB: ${{ needs.deb.result }}
+          RPM_ARCH: ${{ needs.rpm-arch.result }}
+        run: |
+          status=0
+          test "$SOURCE" = success || { echo "::error::Source $SOURCE, not success"; status=1; }
+          test "$DEB" = success || { echo "::error::Debian package $DEB, not success"; status=1; }
+          test "$RPM_ARCH" = success || { echo "::error::RPM and Arch packages $RPM_ARCH, not success"; status=1; }
+          exit "$status"
       - name: The Meson tests ran and passed
         if: ${{ !cancelled() }}
         env:
@@ -622,6 +634,21 @@ MUTATIONS = {
         "ci.yml",
         "    needs: [source, deb, rpm-arch, meson-tests]\n",
         "    needs: [source, deb, rpm-arch]\n",
+    ),
+    "ci gate accepts failed source": (
+        "ci.yml",
+        'test "$SOURCE" = success ||',
+        'test "$SOURCE" != failure ||',
+    ),
+    "ci gate accepts failed deb": (
+        "ci.yml",
+        'test "$DEB" = success ||',
+        'test "$DEB" != failure ||',
+    ),
+    "ci gate accepts failed rpm-arch": (
+        "ci.yml",
+        'test "$RPM_ARCH" = success ||',
+        'test "$RPM_ARCH" != failure ||',
     ),
     "ci gate accepts skipped Meson tests": (
         "ci.yml",
