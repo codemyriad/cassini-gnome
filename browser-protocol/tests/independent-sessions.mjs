@@ -2,12 +2,15 @@
 // Loaded extension, real WebRTC and native framing; private fixture control broker.
 // CASSINI_NATIVE_HOST/CASSINI_CONTROL_NATIVE_HOST can select the product adapters.
 import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
+import {watch} from 'node:fs';
 import {createServer as httpServer} from 'node:http';
 import {createServer as unixServer} from 'node:net';
 import {execFileSync} from 'node:child_process';
 import {mkdtemp,mkdir,readFile,writeFile,chmod,rm,readdir} from 'node:fs/promises';
 import path from 'node:path';import os from 'node:os';import {fileURLToPath} from 'node:url';
 import {connectReceiveSlots} from '../scenarios/product-topologies.mjs';
+import {eventValue} from './support/event-value.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const extension=path.resolve(process.env.CASSINI_TEST_EXTENSION||path.join(root,'extension'));
@@ -22,17 +25,52 @@ const temporary=await mkdtemp(path.join(os.tmpdir(),'cassini-independent-'));
 const profile=path.join(temporary,'profile'),audioRoot=path.join(temporary,'audio');
 await mkdir(audioRoot);await mkdir(profile);
 const socketPath=path.join(temporary,'control.sock'),events=[];
+const packets=new EventEmitter();
 let control,context,remoteBrowser;
-const server=unixServer(connection=>{control=connection;let pending='';connection.setEncoding('utf8');connection.on('data',data=>{pending+=data;for(let end;(end=pending.indexOf('\n'))>=0;){events.push(JSON.parse(pending.slice(0,end)));pending=pending.slice(end+1);}});});
+const server=unixServer(connection=>{
+ control=connection;
+ let pending='';
+ connection.setEncoding('utf8');
+ connection.on('data',data=>{
+  pending+=data;
+  for(let end;(end=pending.indexOf('\n'))>=0;){
+   events.push(JSON.parse(pending.slice(0,end)));
+   pending=pending.slice(end+1);
+   packets.emit('packet');
+  }
+ });
+});
 await new Promise(resolve=>server.listen(socketPath,resolve));
 const web=httpServer((_req,response)=>response.end('<!doctype html><title>Cassini isolated source fixture</title><button>Join</button>'));
 await new Promise(resolve=>web.listen(0,'127.0.0.1',resolve));
 const address=`http://127.0.0.1:${web.address().port}/`;
-async function until(check,label,timeout=20000){const end=Date.now()+timeout;while(Date.now()<end){const value=await check();if(value)return value;await new Promise(r=>setTimeout(r,25));}throw Error('Timed out: '+label);}
+function observePacket(read,label,timeout=20000){
+ return eventValue(changed=>{
+  packets.on('packet',changed);
+  return ()=>packets.off('packet',changed);
+ },read,{label,timeout});
+}
 let sequence=0;
-async function command(action,tabId,extra={},timeout=20000){const requestId='independent-'+(++sequence);control.write(JSON.stringify({type:'command',requestId,action,tabId,mode:'tracks',independent:true,captureLocal:false,microphone:false,...extra})+'\n');const result=await until(()=>events.find(e=>e.type==='result'&&e.requestId===requestId),requestId,timeout);assert.equal(result.ok,true,JSON.stringify(result));return result.status;}
+async function command(action,tabId,extra={},timeout=20000){
+ const requestId='independent-'+(++sequence);
+ control.write(JSON.stringify({type:'command',requestId,action,tabId,mode:'tracks',independent:true,captureLocal:false,microphone:false,...extra})+'\n');
+ const result=await observePacket(()=>events.find(e=>e.type==='result'&&e.requestId===requestId),requestId,timeout);
+ assert.equal(result.ok,true,JSON.stringify(result));
+ return result.status;
+}
 async function manifest(directory){return JSON.parse(await readFile(path.join(directory,'session.json')));}
-async function count(directory){try {return (await manifest(directory)).tracks.reduce((n,t)=>n+t.frames,0);}catch{return 0;}}
+async function count(directory){return (await manifest(directory)).tracks.reduce((n,t)=>n+t.frames,0);}
+function waitForFrames(directory,minimum,label){
+ return eventValue((changed,fail)=>{
+  // Watch the directory so an atomic replacement of session.json wakes the read.
+  const watcher=watch(directory,(_event,name)=>{if(!name||name==='session.json')changed();});
+  watcher.on('error',fail);
+  return ()=>watcher.close();
+ },async()=>{
+  try{return await count(directory)>=minimum;}
+  catch(error){if(error.code==='ENOENT'||error instanceof SyntaxError)return false;throw error;}
+ },{label,timeout:20000});
+}
 function power(data,frequency,rate=48000){const n=12000,start=data.length/2-n;assert.ok(start>=0);let re=0,im=0;for(let i=0;i<n;i++){const sample=data.readInt16LE((start+i)*2)/32768;re+=sample*Math.cos(2*Math.PI*frequency*i/rate);im+=sample*Math.sin(2*Math.PI*frequency*i/rate);}return(re*re+im*im)/(n*n);}
 const report={sink,pulse:'private',cases:[]};
 const meetings=[];
@@ -65,9 +103,13 @@ try {
     await page.evaluate(async()=>{const track=topologyPeer.getReceivers()[0].track;for(const value of [track,track.clone()]){const audio=document.createElement('audio');audio.srcObject=new MediaStream([value]);audio.autoplay=true;document.body.append(audio);await audio.play();}});
     meetings.push({page,remote,frequency});
   }
-  const hello=await until(()=>events.find(e=>e.type==='hello'&&e.capabilities?.includes('independent-sessions-v1')),'capability handshake');
+  const hello=await observePacket(()=>events.find(e=>e.type==='hello'&&e.capabilities?.includes('independent-sessions-v1')),'capability handshake');
   assert.ok(hello.capabilities.includes('call-evidence-v1'));
-  const inventory=await until(()=>events.filter(e=>e.type==='meetings').at(-1)?.meetings.filter(m=>m.title.startsWith('Independent meeting')&&m.sourceCount>0&&m.heard===true).length===2&&events.filter(e=>e.type==='meetings').at(-1),'two active calls');
+  const inventory=await observePacket(()=>{
+    const latest=events.findLast(e=>e.type==='meetings');
+    const active=latest?.meetings.filter(m=>m.title.startsWith('Independent meeting')&&m.sourceCount>0&&m.heard===true);
+    return active?.length===2?latest:null;
+  },'two active calls');
   for(const [index,meeting] of meetings.entries())meeting.tabId=inventory.meetings.find(m=>m.title==='Independent meeting '+(index+1)).tabId;
   pactl('set-sink-mute',sink,'1');assert.match(pactl('get-sink-mute',sink),/yes/);
   for(const meeting of meetings)await worker.evaluate(tabId=>chrome.tabs.update(tabId,{muted:true}),meeting.tabId);
@@ -77,18 +119,25 @@ try {
   // tab's command must complete without releasing this lookup.
   await worker.evaluate(heldTab => {
     const get = chrome.tabs.get.bind(chrome.tabs);
-    let release; const gate = new Promise(resolve => release = resolve);
+    let release, entered;
+    const gate = new Promise(resolve => release = resolve);
+    globalThis.cassiniLookupEntry = new Promise(resolve => entered = resolve);
     globalThis.cassiniHeldLookupEntered = false;
     globalThis.cassiniReleaseLookup = () => { chrome.tabs.get = get; release(); };
     chrome.tabs.get = async id => {
-      if (id === heldTab) { globalThis.cassiniHeldLookupEntered = true; await gate; }
+      if (id === heldTab) {
+        globalThis.cassiniHeldLookupEntered = true;
+        entered(true);
+        await gate;
+      }
       return get(id);
     };
   }, meetings[0].tabId);
   const heldStart = command('start',meetings[0].tabId);
   heldStart.catch(() => {}); // Preserve the original failure if a later assertion fails.
-  await until(() => worker.evaluate(() => globalThis.cassiniHeldLookupEntered),'held management lookup');
   try {
+    // The worker promise is the entry event. The helper supplies the hang guard.
+    await eventValue(()=>()=>{},()=>worker.evaluate(()=>globalThis.cassiniLookupEntry),{label:'held management lookup',timeout:20000});
     const second = await command('start',meetings[1].tabId,{},5000);
     meetings[1].directory = second.path;
     assert.equal(await worker.evaluate(() => globalThis.cassiniHeldLookupEntered),true);
@@ -97,11 +146,11 @@ try {
   meetings[0].directory = (await heldStart).path;
   for(const meeting of meetings)assert.ok(path.resolve(meeting.directory).startsWith(audioRoot+path.sep),'test capture must stay inside its private Library');
   assert.notEqual(meetings[0].directory,meetings[1].directory,'independent native host creates distinct folders');
-  await Promise.all(meetings.map(m=>until(async()=>await count(m.directory)>=96000,'complete samples while muted')));
+  await Promise.all(meetings.map(m=>waitForFrames(m.directory,96000,'complete samples while muted')));
   for(const meeting of meetings){const value=await manifest(meeting.directory);assert.equal(value.tracks.length,1,'receiver and its media clone share one source');const track=value.tracks[0];assert.equal(track.kind,'remote');const raw=(await readFile(path.join(meeting.directory,track.file))).subarray(44);const target=power(raw,meeting.frequency),other=power(raw,meeting.frequency===440?880:440);assert.ok(target>0.001,'muted source tone is present');assert.ok(other<target*0.01,'no bleed between independent meetings');report.cases.push({frequency:meeting.frequency,frames:track.frames,tonePower:target,otherPower:other,sinkMuted:true,tabMuted:true});}
   const stopped=await command('stop',meetings[0].tabId);assert.equal(stopped.sessions.length,1);assert.equal(stopped.sessions[0].tabId,meetings[1].tabId);
   const firstFrames=await count(meetings[0].directory),secondFrames=await count(meetings[1].directory);
-  await until(async()=>await count(meetings[1].directory)>=secondFrames+48000,'second meeting continues after first Stop');
+  await waitForFrames(meetings[1].directory,secondFrames+48000,'second meeting continues after first Stop');
   assert.equal(await count(meetings[0].directory),firstFrames);
   await command('stop',meetings[1].tabId);
   assert.equal((await manifest(meetings[0].directory)).state,'completed');assert.equal((await manifest(meetings[1].directory)).state,'completed');
@@ -116,14 +165,14 @@ try {
     meeting.directory=state.path;
     retained.push({tabId:meeting.tabId,path:state.path,captureId:state.sessions.find(s=>s.tabId===meeting.tabId).captureId});
   }
-  await Promise.all(meetings.map(m=>until(async()=>await count(m.directory)>=96000,'retained sessions have complete PCM')));
+  await Promise.all(meetings.map(m=>waitForFrames(m.directory,96000,'retained sessions have complete PCM')));
   const folderNames=(await readdir(audioRoot)).sort();
   const beforeReload=await manifest(meetings[0].directory);
   await meetings[0].page.reload();
-  const currentStatus=()=>events.filter(e=>e.type==='status').at(-1);
-  await until(()=>currentStatus()?.sessions.some(s=>s.tabId===meetings[0].tabId&&s.pageState==='present'),'new document status');
+  const currentStatus=()=>events.findLast(e=>e.type==='status');
+  await observePacket(()=>currentStatus()?.sessions.some(s=>s.tabId===meetings[0].tabId&&s.pageState==='present'),'new document status');
   const secondBeforeReload=await count(meetings[1].directory);
-  await until(async()=>await count(meetings[1].directory)>=secondBeforeReload+48000,'unrelated call continues through reload');
+  await waitForFrames(meetings[1].directory,secondBeforeReload+48000,'unrelated call continues through reload');
   assert.equal((await manifest(meetings[0].directory)).state,'recording','page reload must not finalize the host');
   const same=currentStatus().sessions.find(s=>s.tabId===meetings[0].tabId);
   assert.equal(same.captureId,retained[0].captureId);assert.equal(same.path,retained[0].path);
@@ -131,17 +180,17 @@ try {
   meetings[0].remote=await remoteContext.newPage();await meetings[0].remote.goto(address);
   await meetings[0].page.click('button');
   await connectReceiveSlots(meetings[0].page,meetings[0].remote,[[meetings[0].frequency]]);
-  await until(async()=>await count(meetings[0].directory)>=beforeReload.tracks.reduce((n,t)=>n+t.frames,0)+96000,'new document PCM in original folder');
+  await waitForFrames(meetings[0].directory,beforeReload.tracks.reduce((n,t)=>n+t.frames,0)+96000,'new document PCM in original folder');
   const afterReload=await manifest(meetings[0].directory);
   assert.ok(afterReload.tracks.length>beforeReload.tracks.length,'returned document has a fresh source span');
   assert.deepEqual((await readdir(audioRoot)).sort(),folderNames,'reload never creates a second folder');
   assert.equal(currentStatus().sessions.find(s=>s.tabId===meetings[0].tabId).captureId,retained[0].captureId);
   await meetings[1].page.close();
-  await until(()=>currentStatus()?.sessions.some(s=>s.tabId===meetings[1].tabId&&s.pageState==='closed'),'real tabs.onRemoved reports closed');
+  await observePacket(()=>currentStatus()?.sessions.some(s=>s.tabId===meetings[1].tabId&&s.pageState==='closed'),'real tabs.onRemoved reports closed');
   assert.equal((await manifest(meetings[1].directory)).state,'recording','app owns the closed-tab Stop deadline');
   await command('stop',meetings[1].tabId,{reason:'tabClosed'});
   const continued=await count(meetings[0].directory);
-  await until(async()=>await count(meetings[0].directory)>=continued+48000,'returned call survives the other tab close');
+  await waitForFrames(meetings[0].directory,continued+48000,'returned call survives the other tab close');
   await command('stop',meetings[0].tabId,{reason:'appQuit'});
   for(const [index,reason] of [[0,'appQuit'],[1,'tabClosed']]) {
     const value=await manifest(meetings[index].directory),ends=(value.events||[]).filter(e=>e.type==='end');

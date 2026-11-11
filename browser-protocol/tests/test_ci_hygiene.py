@@ -62,6 +62,21 @@ class CiHygieneTests(unittest.TestCase):
                       "'pull_request' && github.event.pull_request.number || github.run_id }}\n"
                       "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n", text)
 
+    def test_talk_archives_are_verified_cached_before_stack_creation(self):
+        text = (WORKFLOWS / 'ci.yml').read_text()
+        restore = text.index('Restore checksum-addressed Talk archives')
+        verify = text.index('Verify or fetch the locked archives before starting Docker')
+        save = text.index('Save verified Talk archives')
+        start = text.index('Start a locked Nextcloud 34 and Talk 24 stack')
+        self.assertLess(restore, verify)
+        self.assertLess(verify, save)
+        self.assertLess(save, start)
+        self.assertNotIn('restore-keys:', text)
+        self.assertIn('CASSINI_COMPAT_APP_CACHE:', text)
+        self.assertIn('git -C talk-harness apply --check', text)
+        self.assertIn('PROJECT_NAME: cassini-extension-nextcloud-${{ github.run_id }}-${{ github.run_attempt }}', text)
+        self.assertIn("if: always() && steps.talk-stack.outputs.started == 'true'", text)
+
     def test_every_job_has_a_timeout(self):
         # GitHub's default is 360 min: a hung job holds a runner for six hours.
         missing = [f'{workflow.name}:{name}' for workflow in sorted(WORKFLOWS.glob('*.yml'))

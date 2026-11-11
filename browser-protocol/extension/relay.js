@@ -129,6 +129,9 @@
     control({ type: "discover" });
   });
   listen("message", event => {
+    // isTrusted rejects synthetic dispatchEvent, not page postMessage forgery.
+    // Admission uses the unconditionally claimed immutable native global;
+    // discovery only wakes a browser-bound read of it, never supplies proof.
     if (event.isTrusted !== true || event.source !== window || event.data?.channel !== "cassini-page") return;
     const { type, packet, request } = event.data;
     if (retired && !(drainingToken && event.data.token === drainingToken)) return;

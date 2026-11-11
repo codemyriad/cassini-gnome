@@ -64,7 +64,7 @@ def test_failed_replacement_keeps_old_source_and_manifest(server, via_callback):
                 raise OSError("Device unavailable")
 
     try:
-        start(client, "change-failure", microphone=False)
+        start(client, "change-failure", microphone=False, capture_local=False)
         remote(client, "remote")
         capture = service.captures["change-failure"]
         capture.fallback()
@@ -96,7 +96,7 @@ def test_failed_replacement_keeps_old_source_and_manifest(server, via_callback):
 def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):  # noqa: F811
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
-    start(client, "close-limit")
+    start(client, "close-limit", capture_local=False)
     capture = service.captures["close-limit"]
     with capture.lock:
         if limit == "tracks":
@@ -137,7 +137,7 @@ def test_me_only_browser_loss_closes_local_span_and_publishes_activity(server): 
         assert next(t for t in capture.host.session.manifest["tracks"] if t["id"] == "local")["ended"]
         assert capture.host.session.manifest["events"] == events  # No invented others event.
         assert changed == ["sources"]
-        assert set(capture.native_taps) == {"microphone"} and not capture.microphone.stopped
+        assert set(capture.native_taps) == set() and capture.microphone is None
         capture.stop()
     finally:
         client.close()
@@ -157,7 +157,7 @@ def test_retiring_source_error_cannot_stop_its_confirmed_replacement(server):  #
             self.failed("Old device closed")
 
     try:
-        start(client, "retiring-source", microphone=False)
+        start(client, "retiring-source", microphone=False, capture_local=False)
         capture = service.captures["retiring-source"]
         capture.tap_factory = Retiring
         capture.fallback()

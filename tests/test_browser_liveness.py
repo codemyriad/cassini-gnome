@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 from broker_fixture import stop_broker
 from durable import DURABLE_BOUND, durable, saved
-from test_browser_capture import Tap, authorize_native_start, stream
+from test_browser_capture import Tap, authorize_native_start, local
+from test_browser_capture import start as start_audio
 from test_browser_service import wait_for
 from test_browser_sessions import Extension
 from test_capture_record import declare, pcm
@@ -128,15 +129,6 @@ def lost_events(capture):
     return [e for e in manifest["events"] if e["type"] == "othersSource" and e.get("reason") == "lost"]
 
 
-def me_track(capture):
-    identifier = capture.native_taps["microphone"][0]
-    return next(t for t in capture.host.session.manifest["tracks"] if t["id"] == identifier)
-
-
-def me_frames(capture):
-    return me_track(capture)["frames"]
-
-
 def jam(browser):
     """Leave the broker's writer genuinely blocked on a peer that never reads."""
     browser.connection.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
@@ -219,8 +211,9 @@ def test_stop_finishes_and_policy_resumes_under_a_stuck_writer(broker, monkeypat
     worker = ThreadPoolExecutor(1)
     expire = threading.Event()
     try:
-        capture = negotiated(client, service, "stuck-stop")
-        stream(capture)
+        start_audio(client, "stuck-stop", service=service)
+        local(client, "me")
+        capture = service.captures["stuck-stop"]
         state = dict(recording=True, tabId=3, captureId="stuck-stop", path=str(capture.directory))
         send_packet(peer.stream, dict(type="status", recording=True, sessions=[state]))
         (browser,) = service.browsers.values()
@@ -272,20 +265,16 @@ def test_stop_finishes_and_policy_resumes_under_a_stuck_writer(broker, monkeypat
         worker.shutdown(wait=False, cancel_futures=True)
 
 
-def test_frozen_audio_transport_falls_back_and_keeps_me(broker):
+def test_frozen_audio_transport_falls_back_to_system_without_opening_native_me(broker):
     service, path, clock, lost = broker
     client = Settled(BrowserAudioProxy(path=path), service)
     try:
         capture = negotiated(client, service, "frozen")
+        assert capture.microphone is None
+        assert client.handle(dict(declare("me", "sender"), kind="local", label="Microphone")) == ACK
+        assert client.handle(pcm("me", 480, value=b"\x01\x00")) == ACK
         assert client.handle(declare("guest", "receiver")) == ACK
         assert client.handle(pcm("guest", 480)) == ACK
-        tap = capture.microphone
-        # The side commits at its real open time, which a loaded machine
-        # delays; PCM stamped before that commit is readiness PCM (R79 1).
-        # Stamp the device's PCM from the committed start, as stream() does.
-        start = me_track(capture)["startOffsetMs"]
-        tap.append(b"\x01\x00" * 480, start)
-        before = me_frames(capture)
         # Freeze: the companion neither sends nor reads; its socket stays open.
         clock.now = PCM_STALE_AFTER - 0.5
         service.tick()
@@ -295,15 +284,18 @@ def test_frozen_audio_transport_falls_back_and_keeps_me(broker):
         durable(lost, "the fallback did not commit")
         (event,) = lost_events(capture)
         assert event["source"] == "system"
-        assert capture.native_taps.keys() == {"microphone", "system"}
-        tap.append(b"\x02\x00" * 480, start + 10)  # The next 10 ms (480 frames).
-        assert me_frames(capture) > before
+        assert capture.native_taps.keys() == {"system"} and capture.microphone is None
+        system_id, system_tap = capture.native_taps["system"]
+        system_track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == system_id)
+        before = system_track["frames"]
+        system_tap.append(b"\x02\x00" * 480, system_track["startOffsetMs"] + 10)
+        assert system_track["frames"] > before
         assert not capture.finished
         service.command("capture:frozen", "stop")
         manifest = json.loads((capture.directory / "session.json").read_text())
-        # Saved; the frozen guest's announced span honestly never ended.
+        # Saved; the frozen browser spans never sent trackEnd, and Me never opened a raw OS mic.
         assert manifest["state"] == "interrupted" and manifest["problemKind"] == "capture"
-        assert manifest["tracks"][-1]["kind"] == "system"
+        assert [t["kind"] for t in manifest["tracks"]] == ["local", "remote", "system"]
         assert manifest["tracks"][-1]["startOffsetMs"] == event["atMs"]
     finally:
         client.close()

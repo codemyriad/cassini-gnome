@@ -127,6 +127,7 @@ class BrowserCapture:
         self.end_reason = None
         self._stop_problem = None
         self.user_stopped = False
+        self.native_me = False
         self.streams = None
         self.stopping = self.starting = False
         self.finished = False
@@ -254,6 +255,7 @@ class BrowserCapture:
         session_clock=None,
         others_route=None,
         admit=None,
+        native_me=False,
     ):
         """Start this capture. `refusals` are start refusals made before the folder
         existed (a rejected browser Start): they are stored with the start events.
@@ -293,9 +295,14 @@ class BrowserCapture:
                 self.me = microphone
                 self.browser_lost = others_source == "system"
                 self.browser_lost_since = time.monotonic() if self.browser_lost else None
-                # Independent capture records Me natively (captureLocal: false).
+                self.native_me = bool(
+                    native_me or self.signal_owned or others_route is not None or message.get("captureLocal") is False
+                )
                 self.streams = self.host.audio_sink = BrowserStreams(
-                    self.host.session, me=microphone, picture_enabled=lambda: self.spectrogram.active, native_me=True
+                    self.host.session,
+                    me=microphone,
+                    picture_enabled=lambda: self.spectrogram.active,
+                    native_me=self.native_me,
                 )
                 self.streams.browser = not self.browser_lost
                 # The start selection records what was requested; a native
@@ -322,7 +329,11 @@ class BrowserCapture:
                 # Revalidate after that IO, immediately before input dispatch.
                 if admit is not None and not admit():
                     raise StartCancelled("The signalled call is no longer eligible")
-            requested = [kind for kind, wanted in (("microphone", microphone), ("system", self.browser_lost)) if wanted]
+            requested = [
+                kind
+                for kind, wanted in (("microphone", microphone and self.native_me), ("system", self.browser_lost))
+                if wanted
+            ]
             refused = self._open_natives(requested, admit=admit)
             items = [self._refusal(0, kind, refused[kind]) for kind in requested if kind in refused]
             if requested and self.browser_lost and not any(kind in self.native_taps for kind in requested):
@@ -823,7 +834,7 @@ class BrowserCapture:
         retired = 0
         for track in self.streams.tracks.values():
             if (
-                track.kind not in ("microphone", "local")
+                track.kind != "microphone"
                 and track.document is None
                 and not track.ended
                 and not track.dormant
@@ -876,6 +887,10 @@ class BrowserCapture:
                 retired += 1
             if retired:
                 self._sync_spectrogram()
+                if not self.native_me and not any(
+                    t.kind == "local" and t.recorded is not None and not t.ended for t in self.streams.tracks.values()
+                ):
+                    self.levels[0] = 0.0
             return retired
 
     def resume(self, message):
@@ -1083,12 +1098,18 @@ class BrowserCapture:
                 if restore and (not self.browser_lost or not self.browser_ready):
                     return self.snapshot()
                 lost = False if restore else self.browser_lost or fallback is not None
-                desired = {kind for kind, enabled in (("microphone", me), ("system", others and lost)) if enabled}
+                desired = {
+                    kind
+                    for kind, enabled in (("microphone", me and self.native_me), ("system", others and lost))
+                    if enabled
+                }
                 retrying = desired & self.refused_sides - self.native_taps.keys() if retry else set()
                 if (me, others, lost) == (self.me, self.others, self.browser_lost) and not retrying:
                     return self.snapshot()
                 kinds = (desired - self.native_taps.keys() - self.refused_sides) | retrying
-                if not (kinds or desired & self.native_taps.keys() or others and not lost):
+                if not (
+                    kinds or desired & self.native_taps.keys() or (others or (me and not self.native_me)) and not lost
+                ):
                     # Every side this change keeps was refused at start. Recording
                     # nothing is never committed: the change asks for them again,
                     # as a turn-on, and fails like one if they still refuse.
@@ -1149,6 +1170,8 @@ class BrowserCapture:
                         self.browser_lost_since = time.monotonic()
                         self.loss_serial += 1
                     self.me, self.others, self.browser_lost = me, others, lost
+                    if not self.native_me and (not me or lost):
+                        self.levels[0] = 0.0
                     if not lost:
                         self.browser_lost_since = None
                     retiring = {}
@@ -1288,9 +1311,17 @@ class BrowserCapture:
                     return self.host.refuse_source(message, ProtocolError("state", "No active recording"), record=False)
                 raise ProtocolError("state", "No active recording")
             self.streams.picture = None
+            self.streams.local_level = None
             result = self.host.handle(message)
             if message.get("type") == "audio" and result.get("type") == "ack":
                 self.audio_connected = True
+            if not self.native_me:
+                if self.streams.local_level is not None:
+                    self.levels[0] = self.streams.local_level if self.me and not self.browser_lost else 0.0
+                elif message.get("type") == "trackEnd" and not any(
+                    t.kind == "local" and t.recorded is not None and not t.ended for t in self.streams.tracks.values()
+                ):
+                    self.levels[0] = 0.0
             picture, self.streams.picture = self.streams.picture, None
             if message.get("type") in ("track", "trackEnd") or (
                 picture is not None and picture["identifier"] not in self.spectrogram.known

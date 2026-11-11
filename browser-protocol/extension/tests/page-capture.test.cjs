@@ -214,3 +214,21 @@ test('closed connection with stale connected ICE stops capture and cannot return
  f.peer.connectionState='connected';f.peer.signalingState='stable';remote.packets=20;await f.tick();await f.scan();
  assert.equal(f.captures.length,1,'terminal peer cannot open a replacement span');
 }));
+
+test('display-share audio senders and previews are excluded while call microphone senders record as local',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const [display]=(await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true})).getAudioTracks();
+ const preExistingDisplay=new f.Track({id:'pre-display',label:'Shared screen',kind:'audio',readyState:'live',
+  enabled:true,muted:false,getSettings:()=>({displaySurface:'monitor'})});
+ f.render(display);
+ f.render(preExistingDisplay);
+ f.peer.senders=[
+  {track:mic,getParameters:()=>({encodings:[]})},
+  {track:display.clone(),getParameters:()=>({encodings:[]})},
+  {track:preExistingDisplay,getParameters:()=>({encodings:[]})}
+ ];
+ await f.start('local-only',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,1);
+ assert.equal(f.captures[0].kind,'local');
+ assert.equal(f.captures[0].label,'local: Headset Microphone');
+}));

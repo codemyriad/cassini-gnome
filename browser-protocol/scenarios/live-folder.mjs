@@ -196,12 +196,13 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       assert.equal(tabs.length, 1, `setup: exactly one tab shows the meeting ${meeting.url()}, found ${JSON.stringify(tabs)}`);
       const [meetingTab] = tabs;
       notes.meetingTab = meetingTab;
-      // 0. Setup: three recvonly slots on one peer. A sends from the start, B is pre-negotiated
-      // and sends later, C stays connected and never gets a track. The page plays the call, as
-      // a meeting page does, so A's receiver plays out about 50 ms behind the sender; an
-      // unplayed receiver buffers until the capture pulls it and then lags by a second or
-      // more, which would carry A's tone past the mute's edge.
-      await connectReceiveSlots(meeting, remote, [[C.TONE_A_HZ], null, null], { play: true });
+      // 0. Setup: three recvonly slots and one sendonly local sender on one peer. A sends from
+      // the start, B is pre-negotiated and sends later, C stays connected and never gets a track,
+      // and the local sender carries nativeTones.microphone. The page plays the call, as a meeting
+      // page does, so A's receiver plays out about 50 ms behind the sender; an unplayed receiver
+      // buffers until the capture pulls it and then lags by a second or more, which would carry A's
+      // tone past the mute's edge.
+      await connectReceiveSlots(meeting, remote, [[C.TONE_A_HZ], null, null], { play: true, localTone: app.nativeTones.microphone });
       await poll(async () => { const value = await row(); return value?.sourceCount === 3 && value.heard === true; },
         'setup: the app lists the call with sourceCount 3 and heard', bounds.setup, { pollMs });
       before = await app.folders();
@@ -298,7 +299,7 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       step('lateRemote', requested, now());
       notes.keyB = keyB;
 
-      // 6. Me on at MIC_ON_MS. The microphone span starts at the me:true selection's atMs
+      // 6. Me on at MIC_ON_MS. The local sender span starts at the me:true selection's atMs
       // (a late first buffer is a prefix gap, inside the span), so wait for that span.
       await untilS(C.MIC_ON_MS, 'meOn');
       requested = now();
@@ -306,9 +307,9 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       await clock.waitFolder(manifest => {
         const on = eventsOf(manifest, 'selection').at(-1);
         if (on?.me !== true || !Number.isFinite(on.atMs)) return false;
-        return tracksOf(manifest, track => track.kind === 'microphone')
+        return tracksOf(manifest, track => track.kind === 'local')
           .some(t => extent(t) && extent(t)[0] >= on.atMs - 1 && lengthMs(t) >= C.PROOF_MS);
-      }, `meOn: selection me:true and a microphone span from it with ${C.PROOF_MS} ms`, bounds.meOn);
+      }, `meOn: selection me:true and a local span from it with ${C.PROOF_MS} ms`, bounds.meOn);
       step('meOn', requested, now());
 
       // 7. Forced resume: SIGKILL the session's one audio host. The app commits its fallback
@@ -320,6 +321,7 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       assert.equal(pids.length, 1, `kill: exactly one live audio host, found ${JSON.stringify(pids)}`);
       const folderCount = (await app.folders()).length;
       const spansBefore = new Set(remoteTracks(clock.manifest).map(t => t.id));
+      const localSpansBefore = new Set(tracksOf(clock.manifest, track => track.kind === 'local').map(t => t.id));
       const othersAtKill = others(clock.manifest).length;
       notes.killedPid = pids[0];
       requested = now();
@@ -337,8 +339,10 @@ export async function runLiveFolder({ meeting, remote, app, worker, out, log = c
       await clock.waitFolder(manifest => {
         const restored = others(manifest).some(e => e.source === 'browser' && e.reason === 'restored' && e.atMs >= lost.atMs);
         const fresh = key => remoteTracks(manifest).some(t => t.sourceTrackId === key && !spansBefore.has(t.id) && lengthMs(t) >= C.PROOF_MS);
-        return restored && fresh(keyA) && fresh(keyB);
-      }, `restore: browser/restored and new spans under A and B with ${C.PROOF_MS} ms each`, bounds.restore);
+        const freshLocal = tracksOf(manifest, track => track.kind === 'local')
+          .some(t => !localSpansBefore.has(t.id) && lengthMs(t) >= C.PROOF_MS);
+        return restored && fresh(keyA) && fresh(keyB) && freshLocal;
+      }, `restore: browser/restored and new spans under A, B and local with ${C.PROOF_MS} ms each`, bounds.restore);
       step('restore', requested, now());
       await pipe('restore');
       assert.equal((await app.folders()).length, folderCount, 'restore: the resume made another Recording-* folder');

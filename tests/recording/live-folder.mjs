@@ -31,7 +31,7 @@ const profile = await mkdtemp(path.join(os.tmpdir(), 'cassini-live-folder-'));
 const fixture = await readFile(path.join(root, 'tests/recording/fixture.html'));
 const server = createServer((_req, res) => {res.setHeader('Content-Type', 'text/html'); res.end(fixture);});
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const TITLE = 'Shared live folder meeting', MICROPHONE_HZ = 660;
+const TITLE = 'Shared live folder meeting', MICROPHONE_HZ = 660, UNUSED_OS_MIC_HZ = 440;
 const evidence = {console: [], log: []}, pending = [];
 let context, remoteBrowser, ui, microphone, broker, controlHost, registered = {}, cleaning = null;
 const log = line => {evidence.log.push(line); console.log(line);};
@@ -206,7 +206,7 @@ try {
  createInterface({input: ui.stdout}).on('line', line => {try {pending.shift()?.(JSON.parse(line));} catch {evidence.console.push(line);}});
  ui.on('exit', code => {evidence.uiExit = code;});
  await poll(async () => (await call()).status === 'Library', 'GNOME Library window', 30000);
- microphone = spawn('/usr/bin/python3', ['-c', `import gi,signal\ngi.require_version('Gst','1.0')\nfrom gi.repository import Gst,GLib\nGst.init(None)\np=Gst.parse_launch('audiotestsrc is-live=true freq=${MICROPHONE_HZ} volume=0.2 ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=1 ! pulsesink device=cassini_microphone sync=false')\nloop=GLib.MainLoop()\nsignal.signal(signal.SIGTERM,lambda *_:loop.quit())\np.set_state(Gst.State.PLAYING)\ntry: loop.run()\nfinally:p.set_state(Gst.State.NULL)\n`], {stdio: ['ignore', 'ignore', 'pipe']});
+ microphone = spawn('/usr/bin/python3', ['-c', `import gi,signal\ngi.require_version('Gst','1.0')\nfrom gi.repository import Gst,GLib\nGst.init(None)\np=Gst.parse_launch('audiotestsrc is-live=true freq=${UNUSED_OS_MIC_HZ} volume=0.2 ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=1 ! pulsesink device=cassini_microphone sync=false')\nloop=GLib.MainLoop()\nsignal.signal(signal.SIGTERM,lambda *_:loop.quit())\np.set_state(Gst.State.PLAYING)\ntry: loop.run()\nfinally:p.set_state(Gst.State.NULL)\n`], {stdio: ['ignore', 'ignore', 'pipe']});
  microphone.stderr.pipe(createWriteStream(path.join(artifacts, 'microphone-producer.log')));
  const flags = ['--no-sandbox', '--ozone-platform=x11', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns'];
  context = await chromium.launchPersistentContext(profile, {channel: 'chromium', headless: false, ignoreDefaultArgs: ['--mute-audio'], args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...flags]});

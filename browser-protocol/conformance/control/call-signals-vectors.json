@@ -3856,7 +3856,7 @@
             "independent": true,
             "mode": "tracks",
             "callGeneration": "call-A",
-            "captureLocal": false,
+            "captureLocal": true,
             "microphone": false
           },
           {
@@ -3874,7 +3874,7 @@
             "independent": true,
             "mode": "tracks",
             "callGeneration": "call-A",
-            "captureLocal": false,
+            "captureLocal": true,
             "microphone": false
           }
         ],
@@ -3918,7 +3918,7 @@
             "independent": true,
             "mode": "tracks",
             "callGeneration": "call-A",
-            "captureLocal": false,
+            "captureLocal": true,
             "microphone": false
           },
           {
@@ -3936,7 +3936,7 @@
             "independent": true,
             "mode": "tracks",
             "callGeneration": "call-A",
-            "captureLocal": false,
+            "captureLocal": true,
             "microphone": false
           }
         ],

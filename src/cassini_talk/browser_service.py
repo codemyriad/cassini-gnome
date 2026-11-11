@@ -2333,7 +2333,7 @@ class BrowserService:
                 capture.stop(reason=reason, user_stopped=user and reason == "user")
             packet = dict(type="command", requestId=request_id, action=action, tabId=tab, mode="tracks")
             if independent:
-                packet.update(independent=True, captureLocal=False, microphone=microphone)
+                packet.update(independent=True, captureLocal=True, microphone=microphone)
                 if "multi-stream-v1" in browser.capabilities:
                     if action == "start" and pending.get("callGeneration") is not None:
                         packet["callGeneration"] = pending["callGeneration"]
@@ -3344,6 +3344,7 @@ class BrowserService:
                 session_clock=clock,
                 others_route=route,
                 admit=admit,
+                native_me=True,
             )
             with self.lock:
                 if self.signal_calls.capture_id == identifier:
@@ -3523,7 +3524,7 @@ class BrowserService:
             mode="tracks",
             tabId=int(raw_tab),
             independent=True,
-            captureLocal=False,
+            captureLocal=True,
             callGeneration=capture.call_generation,
             resumeCapture=dict(
                 captureId=key,

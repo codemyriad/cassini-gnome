@@ -169,7 +169,7 @@ GNOME owns page discovery, while background/relay and management transport are s
 
 ## Licence
 
-Copyright © 2026 Codemyriad and contributors.
+Copyright © 2026 Codemyriad OÜ and contributors.
 
 This repository (the protocol, the browser extension and the conformance files) is free software under the GNU General Public License, version 3 or later
 (`GPL-3.0-or-later`); see [LICENSE](LICENSE). Cassini for GNOME and Cassini for Mac, which vendor

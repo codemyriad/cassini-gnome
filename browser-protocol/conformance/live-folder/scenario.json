@@ -57,7 +57,7 @@
       "actions": "{name: {requestedAtMs, observedAtMs}} for every name in actions below; requestedAtMs <= observedAtMs",
       "slotC": "{connectionState, packetsReceived}: slot C's peer state and inbound-rtp packetsReceived sampled just before Stop",
       "maxSourceCount": "the highest meeting-row sourceCount seen",
-      "nativeTones": "{microphone: Hz}: the tone the app's test microphone plays",
+      "nativeTones": "{microphone: Hz}: the tone the call's local sender plays",
       "captureId": "the recording's captureId as the extension's service worker holds it (chrome.storage.session cassiniSessions[] entry of the meeting tab, read at record): the identity a resume must name",
       "timelineOriginMs": "that entry's startedAt, an integer: the origin of every time above and the other half of the recording's identity",
       "resumeRequests": "every resume request the app sent during the run, in pipe order, as resumeObservation below defines it: [{atMs, via, connection, requestId, captureId, timelineOriginMs, lostAtMs}]; [] when there was none"
@@ -86,9 +86,9 @@
       "mute": "requested: muteSlot(remote, 0) once F(A) >= MUTE_START_MS and the session clock (times above) >= MUTE_START_MS: F(A) may lead the session clock, so both; observed: replaceTrack(null) resolved",
       "unmute": "requested: switchReceiveSlot(remote, 0, [A]) once F(A) >= mute + MUTE_MS and the session clock >= mute + MUTE_MS (mute is mute.requestedAtMs); observed: F(A) advanced by PROOF_MS",
       "lateRemote": "requested: switchReceiveSlot(remote, 1, [B]) after unmute, at or after LATE_REMOTE_MS; observed: a new sourceTrackId with PROOF_MS of frames",
-      "meOn": "requested: selectMe(true) once S >= MIC_ON_MS; observed: selection me:true and a microphone span with PROOF_MS of frames",
+      "meOn": "requested: selectMe(true) once S >= MIC_ON_MS; observed: selection me:true and a local span with PROOF_MS of frames",
       "kill": "requested: SIGKILL of the one live audio-host pid once S >= KILL_AT_MS; observed: othersSource system/lost",
-      "restore": "requested: the kill's observation; observed: othersSource browser/restored and new span ids under A's and B's keys, each with PROOF_MS of frames",
+      "restore": "requested: the kill's observation; observed: othersSource browser/restored and new span ids under A's, B's and the local sender's keys, each with PROOF_MS of frames",
       "stop": "requested: stop() once S >= restore + STOP_AFTER_RESTORE_MS; observed: state is not recording and the end event is written"
     }
   }

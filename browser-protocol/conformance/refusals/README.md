@@ -14,7 +14,7 @@ path, session writer and Details reader.
 - `profile` is `fallback` (GNOME: a rejected browser Start falls back to computer sound) or
   `noFallback` (Mac). A case without `profile` applies to both and has the same result on both.
   Where the profiles differ, a case is split into two with explicit profiles (for example
-  `start-rejected-and-both-native-refused` and `start-rejected-and-mic-refused-without-fallback`).
+  `start-rejected-falls-back-to-computer-sound` and `start-rejected-without-fallback-records-nothing`).
 - `companion` is the browser connection state when the case starts, for example
   `failed/buildMissing`. Setup and connection states are never refusals; the oracle ignores it.
 - `request` is `{me, others: "system" | "browser" | false}`. Apps always start with both
@@ -56,7 +56,9 @@ with a `fail` step leave them out, because mid-call loss is platform-specific (P
 3. Browser refusals at start:
    - `startRejected` with detail `busy`: no fallback, on both profiles. Nothing opens.
    - Other `startRejected`: on `fallback`, The others come from `system` (othersSource
-     system/missing) and Me is kept. On `noFallback`, no side opens.
+     system/missing) while browser-captured Me stays unrecorded until the browser joins (never
+     opening the native OS microphone); if `others` is also refused, nothing opens. On
+     `noFallback`, no side opens.
    - `startFailed`: no side opens on either profile.
 4. A folder exists if and only if at least one side opens. Without a folder, `banner.id` is
    `errors.recordFailed.line` and `banner.refusals` lists the refusals in step order. With a

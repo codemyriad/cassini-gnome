@@ -141,9 +141,7 @@ for (const delta of values) assert.ok(delta<300);
 @pytest.mark.parametrize(
     "path,kind,needle",
     [
-        ("browser-extension/tests/background-lifecycle.test.cjs", "temporal-assertion", "Date.now()-started>=250"),
         ("browser-protocol/tests/capture-real-time.mjs", "temporal-assertion", "rate >= MIN_RATE"),
-        ("browser-protocol/tests/rtc-evidence-observations.mjs", "temporal-assertion", "withdrawalMs<=5000"),
         ("browser-protocol/tests/live-folder-driver.test.mjs", "temporal-assertion", "Date.now() - started < BOUND"),
         ("tests/recording/browser.mjs", "temporal-assertion", "measure.error"),
         ("tests/recording/browser.mjs", "temporal-assertion", "wallMutePosition)<.4"),
@@ -159,7 +157,7 @@ def test_review_examples_are_present_in_real_repository(path, kind, needle):
 
 
 def test_historical_accessibility_deadline_remains_detectable_after_d88_conversion():
-    # Preserve the review example without requiring the live test to retain it.
+    # Preserve the review examples without requiring the live tests to retain them.
     source = """def wait_event():
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
@@ -169,6 +167,16 @@ def test_historical_accessibility_deadline_remains_detectable_after_d88_conversi
 """
     rows = inventory.scan_text("tests/ui/accessible-buttons.py", source)
     assert any(row[2] == "clock-condition" and "remaining <= 0" in row[5] for row in rows)
+    cjs_rows = inventory.scan_text(
+        "browser-extension/tests/background-lifecycle.test.cjs",
+        "const started=Date.now(); assert.ok(Date.now()-started>=250);\n",
+    )
+    assert any(row[2] == "temporal-assertion" and "Date.now()-started>=250" in row[5] for row in cjs_rows)
+    mjs_rows = inventory.scan_text(
+        "browser-protocol/tests/rtc-evidence-observations.mjs",
+        "const stoppedAt=Date.now(); const withdrawalMs=Date.now()-stoppedAt; assert.ok(withdrawalMs<=5000);\n",
+    )
+    assert any(row[2] == "temporal-assertion" and "withdrawalMs<=5000" in row[5] for row in mjs_rows)
 
 
 def test_plain_numeric_checks_do_not_become_timing_assertions():

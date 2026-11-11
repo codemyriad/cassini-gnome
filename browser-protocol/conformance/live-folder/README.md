@@ -156,7 +156,7 @@ O3.resumeOnce too: the host asked. Any other `delivered` value makes the evidenc
 | O0.offsets | every start is known and `endOffsetMs = startOffsetMs + frames/rate × 1000` (±0.001 ms); strict: a SPEC-legal track with no start fails it here, and every rule but O4.outcomeRows leaves it out |
 | O0.oneFolder | evidence `newFolders` is exactly this folder, named `Recording-<UUID>` where that UUID equals session.json's `id` as a value: both canonical 8-4-4-4-12 hex, in either case (Mac names the folder lowercase, its id is uppercase); a malformed one fails |
 | O0.unique | no track id repeats, and no WAV belongs to two tracks or twice to one (SPEC S-6: each span its own id and WAV); stdlib, so it holds where O0.schema is unavailable |
-| O0.kinds | track kinds ⊆ {remote, microphone, system} |
+| O0.kinds | track kinds ⊆ {remote, local, system} |
 | O0.state | `completed`, no problem, no problemKind (D68 item 5) |
 | O0.end | the last event is `end` with reason `user` |
 | O1.oneKey | exactly one B key |
@@ -176,24 +176,24 @@ O3.resumeOnce too: the host asked. Any other `delivered` value makes the evidenc
 | O3.lost | exactly one system/lost inside the kill bracket |
 | O3.restored | exactly one browser/restored after it, within RESUME_BOUND_MS of it and by restore.observed + SLACK |
 | O3.state | `state_at()` is system halfway between them, browser at restored and at the last frame |
-| O3.spans | A and B each have exactly one span starting before kill.requested and one starting after it (D68 items 1-2: one unbroken span, one resume) |
-| O3.lossAbsent | the last present instant (extents minus gaps) of A's and of B's pre-kill span is inside the kill bracket ± SLACK: the Others are absent over the loss, never zero-filled (SPEC S-6) |
-| O3.noOverlap | no two spans of one key overlap |
-| O3.labels | all spans of a key carry one label (no "(resumed)") |
-| O3.resumedStart | A and B each have a span starting after kill.requested, and every such span starts at or after lost |
-| O3.resumedTone | each of those carries its tone in its first PROOF_MS |
+| O3.spans | A and B each have exactly one span starting before kill.requested and one starting after it, and Me has at least one span before kill.requested and one after it (D68 items 1-2: one unbroken span, one resume) |
+| O3.lossAbsent | the last present instant (extents minus gaps) of A's, B's and Me's pre-kill spans is inside the kill bracket ± SLACK: browser tracks end at the loss, never zero-filled and never falling back Me to a raw OS microphone across the gap (SPEC S-6) |
+| O3.noOverlap | no two spans of one key (remote or local) overlap |
+| O3.labels | all spans of a key (remote or local) carry one label (no "(resumed)") |
+| O3.resumedStart | A, B and Me each have a span starting after kill.requested, and every such span starts at or after lost |
+| O3.resumedTone | each resumed remote span carries its tone in its first PROOF_MS |
 | O3.system | exactly one placed system track (a system track with no start is left out); it starts at lost (SPEC S-6) and ends within EDGE_MS of restored |
 | O3.refusals | no `startRejected` refusal and no `resumeRefused` detail |
 | O3.resumeOnce | the evidence shows at least one resume request, every one names this recording (its `captureId` and `timelineOriginMs` equal the evidence's), and no two come from the same control connection (D52.5: once per loss and control connection; the scenario has one loss) |
 | O3.resumeAt | at least one request names this recording; every such request carries a finite numeric `lostAtMs` exactly equal to the last system/lost before the first browser/restored, and its request `atMs` is at or before that restoration. R94 removes request-stamp vs placed-loss comparison, with no tolerance band. The remaining upper bound is a scenario-specific sanity check: restoration follows native resume/first PCM and output-time lead moves its placement later. Matching the loss reference does not independently prove durable-write ordering; host tests must prove commit-before-send. |
-| O4.keys | every remote track has a `sourceTrackId`, and there are exactly 2 |
-| O4.outcomeRows | exactly 2 `captureOutcome.sources` rows, one per key, each listing exactly that key's placed track ids, both `captured` (so no `neverAudio`); strict: a row that also lists a track with no start fails |
+| O4.keys | every browser wire track has a `sourceTrackId`, with 2 distinct remote keys and 1 local key |
+| O4.outcomeRows | exactly 3 `captureOutcome.sources` rows, one per browser source key, each listing exactly that key's placed track ids, all `captured` (so no `neverAudio`); strict: a row that also lists a track with no start fails |
 | O4.evidence | `maxSourceCount` 3, slot C `connected` with 0 packets received |
 | O5.selection | the last selection is me:true others:true reason user at M ≥ MIC_ON_MS inside the meOn bracket; the one before has me:false (a user one inside the meOff bracket) |
-| O5.micOff | no microphone extent starting before M intersects (meOff + SLACK, M) |
-| O5.micOn | one microphone span starts at M (SPEC S-6, D52.2: a late first buffer is a prefix gap) and lasts at least PROOF_MS |
-| O5.micAudio | that span has ≥ 32 non-zero 32 ms frames (D56) and the evidence's microphone tone above SILENT_DBFS in [M, M + PROOF_MS] |
-| O6.clockMethod | every remote span has `clockMethod` outputTimestamp or roundTrip (D61) |
+| O5.micOff | no Me extent starting before M intersects (meOff + SLACK, M) |
+| O5.micOn | one Me span starts at M (SPEC S-6, D52.2: a late first buffer is a prefix gap) and lasts at least PROOF_MS |
+| O5.micAudio | that span has ≥ 32 non-zero 32 ms frames (D56) and both it and any resumed Me span after M carry the evidence's microphone tone above SILENT_DBFS in their first PROOF_MS |
+| O6.clockMethod | every browser wire span (remote and local) has `clockMethod` outputTimestamp or roundTrip (D61) |
 | O6.lastFrame | the last frame's end is inside the stop bracket ± SLACK |
 | O7.late | B's first span starts at or after LATE_REMOTE_MS (corpus R1) |
 | O7.spanRatio | A's longest span ≥ SPAN_RATIO_MIN × its shortest (R3) |
@@ -204,17 +204,18 @@ the span's presence density is 100% and only its audible density is sparse.
 
 ## The synthetic run
 
-8 kHz; remote and system tracks stereo, microphone mono. Times in session ms.
+8 kHz; remote and system tracks stereo, local Me sender mono. Times in session ms.
 
 | track | key | start | end | content |
 |---|---|---|---|---|
 | span-a1 | A | 251.0625 | 95350.0625 | tone A, zeros 5450.0625–66250.0625 (the mute), tone A |
-| microphone-1 | | 0 | 2100 | 660 Hz |
+| span-l1 | L | 251.0625 | 2100.0625 | 660 Hz |
 | span-b1 | B | 68637.25 | 95350 | tone B |
-| microphone-2 | | 90250 | 109625 | 50 ms prefix gap, then 660 Hz |
+| span-l2 | L | 90250 | 95350 | 50 ms prefix gap, then 660 Hz |
 | system-1 | | 95912.5 | 99500 | tone A + tone B (the tab's mix) |
 | span-a2 | A | 99300.5 | 109625 | tone A (starts before restored, after lost) |
 | span-b2 | B | 99310.125 | 109625 | tone B |
+| span-l3 | L | 99500 | 109625 | 660 Hz (resumed local sender) |
 
 Events: browser/start and selection start at 0, me off at 2100, me on at 90250,
 system/lost at 95912.5, browser/restored at 99500, end/user at 109625. Brackets:
@@ -240,15 +241,16 @@ that always passes turns the self-test red. Without jsonschema (macOS
 | silent-remote | a third, silent remote track (and its row) | O4.keys, O4.outcomeRows |
 | never-audio-row | a `neverAudio` row for slot C | O4.outcomeRows |
 | selection-at-60s | the me:true selection at 60 s | O5.selection, O5.micOn, O5.micAudio |
-| mic-from-zero | one microphone track from 0 to the end | O5.micOff, O5.micOn, O5.micAudio |
+| mic-from-zero | one local Me track from record to the kill | O5.micOff, O5.micOn, O5.micAudio |
+| me-across-loss | Me span continues across the browser loss to Stop with no resumed span | O3.spans, O3.lossAbsent, O3.resumedStart |
 | overlap-same-key | A's resumed span starts inside its first | O3.noOverlap, O3.spans, O3.lossAbsent, O3.resumedStart, O3.resumedTone |
 | resumed-new-key | A's resumed span under a new key (and row) | O3.spans, O3.resumedStart, O3.resumedTone, O4.keys, O4.outcomeRows, O7.spanRatio |
 | resumed-label | "(resumed)" in A's resumed label | O3.labels |
 | end-before-track | `end.atMs` before a track's end | O0.bounds |
 | no-clock-method | B's first span without `clockMethod` | O6.clockMethod |
-| short-wav | microphone-1's WAV 100 ms shorter than its frames | O0.files |
-| wrong-end-offset | microphone-1's endOffsetMs 5 ms late | O0.offsets |
-| local-kind | microphone-1 written as kind `local` | O0.kinds |
+| short-wav | span-l1's WAV 100 ms shorter than its frames | O0.files |
+| wrong-end-offset | span-l1's endOffsetMs 5 ms late | O0.offsets |
+| microphone-kind | span-l1 written as native kind `microphone` | O0.kinds |
 | duplicate-track-id | A's resumed span reuses id span-a1 (own WAV) | O0.unique, O0.schema |
 | interrupted | state interrupted, problemKind gap | O0.state |
 | open-track | span-b2 `ended: false` | O0.ended |
@@ -263,7 +265,7 @@ that always passes turns the self-test red. Without jsonschema (macOS
 | split-after-unmute | A split at 70 s, after the mute | O3.spans |
 | system-before-lost | the system track starts 900 ms before lost | O3.system |
 | system-never-ends | the system track runs on to Stop | O3.system |
-| mic-late-no-prefix | microphone-2 starts 400 ms after M, no prefix gap | O5.micOn, O5.micAudio |
+| mic-late-no-prefix | span-l2 starts 400 ms after M, no prefix gap | O5.micOn, O5.micAudio |
 | short-mute | the mute held 50.74 s (unmute asked at 56050), A's tone back as early | O2.duration |
 | early-mute | the mute asked at 2810, before F(A) can reach MUTE_START_MS, held a full MUTE_MS | O2.muteStart |
 | no-resume | no resume request on the pipe (the folder still shows the restore) | O3.resumeOnce, O3.resumeAt |
@@ -282,9 +284,9 @@ equal to the base.
 
 | variant | form |
 |---|---|
-| fractional-mic | M = 90250.02 (wall clock), microphone-2 starts there: its D55 placement is 90250.0, below M |
+| fractional-mic | M = 90250.02 (wall clock), span-l2 starts there: its D55 placement is 90250.0, below M |
 | mac-loss-form | none/lost at 95400 (the transport loss), then system/lost when the fallback commits |
-| rotated-wavs | GNOME's RotatingWAV form: span-a1 in three WAVs (cut at 30000.0625 in the mute and at 70000.0625), span-b1 and microphone-2 in two |
+| rotated-wavs | GNOME's RotatingWAV form: span-a1 in three WAVs (cut at 30000.0625 in the mute and at 70000.0625), span-b1 and span-l2 in two |
 | folder-leads | A's stamps 20 ms ahead of the session clock (D61 output time) and the driver's waits ending on the session clock: mute asked at exactly 5000, unmute at exactly 65000 |
 | uuid-case | Mac's naming: id `9F3B2A1C-7D4E-4A5B-8C6D-0E1F2A3B4C5D` in session.json, folder `Recording-9f3b2a1c-7d4e-4a5b-8c6d-0e1f2a3b4c5d` |
 

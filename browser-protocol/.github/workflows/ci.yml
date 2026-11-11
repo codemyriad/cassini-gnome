@@ -112,7 +112,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      PROJECT_NAME: cassini-extension-nextcloud
+      PROJECT_NAME: cassini-extension-nextcloud-${{ github.run_id }}-${{ github.run_attempt }}
       CASSINI_COMPAT_FIXTURE: '1'
     steps:
       - uses: actions/checkout@v5
@@ -131,16 +131,51 @@ jobs:
         with:
           go-version-file: talk-harness/cassini-go-recorder/go.mod
           cache-dependency-path: talk-harness/cassini-go-recorder/go.sum
+      - name: Prepare the locked Talk app cache
+        id: talk-apps
+        run: |
+          set -euo pipefail
+          python3 talk-harness/scripts/nextcloud_compatibility.py prepare --baseline nc34 --out "$RUNNER_TEMP/nextcloud-lock"
+          key=$(python3 protocol/tests/locked_app_cache.py key --stack "$RUNNER_TEMP/nextcloud-lock/stack.json")
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      - name: Restore checksum-addressed Talk archives
+        id: talk-app-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/locked-talk-apps
+          key: locked-talk-apps-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.talk-apps.outputs.key }}
+      - name: Verify or fetch the locked archives before starting Docker
+        run: |
+          python3 protocol/tests/locked_app_cache.py populate \
+            --stack "$RUNNER_TEMP/nextcloud-lock/stack.json" --cache "$RUNNER_TEMP/locked-talk-apps" \
+            --report protocol/artifacts/nextcloud-app-cache.json
+          # Record the verified warm-cache cost without making another request.
+          python3 protocol/tests/locked_app_cache.py populate --offline \
+            --stack "$RUNNER_TEMP/nextcloud-lock/stack.json" --cache "$RUNNER_TEMP/locked-talk-apps" \
+            --report protocol/artifacts/nextcloud-app-cache-offline.json
+      - name: Save verified Talk archives
+        if: steps.talk-app-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/locked-talk-apps
+          key: locked-talk-apps-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.talk-apps.outputs.key }}
+      - name: Wire the pinned harness to the verified archive cache
+        run: |
+          git -C talk-harness apply --check "$GITHUB_WORKSPACE/protocol/tests/nextcloud-app-cache.patch"
+          git -C talk-harness apply "$GITHUB_WORKSPACE/protocol/tests/nextcloud-app-cache.patch"
       - name: Install the browser
         working-directory: protocol
         run: |
           npm ci
           npx playwright install --with-deps chromium
       - name: Start a locked Nextcloud 34 and Talk 24 stack
+        id: talk-stack
+        env:
+          CASSINI_COMPAT_APP_CACHE: ${{ runner.temp }}/locked-talk-apps
         run: |
           set -euo pipefail
-          python3 talk-harness/scripts/nextcloud_compatibility.py prepare --baseline nc34 --out "$RUNNER_TEMP/nextcloud-lock"
           source "$RUNNER_TEMP/nextcloud-lock/env.sh"
+          echo "started=true" >> "$GITHUB_OUTPUT"
           timeout 900 talk-harness/bin/cassini dev stack up --services full --recording-backend none --cassini none --debug-skip-storage-scaffold --reset
           # Cassini mode none skips AppAPI setup; verify/enable its locked bundled bytes
           # explicitly so the stack observation validates every locked app.
@@ -172,7 +207,7 @@ jobs:
           name: nextcloud-talk-evidence
           path: protocol/artifacts/
       - name: Stop only this disposable Talk stack
-        if: always()
+        if: always() && steps.talk-stack.outputs.started == 'true'
         run: |
           if [ -f "$RUNNER_TEMP/nextcloud-lock/env.sh" ]; then
             source "$RUNNER_TEMP/nextcloud-lock/env.sh"

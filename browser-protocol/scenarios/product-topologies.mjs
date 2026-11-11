@@ -4,8 +4,8 @@
 // play: once connected, the page plays every receive slot through its own <audio> element,
 // as meeting pages do. Nothing pulls an unplayed receiver: its jitter buffer fills until a
 // capture starts, which then runs a second or more behind the sender.
-export async function connectReceiveSlots(local, remote, frequencies, { prejoin = false, play = false } = {}) {
-  const offer = await local.evaluate(async ({ count, prejoin }) => {
+export async function connectReceiveSlots(local, remote, frequencies, { prejoin = false, play = false, localTone = null } = {}) {
+  const offer = await local.evaluate(async ({ count, prejoin, localTone }) => {
     const peer = new RTCPeerConnection();
     for (let i = 0; i < count; i++) peer.addTransceiver('audio', { direction: 'recvonly' });
     if (prejoin) {
@@ -15,13 +15,21 @@ export async function connectReceiveSlots(local, remote, frequencies, { prejoin 
       peer.addTransceiver(destination.stream.getAudioTracks()[0], { direction: 'sendonly' });
       window.topologyPreview = { audio, oscillator, destination };
     }
+    if (typeof localTone === 'number') {
+      const audio = new AudioContext({ sampleRate: 48000 }), oscillator = audio.createOscillator(), gain = audio.createGain();
+      const destination = audio.createMediaStreamDestination();
+      oscillator.frequency.value = localTone; gain.gain.value = 0.25;
+      oscillator.connect(gain).connect(destination); oscillator.start(); await audio.resume();
+      peer.addTransceiver(destination.stream.getAudioTracks()[0], { direction: 'sendonly' });
+      window.topologyLocal = { audio, oscillator, gain, destination };
+    }
     window.topologyPeer = peer;
     await peer.setLocalDescription(await peer.createOffer());
     if (peer.iceGatheringState !== 'complete') await new Promise(resolve => peer.addEventListener('icegatheringstatechange', () => {
       if (peer.iceGatheringState === 'complete') resolve();
     }));
     return peer.localDescription.toJSON();
-  }, { count: frequencies.length, prejoin });
+  }, { count: frequencies.length, prejoin, localTone });
   const answer = await remote.evaluate(async ({ offer, frequencies, prejoin }) => {
     const peer = new RTCPeerConnection(), audio = new AudioContext({ sampleRate: 48000 });
     const retained = [];

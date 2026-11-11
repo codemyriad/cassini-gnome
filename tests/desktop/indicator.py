@@ -419,9 +419,31 @@ def browser_only(appid, microphone):
                 title="D41.1 browser-only privacy measurement",
             )
         )
+        if microphone:
+            proxy.handle(
+                dict(
+                    type="track",
+                    id="local",
+                    label="Microphone",
+                    kind="local",
+                    sourceTrackId="doc-1:source:0",
+                    sampleRate=48000,
+                    channels=1,
+                )
+            )
         proxy.handle(dict(type="track", id="remote", label="Other", kind="remote", sampleRate=48000, channels=1))
         tone = b"".join(struct.pack("<h", round(6000 * math.sin(2 * math.pi * 440 * i / 48000))) for i in range(48000))
         for sequence in range(3):
+            if microphone:
+                proxy.handle(
+                    dict(
+                        type="audio",
+                        id="local",
+                        sequence=sequence,
+                        offsetMs=1000 * sequence,
+                        pcm=base64.b64encode(tone).decode(),
+                    )
+                )
             proxy.handle(
                 dict(
                     type="audio",
@@ -435,7 +457,7 @@ def browser_only(appid, microphone):
             lambda: indicator(appid) if (indicator(appid) or {}).get("title", "").startswith("Recording,") else None,
             "browser-only recording in the SNI",
         )
-        expected = ["mic"] if microphone else []
+        expected = []
         measured = measured_privacy(expected)
         name = "browser-mic" if microphone else "browser-others"
         screenshot("privacy-" + name + "-" + appid + ".png")

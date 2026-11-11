@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Actual writer fences across address/generation boundaries, without devices."""
 
+import base64
 import struct
 import time
 from concurrent.futures import Future
@@ -31,10 +32,11 @@ class HeldWorkers:
                 raise
 
 
+@pytest.mark.parametrize("native_me", [False, True], ids=["browser-me", "native-me"])
 @pytest.mark.parametrize("same_address", [False, True])
 @pytest.mark.parametrize("stop_lag_ms", [0, 500], ids=["immediate-stop", "delayed-stop"])
 def test_call_boundary_fences_pcm_before_worker_then_late_A_cannot_mutate_B(
-    tmp_path, monkeypatch, same_address, stop_lag_ms
+    tmp_path, monkeypatch, native_me, same_address, stop_lag_ms
 ):
     broker = BrowserService(tmp_path / "settings.json", notifier=lambda *_: None)
     broker.workers.shutdown()
@@ -57,7 +59,8 @@ def test_call_boundary_fences_pcm_before_worker_then_late_A_cannot_mutate_B(
                 timelineOriginMs=int(time.time() * 1000),
                 microphone=True,
                 features=["source-outcomes-v1"],
-            )
+            ),
+            native_me=native_me,
         )
         broker.captures[identifier] = capture
         peer.states[2] = dict(tabId=2, recording=True, captureId=identifier, pageState="present")
@@ -86,17 +89,52 @@ def test_call_boundary_fences_pcm_before_worker_then_late_A_cannot_mutate_B(
 
     try:
         a = start("A", "generation-A")
+        if not native_me:
+            assert a.microphone is None
+            assert a.handle(
+                dict(
+                    type="track",
+                    id="me",
+                    label="Microphone",
+                    kind="local",
+                    sourceTrackId="doc-1:source:0",
+                    sampleRate=48000,
+                    channels=1,
+                )
+            ) == dict(type="ack")
+            assert a.handle(
+                dict(
+                    type="audio",
+                    id="me",
+                    sequence=0,
+                    offsetMs=0,
+                    pcm=base64.b64encode(struct.pack("<hhhh", 111, 111, 111, 111)).decode(),
+                )
+            ) == dict(type="ack")
         # Exercise both prompt and delayed Stop admission without waiting on IO.
         boundary_ms = a.elapsed_ms() + stop_lag_ms
         monkeypatch.setattr(a, "elapsed_ms", lambda: boundary_ms)
         inventory(address_a, "generation-A")
-        mic = next(t for t in a.host.session.manifest["tracks"] if t["kind"] == "microphone")
+        expected_kind = "microphone" if native_me else "local"
+        mic = next(t for t in a.host.session.manifest["tracks"] if t["kind"] == expected_kind)
         before = mic["frames"]
         inventory(address_b, "generation-B")
         assert a.stop_requested.is_set() and not a.finished
         # 200 ms can still be queued pre-Stop PCM on a slow CI filesystem.
         # This packet belongs after the actual boundary under test (R93-2).
-        a.microphone.append(struct.pack("<hhhh", 777, 777, 777, 777), a.stop_at_ms + 1)
+        if native_me:
+            a.microphone.append(struct.pack("<hhhh", 777, 777, 777, 777), a.stop_at_ms + 1)
+        else:
+            late_pcm = a.handle(
+                dict(
+                    type="audio",
+                    id="me",
+                    sequence=1,
+                    offsetMs=a.stop_at_ms + 1,
+                    pcm=base64.b64encode(struct.pack("<hhhh", 777, 777, 777, 777)).decode(),
+                )
+            )
+            assert (late_pcm["type"], late_pcm["code"]) == ("error", "state")
         assert mic["frames"] == before, "B microphone PCM entered A before the finalizer ran"
         reply = a.handle(dict(type="sources", discoveredSources=[dict(sourceTrackId="late", kind="remote")]))
         assert (reply["type"], reply["code"]) == ("error", "state")
@@ -123,9 +161,34 @@ def test_call_boundary_fences_pcm_before_worker_then_late_A_cannot_mutate_B(
         for recording in (True, False):
             broker.update(peer, dict(type="status", recording=recording, tabId=2, captureId="A", pageState="closed"))
             assert peer.states[2]["captureId"] == "B" and peer.page_states[2] == "present"
-        mic_b = next(t for t in b.host.session.manifest["tracks"] if t["kind"] == "microphone")
-        before_b = mic_b["frames"]
-        b.microphone.append(struct.pack("<hhhh", 888, 888, 888, 888), b.elapsed_ms() + 1)
+        if native_me:
+            mic_b = next(t for t in b.host.session.manifest["tracks"] if t["kind"] == "microphone")
+            before_b = mic_b["frames"]
+            b.microphone.append(struct.pack("<hhhh", 888, 888, 888, 888), b.elapsed_ms() + 1)
+        else:
+            assert b.microphone is None
+            assert b.handle(
+                dict(
+                    type="track",
+                    id="me-b",
+                    label="Microphone",
+                    kind="local",
+                    sourceTrackId="doc-2:source:0",
+                    sampleRate=48000,
+                    channels=1,
+                )
+            ) == dict(type="ack")
+            mic_b = next(t for t in b.host.session.manifest["tracks"] if t["kind"] == "local")
+            before_b = mic_b["frames"]
+            assert b.handle(
+                dict(
+                    type="audio",
+                    id="me-b",
+                    sequence=0,
+                    offsetMs=b.elapsed_ms() + 1,
+                    pcm=base64.b64encode(struct.pack("<hhhh", 888, 888, 888, 888)).decode(),
+                )
+            ) == dict(type="ack")
         assert mic_b["frames"] > before_b
         assert mic["frames"] == before
     finally:

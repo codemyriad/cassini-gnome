@@ -164,7 +164,6 @@
    "expected": {
     "folder": true,
     "opened": [
-     "me",
      "others"
     ],
     "selection": [
@@ -213,7 +212,6 @@
    "expected": {
     "folder": true,
     "opened": [
-     "me",
      "others"
     ],
     "selection": [
@@ -479,7 +477,7 @@
    }
   },
   {
-   "name": "start-rejected-then-mic-refused",
+   "name": "start-rejected-and-system-refused",
    "profile": "fallback",
    "request": {
     "me": true,
@@ -493,73 +491,6 @@
      "code": "startRejected",
      "detail": "pageUnreachable",
      "message": "Cassini cannot reach this page yet. Reload the meeting tab, then try again."
-    },
-    {
-     "op": "refuse",
-     "atMs": 0,
-     "side": "me",
-     "code": "deviceUnavailable",
-     "message": "gst-resource-error-quark:3: pulsesrc0: Could not open audio device for recording. pulsesrc.c(1088): gst_pulsesrc_open"
-    },
-    {
-     "op": "stop",
-     "atMs": 30000
-    }
-   ],
-   "expected": {
-    "folder": true,
-    "opened": [
-     "others"
-    ],
-    "selection": [
-     {
-      "atMs": 0,
-      "me": true,
-      "others": true,
-      "reason": "start"
-     }
-    ],
-    "othersFrom": "system",
-    "state": "completed",
-    "problemKind": null,
-    "refusals": [
-     {
-      "atMs": 0,
-      "side": "browser",
-      "code": "startRejected",
-      "detail": "pageUnreachable",
-      "message": "Cassini cannot reach this page yet. Reload the meeting tab, then try again."
-     },
-     {
-      "atMs": 0,
-      "side": "me",
-      "code": "deviceUnavailable",
-      "message": "gst-resource-error-quark:3: pulsesrc0: Could not open audio device for recording. pulsesrc.c(1088): gst_pulsesrc_open"
-     }
-    ],
-    "banner": null
-   }
-  },
-  {
-   "name": "start-rejected-and-both-native-refused",
-   "profile": "fallback",
-   "request": {
-    "me": true,
-    "others": "browser"
-   },
-   "steps": [
-    {
-     "op": "refuse",
-     "atMs": 0,
-     "side": "browser",
-     "code": "startRejected",
-     "message": "Recording could not start."
-    },
-    {
-     "op": "refuse",
-     "atMs": 0,
-     "side": "me",
-     "code": "deviceUnavailable"
     },
     {
      "op": "refuse",
@@ -583,65 +514,13 @@
        "atMs": 0,
        "side": "browser",
        "code": "startRejected",
-       "message": "Recording could not start."
-      },
-      {
-       "atMs": 0,
-       "side": "me",
-       "code": "deviceUnavailable"
+       "detail": "pageUnreachable",
+       "message": "Cassini cannot reach this page yet. Reload the meeting tab, then try again."
       },
       {
        "atMs": 0,
        "side": "others",
        "code": "deviceUnavailable"
-      }
-     ]
-    }
-   }
-  },
-  {
-   "name": "start-rejected-and-mic-refused-without-fallback",
-   "profile": "noFallback",
-   "request": {
-    "me": true,
-    "others": "browser"
-   },
-   "steps": [
-    {
-     "op": "refuse",
-     "atMs": 0,
-     "side": "browser",
-     "code": "startRejected",
-     "message": "Recording could not start."
-    },
-    {
-     "op": "refuse",
-     "atMs": 0,
-     "side": "me",
-     "code": "permissionDenied"
-    }
-   ],
-   "expected": {
-    "folder": false,
-    "opened": [],
-    "selection": null,
-    "othersFrom": null,
-    "state": null,
-    "problemKind": null,
-    "refusals": null,
-    "banner": {
-     "id": "errors.recordFailed.line",
-     "refusals": [
-      {
-       "atMs": 0,
-       "side": "browser",
-       "code": "startRejected",
-       "message": "Recording could not start."
-      },
-      {
-       "atMs": 0,
-       "side": "me",
-       "code": "permissionDenied"
       }
      ]
     }

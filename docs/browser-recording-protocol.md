@@ -3,7 +3,12 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `85ce233`, ships companion 0.2.20 with the tab-scoped status popup
+The current pin, `0702aff`, ships companion 0.2.27 with browser-sourced `Me` capture on
+separated WebRTC calls (`captureLocal: true` on `start` and `resumeCapture`), `getDisplayMedia`
+display-share audio exclusion from `local` sender and `media` preview capture, and updated D68
+`live-folder` and D58 `conformance/refusals` vectors: separated WebRTC calls never open or fall
+back `Me` to a raw OS microphone, accepting `Me` gaps across page reloads rather than capturing
+unmuted hardware audio while muted in the meeting. Earlier pins include companion 0.2.20 (`85ce233`) with the tab-scoped status popup
 (#67/#68). It retains invalidated-relay recovery (#64), extension-owned health and loss-cause diagnostics
 (#65), and the English UTF-8 relay sample (#66). It also includes the committed
 Stop clock placement fix (#63). Native D69 writer adoption is merged in main;

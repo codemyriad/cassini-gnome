@@ -19,6 +19,7 @@
   }
   const peerGenerations = new WeakMap();
   const knownLocalTracks = new WeakSet();
+  const knownDisplayTracks = new WeakSet();
   const knownReceiverRoots = new WeakSet();
   const sourceRoots = new WeakMap();
   const sourceKeys = new WeakMap();
@@ -83,13 +84,37 @@
     if (participants.size !== 1 || names.size !== 1) return null;
     return {label:[...names.values().next().value].slice(0, 200).join(""), labelSource:"dom"};
   }
-  // Remember microphone origins before they become senders, including local previews.
+  // Remember microphone and display-share origins before they become senders or previews.
+  function isDisplayTrack(track) {
+    if (!track) return false;
+    const root = sourceRoot(track);
+    if (knownDisplayTracks.has(track) || knownDisplayTracks.has(root)) return true;
+    try {
+      for (const candidate of [track, root]) {
+        if (typeof candidate.getSettings === "function" && candidate.getSettings()?.displaySurface) {
+          knownDisplayTracks.add(track);
+          knownDisplayTracks.add(root);
+          return true;
+        }
+      }
+    } catch {}
+    return false;
+  }
   const devices = navigator.mediaDevices;
   if (devices?.getUserMedia) {
     const getUserMedia = devices.getUserMedia;
     devices.getUserMedia = function (...args) {
       return Reflect.apply(getUserMedia, this, args).then(stream => {
         stream.getAudioTracks().forEach(track => knownLocalTracks.add(track));
+        return stream;
+      });
+    };
+  }
+  if (devices?.getDisplayMedia) {
+    const getDisplayMedia = devices.getDisplayMedia;
+    devices.getDisplayMedia = function (...args) {
+      return Reflect.apply(getDisplayMedia, this, args).then(stream => {
+        stream.getAudioTracks().forEach(track => knownDisplayTracks.add(track));
         return stream;
       });
     };
@@ -101,6 +126,7 @@
       const track = Reflect.apply(clone, this, args);
       sourceRoots.set(track, sourceRoot(this));
       if (knownLocalTracks.has(sourceRoot(this))) knownLocalTracks.add(track);
+      if (knownDisplayTracks.has(sourceRoot(this))) knownDisplayTracks.add(track);
       return track;
     };
   }
@@ -353,6 +379,10 @@
                 }
               }
               for (const sender of getSenders(pc)) if (sender.track) {
+                if (isDisplayTrack(sender.track)) {
+                  roots.add(sourceRoot(sender.track));
+                  continue;
+                }
                 knownLocalTracks.add(sender.track);
                 knownLocalTracks.add(sourceRoot(sender.track));
                 if (message.captureLocal === false || peerGenerations.get(pc) !== callGeneration) continue;
@@ -363,15 +393,15 @@
             }
             // Preserve the same source across replaceTrack(null)/restore mute cycles.
             for (const [track, metadata] of state.localMetadata) {
-              if (track.readyState === "ended" || closed(metadata.pc) || (metadata.sender.track && metadata.sender.track !== track)) state.localMetadata.delete(track);
+              if (track.readyState === "ended" || isDisplayTrack(track) || closed(metadata.pc) || (metadata.sender.track && metadata.sender.track !== track)) state.localMetadata.delete(track);
               else if (!sources.has(track)) sources.set(track, metadata);
             }
             for (const track of sources.keys()) roots.add(sourceRoot(track));
             for (const media of document.querySelectorAll("audio,video")) {
               if (media.srcObject instanceof MediaStream) {
                 for (const track of media.srcObject.getAudioTracks()) {
-                  // A removed sender must not reappear as the page's raw microphone preview.
-                  if (!roots.has(sourceRoot(track)) && !knownReceiverRoots.has(sourceRoot(track)) && !knownLocalTracks.has(sourceRoot(track)) &&
+                  // A removed sender or display-share preview must not reappear as standalone page media.
+                  if (!roots.has(sourceRoot(track)) && !knownReceiverRoots.has(sourceRoot(track)) && !knownLocalTracks.has(sourceRoot(track)) && !isDisplayTrack(track) &&
                       (!trackGenerations.has(sourceRoot(track)) || trackGenerations.get(sourceRoot(track)) === callGeneration)) {
                     trackGenerations.set(sourceRoot(track), callGeneration);
                     sources.set(track, { kind: "media", root: sourceRoot(track) });

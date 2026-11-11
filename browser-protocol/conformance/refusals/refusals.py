@@ -81,7 +81,11 @@ def _start(case, profile):
     """Sides that open at 0, and where others come from."""
     request, steps = case['request'], case['steps']
     start = {s['side']: s for i, s in enumerate(steps) if s['op'] == 'refuse' and s['atMs'] == 0 and _turned_on(steps, i) is None}
-    requested = {'me'} | ({'others'} if request['others'] == 'system' else {'browser'} if request['others'] == 'browser' else set())
+    requested = (
+        {'browser'}
+        if request['others'] == 'browser'
+        else ({'me'} | ({'others'} if request['others'] == 'system' else set()))
+    )
     opened = requested - set(start)
     source = request['others'] or None
     browser = start.get('browser')
@@ -125,7 +129,13 @@ def replay(case, profile):
                     continue  # a refused turn-on leaves the selection unchanged
                 selected[side], changed = step[side], True
                 if step[side]:
-                    opened.add('me' if side == 'me' else 'others' if source == 'system' else 'browser')
+                    if side == 'me':
+                        if request['others'] != 'browser':
+                            opened.add('me')
+                        elif source == 'browser':
+                            opened.add('browser')
+                    else:
+                        opened.add('others' if source == 'system' else 'browser')
                 if side == 'others':
                     others_from = source if step[side] else None
             if changed:

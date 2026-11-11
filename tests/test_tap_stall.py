@@ -226,9 +226,9 @@ def start_capture(tmp_path, taps, *, microphone, others_source, features=()):
         message["features"] = list(features)
     if others_source == "system":
         capture.browser_lost = True
-        capture.start(message, others_source="system", reason="missing", session_clock=clock)
+        capture.start(message, others_source="system", reason="missing", session_clock=clock, native_me=True)
     else:
-        capture.start(message, session_clock=clock)
+        capture.start(message, session_clock=clock, native_me=True)
     return capture, clock
 
 
@@ -689,7 +689,7 @@ def test_each_broker_stop_path_fixes_the_stop_moment_so_queued_audio_before_it_i
     client = BrowserAudioProxy(path=path)
     peer = release = None
     try:
-        start_audio(client, "stall", service=service)
+        start_audio(client, "stall", service=service, capture_local=False)
         capture = service.captures["stall"]
         lifecycle = stall in ("policy", "status")
         if route in ("stop", "command") or lifecycle:

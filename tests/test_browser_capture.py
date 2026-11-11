@@ -86,6 +86,7 @@ def start(
     identifier,
     *,
     microphone=True,
+    capture_local=None,
     call_generation=None,
     document_generation=None,
     request_id=None,
@@ -106,8 +107,26 @@ def start(
             title=identifier,
             callGeneration=call_generation,
             documentGeneration=document_generation,
+            **({"captureLocal": capture_local} if capture_local is not None else {}),
             **({"requestId": request_id} if request_id is not None else {}),
         )
+    )
+
+
+def local(client, identifier, source_track_id="me"):
+    client.handle(
+        dict(
+            type="track",
+            id=identifier,
+            label="Microphone",
+            kind="local",
+            sourceTrackId=source_track_id,
+            sampleRate=48000,
+            channels=1,
+        )
+    )
+    client.handle(
+        dict(type="audio", id=identifier, sequence=0, offsetMs=200, pcm=base64.b64encode(b"\x01\x00" * 4).decode())
     )
 
 
@@ -228,15 +247,15 @@ def test_independent_native_host_writers_copy_only_the_selected_microphone(serve
         first = start(one, "first")
         second = start(two, "second", microphone=False)
         assert first["path"] != second["path"]
-        assert len(Tap.instances) == 1 and Tap.instances[0].started
-        opened = stream(service.captures["first"])["startOffsetMs"]
+        assert Tap.instances == []
+        local(one, "local-one")
+        local(two, "local-two")
         remote(one, "remote-one")
         remote(two, "remote-two")
         assert len([s for s in request(path=path)["statuses"] if s["recording"]]) == 2
         one.handle(dict(type="stop"))
         states = request(path=path)["statuses"]
         assert [s["captureId"] for s in states if s["recording"]] == ["second"]
-        assert Tap.instances[0].stopped
         two.handle(
             dict(
                 type="audio",
@@ -251,10 +270,10 @@ def test_independent_native_host_writers_copy_only_the_selected_microphone(serve
         assert len(manifests) == 2 and all(m["state"] == "completed" for m in manifests)
         first = next(m for m in manifests if m["title"] == "first")
         second = next(m for m in manifests if m["title"] == "second")
-        assert [t["kind"] for t in first["tracks"]] == ["microphone", "remote"]
+        assert [t["kind"] for t in first["tracks"]] == ["local", "remote"]
         assert [t["kind"] for t in second["tracks"]] == ["remote"]
-        assert first["tracks"][0]["labelSource"] == "device"
-        assert first["tracks"][0]["startOffsetMs"] == opened and first["tracks"][0]["frames"] == 4
+        assert first["tracks"][0]["labelSource"] == "browser"
+        assert first["tracks"][0]["startOffsetMs"] == 200 and first["tracks"][0]["frames"] == 4
         assert second["tracks"][0]["frames"] == 8
         for folder in root.iterdir():
             metadata = json.loads((folder / "session.json").read_text())
@@ -267,12 +286,13 @@ def test_independent_native_host_writers_copy_only_the_selected_microphone(serve
         two.close()
 
 
-def test_audio_peer_eof_falls_back_only_its_own_capture_and_keeps_the_microphone(server):
+def test_audio_peer_eof_falls_back_only_its_own_capture_without_native_microphone(server):
     service, path, root = server
     one, two = BrowserAudioProxy(path=path), BrowserAudioProxy(path=path)
     try:
         first = start(one, "first")
         start(two, "second", microphone=False)
+        local(one, "local-one")
         remote(one, "remote-one")
         remote(two, "remote-two")
         one.close()
@@ -290,9 +310,11 @@ def test_audio_peer_eof_falls_back_only_its_own_capture_and_keeps_the_microphone
             cause="transportClosed",
             detail="Browser disconnected before recording was stopped.",
         )
-        assert value["tracks"][-1]["kind"] == "system"
+        assert [t["kind"] for t in value["tracks"]] == ["local", "remote", "system"]
+        assert value["tracks"][0]["ended"] and value["tracks"][1]["ended"]
         assert value["tracks"][-1]["startOffsetMs"] == value["events"][-1]["atMs"]
-        assert not service.captures["first"].microphone.stopped
+        assert service.captures["first"].microphone is None
+        assert set(service.captures["first"].native_taps) == {"system"}
         assert not service.captures["second"].browser_lost
         service.captures["first"].stop()
         two.handle(dict(type="stop"))
@@ -319,7 +341,7 @@ def test_two_stop_requests_join_one_native_finalization(server):
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
     try:
-        start(client, "one")
+        start(client, "one", capture_local=False)
         capture = service.captures["one"]
         entered, release = threading.Event(), threading.Event()
         original = capture.microphone.stop
@@ -383,17 +405,33 @@ def test_rpc_selection_stops_only_its_sources_and_retains_browser_span_identity(
     client = BrowserAudioProxy(path=path)
     try:
         start(client, "selection")
+        local(client, "me", source_track_id="me-source")
         remote(client, "remote")
         capture = service.captures["selection"]
-        original = capture.microphone
-        request("selection", path=path, directory=str(capture.directory), me=False, others=True)
-        assert original.stopped and capture.microphone is None
+        assert capture.microphone is None and Tap.instances == []
+        selected = request("selection", path=path, directory=str(capture.directory), me=False, others=True)
+        assert capture.microphone is None and Tap.instances == []
+        first_me = next(t for t in capture.host.session.manifest["tracks"] if t["kind"] == "local")
+        assert first_me["ended"]
+        frozen_me = (capture.directory / first_me["file"]).read_bytes()
+        client.handle(
+            dict(
+                type="audio",
+                id="me",
+                sequence=1,
+                offsetMs=selected["events"][-1]["atMs"] + 10,
+                pcm=base64.b64encode(b"\x02\x00" * 4).decode(),
+            )
+        )
         selected = request("selection", path=path, directory=str(capture.directory), me=True, others=False)
-        assert capture.microphone is not original and not capture.microphone.stopped
+        assert capture.microphone is None and Tap.instances == []
         first_remote = next(t for t in capture.host.session.manifest["tracks"] if t["kind"] == "remote")
         assert first_remote["ended"]
         frozen = (capture.directory / first_remote["file"]).read_bytes()
         offset = selected["events"][-1]["atMs"] + 10
+        client.handle(
+            dict(type="audio", id="me", sequence=2, offsetMs=offset, pcm=base64.b64encode(b"\x03\x00" * 4).decode())
+        )
         client.handle(
             dict(type="audio", id="remote", sequence=1, offsetMs=offset, pcm=base64.b64encode(b"\x02\x00" * 4).decode())
         )
@@ -407,10 +445,15 @@ def test_rpc_selection_stops_only_its_sources_and_retains_browser_span_identity(
                 pcm=base64.b64encode(b"\x03\x00" * 4).decode(),
             )
         )
+        locals_ = [t for t in capture.host.session.manifest["tracks"] if t["kind"] == "local"]
+        assert len(locals_) == 2 and locals_[0]["id"] != locals_[1]["id"]
+        assert locals_[0]["sourceTrackId"] == locals_[1]["sourceTrackId"] == "me-source"
+        assert (capture.directory / first_me["file"]).read_bytes() == frozen_me
         remotes = [t for t in capture.host.session.manifest["tracks"] if t["kind"] == "remote"]
         assert len(remotes) == 2 and remotes[0]["id"] != remotes[1]["id"]
         assert remotes[0]["sourceTrackId"] == remotes[1]["sourceTrackId"] == "remote"
         assert (capture.directory / first_remote["file"]).read_bytes() == frozen
+        assert Tap.instances == []
         client.handle(dict(type="stop"))
     finally:
         client.close()
@@ -435,7 +478,7 @@ def test_source_limit_failure_keeps_last_applied_choice_and_tracks(server):
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
     try:
-        start(client, "limit", microphone=False)
+        start(client, "limit", microphone=False, capture_local=False)
         remote(client, "remote")
         capture = service.captures["limit"]
         with capture.lock:
@@ -469,7 +512,7 @@ def test_rejected_change_restores_browser_pcm_after_stream_selection(server, mon
             super().start()
 
     try:
-        start(client, "rollback", microphone=False)
+        start(client, "rollback", microphone=False, capture_local=False)
         remote(client, "remote")
         capture = service.captures["rollback"]
         capture.tap_factory = ReadyTap
@@ -607,13 +650,14 @@ def test_independent_call_hangup_stops_without_system_fallback(server):
     client = BrowserAudioProxy(path=path)
     try:
         start(client, "hangup")
+        local(client, "me")
         remote(client, "remote")
         capture = service.captures["hangup"]
         bind_capture(peer, capture)
         send_packet(peer.stream, dict(type="meetings", meetings=[dict(meeting(), sourceCount=0)]))
         wait_for(lambda: "hangup" in service._capture_missing_since)
         assert not capture.browser_lost and not capture.finished
-        assert {tap.kind for tap in Tap.instances} == {"microphone"}
+        assert Tap.instances == [] and capture.microphone is None
         with service.lock:
             service._capture_missing_since["hangup"] = time.monotonic() - 2.01
         request(path=path)  # Busy accept traffic must also advance policy.
@@ -623,8 +667,8 @@ def test_independent_call_hangup_stops_without_system_fallback(server):
         saved(capture)
         manifest = json.loads((capture.directory / "session.json").read_text())
         assert manifest["state"] == "completed"
-        assert not any(t["kind"] == "system" for t in manifest["tracks"])
-        assert capture.microphone.stopped
+        assert [t["kind"] for t in manifest["tracks"]] == ["local", "remote"]
+        assert Tap.instances == []
     finally:
         client.close()
         peer.close()
@@ -647,7 +691,7 @@ def test_reload_fallback_survives_return_but_stops_when_call_does_not_return(ser
         assert command["action"] == "stop"
         peer.answer(command)
         service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
-        assert not capture.finished and set(capture.native_taps) == {"microphone", "system"}
+        assert not capture.finished and set(capture.native_taps) == {"system"} and capture.microphone is None
         peer.inventory((3,))
         wait_for(lambda: "reload" not in service._capture_missing_since)
         assert capture.browser_lost  # No automatic switch back.
@@ -672,13 +716,16 @@ def test_disconnected_fallback_is_saved_after_bounded_browser_return_grace(serve
     peer = Extension(path, (3,))
     client = BrowserAudioProxy(path=path)
     start(client, "disconnected")
+    local(client, "me")
+    remote(client, "remote")
     capture = service.captures["disconnected"]
-    stream(capture)
     bind_capture(peer, capture)
     peer.close()
     wait_for(lambda: not service.browsers)
     client.close()
     service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
+    assert set(capture.native_taps) == {"system"} and capture.microphone is None
+    stream(capture, "system")
     service.policy()
     assert not capture.finished
     with service.lock:
@@ -732,7 +779,7 @@ def test_unobserved_audio_disconnect_still_starts_bounded_fallback_grace(server)
 
 
 @pytest.mark.parametrize("reply_type", ["started", "ack", "error", "stopped"])
-def test_lost_audio_acknowledgement_keeps_native_mic_and_falls_back(server, monkeypatch, reply_type):
+def test_lost_audio_acknowledgement_falls_back_to_system_without_native_mic(server, monkeypatch, reply_type):
     import socket
 
     from cassini_talk import browser_service
@@ -793,7 +840,7 @@ def test_lost_audio_acknowledgement_keeps_native_mic_and_falls_back(server, monk
         # The actor starts the capture (or adds its track) durably first.
         durable(accepted, "the real audio actor did not reach its acknowledgement")
         capture = service.captures["ack-loss"]
-        microphone = capture.microphone
+        assert capture.microphone is None
         # Retire the actual peer after acceptance but before its reply. This
         # forces EPIPE in flush(), not the orderly EOF path already covered.
         peer.shutdown(socket.SHUT_RDWR)
@@ -810,10 +857,12 @@ def test_lost_audio_acknowledgement_keeps_native_mic_and_falls_back(server, monk
             )
             return
         assert not capture.finished and capture.browser_lost
-        assert capture.microphone is microphone and not microphone.stopped
+        assert capture.microphone is None and set(capture.native_taps) == {"system"}
         assert capture.host.session.manifest["state"] == "recording"
         assert capture.host.session.manifest["events"][-1]["reason"] == "lost"
-        microphone.append(b"\x01\x00" * 480, 200)
+        system_id, system = capture.native_taps["system"]
+        system_track = next(t for t in capture.host.session.manifest["tracks"] if t["id"] == system_id)
+        system.append(b"\x01\x00" * 480, system_track["startOffsetMs"] + 100)
         assert not capture.host.session.manifest.get("problemKind")
         capture.stop(reason="user")
         assert capture.host.session.manifest["events"][-1]["reason"] == "user"
@@ -873,7 +922,7 @@ def test_lost_page_draining_browser_audio_uses_recovery_grace_not_call_end(serve
         send_packet(peer.stream, dict(type="meetings", meetings=[dict(meeting(), sourceCount=0)]))
         peer.answer(peer.receive())
         service.changes.wait(lambda: capture.browser_lost, "the capture did not fall back")
-        assert not capture.finished and set(capture.native_taps) == {"microphone", "system"}
+        assert not capture.finished and set(capture.native_taps) == {"system"} and capture.microphone is None
         with service.lock:
             service._capture_missing_since["draining"] = time.monotonic() - 2.01
         service.policy()
@@ -886,9 +935,24 @@ def test_lost_page_draining_browser_audio_uses_recovery_grace_not_call_end(serve
 
 def test_permission_evidence_requires_native_pcm_not_remote_audio(server):
     service, path, _ = server
-    client = BrowserAudioProxy(path=path)
+    client, browser_me = BrowserAudioProxy(path=path), BrowserAudioProxy(path=path)
     try:
-        start(client, "permissions", microphone=False)
+        start(browser_me, "browser-me-permissions", microphone=True)
+        local(browser_me, "local-me")
+        remote(browser_me, "remote-browser")
+        assert service.captures["browser-me-permissions"].snapshot()["permittedSources"] == []
+        service.captures["browser-me-permissions"].fallback()
+        identifier, system = service.captures["browser-me-permissions"].native_taps["system"]
+        track = next(
+            t
+            for t in service.captures["browser-me-permissions"].host.session.manifest["tracks"]
+            if t["id"] == identifier
+        )
+        system.append(b"\1\0" * 4, track["startOffsetMs"] + 100)
+        assert service.captures["browser-me-permissions"].snapshot()["permittedSources"] == ["system"]
+        service.captures["browser-me-permissions"].stop()
+
+        start(client, "permissions", microphone=False, capture_local=False)
         remote(client, "remote-only")
         assert service.captures["permissions"].snapshot()["permittedSources"] == []
         capture = service.captures["permissions"]
@@ -903,6 +967,7 @@ def test_permission_evidence_requires_native_pcm_not_remote_audio(server):
         system.append(b"\1\0" * 4, track["startOffsetMs"] + 100)
         assert capture.snapshot()["permittedSources"] == ["microphone", "system"]
     finally:
+        browser_me.close()
         client.close()
 
 
@@ -1174,6 +1239,7 @@ def test_native_mic_checkpoint_failure_keeps_browser_pcm_and_does_not_raise_glob
                 captureId="mic-sync",
                 timelineOriginMs=int(time.time() * 1000),
                 microphone=True,
+                captureLocal=False,
                 features=["source-outcomes-v1"],
             )
         )
@@ -1215,6 +1281,7 @@ def test_announced_page_microphone_never_interrupts_a_native_me_recording(server
                 independent=True,
                 captureId="native-me",
                 microphone=True,
+                captureLocal=False,
                 timelineOriginMs=int(time.time() * 1000),
                 features=["source-outcomes-v1"],
             )
@@ -1501,3 +1568,159 @@ def test_automatic_status_without_browser_instance_binds_origin_before_start_ack
         if capture is not None:
             capture.stop()
         client.close()
+
+
+def test_browser_local_me_capture_meters_levels_and_accepts_reload_gap_without_native_mic(server):
+    import math
+
+    service, path, _root = server
+    client = BrowserAudioProxy(path=path)
+    try:
+        client.handle(
+            dict(
+                requestId=authorize_native_start(client),
+                type="start",
+                version=1,
+                independent=True,
+                captureId="option-a",
+                timelineOriginMs=int(time.time() * 1000),
+                microphone=True,
+                title="option-a",
+                features=["source-outcomes-v1"],
+            )
+        )
+        capture = service.captures["option-a"]
+        assert not capture.native_me and capture.microphone is None and Tap.instances == []
+
+        tone_100ms = b"".join(
+            struct.pack("<h", round(12000 * math.sin(2 * math.pi * 660 * index / 48000))) for index in range(4800)
+        )
+        encoded = base64.b64encode(tone_100ms).decode()
+        client.handle(
+            dict(
+                type="track",
+                id="me-1",
+                label="Headset mic",
+                kind="local",
+                sourceTrackId="doc-1:source:0",
+                sampleRate=48000,
+                channels=1,
+            )
+        )
+        client.handle(dict(type="audio", id="me-1", sequence=0, offsetMs=0, pcm=encoded))
+        assert capture.levels[0] > 0.0 and capture.levels[1] == 0.0
+
+        capture.select(False, True)
+        assert capture.levels[0] == 0.0 and Tap.instances == []
+        assert next(t for t in capture.host.session.manifest["tracks"] if t["id"] == "me-1")["ended"]
+
+        capture.select(True, True)
+        reopen_at = capture.host.session.manifest["events"][-1]["atMs"] + 10
+        client.handle(dict(type="audio", id="me-1", sequence=1, offsetMs=reopen_at, pcm=encoded))
+        assert capture.levels[0] > 0.0 and Tap.instances == []
+
+        client.handle(dict(type="trackEnd", id="me-1", reason="ended", droppedFrames=0, endOffsetMs=reopen_at + 100))
+        assert capture.levels[0] == 0.0
+
+        client.handle(
+            dict(
+                type="track",
+                id="me-2",
+                label="Headset mic",
+                kind="local",
+                sourceTrackId="doc-1:source:0",
+                sampleRate=48000,
+                channels=1,
+            )
+        )
+        client.handle(dict(type="audio", id="me-2", sequence=0, offsetMs=reopen_at + 200, pcm=encoded))
+        remote(client, "remote-1")
+        assert capture.levels[0] > 0.0
+
+        # Page reload / transport loss: Me accepts a gap and NEVER falls back to the raw OS microphone.
+        capture.fallback()
+        assert capture.browser_lost
+        assert capture.levels[0] == 0.0
+        assert capture.microphone is None and set(capture.native_taps) == {"system"}
+        assert next(t for t in capture.host.session.manifest["tracks"] if t["id"] == "me-2")["ended"]
+
+        # Browser returns after reload: both local Me and remote Others resume on the wire.
+        restore_at = capture.host.session.manifest["events"][-1]["atMs"] + 200
+        client.handle(
+            dict(
+                type="track",
+                id="me-3",
+                label="Headset mic",
+                kind="local",
+                sourceTrackId="doc-2:source:0",
+                sampleRate=48000,
+                channels=1,
+            )
+        )
+        client.handle(
+            dict(
+                type="track",
+                id="remote-2",
+                label="Guest",
+                kind="remote",
+                sourceTrackId="doc-2:source:1",
+                sampleRate=48000,
+                channels=1,
+            )
+        )
+        client.handle(dict(type="audio", id="me-3", sequence=0, offsetMs=restore_at, pcm=encoded))
+        client.handle(dict(type="audio", id="remote-2", sequence=0, offsetMs=restore_at, pcm=encoded))
+        capture.restore()
+        assert not capture.browser_lost and not capture.native_taps and capture.microphone is None
+        client.handle(dict(type="audio", id="me-3", sequence=1, offsetMs=restore_at + 100, pcm=encoded))
+        assert capture.levels[0] > 0.0
+
+        client.handle(dict(type="stop", captureId="option-a"))
+        manifest = json.loads((capture.directory / "session.json").read_text())
+        assert not any(t["kind"] == "microphone" for t in manifest["tracks"])
+        assert [t["kind"] for t in manifest["tracks"]].count("local") == 4
+    finally:
+        client.close()
+
+
+def test_start_fallback_stand_in_never_opens_native_microphone_while_signal_owned_does(server, tmp_path):
+    from test_browser_service import meeting
+    from test_browser_sessions import Extension
+
+    from cassini_talk.browser_capture import BrowserCapture
+
+    service, path, _root = server
+    peer = Extension(path, (3,))
+    signal_capture = None
+    try:
+        identifier = request(path=path)["meetings"][0]["id"]
+        snapshot = service.start_fallback(identifier, meeting(), microphone=True)
+        stand_in = service.captures[snapshot["captureId"]]
+        assert not stand_in.native_me
+        assert stand_in.microphone is None and set(stand_in.native_taps) == {"system"}
+        manifest = json.loads((stand_in.directory / "session.json").read_text())
+        assert [t["kind"] for t in manifest["tracks"]] == ["system"]
+        assert dict(atMs=0, type="selection", me=True, others=True, reason="start") in manifest["events"]
+        stand_in.stop()
+
+        # D74 mixed-site signal-owned captures have no separated WebRTC capture and keep native microphone + system.
+        signal_capture = BrowserCapture(lambda *_: None, parent=tmp_path / "signal-lib", tap_factory=Tap)
+        signal_capture.start(
+            dict(
+                type="start",
+                captureId="signal-owned",
+                timelineOriginMs=int(time.time() * 1000),
+                microphone=True,
+            ),
+            others_source="system",
+            reason="start",
+            others_route=dict(source="system", reason="unsupported"),
+            native_me=True,
+        )
+        assert signal_capture.native_me
+        assert set(signal_capture.native_taps) == {"microphone", "system"}
+        assert signal_capture.microphone is not None
+    finally:
+        if signal_capture is not None:
+            signal_capture.stop()
+        peer.close()

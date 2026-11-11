@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """R2: late wire results/audio must not outlive an acknowledged Stop intent."""
 
+import base64
 import contextlib
 import threading
 import wave
@@ -9,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from durable import DURABLE_BOUND, saved
 from test_browser_attempt_reset import announce
-from test_browser_capture import server, start, stream  # noqa: F401
+from test_browser_capture import server, start  # noqa: F401
 from test_browser_service import no_command, service, wait_for  # noqa: F401
 from test_control_reconnect import peer
 
@@ -46,7 +47,26 @@ def test_batch_timeout_retires_a_late_start_and_its_status_or_audio(server, with
             if client is not None:
                 started = start(client, "late")
                 capture = broker.captures["late"]
-                stream(capture)
+                client.handle(
+                    dict(
+                        type="track",
+                        id="me",
+                        label="Microphone",
+                        kind="local",
+                        sourceTrackId="doc-1:source:0",
+                        sampleRate=48000,
+                        channels=1,
+                    )
+                )
+                client.handle(
+                    dict(
+                        type="audio",
+                        id="me",
+                        sequence=0,
+                        offsetMs=100,
+                        pcm=base64.b64encode(b"\x64\x00\xc8\x00\x2c\x01\x90\x01").decode(),
+                    )
+                )
                 directory = started["path"]
             else:
                 directory = "/private/Recording-late"

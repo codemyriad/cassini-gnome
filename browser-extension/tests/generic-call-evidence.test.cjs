@@ -14,7 +14,7 @@ function fixture(){
   const producer=new Generic({identity:()=> 'profile-A',tabs:{async query(){return [{id:2,url:frame.browserUrl}]}},
     frames:()=>[frame],current:value=>value===frame&&live,callIdentity:()=>identity,
     async executeScript(request){reads++;assert.equal(request.world,'MAIN');assert.deepEqual([...request.target.documentIds],['chrome-A']);
-      return [{frameId:0,documentId:'chrome-A',result:{...sample}}]}});
+      return [{frameId:frame.frameId,documentId:'chrome-A',result:{...sample}}]}});
   return {frame,sample,producer,get reads(){return reads},retire(){live=false},rotate(){identity='background-B'}};
 }
 test('only acknowledged generic snapshots expose unequal mapped IDs and the background-owned generation',async()=>{
@@ -118,4 +118,21 @@ test('the final publication check withdraws expired proof or removes a retired d
   clock=2500;const expired=f.producer.finalize(prepared);
   assert.equal(expired.tabs[0].callEvidence.state,'unknown');assert.equal(expired.tabs[0].callEvidence.callGeneration,null);
   f.retire();assert.equal(f.producer.finalize(prepared).tabs.length,0);
+});
+
+
+test('non-HTTP subframes never execute or adopt a native source snapshot',async()=>{
+ for(const url of ['about:blank','about:srcdoc','blob:https://neutral.invalid/generated','data:text/html,generated','invalid URL']){
+  const f=fixture();Object.assign(f.frame,{frameId:2,browserUrl:url,nativeSourceVerified:true,nativeCollectorUnavailable:true});
+  let adopted=0;f.producer.onNativeRead=()=>adopted++;
+  assert.equal(await f.producer.read(f.frame),null,url);assert.equal(f.reads,0,url);assert.equal(adopted,0,url);
+  assert.equal(f.frame.nativeSourceVerified,false);assert.equal(f.frame.nativeCollectorUnavailable,false);
+ }
+});
+test('HTTP and HTTPS subframes retain authenticated native source observation',async()=>{
+ for(const url of ['http://neutral.invalid/child','https://neutral.invalid/child']){
+  const f=fixture();Object.assign(f.frame,{frameId:2,browserUrl:url});
+  let adopted=0;f.producer.onNativeRead=()=>adopted++;
+  assert.ok(await f.producer.read(f.frame));assert.equal(f.reads,1);assert.equal(adopted,1);
+ }
 });
