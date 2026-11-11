@@ -2,12 +2,14 @@
 """Execute the actual host shell scripts against private configs and framed pipes."""
 
 import json
+import os
+import select
 import shutil
 import stat
 import subprocess
 import sys
 import threading
-import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -285,27 +287,55 @@ def test_idle_broker_keeps_a_live_application_lease_then_exits(tmp_path):
     assert not path.exists()
 
 
-def test_dedicated_broker_launch_returns_before_its_host_child_finishes(host):
+@contextmanager
+def held_host_child(launcher, tmp_path):
+    ready, release, done = (tmp_path / name for name in ("ready", "release", "done"))
+    for path in (ready, release, done):
+        os.mkfifo(path)
+    launcher.write_text(
+        f"#!{sys.executable}\n"
+        "import os, select\n"
+        f"paths = {tuple(map(str, (ready, release, done)))!r}\n"
+        "ready, release, done = [os.open(path, os.O_RDWR | os.O_NONBLOCK) for path in paths]\n"
+        "os.write(ready, b'ready')\n"
+        "assert select.select([release], [], [], 15)[0], 'launcher test never released the child'\n"
+        "assert os.read(release, 1) == b'1'\n"
+        "os.write(done, b'done')\n"
+    )
+    launcher.chmod(0o700)
+    with (
+        os.fdopen(os.open(ready, os.O_RDWR | os.O_NONBLOCK), "rb", buffering=0) as entered,
+        os.fdopen(os.open(release, os.O_RDWR | os.O_NONBLOCK), "wb", buffering=0) as proceed,
+        os.fdopen(os.open(done, os.O_RDWR | os.O_NONBLOCK), "rb", buffering=0) as finished,
+    ):
+        observed = False
+
+        def check_held():
+            nonlocal observed
+            assert select.select([entered], [], [], 5)[0] and entered.read(5) == b"ready", "host child never started"
+            observed = True
+            assert not select.select([finished], [], [], 0)[0], "host child finished before release"
+
+        try:
+            yield check_held
+        finally:
+            proceed.write(b"1")
+        if observed:
+            assert select.select([finished], [], [], 5)[0] and finished.read(4) == b"done", "host child did not survive"
+
+
+def test_dedicated_broker_launch_returns_before_its_host_child_finishes(host, tmp_path):
     # A realistic long-lived broker must not keep flatpak-spawn (and therefore
     # the original UI/host sandbox) alive after the short host shell returns.
-    fake = host / "bin/flatpak"
-    fake.write_text(
-        '#!/bin/sh\nwhile [ ! -f "$HOME/release" ] && [ -d "$HOME" ]; do sleep .01; done\n'
-        'if [ -d "$HOME" ]; then printf done > "$HOME/broker-finished"; fi\n'
-    )
-    fake.chmod(0o700)
-    command = bridge.broker_command("/run/user/1000/app/io.codemyriad.CassiniTalk.Devel/cassini/browser-v2.sock")
-    assert "--unshare=network" in command
-    try:
-        completed = subprocess.run(command, capture_output=True, check=True, timeout=2)
+    with held_host_child(host / "bin/flatpak", tmp_path) as check_held:
+        command = bridge.broker_command("/run/user/1000/app/io.codemyriad.CassiniTalk.Devel/cassini/browser-v2.sock")
+        assert "--unshare=network" in command
+        try:
+            completed = subprocess.run(command, capture_output=True, check=True, timeout=5)
+        except subprocess.TimeoutExpired as error:
+            raise AssertionError("Broker launcher waited for its held host child") from error
         assert completed.stdout == b"" and completed.stderr == b""
-        assert not (host / "broker-finished").exists()
-    finally:
-        (host / "release").touch()
-    deadline = time.monotonic() + 3
-    while not (host / "broker-finished").exists() and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert (host / "broker-finished").read_text() == "done"
+        check_held()
 
 
 def test_host_manifest_comparison_needs_no_diffutils_and_preserves_trailing_newlines(host, monkeypatch):
@@ -376,22 +406,16 @@ def test_host_browser_early_exit_crosses_the_real_shell_bridge(tmp_path, monkeyp
 
 
 def test_host_browser_probe_detaches_a_live_process_without_waiting_for_its_lifetime(tmp_path, monkeypatch):
-    entered, release, finished = tmp_path / "entered", tmp_path / "release", tmp_path / "finished"
     launcher = tmp_path / "host-browser"
-    launcher.write_text(
-        f'#!/bin/sh\n: > "{entered}"\nwhile [ ! -f "{release}" ]; do sleep .01; done\n: > "{finished}"\n'
-    )
-    launcher.chmod(0o700)
     monkeypatch.setattr(companion, "in_flatpak", lambda: True)
     monkeypatch.setattr(bridge, "host_command", lambda command, **_kwargs: command)
-    process = companion.open_new_tab(companion.Browser("Chrome", str(launcher), tmp_path))
-    try:
-        companion.check_browser_launch(process)
-        assert process.returncode == 0 and entered.exists() and not release.exists()
-    finally:
-        release.touch()
-        process.wait(timeout=2)
-    deadline = time.monotonic() + 2
-    while not finished.exists() and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert finished.exists(), "The detached browser must survive its launcher and finish normally"
+    with held_host_child(launcher, tmp_path) as check_held:
+        process = companion.open_new_tab(companion.Browser("Chrome", str(launcher), tmp_path))
+        try:
+            companion.check_browser_launch(process)
+            assert process.returncode == 0
+            check_held()
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
