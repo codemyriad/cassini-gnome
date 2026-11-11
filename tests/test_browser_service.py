@@ -390,23 +390,47 @@ def test_a_stopped_call_that_ended_while_connected_is_new_after_a_reconnect(serv
 
 
 def test_a_quiet_stopped_call_stays_stopped_while_its_link_is_up(service, monkeypatch):
+    from broker_barrier import BrokerBarrier
+
     from cassini_talk import browser_service
 
-    _, path = service
-    monkeypatch.setattr(browser_service, "STOPPED_CALL_GRACE", 0.3)
-    connection, stream = browser(path, "4242:99")
-    request("configure", path=path, autoRecord=True)
-    stop_automatic_call(path, stream)
-    time.sleep(0.5)  # Longer than the grace, with no packet for this call.
-    # Another browser's inventory runs the expiry; then this link reconnects.
-    other, other_stream = browser(path, "5151:12", meetings=[meeting(7)])
+    broker, path = service
+    barrier = BrokerBarrier(broker)
+    instance = "4242:99"
+    key = (instance, 3)
+    connection, stream = browser(path, instance)
+    other = other_stream = None
     try:
-        assert read_packet(other_stream)["tabId"] == 7
-        connection, stream = reconnect(path, connection, stream)
-        assert no_command(connection, stream), "the stopped call was started again"
+        request("configure", path=path, autoRecord=True)
+        stop_automatic_call(path, stream)
+        with broker.lock:
+            _, stopped_at = broker.stopped_calls[key]
+        expire = broker._expire_stopped
+        expiry_observed = threading.Event()
+
+        def advance_expiry(_now):
+            expire(stopped_at + browser_service.STOPPED_CALL_GRACE + 1)
+            expiry_observed.set()
+
+        # Only the other browser reports inventory, after the stopped call's grace.
+        with monkeypatch.context() as patch:
+            patch.setattr(broker, "_expire_stopped", advance_expiry)
+            other, other_stream = browser(path, "5151:12", meetings=[meeting(7)])
+            command = read_packet(other_stream)
+            assert (command["action"], command["tabId"]) == ("start", 7)
+            assert expiry_observed.is_set()
+            with broker.lock:
+                assert key in broker.stopped_calls, "inventory expired a still-reported stopped call"
+        send_packet(
+            other_stream,
+            dict(type="result", requestId=command["requestId"], ok=True, status=dict(recording=True, tabId=7)),
+        )
+        connection, stream = reconnect(path, connection, stream, instance=instance)
+        assert barrier.no_command(connection, stream), "the stopped call was started again"
     finally:
         for closable in (stream, connection, other_stream, other):
-            closable.close()
+            if closable is not None:
+                closable.close()
 
 
 def test_other_profile_and_restarted_browser_do_not_inherit_a_stopped_call(service):
