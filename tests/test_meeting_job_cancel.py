@@ -4,9 +4,8 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from durable import Changes, Finished
+from durable import DURABLE_BOUND, Changes, Finished
 from test_library import capture
-from test_transcription import until
 from test_voice_queue import Models, meeting
 from test_voice_store import embedding
 from test_whistle_spike import child_client
@@ -39,19 +38,21 @@ def test_cancel_queued_and_running_transcription_keeps_other_meeting(tmp_path, m
         client = child_client(
             tmp_path,
             monkeypatch,
-            """import json,sys,time
+            """import json,signal,sys
 print(json.dumps(dict(type='ready')),flush=True)
 request=json.loads(sys.stdin.readline())
 track=request['tracks'][0]
 print(json.dumps(dict(type='progress',trackId=track['id'],trackOrder=0,language='en',etaMinutes=1,
 words=[dict(text='Partial',startMs=100,endMs=200)])),flush=True)
-time.sleep(30)
+signal.pause()
 """,
+            timeout=2 * DURABLE_BOUND,
         )
         children.append(client)
         return client
 
     queue = TranscriptionQueue(changes, finished, client_factory=factory, root=tmp_path, bundle=tmp_path)
+    worker = ThreadPoolExecutor(1)
     try:
         for session in sessions:
             assert queue.enqueue(session.directory)
@@ -60,22 +61,32 @@ time.sleep(30)
             lambda: (first / "transcript.json").exists() and b"Partial" in (first / "transcript.json").read_bytes(),
             "the first job did not publish its partial words",
         )
-        until(lambda: read_metadata(queued)["transcript"]["status"] == "queued")
-        child = children[0].process
-        with ThreadPoolExecutor(1) as worker:
+        changes.wait(
+            lambda: read_metadata(queued)["transcript"]["status"] == "queued",
+            "the queued meeting did not publish its intent",
+        )
+        client = children[0]
+        child = client.process
+        assert child is not None and child.poll() is None
 
-            def remove_queued():
-                with queue.cancel_meeting(queued):
-                    assert not queue.enqueue(queued)
-                    queued.rename(tmp_path / "private-trash-queued")
+        def remove_queued():
+            with queue.cancel_meeting(queued):
+                assert not queue.enqueue(queued)
+                queued.rename(tmp_path / "private-trash-queued")
 
-            worker.submit(remove_queued).result(timeout=2)
+        def remove_active():
+            with queue.cancel_meeting(first):
+                assert child.poll() is not None, "Trash exclusion returned before the child exited"
+                assert read_metadata(first)["transcript"]["status"] == "running", (
+                    "cancellation marked partial words failed"
+                )
+                first.rename(tmp_path / "private-trash-active")
+
+        worker.submit(remove_queued).result(timeout=DURABLE_BOUND)
+        assert not client.cancelled.is_set(), "cancelling a queued meeting signalled the unrelated active child"
         assert child.poll() is None, "cancelling a queued meeting killed the unrelated active child"
         assert first in queue.pending and other in queue.pending and queued not in queue.pending
-        with queue.cancel_meeting(first):
-            assert child.poll() is not None, "Trash exclusion returned before the child exited"
-            assert read_metadata(first)["transcript"]["status"] == "running", "cancellation marked partial words failed"
-            first.rename(tmp_path / "private-trash-active")
+        worker.submit(remove_active).result(timeout=DURABLE_BOUND)
         finished.wait(3)  # The two cancelled jobs and the other one.
         assert read_metadata(other)["transcript"]["status"] == "done"
         assert not first.exists() and not queued.exists(), "a late job recreated a removed folder"
@@ -83,6 +94,7 @@ time.sleep(30)
         assert not queue.closed
     finally:
         queue.close()
+        worker.shutdown(wait=False, cancel_futures=True)
 
 
 def test_cancel_running_voice_job_keeps_next_meeting_and_no_private_print(tmp_path, monkeypatch):

@@ -7,7 +7,6 @@ import os
 import subprocess
 import sys
 import threading
-import time
 from pathlib import Path
 
 import pytest
@@ -224,34 +223,60 @@ def test_fifo_reads_model_when_job_starts_and_remove_keeps_loaded_job(
         until(lambda: not active)
 
 
-def test_quit_during_stalled_download_does_not_wait_for_network(tmp_path):
-    # A real interpreter must exit before the artificial network read returns;
-    # a ThreadPoolExecutor here would make this take ten seconds.
+def test_quit_during_stalled_download_does_not_wait_for_network():
+    # Keep the read blocked until AFTER the interpreter has exited. A joined
+    # worker (including a non-daemon executor) cannot complete this ordering.
     script = """
-import threading, time
+import os, sys, threading
 from cassini_talk.speech_models import SpeechModels
 class Store:
     def _directory(self, *args):
         from pathlib import Path
         return Path("/nonexistent-cassini-model")
     def fetch_manifest(self, **kwargs):
-        entered.set()
-        time.sleep(10)
+        fd = int(sys.argv[1])
+        try:
+            assert os.read(fd, 1) == b"1", "Missing pipe handshake"
+            entered.set()
+            os.read(fd, 1)
+        except BaseException:
+            import traceback
+            traceback.print_exc()
+            os._exit(2)
+        print("The parent released the network read before exit", file=sys.stderr, flush=True)
+        os._exit(2)
 entered = threading.Event()
-m = SpeechModels("whistle", lambda _:None, lambda:None, store=Store())
-while m.snapshot()["busy"]: time.sleep(.001)
-m.download()
-assert entered.wait(1)
+m = SpeechModels("whistle", lambda _:None, lambda:None, store=Store(), capable=lambda: False)
+m._inspected.wait()
+assert not m.snapshot()["busy"]
+assert m.download()
+entered.wait()
 m.close()
+assert m._thread.is_alive(), "The artificial network read must still be held"
+assert m.cancelled.is_set() and m.download_cancelled.is_set()
+assert not m.snapshot()["error"]
+print("closed-with-download-held", flush=True)
 """
-    started = time.monotonic()
-    subprocess.run(
-        [sys.executable, "-c", script],
-        check=True,
-        timeout=2,
-        env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src")),
-    )
-    assert time.monotonic() - started < 0.8
+    read_fd, held_write_fd = os.pipe()
+    try:
+        pipe = os.fstat(held_write_fd)
+        assert os.write(held_write_fd, b"1") == 1
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(read_fd)],
+            pass_fds=(read_fd,),
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,  # Outer hang guard, not a shutdown performance budget.
+            env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src")),
+        )
+        still_held = os.fstat(held_write_fd)
+        assert (still_held.st_dev, still_held.st_ino) == (pipe.st_dev, pipe.st_ino)
+        assert result.stdout.strip() == "closed-with-download-held"
+        assert "Traceback" not in result.stderr, result.stderr
+    finally:
+        os.close(read_fd)
+        os.close(held_write_fd)
 
 
 def test_remove_during_native_load_persists_fallback_without_deleting_loading_files(model_fixture):

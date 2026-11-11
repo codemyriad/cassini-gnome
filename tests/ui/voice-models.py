@@ -9,7 +9,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,6 +21,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
+from dispatch_wait import dispatch_until  # noqa: E402
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 from test_model_download import remote  # noqa: E402
 from test_voice_models import Probe  # noqa: E402
@@ -34,18 +34,42 @@ from cassini_talk.settings_dialog import SettingsDialog  # noqa: E402
 from cassini_talk.voice_models import VoiceModels  # noqa: E402
 
 
-def until(check):
-    deadline = time.monotonic() + 8
-    context = GLib.MainContext.default()
-    while time.monotonic() < deadline:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.01)
-    assert check(), "Voice controls did not settle"
+def retry_with_delayed_ready_notification(app, dialog):
+    models = app.voice_models
+    entered, release = threading.Event(), threading.Event()
+    check_runtime = models._check_runtime
+
+    def held_runtime(directory):
+        GLib.idle_add(entered.set)
+        assert release.wait(18), "the test did not release the voice runtime probe"
+        return check_runtime(directory)
+
+    with patch.object(models, "_check_runtime", held_runtime):
+        try:
+            dialog.voice_action.emit("clicked")
+            dispatch_until(entered.is_set, "the voice retry did not enter its runtime probe")
+            assert models.snapshot()["busy"] and dialog.voice_status.get_label() == "Downloaded"
+            assert dialog.voice_action.get_label() == "Remove"
+            release.set()
+            # Finish the real worker while GTK still displays the intermediate
+            # state. Its completion notifications remain queued on this context.
+            models._thread.join(18)
+            assert not models._thread.is_alive(), "the voice runtime retry did not finish"
+            assert not models.snapshot()["busy"] and dialog.voice_status.get_label() == "Downloaded"
+            dispatch_until(
+                lambda: (
+                    not models.snapshot()["busy"]
+                    and dialog.voice_status.get_label() == "On"
+                    and dialog.voice_action.get_label() == "Remove"
+                    and not dialog.voice_remove.get_visible()
+                ),
+                "the voice runtime retry did not reach its rendered ready state",
+            )
+            assert dialog.voice_status.get_label() == "On" and not dialog.voice_remove.get_visible(), (
+                "voice retry accepted the intermediate Downloaded state"
+            )
+        finally:
+            release.set()
 
 
 fixture = remote.__wrapped__()
@@ -83,7 +107,7 @@ try:
             app.register(None)
             app.activate()
             window = app.get_active_window()
-            until(lambda: not window._pending)
+            dispatch_until(lambda: not window._pending)
             if app.voice_models:
                 app.voice_models.close()
             store = ModelStore(
@@ -95,7 +119,7 @@ try:
                 store=store,
                 client_factory=Probe,
             )
-            until(lambda: not app.voice_models.snapshot()["busy"])
+            dispatch_until(lambda: not app.voice_models.snapshot()["busy"])
             from types import SimpleNamespace
 
             dependency = dict(ready=False, downloaded=False, busy=False, downloading=False, percent=0, error=False)
@@ -115,38 +139,51 @@ try:
             original = store.download
 
             def held(*args, **kwargs):
-                entered.set()
-                assert release.wait(5)
+                GLib.idle_add(entered.set)
+                assert release.wait(18), "the test did not release the voice download"
                 return original(*args, **kwargs)
 
             with patch.object(store, "download", held):
                 dialog.voice_action.emit("clicked")
-                until(entered.is_set)
-                assert dialog.voice_action.get_label() == "Cancel" and dialog.voice_progress.get_visible()
-                dialog.voice_action.emit("clicked")
-                release.set()
-                until(lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Download")
+                try:
+                    dispatch_until(entered.is_set, "the voice download did not enter")
+                    assert dialog.voice_action.get_label() == "Cancel" and dialog.voice_progress.get_visible()
+                    dialog.voice_action.emit("clicked")
+                finally:
+                    release.set()
+                dispatch_until(
+                    lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Download",
+                    "the cancelled voice download did not return to Download",
+                )
                 assert not app.voice_models.snapshot()["downloaded"]
                 assert dialog.voice_action.get_label() == "Download"
             server.mode = "truncate"
             dialog.voice_action.emit("clicked")
-            until(lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Try again")
+            dispatch_until(
+                lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Try again"
+            )
             assert dialog.voice_action.get_label() == "Try again"
             assert "Recognise saved voices" in dialog.voice_line.get_label()
             server.mode = "normal"
             dialog.voice_action.emit("clicked")
-            until(lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Remove")
+            dispatch_until(
+                lambda: (
+                    not app.voice_models.snapshot()["busy"]
+                    and dialog.voice_status.get_label() == "On"
+                    and dialog.voice_action.get_label() == "Remove"
+                )
+            )
             assert dialog.voice_status.get_label() == "On" and dialog.voice_action.get_label() == "Remove"
             assert app.recording_settings.get_string("speech-model") == "whistle"
             assert (tmp / "models" / campplus_model.MODEL_ID / campplus_model.REVISION).is_dir()
             app.voice_models._change(ready=False, error=True, runtime_error=True)
-            until(lambda: dialog.voice_action.get_label() == "Try again")
+            dispatch_until(lambda: dialog.voice_action.get_label() == "Try again")
             assert dialog.voice_remove.get_visible() and not dialog.voice_line.get_visible()
+            retry_with_delayed_ready_notification(app, dialog)
             dialog.voice_action.emit("clicked")
-            until(lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Remove")
-            assert dialog.voice_status.get_label() == "On" and not dialog.voice_remove.get_visible()
-            dialog.voice_action.emit("clicked")
-            until(lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Download")
+            dispatch_until(
+                lambda: not app.voice_models.snapshot()["busy"] and dialog.voice_action.get_label() == "Download"
+            )
             assert dialog.voice_status.get_label() == "Not downloaded"
             assert dialog.voice_action.get_label() == "Download"
             assert not (tmp / "models" / campplus_model.MODEL_ID / campplus_model.REVISION).exists()

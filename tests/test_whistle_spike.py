@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -84,19 +85,37 @@ def test_partial_reply_times_out_and_reaps_worker(tmp_path, monkeypatch):
     client = child_client(
         tmp_path,
         monkeypatch,
-        """import sys,time,json
+        """import json,signal,sys
 print(json.dumps(dict(type='ready')))
 sys.stdin.readline()
 sys.stdout.write('{"type":');sys.stdout.flush()
-time.sleep(30)
+signal.pause()
 """,
-        timeout=0.1,
+        timeout=5,
     )
     with client:
         child = client.process
+        select_ready = client.selector.select
+        clock = 0.0
+        partial_reads = []
+
+        def select_after_partial(_timeout):
+            nonlocal clock
+            if not client._buffer:
+                ready = select_ready(5)
+                assert ready, "worker never wrote the partial frame"
+                return ready
+            partial_reads.append(client._buffer)
+            assert client._buffer == b'{"type":' and child.poll() is None
+            clock += client.timeout
+            return []
+
+        monkeypatch.setattr(whistle_client, "time", SimpleNamespace(monotonic=lambda: clock))
+        monkeypatch.setattr(client.selector, "select", select_after_partial)
         with pytest.raises(RuntimeError, match="timed out"):
             client.transcribe(tmp_path / "test.wav")
-        assert child.poll() is not None and client.process is None
+        assert partial_reads == [b'{"type":']
+        assert child.poll() is not None and client.process is None, "timeout did not reap the worker"
 
 
 def test_crashed_worker_is_reported_and_cleanup_is_safe(tmp_path, monkeypatch):
