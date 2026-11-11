@@ -31,9 +31,9 @@ def test_long_reader_layout_preserves_original_word_and_chip_keys():
 def test_oversized_reader_chip_can_occupy_rows_without_host_words():
     from cassini_talk.portable import Word
 
-    words = [Word("a", 0, 200000, "Opening.")]
-    words.extend(Word("b", 10000 + i * 100, 10100 + i * 100, "Reply") for i in range(400))
-    words.append(Word("a", 200000, 201000, "Closing."))
+    words = [Word("a", 0, 1000, "Opening.")]
+    words.extend(Word("b", 900, 1100, "Reply") for _ in range(400))
+    words.append(Word("a", 1000, 2000, "Closing."))
     rows = reader_turns(words)
     assert any(not row.words and row.asides for row in rows.layout)
     for key, index in rows.word_rows.items():
