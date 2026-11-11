@@ -119,6 +119,7 @@ talk_sources = files(
   'cassini_talk/sherpa_runtime.py',
   'cassini_talk/sherpa-pins.json',
   'cassini_talk/whistle_client.py',
+  'cassini_talk/speech_threads.py',
   'cassini_talk/whistle_worker.py',
   'cassini_talk/speech_pipeline.py',
   'cassini_talk/recognition_fallback.py',

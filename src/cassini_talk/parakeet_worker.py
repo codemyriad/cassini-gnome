@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from cassini_talk.parakeet_model import MODEL_TAG  # noqa: E402
+from cassini_talk.speech_threads import background_worker_priority  # noqa: E402
 from cassini_talk.whistle_worker import PRIVACY, emit, onnxruntime_dir, verify_bundle, verify_onnxruntime  # noqa: E402
 
 
@@ -19,6 +20,7 @@ def block_network(event, _args):
 def main(bundle, model_path, runtime_path):
     if any(os.environ.get(key) != value for key, value in PRIVACY.items()):
         raise RuntimeError("Speech privacy flags must be set before loading Parakeet")
+    background_worker_priority()
     bundle = verify_bundle(bundle)
     runtime = onnxruntime_dir()
     if runtime is not None:

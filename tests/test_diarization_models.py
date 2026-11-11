@@ -7,7 +7,7 @@ import time
 
 import pytest
 import test_model_download
-from durable import durable, idle
+from durable import DURABLE_BOUND, Changes, idle
 
 from cassini_talk import diarization_models, nemotron_model
 from cassini_talk.diarization_models import DiarizationModels
@@ -55,8 +55,7 @@ def fixture(remote, tmp_path, monkeypatch):
     idle(models)
     yield models, store, remote
     models.close()
-    models._thread.join(2)
-    assert not models._thread.is_alive()
+    idle(models)
 
 
 def download(models):
@@ -148,23 +147,55 @@ def test_cancel_after_publish_keeps_the_verified_model_on(fixture, monkeypatch):
 
 def test_close_signals_a_busy_capability_child_without_joining_gtk(fixture):
     models, _store, _remote = fixture
-    entered, release = threading.Event(), threading.Event()
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
+    timed_out, closed = threading.Event(), threading.Event()
+    changes, closed_threads = Changes(), []
+    models.changed = changes
 
     class Busy(Probe):
         def start(self):
             entered.set()
-            assert release.wait(3)
-            from concurrent.futures import CancelledError
+            changes()
+            # Hang guard: a joining-close regression must fail this test rather
+            # than deadlock the whole shard. Healthy execution releases by event.
+            if not release.wait(DURABLE_BOUND):
+                timed_out.set()
+            if cancelled.is_set():
+                from concurrent.futures import CancelledError
 
-            raise CancelledError()
+                raise CancelledError()
+            return self
 
         def cancel(self):
-            release.set()
+            cancelled.set()
+
+        def close(self):
+            closed_threads.append(threading.get_ident())
+            closed.set()
 
     models.client_factory = Busy
     assert models.download()
-    durable(entered, "the download did not reach the runtime start")
-    started = time.monotonic()
-    models.close()
-    assert time.monotonic() - started < 0.1
-    idle(models)
+    worker = models._thread
+    try:
+        changes.wait(
+            lambda: entered.is_set() or not models.snapshot()["busy"],
+            "the download did not reach the runtime start",
+        )
+        assert entered.is_set(), f"Worker exited before capability start: {models.snapshot()}"
+        started_cpu = time.thread_time_ns()
+        models.close()
+        # Preserve the 100 ms CPU ceiling; the event protocol separately detects
+        # joins/lock waits. The durable guard only lets a broken join unwind.
+        assert time.thread_time_ns() - started_cpu < 100_000_000
+        assert not timed_out.is_set(), "Close waited for the held capability worker"
+        assert cancelled.is_set(), "Close did not signal the active capability child"
+        assert models.cancelled.is_set() and models.download_cancelled.is_set()
+        assert not release.is_set() and worker.is_alive(), "Close must not wait for worker completion"
+        assert not closed.is_set(), "The capability child was reaped on the calling thread"
+    finally:
+        release.set()
+        idle(models)
+    assert closed.is_set() and closed_threads == [worker.ident]
+    assert models._probe is None
+    state = models.snapshot()
+    assert state["downloaded"] and not state["ready"] and not state["error"]
