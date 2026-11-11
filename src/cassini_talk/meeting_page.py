@@ -395,10 +395,10 @@ class MeetingPage(Adw.NavigationPage):
         palette = DARK_COLOURS if Adw.StyleManager.get_default().get_dark() else COLOURS
         return palette[speaker.colour_index % len(palette)]
 
-    def _turn_markup(self, turn):
+    def _turn_markup(self, turn, *, position=None):
         return reading_markup(
             turn,
-            self.player.position,
+            self.player.position if position is None else position,
             lambda speaker: self.meeting.speaker_for(speaker).name,
             dark=Adw.StyleManager.get_default().get_dark(),
             chip_links=self._exact,
@@ -613,6 +613,8 @@ class MeetingPage(Adw.NavigationPage):
             self.window.listen.start(row_turn.speaker, self._local_turn_index[index])
 
     def _hand_scroll(self, *_):
+        if self._exact:
+            self.list.cancel_pending_scroll()
         self._follow_until = GLib.get_monotonic_time() + 4_000_000
         return False
 

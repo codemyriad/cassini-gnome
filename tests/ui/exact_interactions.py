@@ -77,6 +77,46 @@ def check_interactions(window, page, paint, until):
         gestures[0].emit(signal, 0.0, 0.0)
         assert page._follow_until > GLib.get_monotonic_time()
     result["touchFollowPause"] = True
+    view.props.vadjustment.set_value(0)
+    paint(window)
+    ok, bounds = view.rows[0].compute_bounds(page.scroller)
+    assert ok and bounds.get_x() >= 48 and abs(bounds.get_y() - 22) <= 1, bounds
+
+    # Start a rebuild with an anchor that needs several rows to be measured.
+    view.props.vadjustment.set_value(view.prefix[10] + 7)
+    paint(window)
+    view.invalidate()
+    paint(window)
+    assert view._active is view._building and not view.ready
+    until(lambda: view._pending_anchor is None)
+    assert abs(view._value() - view.prefix[10] - 7) <= 1
+    assert not view.ready
+
+    # Resize again while that replacement is still partial. It must keep
+    # publishing measured rows and restore the same logical anchor.
+    old_index = view._active
+    old_width, old_height = window.get_default_size()
+    window.set_default_size(860, old_height)
+    until(lambda: view._active is not old_index)
+    assert view._active is view._building and not view.ready
+    until(lambda: view._pending_anchor is None)
+    assert abs(view._value() - view.prefix[10] - 7) <= 1
+
+    far = len(model.turns) - 1
+    view.scroll_to(far)
+    assert view._pending_scroll == far
+    page._hand_scroll()
+    assert view._pending_scroll is None
+    view.scroll_to(far)
+    assert view._pending_scroll == far
+    view.set_turns(view.items, len(view.items))
+    assert view._pending_scroll is None
+    until(lambda: view.ready)
+    assert abs(view._value() - view.prefix[10] - 7) <= 1
+    window.set_default_size(old_width, old_height)
+    until(lambda: view.ready and view._requested_width == old_index.width)
+    paint(window)
+    result["reindexAnchor"] = True
     # Baseline GtkLabels are not selectable; do not promise whole-document copy.
     assert all(not words.get_selectable() for _, words, _ in page.bound.values())
     assert not hasattr(page, "search_entry"), "Meeting gained an inline search UI; add parity coverage"
@@ -93,7 +133,9 @@ def check_interactions(window, page, paint, until):
         assert nav.key(None, key, 0, Gdk.ModifierType(0))
         paint(window)
         assert window.get_focus() is not None
-    assert not nav.key(None, Gdk.KEY_Down, 0, Gdk.ModifierType.ALT_MASK)
+    for modifier in (Gdk.ModifierType.ALT_MASK, Gdk.ModifierType.CONTROL_MASK, Gdk.ModifierType.SHIFT_MASK):
+        assert not nav.key(None, Gdk.KEY_Down, 0, modifier)
+        assert not nav.key(None, Gdk.KEY_KP_Home, 0, modifier)
     for key, expected in (
         (Gdk.KEY_End, len(model.turns) - 1),
         (Gdk.KEY_Home, 0),
@@ -298,6 +340,12 @@ def check_interactions(window, page, paint, until):
         page.bound[host.index][1].emit("activate-link", uri)
         expected = host.asides[0][1].words[int(uri[-1])].start_ms
         until(lambda expected=expected: page.player.position == expected)
+    # Compare actual allocation geometry with the same linked chip markup
+    # used by the hidden measuring row.
+    assert view._metric_markup[host.index] == page._turn_markup(host, position=-1)
+    assert view._metric_markup[host.index].count('href="aside:0:0"') >= 3
+    actual = page.bound[host.index][2].measure(Gtk.Orientation.VERTICAL, view.layout_width).natural
+    assert actual == view.prefix[host.index + 1] - view.prefix[host.index]
     result["chipHits"] = True
     # A speaker present only in a folded reply stays in the actionable sidebar.
     reply = host.asides[0][1]
