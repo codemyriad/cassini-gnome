@@ -62,4 +62,25 @@ def check_import_bindings():
     dialog = ImportDialog(window, ("/fixture/Cancel.zip",))
     dialog.cancel_button.emit("clicked")
     assert dialog.cancelled.is_set() and dialog.closed
-    print("PASS: D96 real progress, result and cancellation widget bindings")
+
+    # Queued dialog does not present until started; cancelling before start suppresses presentation;
+    # unexpected worker exceptions retain partial counts and report the failure.
+    window = shell()
+    presented = []
+    queued = ImportDialog(window, ("/fixture/Queued.zip",))
+    queued.present = lambda parent: presented.append(parent)
+    assert not presented
+    queued.cancel()
+    queued._show()
+    assert not presented
+
+    window = shell()
+    with using_language("en"):
+        crashing = ImportDialog(window, ("/fixture/Crash.zip",))
+        crashing._progress(Result(total=3, imported=2, last_key="Received-two"))
+        boom_future = window._import_executor.future
+        boom_future.result = lambda: (_ for _ in ()).throw(RuntimeError("Synthetic worker crash"))
+        crashing._done(boom_future)
+        assert window._pending_selection == "Received-two" and window.refreshes == [True]
+        assert window.messages == ["Imported 2 · 1 file could not be imported"]
+    print("PASS: D96 real progress, result, queued-cancel and exception widget bindings")

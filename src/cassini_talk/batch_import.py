@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""D96 import-side transaction: streaming, cancellable, bounded per batch."""
+"""D96 import-side transaction: streaming, cancellable, bounded per archive and batch."""
 
 import tempfile
 import zipfile
 import zlib
 from concurrent.futures import CancelledError
 from dataclasses import dataclass, field, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from . import archive_import
 from .export_audio import check_cancel
@@ -21,13 +21,15 @@ METHODS = {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
 
 
 def supported(entry):
-    return Path(entry.filename).suffix.lower() in SUPPORTED and entry.compress_type in METHODS
+    return PurePosixPath(entry.filename).suffix.lower() in SUPPORTED and entry.compress_type in METHODS
 
 
 @dataclass
 class Budget:
     entries: int = field(default_factory=lambda: archive_import.MAX_ENTRIES)
     bytes: int = field(default_factory=lambda: archive_import.MAX_BYTES)
+    ratio: int = field(default_factory=lambda: archive_import.MAX_RATIO)
+    read_bytes: int = 0
 
 
 @dataclass
@@ -47,10 +49,12 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
     """Use on a worker. Keep successful files on cancellation or another failure.
 
     Only ZIP and currently supported Opus inputs are handled. Nested archives
-    are ignored. Private extraction disappears on every exit; the existing
-    importer owns publication, byte-digest dedup and partial-copy rollback.
+    are ignored and counted in unsupported. Private extraction disappears on
+    every exit; the existing importer owns publication, byte-digest dedup and
+    partial-copy rollback.
     """
-    result, budget = Result(), Budget()
+    result, batch_budget = Result(), Budget()
+    dedup_index = {}
 
     def report():
         if progress is not None:
@@ -63,7 +67,12 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
     def import_path(path, expected_bytes, original_folder=None):
         check_cancel(cancel)
         meeting, added = import_one(
-            path, root, cancel=cancel, expected_bytes=expected_bytes, original_folder=original_folder
+            path,
+            root,
+            cancel=cancel,
+            expected_bytes=expected_bytes,
+            original_folder=original_folder,
+            dedup_index=dedup_index,
         )
         if added:
             result.imported += 1
@@ -93,10 +102,11 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
             path = Path(path)
             try:
                 if path.suffix.lower() == ".zip":
+                    archive_budget = Budget()
                     with regular_input(path) as incoming:
-                        archive_import.preflight(incoming)
+                        cd_offset = archive_import.preflight(incoming)
                         with zipfile.ZipFile(incoming) as archive:
-                            entries = archive_import.entries(archive, budget)
+                            entries = archive_import.entries(archive, archive_budget, cd_offset=cd_offset)
                             files = [entry for entry in entries if not entry.is_dir()]
                             result.total += len(files) - 1
                             if not any(supported(entry) for entry in files):
@@ -112,10 +122,12 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                                     continue
                                 try:
                                     with tempfile.TemporaryDirectory(prefix="cassini-zip-import-") as folder:
-                                        extracted = archive_import.extract(archive, entry, folder, cancel)
-                                        parent = Path(entry.filename).parent.name or path.stem
+                                        extracted = archive_import.extract(
+                                            archive, entry, folder, cancel, budget=archive_budget
+                                        )
+                                        parent = PurePosixPath(entry.filename).parent.name or path.stem
                                         import_path(extracted, entry.file_size, parent)
-                                except CancelledError:
+                                except (CancelledError, archive_import.ArchiveError):
                                     raise
                                 except DECODE_ERRORS:
                                     failed(entry.filename, "damaged")
@@ -123,15 +135,15 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                 elif path.suffix.lower() in SUPPORTED:
                     with regular_input(path) as source:
                         size = source.seek(0, 2)
-                    if budget.entries < 1 or size > budget.bytes:
+                    if batch_budget.entries < 1 or size > batch_budget.bytes:
                         raise archive_import.ArchiveError("limit")
-                    budget.entries -= 1
-                    budget.bytes -= size
+                    batch_budget.entries -= 1
+                    batch_budget.bytes -= size
                     import_path(path, size)
                 else:
-                    if budget.entries < 1:
+                    if batch_budget.entries < 1:
                         raise archive_import.ArchiveError("limit")
-                    budget.entries -= 1
+                    batch_budget.entries -= 1
                     result.ignored += 1
             except archive_import.ArchiveError as error:
                 failed(path.name, error.reason)

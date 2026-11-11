@@ -24,5 +24,12 @@ def test_cancelled_summary_keeps_success_and_reports_cancellation():
     with using_language("en"):
         assert summary(Result(imported=1, cancelled=True)) == "Imported 1 · Import cancelled"
         assert summary(Result()) == text("import.zip.failed.empty")
-        value = summary(Result(failed=1, errors=[("Unsafe.zip", "unsafe")]))
-        assert text("import.zip.failed.unsafePaths") in value
+        for code, key in (
+            ("damaged", "damaged"),
+            ("encrypted", "encrypted"),
+            ("unsafe", "unsafePaths"),
+            ("limit", "tooLarge"),
+            ("empty", "empty"),
+        ):
+            value = summary(Result(failed=0 if code == "empty" else 1, errors=[("Archive.zip", code)]))
+            assert text("import.zip.failed." + key) in value

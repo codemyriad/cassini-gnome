@@ -52,7 +52,41 @@ def import_received(path, root=None, *, cancel=None):
     return import_one(path, root, cancel=cancel)[0]
 
 
-def import_one(path, root=None, *, cancel=None, expected_bytes=None, original_folder=None):
+def _dedup_candidates(root, requested_root, sha, cancel, dedup_index):
+    if requested_root is not None:
+        roots_key = (root,)
+    else:
+        from .library_location import load
+
+        state = load()
+        primary = Path(state["primary"])
+        pending = tuple(Path(e["source"]) for e in state["pending"])
+        roots_key = (root, primary, pending)
+    if dedup_index is not None and dedup_index.get("key") == roots_key:
+        return roots_key, list(dedup_index["by_sha"].get(sha, ()))
+    candidates = list(root.iterdir())
+    if requested_root is None:
+        primary, pending = roots_key[1], roots_key[2]
+        candidates.extend(primary.iterdir() if primary.exists() else ())
+        candidates.extend(pending)
+    if dedup_index is None:
+        return roots_key, list(dict.fromkeys(candidates))
+    by_sha = {}
+    for directory in dict.fromkeys(candidates):
+        check_cancel(cancel)
+        if directory.is_symlink() or not directory.is_dir() or not directory.name.startswith("Received-"):
+            continue
+        try:
+            value = read_metadata(directory)
+            by_sha.setdefault(value["received"]["sha256"], []).append(directory)
+        except (OSError, ValueError, KeyError):
+            continue
+    dedup_index["key"] = roots_key
+    dedup_index["by_sha"] = by_sha
+    return roots_key, list(by_sha.get(sha, ()))
+
+
+def import_one(path, root=None, *, cancel=None, expected_bytes=None, original_folder=None, dedup_index=None):
     """Return (meeting, newly_imported), with chunk cancellation and exact-byte dedup."""
     check_cancel(cancel)
     original = Path(path).absolute()
@@ -102,15 +136,8 @@ def import_one(path, root=None, *, cancel=None, expected_bytes=None, original_fo
             sha = digest.hexdigest()
             # A stored digest is an index. A changed/missing original copy must
             # not prevent this good incoming copy from reaching the Library.
-            candidates = list(root.iterdir())
-            if requested_root is None:
-                from .library_location import load
-
-                state = load()
-                current = Path(state["primary"])
-                candidates.extend(current.iterdir() if current.exists() else ())
-                candidates.extend(Path(e["source"]) for e in state["pending"])
-            for directory in dict.fromkeys(candidates):
+            roots_key, candidates = _dedup_candidates(root, requested_root, sha, cancel, dedup_index)
+            for directory in candidates:
                 check_cancel(cancel)
                 if directory.is_symlink() or not directory.is_dir() or not directory.name.startswith("Received-"):
                     continue
@@ -165,14 +192,21 @@ def import_one(path, root=None, *, cancel=None, expected_bytes=None, original_fo
                 raise ValueError("Received recording metadata exceeds limit")
             atomic_json(stage / "meeting.json", metadata)
             check_cancel(cancel)
-            published = _publish_import(stage, identifier, requested_root, cancel=cancel)
+            published = (
+                _publish_import(stage, identifier, requested_root)
+                if cancel is None
+                else _publish_import(stage, identifier, requested_root, cancel=cancel)
+            )
             try:
-                return _meeting(published), True
+                meeting = _meeting(published)
             except BaseException:
                 # A failed first scan must not leave an invisible, undedupable
                 # Received folder behind. This UUID was created by this import.
                 shutil.rmtree(published)
                 raise
+            if dedup_index is not None and dedup_index.get("key") == roots_key:
+                dedup_index["by_sha"].setdefault(sha, []).append(published)
+            return meeting, True
         finally:
             if stage.exists():
                 shutil.rmtree(stage)

@@ -116,3 +116,39 @@ FUSE mounting. The roy host has no /dev/fuse. The native chooser proof and real
 sandbox/restart proof are separate; end-to-end document-portal mounting remains
 a desktop QA check. Main fails the same sandbox test by accepting the unsafe
 private-home export.
+
+## Batch and ZIP archive import (D96)
+
+Open (`open_multiple`), OS file activation and drag-and-drop accept several
+files at once and `.zip` archives using `import.filter.cassiniAndZip`. Multi-file
+and ZIP imports run on a dedicated single-worker `ThreadPoolExecutor` so the
+Library monitor continues scanning without contention. Queued imports present
+their `Adw.Dialog` (`import.progress` + `common.cancel`) only when started;
+closing the window cancels active and queued jobs.
+
+Each archive is checked from its directory before any member is imported, and
+the byte and ratio bounds are enforced again on the bytes actually read:
+
+- At most 2,000 entries per archive (`MAX_ENTRIES = 2_000`) and 2 MiB central
+  directory metadata before `ZipFile` allocation (`import.zip.failed.tooLarge`).
+- At most 20 GB (`20_000_000_000` bytes) total uncompressed size per archive,
+  checked across directory entries and cumulative extracted bytes
+  (`import.zip.failed.tooLarge`).
+- Any entry with uncompressed-to-compressed ratio above 100:1 refuses the
+  archive (`import.zip.failed.tooLarge`), both in directory metadata and while
+  inflating raw deflate streams in bounded chunks.
+- Encrypted archives (traditional PKWARE, strong encryption or WinZip AES, in
+  central or local headers) are refused without prompting
+  (`import.zip.failed.encrypted`).
+- Absolute paths, `..` components, backslashes, drive prefixes, NUL bytes or
+  special file modes refuse the whole archive before importing anything
+  (`import.zip.failed.unsafePaths`). Safe entries extract by bounded basename
+  into a private `0700` temporary directory with `0600` files and preserve their
+  archive folder hint.
+- Nested archives and unsupported formats/methods are never opened and are
+  counted in `import.summary.unsupported`; an archive with no supported Opus
+  entry reports `import.zip.failed.empty`; unreadable or overlapping-header
+  archives report `import.zip.failed.damaged`.
+- Batch deduplication indexes existing `Received-*` SHA-256 metadata once per
+  batch ($O(M + N)$) while still re-verifying full file bytes on every digest
+  match, preserving committed notes on cancellation or later member failure.

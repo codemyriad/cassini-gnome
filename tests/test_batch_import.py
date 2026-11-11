@@ -131,11 +131,38 @@ def test_forged_small_count_still_checks_actual_central_directory_entry_count(tm
     assert batch_import.import_files([path], tmp_path / "Library").errors == [("Forged count.zip", "limit")]
 
 
-def test_declared_uncompressed_bytes_and_total_batch_entries_are_bounded(tmp_path, monkeypatch):
+def test_published_d96_archive_limits_and_boundaries(tmp_path, monkeypatch):
+    assert (archive_import.MAX_ENTRIES, archive_import.MAX_BYTES, archive_import.MAX_RATIO) == (
+        2_000,
+        20_000_000_000,
+        100,
+    )
+    at_limit = zip_file(
+        tmp_path / "ExactCount.zip",
+        [("Meeting.opus", ONE.read_bytes())] + [(f"note-{i}.txt", b"") for i in range(1_999)],
+    )
+    exact = batch_import.import_files([at_limit], tmp_path / "LibraryExact")
+    assert (exact.imported, exact.ignored, exact.failed) == (1, 1_999, 0)
+    over_limit = zip_file(
+        tmp_path / "OverCount.zip",
+        [("Meeting.opus", ONE.read_bytes())] + [(f"note-{i}.txt", b"") for i in range(2_000)],
+    )
+    refused = batch_import.import_files([over_limit], tmp_path / "LibraryOver")
+    assert refused.imported == 0 and refused.errors == [("OverCount.zip", "limit")]
+
     path = zip_file(tmp_path / "Large.zip", [("Ignored.txt", b"x" * 100)])
-    monkeypatch.setattr(archive_import, "MAX_BYTES", 50)
-    assert batch_import.import_files([path], tmp_path / "Library").errors == [("Large.zip", "limit")]
-    monkeypatch.setattr(archive_import, "MAX_BYTES", 8 * 1024**3)
+    monkeypatch.setattr(archive_import, "MAX_BYTES", 100)
+    assert batch_import.import_files([path], tmp_path / "LibraryByteOk").ignored == 1
+    monkeypatch.setattr(archive_import, "MAX_BYTES", 99)
+    assert batch_import.import_files([path], tmp_path / "LibraryByteOver").errors == [("Large.zip", "limit")]
+
+    monkeypatch.setattr(archive_import, "MAX_BYTES", 20_000_000_000)
+    monkeypatch.setattr(archive_import, "MAX_ENTRIES", 2)
+    a1 = zip_file(tmp_path / "One.zip", [("a.opus", ONE.read_bytes()), ("a.txt", b"ok")])
+    a2 = zip_file(tmp_path / "Two.zip", [("b.opus", TWO.read_bytes()), ("b.txt", b"ok")])
+    per_archive = batch_import.import_files([a1, a2], tmp_path / "LibraryTwoZips")
+    assert (per_archive.imported, per_archive.ignored, per_archive.failed) == (2, 2, 0)
+
     monkeypatch.setattr(archive_import, "MAX_ENTRIES", 1)
     result = batch_import.import_files([ONE, TWO], tmp_path / "Library")
     assert result.imported == 1 and result.failed == 1
@@ -195,12 +222,13 @@ def test_cancel_after_first_commit_keeps_that_document_and_removes_extraction(tm
 
 def test_cancel_during_real_copy_cleans_partial_and_never_publishes(tmp_path, monkeypatch):
     path = tmp_path / "Held.opus"
-    path.write_bytes(b"x" * (2 * 1024**2))
+    path.write_bytes(b"x" * (3 * 1024**2))
     root = tmp_path / "Library"
     cancel = threading.Event()
     entered = threading.Event()
     release = threading.Event()
     done = threading.Event()
+    reads_after_cancel = []
     original = received.regular_input
 
     @contextmanager
@@ -212,7 +240,9 @@ def test_cancel_during_real_copy_cleans_partial_and_never_publishes(tmp_path, mo
                     return getattr(stream, name)
 
                 def read(self, n):
-                    if stream.tell() >= 1024**2:
+                    if cancel.is_set():
+                        reads_after_cancel.append(stream.tell())
+                    elif stream.tell() >= 1024**2:
                         entered.set()
                         assert release.wait(30), "copy barrier was never released"
                     return stream.read(n)
@@ -241,6 +271,7 @@ def test_cancel_during_real_copy_cleans_partial_and_never_publishes(tmp_path, mo
     finally:
         release.set()
         thread.join(30)
+    assert not reads_after_cancel, f"copy kept reading after cancel at offsets {reads_after_cancel}"
     assert len(errors) == 1 and isinstance(errors[0], CancelledError)
     assert not list(root.iterdir())
 
@@ -328,3 +359,187 @@ def test_duplicate_verification_rejects_a_file_that_grows_during_the_hash(tmp_pa
     monkeypatch.setattr(received, "regular_input", changing)
     with pytest.raises(ValueError, match="changed"):
         received.sha256_file(path)
+
+
+def test_ratio_over_100_to_1_refuses_archive_in_directory_and_on_actual_bytes(tmp_path, monkeypatch):
+    import zlib
+
+    # 1. Directory ratio boundary: exact 100:1 passes, 100:1 + 1 byte refuses whole archive before First.opus imports.
+    exact = zip_file(
+        tmp_path / "ExactRatio.zip",
+        [("First.opus", ONE.read_bytes()), ("Pad.bin", b"A" * 50_000)],
+        compression=zipfile.ZIP_DEFLATED,
+    )
+    data = bytearray(exact.read_bytes())
+    cd = data.rindex(b"PK\x01\x02")
+    comp_size = struct.unpack_from("<L", data, cd + 20)[0]
+    struct.pack_into("<L", data, cd + 24, comp_size * 100)
+    exact.write_bytes(data)
+    ok_res = batch_import.import_files([exact], tmp_path / "LibExactRatio")
+    assert ok_res.imported == 1 and ok_res.ignored == 1 and ok_res.failed == 0
+
+    over = tmp_path / "OverRatio.zip"
+    data_over = bytearray(data)
+    struct.pack_into("<L", data_over, cd + 24, comp_size * 100 + 1)
+    over.write_bytes(data_over)
+    bad_res = batch_import.import_files([over], tmp_path / "LibOverRatio")
+    assert bad_res.imported == 0 and bad_res.errors == [("OverRatio.zip", "limit")]
+
+    # 2. Forged directory file_size hiding >100:1 deflate expansion is refused on bytes actually read.
+    raw_bomb = b"A" * 100_000
+    compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
+    deflated = compressor.compress(raw_bomb) + compressor.flush()
+    assert len(raw_bomb) > len(deflated) * 100
+    forged_size = 500
+    forged_crc = zlib.crc32(raw_bomb[:forged_size]) & 0xFFFFFFFF
+    name = b"Disguised.opus"
+    local_hdr = struct.pack(
+        "<4s5H3L2H", b"PK\x03\x04", 20, 0, 8, 0, 0, forged_crc, len(deflated), forged_size, len(name), 0
+    )
+    cd_offset = len(local_hdr) + len(name) + len(deflated)
+    cd_hdr = struct.pack(
+        "<4s6H3L5H2L",
+        b"PK\x01\x02",
+        20,
+        20,
+        0,
+        8,
+        0,
+        0,
+        forged_crc,
+        len(deflated),
+        forged_size,
+        len(name),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    eocd = struct.pack("<4s4H2LH", b"PK\x05\x06", 0, 0, 1, 1, len(cd_hdr) + len(name), cd_offset, 0)
+    forged_zip = tmp_path / "ForgedRatio.zip"
+    forged_zip.write_bytes(local_hdr + name + deflated + cd_hdr + name + eocd)
+    runtime_res = batch_import.import_files([forged_zip], tmp_path / "LibForgedRatio")
+    assert runtime_res.imported == 0 and runtime_res.errors == [("ForgedRatio.zip", "limit")]
+
+    # 3. Forged directory file_size hiding cumulative MAX_BYTES overflow (even below 100:1) is refused on actual read.
+    payload = ONE.read_bytes() * 4
+    c2 = zlib.compressobj(6, zlib.DEFLATED, -15)
+    deflated2 = c2.compress(payload) + c2.flush()
+    claimed = len(deflated2)
+    crc2 = zlib.crc32(payload[:claimed]) & 0xFFFFFFFF
+    lh2 = struct.pack("<4s5H3L2H", b"PK\x03\x04", 20, 0, 8, 0, 0, crc2, len(deflated2), claimed, len(name), 0)
+    cd_off2 = len(lh2) + len(name) + len(deflated2)
+    ch2 = struct.pack(
+        "<4s6H3L5H2L", b"PK\x01\x02", 20, 20, 0, 8, 0, 0, crc2, len(deflated2), claimed, len(name), 0, 0, 0, 0, 0, 0
+    )
+    eocd2 = struct.pack("<4s4H2LH", b"PK\x05\x06", 0, 0, 1, 1, len(ch2) + len(name), cd_off2, 0)
+    forged_bytes = tmp_path / "ForgedBytes.zip"
+    forged_bytes.write_bytes(lh2 + name + deflated2 + ch2 + name + eocd2)
+    monkeypatch.setattr(archive_import, "MAX_BYTES", claimed + 10)
+    bytes_res = batch_import.import_files([forged_bytes], tmp_path / "LibForgedBytes")
+    assert bytes_res.imported == 0 and bytes_res.errors == [("ForgedBytes.zip", "limit")]
+
+
+def test_aes_strong_and_local_header_encryption_and_overlapping_entries_refuse_whole_archive(tmp_path):
+    # WinZip AES (method 99) without traditional flag bit 0 still reports encrypted, not empty/unsupported.
+    aes = zip_file(tmp_path / "AES.zip", [("First.opus", ONE.read_bytes()), ("Secret.opus", TWO.read_bytes())])
+    data = bytearray(aes.read_bytes())
+    second_cd = data.rindex(b"PK\x01\x02")
+    second_lh = struct.unpack_from("<L", data, second_cd + 42)[0]
+    struct.pack_into("<H", data, second_cd + 10, 99)
+    struct.pack_into("<H", data, second_lh + 8, 99)
+    aes.write_bytes(data)
+    res_aes = batch_import.import_files([aes], tmp_path / "LibAES")
+    assert res_aes.imported == 0 and res_aes.errors == [("AES.zip", "encrypted")]
+
+    # Local-header-only encrypted bit on second member refuses whole archive before first member imports.
+    local_enc = zip_file(
+        tmp_path / "LocalEnc.zip", [("First.opus", ONE.read_bytes()), ("Second.opus", TWO.read_bytes())]
+    )
+    data_le = bytearray(local_enc.read_bytes())
+    lh2 = struct.unpack_from("<L", data_le, data_le.rindex(b"PK\x01\x02") + 42)[0]
+    struct.pack_into("<H", data_le, lh2 + 6, 1)
+    local_enc.write_bytes(data_le)
+    res_le = batch_import.import_files([local_enc], tmp_path / "LibLocalEnc")
+    assert res_le.imported == 0 and res_le.errors == [("LocalEnc.zip", "encrypted")]
+
+    # Overlapping local headers (non-recursive zbload-style amplification) refuse whole archive.
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        overlap = zip_file(tmp_path / "Overlap.zip", [("Same.opus", ONE.read_bytes()), ("Same.opus", ONE.read_bytes())])
+    data_ov = bytearray(overlap.read_bytes())
+    struct.pack_into("<L", data_ov, data_ov.rindex(b"PK\x01\x02") + 42, 0)
+    overlap.write_bytes(data_ov)
+    res_ov = batch_import.import_files([overlap], tmp_path / "LibOverlap")
+    assert res_ov.imported == 0 and res_ov.errors == [("Overlap.zip", "damaged")]
+
+
+def test_data_descriptor_streamed_zip_and_long_utf8_member_names_and_nested_only_archive(tmp_path):
+    # Data-descriptor ZIP (bit 3 set, local crc/sizes zeroed as in ZipOutputStream) + >255-byte UTF-8 basename.
+    long_name = "Folder/" + ("Réunion-" * 35) + "notes.opus"
+    assert len(Path(long_name).name.encode("utf-8")) > 255
+    streamed = zip_file(tmp_path / "Streamed.zip", [(long_name, ONE.read_bytes())], compression=zipfile.ZIP_DEFLATED)
+    raw = bytearray(streamed.read_bytes())
+    flags = struct.unpack_from("<H", raw, 6)[0] | 0x08
+    struct.pack_into("<H", raw, 6, flags)
+    struct.pack_into("<3L", raw, 14, 0, 0, 0)
+    cd = raw.rindex(b"PK\x01\x02")
+    struct.pack_into("<H", raw, cd + 8, flags)
+    streamed.write_bytes(raw)
+    res = batch_import.import_files([streamed], tmp_path / "LibStreamed")
+    assert res.imported == 1 and res.failed == 0
+
+    # Nested-only archive counts nested archive in unsupported and reports empty archive.
+    nested_only = zip_file(tmp_path / "NestedOnly.zip", [("inner.zip", streamed.read_bytes())])
+    nested_res = batch_import.import_files([nested_only], tmp_path / "LibNested")
+    assert (nested_res.imported, nested_res.ignored, nested_res.failed) == (0, 1, 0)
+    assert nested_res.errors == [("NestedOnly.zip", "empty")]
+
+
+def test_bulk_dedup_metadata_reads_scale_linearly_instead_of_quadratically(tmp_path, monkeypatch):
+    from cassini_talk.portable_writer import rewrite_tags
+
+    def make_files(folder, prefix, count):
+        folder.mkdir(parents=True, exist_ok=True)
+        out = []
+        for idx in range(count):
+            target = folder / f"{prefix}-{idx}.opus"
+            with TWO.open("rb") as src, target.open("wb") as dst:
+                rewrite_tags(src, dst, dict(TITLE=f"{prefix} {idx}", COMMENT=f"{prefix}-{idx}"))
+            out.append(target)
+        return out
+
+    # Compare metadata reads for N=15 vs 2N=30 imports on top of M=20 existing Library entries.
+    existing = make_files(tmp_path / "seed", "Seed", 20)
+    batch_small = make_files(tmp_path / "small", "Small", 15)
+    batch_large = make_files(tmp_path / "large", "Large", 30)
+
+    lib_small = tmp_path / "LibSmall"
+    lib_large = tmp_path / "LibLarge"
+    assert batch_import.import_files(existing, lib_small).imported == 20
+    assert batch_import.import_files(existing, lib_large).imported == 20
+
+    real_read = received.read_metadata
+    reads = []
+
+    def counted_read(directory):
+        reads.append(directory)
+        return real_read(directory)
+
+    monkeypatch.setattr(received, "read_metadata", counted_read)
+    reads.clear()
+    res_small = batch_import.import_files(batch_small + [existing[0], batch_small[0]], lib_small)
+    small_reads = len(reads)
+    assert (res_small.imported, res_small.duplicates) == (15, 2)
+    # Linear O(M + duplicates): 20 initial index reads + 2 duplicate verification reads = 22 (vs >500 quadratic).
+    assert small_reads <= 25, small_reads
+
+    reads.clear()
+    res_large = batch_import.import_files(batch_large + [existing[0], batch_large[0]], lib_large)
+    large_reads = len(reads)
+    assert (res_large.imported, res_large.duplicates) == (30, 2)
+    assert large_reads <= 25, large_reads

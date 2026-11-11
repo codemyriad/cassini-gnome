@@ -47,7 +47,8 @@ class ImportDialog(Adw.Dialog):
     def _run(self, paths):
         # A queued dialog appears only when its job starts. A new Open event
         # never hides another active import or runs another decoder beside it.
-        GLib.idle_add(self._show)
+        if not self.cancelled.is_set():
+            GLib.idle_add(self._show)
         return import_files(paths, cancel=self.cancelled, progress=lambda result: GLib.idle_add(self._progress, result))
 
     def _show(self):
@@ -79,7 +80,7 @@ class ImportDialog(Adw.Dialog):
         try:
             result = future.result()
         except CancelledError:
-            result = Result(cancelled=True)
+            result = replace(self._result, cancelled=True)
         except Exception:
             LOG.exception("Batch import failed")
             result = replace(self._result, failed=self._result.failed + 1)
