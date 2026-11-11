@@ -109,6 +109,11 @@ def check_interactions(window, page, paint, until):
     assert view._pending_scroll is None
     view.scroll_to(far)
     assert view._pending_scroll == far
+    view.scroll_to(10)
+    assert view._pending_scroll is None
+    view.props.vadjustment.set_value(view.prefix[10] + 7)
+    view.scroll_to(far)
+    assert view._pending_scroll == far
     view.set_turns(view.items, len(view.items))
     assert view._pending_scroll is None
     until(lambda: view.ready)
@@ -156,6 +161,15 @@ def check_interactions(window, page, paint, until):
     view.scroll_to(200)
     paint(window)
     assert window.get_focus() is focused and 10 in view.rows
+    assert 11 not in view.rows
+    for _ in range(160):
+        view.child_focus(Gtk.DirectionType.TAB_FORWARD)
+        paint(window)
+        if nav.focused() != 10:
+            break
+    assert nav.focused() == 11
+    view.scroll_to(200)
+    paint(window)
     # Child order stays chronological, including newly realized rows above.
     children = []
     child = view.get_first_child()

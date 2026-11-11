@@ -84,38 +84,19 @@ class TranscriptNavigation:
         return False
 
     def focus(self, direction):
-        previous = self.focused()
-        if previous is None and self.pending:
+        if direction not in (Gtk.DirectionType.TAB_FORWARD, Gtk.DirectionType.TAB_BACKWARD):
+            return Gtk.Widget.do_focus(self.view, direction)
+        current = self.focused()
+        forward = direction == Gtk.DirectionType.TAB_FORWARD
+        if current is not None:
+            if self.view.rows[current].child_focus(direction):
+                return True
+            next_row = current + (1 if forward else -1)
+            return 0 <= next_row < len(self.view.items) and self.request(next_row, direction)
+        if self.pending:
             # GTK can ask the container to take focus while the old focused
             # row is being removed. Let allocation restore the pending row.
             return True
-        if (
-            previous is None
-            and self.view.visible_rows
-            and direction
-            in (
-                Gtk.DirectionType.TAB_FORWARD,
-                Gtk.DirectionType.TAB_BACKWARD,
-            )
-        ):
-            index = self.view.visible_rows[0 if direction == Gtk.DirectionType.TAB_FORWARD else -1]
-            return self.request(index)
-        if Gtk.Widget.do_focus(self.view, direction):
-            current = self.focused()
-            if (
-                current is not None
-                and current != previous
-                and direction in (Gtk.DirectionType.TAB_FORWARD, Gtk.DirectionType.TAB_BACKWARD)
-            ):
-                self.view.page._hand_scroll()
-                self.view.scroll_to(current)
-            return True
-        if direction not in (Gtk.DirectionType.TAB_FORWARD, Gtk.DirectionType.TAB_BACKWARD):
-            return False
-        current = self.focused()
-        if current is None:
-            current = previous
-        if current is None:
-            return self.request(0, direction)
-        next_row = current + (1 if direction == Gtk.DirectionType.TAB_FORWARD else -1)
-        return 0 <= next_row < len(self.view.items) and self.request(next_row, direction)
+        if self.view.visible_rows:
+            return self.request(self.view.visible_rows[0 if forward else -1])
+        return False

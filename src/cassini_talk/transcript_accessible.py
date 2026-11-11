@@ -33,7 +33,7 @@ class LinkSpans:
             elif token == "</a>" and current:
                 uri, start, parts, synthetic = current
                 value = "".join(parts)
-                if value.strip() and not synthetic and uri not in seen:
+                if value.strip() and not synthetic and not uri.endswith(":anchor") and uri not in seen:
                     self.spans.append((uri, start, value))
                     seen.add(uri)
                 current = None

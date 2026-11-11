@@ -503,6 +503,8 @@ class MeetingPage(Adw.NavigationPage):
             self._render_header(turn, row)
 
     def _render_header(self, turn, row):
+        if self._exact:
+            row.set_margin_bottom(0 if getattr(turn, "has_more", False) else 24)
         speaker = self.meeting.speaker_for(turn.speaker)
         recognised = speaker.provenance == "recognised" and self.window.get_application().voice_store.has_match(
             self.meeting.directory, speaker.id
@@ -626,10 +628,12 @@ class MeetingPage(Adw.NavigationPage):
         self._follow_until = GLib.get_monotonic_time() + 4_000_000
         return False
 
-    def _index_listening_rows(self, meeting):
+    def _index_listening_rows(self, meeting, layout=None):
         # Rejoined words and inline replies both belong to the visible host row.
+        if layout is None:
+            layout = meeting.turns
         rows = {}
-        for row in meeting.turns:
+        for row in layout:
             for owner in [row] + [aside for _, aside in row.asides]:
                 for index in owner.word_indices:
                     rows[index] = row.index
@@ -640,7 +644,7 @@ class MeetingPage(Adw.NavigationPage):
             positions = frozenset(rows[i] for i in turn.word_indices if i in rows)
             self._turn_rows[turn.index] = positions
             for row_index in positions:
-                if meeting.turns[row_index].speaker == turn.speaker:
+                if layout[row_index].speaker == turn.speaker:
                     self._row_listening.setdefault(row_index, turn.index)
             self._local_turn_index[turn.index] = counts.get(turn.speaker, 0)
             counts[turn.speaker] = self._local_turn_index[turn.index] + 1
@@ -705,6 +709,7 @@ class MeetingPage(Adw.NavigationPage):
         self._updating_transcript = True
         self._updating_rows = True
         self.meeting = meeting
+        layout = getattr(meeting.turns, "layout", meeting.turns) if self._exact else meeting.turns
         self.headline.set_title(meeting.title)
         self.window.set_title(meeting.title)
         self.headline.set_subtitle(
@@ -732,8 +737,8 @@ class MeetingPage(Adw.NavigationPage):
             button.set_sensitive(can_play)
         self.seek.set_sensitive(can_play)
         self._can_listen = can_play
-        if self._turns != meeting.turns or self._listening_turns is not meeting.listening_turns:
-            self._index_listening_rows(meeting)
+        if self._turns != layout or self._listening_turns is not meeting.listening_turns:
+            self._index_listening_rows(meeting, layout)
         if not can_play and self.window.listen.active:
             self.window.listen.stop()
         if self._listening_turns is not meeting.listening_turns:
@@ -853,20 +858,20 @@ class MeetingPage(Adw.NavigationPage):
             )
         # Only changed timed text replaces transcript items. Metadata/theme
         # updates preserve their focused widgets and refresh headers in batches.
-        if self._turns is not meeting.turns:
+        if self._turns is not layout:
             common = 0
-            for before, after in zip(self._turns, meeting.turns, strict=False):
+            for before, after in zip(self._turns, layout, strict=False):
                 if before != after:
                     break
                 common += 1
             removed = len(self._turns) - common
-            additions = [] if self._exact else [TurnItem(turn) for turn in meeting.turns[common:]]
+            additions = [] if self._exact else [TurnItem(turn) for turn in layout[common:]]
             if self._exact:
-                self.list.set_turns(meeting.turns, common)
+                self.list.set_turns(layout, common)
             elif removed or additions:
                 self.store.splice(common, removed, additions)
-            self._turns = meeting.turns
-            self._follow_rows = getattr(meeting.turns, "follow", None) or FollowRows(meeting.turns)
+            self._turns = layout
+            self._follow_rows = getattr(layout, "follow", None) or FollowRows(layout)
         self._updating_transcript = False
         self._highlight_listening()
         self._position()

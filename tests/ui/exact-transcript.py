@@ -492,6 +492,16 @@ with tempfile.TemporaryDirectory() as temporary:
         paint(window)
     if not BASELINE and len(reports) == 3:
         assert reports[1]["openMeasurementCpuMs"] < 8 * reports[0]["openMeasurementCpuMs"], "Superlinear indexing"
+        from exact_long_turn import check_long_turn
+
+        reports[1]["longRejoinedTurn"] = check_long_turn(window, long_meeting, Frames, paint, until, flicks)
+        print(
+            "LONG_REJOINED_TURN",
+            json.dumps(
+                {k: v for k, v in reports[1]["longRejoinedTurn"].items() if k not in ("paused", "playingFollowOff")}
+            ),
+            flush=True,
+        )
     Path(os.environ["CASSINI_CUSTOM_OUT"]).write_text(json.dumps(reports, indent=2))
     app.on_quit()
     app.do_shutdown()
