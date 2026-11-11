@@ -62,7 +62,6 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self._pending_scroll = None
         self._pending_anchor = None
         self._display_common = None
-        self._replace_active = False
         self.connect("notify::vadjustment", self._adjustment_changed)
         self.set_overflow(Gtk.Overflow.HIDDEN)
         self.connect("notify::scale-factor", self.invalidate)
@@ -98,7 +97,8 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         # replacing the sounding tail cannot temporarily shrink the range and
         # clamp the old anchor before its replacement height is known.
         self._pending_scroll = None
-        self.navigation.pending = None
+        if self.navigation.pending and self.navigation.pending[0] >= common:
+            self.navigation.pending = None
         self._cancel_build()
         self._display_common = common if self._display_common is None else min(self._display_common, common)
         self.items = turns
@@ -126,7 +126,6 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self.word_actions.generation += 1
         self._cancel_build()
         self._indices.clear()
-        self._replace_active = True
         self._metric_markup.clear()
         self._requested_width = -1
         self.ready = False
@@ -157,13 +156,16 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
     def do_measure(self, orientation, for_size):
         return (0, 360, -1, -1) if orientation == Gtk.Orientation.HORIZONTAL else (0, 100, -1, -1)
 
-    def _activate(self, index):
-        if self._pending_anchor is None and len(self.prefix) > 1:
+    def _anchor(self):
+        anchor = self._pending_anchor
+        if anchor is None and len(self.prefix) > 1:
             value = self._value()
             row = bisect_right(self.prefix, value) - 1
-            self._pending_anchor = row, value - self.prefix[row]
-        if self._pending_anchor is not None and self._display_common is not None:
-            row, offset = self._pending_anchor
+            anchor = row, value - self.prefix[row]
+        if anchor is None or not self.items:
+            return None
+        row, offset = anchor
+        if self._display_common is not None:
             # Reading rows are renumbered on every projection. Beyond the
             # common prefix, the old ordinal can refer to unrelated words.
             same_start = (
@@ -173,14 +175,28 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             )
             if row >= self._display_common and not same_start:
                 row, offset = max(0, self._display_common - 1), 0
-            self._pending_anchor = (row, offset) if self.items else None
+        return row, offset
+
+    def _covers_anchor(self, index, height):
+        if index.complete:
+            return True
+        anchor = self._anchor()
+        if anchor is None:
+            return False
+        row, offset = anchor
+        if row + 1 >= len(index.prefix):
+            return False
+        offset = min(offset, max(0, index.prefix[row + 1] - index.prefix[row] - 1))
+        return index.prefix[row] + offset + height <= index.prefix[-1]
+
+    def _activate(self, index):
+        self._pending_anchor = self._anchor()
         self._display_common = None
-        self._replace_active = False
         self.viewport_ready = False
         focused = self.navigation.focused()
         for number, row in list(self.rows.items()):
             if number >= len(self.items) or row._turn != self.items[number]:
-                if focused == number:
+                if focused == number and self.navigation.pending is None:
                     self.navigation.pending = (min(number, len(self.items) - 1), None) if self.items else None
                 removed = self.rows.pop(number)
                 removed.close()
@@ -205,9 +221,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         while len(self._indices) > 3:
             self._indices.popitem(last=False)
         self.ready = index.complete
-        if self._active is not index and (
-            self._active is None or not self._active.complete or self._replace_active or index.complete
-        ):
+        if self._active is None or len(self.prefix) == 1:
             self._activate(index)
         if index.complete:
             return
@@ -283,9 +297,9 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         if self._requested_width != target_width:
             self._start_index(target_width)
         target = self._indices[target_width]
-        # Resize: retain old exact wrapping until a full replacement is ready.
-        # Initial load: append only below the existing, immutable prefix.
-        if target.complete and self._active is not target:
+        # Keep the displayed geometry until the replacement covers the current
+        # viewport. Read the anchor now so hand scrolling during rebuilding wins.
+        if self._active is not target and self._covers_anchor(target, height):
             self._activate(target)
         value = self._value()
         upper = max(height, self.prefix[-1])
