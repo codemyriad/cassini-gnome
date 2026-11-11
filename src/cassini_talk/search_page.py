@@ -8,10 +8,15 @@ from threading import Event
 from gi.repository import Adw, Gio, GLib, GObject, Gtk
 
 from . import ux_formats as fmt
+from .folder_player import FolderPlayer
 from .search_index import SearchIndex
 from .strings import text
 
 LOG = logging.getLogger(__name__)
+
+
+def is_playable(meeting):
+    return meeting.has_audio and (meeting.audio_file is not None or FolderPlayer.can_play(meeting))
 
 
 def box(spacing=0, **kwargs):
@@ -233,6 +238,7 @@ class SearchPage(Adw.NavigationPage):
                     m.duration_ms,
                     m.origin,
                     m.has_audio,
+                    is_playable(m),
                 )
                 for m in snapshot.meetings
             ),
@@ -394,6 +400,7 @@ class SearchPage(Adw.NavigationPage):
             self.window._stop_playback()
         self.hit = hit
         meeting = self._meetings[hit.key] if hit else None
+        playable = is_playable(meeting) if meeting else False
         context_text = (
             fmt.search_context(
                 meeting.started_at_ms,
@@ -410,6 +417,7 @@ class SearchPage(Adw.NavigationPage):
                 hit,
                 meeting.title,
                 meeting.has_audio,
+                playable,
                 meeting.speakers,
                 self._turns[hit.key][max(0, hit.turn - 1) : hit.turn + 2],
                 self.window.get_application().voice_store.match_signature(),
@@ -485,7 +493,7 @@ class SearchPage(Adw.NavigationPage):
             max_children_per_line=2,
             css_classes=["search-actions"],
         )
-        self.play = Gtk.Button(css_classes=["suggested-action"], sensitive=meeting.has_audio)
+        self.play = Gtk.Button(css_classes=["suggested-action"], sensitive=playable)
         self.play.set_child(
             Adw.ButtonContent(
                 icon_name="media-playback-start-symbolic",
