@@ -231,3 +231,18 @@ def test_explicit_stop_reaches_broker_despite_cached_idle(application_class):  #
     application_class.on_stop_recording(app)
     assert calls == ["native", "browser"]
     assert app._record_start_generation == 1
+
+
+def test_open_delivers_many_files_as_one_batch_to_library_window(application_class):  # noqa: F811
+    batches = []
+    app = SimpleNamespace(
+        _resume_background=False,
+        _resume_record=False,
+        _resume_automatic=False,
+        _activate_current=lambda **_kw: SimpleNamespace(open_files=lambda files: batches.append(tuple(files))),
+        build_refresh=None,
+    )
+    bound(app, application_class, "_take_resume_intent", "_restore_automatic")
+    files = [object(), object()]
+    application_class.do_open(app, files, len(files), "")
+    assert batches == [tuple(files)]

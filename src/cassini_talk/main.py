@@ -374,8 +374,11 @@ class CassiniApplication(Adw.Application):
             window = self._activate_current()
             if window is None:
                 return
-            for file in files:
-                window.open_file(file)
+            if hasattr(window, "open_files"):
+                window.open_files(files)
+            else:
+                for file in files:
+                    window.open_file(file)
             if record:
                 self._record_current()
 
@@ -399,10 +402,13 @@ class CassiniApplication(Adw.Application):
     def on_open(self, *_args):
         dialog = Gtk.FileDialog(title=_("Open Meeting"))
         meetings = Gtk.FileFilter()
-        meetings.set_name(_("Opus Audio"))
-        for mime in ("audio/ogg", "audio/x-opus+ogg", "audio/opus"):
+        from .strings import text
+
+        meetings.set_name(text("import.filter.cassiniAndZip"))
+        for mime in ("audio/ogg", "audio/x-opus+ogg", "audio/opus", "application/zip"):
             meetings.add_mime_type(mime)
-        meetings.add_suffix("opus")
+        for suffix in ("opus", "ogg", "zip"):
+            meetings.add_suffix(suffix)
         filters = Gio.ListStore.new(Gtk.FileFilter)
         filters.append(meetings)
         sessions = Gtk.FileFilter()
@@ -418,8 +424,9 @@ class CassiniApplication(Adw.Application):
             files = dialog.open_multiple_finish(result)
         except GLib.Error:
             return
-        for i in range(files.get_n_items()):
-            self.open_in_new_window(files.get_item(i))
+        chosen = [files.get_item(i) for i in range(files.get_n_items())]
+        if chosen:
+            self.do_open(chosen, len(chosen), "")
 
     def confirm_capture_close(self, window, *, quitting=False, force_stop=False):
         from .capture_guard import confirm_capture_close

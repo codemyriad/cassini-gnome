@@ -23,6 +23,7 @@ from gi.repository import Gio, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from date_bindings import check_recording_details_time  # noqa: E402
+from search_bindings import check_playability_bindings  # noqa: E402
 
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
 from cassini_talk.library_window import LibraryWindow  # noqa: E402
@@ -78,6 +79,7 @@ with tempfile.TemporaryDirectory() as temporary:
     app = CassiniApplication("com.gocassini.SearchTest", "test", "development")
     app.register(None)
     app.activate()
+    check_playability_bindings()
     check_recording_details_time()
     window = app.get_active_window()
     until(lambda: not window._pending)

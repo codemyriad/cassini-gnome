@@ -18842,6 +18842,41 @@
    }
   },
   {
+   "id": "meeting.turn.crosstalk",
+   "en": "Probably crosstalk",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Meeting",
+    "Meeting-mac"
+   ],
+   "milestone": "D84",
+   "note": "Coordinator (D84). Badge on a transcript row or inline chip that the viewer marks as probable crosstalk (low-confidence speaker attribution), matching the gocassini viewer. Proposed by GNOME, 2026-11-10.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Probabile sovrapposizione di voci"
+    },
+    "fr": {
+     "text": "Chevauchement de voix probable"
+    },
+    "es": {
+     "text": "Probable solapamiento de voces"
+    },
+    "pt-BR": {
+     "text": "Provável sobreposição de vozes"
+    },
+    "pt-PT": {
+     "text": "Provável sobreposição de vozes"
+    }
+   }
+  },
+  {
    "id": "meeting.turn.aside",
    "en": "{name}: {text}",
    "platforms": [
@@ -21152,6 +21187,686 @@
     },
     "pt-PT": {
      "text": "Esta chamada misturava todas as vozes remotas num único fluxo, por isso o Cassini gravou-as a partir do áudio do computador."
+    }
+   }
+  },
+  {
+   "id": "import.filter.cassiniAndZip",
+   "en": "Cassini files and ZIP archives",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Name of the file-type filter in the import picker, where the platform's picker shows one.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "File Cassini e archivi ZIP"
+    },
+    "fr": {
+     "text": "Fichiers Cassini et archives ZIP"
+    },
+    "es": {
+     "text": "Archivos Cassini y archivos ZIP"
+    },
+    "pt-BR": {
+     "text": "Arquivos Cassini e arquivos ZIP"
+    },
+    "pt-PT": {
+     "text": "Ficheiros Cassini e ficheiros ZIP"
+    }
+   }
+  },
+  {
+   "id": "import.progress",
+   "en": "Importing {done} of {total}…",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Shown while an import of several files or of a ZIP archive runs. The cancel action is common.cancel.",
+   "placeholders": {
+    "done": "1-based number of the item being processed",
+    "total": "number of items in this run"
+   },
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Importazione {done} di {total}…"
+    },
+    "fr": {
+     "text": "Importation {done} sur {total}…"
+    },
+    "es": {
+     "text": "Importando {done} de {total}…"
+    },
+    "pt-BR": {
+     "text": "Importando {done} de {total}…"
+    },
+    "pt-PT": {
+     "text": "A importar {done} de {total}…"
+    }
+   }
+  },
+  {
+   "id": "import.cancelled",
+   "en": "Import cancelled",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Shown when the person cancels a running import. What was already imported stays in the Library; the import.summary.* parts may follow.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Importazione annullata"
+    },
+    "fr": {
+     "text": "Importation annulée"
+    },
+    "es": {
+     "text": "Importación cancelada"
+    },
+    "pt-BR": {
+     "text": "Importação cancelada"
+    },
+    "pt-PT": {
+     "text": "Importação cancelada"
+    }
+   }
+  },
+  {
+   "id": "import.summary.imported",
+   "en": "Imported {n}",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Import summary part: items added to the Library. The summary shows only the parts whose count is not 0, joined the way the app joins such parts (e.g. ' · ' or one per line). No noun on purpose: the wording must read correctly whatever the app calls the item; participles agree in the feminine, which fits it in every language.",
+   "placeholders": {
+    "n": "count, 1 or more; a part with count 0 is left out"
+   },
+   "plural": {
+    "one": "Imported {n}",
+    "other": "Imported {n}"
+   },
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "{n} importate",
+     "plural": {
+      "one": "{n} importata",
+      "many": "{n} importate",
+      "other": "{n} importate"
+     }
+    },
+    "fr": {
+     "text": "{n} importées",
+     "plural": {
+      "one": "{n} importée",
+      "many": "{n} importées",
+      "other": "{n} importées"
+     }
+    },
+    "es": {
+     "text": "{n} importadas",
+     "plural": {
+      "one": "{n} importada",
+      "many": "{n} importadas",
+      "other": "{n} importadas"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} importadas",
+     "plural": {
+      "one": "{n} importada",
+      "many": "{n} importadas",
+      "other": "{n} importadas"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} importadas",
+     "plural": {
+      "one": "{n} importada",
+      "many": "{n} importadas",
+      "other": "{n} importadas"
+     }
+    }
+   }
+  },
+  {
+   "id": "import.summary.duplicates",
+   "en": "Skipped {n} duplicates",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Import summary part: files already in the Library (same content digest), not imported again.",
+   "placeholders": {
+    "n": "count, 1 or more; a part with count 0 is left out"
+   },
+   "plural": {
+    "one": "Skipped {n} duplicate",
+    "other": "Skipped {n} duplicates"
+   },
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "{n} duplicati saltati",
+     "plural": {
+      "one": "{n} duplicato saltato",
+      "many": "{n} duplicati saltati",
+      "other": "{n} duplicati saltati"
+     }
+    },
+    "fr": {
+     "text": "{n} doublons écartés",
+     "plural": {
+      "one": "{n} doublon écarté",
+      "many": "{n} doublons écartés",
+      "other": "{n} doublons écartés"
+     }
+    },
+    "es": {
+     "text": "{n} duplicados omitidos",
+     "plural": {
+      "one": "{n} duplicado omitido",
+      "many": "{n} duplicados omitidos",
+      "other": "{n} duplicados omitidos"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} duplicatas puladas",
+     "plural": {
+      "one": "{n} duplicata pulada",
+      "many": "{n} duplicatas puladas",
+      "other": "{n} duplicatas puladas"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} duplicados omitidos",
+     "plural": {
+      "one": "{n} duplicado omitido",
+      "many": "{n} duplicados omitidos",
+      "other": "{n} duplicados omitidos"
+     }
+    }
+   }
+  },
+  {
+   "id": "import.summary.unsupported",
+   "en": "Ignored {n} unsupported files",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Import summary part: files that are neither a Cassini file nor supported audio, including archives nested in a ZIP archive.",
+   "placeholders": {
+    "n": "count, 1 or more; a part with count 0 is left out"
+   },
+   "plural": {
+    "one": "Ignored {n} unsupported file",
+    "other": "Ignored {n} unsupported files"
+   },
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "{n} file non supportati ignorati",
+     "plural": {
+      "one": "{n} file non supportato ignorato",
+      "many": "{n} file non supportati ignorati",
+      "other": "{n} file non supportati ignorati"
+     }
+    },
+    "fr": {
+     "text": "{n} fichiers non pris en charge ignorés",
+     "plural": {
+      "one": "{n} fichier non pris en charge ignoré",
+      "many": "{n} fichiers non pris en charge ignorés",
+      "other": "{n} fichiers non pris en charge ignorés"
+     }
+    },
+    "es": {
+     "text": "{n} archivos no compatibles ignorados",
+     "plural": {
+      "one": "{n} archivo no compatible ignorado",
+      "many": "{n} archivos no compatibles ignorados",
+      "other": "{n} archivos no compatibles ignorados"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} arquivos não compatíveis ignorados",
+     "plural": {
+      "one": "{n} arquivo não compatível ignorado",
+      "many": "{n} arquivos não compatíveis ignorados",
+      "other": "{n} arquivos não compatíveis ignorados"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} ficheiros não suportados ignorados",
+     "plural": {
+      "one": "{n} ficheiro não suportado ignorado",
+      "many": "{n} ficheiros não suportados ignorados",
+      "other": "{n} ficheiros não suportados ignorados"
+     }
+    }
+   }
+  },
+  {
+   "id": "import.summary.failed",
+   "en": "{n} files could not be imported",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Import summary part: supported files whose import failed (damaged, unreadable, or over the app's single-file import limit).",
+   "placeholders": {
+    "n": "count, 1 or more; a part with count 0 is left out"
+   },
+   "plural": {
+    "one": "{n} file could not be imported",
+    "other": "{n} files could not be imported"
+   },
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Impossibile importare {n} file",
+     "plural": {
+      "one": "Impossibile importare {n} file",
+      "many": "Impossibile importare {n} file",
+      "other": "Impossibile importare {n} file"
+     }
+    },
+    "fr": {
+     "text": "Impossible d’importer {n} fichiers",
+     "plural": {
+      "one": "Impossible d’importer {n} fichier",
+      "many": "Impossible d’importer {n} fichiers",
+      "other": "Impossible d’importer {n} fichiers"
+     }
+    },
+    "es": {
+     "text": "No se pudieron importar {n} archivos",
+     "plural": {
+      "one": "No se pudo importar {n} archivo",
+      "many": "No se pudieron importar {n} archivos",
+      "other": "No se pudieron importar {n} archivos"
+     }
+    },
+    "pt-BR": {
+     "text": "Não foi possível importar {n} arquivos",
+     "plural": {
+      "one": "Não foi possível importar {n} arquivo",
+      "many": "Não foi possível importar {n} arquivos",
+      "other": "Não foi possível importar {n} arquivos"
+     }
+    },
+    "pt-PT": {
+     "text": "Não foi possível importar {n} ficheiros",
+     "plural": {
+      "one": "Não foi possível importar {n} ficheiro",
+      "many": "Não foi possível importar {n} ficheiros",
+      "other": "Não foi possível importar {n} ficheiros"
+     }
+    }
+   }
+  },
+  {
+   "id": "import.zip.failed.damaged",
+   "en": "This ZIP archive is damaged and can’t be opened.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). The archive cannot be read as a ZIP (no or broken directory). A single damaged entry is counted in import.summary.failed instead.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Questo archivio ZIP è danneggiato e non può essere aperto."
+    },
+    "fr": {
+     "text": "Cette archive ZIP est endommagée et ne peut pas être ouverte."
+    },
+    "es": {
+     "text": "Este archivo ZIP está dañado y no se puede abrir."
+    },
+    "pt-BR": {
+     "text": "Este arquivo ZIP está danificado e não pode ser aberto."
+    },
+    "pt-PT": {
+     "text": "Este ficheiro ZIP está danificado e não pode ser aberto."
+    }
+   }
+  },
+  {
+   "id": "import.zip.failed.encrypted",
+   "en": "This ZIP archive is password-protected. Cassini can’t open password-protected archives.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Any encrypted entry refuses the whole archive. Cassini never asks for the password.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Questo archivio ZIP è protetto da password. Cassini non può aprire gli archivi protetti da password."
+    },
+    "fr": {
+     "text": "Cette archive ZIP est protégée par un mot de passe. Cassini ne peut pas ouvrir les archives protégées par un mot de passe."
+    },
+    "es": {
+     "text": "Este archivo ZIP está protegido con contraseña. Cassini no puede abrir archivos ZIP protegidos con contraseña."
+    },
+    "pt-BR": {
+     "text": "Este arquivo ZIP está protegido por senha. O Cassini não pode abrir arquivos ZIP protegidos por senha."
+    },
+    "pt-PT": {
+     "text": "Este ficheiro ZIP está protegido por palavra-passe. O Cassini não pode abrir ficheiros ZIP protegidos por palavra-passe."
+    }
+   }
+  },
+  {
+   "id": "import.zip.failed.unsafePaths",
+   "en": "This ZIP archive contains unsafe file paths. Nothing was imported.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). An entry path is absolute or contains '..'. The archive is refused as a whole, before anything is imported.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Questo archivio ZIP contiene percorsi di file non sicuri. Non è stato importato nulla."
+    },
+    "fr": {
+     "text": "Cette archive ZIP contient des chemins de fichiers non sûrs. Rien n’a été importé."
+    },
+    "es": {
+     "text": "Este archivo ZIP contiene rutas de archivo no seguras. No se importó nada."
+    },
+    "pt-BR": {
+     "text": "Este arquivo ZIP contém caminhos de arquivo não seguros. Nada foi importado."
+    },
+    "pt-PT": {
+     "text": "Este ficheiro ZIP contém caminhos de ficheiro não seguros. Nada foi importado."
+    }
+   }
+  },
+  {
+   "id": "import.zip.failed.tooLarge",
+   "en": "This ZIP archive is too large to import.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). An archive limit of D96 is exceeded: more than 2,000 entries, more than 20 GB uncompressed, or a compressed entry above 100:1. The numbers are not shown.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Questo archivio ZIP è troppo grande per essere importato."
+    },
+    "fr": {
+     "text": "Cette archive ZIP est trop volumineuse pour être importée."
+    },
+    "es": {
+     "text": "Este archivo ZIP es demasiado grande para importarlo."
+    },
+    "pt-BR": {
+     "text": "Este arquivo ZIP é grande demais para ser importado."
+    },
+    "pt-PT": {
+     "text": "Este ficheiro ZIP é demasiado grande para ser importado."
+    }
+   }
+  },
+  {
+   "id": "import.zip.failed.empty",
+   "en": "This ZIP archive contains nothing Cassini can import.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). The archive opened, but no entry is a Cassini file or supported audio.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Questo archivio ZIP non contiene nulla che Cassini possa importare."
+    },
+    "fr": {
+     "text": "Cette archive ZIP ne contient rien que Cassini puisse importer."
+    },
+    "es": {
+     "text": "Este archivo ZIP no contiene nada que Cassini pueda importar."
+    },
+    "pt-BR": {
+     "text": "Este arquivo ZIP não contém nada que o Cassini possa importar."
+    },
+    "pt-PT": {
+     "text": "Este ficheiro ZIP não contém nada que o Cassini possa importar."
+    }
+   }
+  },
+  {
+   "id": "export.zip.all",
+   "en": "Export All as ZIP…",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Saves every item of the Library as one ZIP archive. Menu item or button; the ellipsis stays because the save location is asked next. No noun on purpose: the wording must read correctly whatever the app calls the item; participles agree in the feminine, which fits it in every language.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Esporta tutto come ZIP…"
+    },
+    "fr": {
+     "text": "Tout exporter en ZIP…"
+    },
+    "es": {
+     "text": "Exportar todo como ZIP…"
+    },
+    "pt-BR": {
+     "text": "Exportar tudo como ZIP…"
+    },
+    "pt-PT": {
+     "text": "Exportar tudo como ZIP…"
+    }
+   }
+  },
+  {
+   "id": "export.zip.selected",
+   "en": "Export Selected as ZIP…",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Saves the selected items as one ZIP archive. Shown only while something is selected. No noun on purpose: the wording must read correctly whatever the app calls the item; participles agree in the feminine, which fits it in every language.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Esporta la selezione come ZIP…"
+    },
+    "fr": {
+     "text": "Exporter la sélection en ZIP…"
+    },
+    "es": {
+     "text": "Exportar la selección como ZIP…"
+    },
+    "pt-BR": {
+     "text": "Exportar a seleção como ZIP…"
+    },
+    "pt-PT": {
+     "text": "Exportar a seleção como ZIP…"
+    }
+   }
+  },
+  {
+   "id": "export.zip.progress",
+   "en": "Exporting {done} of {total}…",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Shown while the ZIP archive is written. The cancel action is common.cancel.",
+   "placeholders": {
+    "done": "1-based number of the item being processed",
+    "total": "number of items in this run"
+   },
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Esportazione {done} di {total}…"
+    },
+    "fr": {
+     "text": "Exportation {done} sur {total}…"
+    },
+    "es": {
+     "text": "Exportando {done} de {total}…"
+    },
+    "pt-BR": {
+     "text": "Exportando {done} de {total}…"
+    },
+    "pt-PT": {
+     "text": "A exportar {done} de {total}…"
+    }
+   }
+  },
+  {
+   "id": "export.zip.done",
+   "en": "Exported {n} to a ZIP archive",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "toast",
+   "boards": [],
+   "milestone": "D96",
+   "note": "Coordinator (D96). Shown when the ZIP archive is complete. A single-item export keeps meeting.exported. No noun on purpose: the wording must read correctly whatever the app calls the item; participles agree in the feminine, which fits it in every language.",
+   "placeholders": {
+    "n": "number of items in the archive"
+   },
+   "plural": {
+    "one": "Exported {n} to a ZIP archive",
+    "other": "Exported {n} to a ZIP archive"
+   },
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "{n} esportate in un archivio ZIP",
+     "plural": {
+      "one": "{n} esportata in un archivio ZIP",
+      "many": "{n} esportate in un archivio ZIP",
+      "other": "{n} esportate in un archivio ZIP"
+     }
+    },
+    "fr": {
+     "text": "{n} exportées dans une archive ZIP",
+     "plural": {
+      "one": "{n} exportée dans une archive ZIP",
+      "many": "{n} exportées dans une archive ZIP",
+      "other": "{n} exportées dans une archive ZIP"
+     }
+    },
+    "es": {
+     "text": "{n} exportadas a un archivo ZIP",
+     "plural": {
+      "one": "{n} exportada a un archivo ZIP",
+      "many": "{n} exportadas a un archivo ZIP",
+      "other": "{n} exportadas a un archivo ZIP"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} exportadas para um arquivo ZIP",
+     "plural": {
+      "one": "{n} exportada para um arquivo ZIP",
+      "many": "{n} exportadas para um arquivo ZIP",
+      "other": "{n} exportadas para um arquivo ZIP"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} exportadas para um ficheiro ZIP",
+     "plural": {
+      "one": "{n} exportada para um ficheiro ZIP",
+      "many": "{n} exportadas para um ficheiro ZIP",
+      "other": "{n} exportadas para um ficheiro ZIP"
+     }
     }
    }
   }
