@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT / "src"))
 import gi  # noqa: E402
 
 gi.require_version("Gst", "1.0")
-from gi.repository import Gst  # noqa: E402
+from gi.repository import GLib, Gst  # noqa: E402
 from readiness import capture_files, wait_until  # noqa: E402
 
 from cassini_talk.native_recorder import NativeRecorder  # noqa: E402
@@ -264,19 +264,37 @@ try:
     # saves only the last confirmed selection, without adding an event/span.
     before_events = list(session.manifest["events"])
     entered, release = threading.Event(), threading.Event()
-    blocker = native._executor.submit(lambda: (entered.set(), release.wait(5)))
-    assert entered.wait(1)
-    future = native.select(True, False)
-    started = time.monotonic()
-    native.stop()
-    assert time.monotonic() - started < 0.2
-    release.set()
-    blocker.result(2)
-    wait_until(
-        lambda: native.pipeline is None and not native._finishing,
-        "Stop joins source change and finalizes",
-        diagnostics=diagnostics,
-    )
+    finished = []
+    loop = GLib.MainLoop()
+    guard = GLib.timeout_source_new_seconds(18)
+    guard.set_callback(lambda *_: loop.quit())
+
+    def hold_selection_worker():
+        entered.set()
+        assert release.wait(18), "the test did not release the source selection worker"
+
+    def capture_finished(_recorder, path):
+        finished.append(path)
+        loop.quit()
+
+    handler = native.connect("finished", capture_finished)
+    blocker = native._executor.submit(hold_selection_worker)
+    try:
+        assert entered.wait(18), "the source selection worker did not enter"
+        future = native.select(True, False)
+        assert not future.done()
+        native.stop()
+        assert not blocker.done(), "Stop waited for the held source selection worker"
+        guard.attach(loop.get_context())
+        release.set()
+        loop.run()
+        assert finished == [str(session.directory)], ("Stop did not report the finished capture", diagnostics())
+        assert native.pipeline is None and not native._finishing
+        blocker.result()
+    finally:
+        release.set()
+        guard.destroy()
+        native.disconnect(handler)
     try:
         future.result()
     except ValueError:
