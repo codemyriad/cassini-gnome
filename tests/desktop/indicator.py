@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Real GNOME AppIndicator host, installed packages and native menu actions."""
 
+import atexit
 import base64
 import json
 import math
@@ -38,6 +39,29 @@ from windowless import (
     until,
     windows,
 )
+
+
+def record_menu_bus_events():
+    # The Shell's UI activation signal precedes the separate D-Bus click.
+    # Keep a wire receipt on this private test bus so a timeout can distinguish
+    # a dropped host activation from a Quit that reached the app's menu.
+    rules = [
+        f"type='method_call',path='/StatusNotifierItem/Menu',interface='com.canonical.dbusmenu',member='{member}'"
+        for member in ("Event", "EventGroup")
+    ]
+    with (OUT / "dbus-menu-events.log").open("wb") as log:
+        monitor = subprocess.Popen(["dbus-monitor", "--session", "--monitor", *rules], stdout=log, stderr=log)
+
+    def stop():
+        if monitor.poll() is None:
+            monitor.terminate()
+            try:
+                monitor.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                monitor.kill()
+                monitor.wait(timeout=5)
+
+    atexit.register(stop)
 
 
 def actor(appid):
@@ -430,6 +454,7 @@ def browser_only(appid, microphone):
 
 
 version = prepare_desktop()
+record_menu_bus_events()
 until(
     lambda: shell("Main.extensionManager.lookup('ubuntu-appindicators@ubuntu.com')?.state===1"),
     "distro AppIndicator extension enabled",
@@ -558,9 +583,24 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
     third = wait_for_recording(root, appid, "recording with the Library open")
     assert third not in (manifest, second) and windows(appid)
     until(lambda appid=appid: (indicator(appid) or {}).get("visible"), "recording SNI with the Library open")
-    assert_one_indicator(appid)
+    [(menu_owner, _path)] = assert_one_indicator(appid)
     menu_click(appid, "Quit Cassini")
-    until(lambda appid=appid: not owner(appid), "SNI Quit with the Library open stops and exits")
+    try:
+        until(lambda appid=appid: not owner(appid), "SNI Quit with the Library open stops and exits")
+    except AssertionError:
+        print(
+            "SNI open-window quit diagnostic",
+            dict(
+                app=appid,
+                menuOwner=menu_owner,
+                state=json.loads(third.read_text())["state"],
+                windows=windows(appid),
+                activations=shell("global._cassiniQaActivations"),
+            ),
+            flush=True,
+        )
+        screenshot("indicator-open-quit-failed-" + appid + ".png")
+        raise
     until(lambda third=third: kept(third), "SNI Quit with the Library open keeps WAVs")
     results["cases"].append(
         dict(
