@@ -27,19 +27,23 @@ from cassini_talk.library_window import LibraryWindow  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 from cassini_talk.meeting_store import read_metadata, update_metadata  # noqa: E402
 from cassini_talk.player import Player  # noqa: E402
+from cassini_talk.strings import text  # noqa: E402
 
 
 def until(check):
     dispatch_until(check, "Search GUI did not complete")
 
 
-def labels(widget):
-    values = [widget.get_text()] if isinstance(widget, Gtk.Label) else []
+def widgets(widget):
+    yield widget
     child = widget.get_first_child()
     while child:
-        values += labels(child)
+        yield from widgets(child)
         child = child.get_next_sibling()
-    return values
+
+
+def labels(widget):
+    return [node.get_text() for node in widgets(widget) if isinstance(node, Gtk.Label)]
 
 
 with tempfile.TemporaryDirectory() as temporary:
@@ -208,6 +212,8 @@ with tempfile.TemporaryDirectory() as temporary:
     assert "background=" not in fresh.hit.quote_markup
     assert fresh._speaker(fresh.hit) is None
     assert "Supplier <meeting> & team" in labels(fresh.context)
+    until(lambda: "Supplier <meeting> & team" in labels(fresh.list))
+    assert not any(value.startswith(" · ") for value in labels(fresh.list))
     update_metadata(target.directory, transcript=dict(status="none", reference=None))
     window.monitor.refresh_now()
     until(
@@ -221,6 +227,10 @@ with tempfile.TemporaryDirectory() as temporary:
     )
     assert fresh.hit.turn == -1 and fresh._speaker(fresh.hit) is None
     assert not fresh._turns[target.key]
+    empty_quote = text("common.quote", quote="")
+    until(lambda: empty_quote in labels(fresh.list))
+    quotes = [node for node in widgets(fresh.list) if isinstance(node, Gtk.Label) and node.get_text() == empty_quote]
+    assert quotes and all(not node.get_visible() for node in quotes), "Audio-only results must not show an empty quote"
     seeks, seek = [], window.player.seek
 
     def observed_seek(position):

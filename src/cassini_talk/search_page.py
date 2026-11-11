@@ -356,7 +356,9 @@ class SearchPage(Adw.NavigationPage):
         speaker = self._speaker(hit)
         row.append(
             label(
-                text(
+                fmt.position(hit.position_ms)
+                if hit.turn < 0
+                else text(
                     "search.result.meta", name=speaker.name if speaker else "", position=fmt.position(hit.position_ms)
                 ),
                 "small",
