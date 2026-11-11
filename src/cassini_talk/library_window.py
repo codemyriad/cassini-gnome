@@ -57,6 +57,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.rename_dialog = None
         self._pending_selection = None
         self._opening_files = 0
+        self._import_dialogs = set()
+        self._import_executor = None
         self._list_signature = None
         self._preview_signature_value = None
         self._live_badges = {}
@@ -177,9 +179,10 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.recording_details_dialog.present(self)
 
     def _drop_files(self, _target, files, _x, _y):
-        for file in files.get_files():
-            self.open_file(file)
-        return bool(files.get_files())
+        chosen = files.get_files()
+        if chosen:
+            self.open_files(chosen)
+        return bool(chosen)
 
     def _refresh_export(self):
         meeting = self.meeting_page.meeting if self.meeting_page else self.selected
@@ -1487,7 +1490,38 @@ class LibraryWindow(Adw.ApplicationWindow):
 
         self.set_title(self.meeting_page.meeting.title if self.meeting_page else text("app.name"))
 
+    def open_files(self, files):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from .import_dialog import ImportDialog
+
+        files = tuple(files)
+        if len(files) == 1:
+            return self.open_file(files[0])
+        imports = []
+        for file in files:
+            path = Path(file.get_path()) if file.get_path() else None
+            if path is not None and (
+                path.name == "session.json" or not path.suffix and path.name.startswith(("Recording-", "Received-"))
+            ):
+                self.open_file(file)
+            else:
+                imports.append(str(path) if path else None)
+        if imports:
+            if self._import_executor is None:
+                self._import_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-import")
+            ImportDialog(self, tuple(imports))
+
     def open_file(self, file):
+        path = file.get_path()
+        if path and Path(path).suffix.lower() == ".zip":
+            from concurrent.futures import ThreadPoolExecutor
+
+            from .import_dialog import ImportDialog
+
+            if self._import_executor is None:
+                self._import_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-import")
+            return ImportDialog(self, (path,))
         from .open_meeting import load_open_meeting
         from .received import import_received
 
@@ -1586,5 +1620,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._spectro_handlers.clear()
         self.listen.stop()
         self.player.shutdown()
+        for dialog in tuple(self._import_dialogs):
+            dialog.cancel()
+        if self._import_executor is not None:
+            self._import_executor.shutdown(wait=False, cancel_futures=True)
         self.monitor.close()
         return False

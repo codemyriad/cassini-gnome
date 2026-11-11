@@ -272,3 +272,59 @@ def test_corrupted_existing_copy_does_not_win_digest_dedup(tmp_path):
     first.audio_file.write_bytes(b"Synthetic damaged original")
     result = batch_import.import_files([ONE], root)
     assert result.imported == 1 and result.duplicates == 0 and len(documents(root)) == 2
+
+
+def test_one_import_does_not_rebuild_unrelated_published_transcripts(tmp_path, monkeypatch):
+    from cassini_talk.library_v2_index import PublishedIndex
+
+    root = tmp_path / "Library"
+    root.mkdir()
+    (root / "Unrelated.opus").write_bytes(TWO.read_bytes())
+    monkeypatch.setattr(PublishedIndex, "combine", lambda *_a, **_kw: pytest.fail("Unrelated published models rebuilt"))
+    assert batch_import.import_files([ONE], root).imported == 1
+
+
+@pytest.mark.parametrize("method", [zipfile.ZIP_LZMA, 93])
+def test_dictionary_allocating_zip_methods_are_ignored_without_starting_decoder(tmp_path, monkeypatch, method):
+    path = zip_file(tmp_path / "Other compression.zip", [("English.opus", ONE.read_bytes())])
+    data = bytearray(path.read_bytes())
+    struct.pack_into("<H", data, 8, method)
+    struct.pack_into("<H", data, data.index(b"PK\x01\x02") + 10, method)
+    path.write_bytes(data)
+    monkeypatch.setattr(zipfile.ZipFile, "open", lambda *_a, **_kw: pytest.fail("Unbounded dictionary decoder opened"))
+    result = batch_import.import_files([path], tmp_path / "Library")
+    assert result.ignored == 1 and result.imported == result.failed == 0
+
+
+def test_progress_totals_include_zip_files_and_nonlocal_files_fail_individually(tmp_path):
+    archive = zip_file(tmp_path / "Notes.zip", [("First.opus", ONE.read_bytes()), ("Second.opus", TWO.read_bytes())])
+    updates = []
+    result = batch_import.import_files([archive, None], tmp_path / "Library", progress=updates.append)
+    assert result.total == 3 and result.imported == 2 and result.failed == 1
+    assert updates[-1].total == 3 and updates[-1].failed == 1
+
+
+def test_duplicate_verification_rejects_a_file_that_grows_during_the_hash(tmp_path, monkeypatch):
+    path = tmp_path / "Changing.opus"
+    path.write_bytes(ONE.read_bytes())
+    original = received.regular_input
+
+    @contextmanager
+    def changing(name):
+        with original(name) as stream:
+
+            class Source:
+                def __getattr__(self, attribute):
+                    return getattr(stream, attribute)
+
+                def read(self, count):
+                    value = stream.read(count)
+                    with Path(name).open("ab") as output:
+                        output.write(b"Synthetic append")
+                    return value
+
+            yield Source()
+
+    monkeypatch.setattr(received, "regular_input", changing)
+    with pytest.raises(ValueError, match="changed"):
+        received.sha256_file(path)

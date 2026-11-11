@@ -25,7 +25,8 @@ IMPORT_LOCK = threading.Lock()
 def sha256_file(path, cancel=None):
     digest = hashlib.sha256()
     with regular_input(path) as stream:
-        remaining = os.fstat(stream.fileno()).st_size
+        before = os.fstat(stream.fileno())
+        remaining = before.st_size
         while remaining:
             check_cancel(cancel)
             block = stream.read(min(1024 * 1024, remaining))
@@ -33,6 +34,9 @@ def sha256_file(path, cancel=None):
                 raise ValueError("Recording changed while being imported")
             remaining -= len(block)
             digest.update(block)
+        after = os.fstat(stream.fileno())
+        if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            raise ValueError("Recording changed while being imported")
     return digest.hexdigest()
 
 

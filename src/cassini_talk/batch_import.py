@@ -12,14 +12,16 @@ from . import archive_import
 from .export_audio import check_cancel
 from .received import import_one, regular_input
 
-try:
-    from lzma import LZMAError
-except ImportError:  # zipfile itself reports unsupported LZMA on such builds.
-    LZMAError = NotImplementedError
-
-DECODE_ERRORS = (OSError, ValueError, RuntimeError, EOFError, zipfile.BadZipFile, zlib.error, LZMAError)
+DECODE_ERRORS = (OSError, ValueError, RuntimeError, EOFError, zipfile.BadZipFile, zlib.error)
 
 SUPPORTED = {".opus", ".ogg"}
+# The common ZIP dialect used by Android/iOS and D96 exports. LZMA/Zstd
+# decoders can allocate an attacker-declared dictionary before yielding bytes.
+METHODS = {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+
+
+def supported(entry):
+    return Path(entry.filename).suffix.lower() in SUPPORTED and entry.compress_type in METHODS
 
 
 @dataclass
@@ -30,6 +32,7 @@ class Budget:
 
 @dataclass
 class Result:
+    total: int = 0
     imported: int = 0
     duplicates: int = 0
     ignored: int = 0
@@ -69,12 +72,24 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
         result.last_key = meeting.key
 
     try:
-        # Do not materialize an unbounded iterable or queue thousands of paths.
-        for index, path in enumerate(paths):
+        selected = []
+        for path in paths:
+            check_cancel(cancel)
+            if len(selected) >= archive_import.MAX_ENTRIES:
+                failed("", "limit")
+                break
+            selected.append(path)
+        result.total = len(selected) + result.failed
+        report()
+        for index, path in enumerate(selected):
             check_cancel(cancel)
             if index >= archive_import.MAX_ENTRIES:
                 failed("", "limit")
                 break
+            if path is None:
+                failed("", "unavailable")
+                report()
+                continue
             path = Path(path)
             try:
                 if path.suffix.lower() == ".zip":
@@ -82,11 +97,16 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                         archive_import.preflight(incoming)
                         with zipfile.ZipFile(incoming) as archive:
                             entries = archive_import.entries(archive, budget)
+                            files = [entry for entry in entries if not entry.is_dir()]
+                            result.total += len(files) - 1
+                            if not any(supported(entry) for entry in files):
+                                result.errors.append((path.name, "empty"))
+                            report()
                             for entry in entries:
                                 check_cancel(cancel)
                                 if entry.is_dir():
                                     continue
-                                if Path(entry.filename).suffix.lower() not in SUPPORTED:
+                                if not supported(entry):
                                     result.ignored += 1
                                     report()
                                     continue
