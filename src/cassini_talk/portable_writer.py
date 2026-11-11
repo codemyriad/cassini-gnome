@@ -5,15 +5,14 @@ import base64
 import gzip
 import hashlib
 import json
-import re
 import struct
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta, timezone
 
 from . import portable
 from .export_audio import check_cancel
+from .meeting_time import absolute, utc
 from .transcript import normalize_quote_items
-from .ux_formats import _local
 
 ENCODING = "base64url+gzip+utf8json"
 MANIFEST_MIME = "application/vnd.cassini.portable-meeting+json"
@@ -60,20 +59,8 @@ def chunk_set(prefix, value, mime):
 
 def recording_date(value):
     """Only an absolute DATE with an explicit, known offset is capture time."""
-    if (
-        not isinstance(value, str)
-        or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", value)
-        or value.endswith("-00:00")
-        or not value.endswith("Z")
-        and int(value[-2:]) >= 60
-    ):
-        return None
-    try:
-        instant = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    offset = instant.utcoffset().total_seconds() / 60
-    return instant.replace(microsecond=0).isoformat() if -720 <= offset <= 840 else None
+    instant = absolute(value)
+    return instant.isoformat() if instant else None
 
 
 def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None, recorded_date=None):
@@ -109,13 +96,13 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
     date = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     capture_date = recording_date(recorded_date)
     started = None
+    capture_date = utc(capture_date)
     if meeting.origin == "own" and meeting.published_file is None and meeting.started_at_ms is not None:
+        instant = datetime.fromtimestamp(meeting.started_at_ms / 1000, UTC)
+        capture_date = utc(instant.isoformat())
         offset = meeting.recording_offset_minutes
         if type(offset) is int and -720 <= offset <= 840:
-            started = datetime.fromtimestamp(meeting.started_at_ms // 1000, timezone(timedelta(minutes=offset)))
-        else:
-            started = _local(meeting.started_at_ms // 1000 * 1000, tz)
-        capture_date = capture_date or started.isoformat(timespec="seconds")
+            started = instant.astimezone(timezone(timedelta(minutes=offset)))
     identifier = "mtg_" + digest["sha256"]
     manifest = dict(
         kind="cassini-portable-meeting",
@@ -130,6 +117,8 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
             dict(id="words", default=True, format=portable.WORDS_FORMAT, wordCount=len(items), payloadRef=reference)
         ],
     )
+    if capture_date is not None:
+        manifest["meeting"]["recordedAtUtc"] = capture_date
     if items and all(word.ends_bounded_by_audio for word in meeting.words):
         manifest["provenance"] = {"wordTimings": {"endsBoundedByAudio": True}}
     if recorded_at_local is not None:
@@ -174,10 +163,10 @@ def descriptors(meeting, digest, *, policy=None, tz=None, recorded_at_local=None
         extension.pop("gocassini.com", None)
     if extension:
         manifest["x"] = extension
-    return file_tags(manifest, words_tags, date=capture_date or date), manifest
+    return file_tags(manifest, words_tags), manifest
 
 
-def file_tags(manifest, words_tags, *, date):
+def file_tags(manifest, words_tags):
     """Every tag of a file with one default `words` transcript, mirroring `manifest`."""
     manifest_tags, _ = chunk_set("CASSINI_PAYLOAD_", manifest, MANIFEST_MIME)
     meeting, audio, integrity = manifest["meeting"], manifest["audio"], manifest["integrity"]
@@ -198,9 +187,11 @@ def file_tags(manifest, words_tags, *, date):
         CASSINI_AUDIO_MATCH_POLICY="exact-opus-audio-v1",
         CASSINI_AUDIO_OPUS_SHA256=integrity["opusAudioSha256"],
         TITLE=meeting["title"],
-        DATE=date,
+        DATE=meeting.get("recordedAtUtc", meeting["createdAtUtc"]),
         DESCRIPTION="Cassini portable meeting. " + HINT,
     )
+    if "recordedAtUtc" in meeting:
+        tags["CASSINI_RECORDED_AT_UTC"] = meeting["recordedAtUtc"]
     tags.update(manifest_tags)
     tags.update(words_tags)
     return tags

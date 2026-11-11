@@ -417,8 +417,8 @@ def test_a_source_that_never_delivered_pcm_is_not_an_assumed_zero_offset(tmp_pat
     assert "recovery" not in result["manifest"].get("x", {}).get("gocassini.com", {})
 
 
-def test_recovered_session_exports_without_inventing_date_or_alignment(tmp_path):
-    from datetime import UTC, datetime
+def test_recovered_session_exports_without_inventing_date_or_alignment(tmp_path, sealed_at):
+    from datetime import datetime
 
     gst()
     session = RecordingSession(tmp_path, "Lost capture metadata")
@@ -432,13 +432,11 @@ def test_recovered_session_exports_without_inventing_date_or_alignment(tmp_path)
     before = {p.name: p.read_bytes() for p in session.directory.iterdir()}
     meeting = LibraryScanner(tmp_path).scan().meetings[0]
     assert meeting.started_at_ms is None and all(t.start_offset_ms is None for t in meeting.tracks)
-    start = datetime.now(UTC)
     exported = export_meeting(meeting, tmp_path / "Documents")
-    stop = datetime.now(UTC)
     result, value = check_portable(exported)
     manifest = result["manifest"]
     created = datetime.fromisoformat(manifest["meeting"]["createdAtUtc"])
-    assert start.timestamp() - 0.001 <= created.timestamp() <= stop.timestamp()
+    assert created == sealed_at
     assert "recordedAtLocal" not in manifest["meeting"]
     assert manifest["x"]["gocassini.com"]["recovery"] == {"offsetsAssumedZero": True}
     assert abs(value.manifest["audio"]["sampleCount"] - 48000) <= 2
@@ -449,22 +447,25 @@ def test_recovered_session_exports_without_inventing_date_or_alignment(tmp_path)
     again = export_meeting(received, tmp_path / "Documents")
     second, _ = check_portable(again)
     assert second["manifest"]["x"] == manifest["x"]
-    assert received.started_at_ms is not None and "recordedAtLocal" not in second["manifest"]["meeting"]
+    assert received.started_at_ms is None and "recordedAtLocal" not in second["manifest"]["meeting"]
 
 
-def test_export_stamp_is_current_and_known_meeting_start_is_only_recorded_at_local(tmp_path):
-    from datetime import UTC, datetime
+def test_export_stamp_is_current_and_known_meeting_start_has_recording_provenance(tmp_path, sealed_at):
+    from datetime import datetime
 
     from cassini_talk.portable_writer import descriptors
 
-    meeting = replace(load_open_meeting(ASSETS / "plain-title.opus"), started_at_ms=1730611800000, origin="own")
+    meeting = replace(
+        load_open_meeting(ASSETS / "plain-title.opus"),
+        started_at_ms=1730611800000,
+        origin="own",
+        recording_offset_minutes=-240,
+    )
     with meeting.audio_file.open("rb") as audio:
         digest = portable.compute_audio_digest(audio)
-    before = datetime.now(UTC)
     tags, manifest = descriptors(meeting, digest, tz="America/New_York")
-    after = datetime.now(UTC)
     created = datetime.fromisoformat(manifest["meeting"]["createdAtUtc"])
-    assert before.timestamp() - 0.001 <= created.timestamp() <= after.timestamp()
+    assert created == sealed_at
     assert manifest["meeting"]["recordedAtLocal"] == "2024-11-03T01:30:00"
     assert tags["CASSINI_CREATED_AT"] == manifest["meeting"]["createdAtUtc"]
     assert "recovery" not in manifest.get("x", {}).get("gocassini.com", {})

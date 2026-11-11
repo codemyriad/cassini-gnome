@@ -55,6 +55,8 @@ def test_vector(vector_id):
     if not meeting.is_readable:
         assert meeting.manifest is None
         return
+    if "meetingStart" in expect:
+        assert meeting.meeting_start == expect["meetingStart"]
     if "transcriptIds" in expect:
         assert [e.id for e in meeting.transcripts] == expect["transcriptIds"]
     if "defaultTranscriptId" in expect:

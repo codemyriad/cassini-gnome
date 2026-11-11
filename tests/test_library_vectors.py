@@ -41,6 +41,23 @@ def test_shared_library_vector(case, shared_library):
         # D84 supersedes R8's separate chronological run renderer. Keep the
         # historical shared vector intact; the derived quote now includes chips.
         expected["groups"][0]["meetings"][0]["quote"] = "“first half (Speaker 2: yeah) second half”"
+    if case["id"] in {"r3-transcript-precedence", "r9-received-once", "main", "received-only"}:
+        # D95 supersedes these historical seal/import-time labels. These assets
+        # have no recording instant or wall label. Keep shared source bytes
+        # intact; the proposed source amendment is documented in this PR.
+        groups = []
+        for group in expected["groups"]:
+            if all(row["origin"] == "received" for row in group["meetings"]):
+                group["title"] = "Date unknown"
+                for row in group["meetings"]:
+                    row["startMs"] = None
+            if groups and group["title"] == groups[-1]["title"]:
+                groups[-1]["meetings"].extend(group["meetings"])
+            else:
+                groups.append(group)
+        if case["id"] == "r9-received-once":
+            groups[0]["meetings"].reverse()  # Known seal sorts before a completely unknown plain file.
+        expected["groups"] = groups
     if artifact_root := os.environ.get("CASSINI_UX_ARTIFACTS"):
         output = Path(artifact_root) / "library-cases"
         output.mkdir(parents=True, exist_ok=True)

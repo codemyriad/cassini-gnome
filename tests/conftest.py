@@ -179,3 +179,21 @@ def private_broker_diagnostics(tmp_path, monkeypatch):
 
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setattr(broker_logging, "journal_stream", lambda: None)
+
+
+@pytest.fixture
+def sealed_at(monkeypatch):
+    """A known document clock, independent of elapsed wall-clock test runtime."""
+    from datetime import UTC, datetime
+
+    from cassini_talk import portable_writer
+
+    instant = datetime(2026, 11, 9, 9, 40, 48, 123000, UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant.astimezone(tz)
+
+    monkeypatch.setattr(portable_writer, "datetime", Clock)
+    return instant

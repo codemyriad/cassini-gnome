@@ -229,7 +229,8 @@ class SearchPage(Adw.NavigationPage):
                     id(m.words),
                     m.speakers,
                     m.title,
-                    m.started_at_ms,
+                    m.display_start,
+                    m.sort_time,
                     m.duration_ms,
                     m.origin,
                     m.has_audio,
@@ -328,7 +329,7 @@ class SearchPage(Adw.NavigationPage):
         heading.append(label(meeting.title, "heading", xalign=0, hexpand=True, wrap=True))
         heading.append(
             label(
-                fmt.search_date(meeting.started_at_ms, now_ms=self.window.now_ms, tz=self.window.tz),
+                fmt.search_date(meeting.display_start, now_ms=self.window.now_ms, tz=self.window.tz),
                 "small",
                 "dim-label",
                 valign=Gtk.Align.START,
@@ -382,7 +383,7 @@ class SearchPage(Adw.NavigationPage):
         meeting = self._meetings[hit.key] if hit else None
         context_text = (
             fmt.search_context(
-                meeting.started_at_ms,
+                meeting.display_start,
                 meeting.duration_ms,
                 hit.position_ms,
                 now_ms=self.window.now_ms,

@@ -157,6 +157,10 @@ class SearchIndex:
                         body, key UNINDEXED, turn UNINDEXED, speaker UNINDEXED, tokenize='unicode61'
                     );
                 """)
+                columns = {row[1] for row in db.execute("PRAGMA table_info(meetings)")}
+                for column, kind in (("started_local", "TEXT"), ("sort_started", "INTEGER")):
+                    if column not in columns:
+                        db.execute(f"ALTER TABLE meetings ADD COLUMN {column} {kind}")
                 # quick_check omits FTS shadow-table consistency.
                 db.execute("INSERT INTO hits(hits) VALUES('integrity-check')")
                 db.commit()
@@ -184,7 +188,14 @@ class SearchIndex:
                 # Scanner keeps immutable word tuples alive. Polling capture levels
                 # never hashes or rewrites an unchanged transcript.
                 old = self.signatures.get(key)
-                signature = (meeting.words, meeting.speakers, meeting.started_at_ms, meeting.origin, meeting.turn_gaps)
+                signature = (
+                    meeting.words,
+                    meeting.speakers,
+                    meeting.display_start,
+                    meeting.created_at_ms,
+                    meeting.origin,
+                    meeting.turn_gaps,
+                )
                 if old is not None and old[0] is meeting.words and old[1:] == signature[1:]:
                     continue
                 labels = {s.id: s.name for s in meeting.speakers}
@@ -214,7 +225,9 @@ class SearchIndex:
                             scoped[offset : offset + len(shown)] = shown
                     rows.extend(("".join(scoped), key, i, name) for name, scoped in scopes.items())
                 fingerprint = hashlib.sha256(
-                    json.dumps([rows, meeting.started_at_ms, meeting.origin], ensure_ascii=False).encode()
+                    json.dumps(
+                        [rows, meeting.display_start, meeting.sort_time, meeting.origin], ensure_ascii=False
+                    ).encode()
                 ).hexdigest()
                 next_turns[key] = turns
                 next_signatures[key] = signature
@@ -223,8 +236,15 @@ class SearchIndex:
                 self.db.execute("DELETE FROM hits WHERE key = ?", (key,))
                 self.db.executemany("INSERT INTO hits(body,key,turn,speaker) VALUES (?,?,?,?)", rows)
                 self.db.execute(
-                    "INSERT OR REPLACE INTO meetings VALUES (?,?,?,?)",
-                    (key, fingerprint, meeting.started_at_ms, meeting.origin),
+                    "INSERT OR REPLACE INTO meetings(key,fingerprint,started,origin,started_local,sort_started) VALUES (?,?,?,?,?,?)",
+                    (
+                        key,
+                        fingerprint,
+                        meeting.started_at_ms,
+                        meeting.origin,
+                        meeting.recorded_at_local if meeting.started_at_ms is None else None,
+                        meeting.sort_time,
+                    ),
                 )
         self.turns, self.signatures = next_turns, next_signatures
         self.current = meetings
@@ -250,11 +270,16 @@ class SearchIndex:
         if own:
             conditions.append("meetings.origin = 'own'")
         if bounds := date_range(date, now_ms, tz):
-            conditions.append("meetings.started >= ? AND meetings.started < ?")
+            conditions.append(
+                "((meetings.started >= ? AND meetings.started < ?) OR "
+                "(meetings.started IS NULL AND meetings.started_local >= ? AND meetings.started_local < ?))"
+            )
             params.extend(bounds)
+            zone = ZoneInfo(tz) if isinstance(tz, str) else tz
+            params.extend(datetime.fromtimestamp(ms / 1000, zone).strftime("%Y-%m-%dT%H:%M:%S") for ms in bounds)
         sql = """SELECT hits.key, hits.turn, highlight(hits,0,char(1),char(2))
                  FROM hits JOIN meetings ON meetings.key=hits.key WHERE """ + " AND ".join(conditions)
-        sql += " ORDER BY meetings.started IS NULL, meetings.started DESC, meetings.key, CAST(hits.turn AS INTEGER)"
+        sql += " ORDER BY meetings.sort_started IS NULL, meetings.sort_started DESC, meetings.key, CAST(hits.turn AS INTEGER)"
         result = []
         for key, turn_index, marked in self.db.execute(sql, params):
             self._check_cancelled()

@@ -168,8 +168,23 @@ class Meeting:
     def recorded_at_local(self) -> str | None:
         if self.manifest:
             value = self.manifest["meeting"].get("recordedAtLocal")
-            return value if isinstance(value, str) else None
+            from .meeting_time import local
+
+            return value if local(value) is not None else None
         return None
+
+    @property
+    def meeting_start(self):
+        from .meeting_time import selected
+
+        return selected(self.manifest, self.tags)
+
+    @property
+    def recorded_at_ms(self):
+        from .meeting_time import milliseconds
+
+        value = self.meeting_start
+        return milliseconds(value["value"]) if value and value["source"] != "recordedAtLocal" else None
 
     def speaker_label(self, speaker_id: str) -> str | None:
         for speaker in self.speakers:

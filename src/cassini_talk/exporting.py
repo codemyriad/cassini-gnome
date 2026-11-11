@@ -122,7 +122,12 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
                         policy=policy,
                         tz=tz,
                         recorded_at_local=original.recorded_at_local if original else None,
-                        recorded_date=original.tags.get("DATE") if original and trusted_source else None,
+                        recorded_date=original.meeting_start["value"]
+                        if original
+                        and trusted_source
+                        and original.meeting_start
+                        and original.meeting_start["source"] != "recordedAtLocal"
+                        else None,
                     )
                     rewrite_tags(audio, output, tags, cancel)
             else:

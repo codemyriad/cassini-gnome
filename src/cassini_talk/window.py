@@ -1142,7 +1142,8 @@ class CassiniWindow(Adw.ApplicationWindow):
         meeting = self.meeting
         parts = []
         if meeting and meeting.is_readable:
-            date = format_date(meeting.recorded_at_local, local=True) or format_date(meeting.created_at)
+            start = meeting.meeting_start
+            date = format_date(start["value"], local=start["source"] == "recordedAtLocal") if start else ""
             if date:
                 parts.append(date)
             count = len(self._speaker_ids())
@@ -1181,7 +1182,8 @@ class CassiniWindow(Adw.ApplicationWindow):
         duration = meeting.duration_ms or self.player.duration
         if duration:
             recording.add(property_row(_("Duration"), format_time(duration)))
-        recorded = format_date(meeting.recorded_at_local, local=True, time=True)
+        start = meeting.meeting_start
+        recorded = format_date(start["value"], local=start["source"] == "recordedAtLocal", time=True) if start else ""
         if recorded:
             recording.add(property_row(_("Recorded"), recorded))
         created = format_date(meeting.created_at, time=True)
