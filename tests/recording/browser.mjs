@@ -41,6 +41,24 @@ async function snapshot(directory, finalized=false) {
   for(const track of manifest.tracks) tracks.push({...track,audio:wav(await readFile(path.join(directory,track.file)),finalized)});
   return {manifest,tracks};
 }
+async function observeWorkerVersion(session, command, matches, description) {
+  let listener, guard;
+  const observed = new Promise((resolve, reject) => {
+    listener = ({versions}) => {
+      const version = versions.find(matches);
+      if (version) resolve(version);
+    };
+    session.on('ServiceWorker.workerVersionUpdated', listener);
+    guard = setTimeout(() => reject(new Error(description)), 15000);
+  });
+  try {
+    const [version] = await Promise.all([observed, command()]);
+    return version;
+  } finally {
+    clearTimeout(guard);
+    session.off('ServiceWorker.workerVersionUpdated', listener);
+  }
+}
 try {
   context = await chromium.launchPersistentContext(profile, {
     channel:'chromium', headless:false,
@@ -96,16 +114,24 @@ try {
       return !result.recording && result;
     },'Stop finalizes recording',10000);
   }
-  // Deliberate idle-lifecycle test. Also force termination: attached developer
-  // tooling can keep a worker alive, so elapsed idle time alone is insufficient.
-  await new Promise(resolve=>setTimeout(resolve,35000));
+  // Stop the idle companion and observe that exact Chrome worker version stop
+  // before the next Start can wake it. DevTools can keep an idle worker alive.
   const lifecycle=await context.newCDPSession(meeting);
-  await lifecycle.send('ServiceWorker.enable');
-  await lifecycle.send('ServiceWorker.stopAllWorkers');
-  await lifecycle.detach();
+  try {
+    const active=await observeWorkerVersion(lifecycle,
+      () => lifecycle.send('ServiceWorker.enable'),
+      version => version.scriptURL === worker.url() && version.runningStatus === 'running',
+      'Chrome did not report the companion worker running');
+    await observeWorkerVersion(lifecycle,
+      () => lifecycle.send('ServiceWorker.stopWorker', {versionId:active.versionId}),
+      version => version.versionId === active.versionId && version.runningStatus === 'stopped',
+      'Chrome did not report the companion worker stopped');
+  } finally {
+    await lifecycle.detach();
+  }
   const startEpoch=Date.now();
   const started=await command('start','tracks');
-  assert.equal(started.recording,true);
+  assert.equal(started.recording,true,'Recording did not start after the companion worker stopped');
   evidence.scenarios.push({name:'idle-and-terminated-worker-reconnect'});
   // Deliberate fault injection, not event sequencing: pause only this run's host.
   const hostPid=Number(await readFile(path.join(artifacts,'host.pid'),'utf8'));
