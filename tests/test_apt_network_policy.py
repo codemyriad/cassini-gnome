@@ -42,12 +42,22 @@ def test_container_apt_policy_precedes_all_network_calls_and_survives_refresh(na
         assert "RUN apt-get update && apt-get -y --no-install-recommends dist-upgrade" in text
 
 
-def test_workflow_apt_commands_have_both_timeouts_retries_and_strict_indexes():
-    seen = 0
-    for path in (ROOT / ".github/workflows").glob("*.yml"):
+def test_workflow_apt_commands_use_bounded_mirror_fallback_helper():
+    helper_calls = 0
+    for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
         for line in path.read_text().splitlines():
-            if re.search(r"\bapt-get\s", line):
-                seen += 1
-                for key, value in POLICY.items():
-                    assert f"-o {key}={value}" in line, (path.name, line, key)
-    assert seen > 0
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            assert not re.search(r"\bapt-get\s", line), (
+                f"{path.name} calls raw apt-get instead of build-aux/ci/apt-install-bounded.sh: {line}"
+            )
+            if "build-aux/ci/apt-install-bounded.sh" in line:
+                helper_calls += 1
+    assert helper_calls >= 9
+
+    helper_text = (ROOT / "build-aux/ci/apt-install-bounded.sh").read_text()
+    assert "80cassini-network" in helper_text
+    settings = dict(re.findall(r'^([\w:-]+)\s+"([^"]+)";$', helper_text, re.M))
+    assert all(settings.get(key) == value for key, value in POLICY.items()), settings
+    assert "mirrors.edge.kernel.org/ubuntu/" in helper_text
