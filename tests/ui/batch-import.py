@@ -25,19 +25,51 @@ gi.require_version("Gst", "1.0")
 gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
 from dispatch_wait import dispatch_until  # noqa: E402
-from gi.repository import Gio, Graphene  # noqa: E402
+from gi.repository import Gio, Graphene, Gtk  # noqa: E402
 from import_bindings import check_import_bindings  # noqa: E402
 from painted import painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
-from cassini_talk import archive_import, portable  # noqa: E402
+from cassini_talk import archive_import, portable, zip_export  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 from cassini_talk.portable_writer import rewrite_tags  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
 from cassini_talk.strings import plural, text  # noqa: E402
 
 
 def until(check):
-    dispatch_until(check, "D96 import GUI did not complete")
+    dispatch_until(check, "D96 import/export GUI did not complete")
+
+
+def descendants(widget):
+    child = widget.get_first_child()
+    while child:
+        yield child
+        yield from descendants(child)
+        child = child.get_next_sibling()
+
+
+def ready_chooser(folder=None):
+    until(lambda: any(isinstance(w, Gtk.FileChooserDialog) for w in Gtk.Window.get_toplevels()))
+    chooser = next(w for w in Gtk.Window.get_toplevels() if isinstance(w, Gtk.FileChooserDialog))
+    bar = next((w for w in descendants(chooser) if w.get_css_name() == "pathbar"), None)
+    assert bar is not None, "Chooser path bar not found"
+
+    def shown():
+        current = chooser.get_current_folder()
+        active_label = None
+        for button in descendants(bar):
+            if isinstance(button, Gtk.ToggleButton) and button.get_active():
+                active_label = next((w.get_text() for w in descendants(button) if isinstance(w, Gtk.Label)), None)
+                break
+        return (
+            current is not None
+            and (folder is None or current.get_path() == str(folder))
+            and active_label == current.get_basename()
+        )
+
+    until(shown)
+    return chooser
 
 
 with tempfile.TemporaryDirectory() as temporary:
@@ -56,6 +88,7 @@ with tempfile.TemporaryDirectory() as temporary:
     app.activate()
     window = app.get_active_window()
     until(lambda: not window._pending)
+    assert not window.lookup_action("export-zip").get_enabled()
     check_import_bindings()
     messages = []
     toast = window.toast
@@ -135,6 +168,123 @@ with tempfile.TemporaryDirectory() as temporary:
     assert len(window.snapshot.meetings) == 3
     assert messages[-1] == " · ".join([plural("import.summary.imported", 1), text("import.cancelled")])
     assert not list(root.glob(".received-*"))
+
+    # D96 bulk stored-.zip export: excludes live capture, prunes Trash live, exports selected
+    # (including a real saved PCM RecordingSession) and all, cancels cleanly, and deduplicates on re-import.
+    own_session = RecordingSession(root, title="Own PCM Standup")
+    own_session.add_track("mic", "Me", "microphone", 48000, 1)
+    own_session.append("mic", bytes(48000 * 2), 0)
+    own_session.finish()
+    live_session = RecordingSession(root, title="Live Active Call")
+    live_session.add_track("mic", "Me", "microphone", 48000, 1)
+    live_session.append("mic", bytes(4800 * 2), 0)
+    window._activity = {live_session.manifest["id"]: "recording"}
+    window.monitor.refresh_now()
+    until(lambda: len(window.snapshot.meetings) == 5)
+    assert window.lookup_action("export-zip").get_enabled()
+
+    window.lookup_action("export-zip").activate(None)
+    until(lambda: window.zip_export_dialog is not None and window.zip_export_dialog.get_mapped())
+    zdialog = window.zip_export_dialog
+    assert len(zdialog.choices) == 4 and len(zdialog.selected_keys) == 4
+    assert all(m.title != "Live Active Call" for m in zdialog.choices)
+    assert zdialog.export_selected_button.get_visible()
+
+    # Moving a meeting to Trash while selector is open prunes it live; Undo restores it to choices.
+    victim = next(m for m in zdialog.choices if m.origin == "received")
+    app.meeting_trash.request(victim, window)
+    until(lambda: len(zdialog.choices) == 3 and victim.key not in zdialog.selected_keys)
+    operation = app.meeting_trash.operations[victim.directory.absolute()]
+    app.meeting_trash.undo(operation)
+    window.toasts.dismiss_all()
+    until(lambda: len(zdialog.choices) == 4)
+
+    # Uncheck everything -> Export Selected hides; select 2 (1 received + 1 own PCM) -> Export Selected shows.
+    for check in zdialog.checks.values():
+        check.set_active(False)
+    assert not zdialog.export_selected_button.get_visible()
+    own_meeting = next(m for m in zdialog.choices if m.origin == "own")
+    zdialog.checks[victim.key].set_active(True)
+    zdialog.checks[own_meeting.key].set_active(True)
+    assert zdialog.export_selected_button.get_visible()
+
+    exports_dir = tmp / "ZipExports"
+    exports_dir.mkdir()
+    stage_entered, stage_release = threading.Event(), threading.Event()
+    real_stage = zip_export._stage_single_meeting
+
+    def held_stage(meeting, directory, max_bytes, **kwargs):
+        assert threading.get_ident() != gtk_thread, "ZIP export staged on the GTK thread"
+        stage_entered.set()
+        assert stage_release.wait(30), "ZIP export stage gate never released"
+        return real_stage(meeting, directory, max_bytes, **kwargs)
+
+    with patch.object(zip_export, "_stage_single_meeting", held_stage):
+        zdialog.export_selected_button.emit("clicked")
+        chooser = ready_chooser()
+        chooser.set_current_folder(Gio.File.new_for_path(str(exports_dir)))
+        ready_chooser(exports_dir)
+        chooser.response(Gtk.ResponseType.ACCEPT)
+        del chooser
+        try:
+            until(stage_entered.is_set)
+            assert not window.lookup_action("export-zip").get_enabled()
+            assert zdialog.stack.get_visible_child_name() == "progress"
+            assert zdialog.progress_label.get_label() == text("export.zip.progress", done=1, total=2)
+        finally:
+            stage_release.set()
+        until(lambda: zdialog.closed and zdialog.output == exports_dir / "Cassini.zip")
+
+    assert zdialog.success_toast.get_title() == plural("export.zip.done", 2)
+    assert zdialog.success_toast.get_button_label() == text("common.show")
+    with zipfile.ZipFile(exports_dir / "Cassini.zip") as exported_zf:
+        infos = exported_zf.infolist()
+        assert len(infos) == 2 and all(i.compress_type == zipfile.ZIP_STORED for i in infos)
+        assert any(i.filename == "Own PCM Standup.opus" for i in infos)
+
+    # Cancel an Export All mid-flight: cleans up partial stage and emits no error toast.
+    before_messages = list(messages)
+    stage_entered.clear()
+    stage_release.clear()
+    window.lookup_action("export-zip").activate(None)
+    until(lambda: window.zip_export_dialog is not zdialog and window.zip_export_dialog.get_mapped())
+    zdialog = window.zip_export_dialog
+    with patch.object(zip_export, "_stage_single_meeting", held_stage):
+        zdialog.export_all_button.emit("clicked")
+        chooser = ready_chooser(exports_dir)
+        chooser.response(Gtk.ResponseType.ACCEPT)
+        del chooser
+        try:
+            until(stage_entered.is_set)
+            until(lambda: zdialog.stack.get_visible_child_name() == "progress")
+            zdialog.progress_cancel_button.emit("clicked")
+            assert zdialog.cancelled.is_set() and zdialog.closed
+        finally:
+            stage_release.set()
+        until(lambda: zdialog.future.done() and not list(exports_dir.glob(".cassini-*")))
+    assert not (exports_dir / "Cassini 2.zip").exists()
+    assert messages == before_messages
+
+    # Export the 3 unedited received meetings into Cassini 2.zip and re-import -> 3 duplicates, 0 imported.
+    window.lookup_action("export-zip").activate(None)
+    until(lambda: window.zip_export_dialog is not zdialog and window.zip_export_dialog.get_mapped())
+    zdialog = window.zip_export_dialog
+    zdialog.checks[own_meeting.key].set_active(False)
+    assert len(zdialog.selected_keys) == 3
+    zdialog.export_selected_button.emit("clicked")
+    chooser = ready_chooser(exports_dir)
+    chooser.response(Gtk.ResponseType.ACCEPT)
+    del chooser
+    until(lambda: zdialog.closed and zdialog.output == exports_dir / "Cassini 2.zip")
+    window.open_file(Gio.File.new_for_path(str(exports_dir / "Cassini 2.zip")))
+    until(lambda: not window._opening_files and not window._pending_selection)
+    assert messages[-1] == plural("import.summary.duplicates", 3)
+
+    window._activity = {}
+    live_session.finish()
+    window.monitor.refresh_now()
+    until(lambda: len(window.snapshot.meetings) == 5 and all(m.lifecycle == "saved" for m in window.snapshot.meetings))
+
     # Single-file Open shares the serial cassini-import queue with batch/ZIP imports and never duplicates.
     fourth = tmp / "Fourth English meeting.opus"
     fifth = tmp / "Fifth English meeting.opus"
@@ -157,12 +307,12 @@ with tempfile.TemporaryDirectory() as temporary:
             with patch.object(window.monitor.scanner, "scan", observed_scan):
                 window.monitor.refresh_now()
                 until(scanned.is_set)
-            # Only third + fifth + initial two (= 4) are on disk so far; single-file fourth is queued behind archive.
+            # Only third + fifth + initial two (= 4) Received folders are on disk so far; single-file fourth is queued.
             assert len(list(root.glob("Received-*"))) == 4
         finally:
             release.set()
         until(lambda: not window._opening_files and not window._pending_selection)
-    assert len(window.snapshot.meetings) == 5 and len(list(root.glob("Received-*"))) == 5
+    assert len(window.snapshot.meetings) == 7 and len(list(root.glob("Received-*"))) == 5
     window.close()
     app.comfort.close()
-print("PASS D96 picker batching, actual ZIP import/counts, independent monitor and cancellation")
+print("PASS D96 picker batching, actual ZIP import/export, Trash pruning, independent monitor and cancellation")

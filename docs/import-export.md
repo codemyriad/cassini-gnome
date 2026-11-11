@@ -158,3 +158,38 @@ the byte and ratio bounds are enforced again on the bytes actually read:
 - Batch deduplication indexes existing `Received-*` SHA-256 metadata once per
   batch ($O(M + N)$) while still re-verifying full file bytes on every digest
   match, preserving committed notes on cancellation or later member failure.
+
+## Bulk stored-`.zip` export (D96)
+
+The Library primary menu exposes `export.zip.all` (`win.export-zip`) whenever at
+least one saved audio meeting outside Trash is available and no bulk export is
+running. Opening it presents an explicit selection dialog initialized with all
+eligible meetings checked (keeping bulk selection separate from row Open/preview
+and pruning trashed or removed meetings live on Library updates). Users can
+choose either `export.zip.all` or, while one or more rows are checked,
+`export.zip.selected`, then pick the destination folder through the native
+folder chooser (`export-folder-uri` is remembered as the initial folder; Flatpak
+rejects unbacked private-home paths before staging anything).
+
+Bulk export runs on a dedicated single-worker `ThreadPoolExecutor` with
+`export.zip.progress` (`done`, `total`) and `common.cancel`, and publishes
+`Cassini.zip` (or `Cassini 2.zip` on collision) atomically with directory
+`fsync`, followed by the `export.zip.done` plural toast and `common.show`:
+
+- Every archive entry uses `ZIP_STORED` (`compress_type == 0`) at the root of
+  the archive (no extra manifest file), with safe bounded UTF-8 entry names
+  (stripping leading dots and normalizing drive-like prefixes so exported names
+  always pass cross-platform path validation) and case-insensitive numeric
+  collision suffixes.
+- Enforces the same `MAX_ENTRIES = 2,000` and `MAX_BYTES = 20_000_000_000`
+  bounds during export and preflights the staged archive before publication.
+- Stages at most one meeting snapshot at a time next to the destination (never
+  `/tmp` PCM) and unlinks each temporary snapshot immediately after streaming it
+  into the `.zip`.
+- Unedited received Cassini `.opus` documents and plain imported `.opus` audio
+  files without a Cassini document yet are copied byte-for-byte so plain audio
+  is never left behind and re-importing an unedited archive deduplicates by
+  SHA-256 (`imported == 0`). Own recordings and locally edited meetings export
+  verified v1 Cassini `.opus` documents with internal Library extensions
+  stripped. Cancelling mid-write removes incomplete staged files without showing
+  an error toast.
