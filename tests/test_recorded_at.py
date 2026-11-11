@@ -170,3 +170,14 @@ def test_local_label_change_invalidates_only_metadata_in_search_result(tmp_path)
         assert changed.words is meeting.words
         index.sync(LibrarySnapshot(meetings=(changed,)))
         assert index.query("One", date="today", now_ms=today, tz="UTC")
+
+
+@pytest.mark.parametrize("label", [None, "2026-11-09T00:01:00"])
+def test_multi_term_title_date_filter_uses_same_d95_time_as_word_hits(tmp_path, label):
+    meeting = replace(load_open_meeting(changed_file(tmp_path, local=label)), title="Supplier weekly meeting")
+    with closing(SearchIndex(tmp_path / "Library", tmp_path / "cache")) as index:
+        index.sync(LibrarySnapshot(meetings=(meeting,)))
+        assert index.query("suppl meet", now_ms=START.timestamp() * 1000, tz="UTC")
+        assert bool(index.query("suppl meet", date="today", now_ms=START.timestamp() * 1000, tz="UTC")) == (
+            label is not None
+        )

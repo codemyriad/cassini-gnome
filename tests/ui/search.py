@@ -27,19 +27,23 @@ from cassini_talk.library_window import LibraryWindow  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 from cassini_talk.meeting_store import read_metadata, update_metadata  # noqa: E402
 from cassini_talk.player import Player  # noqa: E402
+from cassini_talk.strings import text  # noqa: E402
 
 
 def until(check):
     dispatch_until(check, "Search GUI did not complete")
 
 
-def labels(widget):
-    values = [widget.get_text()] if isinstance(widget, Gtk.Label) else []
+def widgets(widget):
+    yield widget
     child = widget.get_first_child()
     while child:
-        values += labels(child)
+        yield from widgets(child)
         child = child.get_next_sibling()
-    return values
+
+
+def labels(widget):
+    return [node.get_text() for node in widgets(widget) if isinstance(node, Gtk.Label)]
 
 
 with tempfile.TemporaryDirectory() as temporary:
@@ -188,6 +192,60 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: fresh.pending)
     until(lambda: not fresh.pending)
     assert fresh.hits
+    # D35 title parity: use a real metadata rename, then remove the transcript
+    # reference to test an audio-only meeting through the actual worker/bindings.
+    target = next(m for m in window.snapshot.meetings if m.title == "Budget review" and m.origin == "own")
+    update_metadata(target.directory, title="Supplier <meeting> & team", titleSource="user")
+    window.monitor.refresh_now()
+    fresh.entry.set_text("suppl team")
+    until(
+        lambda: (
+            not fresh.pending
+            and len(fresh.hits) == 1
+            and fresh.hits[0].key == target.key
+            and fresh.hits[0].turn == -1
+            and bool(fresh.hits[0].title_markup)
+        )
+    )
+    assert fresh.hit.turn == -1 and fresh.hit.position_ms == 0
+    assert ">Supplier</span> &lt;meeting&gt; &amp;" in fresh.hit.title_markup
+    assert ">team</span>" in fresh.hit.title_markup
+    assert "background=" not in fresh.hit.quote_markup
+    assert fresh._speaker(fresh.hit) is None
+    assert "Supplier <meeting> & team" in labels(fresh.context)
+    until(lambda: "Supplier <meeting> & team" in labels(fresh.list))
+    assert not any(value.startswith(" · ") for value in labels(fresh.list))
+    update_metadata(target.directory, transcript=dict(status="none", reference=None))
+    window.monitor.refresh_now()
+    until(
+        lambda: (
+            not fresh.pending
+            and fresh.hit is not None
+            and fresh.hit.key == target.key
+            and not fresh._meetings[target.key].words
+            and not fresh.hit.quote_markup
+        )
+    )
+    assert fresh.hit.turn == -1 and fresh._speaker(fresh.hit) is None
+    assert not fresh._turns[target.key]
+    empty_quote = text("common.quote", quote="")
+    until(lambda: empty_quote in labels(fresh.list))
+    quotes = [node for node in widgets(fresh.list) if isinstance(node, Gtk.Label) and node.get_text() == empty_quote]
+    assert quotes and all(not node.get_visible() for node in quotes), "Audio-only results must not show an empty quote"
+    seeks, seek = [], window.player.seek
+
+    def observed_seek(position):
+        seeks.append(position)
+        return seek(position)
+
+    window.player.seek = observed_seek
+    fresh.play.emit("clicked")
+    until(lambda: window.player.playing)
+    assert seeks[-1] == 0, "A title match must not seek to a fabricated word"
+    fresh.open.emit("clicked")
+    until(lambda: window.meeting_page is not None and window.search_page is None)
+    assert window.meeting_page.meeting.title == "Supplier <meeting> & team"
+    assert seeks[-1] == 0
     window.back_to_library()
     window.close()
     app.do_shutdown()
