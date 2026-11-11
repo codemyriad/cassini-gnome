@@ -6,7 +6,7 @@ import wave
 
 import pytest
 from durable import saved, tracks_bound
-from test_browser_capture import Tap, remote, server, start  # noqa: F401
+from test_browser_capture import Tap, ended_tracks, remote, server, start  # noqa: F401
 
 from cassini_talk.browser_audio_proxy import BrowserAudioProxy
 from cassini_talk.browser_service import request
@@ -100,9 +100,7 @@ def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):
     capture = service.captures["close-limit"]
     with capture.lock:
         if limit == "tracks":
-            for index in range(63):
-                capture.host.session.add_track(f"ended-{index}", "Old", "remote", 48000, 1)
-                capture.host.session.end_track(f"ended-{index}")
+            ended_tracks(capture.host.session, 63)
         else:
             from cassini_talk.session_events import append_events
 
