@@ -127,6 +127,31 @@ def _released(path, cancelled):
                 return
 
 
+def _await_peer_close(connection, cancelled):
+    """Wait boundedly for a one-shot status peer to finish flushing and close its stream.
+
+    Closing our client socket and sending SIGINT while a legacy broker is still returning
+    from SocketIO.write() inside BufferedRandom.flush() raises KeyboardInterrupt before the
+    write buffer advances; unwinding `with connection.makefile("rwb")` then flushes onto the
+    closed socket and terminates the retiring broker with BrokenPipeError (exit status 1).
+    """
+    deadline = time.monotonic() + 0.5
+    while True:
+        if cancelled is not None and cancelled.is_set():
+            raise CancelledError()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        connection.settimeout(min(0.05, remaining))
+        try:
+            if not connection.recv(4096):
+                return
+        except TimeoutError:
+            continue
+        except OSError:
+            return
+
+
 def reusable(connection, path, *, cancelled=None):
     """True: retain this listener; False: it retired and released its lock."""
     from .browser_service import connect, request
@@ -162,16 +187,23 @@ def reusable(connection, path, *, cancelled=None):
             if not _legacy_process(pid, uid, path):
                 return True
             try:
-                with connect(path, timeout=0.5) as again:
-                    latest, peer = inspect(again)
+                again = connect(path, timeout=0.5)
             except OSError:
                 _released(path, cancelled)
                 return False
-            if peer[:2] != (pid, uid) or busy(latest) or broker_identity.matches(latest.get("identity"), local):
-                return True
-            if cancelled is not None and cancelled.is_set():
-                raise CancelledError()
-            signal.pidfd_send_signal(descriptor, signal.SIGINT)
+            with again:
+                try:
+                    latest, peer = inspect(again)
+                except OSError:
+                    _released(path, cancelled)
+                    return False
+                if peer[:2] != (pid, uid) or busy(latest) or broker_identity.matches(latest.get("identity"), local):
+                    return True
+                _await_peer_close(again, cancelled)
+                if cancelled is not None and cancelled.is_set():
+                    raise CancelledError()
+                with contextlib.suppress(ProcessLookupError):
+                    signal.pidfd_send_signal(descriptor, signal.SIGINT)
         finally:
             os.close(descriptor)
     LOG.info("Retiring idle browser service from a different build (pid %s)", pid)

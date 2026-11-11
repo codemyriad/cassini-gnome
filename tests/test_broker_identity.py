@@ -118,6 +118,132 @@ def test_idle_legacy_broker_retires_before_current_broker_starts(private):
             close_broker(private)
 
 
+def test_legacy_broker_status_flush_completes_before_retirement_sigint(private, monkeypatch):
+    """Hold the legacy broker inside SocketIO.write after kernel send() on the final status check.
+
+    Without awaiting peer close while keeping the client socket open, closing `again` and sending
+    SIGINT raises KeyboardInterrupt before BufferedRandom.flush() advances its write buffer; exiting
+    `with connection.makefile("rwb")` then flushes onto the closed socket and fails with BrokenPipeError
+    (exit status 1).
+    """
+    from cassini_talk import broker_lifecycle
+
+    in_flight_r, in_flight_w = os.pipe()
+    release_r, release_w = os.pipe()
+    os.set_inheritable(in_flight_w, True)
+    os.set_inheritable(release_r, True)
+    (private.parent / "sitecustomize.py").write_text(
+        "import os, socket\n"
+        "if os.environ.get('CASSINI_GATE_SECOND_FLUSH') == '1':\n"
+        "    _orig = socket.SocketIO.write\n"
+        "    _calls = 0\n"
+        "    def _gated_write(self, b):\n"
+        "        global _calls\n"
+        "        _calls += 1\n"
+        "        if _calls == 2:\n"
+        "            sent = self._sock.send(b)\n"
+        "            os.write(int(os.environ['CASSINI_FLUSH_OUT_FD']), b'1')\n"
+        "            os.read(int(os.environ['CASSINI_FLUSH_IN_FD']), 1)\n"
+        "            return sent\n"
+        "        return _orig(self, b)\n"
+        "    socket.SocketIO.write = _gated_write\n",
+        encoding="utf-8",
+    )
+
+    waiting_for_eof = threading.Event()
+    signalled = threading.Event()
+    inspect_calls = 0
+    real_inspect = broker_lifecycle.inspect
+    real_connect = browser_service.connect
+    real_send_signal = signal.pidfd_send_signal
+
+    class _ObservedSocket:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def recv(self, *args, **kwargs):
+            if inspect_calls >= 2:
+                waiting_for_eof.set()
+            return self._inner.recv(*args, **kwargs)
+
+        def __enter__(self):
+            self._inner.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._inner.__exit__(*args)
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    def spy_connect(*args, **kwargs):
+        return _ObservedSocket(real_connect(*args, **kwargs))
+
+    def spy_inspect(connection):
+        nonlocal inspect_calls
+        raw = connection._inner if isinstance(connection, _ObservedSocket) else connection
+        result = real_inspect(raw)
+        inspect_calls += 1
+        return result
+
+    def spy_send_signal(pidfd, sig, *args):
+        signalled.set()
+        waiting_for_eof.set()
+        return real_send_signal(pidfd, sig, *args)
+
+    monkeypatch.setattr(browser_service, "connect", spy_connect)
+    monkeypatch.setattr(broker_lifecycle, "inspect", spy_inspect)
+    monkeypatch.setattr(signal, "pidfd_send_signal", spy_send_signal)
+
+    package = private.parent / "cassini_viewer"
+    package.mkdir()
+    (package / "__init__.py").touch()
+    shutil.copyfile(ROOT / "tests/fixtures/legacy_browser_service.py", package / "browser_service.py")
+    env = dict(
+        os.environ,
+        PYTHONPATH=str(private.parent),
+        CASSINI_LEGACY_TEST="1",
+        CASSINI_GATE_SECOND_FLUSH="1",
+        CASSINI_FLUSH_OUT_FD=str(in_flight_w),
+        CASSINI_FLUSH_IN_FD=str(release_r),
+    )
+    old = subprocess.Popen(
+        [sys.executable, "-m", "cassini_viewer.browser_service", "--serve", str(private)],
+        env=env,
+        pass_fds=(in_flight_w, release_r),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    os.close(in_flight_w)
+    os.close(release_r)
+    try:
+        readable(old.stdout)
+        assert old.stdout.readline().strip() == "READY"
+        with ThreadPoolExecutor(1) as executor:
+            ensuring = executor.submit(browser_service.ensure_service, private)
+            readable(in_flight_r)
+            assert os.read(in_flight_r, 1) == b"1"
+            assert waiting_for_eof.wait(BOUND)
+            early_signal = signalled.is_set()
+            os.write(release_w, b"1")
+            ensuring.result(BOUND)
+        rc = old.wait(BOUND)
+        _stdout, stderr = old.communicate(timeout=BOUND)
+        assert not early_signal, f"Signalled SIGINT before legacy status stream closed:\n{stderr}"
+        assert rc == 0, f"Legacy broker exited with {rc}:\n{stderr}"
+        status = browser_service.request(path=private)
+        assert status["identity"]["pid"] != old.pid and not status["brokerStale"]
+    finally:
+        for fd in (in_flight_r, release_w):
+            with contextlib.suppress(OSError):
+                os.close(fd)
+        if old.poll() is None:
+            old.send_signal(signal.SIGINT)
+            old.communicate(timeout=BOUND)
+        close_broker(private)
+
+
 @pytest.mark.parametrize("module,active", [("cassini_viewer", True), ("unrelated_service", False)])
 def test_recording_legacy_or_unrelated_socket_owner_is_never_signalled(private, module, active):
     with legacy(private, module, active=active) as old:
