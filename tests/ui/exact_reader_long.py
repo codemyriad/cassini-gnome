@@ -46,13 +46,18 @@ def check_long_reader(window, paint, until):
         words = (Word("person-2", 0, 500, "Introduction."),) + tuple(
             replace(word, start_ms=word.start_ms + 1000, end_ms=word.end_ms + 1000) for word in long_turn_words()
         )
-        return reader_turns(words)
+        oversized_chip = reader_turns(
+            [Word("person-0", 0, 1000, "Opening.")]
+            + [Word("person-1", 900, 1100, "Reply") for _ in range(400)]
+            + [Word("person-0", 1000, 2000, "Closing.")]
+        )
+        return reader_turns(words), oversized_chip
 
     with ThreadPoolExecutor(max_workers=1) as worker:
         future = worker.submit(project)
         future.add_done_callback(lambda _: GLib.idle_add(lambda: GLib.SOURCE_REMOVE))
         until(future.done)
-        turns = future.result()
+        turns, oversized_chip = future.result()
     window.player.pause()
     window.settings.set_boolean("follow-along", False)
     view = window._exact_transcript
@@ -100,4 +105,15 @@ def check_long_reader(window, paint, until):
         row.words.emit("activate-link", uri)
         until(lambda word=word: window.player.position >= word.start_ms and window.player.playing)
         window.player.pause()
+    window._set_turns(oversized_chip)
+    until(lambda: view.ready)
+    key = (oversized_chip[0].asides[0][1].index, 250)
+    position = oversized_chip.word_rows[key]
+    assert not view.items[position].words, "Fixture must exercise a chip-only physical row"
+    window._scroll_to_word(*key, center=True)
+    until(lambda: window._word_scroll is None)
+    paint(window)
+    row = window._realized_turn(*key)
+    assert row is not None and f"w:{key[0]}/{key[1]}" in row.link_offsets
+    report["chipOnlyContinuationSeek"] = True
     print("LONG_STANDALONE_READER", json.dumps(report), flush=True)
