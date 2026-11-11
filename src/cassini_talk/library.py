@@ -181,6 +181,8 @@ class Meeting(MeetingState):
     title: str
     started_at_ms: int | None
     duration_ms: int | None
+    recorded_at_local: str | None = None
+    created_at_ms: int | None = None
     speakers: tuple[LibrarySpeaker, ...] = ()
     words: tuple[portable.Word, ...] = ()
     preview_turns: tuple[PreviewTurn, ...] = ()
@@ -217,6 +219,23 @@ class Meeting(MeetingState):
     @property
     def key(self):
         return self.collection_key or self.directory.name
+
+    @property
+    def display_start(self) -> int | str | None:
+        # A local label stays naive; formatters never project it into a zone.
+        return self.started_at_ms if self.started_at_ms is not None else self.recorded_at_local
+
+    @property
+    def sort_time(self):
+        from .meeting_time import local
+
+        if self.started_at_ms is not None:
+            return self.started_at_ms
+        wall = local(self.recorded_at_local)
+        if wall is not None:
+            # Ordering only. This is never exposed as a recording instant.
+            return int(wall.replace(tzinfo=UTC).timestamp() * 1000)
+        return self.created_at_ms
 
     @property
     def speaker_names(self):
@@ -297,7 +316,7 @@ class LibrarySnapshot:
     def groups(self, *, now_ms, tz):
         result = []
         for meeting in self.meetings:
-            title = ux_formats.day_group(meeting.started_at_ms, now_ms=now_ms, tz=tz)
+            title = ux_formats.day_group(meeting.display_start, now_ms=now_ms, tz=tz)
             if result and result[-1].title == title:
                 previous = result[-1]
                 result[-1] = LibraryGroup(title, previous.meetings + (meeting,))
@@ -324,6 +343,11 @@ class LibrarySnapshot:
                         badge=badge.text if badge else None,
                         title=meeting.title,
                         startMs=meeting.started_at_ms,
+                        **(
+                            {"recordedAtLocal": meeting.recorded_at_local}
+                            if meeting.started_at_ms is None and meeting.recorded_at_local
+                            else {}
+                        ),
                         durationMs=meeting.duration_ms,
                         names=list(meeting.speaker_names),
                         quote=meeting.quote_line,
@@ -361,10 +385,10 @@ def _compacted_signature(fd, limit=256):
 
 
 def _sort(meeting):
-    unknown = meeting.started_at_ms is None
+    unknown = meeting.sort_time is None
     return (
         unknown,
-        -(meeting.started_at_ms or 0) if not unknown else 0,
+        -(meeting.sort_time or 0) if not unknown else 0,
         meeting.title.casefold() if unknown else "",
         meeting.title if unknown else "",
         meeting.id,
@@ -701,14 +725,12 @@ class LibraryScanner:
                 interrupted = duration
         else:
             received = metadata["received"]
-            started = received["importedAtMs"]
+            started = None
             try:
                 name = basename(received["originalName"])
                 audio_file = directory / name
                 embedded, duration, trusted, embedded_words, audio_size = self._load(fd, directory, name, "opus", _opus)
-                created = _date(embedded.created_at)
-                if created is not None:
-                    started = created
+                started = embedded.recorded_at_ms
             except (OSError, ValueError):
                 diagnostics.append(Diagnostic(directory, "received-audio-unreadable"))
         words, transcript, eta, error = self._transcript(
@@ -786,6 +808,8 @@ class LibraryScanner:
             title=title or text("library.untitled"),
             title_is_fallback=title is None,
             started_at_ms=started,
+            recorded_at_local=embedded.recorded_at_local if embedded else None,
+            created_at_ms=_date(embedded.created_at) if embedded else None,
             duration_ms=duration,
             words=tuple(words),
             preview_turns=self._preview(directory.name, words, gaps, speaker_names),

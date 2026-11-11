@@ -292,9 +292,11 @@ class PublishedIndex:
                 collection_key=key,
                 title=title or text("library.untitled"),
                 title_is_fallback=not title,
-                started_at_ms=working.started_at_ms
-                if working
-                else _date(embedded.tags.get("DATE")) or _date(embedded.created_at),
+                started_at_ms=embedded.recorded_at_ms
+                if embedded.recorded_at_ms is not None or not working
+                else working.started_at_ms,
+                recorded_at_local=embedded.recorded_at_local,
+                created_at_ms=_date(embedded.created_at),
                 duration_ms=audio.duration,
                 lifecycle=lifecycle,
                 origin="own" if origin == "Recording" else "received",

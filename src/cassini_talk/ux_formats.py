@@ -89,6 +89,8 @@ def local_timezone(identifier):
 
 
 def _local(at_ms, tz):
+    if isinstance(at_ms, str):
+        return datetime.strptime(at_ms, "%Y-%m-%dT%H:%M:%S")
     return datetime.fromtimestamp(at_ms / 1000, ZoneInfo(tz) if isinstance(tz, str) else tz)
 
 

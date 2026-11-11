@@ -6,7 +6,7 @@
   "notCovered": [
     "the two pre-publication draft formats, which were never public"
   ],
-  "updated": "2026-09-09",
+  "updated": "2026-11-09",
   "profiles": {
     "metadata": "Decodes the tags and the chunk sets and verifies every declared payload SHA-256 and byte count. Does not read the audio. Such a reader reports audioTrust 'not-checked' and never 'verified'.",
     "full": "Everything a metadata reader does, plus exact-opus-audio-v1 over the compressed audio packets."
@@ -853,6 +853,141 @@
         ],
         "state": "unverified"
       }
+    },
+    {
+      "id": "027-recorded-at-utc",
+      "file": "opus/027-recorded-at-utc.opus",
+      "bytes": 3099,
+      "sha256": "c4a6aed975cf2e8814fb28e21bdded7f2b027c347df19962e3909ddfa0b6aae4",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "meeting.recordedAtUtc, CASSINI_RECORDED_AT_UTC and DATE carry the recording start; recordedAtLocal carries UTC digits posing as the site's wall clock, and createdAtUtc is the later pack stamp.",
+      "rationale": "A reader that prefers recordedAtLocal shows the meeting an hour early for a Rome audience, and one that falls back to createdAtUtc shows when the file was packed. The instant wins, and is the base a word's startMs is added to.",
+      "spec": [
+        "SPEC.md#when-the-meeting-happened",
+        "SPEC.md#meeting",
+        "SPEC.md#summary-and-mirror-tags"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "audioTrust": "verified",
+        "formatId": "org.cassini.portable-meeting/1",
+        "manifestVersion": 1,
+        "manifestKind": "cassini-portable-meeting",
+        "transcriptIds": [
+          "words"
+        ],
+        "defaultTranscriptId": "words",
+        "wordCounts": {
+          "words": 3
+        },
+        "speakerIds": [
+          "spk_a",
+          "spk_b"
+        ],
+        "audioOpusSha256": "3504435d6e7c677c862313ffdb0ced1d0678b7bf3b8c33fd903b89a848c076a8",
+        "errors": [],
+        "warnings": [],
+        "meetingStart": {
+          "source": "recordedAtUtc",
+          "value": "2026-11-09T09:31:48.250Z"
+        },
+        "state": "ok"
+      }
+    },
+    {
+      "id": "028-date-is-created-at",
+      "file": "opus/028-date-is-created-at.opus",
+      "bytes": 3034,
+      "sha256": "d1f20627d79ef90b21bba80f24b5d857a3390b18f3b964f72b7b38596b7eb8bf",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "No recordedAtUtc; DATE equals createdAtUtc, as in every file written before DATE was defined; recordedAtLocal is present.",
+      "rationale": "DATE has an offset, but it is the pack stamp, not the start. A reader that takes any offset-bearing DATE presents createdAtUtc as the meeting time, which the spec forbids. Only the label remains, shown as written.",
+      "spec": [
+        "SPEC.md#when-the-meeting-happened",
+        "SPEC.md#meeting",
+        "SPEC.md#summary-and-mirror-tags"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "audioTrust": "verified",
+        "formatId": "org.cassini.portable-meeting/1",
+        "manifestVersion": 1,
+        "manifestKind": "cassini-portable-meeting",
+        "transcriptIds": [
+          "words"
+        ],
+        "defaultTranscriptId": "words",
+        "wordCounts": {
+          "words": 3
+        },
+        "speakerIds": [
+          "spk_a",
+          "spk_b"
+        ],
+        "audioOpusSha256": "3504435d6e7c677c862313ffdb0ced1d0678b7bf3b8c33fd903b89a848c076a8",
+        "errors": [],
+        "warnings": [],
+        "meetingStart": {
+          "source": "recordedAtLocal",
+          "value": "2026-11-09T09:31:48"
+        },
+        "state": "ok"
+      }
+    },
+    {
+      "id": "029-date-with-offset",
+      "file": "opus/029-date-with-offset.opus",
+      "bytes": 3035,
+      "sha256": "ce7efb8756ab3ec2b14eed821e61a90b5453e562695a05e7492ec627e51675f6",
+      "derivedFrom": "001-minimal-v1",
+      "profiles": [
+        "metadata",
+        "full"
+      ],
+      "summary": "No recordedAtUtc; DATE is the start with a +01:00 offset and differs from createdAtUtc; recordedAtLocal carries other digits.",
+      "rationale": "A producer that knows the site's zone may say when the recording started through DATE alone. The DATE instant outranks the label, and the label is still never converted.",
+      "spec": [
+        "SPEC.md#when-the-meeting-happened",
+        "SPEC.md#meeting",
+        "SPEC.md#summary-and-mirror-tags"
+      ],
+      "expect": {
+        "classification": "cassini",
+        "payloadTrust": "verified",
+        "audioTrust": "verified",
+        "formatId": "org.cassini.portable-meeting/1",
+        "manifestVersion": 1,
+        "manifestKind": "cassini-portable-meeting",
+        "transcriptIds": [
+          "words"
+        ],
+        "defaultTranscriptId": "words",
+        "wordCounts": {
+          "words": 3
+        },
+        "speakerIds": [
+          "spk_a",
+          "spk_b"
+        ],
+        "audioOpusSha256": "3504435d6e7c677c862313ffdb0ced1d0678b7bf3b8c33fd903b89a848c076a8",
+        "errors": [],
+        "warnings": [],
+        "meetingStart": {
+          "source": "DATE",
+          "value": "2026-11-09T10:31:48+01:00"
+        },
+        "state": "ok"
+      }
     }
   ],
   "vocabulary": {
@@ -873,6 +1008,7 @@
       "discard-transcript": "a word count is reported",
       "present-as-current": "classification is not 'cassini' and no word count is reported",
       "sum-word-counts-across-transcripts": "totalWordCount is not the sum of several transcripts' counts"
-    }
+    },
+    "meetingStart": "The reader's answer to 'when did this meeting happen', as {source, value}: source is recordedAtUtc, DATE or recordedAtLocal, and value is that field's text exactly as the file carries it; null when the file has none. SPEC.md 'When the meeting happened' gives the order. A reader that shows no meeting time does not report the key and is not marked down; one that reports it must report the right one."
   }
 }

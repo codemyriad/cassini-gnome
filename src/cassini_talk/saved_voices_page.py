@@ -175,7 +175,7 @@ class SavedVoicesPage(Adw.NavigationPage):
             for voice in voices:
                 available = sorted(
                     (meetings[k] for k in voice["meetings"] if k in meetings),
-                    key=lambda m: m.started_at_ms or 0,
+                    key=lambda m: m.sort_time or 0,
                     reverse=True,
                 )
                 for meeting in available:

@@ -229,7 +229,8 @@ class SearchPage(Adw.NavigationPage):
                     id(m.words),
                     m.speakers,
                     m.title,
-                    m.started_at_ms,
+                    m.display_start,
+                    m.sort_time,
                     m.duration_ms,
                     m.origin,
                     m.has_audio,
@@ -325,10 +326,19 @@ class SearchPage(Adw.NavigationPage):
         hit, meeting = result.hit, result.meeting
         row = box(8, css_classes=["search-result"], margin_start=12, margin_end=12, margin_top=4, margin_bottom=4)
         heading = Gtk.Box(spacing=8)
-        heading.append(label(meeting.title, "heading", xalign=0, hexpand=True, wrap=True))
         heading.append(
             label(
-                fmt.search_date(meeting.started_at_ms, now_ms=self.window.now_ms, tz=self.window.tz),
+                hit.title_markup or meeting.title,
+                "heading",
+                use_markup=bool(hit.title_markup),
+                xalign=0,
+                hexpand=True,
+                wrap=True,
+            )
+        )
+        heading.append(
+            label(
+                fmt.search_date(meeting.display_start, now_ms=self.window.now_ms, tz=self.window.tz),
                 "small",
                 "dim-label",
                 valign=Gtk.Align.START,
@@ -342,11 +352,14 @@ class SearchPage(Adw.NavigationPage):
             xalign=0,
             wrap=True,
         )
+        quote.set_visible(bool(hit.quote_markup))
         row.append(quote)
         speaker = self._speaker(hit)
         row.append(
             label(
-                text(
+                fmt.position(hit.position_ms)
+                if hit.turn < 0
+                else text(
                     "search.result.meta", name=speaker.name if speaker else "", position=fmt.position(hit.position_ms)
                 ),
                 "small",
@@ -369,6 +382,8 @@ class SearchPage(Adw.NavigationPage):
         item.set_child(None)
 
     def _speaker(self, hit):
+        if hit.turn < 0:
+            return None
         return self._meetings[hit.key].speaker_for(hit.speaker or self._turns[hit.key][hit.turn].speaker)
 
     def _selected(self, *_):
@@ -382,7 +397,7 @@ class SearchPage(Adw.NavigationPage):
         meeting = self._meetings[hit.key] if hit else None
         context_text = (
             fmt.search_context(
-                meeting.started_at_ms,
+                meeting.display_start,
                 meeting.duration_ms,
                 hit.position_ms,
                 now_ms=self.window.now_ms,
@@ -418,7 +433,15 @@ class SearchPage(Adw.NavigationPage):
             return
         meeting = self._meetings[hit.key]
         heading = box(10)
-        heading.append(label(meeting.title, "library-title", xalign=0, wrap=True))
+        heading.append(
+            label(
+                hit.title_markup or meeting.title,
+                "library-title",
+                use_markup=bool(hit.title_markup),
+                xalign=0,
+                wrap=True,
+            )
+        )
         heading.append(
             label(
                 context_text,

@@ -68,6 +68,8 @@ def _markdown(value):
     order = list(dict.fromkeys(item["speaker"] for item in sorted(items, key=lambda item: item["startMs"])))
     lines = ["# " + escaped(value["title"]), ""]
     stamp = value.get("startMs")
+    if stamp is None:
+        stamp = value.get("recordedAtLocal")
     date_line = ""
     if stamp is not None:
         date_line = fmt.full_date_time(stamp, tz=value.get("tz"))
@@ -141,6 +143,11 @@ def model_projection(meeting, *, tz=None):
     return dict(
         title=meeting.title,
         startMs=meeting.started_at_ms,
+        **(
+            {"recordedAtLocal": meeting.recorded_at_local}
+            if meeting.started_at_ms is None and meeting.recorded_at_local
+            else {}
+        ),
         tz=tz,
         durationMs=meeting.duration_ms,
         # D65: speakers listed are only those in the exported words.
