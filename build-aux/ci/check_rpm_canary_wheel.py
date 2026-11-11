@@ -4,10 +4,12 @@
 
 outcomes:
   - abi pinned in both whistle/pins.json and cassini-talk.spec -> should_build=true, exit 0
-  - abi pinned in only one of pins.json or cassini-talk.spec -> ::error::, exit 1
+  - abi pinned in only one of pins.json or cassini-talk.spec -> should_build=false, ::error::, exit 1
+  - abi unpinned and PyPI lookup fails (exhausted retries or malformed response) ->
+    should_build=false, ::error:: + step summary, exit 1
   - abi unpinned and upstream PyPI onnxruntime publishes a non-yanked manylinux x86_64
-    wheel for abi (at version >= pinned version) -> ::error::, exit 1 (actionable alert)
-  - abi unpinned and upstream PyPI onnxruntime has no wheel for abi yet ->
+    wheel for abi (at version >= pinned version) -> should_build=false, ::error::, exit 1
+  - abi unpinned and a successful PyPI lookup proves no compatible wheel exists yet ->
     should_build=false, ::notice:: + step summary, exit 0
 """
 
@@ -133,26 +135,27 @@ def evaluate(
         print(f"{abi} is pinned in whistle/pins.json and cassini-talk.spec; running RPM canary build.")
         return 0
     if in_pins != in_spec:
-        print(
-            f"::error::{abi} pin mismatch between whistle/pins.json ({in_pins}) and cassini-talk.spec ({in_spec})",
-            file=sys.stderr,
-        )
+        write_line(github_output, "should_build=false")
+        msg = f"{abi} pin mismatch between whistle/pins.json ({in_pins}) and cassini-talk.spec ({in_spec})"
+        print(f"::error::{msg}", file=sys.stderr)
+        write_line(step_summary, f"### RPM canary preflight failed (`{abi}`)\n\n{msg}")
         return 1
 
     try:
         pypi_data = fetcher()
-    except TransientPyPIError as exc:
+    except (TransientPyPIError, ValueError, RuntimeError) as exc:
         write_line(github_output, "should_build=false")
         msg = (
             f"fedora:latest uses {abi} (unpinned in whistle/pins.json), and PyPI wheel check failed "
-            f"({exc}); skipping RPM build."
+            f"({exc}); failing preflight because wheel availability could not be verified."
         )
-        print(f"::warning::{msg}")
-        write_line(step_summary, f"### RPM canary skipped (`{abi}`)\n\n{msg}")
-        return 0
+        print(f"::error::{msg}", file=sys.stderr)
+        write_line(step_summary, f"### RPM canary preflight failed (`{abi}`)\n\n{msg}")
+        return 1
 
     found = find_upstream_wheel(pypi_data, abi, pinned_version)
     if found is not None:
+        write_line(github_output, "should_build=false")
         ver, filename = found
         msg = (
             f"fedora:latest uses {abi}, and upstream onnxruntime {ver} now publishes {filename} on PyPI. "
