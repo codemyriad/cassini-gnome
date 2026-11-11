@@ -6,11 +6,12 @@ import logging
 import socket
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 from broker_fixture import stop_broker
-from durable import durable
+from durable import DURABLE_BOUND, durable, saved
 from test_browser_capture import Tap, authorize_native_start, stream
 from test_browser_service import wait_for
 from test_browser_sessions import Extension
@@ -211,9 +212,12 @@ def test_outbound_overflow_closes_the_peer_instead_of_growing(broker):
 
 def test_stop_finishes_and_policy_resumes_under_a_stuck_writer(broker, monkeypatch):
     service, path, _clock, _lost = broker
-    service.batch_timeout = 1
+    deadline_clock = Clock()
+    service.deadline_clock = deadline_clock
     client = Settled(BrowserAudioProxy(path=path), service)
     peer = Extension(path, (3,))
+    worker = ThreadPoolExecutor(1)
+    expire = threading.Event()
     try:
         capture = negotiated(client, service, "stuck-stop")
         stream(capture)
@@ -224,7 +228,8 @@ def test_stop_finishes_and_policy_resumes_under_a_stuck_writer(broker, monkeypat
         jam(browser)
 
         generation = service._stop_generation
-        resumed = threading.Event()
+        resumed, stop_queued = threading.Event(), threading.Event()
+        send = browser.send
         policy = service.policy
 
         def observed():
@@ -232,20 +237,39 @@ def test_stop_finishes_and_policy_resumes_under_a_stuck_writer(broker, monkeypat
                 resumed.set()
             policy()
 
+        def command_wait(_timeout):
+            durable(expire, "the Stop command did not receive its virtual deadline")
+            return False  # The jammed connection has never answered.
+
+        def observe_send(packet):
+            if packet.get("action") == "stop":
+                pending = browser.pending[packet["requestId"]]
+                monkeypatch.setattr(pending["event"], "wait", command_wait)
+                send(packet)
+                stop_queued.set()
+            else:
+                send(packet)
+
         monkeypatch.setattr(service, "policy", observed)
-        began = time.monotonic()
-        result = service.stop_all()
-        assert time.monotonic() - began < service.batch_timeout + 1
+        monkeypatch.setattr(browser, "send", observe_send)
+        stopping = worker.submit(service.stop_all)
+        durable(stop_queued, "Stop was not queued on the jammed browser")
+        saved(capture)
+        deadline_clock.now = service.batch_timeout
+        expire.set()
+        result = stopping.result(timeout=DURABLE_BOUND)
         assert str(capture.directory) in result["stoppedPaths"]
         manifest = json.loads((capture.directory / "session.json").read_text())
         assert manifest["state"] == "completed", manifest.get("problem")
         # A future stuck in a socket write used to hold _stopping_all forever,
         # pausing every fallback and automatic start behind one frozen peer.
-        assert resumed.wait(service.batch_timeout + WRITE_DEADLINE)
+        durable(resumed, "broker policy remained paused after the Stop batch")
         assert browser.write_started is not None, "The peer is still not reading"
     finally:
+        expire.set()
         client.close()
         peer.close()
+        worker.shutdown(wait=False, cancel_futures=True)
 
 
 def test_frozen_audio_transport_falls_back_and_keeps_me(broker):
