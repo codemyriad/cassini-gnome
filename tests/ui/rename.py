@@ -128,6 +128,46 @@ def key(window, symbol):
         x11.XCloseDisplay(display)
 
 
+def save_with_focus_out(window, dialog):
+    # Observe GtkText's actual focus-out before its EntryRow is disabled.
+    # Disabling focused text first can leave the cursor blink armed.
+    from cassini_talk.meeting_rename import rename_meeting
+
+    delegate = dialog.entry.get_delegate()
+    focus_out = []
+    assert delegate.has_focus()
+
+    def focus_changed(widget, _property):
+        if not widget.has_focus():
+            focus_out.append(widget.is_sensitive())
+
+    focus_handler = delegate.connect("notify::has-focus", focus_changed)
+    entered, release = threading.Event(), threading.Event()
+    loop = GLib.MainLoop()
+    guard = GLib.timeout_source_new_seconds(18)
+    guard.set_callback(lambda *_: loop.quit())
+
+    def paused_save(*args):
+        entered.set()
+        GLib.idle_add(loop.quit)
+        assert release.wait(18), "GUI did not release the metadata worker"
+        return rename_meeting(*args)
+
+    with patch("cassini_talk.rename_dialog.rename_meeting", side_effect=paused_save):
+        try:
+            key(window, 0xFF0D)  # Return through the actual entry/default button.
+            guard.attach(loop.get_context())
+            loop.run()
+            assert entered.is_set(), "the rename worker did not enter"
+            assert focus_out == [True], "rename disabled the focused text before focus-out"
+            assert not delegate.has_focus() and not delegate.is_sensitive()
+            assert not dialog.closed and dialog.busy
+        finally:
+            guard.destroy()
+            delegate.disconnect(focus_handler)
+            release.set()
+
+
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(root / "fixtures")], check=True)
@@ -206,30 +246,8 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda dialog=dialog: dialog.entry.get_mapped() and dialog.entry.get_width() > 0)
         dialog.entry.set_text("  " + name + "  ")
         until(lambda dialog=dialog: window.get_focus() == dialog.entry.get_delegate())
-        # Keep the save pending beyond GtkText's cursor blink callback. Disabling
-        # the focused inner text without a focus-out produces a delayed warning.
-        from cassini_talk.meeting_rename import rename_meeting
-
-        release = threading.Event()
-
-        def paused_save(*args, release=release):
-            assert release.wait(8), "GUI did not release the metadata worker"
-            return rename_meeting(*args)
-
-        with patch("cassini_talk.rename_dialog.rename_meeting", side_effect=paused_save):
-            key(window, 0xFF0D)  # Return through the actual entry/default button.
-            until(lambda dialog=dialog: dialog.busy)
-            started = time.monotonic()
-            try:
-                until(lambda started=started: time.monotonic() - started >= 1.5)
-                assert not dialog.closed and dialog.busy
-            finally:
-                release.set()
-            until(
-                lambda dialog=dialog, name=name: (
-                    dialog.closed and any(m.title == name for m in window.snapshot.meetings)
-                )
-            )
+        save_with_focus_out(window, dialog)
+        until(lambda dialog=dialog, name=name: dialog.closed and any(m.title == name for m in window.snapshot.meetings))
         assert read_metadata(folder)["titleSource"] == "user"
         if surface == "meeting":
             assert window.meeting_page.headline.get_title() == name and window.get_title() == name
