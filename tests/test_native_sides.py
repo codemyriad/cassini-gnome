@@ -20,7 +20,6 @@ except ValueError:
     pytest.skip("GStreamer typelib is unavailable", allow_module_level=True)
 from durable import DURABLE_BOUND  # noqa: E402
 from gi.repository import GLib, Gst  # noqa: E402
-from test_recorder import spin_until  # noqa: E402
 
 from cassini_talk.native_recorder import START_FAILURE, NativeRecorder  # noqa: E402
 
@@ -29,6 +28,30 @@ FRAME = bytes(960)  # 10 ms of mono S16LE at 48 kHz.
 FRAME_NS = 10 * Gst.MSECOND
 BOUND = 3  # R79 §1: the microphone has opened when its first buffer arrives within 3 s.
 CAPS = "audio/x-raw,format=S16LE,rate=48000,channels=1,layout=interleaved"
+
+
+def wait_native(check, timeout=DURABLE_BOUND, message="native capture did not reach the expected state"):
+    context = GLib.MainContext.default()
+    expired = []
+
+    def expire(*_args):
+        expired.append(True)
+        return GLib.SOURCE_REMOVE
+
+    guard = GLib.timeout_source_new(int(timeout * 1000))
+    guard.set_callback(expire)
+    guard.attach(context)
+    try:
+        while not check() and not expired:
+            context.iteration(True)
+        assert check(), message
+    finally:
+        guard.destroy()
+
+
+def wake_native_wait():
+    # Some device events originate on a GStreamer thread without a bus message.
+    GLib.idle_add(lambda: GLib.SOURCE_REMOVE)
 
 
 class RefusingBin(Gst.Bin):
@@ -53,7 +76,9 @@ class BlockingBin(Gst.Bin):
 
     def do_change_state(self, transition):
         if transition == Gst.StateChange.NULL_TO_READY:
+            self.worker = threading.current_thread()
             self.entered.set()
+            wake_native_wait()
             self.release.wait(60)  # Bound only: the test releases it.
         return Gst.Bin.do_change_state(self, transition)
 
@@ -76,7 +101,7 @@ class Sides:
     a loaded test spent in between become a recorded gap.
     """
 
-    def __init__(self, recorder, plan, causes=None, codes=None):
+    def __init__(self, recorder, plan, causes=None, codes=None, *, notify_pcm=False):
         self.recorder, self.plan, self.causes = recorder, dict(plan), dict(causes or {})
         # An "error" side's GStreamer resource error code, by kind (OPEN_READ by default).
         self.codes = dict(codes or {})
@@ -87,10 +112,16 @@ class Sides:
         self.release, self.blocked = threading.Event(), {}
         self.next_pts = {}  # kind -> where its device's next buffer starts
         self.real_branch = recorder._branch
+        self.notify_pcm = notify_pcm
         recorder._open_clock = lambda: self.now
         recorder._open_wait = self.wait
         recorder._branch = self.branch
         recorder.connect("started", lambda *_: setattr(self, "started_at", self.now))
+
+    def sample(self, sink, kind):
+        result = self.recorder._sample(sink, kind)
+        wake_native_wait()
+        return result
 
     def branch(self, kind):
         if kind not in self.plan:
@@ -108,7 +139,8 @@ class Sides:
             f"appsink name={kind} emit-signals=true sync=false async=false max-buffers=8 drop=false",
             False,
         )
-        branch.get_by_name(kind).connect("new-sample", self.recorder._sample, kind)
+        callback = self.sample if self.notify_pcm else self.recorder._sample
+        branch.get_by_name(kind).connect("new-sample", callback, kind)
         self.sources[kind] = branch.get_by_name("device")
         self.next_pts.pop(kind, None)
         branch.get_by_name("device").get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, self._sent, kind)
@@ -187,13 +219,13 @@ class Sides:
 
 def start(tmp_path, plan, causes=None):
     recorder = NativeRecorder()
-    sides = Sides(recorder, plan, causes)
+    sides = Sides(recorder, plan, causes, notify_pcm=True)
     signals = []
     recorder.connect("started", lambda _r, path: signals.append(("started", path)))
     recorder.connect("error", lambda _r, message: signals.append(("error", message)))
     recorder.connect("finished", lambda _r, path: signals.append(("finished", path)))
     recorder.start(tmp_path, test=True)
-    spin_until(lambda: not recorder.starting)
+    wait_native(lambda: not recorder.starting)
     return recorder, sides, signals
 
 
@@ -201,12 +233,12 @@ def settle():
     """Run everything already queued on the GTK main context."""
     done = []
     GLib.idle_add(lambda: done.append(True) and False, priority=GLib.PRIORITY_LOW)
-    spin_until(lambda: bool(done))
+    wait_native(lambda: bool(done))
 
 
 def close(recorder):
     recorder.stop()
-    spin_until(lambda: not recorder.starting and recorder.pipeline is None and not recorder._finishing)
+    wait_native(lambda: not recorder.starting and recorder.pipeline is None and not recorder._finishing)
     recorder._executor.shutdown(wait=True)
 
 
@@ -268,7 +300,7 @@ def test_one_refused_side_gets_no_track_while_the_other_records(tmp_path, caplog
             dict(atMs=0, side=SIDE[refused], code="deviceUnavailable", message=raw[behaviour])
         ]
         sides.feed(opened, 10)
-        spin_until(lambda: session.writers[opened].frames >= 4800)
+        wait_native(lambda: session.writers[opened].frames >= 4800)
         assert recorder.levels[0 if refused == "microphone" else 1] == 0
         assert session.manifest["state"] == "recording" and not recorder.stopping
     finally:
@@ -296,7 +328,7 @@ def test_both_sides_open_and_record(tmp_path, caplog):
         assert all(t["startOffsetMs"] >= 0 for t in saved["tracks"])
         for kind in ("microphone", "system"):
             sides.feed(kind, 10)
-        spin_until(lambda: all(writer.frames >= 4800 for writer in session.writers.values()))
+        wait_native(lambda: all(writer.frames >= 4800 for writer in session.writers.values()))
     finally:
         close(recorder)
     assert session.manifest["state"] == "completed"
@@ -320,7 +352,9 @@ def test_both_sides_refused_leaves_no_folder_and_shows_the_cause(tmp_path, caplo
     caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
     recorder, _sides, signals = start(tmp_path, plan, CAUSES)
     try:
-        spin_until(lambda: any(name == "finished" for name, _ in signals))
+        wait_native(
+            lambda: any(name == "finished" for name, _ in signals), message="the recorder did not emit finished"
+        )
         # D58 point 2: nothing opened, so there is no recording and no folder.
         # The error still names the device's cause; the banner lists the refusals.
         assert signals == [("error", problem), ("finished", "")]
@@ -357,19 +391,19 @@ def test_a_first_buffer_after_the_bound_is_refused_and_never_becomes_a_track(tmp
 def test_a_first_buffer_is_judged_by_its_admission_time_against_the_bound(tmp_path, caplog, delay, opens):
     caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
     recorder = NativeRecorder()
-    sides = Sides(recorder, {"microphone": ("ok", delay), "system": ("ok", 0.1)})
+    sides = Sides(recorder, {"microphone": ("ok", delay), "system": ("ok", 0.1)}, notify_pcm=True)
     # The open wait wakes late: the microphone's first buffer is admitted at
     # its scripted time even when that is past the deadline. R79 §1: a side
     # opens only when its first buffer arrives within 3 s, the bound excluded.
     sides.overshoot = 0.2
     recorder.start(tmp_path, test=True)
-    spin_until(lambda: not recorder.starting)
+    wait_native(lambda: not recorder.starting)
     try:
         session = recorder.session
         assert "microphone" in sides.fired and sides.now == pytest.approx(delay)
         if opens:
             assert kinds_of(session) == ["microphone", "system"] and not refusals(caplog)
-            spin_until(lambda: session.writers["microphone"].frames == 480)  # Its first buffer.
+            wait_native(lambda: session.writers["microphone"].frames == 480)  # Its first buffer.
         else:
             assert kinds_of(session) == ["system"] and set(recorder._track_ids) == {"system"}
             assert not (session.directory / "track-microphone.wav").exists()
@@ -384,7 +418,7 @@ def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop
     caplog.set_level(logging.WARNING, logger="cassini_talk.native_recorder")
     healthy = OTHER[blocked]
     recorder = NativeRecorder()
-    sides = Sides(recorder, {blocked: ("block", 0), healthy: ("ok", 0.1)})
+    sides = Sides(recorder, {blocked: ("block", 0), healthy: ("ok", 0.1)}, notify_pcm=True)
     # "opening": the clock never passes the deadline, so the user stops while
     # the start is still opening. "started": the stuck side's own deadline,
     # taken before its state change, refuses it at the bound.
@@ -394,16 +428,16 @@ def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop
     recorder.connect("finished", lambda _r, path: signals.append("finished"))
     recorder.start(tmp_path, test=True)
     try:
-        spin_until(lambda: blocked in sides.blocked and sides.blocked[blocked].entered.is_set())
+        wait_native(lambda: blocked in sides.blocked and sides.blocked[blocked].entered.is_set())
         # The healthy side commits at its first buffer and records it, while
         # the other side's state change still holds its state lock.
-        spin_until(lambda: healthy in recorder._track_ids)
+        wait_native(lambda: healthy in recorder._track_ids)
         session = recorder.session
-        spin_until(lambda: session.writers[healthy].frames == 480)
+        wait_native(lambda: session.writers[healthy].frames == 480)
         if stop == "opening":
             assert recorder.starting and not refusals(caplog)
         else:
-            spin_until(lambda: signals == ["started"])
+            wait_native(lambda: signals == ["started"])
             assert sides.now == BOUND and sides.started_at == BOUND
             # D58.1: a stuck system side stays armed, unrefused; the microphone is refused.
             assert refusals(caplog) == (
@@ -413,11 +447,11 @@ def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop
             )
         assert not sides.release.is_set()
         sides.feed(healthy, 9)
-        spin_until(lambda: session.writers[healthy].frames == 4800)
+        wait_native(lambda: session.writers[healthy].frames == 4800)
         # Stop does not wait on the stuck state change either.
         recorder.stop()
         # Its save is durable: bounded against that work, not the stuck side.
-        spin_until(
+        wait_native(
             lambda: "finished" in signals and recorder.pipeline is None and not recorder._finishing,
             timeout=DURABLE_BOUND,
         )
@@ -431,28 +465,31 @@ def test_a_side_stuck_in_its_state_change_blocks_neither_the_other_side_nor_stop
         sides.release.set()
         branch = sides.blocked.get(blocked)
         # Released, the stuck side's own thread stops its detached branch.
-        spin_until(lambda: not any(t.name == f"cassini-open-{blocked}" for t in threading.enumerate()))
+        branch.worker.join(DURABLE_BOUND)
+        assert not branch.worker.is_alive(), "the released side did not finish its state change"
         close(recorder)
     assert branch.get_parent() is None and branch.get_state(0)[1] == Gst.State.NULL
 
 
 def test_a_side_that_commits_just_before_a_stop_is_reported_as_opened(tmp_path):
     recorder = NativeRecorder()
-    sides = Sides(recorder, {"microphone": ("ok", 0.1), "system": ("block", 0)})
+    sides = Sides(recorder, {"microphone": ("ok", 0.1), "system": ("block", 0)}, notify_pcm=True)
     sides.frozen, sides.stop_on_commit = True, "microphone"
     signals = []
     recorder.connect("started", lambda *_: signals.append("started"))
     recorder.connect("finished", lambda *_: signals.append("finished"))
     recorder.start(tmp_path, test=True)
     try:
-        spin_until(lambda: "finished" in signals)
+        wait_native(lambda: "finished" in signals)
         # The start saw the Stop before it saw the commit: the side still opened.
         assert signals == ["started", "finished"]
         saved = json.loads((recorder.session.directory / "session.json").read_text())
         assert [t["kind"] for t in saved["tracks"]] == ["microphone"] and saved["state"] == "completed"
     finally:
         sides.release.set()
-        spin_until(lambda: not any(t.name == "cassini-open-system" for t in threading.enumerate()))
+        worker = sides.blocked["system"].worker
+        worker.join(DURABLE_BOUND)
+        assert not worker.is_alive(), "the released system side did not finish its state change"
         close(recorder)
 
 
@@ -497,7 +534,7 @@ def test_a_selection_of_only_a_refused_side_reopens_it_or_is_rejected(tmp_path):
         # Others off would leave only the refused microphone: it is opened
         # again as a turn-on, still refuses, and the change is rejected.
         future = recorder.select(True, False)
-        spin_until(lambda: future.done() and not recorder._changing_sources)
+        wait_native(lambda: future.done() and not recorder._changing_sources)
         with pytest.raises(OSError):
             future.result()
         assert session.manifest["events"] == events and kinds_of(session) == ["system"]
@@ -508,16 +545,23 @@ def test_a_selection_of_only_a_refused_side_reopens_it_or_is_rejected(tmp_path):
 
 def test_a_stop_before_any_side_opened_leaves_no_folder(tmp_path):
     recorder = NativeRecorder()
-    Sides(recorder, {"microphone": ("never", 0), "system": ("never", 0)})
-    recorder._open_wait = lambda event, timeout: event.wait(5)  # Only the stop wakes it.
+    Sides(recorder, {"microphone": ("never", 0), "system": ("never", 0)}, notify_pcm=True)
+
+    def open_wait(event, _timeout):
+        wake_native_wait()  # The opener has published the pending sides.
+        return event.wait(5)  # Only Stop wakes it.
+
+    recorder._open_wait = open_wait
     signals = []
     for name in ("started", "error", "finished"):
         recorder.connect(name, lambda _r, value, name=name: signals.append((name, value)))
     recorder.start(tmp_path, test=True)
     try:
-        spin_until(lambda: len(recorder._pending_sources) == 2)
+        wait_native(lambda: len(recorder._pending_sources) == 2)
         recorder.stop()
-        spin_until(lambda: any(name == "finished" for name, _ in signals))
+        wait_native(
+            lambda: any(name == "finished" for name, _ in signals), message="the recorder did not emit finished"
+        )
         # The user cancelled this start: no recording, no folder, no banner.
         assert signals == [("finished", "")] and recorder.discarded
         assert not list(tmp_path.iterdir()) and recorder.refusals == []
@@ -546,7 +590,7 @@ def test_a_refused_side_can_be_turned_off_and_on_again(tmp_path, refused):
 
     def select(me, others):
         future = recorder.select(me, others)
-        spin_until(lambda: future.done() and not recorder._changing_sources)
+        wait_native(lambda: future.done() and not recorder._changing_sources)
         return future.result()
 
     try:
