@@ -10,6 +10,7 @@ from gi.repository import GLib, GObject, Graphene, Gsk, Gtk
 
 from . import ux_formats as fmt
 from .transcript_accessible import WordActions
+from .transcript_geometry import DisplayPrefix
 from .transcript_navigation import TranscriptNavigation
 
 # Includes the existing 120 px name column. CSS outer padding is separate.
@@ -62,6 +63,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self._pending_scroll = None
         self._pending_anchor = None
         self._display_common = None
+        self._display_dirty = False
         self.connect("notify::vadjustment", self._adjustment_changed)
         self.set_overflow(Gtk.Overflow.HIDDEN)
         self.connect("notify::scale-factor", self.invalidate)
@@ -96,9 +98,14 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         # Build the changed suffix beside the old exact index. In particular,
         # replacing the sounding tail cannot temporarily shrink the range and
         # clamp the old anchor before its replacement height is known.
+        pending_scroll = self._pending_scroll
         self._pending_scroll = None
-        if self.navigation.pending and self.navigation.pending[0] >= common:
-            self.navigation.pending = None
+        if self.navigation.pending:
+            if self.navigation.pending[0] < common:
+                if pending_scroll == self.navigation.pending[0]:
+                    self._pending_scroll = pending_scroll
+            else:
+                self.navigation.pending = None
         self._cancel_build()
         self._display_common = common if self._display_common is None else min(self._display_common, common)
         self.items = turns
@@ -124,6 +131,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
 
     def invalidate(self, *_args):
         self.word_actions.generation += 1
+        self._display_dirty = True
         self._cancel_build()
         self._indices.clear()
         self._metric_markup.clear()
@@ -192,6 +200,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
     def _activate(self, index):
         self._pending_anchor = self._anchor()
         self._display_common = None
+        self._display_dirty = False
         self.viewport_ready = False
         focused = self.navigation.focused()
         for number, row in list(self.rows.items()):
@@ -203,6 +212,8 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
                 removed.unparent()
                 self.page.bound.pop(number, None)
             else:
+                self.page._refresh_header(self.items[number], row)
+                self.page._render_words(self.items[number], row.get_last_child())
                 row.update_relation([Gtk.AccessibleRelation.SET_SIZE], [len(self.items)])
         self._retained_rows = set(self.rows)
         self._display_items = self.items
@@ -289,6 +300,50 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             return GLib.SOURCE_REMOVE
         return GLib.SOURCE_CONTINUE
 
+    def _display_row(self, index):
+        row = self.rows.get(index)
+        if row is None:
+            row = self.page._build_row(self._display_items[index])
+            following = next((self.rows[i] for i in sorted(self.rows) if i > index), None)
+            row.insert_before(self, following)
+            row.update_relation(
+                [Gtk.AccessibleRelation.POS_IN_SET, Gtk.AccessibleRelation.SET_SIZE], [index + 1, len(self.items)]
+            )
+            self.rows[index] = row
+        return row
+
+    def _refresh_display_geometry(self, height):
+        if len(self.prefix) <= 1:
+            return
+        value = self._value()
+        anchor = bisect_right(self.prefix, value) - 1
+        offset = value - self.prefix[anchor]
+        if not isinstance(self.prefix, DisplayPrefix):
+            self.prefix = self._active.prefix = DisplayPrefix(self.prefix, len(self._display_items))
+
+        def measure(index):
+            row = self._display_row(index)
+            turn = self._display_items[index]
+            self.page._refresh_header(turn, row)
+            self.page._render_words(turn, row.get_last_child())
+            natural = row.measure(Gtk.Orientation.VERTICAL, self.layout_width).natural
+            if index + 1 == len(self.prefix):
+                self.prefix.append(self.prefix[-1] + natural)
+            else:
+                self.prefix.set_height(index, natural)
+
+        measured = {index for index in self.rows if index + 1 < len(self.prefix)}
+        for index in measured:
+            measure(index)
+        end = anchor
+        goal = self.prefix[anchor] + offset + height
+        while end < len(self._display_items) and (end == anchor or self.prefix[end] < goal):
+            if end not in measured:
+                measure(end)
+            end += 1
+            goal = self.prefix[anchor] + min(offset, self.prefix[anchor + 1] - self.prefix[anchor] - 1) + height
+        self._pending_anchor = anchor, offset
+
     def do_size_allocate(self, width, height, baseline):
         if self._closed or width <= 0 or height <= 0:
             return
@@ -297,6 +352,8 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         if self._requested_width != target_width:
             self._start_index(target_width)
         target = self._indices[target_width]
+        if self._display_dirty and not target.complete:
+            self._refresh_display_geometry(height)
         # Keep the displayed geometry until the replacement covers the current
         # viewport. Read the anchor now so hand scrolling during rebuilding wins.
         if self._active is not target and self._covers_anchor(target, height):
@@ -364,13 +421,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
                 row.set_child_visible(False)
                 continue
             if row is None:
-                row = self.page._build_row(self._display_items[index])
-                following = next((self.rows[i] for i in sorted(self.rows) if i > index), None)
-                row.insert_before(self, following)
-                row.update_relation(
-                    [Gtk.AccessibleRelation.POS_IN_SET, Gtk.AccessibleRelation.SET_SIZE], [index + 1, len(self.items)]
-                )
-                self.rows[index] = row
+                row = self._display_row(index)
             elif index in self.visible_rows and index not in previous_visible:
                 # Overscan keeps widgets ready, but only visible text tracks
                 # playback ticks. Refresh a retained row before it paints.

@@ -148,10 +148,7 @@ def check_interactions(window, page, paint, until):
     view.props.vadjustment.set_value(view.prefix[10] + 7)
     view.scroll_to(far)
     assert view._pending_scroll == far
-    view.navigation.pending = (10, None)
     view.set_turns(view.items, len(view.items))
-    assert view.navigation.pending == (10, None)
-    view.navigation.pending = None
     assert view._pending_scroll is None
     until(lambda: view.ready)
     assert abs(view._value() - view.prefix[10] - 7) <= 1
@@ -443,4 +440,8 @@ def check_interactions(window, page, paint, until):
     paint(window)
     page.player.pause()
     result["accessible"] = accessible(window, page, paint, until)
+    from exact_rebuild import check_pending_focus, check_presentation
+
+    result["presentationFrames"] = check_presentation(window, page, model, paint, until, native_scroll)
+    result["pendingFocusLive"] = check_pending_focus(window, model, paint, until)
     return result
