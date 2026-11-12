@@ -66,6 +66,24 @@ test_log_dir() {
   (cd "$CASSINI_TEST_LOGS/$1.$log_n" && pwd -P)
 }
 
+# One set of package-manager caches for one run of the calling build script, shared by its build container
+# and its clean-install smoke container (GNOME-CI-CACHING.md item 3): the smoke install reuses the repository
+# metadata (and, with dnf's keepcache, the packages) the build fetched minutes earlier instead of downloading
+# them again. The smoke container still starts from the clean base image, so it still proves the runtime
+# dependencies resolve. Named volumes (not bind mounts, whose root-owned files the caller could not delete),
+# removed when the script exits; never shared between runs. Pass $PKG_CACHE_MOUNTS unquoted to each run.
+#   pkg_cache_init   (sets PKG_CACHE_MOUNTS and an EXIT trap that removes the volumes)
+pkg_cache_init() {
+  pkg_cache_id=cassini-pkgcache-$$
+  PKG_CACHE_MOUNTS="-v $pkg_cache_id-libdnf5:/var/cache/libdnf5 -v $pkg_cache_id-dnf:/var/cache/dnf -v $pkg_cache_id-zypp:/var/cache/zypp -v $pkg_cache_id-apt:/var/lib/apt/lists"
+  trap pkg_cache_rm EXIT
+}
+pkg_cache_rm() {
+  for pkg_cache_v in libdnf5 dnf zypp apt; do
+    "$CONTAINER_ENGINE" volume rm -f "$pkg_cache_id-$pkg_cache_v" >/dev/null 2>&1 || true
+  done
+}
+
 # Run a container with no network at all: only loopback.
 container_run_offline() {
   "$CONTAINER_ENGINE" run --rm --network none "$@"

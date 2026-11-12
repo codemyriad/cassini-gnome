@@ -46,7 +46,9 @@ container_pull "$BASE"
 retry container_build -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
 mkdir -p dist
 logs=$(test_log_dir "deb-$(image_slug "$BASE")")
-container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/logs:rw$Z"} -e DEB="$DEB" -e OUT="$OUT" -e NOCHECK="$NOCHECK" "$TAG" sh -ec '
+pkg_cache_init
+# shellcheck disable=SC2086 # PKG_CACHE_MOUNTS is a list of run options
+container_run $PKG_CACHE_MOUNTS -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/logs:rw$Z"} -e DEB="$DEB" -e OUT="$OUT" -e NOCHECK="$NOCHECK" "$TAG" sh -ec '
   . /in/build-aux/ci/retry.sh
   # Keep the Meson test logs, also when a test fails (test_log_dir).
   save_logs() {
@@ -82,6 +84,7 @@ container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/log
 # The build container has every Build-Depends installed, which can hide a
 # missing Depends; install the package in a fresh container, then check it
 # there with no network, writing the D11 goldens down offline.
+# shellcheck disable=SC2086 # PKG_CACHE_MOUNTS is a list of run options
 container_offline_smoke "$BASE" '
   . /ci/retry.sh
   printf "path-include=/usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" > /etc/dpkg/dpkg.cfg.d/zz-cassini-locales
@@ -89,5 +92,5 @@ container_offline_smoke "$BASE" '
   retry apt-get update -qq
   retry apt-get install -y -qq --no-install-recommends "/d/$OUT" >/dev/null
   rm -rf /var/lib/apt/lists/*
-' -v "$PWD/dist:/d:ro$Z" -v "$PWD/build-aux/ci":/ci:ro$Z -e OUT="$OUT" -e DEBIAN_FRONTEND=noninteractive
+' $PKG_CACHE_MOUNTS -v "$PWD/dist:/d:ro$Z" -v "$PWD/build-aux/ci":/ci:ro$Z -e OUT="$OUT" -e DEBIAN_FRONTEND=noninteractive
 ls -l "dist/$OUT"
