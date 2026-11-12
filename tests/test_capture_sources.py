@@ -16,8 +16,10 @@ def audio(host, sequence, offset, pcm):
     )
 
 
-def test_off_side_discards_pcm_but_checks_sequence_geometry_and_new_span_offsets(tmp_path):
-    host = BrowserHost(tmp_path)
+@pytest.mark.parametrize("stop_clock,expected_end", [(0.3, 510), (0.568, 568)])
+def test_off_side_discards_pcm_but_checks_sequence_geometry_and_new_span_offsets(tmp_path, stop_clock, expected_end):
+    now = [0.0]
+    host = BrowserHost(tmp_path, clock=lambda: now[0])
     host.handle(dict(type="start"))
     session = host.session
     streams = host.audio_sink = BrowserStreams(session)
@@ -53,17 +55,18 @@ def test_off_side_discards_pcm_but_checks_sequence_geometry_and_new_span_offsets
     assert resumed["startOffsetMs"] == 500 and resumed["id"] != old["id"] and resumed["file"] != old["file"]
     assert old["sourceTrackId"] == resumed["sourceTrackId"] == "remote"
     audio(host, 2, 490, b"\x02\x00" * 480 + b"\x03\x00" * 480)
+    now[0] = stop_clock
     host.handle(dict(type="stop"))
     assert resumed["frames"] == 480 and resumed["endOffsetMs"] == 510
     assert (session.directory / resumed["file"]).read_bytes()[44:] == b"\x03\x00" * 480
     assert (session.directory / old["file"]).read_bytes() == before
     saved = json.loads((session.directory / "session.json").read_text())
     assert saved["events"][-2]["atMs"] == resumed["startOffsetMs"]
-    assert saved["events"][-1] == dict(type="end", atMs=510, reason="user")
+    assert saved["events"][-1] == dict(type="end", atMs=pytest.approx(expected_end), reason="user")
 
 
 def test_fallback_never_switches_a_browser_source_back_or_reuses_its_wav(tmp_path):
-    host = BrowserHost(tmp_path)
+    host = BrowserHost(tmp_path, clock=lambda: 0.0)
     host.handle(dict(type="start"))
     streams = host.audio_sink = BrowserStreams(host.session)
     host.handle(dict(type="track", id="remote", label="Other", kind="remote", sampleRate=48000, channels=1))
@@ -87,7 +90,7 @@ def test_browser_root_identity_survives_wire_spans_and_selection(tmp_path, use_s
     from cassini_talk.library import LibraryScanner
     from cassini_talk.transcription import prepare_tracks
 
-    host = BrowserHost(tmp_path)
+    host = BrowserHost(tmp_path, clock=lambda: 0.0)
     host.handle(dict(type="start"))
     session = host.session
     if use_selection:
@@ -145,7 +148,7 @@ def test_browser_root_identity_survives_wire_spans_and_selection(tmp_path, use_s
 @pytest.mark.parametrize("identity", [None, "receiver", "é" * 100])
 @pytest.mark.parametrize("use_selection", [False, True])
 def test_browser_source_identity_accepts_null_or_utf8_bound(tmp_path, identity, use_selection):
-    host = BrowserHost(tmp_path)
+    host = BrowserHost(tmp_path, clock=lambda: 0.0)
     host.handle(dict(type="start"))
     if use_selection:
         host.audio_sink = BrowserStreams(host.session)
@@ -158,7 +161,7 @@ def test_browser_source_identity_accepts_null_or_utf8_bound(tmp_path, identity, 
 @pytest.mark.parametrize("identity", ["", "é" * 101, 7, [], {}])
 @pytest.mark.parametrize("use_selection", [False, True])
 def test_invalid_browser_identity_allocates_no_track(tmp_path, identity, use_selection):
-    host = BrowserHost(tmp_path)
+    host = BrowserHost(tmp_path, clock=lambda: 0.0)
     host.handle(dict(type="start"))
     if use_selection:
         host.audio_sink = BrowserStreams(host.session)

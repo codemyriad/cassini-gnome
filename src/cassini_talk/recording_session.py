@@ -897,8 +897,9 @@ class RecordingSession:
 
 
 class BrowserHost:
-    def __init__(self, directory=None):
+    def __init__(self, directory=None, *, clock=time.monotonic):
         self.directory = Path(directory) if directory is not None else None
+        self.clock = clock
         self.session = None
         self.sequences = {}
         self.stopped = False
@@ -1041,7 +1042,7 @@ class BrowserHost:
                 or len(set(features)) != len(features)
             ):
                 raise ProtocolError("version", "Invalid recording features")
-            self.session = RecordingSession(self.directory, title, started_at=started_at)
+            self.session = RecordingSession(self.directory, title, clock=self.clock, started_at=started_at)
             self.source_outcomes = "source-outcomes-v1" in features
             self.capture_id = message.get("captureId")
             result = {"type": "started", "path": str(self.session.directory)}
