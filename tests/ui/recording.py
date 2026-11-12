@@ -653,6 +653,45 @@ with tempfile.TemporaryDirectory() as tmp:
             assert window.live_stop.get_label() == text("states.badge.saving")
         finally:
             app._browser_stops.discard(None)
+        window._update_live()
+        assert window.capture_header.get_visible_child_name() == "record"
+
+        # Deferred native Stop during startup retains _last_native on app; once
+        # finalization completes, _stop_requested clears before 'changed' so the
+        # Library header restores the Record control instead of staying on Saving…
+        from cassini_talk.native_recorder import NativeRecorder
+
+        prepare_entered = threading.Event()
+        release_prepare = threading.Event()
+        original_prepare = NativeRecorder._prepare
+
+        def gated_prepare(parent):
+            prepare_entered.set()
+            assert release_prepare.wait(10)
+            return original_prepare(parent or Path(os.environ["CASSINI_LIBRARY_DIR"]))
+
+        with patch.object(NativeRecorder, "_prepare", staticmethod(gated_prepare)):
+            try:
+                app.start_native(test=True)
+                assert prepare_entered.wait(10)
+                deferred = app.recorder
+                assert deferred is not None and deferred.starting
+                deferred.stop()
+                window._update_live()
+                assert window.capture_header.get_visible_child_name() == "live"
+                assert not window.live_stop.get_sensitive()
+                assert window.live_stop.get_label() == text("states.badge.saving")
+                release_prepare.set()
+                until(lambda: not app.native_captures and deferred.pipeline is None and not deferred._finishing)
+                assert app._last_native is deferred
+                assert not deferred._stop_requested and not capture_guard.recorder_stopping(deferred)
+                assert window.capture_header.get_visible_child_name() == "record"
+                record_button = window.capture_header.get_child_by_name("record")
+                assert record_button is not None and record_button.get_visible() and record_button.get_sensitive()
+                assert app.lookup_action("record").get_enabled()
+            finally:
+                release_prepare.set()
+        app._last_native = None
     finally:
         Gtk.Settings.get_default().props.gtk_enable_animations = previous_animations
         app.comfort.states.pop(mux_meeting.key, None)

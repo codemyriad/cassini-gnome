@@ -53,6 +53,7 @@ def test_native_named_tracks_remain_protocol_compatible_and_checkpointed(tmp_pat
 def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatch):
     from concurrent.futures import Future
 
+    from cassini_talk.capture_guard import recorder_stopping
     from cassini_talk.native_recorder import NativeRecorder
 
     recorder = NativeRecorder()
@@ -61,13 +62,16 @@ def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatc
     prepared.set_result((session, space))
     recorder.starting = True
     recorder._stop_requested = False
-    events, errors = [], []
+    events, errors, changed_states = [], [], []
     recorder.connect("error", lambda _r, message: errors.append(message))
     recorder.connect("started", lambda *_: events.append("started"))
     recorder.connect("finished", lambda *_: events.append("finished"))
+    recorder.connect("changed", lambda r: changed_states.append((r._stop_requested, recorder_stopping(r))))
     completed = False
     try:
         recorder.stop()
+        assert recorder._stop_requested and recorder_stopping(recorder)
+        assert changed_states == [(True, True)]
         monkeypatch.setattr(
             "cassini_talk.native_recorder.Gst.parse_launch", lambda _: pytest.fail("Capture started after Stop")
         )
@@ -75,6 +79,11 @@ def test_stop_during_preparation_never_starts_audio_capture(tmp_path, monkeypatc
         wait_for_completion(lambda: "finished" in events)
         assert not errors
         assert events == ["finished"]
+        assert not recorder._stop_requested and not recorder_stopping(recorder)
+        assert changed_states[-1] == (False, False)
+        assert not recorder_stopping(
+            SimpleNamespace(pipeline=None, starting=False, stopping=False, _finishing=False, _stop_requested=True)
+        )
         assert recorder.pipeline is None and all(t["frames"] == 0 for t in session.manifest["tracks"])
         completed = True
     finally:
@@ -88,13 +97,15 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
 
     from gi.repository import Gst
 
+    from cassini_talk.capture_guard import recorder_stopping
     from cassini_talk.native_recorder import NativeRecorder
 
     Gst.init(None)
     recorder = NativeRecorder()
-    errors, finished = [], []
+    errors, finished, changed_states = [], [], []
     recorder.connect("error", lambda _recorder, message: errors.append(message))
     recorder.connect("finished", lambda _recorder, directory: finished.append(directory))
+    recorder.connect("changed", lambda r: changed_states.append((r._stop_requested, recorder_stopping(r))))
     pcm_ready, entered, release, hold_expired = (threading.Event() for _ in range(4))
     sample = recorder._sample
 
@@ -138,13 +149,17 @@ def test_stop_during_replacement_first_sample_keeps_the_confirmed_tracks(tmp_pat
         caller_cpu = time.thread_time() - started
         if os.environ.get("CASSINI_PERF_GATE") == "1":
             assert caller_cpu < 0.2, "Stop used too much caller CPU"
-        assert recorder._stop_requested, "Stop did not latch while the replacement was held"
+        assert recorder._stop_requested and recorder_stopping(recorder), (
+            "Stop did not latch while the replacement was held"
+        )
         assert not hold_expired.is_set() and not replacement.done() and not finished
         release.set()
         wait_for_completion(lambda: bool(finished), "Stop during source replacement did not emit finished")
         with pytest.raises(ValueError, match="No source change"):
             replacement.result(timeout=DURABLE_BOUND)
         assert finished == [str(session.directory)] and recorder.pipeline is None and not recorder._finishing
+        assert not recorder._stop_requested and not recorder_stopping(recorder)
+        assert changed_states[-1] == (False, False)
         assert session.manifest["events"][:-1] == events and set(session.writers) == tracks
         assert session.manifest["events"][-1]["type"] == "end"
         assert session.manifest["events"][-1]["reason"] == "user"

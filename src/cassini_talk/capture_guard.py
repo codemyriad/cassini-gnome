@@ -19,7 +19,7 @@ def recorder_busy(recorder):
 
 
 def recorder_stopping(recorder):
-    return recorder is not None and bool(
+    return recorder_busy(recorder) and bool(
         getattr(recorder, "stopping", False)
         or getattr(recorder, "_finishing", False)
         or getattr(recorder, "_stop_requested", False)

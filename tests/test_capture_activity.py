@@ -320,8 +320,11 @@ def test_native_identity_only_comes_from_controller_owned_session(tmp_path):
     recorder.pipeline = None
     assert recorder_activity([window]) == {session.manifest["id"]: "saving"}
     recorder.stopping = False
+    recorder.starting = True
     recorder._stop_requested = True
     assert recorder_activity([window]) == {session.manifest["id"]: "saving"}
+    recorder.starting = False
+    assert recorder_activity([window]) == {}
     recorder._stop_requested = False
     assert recorder_activity([window]) == {}
     standalone = SimpleNamespace(
