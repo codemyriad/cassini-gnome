@@ -21,13 +21,26 @@ test('relay handshake belongs to the current worker instance; stale and incompat
   const f=relay(),port=f.ports[0],responses=[];
   port.onMessage.emit({type:'relayHello',protocol:1,instanceId:'new-instance'});
   f.runtime.emit({type:'cassini-connect'},{},value=>responses.push(value));
-  f.page({type:'hookReady',protocol:1,instanceId:'old-instance'});
-  f.page({type:'hookReady',protocol:2,instanceId:'new-instance'});
+  f.page({type:'hookReady',protocol:1,revision:2,instanceId:'old-instance'});
+  f.page({type:'hookReady',protocol:2,revision:2,instanceId:'new-instance'});
   assert.equal(responses.length,0);
-  f.page({type:'hookReady',protocol:1,instanceId:'new-instance'});
+  f.page({type:'hookReady',protocol:1,revision:2,instanceId:'new-instance'});
   assert.equal(responses[0].connected,true);
   assert.equal(responses[0].instanceId,'new-instance');
   assert.equal(port.sent.filter(m=>m.type==='relayReady').length,1);
+});
+test('a hook from before the screen-share exclusion (revision 1) is reload-required at once, never ready',()=>{
+  const f=relay(),port=f.ports[0],responses=[];
+  port.onMessage.emit({type:'relayHello',protocol:1,instanceId:'current'});
+  f.runtime.emit({type:'cassini-connect'},{},value=>responses.push(value));
+  // A page opened under 0.2.26 keeps that hook after an update: it answers without a revision.
+  f.page({type:'hookReady',protocol:1,instanceId:'current'});
+  assert.deepEqual(responses.map(r=>[r.connected,r.needsReload]),[[false,true]]);
+  assert.equal(port.sent.filter(m=>m.type==='relayUnavailable').length,1);
+  f.page({type:'hookReady',protocol:1,revision:1,instanceId:'current'});
+  assert.equal(port.sent.some(m=>m.type==='relayReady'),false);
+  assert.equal(port.sent.filter(m=>m.type==='relayUnavailable').length,1);
+  assert.equal([...f.timers.values()].some(timer=>timer.ms===1500),false,'no handshake timer is left to fire');
 });
 test('an old hook times out explicitly and later probes receive reload-required without hanging',()=>{
   const f=relay(),port=f.ports[0],responses=[];
@@ -286,9 +299,9 @@ test('synthetic MessageEvent dispatch cannot claim hook readiness',()=>{
  const f=relay(),port=f.ports[0];
  port.onMessage.emit({type:'relayHello',protocol:1,instanceId:'current'});
  for(const listener of f.handlers.get('message'))listener({isTrusted:false,source:f.context.window,
-  data:{channel:'cassini-page',type:'hookReady',protocol:1,instanceId:'current'}});
+  data:{channel:'cassini-page',type:'hookReady',protocol:1,revision:2,instanceId:'current'}});
  assert.equal(port.sent.some(message=>message.type==='relayReady'),false);
- f.page({type:'hookReady',protocol:1,instanceId:'current'});
+ f.page({type:'hookReady',protocol:1,revision:2,instanceId:'current'});
  assert.equal(port.sent.some(message=>message.type==='relayReady'),true);
 });
 
@@ -296,7 +309,7 @@ test('synthetic MessageEvent dispatch cannot claim hook readiness',()=>{
 test('synthetic pageshow/pagehide cannot reconnect or retire a live relay',()=>{
  const f=relay(),port=f.ports[0];
  port.onMessage.emit({type:'relayHello',protocol:1,instanceId:'current'});
- f.page({type:'hookReady',protocol:1,instanceId:'current'});
+ f.page({type:'hookReady',protocol:1,revision:2,instanceId:'current'});
  const before=port.sent.length;
  for(const name of ['pagehide','pageshow'])for(const listener of f.handlers.get(name))listener({isTrusted:false,persisted:true});
  assert.equal(f.ports.length,1);assert.equal(port.disconnected,undefined);assert.equal(port.sent.length,before);
@@ -306,6 +319,6 @@ test('synthetic pageshow/pagehide cannot reconnect or retire a live relay',()=>{
 test('duplicate page hook-ready messages are forwarded only once per handshake',()=>{
  const f=relay(),port=f.ports[0];
  port.onMessage.emit({type:'relayHello',protocol:1,instanceId:'current'});
- for(let i=0;i<200;i++)f.page({type:'hookReady',protocol:1,instanceId:'current'});
+ for(let i=0;i<200;i++)f.page({type:'hookReady',protocol:1,revision:2,instanceId:'current'});
  assert.equal(port.sent.filter(message=>message.type==='relayReady').length,1);
 });

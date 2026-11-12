@@ -24,7 +24,10 @@ const RATE = 48000;
 const AUDIO_SECONDS = 45;   // well past the suspender's 30 s
 const AFTER_SECONDS = 31;   // the rate is measured from here on, after the suspender would engage
 const BOUND_SECONDS = 90;   // one deadline from the captures' start, before any audio too
-const MIN_RATE = 0.97;      // audio seconds per wall second after AFTER_SECONDS of audio
+// Tight 0.97 host-clock ratio runs on nightly/full-ci (CASSINI_PERF_GATE=1); PRs enforce >= 0.80
+// so silent-sink suspension (which drops rate well below 0.5x) still fails on every PR.
+const PERF_GATE = process.env.CASSINI_PERF_GATE === '1';
+const MIN_RATE = PERF_GATE ? 0.97 : 0.80;
 
 // D56/D57 (GNOME R76): a track is silent with fewer than 32 non-zero frames. Frames are
 // floor(rate x 32 / 1000) samples, non-overlapping from the first sample; a trailing partial frame

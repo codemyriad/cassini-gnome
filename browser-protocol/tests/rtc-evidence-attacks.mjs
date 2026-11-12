@@ -57,14 +57,14 @@ try{
    if(fixture==='missing-peer'){
     await page.waitForFunction(()=>typeof fixtureHandshake==='string');
     assert.equal(await page.evaluate(()=>{
-     const message=new MessageEvent('message',{source:window,data:{channel:'cassini-page',type:'hookReady',protocol:1,instanceId:fixtureHandshake}});
+     const message=new MessageEvent('message',{source:window,data:{channel:'cassini-page',type:'hookReady',protocol:1,revision:2,instanceId:fixtureHandshake}});
      dispatchEvent(message);return message.isTrusted;
     }),false);
     const synthetic=await worker.evaluate(tabId=>chrome.tabs.sendMessage(tabId,{type:'cassini-connect'}),tabId);
     assert.equal(synthetic.connected,false,'synthetic MessageEvent cannot complete the handshake');
     // Real postMessage is UA-trusted but page-forgeable; readiness alone must
     // still be harmless because the immutable unavailable reader was claimed.
-    await page.evaluate(()=>postMessage({channel:'cassini-page',type:'hookReady',protocol:1,instanceId:fixtureHandshake},'*'));
+    await page.evaluate(()=>postMessage({channel:'cassini-page',type:'hookReady',protocol:1,revision:2,instanceId:fixtureHandshake},'*'));
    }else{
     await page.evaluate(()=>{globalThis.fixtureDiscovery=null;addEventListener('message',event=>{if(event.data?.channel==='cassini-page'&&event.data.type==='discovery')fixtureDiscovery=event.data})});
     const remote=await context.newPage();await remote.goto(url+'remote');

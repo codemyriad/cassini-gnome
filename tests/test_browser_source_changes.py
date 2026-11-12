@@ -118,7 +118,9 @@ def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):
     assert json.loads((capture.directory / "session.json").read_text())["state"] == "interrupted"
 
 
-def test_me_only_browser_loss_closes_local_span_and_publishes_activity(server):  # noqa: F811
+def test_me_only_browser_loss_closes_local_span_and_saves_the_recording(server):  # noqa: F811
+    from cassini_talk.browser_capture import BROWSER_ME_LOST
+
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
     try:
@@ -132,13 +134,15 @@ def test_me_only_browser_loss_closes_local_span_and_publishes_activity(server): 
         original = capture.changed
         capture.changed = lambda c, event: (changed.append(event), original(c, event))
         capture.fallback()
-        assert capture.browser_lost and not capture.streams.browser
-        assert capture.streams.tracks["local"].recorded is None
+        # Me comes only from the page and The others are off: nothing could record
+        # or be resumed, so the loss saves the recording instead of running on empty.
+        assert capture.finished and capture.end_reason == "error"
         assert next(t for t in capture.host.session.manifest["tracks"] if t["id"] == "local")["ended"]
-        assert capture.host.session.manifest["events"] == events  # No invented others event.
-        assert changed == ["sources"]
+        saved = capture.host.session.manifest
+        assert saved["events"][:-1] == events and saved["events"][-1]["type"] == "end"  # No invented others event.
+        assert saved["problem"] == BROWSER_ME_LOST
+        assert changed[-1] == "finished"
         assert set(capture.native_taps) == set() and capture.microphone is None
-        capture.stop()
     finally:
         client.close()
 

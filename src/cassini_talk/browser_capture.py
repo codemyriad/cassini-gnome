@@ -23,6 +23,10 @@ RESUME_FEATURE = "resume-capture-v1"
 # a system/lost fallback after its audio transport closed (D52.4, seam restored).
 RESUME_TARGETS = (("system", "missing"), ("system", "lost"))
 RESUME_ASKS = 8
+BROWSER_ME_LOST = "The meeting page was lost, and Me is recorded only from it."
+BROWSER_ME_UNAVAILABLE = (
+    "Me is recorded from the meeting page, which is not connected. Keep The others on until it is back."
+)
 LOG = logging.getLogger(__name__)
 
 
@@ -715,9 +719,22 @@ class BrowserCapture:
                 loss["cause"] = cause
             if isinstance(detail, str) and detail:
                 loss["detail"] = detail[:1000]
+        with self.lock:
+            orphaned = self._browser_me_only(self.me, self.others) and not (
+                self.finished or self.stopping or self.stop_requested.is_set()
+            )
+        if orphaned:
+            # Me comes only from the meeting page (sender-me-v1) and The others are off:
+            # without the page nothing records, and only a system/lost Others can be
+            # resumed. Save what was recorded rather than run on with no source.
+            return self.stop(BROWSER_ME_LOST, user_stopped=False)
         # Startup admission protects the initial inputs in start(). A running
         # recording keeps its loss/fallback policy when that proof disappears.
         return self._change(self.me, self.others, fallback=reason, loss=loss or None)
+
+    def _browser_me_only(self, me, others):
+        """Whether this selection records Me from the meeting page alone."""
+        return me and not others and not self.native_me
 
     @property
     def browser_ready(self):
@@ -1098,6 +1115,9 @@ class BrowserCapture:
                 if restore and (not self.browser_lost or not self.browser_ready):
                     return self.snapshot()
                 lost = False if restore else self.browser_lost or fallback is not None
+                if lost and self._browser_me_only(me, others):
+                    # Nothing could record: Me needs the meeting page, which is gone.
+                    raise ProtocolError("state", BROWSER_ME_UNAVAILABLE)
                 desired = {
                     kind
                     for kind, enabled in (("microphone", me and self.native_me), ("system", others and lost))

@@ -40,6 +40,7 @@ MAX_PACKET = 512 * 1024
 # A start with no expected call generation (only a D17 retry carries one).
 ANY_GENERATION = object()
 RESUME_CAPTURE = "resume-capture-v1"
+SENDER_ME = "sender-me-v1"
 # Bounded correlation of in-flight resume asks per control connection.
 RESUME_HISTORY = 64
 # A call the user stopped stays stopped beyond the control link that carried
@@ -1404,7 +1405,9 @@ class BrowserService:
                             # reservation until it has created its own folder.
                             self.captures[identifier] = capture
                             transport.capture = capture
-                        result = capture.start(packet, admit=admit)
+                        # The native start says whether the page records Me (0.2.27); a start
+                        # without it comes from an older companion, so the microphone does.
+                        result = capture.start(packet, admit=admit, native_me=packet.get("captureLocal") is not True)
                         with self.lock:
                             if packet.get("requestId") in self._native_requests:
                                 self._native_requests[packet["requestId"]]["nativeAdmitted"] = True
@@ -2344,7 +2347,9 @@ class BrowserService:
                 capture.stop(reason=reason, user_stopped=user and reason == "user")
             packet = dict(type="command", requestId=request_id, action=action, tabId=tab, mode="tracks")
             if independent:
-                packet.update(independent=True, captureLocal=True, microphone=microphone)
+                # Me comes from the page sender only with a companion that guarantees it
+                # (sender-me-v1, 0.2.27): an older one records Me with the app's microphone.
+                packet.update(independent=True, captureLocal=SENDER_ME in browser.capabilities, microphone=microphone)
                 if "multi-stream-v1" in browser.capabilities:
                     if action == "start" and pending.get("callGeneration") is not None:
                         packet["callGeneration"] = pending["callGeneration"]
@@ -2723,6 +2728,9 @@ class BrowserService:
                 refusals=refusals,
                 session_clock=session_clock,
                 admit=admit,
+                # Me joins with the browser when the companion records it from the page
+                # sender; an older companion never will, so the app's microphone does.
+                native_me=SENDER_ME not in browser.capabilities,
             )
         except Exception as error:
             capture.stop(str(error), user_stopped=False)
@@ -3535,7 +3543,7 @@ class BrowserService:
             mode="tracks",
             tabId=int(raw_tab),
             independent=True,
-            captureLocal=True,
+            captureLocal=not capture.native_me,
             callGeneration=capture.call_generation,
             resumeCapture=dict(
                 captureId=key,

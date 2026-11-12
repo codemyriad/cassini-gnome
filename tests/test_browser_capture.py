@@ -86,7 +86,7 @@ def start(
     identifier,
     *,
     microphone=True,
-    capture_local=None,
+    capture_local=True,  # what a sender-me-v1 (0.2.27) companion sends
     call_generation=None,
     document_generation=None,
     request_id=None,
@@ -827,6 +827,7 @@ def test_lost_audio_acknowledgement_falls_back_to_system_without_native_mic(serv
                 captureId="ack-loss",
                 title="ack-loss",
                 timelineOriginMs=int(time.time() * 1000),
+                captureLocal=True,
             ),
         )
         if reply_type != "started":
@@ -1587,6 +1588,7 @@ def test_browser_local_me_capture_meters_levels_and_accepts_reload_gap_without_n
                 microphone=True,
                 title="option-a",
                 features=["source-outcomes-v1"],
+                captureLocal=True,
             )
         )
         capture = service.captures["option-a"]
@@ -1690,7 +1692,7 @@ def test_start_fallback_stand_in_never_opens_native_microphone_while_signal_owne
     from cassini_talk.browser_capture import BrowserCapture
 
     service, path, _root = server
-    peer = Extension(path, (3,))
+    peer = Extension(path, (3,), extra=("sender-me-v1",))
     signal_capture = None
     try:
         identifier = request(path=path)["meetings"][0]["id"]
@@ -1724,3 +1726,59 @@ def test_start_fallback_stand_in_never_opens_native_microphone_while_signal_owne
         if signal_capture is not None:
             signal_capture.stop()
         peer.close()
+
+
+def test_older_companion_without_sender_me_keeps_the_native_microphone(server):
+    """Version skew: a companion before sender-me-v1 (0.2.26) neither records the page
+    sender as Me nor excludes screen-share audio, so the app asks it for no page Me and
+    records Me with its own microphone, on the browser path and the start fallback."""
+    from test_browser_service import meeting
+    from test_browser_sessions import Extension
+
+    service, path, root = server
+    peer = Extension(path, (3,))
+    client = BrowserAudioProxy(path=path)
+    try:
+        identifier = request(path=path)["meetings"][0]["id"]
+        stand_in = service.captures[service.start_fallback(identifier, meeting(), microphone=True)["captureId"]]
+        assert stand_in.native_me and set(stand_in.native_taps) == {"microphone", "system"}
+        stand_in.stop()
+
+        start(client, "old-companion", capture_local=None)  # 0.2.26 native starts carry no captureLocal
+        capture = service.captures["old-companion"]
+        assert capture.native_me and capture.microphone is not None
+    finally:
+        client.close()
+        peer.close()
+
+
+def test_browser_me_only_never_runs_on_without_a_source(server):
+    """Me from the page sender, The others off: losing the page leaves nothing to record and
+    nothing that can be resumed, so the recording is saved; and Me alone cannot be chosen
+    while the page is gone (The others keep recording computer sound)."""
+    from cassini_talk.browser_capture import BROWSER_ME_LOST, BROWSER_ME_UNAVAILABLE
+    from cassini_talk.recording_session import ProtocolError
+
+    service, path, _root = server
+    lost, chooser = BrowserAudioProxy(path=path), BrowserAudioProxy(path=path)
+    try:
+        start(lost, "me-only")
+        local(lost, "local-me")
+        capture = service.captures["me-only"]
+        capture.select(True, False)
+        lost.close()
+        assert capture.stopped.wait(5), "a Me-only recording without its page is saved, not left recording nothing"
+        manifest = json.loads((capture.directory / "session.json").read_text())
+        assert (manifest["problem"], manifest["events"][-1]["type"]) == (BROWSER_ME_LOST, "end")
+        assert capture.native_taps == {}
+
+        start(chooser, "lost-then-me")
+        other = service.captures["lost-then-me"]
+        other.fallback()
+        assert set(other.native_taps) == {"system"}
+        with pytest.raises(ProtocolError, match=BROWSER_ME_UNAVAILABLE.split(",")[0]):
+            other.select(True, False)
+        assert (other.me, other.others) == (True, True) and set(other.native_taps) == {"system"}
+        other.stop()
+    finally:
+        chooser.close()

@@ -626,7 +626,7 @@ def test_only_a_refused_resume_of_a_waiting_recording_is_recorded(broker, name):
     from test_capture_record import declare, pcm
     from test_resume_capture_host import ACK, lose, proxy, restored, resume, started
 
-    client, capture = started(broker)
+    client, capture = started(broker, capture_local=RESUME_REFUSALS.get(name, {}).get("capture_local", True))
     assert client.handle(declare("guest", "doc-1:source:1")) == ACK
     assert client.handle(pcm("guest", 480)) == ACK
     lose(broker, client, capture)

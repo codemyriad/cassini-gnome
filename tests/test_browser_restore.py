@@ -7,13 +7,14 @@ import pytest
 from test_browser_capture import Tap
 
 from cassini_talk.browser_capture import BrowserCapture
+from cassini_talk.recording_session import ProtocolError
 from cassini_talk.session_events import source_state
 
 
-def recording(tmp_path):
+def recording(tmp_path, *, native_me=False):
     capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Tap)
     capture.elapsed_ms = lambda: 1000
-    capture.start(dict(type="start", captureId="retained", timelineOriginMs=1, microphone=True))
+    capture.start(dict(type="start", captureId="retained", timelineOriginMs=1, microphone=True), native_me=native_me)
     capture.handle(dict(type="track", id="me", kind="local", sampleRate=48000, channels=1, sourceTrackId="me"))
     capture.handle(dict(type="audio", id="me", sequence=0, offsetMs=0, pcm="AQACAA=="))
     capture.handle(dict(type="track", id="original", kind="remote", sampleRate=48000, channels=1))
@@ -92,14 +93,21 @@ def test_failed_restore_keeps_current_selection_system_pcm_and_no_restored_event
         capture.stop()
 
 
-def test_dead_audio_port_and_others_off_never_replace_system_with_empty_browser(tmp_path):
-    capture = recording(tmp_path)
+@pytest.mark.parametrize("native_me", [True, False])
+def test_dead_audio_port_and_others_off_never_replace_system_with_empty_browser(tmp_path, native_me):
+    capture = recording(tmp_path, native_me=native_me)
     try:
         capture.handle(dict(type="audio", id="original", sequence=1, offsetMs=1100, pcm="AQACAA=="))
         capture.audio_connected = False
         capture.restore()
         assert capture.browser_lost
         capture.audio_connected = True
+        if not native_me:
+            # Me from the page alone, with the page gone, would record nothing: refused, unchanged.
+            with pytest.raises(ProtocolError, match="Me is recorded from the meeting page"):
+                capture.select(True, False)
+            assert capture.others and set(capture.native_taps) == {"system"}
+            return
         capture.select(True, False)
         capture.restore()
         assert capture.browser_lost and not capture.others

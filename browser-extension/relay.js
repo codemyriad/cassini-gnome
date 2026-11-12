@@ -6,6 +6,9 @@
   previous?.retire();
   const observerDocumentStart = globalThis.__cassiniRepairInjection !== true;
   const protocol = 1;
+  // A page opened before an update keeps its old hook (reinjection never replaces it), and a
+  // revision 1 hook would record screen-share audio as Me: that page needs a reload.
+  const hookRevision = 2;
   let instanceId = null, hookReady = false, handshakeComplete = false, retired = false, handshakeTimer = null;
   const waiters = new Set();
   const listeners = new Map();
@@ -138,6 +141,11 @@
     if (type === "hookReady") {
       if (event.data.protocol !== protocol || event.data.instanceId !== instanceId || !instanceId) return;
       if(hookReady&&handshakeComplete)return;
+      if (!(event.data.revision >= hookRevision)) {
+        if (handshakeComplete) return;
+        handshakeComplete = true; clearTimeout(handshakeTimer);
+        send({type:"relayUnavailable", protocol, instanceId}); settle(); return;
+      }
       hookReady = true; handshakeComplete = true; clearTimeout(handshakeTimer);
       send({type:"relayReady", protocol, instanceId}); settle();
       control({type:"discover"}); return;

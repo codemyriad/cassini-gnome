@@ -115,6 +115,7 @@ def negotiated(client, service, identifier):
             microphone=True,
             title=identifier,
             features=["source-outcomes-v1"],
+            captureLocal=True,
         )
     )
     assert reply["features"] == ["source-outcomes-v1"]

@@ -151,6 +151,7 @@ test('a replacement relay is ready only after the departing capture token drains
  assert.equal(f.messages.some(m=>m.type==='hookReady'),false);
  await f.stop();
  assert.equal(f.messages.find(m=>m.type==='hookReady').instanceId,'replacement');
+ assert.equal(f.messages.find(m=>m.type==='hookReady').revision,2,'the relay accepts only a hook with the display-share exclusion');
  await f.start('replacement-capture');
  assert.equal(f.captures.length,2,'the same live peer can record through the replacement relay');
 }));
@@ -231,4 +232,77 @@ test('display-share audio senders and previews are excluded while call microphon
  assert.equal(f.captures.length,1);
  assert.equal(f.captures[0].kind,'local');
  assert.equal(f.captures[0].label,'local: Headset Microphone');
+}));
+
+const micSender=(track,extra={})=>({track,getParameters:()=>({encodings:[]}),...extra});
+test('display-share audio cloned through MediaStream.clone() is never recorded as Me or page media',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const shared=await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+ const [streamClone]=shared.clone().getAudioTracks();
+ assert.notEqual(streamClone,shared.getAudioTracks()[0]);
+ f.render(streamClone);
+ f.peer.senders=[micSender(mic),micSender(streamClone)];
+ await f.start('local-only',{captureLocal:true,sourceOutcomes:true});
+ assert.deepEqual(f.captures.map(c=>c.label),['local: Headset Microphone']);
+}));
+
+test('one microphone track sent on two peers stays audible while either sends, through peer close and null mute',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const first=micSender(mic),later=micSender(mic);
+ f.peer.senders=[first];second.senders=[later];
+ await f.start('mesh',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,1,'one Me source for one microphone');
+ const me=f.captures[0];assert.equal(me.enabled(),true);
+ later.track=null;await f.scan();
+ assert.equal(me.enabled(),true,'the first peer still transmits the microphone');
+ later.track=mic;await f.scan();
+ second.close();await f.scan();
+ assert.equal(f.captures.length,1);assert.equal(me.stopped,false);
+ assert.equal(me.enabled(),true,'closing one peer keeps Me while the other still sends');
+ first.track=null;await f.scan();
+ assert.equal(me.enabled(),false,'muted on every remaining peer is silence');
+ first.track=mic;await f.scan();
+ assert.equal(me.enabled(),true);assert.equal(f.captures.length,1);
+}));
+
+test('microphone clones sent on several peers record one Me source, switching to a clone that still transmits',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const a=micSender(mic.clone()),b=micSender(mic.clone());
+ f.peer.senders=[a];second.senders=[b];
+ await f.start('mesh',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,1,'clones of one microphone are one voice');
+ const sourceTrackId=f.captures[0].sourceTrackId;
+ a.track.enabled=false;await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,1);assert.equal(live[0].sourceTrackId,sourceTrackId,'the same Me source continues');
+ assert.equal(live[0].enabled(),true,'Me follows the clone the other peer still transmits');
+ const announced=f.messages.filter(m=>m.type==='packet'&&m.packet.type==='sources').flatMap(m=>m.packet.discoveredSources);
+ assert.deepEqual([...new Set(announced.filter(s=>s.kind==='local').map(s=>s.sourceTrackId))],[sourceTrackId]);
+}));
+
+test('a restarted capture keeps the same Me source identity with fresh spans',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ f.peer.senders=[micSender(mic)];
+ await f.start('before-loss',{captureLocal:true,sourceOutcomes:true});
+ const first=f.captures[0];await f.stop();
+ await f.start('resumed',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,2);
+ assert.equal(f.captures[1].sourceTrackId,first.sourceTrackId,'resume continues the same Me source');
+ assert.notEqual(f.captures[1].id,first.id);
+}));
+
+test('replacing a sender track with a clone of another sender microphone converges on one Me source',()=>fixture(async f=>{
+ const [headset]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const [desk]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const a=micSender(headset),b=micSender(desk);
+ f.peer.senders=[a];second.senders=[b];
+ await f.start('mesh',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,2,'two microphones are two sources');
+ b.track=headset.clone();await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,1,'the same microphone is never recorded twice');
+ assert.equal(live[0].enabled(),true);
 }));

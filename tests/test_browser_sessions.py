@@ -12,7 +12,7 @@ from cassini_talk.call_admission import CAPABILITIES
 
 
 class Extension:
-    def __init__(self, path, tabs=(3, 4), instance=None):
+    def __init__(self, path, tabs=(3, 4), instance=None, extra=()):
         self.path = path
         self.connection = connect(path, timeout=2)
         self.stream = self.connection.makefile("rwb")
@@ -20,7 +20,8 @@ class Extension:
         self.profile, self.signal_sequence = instance or str(uuid4()), -1
         send_packet(self.stream, dict(role="extension", browserInstance=instance))
         send_packet(
-            self.stream, dict(type="hello", version=1, capabilities=sorted(CAPABILITIES | {"independent-sessions-v1"}))
+            self.stream,
+            dict(type="hello", version=1, capabilities=sorted(CAPABILITIES | {"independent-sessions-v1", *extra})),
         )
         assert read_packet(self.stream) == dict(type="configure", capabilities=sorted(CAPABILITIES))
         send_packet(self.stream, dict(type="configured", capabilities=sorted(CAPABILITIES)))
@@ -75,7 +76,7 @@ class Extension:
 
 def test_record_snapshots_current_calls_and_each_stop_targets_one_session(service):  # noqa: F811
     server, path = service
-    peer = Extension(path)
+    peer = Extension(path, extra=("sender-me-v1",))
     try:
         with ThreadPoolExecutor(1) as executor:
             started = executor.submit(request, "start-all", path=path, microphone=False)

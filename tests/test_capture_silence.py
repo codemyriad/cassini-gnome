@@ -354,6 +354,8 @@ def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, c
             others_route=dict(source="system", reason="mixedSiteSignal", site="Synthetic meeting")
             if signal_owned
             else None,
+            # Native Me: signal-owned captures, and companions before sender-me-v1.
+            native_me=True,
         )
         assert sorted(capture.native_taps) == ["microphone", "system"]
         for tap in taps.values():

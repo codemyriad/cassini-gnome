@@ -539,7 +539,7 @@ async function start(mode, tabId = null, options = {}) {
       session.host = new NativeHost((message,cause) => failure(message, session, cause));
       const start = { type: "start", version: 1, title: tab.title || "Browser meeting", features: ["source-outcomes-v1"],
         callGeneration: session.callGeneration, documentGeneration: documentFor(tab.id) };
-      if (session.independent) Object.assign(start, { independent: true, microphone: options.microphone !== false, captureId: session.token, timelineOriginMs: session.origin });
+      if (session.independent) Object.assign(start, { independent: true, microphone: options.microphone !== false, captureLocal: session.captureLocal, captureId: session.token, timelineOriginMs: session.origin });
       // Preserve the originating control ask across delayed native handshakes.
       if (options.requestId !== undefined) start.requestId = options.requestId;
       if (target) {
@@ -547,7 +547,7 @@ async function start(mode, tabId = null, options = {}) {
         // optional field on ordinary Start could create a second folder.
         start.type = "resume";
         start.features.push("resume-capture-v1");
-        delete start.microphone; // The app retains its actual per-session selection.
+        delete start.microphone; delete start.captureLocal; // The app retains its actual per-session selection.
       }
       const result = await session.host.send(start);
       if (target) {
@@ -1019,7 +1019,7 @@ const genericProducer = new GenericCallEvidenceProducer({identity:()=>browserIns
   executeScript:request=>chrome.scripting.executeScript(request),callIdentity:frame=>callInfo(frame.tabId).generation,
   onNativeRead:(frame,native)=>{frame.nativeSourceVerified=true;adoptDiscovery(frame,{documentGeneration:native.documentGeneration,callGeneration:native.hookGeneration,
     sourceCount:native.sourceCount,heard:native.heard})}});
-const controlCapabilities = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1", "tab-readiness-v1"];
+const controlCapabilities = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1", "tab-readiness-v1", "sender-me-v1"];
 const appControl = new AppControl({
   runtime: chrome.runtime, alarms: chrome.alarms, busy: startBusy, capabilities: controlCapabilities, signalSnapshot:options=>options.verified?genericProducer.snapshot(options):signalProducer.snapshot(), identity: () => ({extensionVersion,extensionInstance,...companionDiagnostics}), cancelPending: cancelPendingStart,
   signalFinalize:(value,options)=>options.verified?genericProducer.finalize(value):value,

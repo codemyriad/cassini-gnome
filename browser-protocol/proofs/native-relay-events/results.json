@@ -1,0 +1,11 @@
+{
+  "base": "475b8b792ff0515b35935ef4c5496dd1180a329f",
+  "nodeTestsPassed": 457,
+  "baseline": "manual lifetime expiry at first real response fails the old exchange",
+  "corrected": "same native child and 70-source assertions pass with the logical-clock adapter",
+  "productionMutation": "stampDocument drops labelSource; ERR_ASSERTION browser != dom",
+  "sourceSHA256": {
+    "extension/tests/multistream-relay.test.cjs": "5926cd1b6d9c93ed8a001ba40834a40bbc844db569cc7fe17f7ddd9d096d46ca",
+    "extension/background.js": "f251c05607409a2d0a4956aaf6a6694eefaa518f4df5db156a9c3bb0261d42da"
+  }
+}

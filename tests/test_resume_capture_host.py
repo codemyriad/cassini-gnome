@@ -67,7 +67,7 @@ def proxy(broker):
     return Settled(BrowserAudioProxy(path=broker.path), broker.service)
 
 
-def started(broker, identifier="F", *, generation="call-A", document="doc-1"):
+def started(broker, identifier="F", *, generation="call-A", document="doc-1", capture_local=True):
     client = proxy(broker)
     reply = client.handle(
         dict(
@@ -82,6 +82,7 @@ def started(broker, identifier="F", *, generation="call-A", document="doc-1"):
             features=["source-outcomes-v1"],
             callGeneration=generation,
             documentGeneration=document,
+            captureLocal=capture_local,
         )
     )
     assert reply["type"] == "started"
@@ -246,13 +247,14 @@ REFUSALS = dict(
     long_identity=dict(packet=dict(captureId="é" * 65)),
     stopped=dict(before=stopped),
     stop_requested=dict(before=requested),
-    none_user=dict(before=deselected),
+    # Me alone while lost needs a native Me (an older companion); a page-sender Me refuses it.
+    none_user=dict(before=deselected, capture_local=False),
 )
 
 
 @pytest.mark.parametrize("name", REFUSALS)
 def test_native_resume_refusals_have_no_side_effect(broker, name):
-    client, capture = started(broker)
+    client, capture = started(broker, capture_local=REFUSALS[name].get("capture_local", True))
     assert client.handle(declare("guest", "doc-1:source:1")) == ACK
     assert client.handle(pcm("guest", 480)) == ACK
     lose(broker, client, capture)
@@ -666,6 +668,7 @@ def test_end_to_end_a_watchdog_close_is_asked_once_and_resumed_on_the_same_folde
                 features=["source-outcomes-v1"],
                 callGeneration="call-A",
                 documentGeneration="doc-1",
+                captureLocal=True,
             )
         )
         assert reply == dict(type="started", path=reply["path"], features=["source-outcomes-v1"])

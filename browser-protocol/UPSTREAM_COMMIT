@@ -1,6 +1,12 @@
-tree 18eacbad738a7a17d06d1af95c54c431a8ed5f22
-parent cdf0f7996393fccba91a82dcb5e028c95d318e75
-author Silvio Tomatis <silviot@gmail.com> 1794415153 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1794416869 +0100
+tree f8d90be55d3aec85d4242b81f7a56c1cb000f7a5
+parent dbd0e85c4df8e83d33d75b79bd1f23e7fa4085de
+author Silvio Tomatis <silviot@gmail.com> 1794484604 +0100
+committer Silvio Tomatis <silviot@gmail.com> 1794484604 +0100
 
-feat: capture Me from browser WebRTC sender and exclude display-share audio
+fix: keep Me source identity across capture restarts and merge converged senders
+
+Second-round review: a resumed capture gave Me a new sourceTrackId, and a
+sender replaced with a clone of another sender's microphone kept recording
+the same voice twice.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

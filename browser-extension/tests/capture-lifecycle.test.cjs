@@ -360,3 +360,42 @@ for(const first of ['io','retired'])test(`source-local ${first} refusal retries 
  assert.deepEqual(failures,[]);assert.deepEqual(warnings,['retry','recovered']);
  await a.stop();await b.stop();
 }));
+
+const samplesOf=packets=>packets.filter(p=>p.type==='audio').map(p=>{const bytes=Buffer.from(p.pcm,'base64');return new Int16Array(bytes.buffer,bytes.byteOffset,bytes.length/2)});
+const zeroSpans=samples=>{const spans=[];let start=null;samples.forEach((v,i)=>{if(v===0&&start===null)start=i;if(v!==0&&start!==null){spans.push([start,i]);start=null}});if(start!==null)spans.push([start,samples.length]);return spans};
+test('sender mute is judged on the render clock: audio rendered while muted stays silent when delivered after unmuting',async()=>mocked(async({capture,nodes,Context,MUTE_GUARD_MS})=>{
+ const packets=[],time=clock(),context=new Context();let on=true;
+ const recorder=await capture({stream:{},id:'me',label:'Me',kind:'local',origin:100000,workletURL:'',sharedContext:context,enabled:()=>on,
+  clock:time.now,schedule:time.schedule,cancel:time.cancel,send:async p=>packets.push(p)});
+ const chunk=frame=>nodes[0].port.onmessage({data:{pcm:new Int16Array(8192).fill(1000).buffer,frame}});
+ // replaceTrack(null) at render frame 4096: the hook notifies before and after the call.
+ context.currentTime=4096/48000;recorder.observe();on=false;recorder.observe();
+ // Restored at frame 12288, before either chunk holding the muted frames reaches the main thread.
+ context.currentTime=12288/48000;on=true;recorder.observe();
+ chunk(0);chunk(8192);await tick();await tick();
+ const samples=Int16Array.from(samplesOf(packets).flatMap(s=>[...s]));
+ assert.equal(samples.length,16384);
+ const guard=48000*MUTE_GUARD_MS/1000;
+ assert.deepEqual(zeroSpans(samples),[[4096,12288+guard]],'exactly the muted frames and one input-latency guard are silent');
+ await recorder.stop();assert.equal(time.timers.size,0,'stop cancels the mute poll');
+}));
+test('a sender mute seen only by the poll still silences audio delivered after unmuting',async()=>mocked(async({capture,nodes,Context,MUTE_POLL_MS})=>{
+ const packets=[],time=clock(),context=new Context();let on=true;
+ const recorder=await capture({stream:{},id:'me',label:'Me',kind:'local',origin:100000,workletURL:'',sharedContext:context,enabled:()=>on,
+  clock:time.now,schedule:time.schedule,cancel:time.cancel,send:async p=>packets.push(p)});
+ context.currentTime=1024/48000;await time.advance(MUTE_POLL_MS); // last observed audible at frame 1024
+ on=false;context.currentTime=2048/48000;await time.advance(MUTE_POLL_MS); // mute seen at the next poll
+ context.currentTime=8192/48000;on=true; // unmuted again before the worklet's chunk arrives
+ nodes[0].port.onmessage({data:{pcm:new Int16Array(8192).fill(1000).buffer,frame:0}});await tick();
+ const [samples]=samplesOf(packets);
+ assert.deepEqual(zeroSpans(samples),[[1024,8192]]);
+ await recorder.stop();assert.equal(time.timers.size,0);
+}));
+test('sources without a sender gate keep their PCM and schedule no mute poll',async()=>mocked(async({capture,nodes,Context})=>{
+ const packets=[],time=clock(),context=new Context();
+ const recorder=await capture({stream:{},id:'guest',label:'Guest',kind:'remote',origin:100000,workletURL:'',sharedContext:context,
+  clock:time.now,schedule:time.schedule,cancel:time.cancel,send:async p=>packets.push(p)});
+ assert.equal(time.timers.size,0);
+ nodes[0].port.onmessage({data:{pcm:new Int16Array(8192).fill(1000).buffer,frame:0}});await tick();
+ assert.deepEqual(zeroSpans(samplesOf(packets)[0]),[]);await recorder.stop();
+}));
