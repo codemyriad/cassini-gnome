@@ -643,9 +643,9 @@ def test_title_terms_keep_mobile_punctuation_and_literal_operator_rules(index, t
 def test_search_hit_highlights_use_teal_tokens_in_light_and_dark_without_white_wash(index):
     light_hit = search(index, speaker="Marta", dark=False)[0]
     dark_hit = search(index, speaker="Marta", dark=True)[0]
-    assert 'background="#BDDCE4" foreground="#1A1611" weight="semibold"' in light_hit.quote_markup
+    assert 'background="#BDDCE4" foreground="#191B1F" weight="semibold"' in light_hit.quote_markup
     assert light_hit.selected_quote_markup == light_hit.quote_markup
-    assert 'background="#BDDCE4" foreground="#1A1611" weight="semibold"' in light_hit.context_markup
-    assert 'background="#3E5F6A" foreground="#E5E5D9" weight="semibold"' in dark_hit.quote_markup
+    assert 'background="#BDDCE4" foreground="#191B1F" weight="semibold"' in light_hit.context_markup
+    assert 'background="#24708A" foreground="#E8E9EC" weight="semibold"' in dark_hit.quote_markup
     assert dark_hit.selected_quote_markup == dark_hit.quote_markup
-    assert 'background="#3E5F6A" foreground="#E5E5D9" weight="semibold"' in dark_hit.context_markup
+    assert 'background="#24708A" foreground="#E8E9EC" weight="semibold"' in dark_hit.context_markup

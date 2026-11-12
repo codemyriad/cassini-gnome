@@ -243,7 +243,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert 'href="aside:0:0"' in inline.get_label()
         inline.emit("activate-link", "aside:0:0")
         until(lambda: window.player.position == 900)
-        assert 'background="#BDDCE4" foreground="#1A1611">Yes &lt;&amp;&gt;.' in inline.get_label()
+        assert 'background="#BDDCE4" foreground="#191B1F">Yes &lt;&amp;&gt;.' in inline.get_label()
         show_synthetic(timed)
         until(lambda: page.scroller.get_vadjustment().get_upper() > 5000)
         adjustment = page.scroller.get_vadjustment()

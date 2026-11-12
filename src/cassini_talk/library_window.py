@@ -1269,7 +1269,9 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _speaker(self, speaker, *, chip=False, meeting=None):
         meeting = self.selected if meeting is None else meeting
-        box = Gtk.Box(spacing=6, css_classes=["speaker-chip", f"speaker-chip-{speaker_slot(speaker)}"] if chip else [])
+        slot = speaker_slot(speaker)
+        classes = ["speaker-chip", f"speaker-chip-{slot}"] if chip else [f"speaker-ink-{slot}"]
+        box = Gtk.Box(spacing=6, css_classes=classes)
         box.append(
             label(
                 speaker.name,

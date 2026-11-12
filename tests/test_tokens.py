@@ -101,12 +101,15 @@ def test_vendored_tokens_sha256_generated_files_and_literal_scan_pass():
     assert '@import url("tokens.css");' in STYLE_CSS.read_text(encoding="utf-8")
 
 
-def test_generated_tokens_match_all_49_decided_tokens_and_derived():
+def test_generated_tokens_match_all_53_decided_tokens_and_derived():
     payload = json.loads(VENDORED.read_text(encoding="utf-8"))
     assert payload["schema"] == "cassini-ux/brand-tokens@1"
     assert payload["modes"] == ["light", "dark"]
-    assert len(payload["tokens"]) == 49
+    assert len(payload["tokens"]) == 53
     assert all(spec["status"] == "decided" for spec in payload["tokens"].values())
+    assert all("check" not in spec for spec in payload["tokens"].values())
+    assert all("check" not in spec for spec in payload["derived"].values())
+    assert payload["exceptions"] == []
 
     cx_light, cx_dark, *_ = parse_css_theme(
         TOKENS_CSS.read_text(encoding="utf-8"),
@@ -138,7 +141,7 @@ def test_generator_check_fails_on_sha256_drift_generated_drift_or_source_literal
 
     # 1. Drift in generated CSS fails.
     (tmp_path / "src/tokens.css").write_text(
-        (tmp_path / "src/tokens.css").read_text(encoding="utf-8").replace("#F5F4EF", "#F5F4EE", 1),
+        (tmp_path / "src/tokens.css").read_text(encoding="utf-8").replace("#F4F5F7", "#F4F5F6", 1),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="src/tokens.css differs"):
@@ -147,7 +150,7 @@ def test_generator_check_fails_on_sha256_drift_generated_drift_or_source_literal
 
     # 2. Drift in generated Python fails.
     (tmp_path / "src/cassini_talk/_brand_tokens.py").write_text(
-        (tmp_path / "src/cassini_talk/_brand_tokens.py").read_text(encoding="utf-8").replace("#007999", "#007998", 1),
+        (tmp_path / "src/cassini_talk/_brand_tokens.py").read_text(encoding="utf-8").replace("#093351", "#093350", 1),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="src/cassini_talk/_brand_tokens.py differs"):
@@ -216,7 +219,10 @@ def test_every_applied_w1_role_resolves_to_its_token_and_unapplied_set_is_exact(
         "spectro-pill-silent": lambda dark: tokens.spectrogram_colours("pill", dark=dark, silent=True)[1],
         "spectro-row-silent": lambda dark: tokens.spectrogram_colours("row", dark=dark, silent=True)[1],
         "timeline-tick": lambda dark: tokens.timeline_tick_colour(dark=dark),
+        "aside-chip-bg": lambda dark: tokens.aside_chip_wash(dark=dark)[0],
     }
+    assert tokens.aside_chip_wash(dark=False) == (tokens.token("ink", dark=False), "10%")
+    assert tokens.aside_chip_wash(dark=True) == (tokens.token("ink", dark=True), "10%")
     for py_role, getter in python_checks.items():
         if py_role not in tokens.UNAPPLIED_W1_ROLES:
             target = tokens.PYTHON_ROLE_TOKENS[py_role]
@@ -234,8 +240,11 @@ def test_every_applied_w1_role_resolves_to_its_token_and_unapplied_set_is_exact(
         if f"speaker-{slot}" not in tokens.UNAPPLIED_W1_ROLES:
             assert tokens.speaker_colour(speaker, dark=False) == tokens.token(f"speaker-{slot}", dark=False)
             assert tokens.speaker_colour(speaker, dark=True) == tokens.token(f"speaker-{slot}", dark=True)
+            assert f".speaker-ink-{slot}" in style_css_text
         if f"avatar-{slot}" not in tokens.UNAPPLIED_W1_ROLES:
             assert f".speaker-avatar-{slot}" in style_css_text
             assert f".speaker-chip-{slot}" in style_css_text
     assert tokens.speaker_slot(SimpleNamespace(colour_index=6, provenance="user")) == 1
-    assert tokens.speaker_slot(SimpleNamespace(colour_index=4, provenance="unnamed")) == 0
+    assert tokens.speaker_slot(SimpleNamespace(colour_index=1, stored_colour_index=2, provenance="user")) == 3
+    assert tokens.speaker_slot(SimpleNamespace(colour_index=4, stored_colour_index=2, provenance="unnamed")) == 0
+    assert [tokens.saved_voice_slot({"saveOrder": i}) for i in range(7)] == [1, 2, 3, 4, 5, 6, 1]

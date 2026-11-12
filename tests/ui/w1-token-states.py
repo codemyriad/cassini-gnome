@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Wave 1 token review boards: delete dialog, error line, success badge, and 7 speakers (1 unnamed)."""
+"""Wave 1 token review boards: sidebar search, delete dialog, error line, success badge, and 7 speakers."""
 
 import os
 import shutil
@@ -102,13 +102,13 @@ with tempfile.TemporaryDirectory() as temporary:
     assert [speaker_slot(s) for s in seven_speakers] == [1, 2, 3, 4, 5, 6, 0]
     assert speaker_slot(LibrarySpeaker("s8", "Nikos", "user", 10000, 6)) == 1
     lines = (
-        ("s1", "Let us confirm the linen surface and teal accent across every reading board."),
-        ("s2", "Primary actions stay filled teal while playback and search share the highlight wash."),
+        ("s1", "Let us confirm the cool paper surface and deep navy accent across every reading board."),
+        ("s2", "Primary actions stay filled navy while playback and search share the highlight wash."),
         ("s3", "Degraded states like a silent microphone stay in warm amber."),
         ("s4", "Recording pills and live indicators keep their dedicated red signal."),
         ("s5", "Saved-voice badges pair the six soft avatar washes with their matching speaker inks."),
-        ("s6", "Inline download failures and destructive confirmation text use the error role."),
-        ("s7", "An unnamed speaker stays neutral stone until someone gives them a name."),
+        ("s6", "Inline download failures pair the error wash with error text."),
+        ("s7", "An unnamed speaker stays neutral slate until someone gives them a name."),
     )
     words = tuple(
         Word(spk, idx * 4000 + w_i * 350, idx * 4000 + w_i * 350 + 300, tok)
@@ -148,7 +148,13 @@ with tempfile.TemporaryDirectory() as temporary:
         settings.present(window)
         settings.set_visible_page_name("transcription")
         settings.render_models()
-        until(lambda: settings.model_line.get_visible() and "error" in settings.model_line.get_css_classes())
+        until(
+            lambda: (
+                settings.model_line.get_visible()
+                and "error" in settings.model_line.get_css_classes()
+                and "error-line" in settings.model_line.get_css_classes()
+            )
+        )
         save_shot(window, out_dir, "error-line")
 
         # 3. Delete confirmation dialog on Saved Voices (HARMONY 10.4 destructive alert + 10.12 avatar-1..6).
@@ -189,10 +195,20 @@ with tempfile.TemporaryDirectory() as temporary:
         save_shot(window, out_dir, "success-badge")
         companion_dialog.force_close()
 
+    # 5. Desktop sidebar + resting search field with placeholder (HARMONY 10.14 sidebar + field + field-line + ink-3).
+    window.activate_action("win.search", None)
+    search_page = window.search_page
+    until(lambda: search_page is not None and not search_page.pending and search_page.entry.get_mapped())
+    search_page.entry.set_text("")
+    window.set_focus(None)
+    until(lambda: not search_page.entry.has_focus() and not search_page.pending)
+    save_shot(window, out_dir, "sidebar-search")
+
     drain_app_workers(app)
     app.begin_exit()
     window.close()
     app.do_shutdown()
     print(
-        f"PASS W1 token states ({'dark' if dark else 'light'}): seven-speakers, error-line, delete-dialog, success-badge"
+        f"PASS W1 token states ({'dark' if dark else 'light'}): "
+        "seven-speakers, error-line, delete-dialog, success-badge, sidebar-search"
     )

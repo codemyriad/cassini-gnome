@@ -39,7 +39,9 @@ def save_name(directory, identifier, value, *, scanner=None):
             raise ValueError("Speaker is no longer visible")
         metadata = read_metadata(meeting.directory)
         speakers = {s["id"]: dict(s) for s in metadata["speakers"]}
-        entry = speakers.setdefault(identifier, dict(id=identifier, colourIndex=visible[identifier].colour_index))
+        stored = visible[identifier].stored_colour_index
+        colour_index = stored if stored is not None else visible[identifier].colour_index
+        entry = speakers.setdefault(identifier, dict(id=identifier, colourIndex=colour_index))
         entry.update(name=value, provenance="user" if value is not None else "unnamed")
         if value is None:
             entry["nameCleared"] = True

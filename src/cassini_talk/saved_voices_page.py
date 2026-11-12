@@ -7,6 +7,7 @@ from concurrent.futures import CancelledError
 from gi.repository import Adw, GLib, Gtk
 
 from .strings import plural, text
+from .tokens import saved_voice_slot
 from .ux_formats import confirmed_speech
 from .voice_store import sample_window
 from .voices_logic import stale
@@ -41,7 +42,9 @@ class SavedVoicesPage(Adw.NavigationPage):
         self.empty = Gtk.Label(label=text("savedVoices.empty"), wrap=True, xalign=0, css_classes=["dim-label"])
         self.people.add(self.empty)
         self.error_group = Adw.PreferencesGroup()
-        self.error = Adw.ActionRow(title=text("savedVoices.changeFailed"), use_markup=False, visible=False)
+        self.error = Adw.ActionRow(
+            title=text("savedVoices.changeFailed"), use_markup=False, visible=False, css_classes=["error-line"]
+        )
         self.again = Gtk.Button(label=text("common.tryAgain"), valign=Gtk.Align.CENTER)
         self.again.connect("clicked", lambda *_: self._submit(self.retry) if self.retry else None)
         self.error.add_suffix(self.again)
@@ -80,7 +83,7 @@ class SavedVoicesPage(Adw.NavigationPage):
             for row, _play, _forget in self.rows.values():
                 self.people.remove(row)
             self.rows = {}
-            for idx, voice in enumerate(state["voices"]):
+            for voice in state["voices"]:
                 row = Adw.ActionRow(title=voice["name"], use_markup=False)
                 caption = text(
                     "savedVoices.row.meta",
@@ -97,7 +100,7 @@ class SavedVoicesPage(Adw.NavigationPage):
                 avatar = Gtk.Label(
                     label=initials,
                     valign=Gtk.Align.CENTER,
-                    css_classes=["speaker-avatar", f"speaker-avatar-{(idx % 6) + 1}"],
+                    css_classes=["speaker-avatar", f"speaker-avatar-{saved_voice_slot(voice)}"],
                 )
                 row.add_prefix(avatar)
                 play = Gtk.Button(

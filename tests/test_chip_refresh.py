@@ -50,6 +50,6 @@ def test_header_refresh_updates_chip_names_and_theme_without_replacing_rows(monk
     assert "Bea:" in words.set_markup.call_args.args[0]
     dark[0] = True
     refresh()
-    assert 'background="#E5E5D9"' in words.set_markup.call_args.args[0]
+    assert 'background="#E8E9EC"' in words.set_markup.call_args.args[0]
     assert words.set_markup.call_count == 3
     assert page.bound[0][2] is row

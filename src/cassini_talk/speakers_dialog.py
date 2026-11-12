@@ -125,7 +125,11 @@ class SpeakersDialog(Adw.Dialog):
         self.voice_settings.connect("clicked", self._open_voice_settings)
         content.append(self.voice_settings)
         self.error = Gtk.Label(
-            label=text("speakers.changeFailed"), xalign=0, wrap=True, visible=False, css_classes=["error"]
+            label=text("speakers.changeFailed"),
+            xalign=0,
+            wrap=True,
+            visible=False,
+            css_classes=["error", "error-line"],
         )
         content.append(self.error)
         footer = Gtk.Box(spacing=8)

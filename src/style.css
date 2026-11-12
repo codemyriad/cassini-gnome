@@ -2,7 +2,7 @@
 @import url("tokens.css");
 
 :root {
-  /* Libadwaita 1.8 palette overrides for decided Wave 1 roles (--sidebar-*-color omitted while C16 is open). */
+  /* Libadwaita 1.8 palette overrides for decided brand roles (HARMONY §10.1–10.15). */
   --window-bg-color: var(--cx-ground);
   --window-fg-color: var(--cx-ink);
   --view-bg-color: var(--cx-surface);
@@ -10,6 +10,16 @@
   --headerbar-bg-color: var(--cx-ground);
   --headerbar-fg-color: var(--cx-ink);
   --headerbar-backdrop-color: var(--cx-ground);
+  --sidebar-bg-color: var(--cx-sidebar);
+  --sidebar-fg-color: var(--cx-ink);
+  --sidebar-backdrop-color: var(--cx-sidebar);
+  --sidebar-border-color: var(--cx-line);
+  --sidebar-shade-color: var(--cx-shadow);
+  --secondary-sidebar-bg-color: var(--cx-sidebar);
+  --secondary-sidebar-fg-color: var(--cx-ink);
+  --secondary-sidebar-backdrop-color: var(--cx-sidebar);
+  --secondary-sidebar-border-color: var(--cx-line);
+  --secondary-sidebar-shade-color: var(--cx-shadow);
   --card-bg-color: var(--cx-surface);
   --card-fg-color: var(--cx-ink);
   --dialog-bg-color: var(--cx-raised);
@@ -35,15 +45,17 @@
   --warning-fg-color: var(--cx-warn-ink);
   --warning-color: var(--cx-warn-ink);
 
-  /* App semantic colour roles (C16 sidebar & GNOME-TOK-02 grey washes remain on platform/alpha until Wave 2). */
+  /* App semantic colour roles (row selection & subtle card washes remain on alpha until Wave 2). */
   --app-window-bg: var(--cx-ground);
   --app-window-fg: var(--cx-ink);
   --app-view-bg: var(--cx-surface);
   --app-view-fg: var(--cx-ink);
   --app-dim-fg: var(--cx-ink-2);
   --app-placeholder-fg: var(--cx-ink-3);
-  --app-sidebar-bg: @sidebar_bg_color;
-  --app-sidebar-fg: @sidebar_fg_color;
+  --app-sidebar-bg: var(--cx-sidebar);
+  --app-sidebar-fg: var(--cx-ink);
+  --app-field-bg: var(--cx-field);
+  --app-field-border: var(--cx-field-line);
   --app-headerbar-bg: var(--cx-ground);
   --app-hairline: var(--cx-line-soft);
   --app-border: var(--cx-line);
@@ -72,12 +84,14 @@
   --app-record-trough: color-mix(in srgb, var(--cx-record-ink) 22%, var(--cx-record-tint));
   --app-badge-red-bg: var(--cx-record-tint);
   --app-badge-red-fg: var(--cx-record-ink);
-  --app-badge-transcribing-bg: var(--cx-neutral-tint);
+  --app-badge-transcribing-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
   --app-badge-transcribing-fg: var(--cx-neutral-ink);
   --app-badge-amber-bg: var(--cx-warn-tint);
   --app-badge-amber-fg: var(--cx-warn-ink);
-  --app-badge-grey-bg: var(--cx-neutral-tint);
+  --app-badge-grey-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
   --app-badge-grey-fg: var(--cx-neutral-ink);
+  --app-error-line-bg: var(--cx-error-tint);
+  --app-error-line-fg: var(--cx-error);
   --app-warn-line-bg: var(--cx-warn-tint);
   --app-warn-line-fg: var(--cx-warn-ink);
   --app-mic-silent-bg: var(--cx-warn-tint);
@@ -120,6 +134,7 @@ text > placeholder {
 .library-window .library-title { font-size: 24px; font-weight: 700; }
 .library-window .library-header { min-height: 47px; padding: 0 6px; box-shadow: none; border-bottom: 1px solid var(--app-hairline); }
 .library-window .library-sidebar { background: var(--app-sidebar-bg); color: var(--app-sidebar-fg); }
+.library-sidebar entry { background-color: var(--app-field-bg); color: var(--app-window-fg); border: 1px solid var(--app-field-border); }
 .library-window .library-rows { background: transparent; padding: 0 8px; }
 .library-window .day-heading { padding: 12px 12px 6px; background: transparent; }
 .library-window .meeting-row { padding: 0; border-radius: 10px; margin: 2px 0; color: inherit; }
@@ -139,6 +154,13 @@ text > placeholder {
 .library-window .speaker-chip-4 { background: var(--cx-avatar-4); color: var(--cx-speaker-4); }
 .library-window .speaker-chip-5 { background: var(--cx-avatar-5); color: var(--cx-speaker-5); }
 .library-window .speaker-chip-6 { background: var(--cx-avatar-6); color: var(--cx-speaker-6); }
+.library-window .speaker-ink-0 { color: var(--cx-speaker-0); }
+.library-window .speaker-ink-1 { color: var(--cx-speaker-1); }
+.library-window .speaker-ink-2 { color: var(--cx-speaker-2); }
+.library-window .speaker-ink-3 { color: var(--cx-speaker-3); }
+.library-window .speaker-ink-4 { color: var(--cx-speaker-4); }
+.library-window .speaker-ink-5 { color: var(--cx-speaker-5); }
+.library-window .speaker-ink-6 { color: var(--cx-speaker-6); }
 .library-window .speaker-name { font-weight: 600; }
 .library-window .speaker-chip .speaker-name { color: inherit; font-weight: 400; }
 .library-window .auto-tag { font-size: 11px; font-weight: 500; color: inherit; opacity: 0.72; border: 1px solid var(--app-auto-tag-border); border-radius: 5px; padding: 0 3px; }
@@ -167,6 +189,10 @@ text > placeholder {
 .meeting-player button.suggested-action { border-radius: 50%; min-width: 40px; min-height: 40px; padding: 0; }
 .meeting-player scale { padding: 0; }
 .inline-line { border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+.error-line { background-color: var(--app-error-line-bg); color: var(--app-error-line-fg); border-radius: 10px; padding: 10px 12px; }
+.cassini-preferences label.error-line { margin-top: 8px; }
+row.error-line { background-color: var(--app-error-line-bg); color: var(--app-error-line-fg); }
+row.error-line .title { color: var(--app-error-line-fg); }
 .warn-line { background: var(--app-warn-line-bg); }
 label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-line-fg); }
 .info-line { background: var(--app-accent-tint); }

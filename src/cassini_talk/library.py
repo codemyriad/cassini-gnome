@@ -164,6 +164,7 @@ class LibrarySpeaker:
     colour_index: int
     talk_ms: int = 0
     sample_span: tuple[int, int] | None = None
+    stored_colour_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -751,6 +752,7 @@ class LibraryScanner:
             # D56: this attempt's silent tracks, which take no R64 lane, reach meeting.json only
             # when it is done; until then its words get no gap breaks rather than another lane's.
             gaps = {}
+        raw_words = words
         words = apply_merges(words, metadata.get("speakerMerges", []), known)
         received_name = metadata.get("received", {}).get("originalName") if origin == "received" else None
         title_values = [
@@ -793,7 +795,12 @@ class LibraryScanner:
                 track = replace(track, ownership_windows=ownership, spans=spans)
             placed.append(track)
         tracks = tuple(placed)
-        speakers = _speakers(words, metadata.get("speakers", []), embedded if origin == "received" else None)
+        speakers = _speakers(
+            words,
+            metadata.get("speakers", []),
+            embedded if origin == "received" else None,
+            raw_words=raw_words,
+        )
         speaker_names = {speaker.id: speaker.name for speaker in speakers}
         return Meeting(
             id=identifier,
@@ -1184,12 +1191,18 @@ def _lane_row(logical, read, stated):
     return _track_row(read[0]) if read else _unplaced(logical)
 
 
-def _speakers(words, values, embedded, *, stored_labels=False):
+def _speakers(words, values, embedded, *, stored_labels=False, raw_words=None):
     from .speaker_merges import speaker_metrics
 
     metrics = speaker_metrics(words)
     metadata = {s["id"]: s for s in values}
     labels = {s.id: s.label for s in embedded.speakers} if embedded else {}
+    raw_rank = None
+    if raw_words is not None:
+        raw_first = {}
+        for index, word in enumerate(raw_words):
+            raw_first[word.speaker] = min(raw_first.get(word.speaker, (word.start_ms, index)), (word.start_ms, index))
+        raw_rank = {identifier: index for index, identifier in enumerate(sorted(raw_first, key=raw_first.get))}
     first = {}
     for index, word in enumerate(words):
         first[word.speaker] = min(first.get(word.speaker, (word.start_ms, index)), (word.start_ms, index))
@@ -1204,6 +1217,12 @@ def _speakers(words, values, embedded, *, stored_labels=False):
                 if label and not re.fullmatch(r"Speaker \d+", label)
                 else text("common.speaker.unnamed", n=rank + 1)
             )
+        stored = value.get("colourIndex")
+        stored_colour = (
+            stored
+            if type(stored) is int and stored >= 0
+            else (raw_rank.get(identifier) if raw_rank is not None else None)
+        )
         result.append(
             LibrarySpeaker(
                 identifier,
@@ -1213,6 +1232,7 @@ def _speakers(words, values, embedded, *, stored_labels=False):
                 rank,
                 metrics[identifier]["talkMs"],
                 metrics[identifier]["sample"],
+                stored_colour,
             )
         )
     return tuple(result)
