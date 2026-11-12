@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Vendored from codemyriad/cassini-ux@6c2aa0a62c6346a5ecea3782a0b7d899b7c616ae:tools/pr-shots/pr-shots.py
+# Vendored from codemyriad/cassini-ux@592f9cc6bd1cd1d3aac1beb63cb69ff199bd1d25:tools/pr-shots/pr-shots.py
 """W0.8 screenshot comparisons. Diff is read-only; only the coordinator publishes."""
 
 import argparse
@@ -24,6 +24,7 @@ START, END = "<!-- cassini-shots:start -->", "<!-- cassini-shots:end -->"
 KEY = re.compile(r"[a-z0-9][a-z0-9.-]{0,159}")
 SHA = re.compile(r"[0-9a-f]{40}")
 REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]+")
+MAX_PUBLICATION_PNGS = 1000  # GNOME: 76 pairs x 2 schemes x 3 images = 456; allow >2x headroom.
 Image.MAX_IMAGE_PIXELS = 12_000_000
 
 
@@ -255,8 +256,9 @@ def sorted_rows(rows):
     return sorted(rows, key=lambda r: (core.get(r["screen"], 99), screen_id(r), r["scheme"] != "light"))
 
 
-def block(data, images=True):
+def block(data, images=True, summary=False, summary_run=None):
     validate_metadata(data)
+    images = images and not summary
     rows = data["rows"]
     changed = {screen_id(r) for r in rows if r["status"] != "unchanged"}
     total = len({screen_id(r) for r in rows})
@@ -289,14 +291,19 @@ def block(data, images=True):
             "|---|---|---|---|",
         ]
         selected = sorted_rows([r for r in rows if screen_id(r) in changed])
+        inline_screens = set(list(dict.fromkeys(screen_id(r) for r in selected))[:12])
+        inline_rows = sum(screen_id(r) in inline_screens for r in selected)
         for index, row in enumerate(selected):
-            if index == 12:
-                lines += ["", f"<details><summary>{len(selected) - 12} more rows</summary>", ""]
+            if index == inline_rows:
+                lines += ["", f"<details><summary>{len(changed) - 12} more screens</summary>", ""]
             links = {}
             for side in ("before", "after", "diff"):
                 path = row.get(side + "_git_path") if data.get("git_images") and side != "diff" else row.get(side)
                 if not path:
                     links[side] = "–"
+                    continue
+                if summary and not data.get("git_images"):
+                    links[side] = f"`{path}`"
                     continue
                 if data.get("git_images") and side != "diff":
                     url = f"https://github.com/{data['repo']}/raw/{data[side_map(side)]['sha']}/{quote(path, safe='/')}"
@@ -305,7 +312,7 @@ def block(data, images=True):
                 width = 220 if row["device"] in {"phone", "ipad"} else 400
                 links[side] = (
                     f'<img src="{url}" width="{width}">'
-                    if images and index < 12 and side != "diff"
+                    if images and index < inline_rows and side != "diff"
                     else f"[{side}]({url})"
                 )
             label = escaped(row["label"]) + " · " + row["scheme"]
@@ -313,19 +320,29 @@ def block(data, images=True):
             if len(modes) == 1:
                 label += " (" + row["scheme"] + " only)"
             pct = "–" if row["changed_pct"] is None else f"{row['changed_pct']:g} %"
-            if row["diff"]:
+            if row["diff"] and not (summary and not data.get("git_images")):
                 pct = links["diff"].replace("[diff]", f"[{pct}]")
-            if index < 12:
+            if index < inline_rows:
                 lines.append(f"| {label} | {links['before']} | {links['after']} | {pct} |")
             else:
                 lines.append(f"- {label}: {links['before']} · {links['after']} · {pct}")
-        if len(selected) > 12:
+        if len(changed) > 12:
             lines += ["", "</details>"]
     if changed:
-        url = f"https://github.com/{data['repo']}/tree/pr-shots/pr-{data['pr']}/{head['sha'][:7]}"
-        if data.get("git_images"):
-            url = f"https://github.com/{data['repo']}/tree/{head['sha']}/{quote(data['root'], safe='/')}"
-        lines += ["", f"All images: [screenshots]({url})."]
+        if summary and not data.get("git_images"):
+            run = str(summary_run or "")
+            if re.fullmatch(r"[1-9][0-9]*", run):
+                url = f"https://github.com/{data['repo']}/actions/runs/{run}#artifacts"
+                lines += ["", f"Download images: [pr-shots artifact (ZIP)]({url}). Paths above are ZIP members."]
+            else:
+                lines += [
+                    "", "Images are in the generated pr-shots folder; upload/download it as the pr-shots artifact."
+                ]
+        else:
+            url = f"https://github.com/{data['repo']}/tree/pr-shots/pr-{data['pr']}/{head['sha'][:7]}"
+            if data.get("git_images"):
+                url = f"https://github.com/{data['repo']}/tree/{head['sha']}/{quote(data['root'], safe='/')}"
+            lines += ["", f"All images: [screenshots]({url})."]
     if data.get("ui_code_changed") and not changed:
         lines.append("UI code changed, no golden changed.")
     return "\n".join(lines + ["", "Made by `pr-shots.py`.", END, ""])
@@ -410,7 +427,7 @@ def diff(args):
         path.write_bytes(raw)
     (output / "changes.json").write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     (output / "block.md").write_text(block(data), encoding="utf-8")
-    summary = block(data, images=False)
+    summary = block(data, summary=True, summary_run=os.environ.get("GITHUB_RUN_ID"))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
             stream.write(summary)
@@ -616,8 +633,8 @@ def validated(data, files, repo, pr, head):
     if data.get("git_images"):
         return {}
     needed = {r[s] for r in data["rows"] for s in ("before", "after", "diff") if r.get(s)}
-    if len(needed) > 80:
-        raise ValueError("Publisher limit: 80 PNG files")
+    if len(needed) > MAX_PUBLICATION_PNGS:
+        raise ValueError(f"Publisher limit: {MAX_PUBLICATION_PNGS} PNG files")
     for name in needed:
         raw = files[name]
         if len(raw) > 3_000_000:

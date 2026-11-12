@@ -19,8 +19,8 @@ import pytest
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "build-aux/ci/pr-shots.py"
-CANONICAL_COMMIT = "6c2aa0a62c6346a5ecea3782a0b7d899b7c616ae"
-CANONICAL_SHA256 = "769d2f2d872f9621c83858a633255093739b24e47c88f99c909de42108a27c42"
+CANONICAL_COMMIT = "592f9cc6bd1cd1d3aac1beb63cb69ff199bd1d25"
+CANONICAL_SHA256 = "63cc9e25f2583895b1f0d1a5befa2611e4271bf2cfa3b06b8c09bf95561afa65"
 HAS_REAL_PIL = importlib.util.find_spec("PIL") is not None
 
 
@@ -248,6 +248,7 @@ def test_gnome_manifest_diff_emits_both_modes_ignores_metadata_bytes_and_writes_
     before_dir, after_dir, out_dir = tmp_path / "before", tmp_path / "after", tmp_path / "out"
     summary_file = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))
+    monkeypatch.setenv("GITHUB_RUN_ID", "43138305541")
 
     light_px, dark_px = b"\xf8\xf8\xfa\xff", b"\x20\x22\x28\xff"
     for root, level in ((before_dir, 1), (after_dir, 9)):
@@ -287,10 +288,93 @@ def test_gnome_manifest_diff_emits_both_modes_ignores_metadata_bytes_and_writes_
     assert not (out_dir / "after/library.light.png").exists()
     summary = summary_file.read_text()
     assert "1 screens changed, 2 unchanged." in summary and "<img " not in summary
+    assert "/pr-shots/" not in summary
+    assert "`before/search.light.png`" in summary and "`after/search.light.png`" in summary
+    assert (
+        "Download images: [pr-shots artifact (ZIP)](https://github.com/codemyriad/cassini-gnome/actions/runs/43138305541#artifacts)."
+        in summary
+    )
     assert (
         '<img src="https://github.com/codemyriad/cassini-gnome/raw/pr-shots/pr-386/'
         in (out_dir / "block.md").read_text()
     )
+
+
+def test_full_gnome_gallery_diff_artifact_validates_for_publication(tmp_path, monkeypatch, capsys):
+    pr_shots, manifest_mod = _load_modules()
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    before_dir, after_dir, out_dir = tmp_path / "before", tmp_path / "after", tmp_path / "out"
+    (before_dir / "dark").mkdir(parents=True)
+    (after_dir / "dark").mkdir(parents=True)
+
+    # Full GNOME gallery (76 screen pairs = 152 PNGs): 44 changed pairs + 32 unchanged pairs emits 264 PNGs (44 * 6),
+    # matching live CI run 43138305541 while keeping the rendered PR block well within GitHub's 65 KB body limit.
+    before_light = _png_bytes(b"\xf8\xf8\xfa\xff", width=4, height=4)
+    before_dark = _png_bytes(b"\x20\x22\x28\xff", width=4, height=4)
+    after_light = _png_bytes(b"\xe2\xf0\xf4\xff", width=4, height=4)
+    after_dark = _png_bytes(b"\x28\x30\x3c\xff", width=4, height=4)
+    for idx in range(76):
+        name = "library.png" if idx == 0 else f"spectrogram-{idx:02d}.png"
+        (before_dir / name).write_bytes(before_light)
+        (before_dir / "dark" / name).write_bytes(before_dark)
+        changed = idx < 44
+        (after_dir / name).write_bytes(after_light if changed else before_light)
+        (after_dir / "dark" / name).write_bytes(after_dark if changed else before_dark)
+    manifest_mod.write_manifest(before_dir)
+    manifest_mod.write_manifest(after_dir)
+
+    head_sha = "b" * 40
+    diff_args = pr_shots.parser().parse_args(
+        [
+            "diff", "--layout", "gnome", "--repo", "codemyriad/cassini-gnome", "--pr", "386",
+            "--base-sha", "a" * 40, "--head-sha", head_sha,
+            "--head-runner", "self-hosted,cm-hetzner", "--base-runner", "self-hosted,cm-hetzner",
+            "--before-dir", str(before_dir), "--after-dir", str(after_dir), "--out", str(out_dir),
+        ]
+    )  # fmt: skip
+    pr_shots.diff(diff_args)
+
+    monkeypatch.setattr(pr_shots, "github", lambda _route: {"head": {"sha": head_sha, "ref": "feat/w08"}, "body": ""})
+    pub_args = pr_shots.parser().parse_args(
+        ["publish", "--repo", "codemyriad/cassini-gnome", "--pr", "386", "--dir", str(out_dir), "--dry-run"]
+    )
+    pr_shots.publish(pub_args)
+    rendered = capsys.readouterr().out
+    assert "44 screens changed, 32 unchanged." in rendered
+    assert "<details><summary>32 more screens</summary>" in rendered
+    assert len(rendered.encode("utf-8")) < 65_000
+
+    files = pr_shots.directory(out_dir, require_images=False)
+    files["changes.json"] = (out_dir / "changes.json").read_bytes()
+    data = json.loads(files["changes.json"])
+    needed = pr_shots.validated(data, files, "codemyriad/cassini-gnome", 386, head_sha)
+    assert len(needed) == 264
+
+    # Even if every single one of GNOME's 76 screen pairs changes (456 PNGs), validated() accepts it cleanly,
+    # while still enforcing MAX_PUBLICATION_PNGS above the bounded cap.
+    all_out = tmp_path / "out-all"
+    for idx in range(44, 76):
+        name = f"spectrogram-{idx:02d}.png"
+        (after_dir / name).write_bytes(after_light)
+        (after_dir / "dark" / name).write_bytes(after_dark)
+    manifest_mod.write_manifest(after_dir)
+    all_args = pr_shots.parser().parse_args(
+        [
+            "diff", "--layout", "gnome", "--repo", "codemyriad/cassini-gnome", "--pr", "386",
+            "--base-sha", "a" * 40, "--head-sha", head_sha,
+            "--head-runner", "self-hosted,cm-hetzner", "--base-runner", "self-hosted,cm-hetzner",
+            "--before-dir", str(before_dir), "--after-dir", str(after_dir), "--out", str(all_out),
+        ]
+    )  # fmt: skip
+    pr_shots.diff(all_args)
+    all_files = pr_shots.directory(all_out, require_images=False)
+    all_files["changes.json"] = (all_out / "changes.json").read_bytes()
+    all_data = json.loads(all_files["changes.json"])
+    assert len(pr_shots.validated(all_data, all_files, "codemyriad/cassini-gnome", 386, head_sha)) == 456
+
+    monkeypatch.setattr(pr_shots, "MAX_PUBLICATION_PNGS", 455)
+    with pytest.raises(ValueError, match="Publisher limit: 455 PNG files"):
+        pr_shots.validated(all_data, all_files, "codemyriad/cassini-gnome", 386, head_sha)
 
 
 def test_baseline_lookup_resolves_merge_parent_and_handles_missing_baseline(tmp_path, monkeypatch):
