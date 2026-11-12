@@ -122,7 +122,7 @@ def green_main_ci(api: GitHub, sha: str) -> bool:
         return False
     jobs = list(api.pages(f"actions/runs/{latest['id']}/jobs?filter=latest", "jobs"))
     try:
-        green_main.validate_jobs(jobs, latest.get("html_url", ""))
+        green_main.validate_test_release_jobs(jobs, latest.get("html_url", ""))
     except ValueError:
         return False
     return True

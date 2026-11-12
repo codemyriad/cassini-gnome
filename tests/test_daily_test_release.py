@@ -431,6 +431,97 @@ def test_green_main_ci_rejects_fork_and_pr_runs_and_paginates():
     assert mod.green_main_ci(api_only_sched, sha) is False
 
 
+def test_green_main_ci_accepts_two_distro_push_run_43174555655_while_stable_release_stays_strict():
+    mod = load_module("daily_test_release")
+    gm = load_module("green_main")
+    sha = "fbaa2a357131a7009b11abaf6b7d83ae2eddeb4f"
+    run_id = 43174555655
+    url = f"https://github.com/codemyriad/cassini-gnome/actions/runs/{run_id}"
+    # Verbatim job list from main push run 43174555655 (after #387 two-distro push gate).
+    run_43174555655_jobs = [
+        {"name": "Changed areas", "status": "completed", "conclusion": "success"},
+        {"name": "Meson tests / Meson tests (minimal environment)", "status": "completed", "conclusion": "success"},
+        {"name": "Library / golden-vectors-and-reader", "status": "completed", "conclusion": "success"},
+        {
+            "name": "Source / Build and test on ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96",
+            "status": "completed",
+            "conclusion": "success",
+        },
+        {"name": "Build / Meson build profiles", "status": "completed", "conclusion": "success"},
+        {
+            "name": "Source / Build and test on fedora:44@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e",
+            "status": "completed",
+            "conclusion": "success",
+        },
+        {
+            "name": "RPM and Arch packages / Build .rpm (fedora:44@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e)",
+            "status": "completed",
+            "conclusion": "success",
+        },
+        {"name": "Source / Lint and test", "status": "completed", "conclusion": "success"},
+        {
+            "name": "Debian package / Build .deb (ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96)",
+            "status": "completed",
+            "conclusion": "success",
+        },
+        {"name": "RPM and Arch packages / Build Arch package", "status": "completed", "conclusion": "skipped"},
+        {"name": "Flatpak", "status": "completed", "conclusion": "skipped"},
+        {"name": "Offline / pinned-offline-recognition", "status": "completed", "conclusion": "success"},
+        {"name": "Boards / current-window", "status": "completed", "conclusion": "success"},
+        {"name": "Recording / capture", "status": "completed", "conclusion": "success"},
+        {"name": "Recording / live-folder", "status": "completed", "conclusion": "success"},
+        {"name": "Pytest coverage", "status": "completed", "conclusion": "success"},
+        {"name": "Desktop / GNOME 50 / installed deb", "status": "completed", "conclusion": "success"},
+    ]
+    push_run = {
+        "id": run_id,
+        "event": "push",
+        "head_branch": "main",
+        "head_sha": sha,
+        "head_repository": {"full_name": "codemyriad/cassini-gnome"},
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": url,
+    }
+    api_push = FakeGitHub(main_sha=sha, ci_pages=[[push_run]], jobs_by_run={run_id: run_43174555655_jobs})
+    assert mod.green_main_ci(api_push, sha) is True
+
+    # Stable tag validation still rejects the two-distro push run because Arch/Flatpak were skipped.
+    with pytest.raises(ValueError, match="Every main job must succeed before release"):
+        gm.validate_jobs(run_43174555655_jobs, url)
+
+    # Full-matrix workflow_dispatch run (all jobs green) is accepted by both gates.
+    full_jobs = [dict(job, conclusion="success") for job in run_43174555655_jobs]
+    gm.validate_jobs(full_jobs, url)
+    dispatch_run = dict(push_run, id=run_id + 100, event="workflow_dispatch")
+    api_full = FakeGitHub(
+        main_sha=sha,
+        ci_pages=[[dispatch_run, push_run]],
+        jobs_by_run={run_id: run_43174555655_jobs, run_id + 100: full_jobs},
+    )
+    assert mod.green_main_ci(api_full, sha) is True
+
+    # Every non-skippable gate job in 43174555655 must succeed: skipping or failing any of them rejects the run.
+    for idx, job in enumerate(run_43174555655_jobs):
+        if job["conclusion"] == "success":
+            for bad_conclusion in ("skipped", "failure", "cancelled"):
+                mutated = [
+                    dict(j, conclusion=bad_conclusion) if i == idx else j for i, j in enumerate(run_43174555655_jobs)
+                ]
+                api_bad = FakeGitHub(main_sha=sha, ci_pages=[[push_run]], jobs_by_run={run_id: mutated})
+                assert mod.green_main_ci(api_bad, sha) is False, (job["name"], bad_conclusion)
+        else:
+            # Skippable rolling/packaging legs may be skipped, never failed, cancelled, or incomplete.
+            for bad in (
+                {"conclusion": "failure"},
+                {"conclusion": "cancelled"},
+                {"status": "in_progress", "conclusion": None},
+            ):
+                mutated = [dict(j, **bad) if i == idx else j for i, j in enumerate(run_43174555655_jobs)]
+                api_bad = FakeGitHub(main_sha=sha, ci_pages=[[push_run]], jobs_by_run={run_id: mutated})
+                assert mod.green_main_ci(api_bad, sha) is False, (job["name"], bad)
+
+
 def test_version_bump_advances_past_released_tags_and_reserves_drafts_and_failures():
     mod = load_module("daily_test_release")
     # Android #181 lesson: 0.4.2 is already released -> unattended betas start at 0.4.3-beta.1.
