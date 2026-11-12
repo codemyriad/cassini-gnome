@@ -463,8 +463,11 @@
                 return other === sender || !track || track.readyState === "ended" || isDisplayTrack(track) || closed(owner.pc) ? [] : [sourceRoot(track)];
               });
               let group = null;
-              for (const candidate of state.localGroups)
-                if (otherMics(candidate).includes(mic)) { group = candidate; break; }
+              for (const candidate of state.localGroups) {
+                const others = otherMics(candidate);
+                // A microphone handed to another peer after its last sender closed keeps its Me source.
+                if (others.includes(mic) || (!others.length && candidate.mic === mic)) { group = candidate; break; }
+              }
               const previous = previousGroup(sender);
               if (!group && previous && !(state.localGroups.has(previous) && otherMics(previous).length)) group = previous;
               if (!group) { group = { kind: "local" }; group.root = group; }
@@ -505,7 +508,11 @@
             }
             for (const [track, recorder] of state.tracks) {
               if (recorder.failed) state.refusedTracks.add(track);
-              if (track.readyState === "ended" || !sources.has(track) || recorder.failed) { await recorder.stop(track.readyState === "ended" ? "ended" : "replaced").catch(error => { if (!recorder.failed) warn(error); }); state.tracks.delete(track); }
+              // A track whose source changed (page media now sent as Me, a microphone adopted by
+              // another Me source) restarts under that source: an old recorder keeps its old identity.
+              const owner = sources.get(track);
+              const moved = owner && state.recordsByTrack.get(track)?.sourceTrackId !== sourceKey(owner.root || sourceRoot(track));
+              if (track.readyState === "ended" || !owner || recorder.failed || moved) { await recorder.stop(track.readyState === "ended" ? "ended" : "replaced").catch(error => { if (!recorder.failed) warn(error); }); state.tracks.delete(track); }
             }
             for (const [track, metadata] of sources) {
               if (state.stopping) break;

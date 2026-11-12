@@ -88,6 +88,8 @@ async function join(title, localHz, remoteHz, id) {
  }
  await meeting.evaluate(async ({title, localHz}) => {document.title = title; await window.join(localHz, true);}, {title, localHz});
  await remote.evaluate(hz => window.join(hz), remoteHz);
+ // The far end is another computer: its speaker playing our Me must not reach this desktop's sink.
+ await remote.evaluate(() => {document.querySelector('audio').muted = true;});
  const offer = await meeting.evaluate(async () => {await meeting.pc.setLocalDescription(await meeting.pc.createOffer()); return meeting.description();});
  const answer = await remote.evaluate(async offer => {await meeting.pc.setRemoteDescription(offer); await meeting.pc.setLocalDescription(await meeting.pc.createAnswer()); return meeting.description();}, offer);
  await meeting.evaluate(answer => meeting.pc.setRemoteDescription(answer), answer);

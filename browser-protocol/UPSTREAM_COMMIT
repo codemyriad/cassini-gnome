@@ -1,16 +1,26 @@
-tree 121dc493a9ce811e1911706108658af42f649f06
-parent 01772b83bcfd7c28826775a4a13461eaa554dd40
-author Silvio Tomatis <silviot@gmail.com> 1794488614 +0100
-committer Silvio Tomatis <silviot@gmail.com> 1794488614 +0100
+tree 2ba4cbb1969ff83a8802e648b3a804821ebaf94e
+parent ec49ad27ce7119f7b46bd410af5585cd869cacfc
+parent 70a5929a128dc1a5c6f83aebc1895ecf9ce4fb99
+author Silvio Tomatis <silviot@gmail.com> 1794490270 +0100
+committer GitHub <noreply@github.com> 1794490270 +0100
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq9b+eCRC1aQ7uu5UhlAAALCEQAEXfNqNBRLKWyBc9d6VT4kde
+ W1RpmRRkxS9HOustSnDrgIXFfYnZi5XnLuoGpOVxE9fJvFUjbj3Q8GCN0VTQXcoh
+ 2lphD8OYz9ICxcXg0cu63fra/Fbvu1Hd9U1QCSisLw3wEhG32Mzr6jGfwaUHo3xv
+ jL1XUqs0Zq62T9VOFwFGLhT4EIIfBmatHRgMNeVaYqHeuOcHKDuFVg+uxSpJQrED
+ xkTVo0XtjUR3HtlIardeIqeguOFk8nXqOy+KFBk+NBdcz3AYbKB6GfDYVHu7SWkG
+ fcOO4C8u+rbR3XxhmiM/UAiURh7sc621ZdLe96FrbI+N6SUT3yh0kTvItN7bCS1a
+ WCrTCMKc5gE1i7RCFOO0OfBkNu3CuHHU6KWdzldyfy/dm8vmOnsa9wFP/Vdbpxw7
+ T1gJIgiNYccsOo3rLemmo5DOaFgC5OIt7pnIrnle+uv8M9CrCuwWENF8HULDXwUD
+ kJUL14Tqn8p1pOkREP6hBXKpKReIJjZLDOcdW+fAsZ22OIMwAWCwLgkriVE+XpWD
+ VH1ficv01gATqujxwi3S9O3x0eMN8iIpF8vu2aJeexnzwOKpDv3fxygZow/XK6VT
+ T2IeXtM5rk6+nI5+Q4tD2cSFIsg3IQ43I25G3IqWYY10Tk2ttwSVJBRX+jb6EvTC
+ I0dIZYEVUNU3ybTHBkfc
+ =uBot
+ -----END PGP SIGNATURE-----
+ 
 
-fix: a sender that leaves a shared microphone becomes its own Me source
+Merge pull request #101 from codemyriad/feat/browser-local-me-capture
 
-Two senders on one microphone formed one Me group. When one switched to
-another microphone it kept the group, which recorded only the first
-microphone, so the new one was never recorded. Senders still on their
-group's microphone now claim it first; a sender that switched joins the
-group already sending its new microphone, keeps its group when it is the
-only sender, or else becomes a new Me source. The decision no longer
-depends on sender order and holds across capture restarts.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Capture browser Me from the WebRTC sender instead of the OS microphone

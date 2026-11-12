@@ -360,3 +360,29 @@ test('whichever sender switches away from a shared microphone, the shared one ke
  assert.ok(headsetCapture,'the headset keeps the shared Me source');
  assert.equal(headsetCapture.enabled(),true);
 }));
+
+test('a microphone handed to another peer after its first peer closes keeps its Me source and stays audible',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ f.peer.senders=[micSender(mic)];
+ await f.start('handoff',{captureLocal:true,sourceOutcomes:true});
+ const me=f.captures[0];
+ f.peer.close();second.senders=[micSender(mic)];await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,1,'one Me source after the handoff');
+ assert.equal(live[0].sourceTrackId,me.sourceTrackId,'the handed-off microphone keeps its Me identity');
+ assert.equal(live[0].enabled(),true,'Me is audible while the new peer sends it');
+}));
+
+test('page media that the page then sends is recorded as Me, not as page media',()=>fixture(async f=>{
+ // A generated track (say a Web Audio voice changer) plays on the page before it is sent.
+ const mic=new f.Track({id:'generated',label:'Processed voice',kind:'audio',readyState:'live',enabled:true,muted:false});
+ f.render(mic);
+ await f.start('preview-then-send',{captureLocal:true,sourceOutcomes:true});
+ assert.deepEqual(f.captures.map(c=>c.kind),['media']);
+ f.peer.senders=[micSender(mic)];await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.deepEqual(live.map(c=>c.kind),['local'],'the sent microphone is Me under its own source');
+ assert.notEqual(live[0].sourceTrackId,f.captures[0].sourceTrackId);
+ assert.equal(live[0].enabled(),true);
+}));
