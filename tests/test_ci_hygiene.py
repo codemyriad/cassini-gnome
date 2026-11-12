@@ -460,7 +460,7 @@ def test_runner_variables_move_the_intended_jobs():
         },
     }
     hosted_only = {
-        ("cache-hygiene.yml", "prune"),      # holds an actions: write token: never on the pool
+        ("cache-hygiene.yml", "prune"),  # holds an actions: write token: never on the pool
         ("ci.yml", "changes"),
         ("ci.yml", "pytest-coverage"),
         ("daily-test-release.yml", "outcome"),

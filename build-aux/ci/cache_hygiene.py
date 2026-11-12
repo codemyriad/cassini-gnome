@@ -14,6 +14,7 @@ family that has no current key (GitHub evicts those after 7 unused days anyway).
 
   build-aux/ci/cache_hygiene.py [--delete]     without --delete: only print what would be deleted
 Needs GITHUB_REPOSITORY and GITHUB_TOKEN (actions: write to delete, pull-requests: read)."""
+
 from __future__ import annotations
 
 import argparse
@@ -62,9 +63,15 @@ def select(caches: list[dict], open_prs: set[int], now: float) -> list[tuple[dic
 
 
 def api(method: str, path: str):
-    req = urllib.request.Request(API + path, method=method, headers={
-        "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28"})
+    req = urllib.request.Request(
+        API + path,
+        method=method,
+        headers={
+            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
     with urllib.request.urlopen(req, timeout=30) as r:
         body = r.read()
     return json.loads(body) if body else None
@@ -93,11 +100,15 @@ def main() -> int:
     total = sum(c["size_in_bytes"] for c in caches)
     freed = sum(c["size_in_bytes"] for c, _ in doomed)
     for c, why in doomed:
-        print(f"{'delete' if a.delete else 'would delete'} {c['size_in_bytes'] / 1e6:6.0f} MB {c['ref']} {c['key']}: {why}")
+        print(
+            f"{'delete' if a.delete else 'would delete'} {c['size_in_bytes'] / 1e6:6.0f} MB {c['ref']} {c['key']}: {why}"
+        )
         if a.delete:
             api("DELETE", f"/repos/{repo}/actions/caches/{c['id']}")
-    print(f"{len(doomed)} of {len(caches)} entries, {freed / 1e9:.2f} of {total / 1e9:.2f} GB"
-          f"{'' if a.delete else ' (dry run)'}")
+    print(
+        f"{len(doomed)} of {len(caches)} entries, {freed / 1e9:.2f} of {total / 1e9:.2f} GB"
+        f"{'' if a.delete else ' (dry run)'}"
+    )
     return 0
 
 
