@@ -19,7 +19,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Gio, GLib  # noqa: E402
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
 from painted import apply_screenshot_scheme, painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
@@ -227,6 +227,8 @@ with tempfile.TemporaryDirectory() as temporary:
         "importing": tokens.token("neutral-ink", dark=is_dark),
     }
     for badge_widget in badges:
+        assert badge_widget.glyph_widget.get_accessible_role() == Gtk.AccessibleRole.PRESENTATION
+        assert not badge_widget.glyph_widget.get_can_target()
         assert badge_widget.get_height() == BADGE_HEIGHT_PX, (badge_widget.kind, badge_widget.get_height())
         expected_glyph = KIND_GLYPH[badge_widget.kind]
         expected_px = GLYPH_SIZE_PX[expected_glyph]
@@ -238,6 +240,13 @@ with tempfile.TemporaryDirectory() as temporary:
         assert gap == BADGE_GAP_PX, (badge_widget.kind, gap)
         assert rgba_hex(badge_widget.glyph_widget.get_color()) == expected_fg[badge_widget.kind]
         assert rgba_hex(badge_widget.label_widget.get_color()) == expected_fg[badge_widget.kind]
+
+    # Verify alias normalization and live label mutation API on StatusBadge.
+    alias_badge = StatusBadge("attention", "Initial")
+    assert alias_badge.kind == "needsAttention"
+    alias_badge.set_label("Recording 1:05")
+    assert alias_badge.get_label() == "Recording 1:05"
+    assert alias_badge.get_text() == "Recording 1:05"
 
     # Verify selected-row invariance: Needs attention is selected and keeps warn-ink, not row inherit.
     selected_row = window.rows.get_selected_row()

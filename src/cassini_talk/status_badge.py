@@ -91,6 +91,53 @@ def normalize_badge_kind(kind: str) -> str:
     return canonical
 
 
+def snapshot_badge_glyph(
+    snapshot: Gtk.Snapshot,
+    glyph_kind: str,
+    size_px: int,
+    color: Gdk.RGBA,
+    *,
+    width: int | None = None,
+    height: int | None = None,
+) -> None:
+    """Append GSK vector nodes for glyph_kind painted in color (currentColor)."""
+    box_w = size_px if width is None else width
+    box_h = size_px if height is None else height
+    if box_w <= 0 or box_h <= 0:
+        return
+    prims = _glyph_primitives()[glyph_kind]
+    snapshot.save()
+    if box_w != size_px or box_h != size_px:
+        snapshot.translate(Graphene.Point().init((box_w - size_px) / 2.0, (box_h - size_px) / 2.0))
+    if glyph_kind == "dot":
+        (circle,) = prims
+        snapshot.append_fill(circle, Gsk.FillRule.WINDING, color)
+    elif glyph_kind == "spinner":
+        ring, arc, ring_stroke, arc_stroke = prims
+        track_color = Gdk.RGBA()
+        track_color.red = color.red
+        track_color.green = color.green
+        track_color.blue = color.blue
+        track_color.alpha = color.alpha * BADGE_SPINNER_TRACK_ALPHA
+        scale = size_px / 16.0
+        snapshot.scale(scale, scale)
+        snapshot.append_stroke(ring, ring_stroke, track_color)
+        snapshot.append_stroke(arc, arc_stroke, color)
+    elif glyph_kind == "alert":
+        ring, stem, dot, ring_stroke, stem_stroke = prims
+        scale = size_px / 16.0
+        snapshot.scale(scale, scale)
+        snapshot.append_stroke(ring, ring_stroke, color)
+        snapshot.append_stroke(stem, stem_stroke, color)
+        snapshot.append_fill(dot, Gsk.FillRule.WINDING, color)
+    else:
+        arrow, arrow_stroke = prims
+        scale = size_px / 24.0
+        snapshot.scale(scale, scale)
+        snapshot.append_stroke(arrow, arrow_stroke, color)
+    snapshot.restore()
+
+
 class BadgeGlyph(Gtk.Widget):
     """GSK vector glyph painted in currentColor with no Cairo runtime dependency."""
 
@@ -111,42 +158,14 @@ class BadgeGlyph(Gtk.Widget):
         return (self.size_px, self.size_px, -1, -1)
 
     def do_snapshot(self, snapshot):
-        width = self.get_width()
-        height = self.get_height()
-        if width <= 0 or height <= 0:
-            return
-        color = self.get_color()
-        prims = _glyph_primitives()[self.glyph_kind]
-        snapshot.save()
-        if width != self.size_px or height != self.size_px:
-            snapshot.translate(Graphene.Point().init((width - self.size_px) / 2.0, (height - self.size_px) / 2.0))
-        if self.glyph_kind == "dot":
-            (circle,) = prims
-            snapshot.append_fill(circle, Gsk.FillRule.WINDING, color)
-        elif self.glyph_kind == "spinner":
-            ring, arc, ring_stroke, arc_stroke = prims
-            track_color = Gdk.RGBA()
-            track_color.red = color.red
-            track_color.green = color.green
-            track_color.blue = color.blue
-            track_color.alpha = color.alpha * BADGE_SPINNER_TRACK_ALPHA
-            scale = self.size_px / 16.0
-            snapshot.scale(scale, scale)
-            snapshot.append_stroke(ring, ring_stroke, track_color)
-            snapshot.append_stroke(arc, arc_stroke, color)
-        elif self.glyph_kind == "alert":
-            ring, stem, dot, ring_stroke, stem_stroke = prims
-            scale = self.size_px / 16.0
-            snapshot.scale(scale, scale)
-            snapshot.append_stroke(ring, ring_stroke, color)
-            snapshot.append_stroke(stem, stem_stroke, color)
-            snapshot.append_fill(dot, Gsk.FillRule.WINDING, color)
-        else:
-            arrow, arrow_stroke = prims
-            scale = self.size_px / 24.0
-            snapshot.scale(scale, scale)
-            snapshot.append_stroke(arrow, arrow_stroke, color)
-        snapshot.restore()
+        snapshot_badge_glyph(
+            snapshot,
+            self.glyph_kind,
+            self.size_px,
+            self.get_color(),
+            width=self.get_width(),
+            height=self.get_height(),
+        )
 
 
 class StatusBadge(Gtk.Box):
