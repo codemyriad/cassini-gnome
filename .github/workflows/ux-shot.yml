@@ -19,10 +19,12 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install GTK and pinned screenshot fonts
         run: |
-          sudo build-aux/ci/apt-install-bounded.sh gcc libc6-dev openbox x11-utils python3-gi python3-numpy gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good meson ninja-build gettext \
-            libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth xdotool dbus-x11 \
-            locales fontconfig python3-pil python3-pytest at-spi2-core gir1.2-atspi-2.0 libzstd1 fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
+          pkgs=(gcc libc6-dev openbox x11-utils python3-gi python3-numpy gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good meson ninja-build gettext
+            libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth xdotool dbus-x11
+            locales fontconfig python3-pil python3-pytest at-spi2-core gir1.2-atspi-2.0 libzstd1 fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1)
+          # A pool host's runner image holds all of them at these versions: no apt-get update then.
+          build-aux/ci/apt-satisfied.sh "${pkgs[@]}" || sudo build-aux/ci/apt-install-bounded.sh "${pkgs[@]}"
           command -v gh >/dev/null || sudo build-aux/ci/apt-install-bounded.sh gh
           sudo locale-gen en_GB.UTF-8 en_US.UTF-8
       - uses: actions/cache@v6

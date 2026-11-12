@@ -48,8 +48,13 @@ jobs:
       - run: python3 browser-protocol/verify.py --pinned browser-extension
       - run: npm ci --prefix tests/recording
       - run: echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"
+      # A self-hosted pool host may hold these already (build-aux/ci/pool-prefetch.sh); elsewhere all false.
+      - name: Use the pool host's browsers and audio-server image
+        id: prefetch
+        run: build-aux/ci/pool-prefetch.sh playwright audio >> "$GITHUB_OUTPUT"
       # The same key as deb.yml's browser startup job, so both share one entry.
       - uses: actions/cache@v6
+        if: steps.prefetch.outputs.playwright != 'true'
         with:
           path: ${{ runner.temp }}/ms-playwright
           key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}
@@ -146,9 +151,14 @@ jobs:
       - run: python3 browser-protocol/verify.py --pinned browser-extension
       - run: npm ci --prefix tests/recording
       - run: echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"
+      # A self-hosted pool host may hold these already (build-aux/ci/pool-prefetch.sh); elsewhere all false.
+      - name: Use the pool host's browsers and audio-server image
+        id: prefetch
+        run: build-aux/ci/pool-prefetch.sh playwright audio >> "$GITHUB_OUTPUT"
       # The same key as capture and deb.yml's browser startup job: one shared entry.
       # Restore only (D66): capture keeps the entry, so this job never saves one.
       - uses: actions/cache/restore@v6
+        if: steps.prefetch.outputs.playwright != 'true'
         with:
           path: ${{ runner.temp }}/ms-playwright
           key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}

@@ -57,7 +57,14 @@ load-module module-null-sink sink_name=cassini_microphone rate=48000 channels=1
 set-default-sink cassini_desktop
 set-default-source cassini_microphone.monitor
 PA
-build-aux/ci/docker-build-bounded.sh "recording audio server" docker build -q -t cassini-recording-test-audio -f tests/recording/Audio.Dockerfile tests/recording
+# The audio server image: prebuilt under its input-and-week tag when a pool host or an earlier call has it
+# (tests/recording/audio-image.sh, build-aux/ci/pool-prefetch.sh audio), otherwise built here.
+audio_image=$(tests/recording/audio-image.sh tag)
+if docker image inspect "$audio_image" >/dev/null 2>&1; then
+    docker tag "$audio_image" cassini-recording-test-audio
+else
+    build-aux/ci/docker-build-bounded.sh "recording audio server" docker build -q -t cassini-recording-test-audio -t "$audio_image" -f tests/recording/Audio.Dockerfile tests/recording
+fi
 docker run -d --name "$container" --network=none --user "$(id -u):$(id -g)" \
     -v "$runtime:/audio" cassini-recording-test-audio > /dev/null
 if ! /usr/bin/python3 tests/recording/pulse-ready.py "$runtime/pulse.sock"; then
