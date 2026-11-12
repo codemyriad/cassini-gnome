@@ -219,14 +219,31 @@ def application_activity(app, browser=None, fallback=()):
     """One controller projection for both immediate and periodic Library refresh."""
     snapshot = advance_capture_snapshot(app, getattr(app, "_browser_snapshot", {}))
     phases = app._browser_capture_phases
+    browser_stops = getattr(app, "_browser_stops", ())
+    stop_all_browser = None in browser_stops
+    stopping_ids = {
+        identifier for entry in browser_stops if isinstance(entry, str) and (identifier := meeting_id(Path(entry)))
+    }
     app_stands, sources = standing_broker_caches(app, browser)
     activity = {}
     if browser is None:
-        activity.update(fallback)
+        activity.update(
+            {
+                identifier: (
+                    "saving" if state == "recording" and (stop_all_browser or identifier in stopping_ids) else state
+                )
+                for identifier, state in dict(fallback).items()
+            }
+        )
     for source in sources:
         activity.update(
             {
-                identifier: "saving" if phases.get(identifier) == "stopping" else state
+                identifier: (
+                    "saving"
+                    if phases.get(identifier) == "stopping"
+                    or (state == "recording" and (stop_all_browser or identifier in stopping_ids))
+                    else state
+                )
                 for identifier, state in source.snapshot.items()
                 if phases.get(identifier) != "finished"
             }
@@ -238,7 +255,11 @@ def application_activity(app, browser=None, fallback=()):
         if browser_capture_busy(state) and isinstance(state.get("path"), str):
             identifier = meeting_id(Path(state["path"]))
             if identifier:
-                activity[identifier] = "saving" if state.get("stopping") else "recording"
+                saving = bool(state.get("stopping") or stop_all_browser or identifier in stopping_ids)
+                activity[identifier] = "saving" if saving else "recording"
+    for identifier in stopping_ids:
+        if phases.get(identifier) != "finished":
+            activity[identifier] = "saving"
     return activity
 
 

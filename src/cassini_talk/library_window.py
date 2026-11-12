@@ -709,6 +709,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         activity = application_activity(self.get_application(), self._activity_source, self._fixture_activity)
         if activity != self._activity:
             self._activity = activity
+            if self.snapshot is not None:
+                self._updated(getattr(self, "_source_snapshot", None) or self.snapshot)
             self.monitor.refresh_now()
         self._update_live()
 
@@ -759,11 +761,21 @@ class LibraryWindow(Adw.ApplicationWindow):
             )
             local_native = self.get_application().comfort._native_for(target) if target else native
             own_native = local_native is not None and local_native.pipeline is not None
-            browser = bool(target and self._activity_source and target.id in self._activity_source.snapshot)
+            browser = bool(
+                target
+                and target.lifecycle == "recording"
+                and self._activity_source
+                and self._activity.get(target.id, self._activity_source.snapshot.get(target.id)) == "recording"
+            )
+            stopping = bool(
+                (local_native is not None and local_native.stopping)
+                or (target and (target.lifecycle == "saving" or self._activity.get(target.id) == "saving"))
+            )
             ms = self.get_application().comfort.elapsed(target) if target else elapsed
-            controls["stack"].set_visible_child_name("live" if target or own_native else "record")
+            controls["stack"].set_visible_child_name("live" if target or own_native or stopping else "record")
             controls["timer"].set_label(fmt.live_badge(ms))
-            controls["stop"].set_sensitive((own_native and not local_native.stopping) or browser)
+            controls["stop"].set_label(text("states.badge.saving" if stopping else "common.stop"))
+            controls["stop"].set_sensitive(not stopping and ((own_native and not local_native.stopping) or browser))
             state = self.get_application().comfort.status(target) if target else {}
             controls["muted"].set_visible(bool(state.get("output_muted")))
             self.bind_spectrogram(controls["picture"], target, silent=bool(state.get("silent")))
@@ -786,7 +798,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         if not self.snapshot:
             return None
         live = [m for m in self.snapshot.meetings if m.lifecycle in ("recording", "saving")]
-        return min(live, key=lambda m: (m.started_at_ms is None, m.started_at_ms or 0, m.key)) if live else None
+        return (
+            min(live, key=lambda m: (m.lifecycle != "recording", m.started_at_ms is None, m.started_at_ms or 0, m.key))
+            if live
+            else None
+        )
 
     def open_live_recording(self):
         meeting = self.live_meeting()
@@ -1034,7 +1050,17 @@ class LibraryWindow(Adw.ApplicationWindow):
             ),
         )
 
+    def _project_activity(self, snapshot):
+        meetings = tuple(
+            replace(m, lifecycle="saving")
+            if m.origin == "own" and m.lifecycle == "recording" and self._activity.get(m.id) == "saving"
+            else m
+            for m in snapshot.meetings
+        )
+        return replace(snapshot, meetings=meetings) if meetings != snapshot.meetings else snapshot
+
     def _updated(self, snapshot):
+        snapshot = self._project_activity(snapshot)
         if recovery := getattr(self.get_application(), "library_recovery", None):
             recovery.observe(snapshot)
             snapshot = recovery.project(snapshot)
@@ -1275,7 +1301,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         trash_error = self.trash_error_line(meeting)
         if trash_error:
             self.preview.append(trash_error)
-        elif meeting.transcript in ("queued", "running"):
+        elif meeting.lifecycle == "saving" or meeting.transcript in ("queued", "running"):
             self.preview.append(label(meeting.badge().text, "dim-label", wrap=True, xalign=0))
         elif meeting.transcript == "failed":
             self.preview.append(
@@ -1459,6 +1485,7 @@ class LibraryWindow(Adw.ApplicationWindow):
 
             self.recording_page = RecordingPage(self, meeting)
             self.navigation.push(self.recording_page)
+            self._update_live()
             self._refresh_export()
             return
         if not self._ensure_player(meeting):
@@ -1470,6 +1497,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._connect_player()
         self.meeting_page = MeetingPage(self, meeting)
         self.navigation.push(self.meeting_page)
+        self._update_live()
         self._refresh_export()
 
     def search_button(self):

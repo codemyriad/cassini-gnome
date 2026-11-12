@@ -1246,6 +1246,7 @@ class CassiniApplication(Adw.Application):
             return
         self._browser_stops.add(key)
         self.hold()
+        self._native_changed()
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(
             stop_browser_captures,
@@ -1260,6 +1261,13 @@ class CassiniApplication(Adw.Application):
             def delivered():
                 try:
                     paths = result.result()
+                    phases = getattr(self, "_browser_capture_phases", None)
+                    if isinstance(phases, dict):
+                        from .library import meeting_id
+
+                        for path in paths:
+                            if identifier := meeting_id(Path(path)):
+                                phases[identifier] = "finished"
                     for path in paths:
                         self._notify_shortcut_saved(path)
                     if self.transcription_enabled:

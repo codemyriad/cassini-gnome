@@ -9,6 +9,7 @@ pytest.importorskip("gi")
 from test_browser_service import browser, service, wait_for  # noqa: E402, F401
 from test_library import capture  # noqa: E402
 from test_library_monitor import spin_until  # noqa: E402
+from test_voice_application import application_class  # noqa: E402, F401
 
 from cassini_talk.browser_service import send_packet  # noqa: E402
 from cassini_talk.capture_activity import BrowserActivity, read_browser_activity, recorder_activity  # noqa: E402
@@ -436,3 +437,130 @@ def test_an_older_activity_callback_still_advances_a_terminal_capture_fact():
     assert activity.snapshot == {} and activity.paths == {}
     assert activity._browser_capture_phases == {identifier: "finished"}
     assert changes == [{}]
+
+
+@pytest.mark.parametrize("targeted", [True, False])
+def test_browser_stop_projects_saving_on_click_frame_and_retires_stale_poll_on_delivery(
+    application_class,  # noqa: F811
+    tmp_path,
+    monkeypatch,
+    targeted,
+):
+    """While a long browser recording muxes its .opus on a worker thread, Stop must
+    project 'saving' synchronously on the click frame and retire stale 'recording'
+    polls once Stop succeeds, without sticking in 'saving' if the Stop RPC fails."""
+    import threading
+
+    from gi.repository import GLib
+
+    from cassini_talk import capture_guard
+    from cassini_talk.capture_activity import application_activity
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.library_window import LibraryWindow
+
+    session = capture(tmp_path, completed=False)
+    identifier = session.manifest["id"]
+    initial = LibraryScanner(tmp_path).scan(capture_activity={identifier: "recording"})
+    assert initial.meetings[0].lifecycle == "recording"
+
+    source = SimpleNamespace(
+        snapshot={identifier: "recording"},
+        paths={identifier: str(session.directory)},
+        connected=True,
+        answered_at=1.0,
+        _browser_capture_phases={},
+    )
+    app = SimpleNamespace(
+        _browser_snapshot=dict(statuses=[dict(recording=True, stopping=False, path=str(session.directory))]),
+        _browser_answered_at=1.0,
+        _browser_capture_phases={},
+        _browser_stops=set(),
+        _browser_stop_repeats={},
+        _record_start_group=None,
+        native_captures={},
+        library_recovery=None,
+        meeting_trash=SimpleNamespace(project=lambda snap: snap),
+        observe_library=lambda *_args: None,
+        transcription_enabled=False,
+        recording_error=None,
+        build_refresh=None,
+        _notify_shortcut_saved=lambda _path: None,
+    )
+    scans, live_updates, projected = [], [], []
+    window = SimpleNamespace(
+        get_application=lambda: app,
+        _activity_source=source,
+        _fixture_activity={},
+        _activity={identifier: "recording"},
+        _source_snapshot=initial,
+        snapshot=initial,
+        monitor=SimpleNamespace(refresh_now=lambda: scans.append(True)),
+        _update_live=lambda: live_updates.append(window.snapshot.meetings[0].lifecycle),
+    )
+    window._project_activity = LibraryWindow._project_activity.__get__(window)
+    window._updated = lambda snap: (
+        setattr(window, "snapshot", window._project_activity(snap))
+        or projected.append(window.snapshot.meetings[0].lifecycle)
+    )
+    window.capture_changed = LibraryWindow.capture_changed.__get__(window)
+    app.get_windows = lambda: [window]
+    app._native_changed = window.capture_changed
+    app.stop_browser_recordings = application_class.stop_browser_recordings.__get__(app)
+
+    # 1. Failed Stop RPC projects 'saving' while in flight, then rolls back to 'recording'.
+    fail_entered, release_fail = threading.Event(), threading.Event()
+    fail_loop = GLib.MainLoop()
+    fail_timed_out = []
+    fail_timeout = GLib.timeout_add_seconds(5, lambda: fail_timed_out.append(True) or fail_loop.quit() or False)
+
+    def failing_stop(*_args, **_kwargs):
+        fail_entered.set()
+        assert release_fail.wait(5)
+        raise OSError("Broker socket busy")
+
+    app.hold = lambda: None
+    app.release = fail_loop.quit
+    monkeypatch.setattr(capture_guard, "stop_browser_captures", failing_stop)
+    try:
+        app.stop_browser_recordings(session.directory if targeted else None)
+        # Synchronously on the click frame (before worker finishes or main loop runs):
+        assert window._activity == {identifier: "saving"}
+        assert window.snapshot.meetings[0].lifecycle == "saving"
+        assert live_updates[-1] == "saving"
+        assert fail_entered.wait(5)
+        release_fail.set()
+        fail_loop.run()
+        assert not fail_timed_out
+        assert application_activity(app, source) == {identifier: "recording"}
+    finally:
+        release_fail.set()
+        if not fail_timed_out:
+            GLib.source_remove(fail_timeout)
+
+    # 2. Successful Stop RPC projects 'saving' immediately and retires stale 'recording' polls on delivery.
+    mux_entered, release_mux = threading.Event(), threading.Event()
+    ok_loop = GLib.MainLoop()
+    ok_timed_out = []
+    ok_timeout = GLib.timeout_add_seconds(5, lambda: ok_timed_out.append(True) or ok_loop.quit() or False)
+
+    def muxing_stop(*_args, **_kwargs):
+        mux_entered.set()
+        assert release_mux.wait(5)
+        return [str(session.directory)]
+
+    app.release = ok_loop.quit
+    monkeypatch.setattr(capture_guard, "stop_browser_captures", muxing_stop)
+    try:
+        app.stop_browser_recordings(session.directory if targeted else None)
+        assert window._activity == {identifier: "saving"}
+        assert window.snapshot.meetings[0].lifecycle == "saving"
+        assert mux_entered.wait(5)
+        release_mux.set()
+        ok_loop.run()
+        assert not ok_timed_out
+        assert app._browser_capture_phases.get(identifier) == "finished"
+        assert application_activity(app, source) == {}
+    finally:
+        release_mux.set()
+        if not ok_timed_out:
+            GLib.source_remove(ok_timeout)
