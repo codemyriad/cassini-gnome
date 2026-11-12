@@ -157,7 +157,6 @@
   "test_voice_worker.py": 0.0,
   "test_whistle_fetch.py": 0.0,
   "test_whistle_spike.py": 0.8,
-  "test_window_dates.py": 0.0,
   "test_windowless.py": 0.0,
   "test_word_conformance.py": 0.0
  }

@@ -135,7 +135,7 @@ cd /
 PYTHONPATH=/build/dest/usr/share/cassini-talk python3 - <<"EOF"
 import sys
 assert sys.version_info >= (3, 11), "Python %s < 3.11" % sys.version.split()[0]
-from cassini_talk import colors, portable, runtime, summary, transcript  # GTK-free
+from cassini_talk import portable, runtime, summary, transcript  # GTK-free
 import gi
 for ns, v in [("Gtk", "4.0"), ("Gdk", "4.0"), ("Adw", "1"), ("Gst", "1.0"),
               ("Graphene", "1.0"), ("Pango", "1.0")]:

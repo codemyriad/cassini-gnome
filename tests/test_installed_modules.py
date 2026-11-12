@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 # Source-tree only, with the reason it is not installed.
-NOT_INSTALLED = {"cassini_talk/recording_window.py": "legacy window used only by tests/ui/quit.py"}
+NOT_INSTALLED: dict[str, str] = {}
 
 
 def test_every_cassini_talk_module_is_in_the_meson_install_list():

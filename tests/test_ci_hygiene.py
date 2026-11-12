@@ -1166,7 +1166,6 @@ def test_nightly_and_full_ci_perf_gates_are_wired_and_forwarded():
         "cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}" in trigger
     )
     assert "tests/ui/exact-transcript.py exact-results/exact.png" in exact
-    assert "tests/ui/exact-reader.py exact-results/reader.png" in exact
     assert 'if [ "${CASSINI_PERF_GATE:-}" = "1" ]; then\n            CASSINI_TRANSCRIPT_RENDER=listview' in exact
 
     for name in (

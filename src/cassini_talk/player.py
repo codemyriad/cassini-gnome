@@ -9,7 +9,6 @@
 from gi.repository import GLib, GObject, Gst
 
 from . import runtime
-from .i18n import gettext as _
 
 TICK_MS = 40
 _CONSUMED = object()  # An EOS tag already taken: no later EOS message can match it.
@@ -70,7 +69,7 @@ class Player(GObject.Object):
         # target plays to, or None to play freely. A dialog sample (play_range) takes precedence.
         self.span_follow = None
         # Why play() cannot start, or None once a file is loaded.
-        self._load_error: str | None = _("No recording is loaded.")
+        self._load_error: str | None = "No recording is loaded."
 
     @property
     def loaded(self) -> bool:
@@ -87,7 +86,7 @@ class Player(GObject.Object):
         if missing:
             # playbin would only say "missing plug-in"; name what to install.
             # Forget the previous file too, so play() cannot fall back to it.
-            self._load_error = _("Missing GStreamer elements: {elements}. Install {plugins}.").format(
+            self._load_error = "Missing GStreamer elements: {elements}. Install {plugins}.".format(
                 elements=", ".join(missing), plugins=runtime.GST_PLUGINS
             )
             self._pipeline.set_property("uri", "")
@@ -116,7 +115,7 @@ class Player(GObject.Object):
         if self._pipeline.set_state(state) == Gst.StateChangeReturn.FAILURE:
             # The bus usually holds the reason; take it so it is reported once.
             message = self._pipeline.get_bus().pop_filtered(Gst.MessageType.ERROR)
-            text = message.parse_error()[0].message if message else _("The audio could not be played.")
+            text = message.parse_error()[0].message if message else "The audio could not be played."
             self.stop()
             self.emit("error", text)
             return
@@ -135,7 +134,7 @@ class Player(GObject.Object):
         self._range_end = end_ms
         if not self.seek(start_ms):
             self.clear_range()
-            self.emit("error", _("The audio could not be played."))
+            self.emit("error", "The audio could not be played.")
             return False
         self.play()
         return self.playing
@@ -170,7 +169,7 @@ class Player(GObject.Object):
             self._pending_seek = start_ms
         elif not self._do_seek(start_ms):
             self.clear_span()
-            self.emit("error", _("The audio could not be played."))
+            self.emit("error", "The audio could not be played.")
             return False
         self.play()
         return self.playing

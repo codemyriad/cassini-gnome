@@ -1537,10 +1537,6 @@ tests/test_portable_dates.py,28,clock-read,gnome,review,after = datetime.now(UTC
 tests/test_portable_dates.py,31,temporal-assertion,gnome,review,assert (
 tests/test_postmerge_stop.py,268,bounded-wait,gnome,review,"assert capture.stop_requested.wait(3), ""Broker Stop waited for the stalled resume-refusal writer"""
 tests/test_postmerge_stop.py,336,bounded-wait,gnome,review,"callback, args = idle.get(timeout=BOUND)"
-tests/test_reader_loading.py,40,bounded-wait,gnome,review,assert release.wait(20)
-tests/test_reader_loading.py,73,bounded-wait,gnome,review,assert entered.wait(20)
-tests/test_reader_loading.py,77,bounded-wait,gnome,review,assert delivered.wait(20)
-tests/test_reader_loading.py,87,bounded-wait,gnome,review,worker.join(20)
 tests/test_record_after_stop.py,31,bounded-wait,gnome,review,assert ready.wait(2)
 tests/test_record_after_stop.py,45,bounded-wait,gnome,review,assert release.wait(10)
 tests/test_record_after_stop.py,61,bounded-wait,gnome,review,assert entered.wait(5) # ...and so is the old capture's publication.

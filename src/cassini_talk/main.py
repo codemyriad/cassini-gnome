@@ -35,7 +35,7 @@ gi.require_version("Gst", "1.0")
 
 from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 
-from .window import RESOURCE, CassiniWindow  # noqa: E402
+RESOURCE = "/io/codemyriad/CassiniTalk"
 
 
 class CassiniApplication(Adw.Application):
@@ -281,12 +281,6 @@ class CassiniApplication(Adw.Application):
                         other.pause()
 
         player.connect("notify::playing", playing_changed)
-
-    def new_window(self):
-        window = CassiniWindow(application=self)
-        if self.profile == "development":
-            window.add_css_class("devel")
-        return window
 
     def _restore_automatic(self):
         if self._resume_automatic:

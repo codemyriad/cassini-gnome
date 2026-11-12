@@ -39,12 +39,11 @@ def capture_targets(app):
     # Promote terminal facts before a Library observer can close, and project
     # every cache against the same knowledge for Quit and the panel indicator.
     advance_capture_snapshot(app, getattr(app, "_browser_snapshot", {}))
-    native = [w for w in app.get_windows() if recorder_busy(getattr(w, "recorder", None))]
-    native.extend(
+    native = [
         SimpleNamespace(recorder=recorder, open_result=False)
         for recorder in native_recorders(app)
         if recorder_busy(recorder)
-    )
+    ]
     # Only broker replies that stand count: each cache expires on its own
     # (broker_silent) and the newest reply among them wins.
     app_stands, sources = standing_broker_caches(app)
@@ -77,11 +76,9 @@ def refresh_capture_background(app):
             getattr(w, "_activity_source", None) is not None and getattr(w, "monitor", None) is not None
             for w in visible
         )
-        # A legacy player does not poll browser capture. Retain its hidden
-        # observer until another observer is visible or the capture is saved.
-        finished = [
-            w for w in hidden if not recorder_busy(getattr(w, "recorder", None)) and (not browser or browser_observed)
-        ]
+        # A secondary non-observer window does not poll browser capture. Retain
+        # the hidden observer until another observer is visible or capture saves.
+        finished = [w for w in hidden if not browser or browser_observed]
         finish_close(app, finished, background=True)
         if len(finished) < len(hidden):
             return True
@@ -185,14 +182,10 @@ def confirm_capture_close(app, window, *, quitting=False, force_stop=False):
 
     if getattr(app, "_capture_close_allowed", False):
         return False
-    # A secondary player/companion window does not own the Library's capture.
-    # Its close must not offer a default action that stops another window.
-    if (
-        not quitting
-        and not recorder_busy(getattr(window, "recorder", None))
-        and any(
-            w is not window and w.get_visible() and getattr(w, "monitor", None) is not None for w in app.get_windows()
-        )
+    # A secondary window does not own the Library's capture. Its close must not
+    # offer a default action that stops another visible Library window.
+    if not quitting and any(
+        w is not window and w.get_visible() and getattr(w, "monitor", None) is not None for w in app.get_windows()
     ):
         return False
     # The guard covers the dialog AND all asynchronous finalization, including

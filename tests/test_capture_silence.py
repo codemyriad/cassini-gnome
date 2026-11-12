@@ -18,10 +18,9 @@ GStreamer. The broker drops a side's PCM until that side commits (R79 §1), and
 its commit writes durable checkpoints: its stand-in sends its BUFFERS only once
 the side has committed, so no fsync latency decides how much is recorded.
 
-The legacy Recorder (recorder.Recorder, Ogg Opus) is not covered here: only
-recording_window.py uses it, and that window is not installed (see
-test_installed_modules.NOT_INSTALLED). test_capture_convert still runs its
-capture_pipeline conversion chain.
+The legacy Recorder (recorder.Recorder, Ogg Opus) is not covered here: no live
+user path reaches it. test_capture_convert still runs its capture_pipeline
+conversion chain.
 """
 
 import array
