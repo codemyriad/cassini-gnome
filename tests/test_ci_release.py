@@ -239,10 +239,26 @@ def news_version(root):
 def test_the_tag_workflow_publishes_the_news_section_as_release_notes():
     root = Path(__file__).parents[1]
     workflow = (root / ".github/workflows/release.yml").read_text()
+    assert 'python3 build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > /dev/null' in workflow
     assert 'build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > notes.md' in workflow
     assert "--notes-file notes.md --generate-notes" in workflow
     version = news_version(root)
     assert module("release_notes").notes((root / "NEWS").read_text(), version).strip()
+
+
+def test_stable_release_notes_refuse_missing_placeholder_or_developer_text():
+    rn = module("release_notes")
+    for bad_body in (
+        "Not released yet.",
+        "- Fix crash from #392.",
+        "- Enforce D95 parity.",
+        "- Keep CI green on rolling distros.",
+        "- Please log out and back in.",
+        "- Update Cassini's panel menu.",
+    ):
+        news = f"Version 1.2.3\n~~~~~~~~~~~~~\nReleased: 2026-11-12\n\n{bad_body}\n"
+        with pytest.raises(ValueError):
+            rn.notes(news, "1.2.3")
 
 
 def test_release_sums_cover_exactly_the_five_packages_by_name(tmp_path):
