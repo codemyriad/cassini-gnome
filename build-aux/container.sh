@@ -24,7 +24,7 @@ fi
 # so files written to bind mounts are already owned by the caller; with docker
 # the scripts chown their output themselves.
 container_run() {
-  "$CONTAINER_ENGINE" run --rm --network host "$@"
+  "$CONTAINER_ENGINE" run --rm --network host ${CASSINI_PERF_GATE:+-e CASSINI_PERF_GATE="$CASSINI_PERF_GATE"} "$@"
 }
 
 # Append to bind-mount options so SELinux hosts (Fedora, RHEL) let the

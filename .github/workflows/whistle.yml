@@ -10,6 +10,7 @@ permissions:
   contents: read
 env:
   CASSINI_HARNESS_BASES: ubuntu:26.04@sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6 debian:testing@sha256:bdb44a6e90e7ee02e032121a81fae9f945ce86b9454c6d0d71bc43cb595ba17f
+  CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
 jobs:
   pinned-offline-recognition:
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
