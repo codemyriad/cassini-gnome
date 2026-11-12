@@ -1,0 +1,63 @@
+name: CI build images
+
+# Publishes the prebuilt build-dependency images the package and source jobs start from
+# (build-aux/ci/ci-image.sh, ghcr.io/codemyriad/cassini-gnome-ci): only from main and the nightly schedule,
+# never from a pull request, so a PR that changes a dependency builds from the raw base. An existing tag is
+# never overwritten; the nightly run only fills the tags of a new ISO week. Each base is the pinned digest the
+# consuming workflow uses (tests/test_ci_hygiene.py keeps the lists equal); a base missing here only means
+# its job installs from scratch as before.
+on:
+  push:
+    branches: [main]
+    paths:
+      - build-aux/ci/ci-image.sh
+      - build-aux/deb/Dockerfile
+      - debian/control
+      - build-aux/rpm/cassini-talk.spec
+      - build-aux/ci/prepare_tumbleweed.sh
+      - build-aux/install-deps.sh
+      - .github/workflows/ci-images.yml
+  schedule:
+    - cron: "40 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-images
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.kind }} image (${{ matrix.base }})
+    # Holds a packages: write token: never on the pool.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { kind: deb, base: "ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96" }
+          - { kind: deb, base: "debian:testing@sha256:2d46f43b677a047cfab870549eea0d83d0a9bea2f55b3f481efc901043916c2a" }
+          - { kind: rpm, base: "fedora:44@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e" }
+          - { kind: rpm, base: "registry.opensuse.org/opensuse/tumbleweed:latest@sha256:27356084647aa08ad9e9c5e0ebfd2742f9f65279860e862b3a65148450c113da" }
+          - { kind: source, base: "ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96" }
+          - { kind: source, base: "debian:testing@sha256:2d46f43b677a047cfab870549eea0d83d0a9bea2f55b3f481efc901043916c2a" }
+          - { kind: source, base: "fedora:44@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e" }
+          - { kind: source, base: "fedora:latest@sha256:a7d72ba2745b100a3351087472e5ee7b2450af7cf331e7673007e3817612839c" }
+          - { kind: source, base: "registry.opensuse.org/opensuse/tumbleweed:latest@sha256:27356084647aa08ad9e9c5e0ebfd2742f9f65279860e862b3a65148450c113da" }
+          - { kind: source, base: "archlinux:latest@sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899" }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build, check for secrets and push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: build-aux/ci/ci-image.sh publish "${{ matrix.kind }}" "${{ matrix.base }}"

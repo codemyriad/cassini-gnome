@@ -1476,6 +1476,7 @@ def test_daily_test_release_nocheck_only_for_ubuntu_deb_and_fedora_rpm_and_keeps
     for rel in (
         "build-aux/container.sh",
         "build-aux/ci/retry.sh",
+        "build-aux/ci/ci-image.sh",
         "build-aux/deb/build.sh",
         "build-aux/deb/Dockerfile",
         "build-aux/rpm/build.sh",
