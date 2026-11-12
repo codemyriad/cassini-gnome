@@ -1439,3 +1439,95 @@ def test_labeled_pr_isolation_and_full_dag_across_events():
     regressed_release["deb"] = (["main-inputs"], "always() && needs.main-inputs.result == 'success'")
     regressed_release["packages"] = (["main-inputs"], "always() && needs.main-inputs.result == 'success'")
     assert _simulate_dag(regressed_release, event="push", action="")["publish"] == "skipped"
+
+
+def test_prepare_tumbleweed_origin_and_cdn_fallback(tmp_path):
+    script = ROOT / "build-aux/ci/prepare_tumbleweed.sh"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log_file = tmp_path / "zypper.log"
+    fake_zypper = bin_dir / "zypper"
+    fake_zypper.write_text(
+        "#!/bin/sh\n"
+        "set -eu\n"
+        'repos_state=$(grep "^baseurl=" "$CASSINI_ZYPP_REPOS_DIR"/oss.repo)\n'
+        'printf "%s|%s\\n" "$*" "$repos_state" >> "$ZYPPER_LOG"\n'
+        'case "$*|$repos_state" in\n'
+        "  *refresh*|*dist-upgrade*)\n"
+        "    for bad in ${FAIL_HOSTS:-}; do\n"
+        '      case "$repos_state" in *"https://${bad}/"*) exit 4 ;; esac\n'
+        "    done\n"
+        "    ;;\n"
+        "esac\n"
+    )
+    fake_zypper.chmod(0o755)
+
+    def make_env(os_id: str, fail_hosts: str = ""):
+        case_dir = tmp_path / f"case_{os_id}_{fail_hosts.replace(' ', '_') or 'ok'}"
+        repos = case_dir / "repos.d"
+        repos.mkdir(parents=True, exist_ok=True)
+        os_release = case_dir / "os-release"
+        os_release.write_text(f"ID={os_id}\n")
+        (repos / "oss.repo").write_text(
+            "[repo-oss]\nenabled=1\nbaseurl=http://download.opensuse.org/tumbleweed/repo/oss/\ngpgcheck=1\n"
+        )
+        (repos / "openh264.repo").write_text(
+            "[repo-openh264]\nenabled=1\nbaseurl=http://codecs.opensuse.org/openh264/openSUSE_Tumbleweed\ngpgcheck=1\n"
+        )
+        log_file.write_text("")
+        env = dict(
+            os.environ,
+            PATH=f"{bin_dir}:{os.environ.get('PATH', '')}",
+            CASSINI_OS_RELEASE=str(os_release),
+            CASSINI_ZYPP_REPOS_DIR=str(repos),
+            ZYPPER_LOG=str(log_file),
+            FAIL_HOSTS=fail_hosts,
+        )
+        return repos, env
+
+    # 1. Non-Tumbleweed container exits 0 without touching repo files or calling zypper.
+    repos, env = make_env("fedora")
+    res = subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True)
+    assert res.returncode == 0
+    assert log_file.read_text() == ""
+    assert "http://download.opensuse.org/" in (repos / "oss.repo").read_text()
+
+    # 2. Healthy origin (downloadcontent.opensuse.org) succeeds without fallback and preserves custom repos/gpgcheck.
+    repos, env = make_env("opensuse-tumbleweed")
+    res = subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True)
+    assert res.returncode == 0
+    assert "baseurl=https://downloadcontent.opensuse.org/tumbleweed/repo/oss/" in (repos / "oss.repo").read_text()
+    assert "gpgcheck=1" in (repos / "oss.repo").read_text()
+    assert "baseurl=http://codecs.opensuse.org/openh264/openSUSE_Tumbleweed" in (repos / "openh264.repo").read_text()
+    assert log_file.read_text().splitlines() == [
+        "--non-interactive refresh|baseurl=https://downloadcontent.opensuse.org/tumbleweed/repo/oss/",
+        "--non-interactive dist-upgrade --no-recommends --no-allow-vendor-change|baseurl=https://downloadcontent.opensuse.org/tumbleweed/repo/oss/",
+    ]
+
+    # 3. Origin 503 (exit 4 on downloadcontent.opensuse.org) cleans metadata and falls back to cdn.opensuse.org,
+    #    leaving oss.repo pointed at cdn.opensuse.org for subsequent zypper install steps.
+    repos, env = make_env("opensuse-tumbleweed", fail_hosts="downloadcontent.opensuse.org")
+    res = subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True)
+    assert res.returncode == 0
+    assert "downloadcontent.opensuse.org failed (exit 4)" in res.stderr
+    assert "baseurl=https://cdn.opensuse.org/tumbleweed/repo/oss/" in (repos / "oss.repo").read_text()
+    assert "baseurl=http://codecs.opensuse.org/openh264/openSUSE_Tumbleweed" in (repos / "openh264.repo").read_text()
+    assert log_file.read_text().splitlines() == [
+        "--non-interactive refresh|baseurl=https://downloadcontent.opensuse.org/tumbleweed/repo/oss/",
+        "--non-interactive clean --all|baseurl=https://downloadcontent.opensuse.org/tumbleweed/repo/oss/",
+        "--non-interactive refresh|baseurl=https://cdn.opensuse.org/tumbleweed/repo/oss/",
+        "--non-interactive dist-upgrade --no-recommends --no-allow-vendor-change|baseurl=https://cdn.opensuse.org/tumbleweed/repo/oss/",
+    ]
+
+    # 4. Both origin and CDN failing falls back to download.opensuse.org; all three failing propagates zypper exit 4.
+    repos, env = make_env("opensuse-tumbleweed", fail_hosts="downloadcontent.opensuse.org cdn.opensuse.org")
+    res = subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True)
+    assert res.returncode == 0
+    assert "baseurl=https://download.opensuse.org/tumbleweed/repo/oss/" in (repos / "oss.repo").read_text()
+
+    repos, env = make_env(
+        "opensuse-tumbleweed",
+        fail_hosts="downloadcontent.opensuse.org cdn.opensuse.org download.opensuse.org",
+    )
+    res = subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True)
+    assert res.returncode == 4
