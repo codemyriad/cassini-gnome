@@ -20,6 +20,25 @@ BUILD_PRODUCTS = {"ci-core", "ci-boards", "ci-offline"}
 # Jobs a release needs to have run, not merely not failed: since H the Meson
 # tests are a job of their own beside Build's products (ci.yml callers' names).
 REQUIRED_JOBS = ("Build / ", "Meson tests / ")
+# Non-two-distro rolling/packaging legs that ci.yml skips on a main push (#387).
+# Unattended daily test releases build their own .deb/.rpm/Arch packages and do
+# not ship Flatpak; stable tags still require validate_jobs (every job green).
+TEST_RELEASE_SKIPPABLE_JOBS = frozenset(
+    {
+        "Flatpak",
+        "Flatpak / Flatpak",
+        "RPM and Arch packages / Build Arch package",
+    }
+)
+TEST_RELEASE_SKIPPABLE_PREFIXES = (
+    "Debian package / Build .deb (debian:testing",
+    "RPM and Arch packages / Build .rpm (registry.opensuse.org/opensuse/tumbleweed",
+    "Source / Build and test on debian:testing",
+    "Source / Build and test on registry.opensuse.org/opensuse/tumbleweed",
+    "Source / Build and test on archlinux:",
+    "Source / Build and test on fedora:latest",
+    "Source / Build and test on alpine:edge",
+)
 
 
 def api(repo, path):
@@ -55,13 +74,34 @@ def select_runs(runs, commit):
 
 def validate_jobs(jobs, url):
     # A continue-on-error or skipped matrix job must not silently supply release inputs.
-    if not jobs or any(j.get("conclusion") != "success" for j in jobs):
+    if not jobs or any(j.get("status", "completed") != "completed" or j.get("conclusion") != "success" for j in jobs):
         raise ValueError(
             f"Every main job must succeed before release (run full main CI via 'gh workflow run ci.yml --ref main' if only the two-distro push gate ran): {url}"
         )
     for prefix in REQUIRED_JOBS:
         if not any(j.get("name", "").startswith(prefix) for j in jobs):
             raise ValueError(f"No {prefix.removesuffix(' / ')} job in this main run: {url}")
+
+
+def _skippable_for_test_release(name):
+    return name in TEST_RELEASE_SKIPPABLE_JOBS or name.startswith(TEST_RELEASE_SKIPPABLE_PREFIXES)
+
+
+def validate_test_release_jobs(jobs, url):
+    if not jobs:
+        raise ValueError(f"No main jobs recorded for test release: {url}")
+    for job in jobs:
+        if job.get("status", "completed") != "completed":
+            raise ValueError(f"Main job is not completed ({job.get('name')}): {url}")
+        conclusion = job.get("conclusion")
+        if conclusion == "success":
+            continue
+        if conclusion == "skipped" and _skippable_for_test_release(job.get("name", "")):
+            continue
+        raise ValueError(f"Main gate job did not succeed ({job.get('name')}: {conclusion}): {url}")
+    for prefix in REQUIRED_JOBS:
+        if not any(j.get("name", "").startswith(prefix) and j.get("conclusion") == "success" for j in jobs):
+            raise ValueError(f"No green {prefix.removesuffix(' / ')} job in this main run: {url}")
 
 
 def validate_artifacts(artifacts):
