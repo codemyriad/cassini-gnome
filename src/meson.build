@@ -57,7 +57,6 @@ launcher = configure_file(
 
 talk_sources = files(
   'cassini_talk/__init__.py',
-  'cassini_talk/colors.py',
   'cassini_talk/main.py',
   'cassini_talk/identity.py',
   'cassini_talk/main_loop_watchdog.py',
@@ -249,7 +248,6 @@ talk_sources = files(
   'cassini_talk/summary.py',
   'cassini_talk/transcript.py',
   'cassini_talk/readable.py',
-  'cassini_talk/window.py',
 )
 install_data(talk_sources, install_dir: moduledir)
 

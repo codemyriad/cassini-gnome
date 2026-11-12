@@ -380,21 +380,18 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.meeting_page.meeting.directory == session.directory
     window.back_to_library()
     assert any(m.title == changed["title"] for m in window.snapshot.meetings)
-    # Real confirmation widgets, deterministic controller double; no device access.
-    recording = Adw.ApplicationWindow(application=app)
 
+    # Real confirmation widgets, deterministic controller double; no device access.
     class Controller(GObject.Object):
         __gsignals__ = {name: (GObject.SignalFlags.RUN_LAST, None, (str,)) for name in ("finished", "error")}
         pipeline = object()
 
         def stop(self):
             self.pipeline = None
-            GLib.idle_add(lambda: (self.emit("finished", str(Path(temporary) / "legacy.opus")), False)[1])
+            GLib.idle_add(lambda: (self.emit("finished", str(session.directory)), False)[1])
 
     recorder = Controller()
-    recording.recorder = recorder
-    recording.present()
-    until(recording.get_mapped)
+    app.recorder = recorder
     app.on_quit()
     assert app._capture_confirmation
     dialog = app._capture_confirmation

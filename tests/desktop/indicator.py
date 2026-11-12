@@ -507,8 +507,17 @@ for appid in appids:
         raise
     until(lambda appid=appid: idle_notifications(appid), "still-running notification")
     assert idle_notifications(appid) == 1
-    idle = indicator(appid)
-    assert idle["mapped"] and idle["title"] == "Ready to record browser meetings", idle
+    idle = until(
+        lambda appid=appid: (
+            item
+            if (item := indicator(appid))
+            and item.get("visible")
+            and item.get("mapped")
+            and item.get("title") == "Ready to record browser meetings"
+            else None
+        ),
+        "idle SNI title",
+    )
     assert idle["label"] == "", "an idle panel item shows only the icon"
     assert "Stop Recording" not in idle["menu"], idle
     screenshot("indicator-idle-" + appid + ".png")
@@ -518,10 +527,20 @@ for appid in appids:
     until(lambda appid=appid: not (indicator(appid) or {}).get("visible"), "idle SNI hidden with Library visible")
     action(appid, "record")
     manifest = wait_for_recording(root, appid, "recorded microphone frames")
+    # NewStatus("Active") and XAyatanaNewLabel carry inline values and flip visible
+    # before NewTitle()'s asynchronous Properties.Get("Title") round-trip returns;
+    # wait for the refreshed recording title just as browser_only() does at :435.
     live = until(
-        lambda appid=appid: indicator(appid) if (indicator(appid) or {}).get("visible") else None, "recording SNI"
+        lambda appid=appid: (
+            item
+            if (item := indicator(appid))
+            and item.get("visible")
+            and item.get("mapped")
+            and item.get("title", "").startswith("Recording,")
+            else None
+        ),
+        "recording SNI",
     )
-    assert live["mapped"] and live["title"].startswith("Recording,"), live
     # The text GNOME actually renders beside the icon (XAyatanaLabel), not
     # only the item's Title: it must show the timer and keep advancing.
     first = until(lambda appid=appid: (indicator(appid) or {}).get("label"), "rendered panel timer")

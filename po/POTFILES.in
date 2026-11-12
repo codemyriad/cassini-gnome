@@ -2,14 +2,10 @@
 data/io.codemyriad.CassiniTalk.desktop.in
 data/io.codemyriad.CassiniTalk.metainfo.xml.in
 data/io.codemyriad.CassiniTalk.gschema.xml
-src/ui/window.ui
 src/shortcuts-dialog.ui
 src/cassini_talk/main.py
-src/cassini_talk/player.py
-src/cassini_talk/window.py
 src/cassini_talk/meeting_text.py
 src/cassini_talk/recorder.py
-src/cassini_talk/recording_window.py
 src/cassini_talk/browser_notifications.py
 src/cassini_talk/export_dialog.py
 src/cassini_talk/library_window.py
