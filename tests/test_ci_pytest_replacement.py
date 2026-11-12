@@ -40,8 +40,14 @@ FILES = (
 OPTIONAL = ("debian/clean", "debian/patches/series", "pytest.ini", ".pytest.ini", "pytest.toml", ".pytest.toml")
 OPTIONAL += ("tox.ini", "setup.cfg", "conftest.py")
 OS_RELEASE = "cp /etc/os-release /logs/os-release  # G11: the image that ran the tests"
-# The Source images that keep their pytest suite: no package job uses them.
-KEEPS_PYTEST = {"fedora:latest", "alpine:edge"}
+# The Source images that keep their pytest suite per tier: no package job uses
+# fedora:latest or alpine:edge on full runs, and fedora:44 is the non-package
+# reference on two-distro PR/push runs.
+KEEPS_PYTEST = {"full": {"fedora:latest", "alpine:edge"}, "pr": {"fedora:44"}}
+FULL_CI_EXPR = (
+    "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || "
+    "(github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))"
+)
 
 RULES_CHECK = [
     "override_dh_auto_test:",
@@ -89,7 +95,8 @@ SOURCE_STEP = """
           path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
 """
-GATE = """
+GATE = (
+    """
   pytest-coverage:
     name: Pytest coverage
     needs: [source, deb, rpm-arch, meson-tests]
@@ -103,7 +110,9 @@ GATE = """
           pattern: pytest-*
           path: ${{ runner.temp }}/pytest
       - name: Every skipped pytest suite ran in full in a package job of the same release
-        run: python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/pytest"
+        run: python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/pytest" --tier ${{ ("""
+    + FULL_CI_EXPR
+    + """) && 'full' || 'pr' }}
       - name: Source and package callers ran and passed
         if: ${{ !cancelled() }}
         env:
@@ -122,6 +131,7 @@ GATE = """
           MESON_TESTS: ${{ needs.meson-tests.result }}
         run: test "$MESON_TESTS" = success || { echo "::error::Meson tests $MESON_TESTS, not success"; exit 1; }
 """
+)
 PYTEST_OPTIONS = {"faulthandler_timeout": 30, "pythonpath": ["src"], "testpaths": ["tests"]}
 BUILDS = {
     "deb": ('build-aux/deb/build.sh "${{ matrix.base }}"', "build-aux/deb/build.sh", "dpkg-buildpackage -us -uc -b"),
@@ -247,17 +257,40 @@ def arch_array(pkgbuild, name):
     return {re.split(r"[<>=]", word.strip("'\""))[0] for word in words}
 
 
+def parse_tier_json(block, key):
+    match = re.search(
+        rf"^        {key}: \$\{{\{{ inputs\.full_ci && fromJSON\('([^']+)'\) \|\| fromJSON\('([^']+)'\) \}}\}}$",
+        block,
+        re.M,
+    )
+    if match is None:
+        return None, None
+    try:
+        return json.loads(match[1]), json.loads(match[2])
+    except ValueError:
+        return None, None
+
+
 def problems(files):
     found = []
     source = jobs(files[".github/workflows/source.yml"])["distros"]
     if re.search(r"^    (?:if|needs):", source, re.M) or "exclude:" in source or "continue-on-error" in source:
         found.append("Source job or matrix can omit coverage proofs")
-    entries = re.findall(r'^          - image: (\S+)\n(?:            pytest-in: "([^"]+)"\n)?', source, re.M)
-    skipped = {image: job for image, job in entries if job}
-    if {image for image, job in entries if not job} != KEEPS_PYTEST:
-        found.append(f"Source keeps pytest on {sorted(i for i, j in entries if not j)}, not {sorted(KEEPS_PYTEST)}")
-    if len([line for line in code(source.splitlines()) if "pytest-in:" in line]) != len(skipped):
-        found.append("Source has a pytest-in this guard cannot read")
+    source_full, source_pr = parse_tier_json(source, "include")
+    if not source_full or not source_pr:
+        found.append("Source matrix does not declare both full and pr tiers through inputs.full_ci")
+        source_full, source_pr = [], []
+    for tier_name, entries in (("full", source_full), ("pr", source_pr)):
+        if not entries:
+            continue
+        if any(not isinstance(e, dict) or not ({"image"} <= set(e) <= {"image", "pytest-in"}) for e in entries):
+            found.append(f"Source {tier_name} tier has a key this guard cannot read")
+            continue
+        kept = {e["image"] for e in entries if not e.get("pytest-in")}
+        if kept != KEEPS_PYTEST[tier_name]:
+            found.append(f"Source ({tier_name}) keeps pytest on {sorted(kept)}, not {sorted(KEEPS_PYTEST[tier_name])}")
+    if len([line for line in code(source.splitlines()) if re.search(r'["\']?pytest-in["\']?\s*:', line)]) != 1:
+        found.append("Source has a pytest-in outside the matrix expression")
     if source.count("CASSINI_SKIP_PYTEST:") != 1 or SKIP_ENV not in source:
         found.append("Source skips pytest other than through the job's pytest-in")
     if (
@@ -294,6 +327,8 @@ def problems(files):
         block = ci[caller]
         if re.search(r"^    (?:if|needs):", block, re.M):
             found.append(f"ci.yml: {caller} depends on selection or another job")
+        if caller != "meson-tests" and f"    with:\n      full_ci: ${{{{ {FULL_CI_EXPR} }}}}\n" not in block + "\n":
+            found.append(f"ci.yml: {caller} does not pass the shared full_ci tier expression")
     # The job's own lines: the comment that follows introduces the next job.
     if "\n" + ci.get("pytest-coverage", "").split("\n  #")[0].rstrip("\n") + "\n" != GATE:
         found.append("ci.yml: the Pytest coverage gate is missing or changed")
@@ -305,28 +340,51 @@ def problems(files):
         "rpm": jobs(files[".github/workflows/packages.yml"])["rpm"],
         "arch": jobs(files[".github/workflows/packages.yml"])["arch"],
     }
+    deb_full, deb_pr = parse_tier_json(workflows["deb"], "base")
+    rpm_full, rpm_pr = parse_tier_json(workflows["rpm"], "include")
+    if deb_full != ["ubuntu:26.04", "debian:testing"] or deb_pr != ["ubuntu:26.04"]:
+        found.append(f"deb: unexpected tier matrix full={deb_full!r} pr={deb_pr!r}")
+    if (
+        rpm_pr != [{"base": "fedora:44", "name": "fedora"}]
+        or not rpm_full
+        or {r.get("base") for r in rpm_full}
+        != {
+            "fedora:44",
+            "registry.opensuse.org/opensuse/tumbleweed:latest",
+        }
+    ):
+        found.append(f"rpm: unexpected tier matrix full={rpm_full!r} pr={rpm_pr!r}")
     named = set()
-    for image, job in skipped.items():
-        if job == f"Debian package / Build .deb ({image})":
-            ok = re.search(rf'matrix:\n        base: \[[^\]]*"{re.escape(image)}"', workflows["deb"])
-            named.add("deb")
-        elif job == f"RPM and Arch packages / Build .rpm ({image})":
-            ok = f"          - base: {image}\n" in workflows["rpm"]
-            named.add("rpm")
-        elif job == "RPM and Arch packages / Build Arch package":
-            ok = f"BASE=${{1:-{image}}}" in files["build-aux/arch/build.sh"]
-            named.add("arch")
-        else:
-            ok = False
-        if not ok:
-            found.append(f"{image}: pytest-in {job!r} is not a package job built from that image")
+    for tier_name, entries, deb_list, rpm_list, has_arch in (
+        ("full", source_full, deb_full or [], [r.get("base") for r in (rpm_full or [])], True),
+        ("pr", source_pr, deb_pr or [], [r.get("base") for r in (rpm_pr or [])], False),
+    ):
+        for entry in entries:
+            if not isinstance(entry, dict) or not entry.get("pytest-in"):
+                continue
+            image, job = entry["image"], entry["pytest-in"]
+            if job == f"Debian package / Build .deb ({image})":
+                ok = image in deb_list
+                named.add("deb")
+            elif job == f"RPM and Arch packages / Build .rpm ({image})":
+                ok = image in rpm_list
+                named.add("rpm")
+            elif job == "RPM and Arch packages / Build Arch package":
+                ok = has_arch and f"BASE=${{1:-{image}}}" in files["build-aux/arch/build.sh"]
+                named.add("arch")
+            else:
+                ok = False
+            if not ok:
+                found.append(f"{tier_name} {image}: pytest-in {job!r} is not a package job built from that image")
 
     # The named jobs are required, build with checks on, and prove the run.
     for kind in sorted(named):
         block, (call, script, command) = workflows[kind], BUILDS[kind]
         if "continue-on-error" in block:
             found.append(f"{kind}: the job that runs Source's pytest has continue-on-error")
-        if re.search(r"^    if:", block, re.M) or "exclude:" in block or (kind == "deb" and "include:" in block):
+        job_ifs = re.findall(r"^    if: (.+)$", block, re.M)
+        allowed_ifs = ["${{ inputs.full_ci }}"] if kind == "arch" else []
+        if job_ifs != allowed_ifs or "exclude:" in block or (kind == "deb" and "include:" in block):
             found.append(f"{kind}: the job or its matrix can leave a build out")
         if not re.search(rf"\n      - run: {re.escape(call)}\n(?!        )", block):
             found.append(f"{kind}: the job does not run {call} unconditionally")
@@ -493,6 +551,7 @@ MUTATIONS = {
         "gir1.2-gtk-4.0 <pkg.cassini.never>",
     ),
     "deb image gone": ("deb.yml", '["ubuntu:26.04", "debian:testing"]', '["ubuntu:26.04"]'),
+    "pr deb image gone": ("deb.yml", "fromJSON('[\"ubuntu:26.04\"]')", "fromJSON('[]')"),
     "rpm --no-suite": (
         "build-aux/rpm/cassini-talk.spec",
         "%meson_test --num-processes=2\n",
@@ -518,8 +577,13 @@ MUTATIONS = {
     "rpm check step dropped": ("packages.yml", CHECK_STEP, "\n", 0),
     "tumbleweed image gone": (
         "packages.yml",
-        "          - base: registry.opensuse.org/opensuse/tumbleweed:latest\n",
-        "          - base: opensuse/leap:16.0\n",
+        '{"base":"registry.opensuse.org/opensuse/tumbleweed:latest","name":"opensuse"}',
+        '{"base":"opensuse/leap:16.0","name":"opensuse"}',
+    ),
+    "pr rpm image gone": (
+        "packages.yml",
+        'fromJSON(\'[{"base":"fedora:44","name":"fedora"}]\')',
+        "fromJSON('[]')",
     ),
     "arch --no-suite": (
         "build-aux/arch/PKGBUILD",
@@ -539,8 +603,13 @@ MUTATIONS = {
     "arch image moved": ("build-aux/arch/build.sh", "BASE=${1:-archlinux:latest}", "BASE=${1:-archlinux:base}"),
     "source keeps fedora skip": (
         "source.yml",
-        "          - image: fedora:latest\n",
-        '          - image: fedora:latest\n            pytest-in: "RPM and Arch packages / Build .rpm (fedora:latest)"\n',
+        '{"image":"fedora:latest"}',
+        '{"image":"fedora:latest","pytest-in":"RPM and Arch packages / Build .rpm (fedora:latest)"}',
+    ),
+    "source pr fedora skip": (
+        "source.yml",
+        '{"image":"fedora:44"}',
+        '{"image":"fedora:44","pytest-in":"RPM and Arch packages / Build .rpm (fedora:44)"}',
     ),
     "source names a wrong job": (
         "source.yml",
@@ -597,11 +666,15 @@ MUTATIONS = {
         "  rpm:\n    name:",
         "  rpm:\n    if: github.event_name != 'pull_request'\n    name:",
     ),
-    "arch job if": ("packages.yml", "  arch:\n    name:", "  arch:\n    if: github.event_name == 'push'\n    name:"),
+    "arch job if": (
+        "packages.yml",
+        "    if: ${{ inputs.full_ci }}\n",
+        "    if: github.event_name == 'push'\n",
+    ),
     "deb matrix exclude": (
         "deb.yml",
-        '["ubuntu:26.04", "debian:testing"]\n',
-        '["ubuntu:26.04", "debian:testing"]\n        exclude:\n          - base: debian:testing\n',
+        "      fail-fast: false\n",
+        "      fail-fast: false\n      exclude:\n        - base: debian:testing\n",
     ),
     "deb build step conditional": (
         "deb.yml",
@@ -656,10 +729,20 @@ MUTATIONS = {
         'test "$MESON_TESTS" != failure ||',
     ),
     "pr-paths packages not always": ("build-aux/ci/pr-paths.json", '    "packages",\n', ""),
-    "source fedora single-quoted pytest-in": (
+    "source unknown matrix key": (
         "source.yml",
-        "          - image: fedora:latest\n",
-        "          - image: fedora:latest\n            pytest-in: 'RPM and Arch packages / Build .rpm (fedora:44)'\n",
+        '{"image":"fedora:latest"}',
+        '{"image":"fedora:latest","pytest_in":"RPM and Arch packages / Build .rpm (fedora:44)"}',
+    ),
+    "ci source wrong full_ci": (
+        "ci.yml",
+        f"  source:\n    # Coverage requires the tier's complete Source/package proof matrix on every\n    # run. Keep it independent of changes detection, even false/missing outputs.\n    name: Source\n    uses: ./.github/workflows/source.yml\n    with:\n      full_ci: ${{{{ {FULL_CI_EXPR} }}}}\n",
+        "  source:\n    name: Source\n    uses: ./.github/workflows/source.yml\n    with:\n      full_ci: false\n",
+    ),
+    "ci gate hardcoded pr tier": (
+        "ci.yml",
+        f"--tier ${{{{ ({FULL_CI_EXPR}) && 'full' || 'pr' }}}}",
+        "--tier pr",
     ),
     "source pytest record dropped": (
         "source.yml",

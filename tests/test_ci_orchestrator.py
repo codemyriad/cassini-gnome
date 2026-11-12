@@ -129,8 +129,37 @@ def test_invalid_event_file_still_emits_all_outputs_and_success(tmp_path):
         check=True,
         env=env,
     )
-    assert all(json.loads(report.read_text())["areas"].values())
-    assert len(output.read_text().splitlines()) == 6 and "false" not in output.read_text()
+    parsed = json.loads(report.read_text())
+    assert all(parsed["areas"].values()) and parsed["full_ci"] is True
+    assert len(output.read_text().splitlines()) == 7 and "false" not in output.read_text()
+
+
+def test_execution_tier_gates_pr_and_push_on_two_distro_legs_and_expands_on_full_ci_or_nightly():
+    changes = module("changes")
+    base_pr = {"pull_request": {"base": {"sha": "a" * 40}, "head": {"sha": "b" * 40}}}
+    assert changes.execution_tier("pull_request", base_pr) is False
+    assert (
+        changes.execution_tier(
+            "pull_request",
+            {"pull_request": {**base_pr["pull_request"], "labels": [{"name": "not-full-ci"}, {"name": "ui"}]}},
+        )
+        is False
+    )
+    for label in ("full-ci", "FULL-CI"):
+        labeled = {"pull_request": {**base_pr["pull_request"], "labels": [{"name": label}]}}
+        assert changes.execution_tier("pull_request", labeled) is True
+        areas, reason, _paths = changes.detect(
+            "pull_request", labeled, git=lambda _: pytest.fail("full-ci queried git")
+        )
+        assert all(areas.values()) and "full-ci" in reason
+    assert changes.execution_tier("push", {}) is False
+    assert changes.execution_tier("schedule", {}) is True
+    assert changes.execution_tier("workflow_dispatch", {}) is True
+    # Malformed label payloads fail open to full CI.
+    for bad in ({}, {"pull_request": {"labels": "bad"}}, {"pull_request": {"labels": [{}]}}):
+        assert changes.execution_tier("pull_request", bad) is True
+        areas, _reason, _paths = changes.detect("pull_request", bad)
+        assert all(areas.values())
 
 
 def test_product_reuse_preserves_executable_and_checks_commit_profile_and_digest(tmp_path):

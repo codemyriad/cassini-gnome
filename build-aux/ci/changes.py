@@ -26,10 +26,38 @@ def select(paths):
     }
 
 
+def extract_pr_labels(payload):
+    if not isinstance(payload, dict) or not isinstance(payload.get("pull_request"), dict):
+        raise ValueError("Missing pull_request object")
+    raw = payload["pull_request"].get("labels")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(
+        isinstance(item, dict) and isinstance(item.get("name"), str) for item in raw
+    ):
+        raise ValueError("Invalid pull_request.labels")
+    return tuple(item["name"] for item in raw)
+
+
+def execution_tier(event, payload):
+    if event == "push":
+        return False
+    if event != "pull_request":
+        return True
+    try:
+        labels = extract_pr_labels(payload)
+        return any(label.casefold() == "full-ci" for label in labels)
+    except Exception:
+        return True
+
+
 def detect(event, payload, *, git=subprocess.check_output):
     if event != "pull_request":
         return dict.fromkeys(AREAS, True), "Full run outside a PR", []
     try:
+        labels = extract_pr_labels(payload)
+        if any(label.casefold() == "full-ci" for label in labels):
+            return dict.fromkeys(AREAS, True), "PR labeled full-ci; running everything", []
         base, head = (payload["pull_request"][key]["sha"] for key in ("base", "head"))
         if not all(isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha) for sha in (base, head)):
             raise ValueError("Unknown PR base or head")
@@ -50,18 +78,22 @@ def main():
     try:
         payload = json.loads(args.payload.read_text()) if args.payload else {}
         selected, reason, paths = detect(args.event, payload)
+        full_ci = True if reason.startswith("Detection unavailable;") else execution_tier(args.event, payload)
     except Exception as error:
         selected, reason, paths = dict.fromkeys(AREAS, True), "Invalid event; running everything: " + str(error), []
-    result = dict(areas=selected, reason=reason, paths=paths)
+        full_ci = True
+    result = dict(areas=selected, full_ci=full_ci, reason=reason, paths=paths)
     args.report.write_text(json.dumps(result, indent=2) + "\n")
     if args.output:
         with args.output.open("a") as output:
             for area, enabled in selected.items():
                 output.write(f"{area}={str(enabled).lower()}\n")
+            output.write(f"full_ci={str(full_ci).lower()}\n")
     print(json.dumps(result, indent=2))
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with Path(summary).open("a") as output:
-            output.write(reason + "\n\n" + ", ".join(area for area, enabled in selected.items() if enabled) + "\n")
+            enabled_areas = ", ".join(area for area, enabled in selected.items() if enabled)
+            output.write(f"{reason} (full_ci={str(full_ci).lower()})\n\n{enabled_areas}\n")
     return 0
 
 

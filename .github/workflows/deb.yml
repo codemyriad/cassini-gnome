@@ -2,7 +2,16 @@ name: Debian package
 
 on:
   workflow_call:
+    inputs:
+      full_ci:
+        type: boolean
+        default: true
   workflow_dispatch:
+    inputs:
+      full_ci:
+        description: Build both Ubuntu 26.04 and Debian testing packages
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -17,14 +26,13 @@ jobs:
     name: Build .deb (${{ matrix.base }})
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 30
-    # Both builds are required (G11): each runs the pytest suite its Source
-    # distro job leaves to it. A failed debian:testing build already blocked
-    # a release (green_main.py requires every main job to succeed); it no
-    # longer leaves a pull request green either.
+    # Each active build is required (G11) and runs the pytest suite its Source
+    # distro job leaves to it. PR and main pushes gate on ubuntu:26.04; nightly
+    # and full-ci runs also build and prove debian:testing.
     strategy:
       fail-fast: false
       matrix:
-        base: ["ubuntu:26.04", "debian:testing"]
+        base: ${{ inputs.full_ci && fromJSON('["ubuntu:26.04", "debian:testing"]') || fromJSON('["ubuntu:26.04"]') }}
     steps:
       - uses: actions/checkout@v7
         with:

@@ -79,6 +79,7 @@ MESON_RUNS = {
 # The Source job whose node ids every package job must have run: it keeps the
 # whole suite, with GTK, outside any package build.
 REFERENCE = "fedora-latest"
+PR_REFERENCE = "fedora-44"
 ALPINE_CANARY = "alpine-edge"
 ARTIFACT_RE = re.compile(r"^pytest-(nodes|skipped|infra-skipped|ran)-(.+?)(?:-attempt-([1-9]\d*))?$")
 # os-release fields that name a release; rolling distributions change
@@ -86,8 +87,8 @@ ARTIFACT_RE = re.compile(r"^pytest-(nodes|skipped|infra-skipped|ran)-(.+?)(?:-at
 RELEASE = ("ID", "VERSION_CODENAME", "VERSION_ID")
 ROLLING = {"arch", "opensuse-tumbleweed"}
 
-# This complete matrix is mandatory, independently of optional area selection.
-# tests pin it to the Source and package workflows, including Fedora's reference.
+# Full matrix (nightly schedule, workflow_dispatch, and PRs labeled full-ci)
+# and two-distro PR/push matrix (Ubuntu 26.04 deb + Fedora 44 rpm).
 REQUIRED_ARTIFACTS = (
     "pytest-skipped-debian-testing",
     "pytest-skipped-ubuntu-26.04",
@@ -101,6 +102,16 @@ REQUIRED_ARTIFACTS = (
     "pytest-ran-registry.opensuse.org-opensuse-tumbleweed-latest",
     "pytest-ran-archlinux-latest",
 )
+REQUIRED_PR_ARTIFACTS = (
+    "pytest-skipped-ubuntu-26.04",
+    "pytest-nodes-fedora-44",
+    "pytest-ran-ubuntu-26.04",
+    "pytest-ran-fedora-44",
+)
+TIERS = {
+    "full": (REQUIRED_ARTIFACTS, REFERENCE),
+    "pr": (REQUIRED_PR_ARTIFACTS, PR_REFERENCE),
+}
 
 
 def shard_count(meson_build=ROOT / "src/meson.build"):
@@ -396,28 +407,34 @@ def source(logs, image, shards, out, *, install_outcome=None):
     return ("nodes" if ran else "skipped"), image
 
 
-def gate(directory):
+def gate(directory, *, tier="full"):
     """Reject missing matrix jobs before comparing releases and test cases."""
+    if tier not in TIERS:
+        raise ValueError(f"unknown gate tier: {tier}")
+    required, reference_slug = TIERS[tier]
     selected, found = resolve_artifacts(directory)
     if found:
         return found
     for name, path in sorted(selected.items()):
         if name.startswith("pytest-infra-skipped-"):
-            found.extend(infra_problems(name.removeprefix("pytest-infra-skipped-"), path))
+            if tier != "full":
+                found.append(f"infrastructure skip is not part of the {tier} tier: {name}")
+            else:
+                found.extend(infra_problems(name.removeprefix("pytest-infra-skipped-"), path))
     if found:
         return found
     missing = []
     canary_infra = f"pytest-infra-skipped-{ALPINE_CANARY}"
-    for name in REQUIRED_ARTIFACTS:
-        if name == f"pytest-nodes-{ALPINE_CANARY}" and canary_infra in selected:
+    for name in required:
+        if tier == "full" and name == f"pytest-nodes-{ALPINE_CANARY}" and canary_infra in selected:
             continue
         record = "skipped" if name.startswith("pytest-skipped-") else "nodes.json"
         if name not in selected or not (selected[name] / record).is_file():
             missing.append(f"missing required execution proof: {name}/{record}")
-    return missing or compare_proofs(directory, selected=selected)
+    return missing or compare_proofs(directory, selected=selected, reference=reference_slug)
 
 
-def compare_proofs(directory, *, selected=None):
+def compare_proofs(directory, *, selected=None, reference=REFERENCE):
     """Compare the proofs present; gate also requires the complete matrix."""
     if selected is None:
         artifacts, found = resolve_artifacts(directory)
@@ -444,15 +461,17 @@ def compare_proofs(directory, *, selected=None):
         wanted, got = release(os_release(path / "os-release")), release(os_release(ran[image] / "os-release"))
         if not wanted.get("ID") or wanted != got:
             found.append(f"{image}: Source ran in {wanted}, but the package job's tests ran in {got}")
-    if ran and REFERENCE not in sources:
-        found.append(f"no pytest-nodes-{REFERENCE}: the Source job that is the reference did not run pytest")
+    if ran and reference not in sources:
+        found.append(f"no pytest-nodes-{reference}: the Source job that is the reference did not run pytest")
     elif ran:
-        reference = functions(json.loads((sources[REFERENCE] / "nodes.json").read_text()))
+        reference_counts = functions(json.loads((sources[reference] / "nodes.json").read_text()))
         for image, path in sorted(ran.items()):
             listed = json.loads((path / "nodes.json").read_text()) if (path / "nodes.json").is_file() else {}
             cases = functions(listed)
-            if missing := sorted(f"{k} ({cases.get(k, 0)}/{n})" for k, n in reference.items() if cases.get(k, 0) < n):
-                found.append(f"{image}: the package job never ran {len(missing)} tests {REFERENCE} ran: {missing[:5]}")
+            if missing := sorted(
+                f"{k} ({cases.get(k, 0)}/{n})" for k, n in reference_counts.items() if cases.get(k, 0) < n
+            ):
+                found.append(f"{image}: the package job never ran {len(missing)} tests {reference} ran: {missing[:5]}")
             if bad := sorted(n for n, s in listed.items() if s != "passed" and not (s == "skipped" and n in SKIPS)):
                 found.append(f"{image}: {bad[:5]} did not pass")
     return found
@@ -482,9 +501,10 @@ def main(argv=None):
     parser.add_argument("--install-outcome", type=Path, help="--source: host-only install outcome directory")
     parser.add_argument("--slug", help="--source: the image slug of this job's matrix image")
     parser.add_argument("--gate", type=Path, help="the downloaded pytest-* artifacts, one directory each")
+    parser.add_argument("--tier", choices=sorted(TIERS), default="full", help="--gate: matrix tier to require")
     args = parser.parse_args(argv)
     if args.gate:
-        found = gate(args.gate)
+        found = gate(args.gate, tier=args.tier)
         if not found:
             selected, _ = resolve_artifacts(args.gate)
             canary_infra = selected.get(f"pytest-infra-skipped-{ALPINE_CANARY}")

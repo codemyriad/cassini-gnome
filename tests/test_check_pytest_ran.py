@@ -364,21 +364,66 @@ def test_no_matrix_job_can_disappear_even_if_its_dependents_are_missing(tmp_path
     assert check.main(["--gate", str(root)]) == 1
 
 
+def pr_matrix():
+    return {
+        name: (UBUNTU if "ubuntu" in name else FEDORA, None if name.startswith("pytest-skipped-") else FULL)
+        for name in module().REQUIRED_PR_ARTIFACTS
+    }
+
+
+def test_complete_pr_tier_matrix_passes_the_pr_gate_and_rejects_missing_or_infra_skip(tmp_path):
+    check = module()
+    root = artifacts(tmp_path / "ok", pr_matrix())
+    assert check.gate(root, tier="pr") == []
+    assert check.main(["--gate", str(root), "--tier", "pr"]) == 0
+    # Default --gate still requires the full 11-artifact matrix.
+    assert check.main(["--gate", str(root)]) == 1
+    for missing in check.REQUIRED_PR_ARTIFACTS:
+        kinds = pr_matrix()
+        del kinds[missing]
+        bad = artifacts(tmp_path / f"missing-{missing}", kinds)
+        assert any(missing in problem for problem in check.gate(bad, tier="pr"))
+        assert check.main(["--gate", str(bad), "--tier", "pr"]) == 1
+    # Alpine infra-skip is never accepted in the pr tier.
+    with_infra = artifacts(tmp_path / "infra", pr_matrix())
+    write_infra_skip(with_infra / "pytest-infra-skipped-alpine-edge")
+    assert any("pr tier" in problem for problem in check.gate(with_infra, tier="pr"))
+
+
 def test_runtime_proof_manifest_matches_the_actual_workflow_matrices():
     import re
 
     def slug(image):
         return image.replace(":", "-").replace("/", "-")
 
+    def two_branches(text, key):
+        match = re.search(
+            rf"{key}: \$\{{\{{ inputs\.full_ci && fromJSON\('([^']+)'\) \|\| fromJSON\('([^']+)'\) \}}\}}", text
+        )
+        assert match is not None, (key, text)
+        return json.loads(match[1]), json.loads(match[2])
+
     workflows = ROOT / ".github/workflows"
-    source = (workflows / "source.yml").read_text()
-    entries = re.findall(r'^          - image: (\S+)\n(?:            pytest-in: "([^"\n]+)"\n)?', source, re.M)
-    expected = {"pytest-" + ("skipped-" if job else "nodes-") + slug(image) for image, job in entries}
-    deb = json.loads(re.search(r"base: (\[[^\n]+\])", (workflows / "deb.yml").read_text())[1])
-    rpm = re.findall(r"^          - base: (\S+)$", (workflows / "packages.yml").read_text(), re.M)
+    source_full, source_pr = two_branches((workflows / "source.yml").read_text(), "include")
+    deb_full, deb_pr = two_branches((workflows / "deb.yml").read_text(), "base")
+    rpm_full, rpm_pr = two_branches((workflows / "packages.yml").read_text(), "include")
     arch = re.search(r"BASE=\$\{1:-(.+)\}", (ROOT / "build-aux/arch/build.sh").read_text())[1]
-    expected.update("pytest-ran-" + slug(image) for image in [*deb, *rpm, arch])
-    assert set(module().REQUIRED_ARTIFACTS) == expected
+    assert re.search(
+        r"  arch:\n    name: Build Arch package\n    if: \$\{\{ inputs\.full_ci \}\}\n",
+        (workflows / "packages.yml").read_text(),
+    )
+
+    expected_full = {
+        "pytest-" + ("skipped-" if item.get("pytest-in") else "nodes-") + slug(item["image"]) for item in source_full
+    }
+    expected_full.update("pytest-ran-" + slug(image) for image in [*deb_full, *(r["base"] for r in rpm_full), arch])
+    assert set(module().REQUIRED_ARTIFACTS) == expected_full
+
+    expected_pr = {
+        "pytest-" + ("skipped-" if item.get("pytest-in") else "nodes-") + slug(item["image"]) for item in source_pr
+    }
+    expected_pr.update("pytest-ran-" + slug(image) for image in [*deb_pr, *(r["base"] for r in rpm_pr)])
+    assert set(module().REQUIRED_PR_ARTIFACTS) == expected_pr
 
 
 def test_missing_source_and_its_package_cannot_hide_each_other(tmp_path):
