@@ -62,6 +62,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._import_dialogs = set()
         self._import_executor = None
         self._list_signature = None
+        self._row_by_key = {}
+        self._rows_layout = None
+        self._group_layout_key = None
+        self._rows_tz = None
         self._preview_signature_value = None
         self._live_badges = {}
         self._capture_headers = []
@@ -188,9 +192,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         return bool(chosen)
 
     def _refresh_export(self):
-        from .zip_export import exportable_meetings
+        from .zip_export import is_exportable
 
         app = self.get_application()
+        trash = app.meeting_trash if app else None
         meeting = self.meeting_page.meeting if self.meeting_page else self.selected
         action = self.lookup_action("export")
         if action:
@@ -210,7 +215,9 @@ class LibraryWindow(Adw.ApplicationWindow):
                     not self.recording_page
                     and not self.search_page
                     and not self._external_meeting
-                    and exportable_meetings(self.snapshot, trash=app.meeting_trash if app else None)
+                    and self.snapshot is not None
+                    and not self.snapshot.unavailable
+                    and any(is_exportable(m, trash=trash) for m in self.snapshot.meetings)
                     and not (
                         self.zip_export_dialog and not self.zip_export_dialog.closed and self.zip_export_dialog.busy
                     )
@@ -709,6 +716,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         activity = application_activity(self.get_application(), self._activity_source, self._fixture_activity)
         if activity != self._activity:
             self._activity = activity
+            if self.snapshot is not None:
+                self._updated(getattr(self, "_source_snapshot", None) or self.snapshot)
             self.monitor.refresh_now()
         self._update_live()
 
@@ -759,21 +768,32 @@ class LibraryWindow(Adw.ApplicationWindow):
             )
             local_native = self.get_application().comfort._native_for(target) if target else native
             own_native = local_native is not None and local_native.pipeline is not None
-            browser = bool(target and self._activity_source and target.id in self._activity_source.snapshot)
+            browser = bool(
+                target
+                and target.lifecycle == "recording"
+                and self._activity_source
+                and self._activity.get(target.id, self._activity_source.snapshot.get(target.id)) == "recording"
+            )
+            stopping = bool(
+                (local_native is not None and local_native.stopping)
+                or (target and (target.lifecycle == "saving" or self._activity.get(target.id) == "saving"))
+            )
             ms = self.get_application().comfort.elapsed(target) if target else elapsed
-            controls["stack"].set_visible_child_name("live" if target or own_native else "record")
+            controls["stack"].set_visible_child_name("live" if target or own_native or stopping else "record")
             controls["timer"].set_label(fmt.live_badge(ms))
-            controls["stop"].set_sensitive((own_native and not local_native.stopping) or browser)
+            controls["stop"].set_label(text("states.badge.saving" if stopping else "common.stop"))
+            controls["stop"].set_sensitive(not stopping and ((own_native and not local_native.stopping) or browser))
             state = self.get_application().comfort.status(target) if target else {}
             controls["muted"].set_visible(bool(state.get("output_muted")))
             self.bind_spectrogram(controls["picture"], target, silent=bool(state.get("silent")))
         self._recording_line(native)
         if self.recording_page:
             self.recording_page.update_status()
-        for meeting in self.snapshot.meetings:
-            if meeting.lifecycle == "recording" and meeting.key in self._live_badges:
+        for key, badge_label in list(self._live_badges.items()):
+            meeting = next((m for m in self.snapshot.meetings if m.key == key), None)
+            if meeting and meeting.lifecycle == "recording":
                 ms = self.get_application().comfort.elapsed(meeting)
-                self._live_badges[meeting.key].set_label(meeting.badge(live_ms=ms).text)
+                badge_label.set_label(meeting.badge(live_ms=ms).text)
 
     def stop_meeting(self, meeting):
         app = self.get_application()
@@ -786,7 +806,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         if not self.snapshot:
             return None
         live = [m for m in self.snapshot.meetings if m.lifecycle in ("recording", "saving")]
-        return min(live, key=lambda m: (m.started_at_ms is None, m.started_at_ms or 0, m.key)) if live else None
+        return (
+            min(live, key=lambda m: (m.lifecycle != "recording", m.started_at_ms is None, m.started_at_ms or 0, m.key))
+            if live
+            else None
+        )
 
     def open_live_recording(self):
         meeting = self.live_meeting()
@@ -1010,6 +1034,17 @@ class LibraryWindow(Adw.ApplicationWindow):
             (meeting.metadata.get("received") or {}).get("originalFolderName"),
         )
 
+    def _row_signature(self, meeting):
+        badge = meeting.badge()
+        return (
+            meeting.key,
+            meeting.title,
+            fmt.row_time(meeting.display_start, tz=self.tz),
+            badge.kind if badge else None,
+            badge.text if badge and meeting.lifecycle != "recording" else None,
+            meeting.row_texts(),
+        )
+
     def _signature(self, snapshot):
         selected = self.selected.key if self.selected else None
         return (
@@ -1018,15 +1053,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 (
                     group.title,
                     tuple(
-                        (
-                            m.key,
-                            m.title,
-                            fmt.row_time(m.display_start, tz=self.tz),
-                            m.badge().kind if m.badge() else None,
-                            m.badge().text if m.badge() and m.lifecycle != "recording" else None,
-                            m.row_texts(),
-                            self._preview_signature(m) if m.key == selected else None,
-                        )
+                        (*self._row_signature(m), self._preview_signature(m) if m.key == selected else None)
                         for m in group.meetings
                     ),
                 )
@@ -1034,7 +1061,17 @@ class LibraryWindow(Adw.ApplicationWindow):
             ),
         )
 
+    def _project_activity(self, snapshot):
+        meetings = tuple(
+            replace(m, lifecycle="saving")
+            if m.origin == "own" and m.lifecycle == "recording" and self._activity.get(m.id) == "saving"
+            else m
+            for m in snapshot.meetings
+        )
+        return replace(snapshot, meetings=meetings) if meetings != snapshot.meetings else snapshot
+
     def _updated(self, snapshot):
+        snapshot = self._project_activity(snapshot)
         if recovery := getattr(self.get_application(), "library_recovery", None):
             recovery.observe(snapshot)
             snapshot = recovery.project(snapshot)
@@ -1107,39 +1144,71 @@ class LibraryWindow(Adw.ApplicationWindow):
         ):
             self._pending_selection = None
         pending_row = any(m.key == self._pending_selection for m in snapshot.meetings)
-        if not pending_row and self._signature(snapshot) == self._list_signature:
-            current = {m.key: m for m in snapshot.meetings}
-            row = self.rows.get_first_child()
-            while row:
-                if hasattr(row, "meeting"):
-                    row.meeting = current[row.meeting.key]
-                row = row.get_next_sibling()
-            if self.selected:
-                self.selected = current.get(self.selected.key)
-            self._pending = False
-            return
+        if snapshot.unavailable:
+            if not pending_row and self._list_signature == ("offline",):
+                self._pending = False
+                return
+            groups, layout, group_layout_key = (), None, None
+        elif not snapshot.meetings:
+            if not pending_row and self._list_signature == ("empty",):
+                self._pending = False
+                return
+            groups, layout, group_layout_key = (), None, None
+        else:
+            group_layout_key = (
+                fmt._local(self.now_ms, self.tz).date(),
+                self.tz,
+                tuple((m.key, m.display_start) for m in snapshot.meetings),
+            )
+            if group_layout_key == self._group_layout_key and self._rows_layout is not None:
+                groups = None
+                layout = self._rows_layout
+            else:
+                groups = snapshot.groups(now_ms=self.now_ms, tz=self.tz)
+                layout = tuple((group.title, tuple(m.key for m in group.meetings)) for group in groups)
+            if not pending_row and self._list_signature == ("library", layout):
+                for meeting in snapshot.meetings:
+                    row = self._row_by_key[meeting.key]
+                    if row.meeting is not meeting or self.tz != self._rows_tz:
+                        sig = self._row_signature(meeting)
+                        if sig != row._row_signature:
+                            self._fill_row(row, meeting, sig)
+                        else:
+                            row.meeting = meeting
+                self._rows_tz = self.tz
+                self._group_layout_key = group_layout_key
+                self._selected(self.rows, self.rows.get_selected_row())
+                self._pending = False
+                return
+            if groups is None:
+                groups = snapshot.groups(now_ms=self.now_ms, tz=self.tz)
         old = self._pending_selection or (self.selected.key if self.selected else None)
         self.rows.handler_block(self._selection_handler)
         self.rows.remove_all()
+        self._row_by_key = {}
+        self._rows_layout = layout
+        self._group_layout_key = group_layout_key
+        self._rows_tz = self.tz
         self._live_badges = {}
         self.selected = None
         if snapshot.unavailable:
             if not self.meeting_page and not self.search_page:
                 self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("offline")
+            self._list_signature = ("offline",)
         elif not snapshot.meetings:
             if not self.meeting_page and not self.search_page:
                 self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("empty")
+            self._list_signature = ("empty",)
         else:
             self.root_box.set_visible_child_name("library")
             selected = None
-            for group in snapshot.groups(now_ms=self.now_ms, tz=self.tz):
-                heading = Gtk.ListBoxRow(selectable=False, activatable=False, css_classes=["day-heading"])
-                heading.set_child(label(group.title, "small", "heading", "dim-label", xalign=0))
-                self.rows.append(heading)
+            for group in groups:
+                self.rows.append(self._day_heading(group.title))
                 for meeting in group.meetings:
                     row = self._row(meeting)
+                    self._row_by_key[meeting.key] = row
                     self.rows.append(row)
                     if (
                         meeting.key == old
@@ -1151,15 +1220,21 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.rows.select_row(selected or self.rows.get_row_at_index(1))
             if selected:
                 self._pending_selection = None
+            self._list_signature = ("library", layout)
         self.rows.handler_unblock(self._selection_handler)
         self._selected(self.rows, self.rows.get_selected_row())
-        self._list_signature = self._signature(snapshot)
         self.loading.set_spinning(False)
         self._pending = False
 
-    def _row(self, meeting):
-        row = Gtk.ListBoxRow(css_classes=["meeting-row"])
+    def _day_heading(self, title):
+        heading = Gtk.ListBoxRow(selectable=False, activatable=False, css_classes=["day-heading"])
+        heading.set_child(label(title, "small", "heading", "dim-label", xalign=0))
+        return heading
+
+    def _fill_row(self, row, meeting, signature=None):
         row.meeting = meeting
+        row._row_signature = self._row_signature(meeting) if signature is None else signature
+        self._live_badges.pop(meeting.key, None)
         box = vertical(4, margin_start=11, margin_end=11, margin_top=9, margin_bottom=9)
         top = Gtk.Box(spacing=8)
         top.append(label(meeting.title, "heading", xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
@@ -1180,6 +1255,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         if line:
             box.append(label(line, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END))
         row.set_child(box)
+
+    def _row(self, meeting):
+        row = Gtk.ListBoxRow(css_classes=["meeting-row"])
+        self._fill_row(row, meeting)
         secondary = Gtk.GestureClick(button=3)
         secondary.connect("pressed", lambda _gesture, _n, x, y: self._row_menu(row, x, y))
         row.add_controller(secondary)
@@ -1223,7 +1302,6 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._preview_key = row.meeting.key
         self.selected = meeting = row.meeting
         self._refresh_export()
-        self._list_signature = self._signature(self.snapshot)
         signature = self._preview_signature(meeting)
         if signature == self._preview_signature_value:
             return
@@ -1275,7 +1353,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         trash_error = self.trash_error_line(meeting)
         if trash_error:
             self.preview.append(trash_error)
-        elif meeting.transcript in ("queued", "running"):
+        elif meeting.lifecycle == "saving" or meeting.transcript in ("queued", "running"):
             self.preview.append(label(meeting.badge().text, "dim-label", wrap=True, xalign=0))
         elif meeting.transcript == "failed":
             self.preview.append(
@@ -1459,6 +1537,7 @@ class LibraryWindow(Adw.ApplicationWindow):
 
             self.recording_page = RecordingPage(self, meeting)
             self.navigation.push(self.recording_page)
+            self._update_live()
             self._refresh_export()
             return
         if not self._ensure_player(meeting):
@@ -1470,6 +1549,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._connect_player()
         self.meeting_page = MeetingPage(self, meeting)
         self.navigation.push(self.meeting_page)
+        self._update_live()
         self._refresh_export()
 
     def search_button(self):

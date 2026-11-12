@@ -1260,6 +1260,13 @@ class CassiniApplication(Adw.Application):
             def delivered():
                 try:
                     paths = result.result()
+                    phases = getattr(self, "_browser_capture_phases", None)
+                    if isinstance(phases, dict):
+                        from .library import meeting_id
+
+                        for path in paths:
+                            if (identifier := meeting_id(Path(path))) and phases.get(identifier) != "finished":
+                                phases[identifier] = "stopping"
                     for path in paths:
                         self._notify_shortcut_saved(path)
                     if self.transcription_enabled:
@@ -1281,6 +1288,7 @@ class CassiniApplication(Adw.Application):
             GLib.idle_add(delivered)
 
         future.add_done_callback(done)
+        self._native_changed()
 
     def _notify_shortcut_saved(self, directory):
         from pathlib import Path
