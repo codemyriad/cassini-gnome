@@ -48,6 +48,14 @@ tag() {  # KIND BASE
   echo "$REPO:$name"
 }
 
+qualified() {  # Docker Hub names in full: podman's short-name aliases send fedora to registry.fedoraproject.org,
+  # which does not hold Docker Hub's digests. The tag keeps the name as the workflows spell it.
+  case $1 in
+    */*) case ${1%%/*} in *.*|*:*|localhost) echo "$1" ;; *) echo "docker.io/$1" ;; esac ;;
+    *) echo "docker.io/library/$1" ;;
+  esac
+}
+
 context() {  # KIND DIR: the Dockerfile and only the files it needs
   case $1 in
     deb)
@@ -118,7 +126,7 @@ case ${1:-} in
     context "$kind" "$ctx"
     echo "build context: $(ls "$ctx" | tr '\n' ' ')"
     "$CONTAINER_ENGINE" build --pull --label org.opencontainers.image.source=https://github.com/codemyriad/cassini-gnome \
-      --build-arg BASE="$base" -t "$image" "$ctx"
+      --build-arg BASE="$(qualified "$base")" -t "$image" "$ctx"
     # No secret may leave in the image: its history and config, then every file, must hold neither a GitHub
     # token pattern nor this job's token itself.
     pattern='gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}'
