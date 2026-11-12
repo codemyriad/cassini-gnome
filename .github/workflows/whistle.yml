@@ -124,25 +124,25 @@ jobs:
           path: ${{ steps.harness.outputs.path }}
           key: ${{ steps.harness.outputs.key }}
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: voices-linux-x86_64
           path: voice-artifacts/
           retention-days: 14
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: diarization-linux-x86_64
           path: diarization-artifacts/
           retention-days: 14
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: parakeet-linux-x86_64
           path: parakeet-artifacts/
           retention-days: 14
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: whistle-linux-x86_64
           path: whistle-artifacts/

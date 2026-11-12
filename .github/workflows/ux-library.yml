@@ -34,7 +34,7 @@ jobs:
           Path('ux-artifacts/vector-results.json').write_text(json.dumps(result,indent=2)+'\n')
           PY
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: gnome-ux-library-vectors
           path: ux-artifacts/

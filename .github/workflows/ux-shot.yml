@@ -106,12 +106,6 @@ jobs:
           dpkg-query -W fonts-cantarell fonts-inter > ux-artifacts/fonts.txt
           dpkg-query -W libgtk-4-1 libadwaita-1-0 libcairo2 libpango-1.0-0 python3-pil > ux-artifacts/packages.txt
           for font in Cantarell Inter; do fc-match -f '%{file}\n' "$font"; done | sort -u | xargs sha256sum > ux-artifacts/font-sha256.txt
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: ux-boards
-          path: ux-artifacts/
-          retention-days: 14
       - name: Compare UI screenshots against main baseline
         if: github.event_name == 'pull_request'
         env:
@@ -146,4 +140,10 @@ jobs:
         with:
           name: pr-shots
           path: pr-shots/
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
+        with:
+          name: ux-boards
+          path: ux-artifacts/
           retention-days: 14

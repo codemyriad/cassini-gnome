@@ -83,13 +83,14 @@ jobs:
           path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
-      # testlog.json, the pytest junit XML), also on success, to track creep;
+      # testlog.json, the pytest junit XML), also on success outside pull
+      # requests to track creep (on pull requests, uploaded on failure);
       # a shard over half its timeout becomes a warning annotation here.
       - name: Warn about pytest shards over half their budget
         if: always()
         run: grep -rhs '^::warning ' "$CASSINI_TEST_LOGS" --include=testlog.txt || true
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: meson-logs-rpm-${{ matrix.name }}
           path: ${{ runner.temp }}/meson-logs/
@@ -140,13 +141,14 @@ jobs:
           path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
-      # testlog.json, the pytest junit XML), also on success, to track creep;
+      # testlog.json, the pytest junit XML), also on success outside pull
+      # requests to track creep (on pull requests, uploaded on failure);
       # a shard over half its timeout becomes a warning annotation here.
       - name: Warn about pytest shards over half their budget
         if: always()
         run: grep -rhs '^::warning ' "$CASSINI_TEST_LOGS" --include=testlog.txt || true
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: meson-logs-arch
           path: ${{ runner.temp }}/meson-logs/
