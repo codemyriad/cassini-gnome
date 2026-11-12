@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -33,6 +34,8 @@ TEST_TAG_RE = re.compile(r"v(\d+\.\d+\.\d+)-beta\.([1-9]\d*)")
 # Scheduled nightly ci.yml runs probe unpinned rolling base images outside merge
 # and release gates; daily test releases only admit pinned push / dispatch runs.
 TRUSTED_CI_EVENTS = {"push", "workflow_dispatch"}
+CI_WAIT_SECONDS = 45 * 60
+CI_POLL_SECONDS = 30
 MAX_PAGES = 50
 MAX_NOTES_BYTES = 60_000
 
@@ -107,7 +110,7 @@ class GitHub:
         raise ValueError(f"Pagination limit exceeded for {path}")
 
 
-def green_main_ci(api: GitHub, sha: str) -> bool:
+def main_ci_state(api: GitHub, sha: str) -> str:
     eligible = [
         run
         for run in api.pages(f"actions/workflows/ci.yml/runs?branch=main&head_sha={sha}", "workflow_runs")
@@ -117,16 +120,43 @@ def green_main_ci(api: GitHub, sha: str) -> bool:
         and run.get("head_sha") == sha
     ]
     if not eligible:
-        return False
+        return "red"
     latest = max(eligible, key=lambda run: run["id"])
-    if latest.get("status") != "completed" or latest.get("conclusion") != "success":
-        return False
+    if latest.get("status") != "completed":
+        return "pending"
+    if latest.get("conclusion") != "success":
+        return "red"
     jobs = list(api.pages(f"actions/runs/{latest['id']}/jobs?filter=latest", "jobs"))
     try:
         green_main.validate_test_release_jobs(jobs, latest.get("html_url", ""))
     except ValueError:
-        return False
-    return True
+        return "red"
+    return "green"
+
+
+def green_main_ci(api: GitHub, sha: str) -> bool:
+    return main_ci_state(api, sha) == "green"
+
+
+def wait_for_green_main_ci(
+    api: GitHub,
+    sha: str,
+    *,
+    deadline: float | None = None,
+    clock=time.monotonic,
+    sleep=time.sleep,
+) -> bool:
+    end = clock() + CI_WAIT_SECONDS if deadline is None else deadline
+    while True:
+        state = main_ci_state(api, sha)
+        if state == "green":
+            return True
+        if state != "pending":
+            return False
+        remaining = end - clock()
+        if remaining <= 0:
+            return False
+        sleep(min(CI_POLL_SECONDS, remaining))
 
 
 def release_published(api: GitHub, tag: str) -> bool:
@@ -352,13 +382,23 @@ def build_notes(
     return release_notes.build_prerelease_body(rendered_user, developer_changelog)
 
 
-def plan(api: GitHub, sha: str, root: Path, run_id: int, *, git: GitRepo | None = None) -> dict:
+def plan(
+    api: GitHub,
+    sha: str,
+    root: Path,
+    run_id: int,
+    *,
+    git: GitRepo | None = None,
+    clock=time.monotonic,
+    sleep=time.sleep,
+) -> dict:
     git_repo = git or GitRepo(root)
     if not SHA_RE.fullmatch(sha):
         raise ValueError("Invalid main commit SHA")
     if api.request("commits/main").get("sha") != sha:
         return {"build": False, "reason": "main moved before planning"}
-    if not green_main_ci(api, sha):
+    deadline = clock() + CI_WAIT_SECONDS
+    if not wait_for_green_main_ci(api, sha, deadline=deadline, clock=clock, sleep=sleep):
         return {"build": False, "reason": "latest main CI is not green"}
 
     meson_version = source_meson_version((root / "meson.build").read_text())
@@ -370,8 +410,8 @@ def plan(api: GitHub, sha: str, root: Path, run_id: int, *, git: GitRepo | None 
     user_notes = build_user_notes(baseline, sha, git_repo)
     notes = build_notes(api, baseline, sha, git_repo, user_notes=user_notes)
 
-    if api.request("commits/main").get("sha") != sha or not green_main_ci(api, sha):
-        return {"build": False, "reason": "main or its CI changed while planning"}
+    if not wait_for_green_main_ci(api, sha, deadline=deadline, clock=clock, sleep=sleep):
+        return {"build": False, "reason": "main CI changed while planning"}
 
     payload = {
         "schema": 1,

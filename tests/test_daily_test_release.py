@@ -987,3 +987,125 @@ def test_finish_records_actual_publication_even_when_post_step_fails(tmp_path, m
     out = capsys.readouterr().out
     assert out == "::error::[GNOME] daily test release failed: rpm=failure second line\n"
     assert summary.read_text() == "[GNOME] daily test release failed: rpm=failure second line\n"
+
+
+def test_plan_waits_bounded_for_in_progress_main_ci_and_keeps_admitted_sha(tmp_path):
+    mod = load_module("daily_test_release")
+    daily_wf = (ROOT / ".github/workflows/daily-test-release.yml").read_text()
+    assert "timeout-minutes: 55" in daily_wf
+
+    c0, c1, c2 = "1" * 40, "2" * 40, "3" * 40
+    write_candidate_tree(tmp_path, "0.4.2")
+    git = FakeGit(head=c1, commits=[c0, c1], tags={"v0.4.2": c0})
+
+    def make_run(run_id: int, status: str, conclusion: str | None, *, event: str = "push") -> dict:
+        return {
+            "id": run_id,
+            "event": event,
+            "head_branch": "main",
+            "head_sha": c1,
+            "head_repository": {"full_name": "codemyriad/cassini-gnome"},
+            "status": status,
+            "conclusion": conclusion,
+            "html_url": f"https://example.invalid/runs/{run_id}",
+        }
+
+    # 1. Queued -> in_progress -> completed/success waits and reserves the admitted SHA,
+    #    even when commits/main advances to c2 while waiting.
+    now = [0.0]
+    sleeps: list[float] = []
+
+    def clock() -> float:
+        return now[0]
+
+    api_ok = FakeGitHub(main_sha=c1, ci_pages=[[make_run(10, "queued", None)]], jobs_by_run={10: green_jobs()})
+    states = [make_run(10, "in_progress", None), make_run(10, "completed", "success")]
+
+    def sleep_and_advance(seconds: float) -> None:
+        sleeps.append(seconds)
+        now[0] += seconds
+        api_ok.main_sha = c2
+        if states:
+            api_ok.ci_pages = [[states.pop(0)]]
+
+    planned = mod.plan(api_ok, c1, tmp_path, 5001, git=git, clock=clock, sleep=sleep_and_advance)
+    assert planned["build"] is True
+    assert planned["sha"] == c1
+    assert sleeps == [30, 30]
+    assert len(api_ok.posts) == 1
+
+    # 2. In-progress schedule run does not delay an already-green push run on the same SHA.
+    sleeps.clear()
+    api_sched = FakeGitHub(
+        main_sha=c1,
+        ci_pages=[[make_run(20, "in_progress", None, event="schedule"), make_run(10, "completed", "success")]],
+        jobs_by_run={10: green_jobs()},
+    )
+    planned_sched = mod.plan(api_sched, c1, tmp_path, 5002, git=git, clock=clock, sleep=sleeps.append)
+    assert planned_sched["build"] is True
+    assert sleeps == []
+
+    # 3. In-progress trusted run finishing failure stops immediately and creates zero deployments.
+    now[0] = 0.0
+    sleeps.clear()
+    api_fail = FakeGitHub(main_sha=c1, ci_pages=[[make_run(30, "in_progress", None)]], jobs_by_run={30: green_jobs()})
+
+    def sleep_then_fail(seconds: float) -> None:
+        sleeps.append(seconds)
+        now[0] += seconds
+        api_fail.ci_pages = [[make_run(30, "completed", "failure")]]
+
+    skipped_fail = mod.plan(api_fail, c1, tmp_path, 5003, git=git, clock=clock, sleep=sleep_then_fail)
+    assert skipped_fail == {"build": False, "reason": "latest main CI is not green"}
+    assert sleeps == [30]
+    assert api_fail.posts == []
+
+    # 4. Already-red completed push fails immediately with zero sleep calls.
+    now[0] = 0.0
+    sleeps.clear()
+    api_red = FakeGitHub(main_sha=c1, ci_pages=[[make_run(40, "completed", "failure")]])
+    skipped_red = mod.plan(api_red, c1, tmp_path, 5004, git=git, clock=clock, sleep=sleeps.append)
+    assert skipped_red == {"build": False, "reason": "latest main CI is not green"}
+    assert sleeps == []
+    assert api_red.posts == []
+
+    # 5. Still-pending CI at the 45-minute bound clamps the final sleep and skips cleanly.
+    now[0] = 0.0
+    sleeps.clear()
+    api_timeout = FakeGitHub(main_sha=c1, ci_pages=[[make_run(50, "in_progress", None)]])
+
+    def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    assert mod.wait_for_green_main_ci(api_timeout, c1, deadline=45.0, clock=clock, sleep=fake_sleep) is False
+    assert sleeps == [30, 15.0]
+    assert now[0] == 45.0
+
+    now[0] = 0.0
+    sleeps.clear()
+    skipped_timeout = mod.plan(api_timeout, c1, tmp_path, 5005, git=git, clock=clock, sleep=fake_sleep)
+    assert skipped_timeout == {"build": False, "reason": "latest main CI is not green"}
+    assert sum(sleeps) == mod.CI_WAIT_SECONDS
+    assert api_timeout.posts == []
+
+    # 6. Admitted SHA turning red during notes collection still skips before creating a deployment.
+    api_late_red = FakeGitHub(
+        main_sha=c1,
+        ci_pages=[[make_run(60, "completed", "success")]],
+        jobs_by_run={60: green_jobs()},
+    )
+    orig_build_notes = mod.build_notes
+
+    def notes_then_red(*args, **kwargs):
+        rendered = orig_build_notes(*args, **kwargs)
+        api_late_red.ci_pages = [[make_run(61, "completed", "failure", event="workflow_dispatch")]]
+        return rendered
+
+    mod.build_notes = notes_then_red
+    try:
+        skipped_late = mod.plan(api_late_red, c1, tmp_path, 5006, git=git, clock=clock, sleep=fake_sleep)
+    finally:
+        mod.build_notes = orig_build_notes
+    assert skipped_late == {"build": False, "reason": "main CI changed while planning"}
+    assert api_late_red.posts == []
