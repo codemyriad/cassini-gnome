@@ -154,6 +154,48 @@ def test_actual_git_rename_keeps_old_area_coverage(tmp_path):
         "extra_distros": False,
     }
 
+    # Real git merge --no-ff: identical tree skips verified PR desktop areas; skewed merge skips nothing.
+    merge_repo = tmp_path / "merge"
+    merge_repo.mkdir()
+    git_in(merge_repo, "init", "--initial-branch=main")
+    (merge_repo / "a.txt").write_text("base\n")
+    git_in(merge_repo, "add", ".")
+    git_in(merge_repo, "commit", "-m", "Base")
+    git_in(merge_repo, "checkout", "-b", "pr-same")
+    (merge_repo / "a.txt").write_text("pr\n")
+    git_in(merge_repo, "add", ".")
+    git_in(merge_repo, "commit", "-m", "PR same")
+    pr_same = git_in(merge_repo, "rev-parse", "HEAD").decode().strip()
+    git_in(merge_repo, "checkout", "main")
+    git_in(merge_repo, "merge", "--no-ff", "-m", "Merge PR same", "pr-same")
+    merge_same = git_in(merge_repo, "rev-parse", "HEAD").decode().strip()
+    areas_same, desktop_same, _ = changes.apply_push_pr_tree_skips(
+        "push",
+        dict.fromkeys(changes.AREAS, True),
+        repo="codemyriad/cassini-gnome",
+        commit=merge_same,
+        git=lambda cmd: subprocess.check_output(cmd, cwd=merge_repo, env=env),
+        verifier=lambda _repo, sha: frozenset({"recording", "desktop"}) if sha == pr_same else frozenset(),
+    )
+    assert areas_same["recording"] is False and areas_same["boards"] is True and desktop_same is False
+
+    git_in(merge_repo, "checkout", "-b", "pr-skew", "HEAD~1")
+    (merge_repo / "b.txt").write_text("skew\n")
+    git_in(merge_repo, "add", ".")
+    git_in(merge_repo, "commit", "-m", "PR skew")
+    git_in(merge_repo, "checkout", "main")
+    git_in(merge_repo, "merge", "--no-ff", "-m", "Merge PR skew", "pr-skew")
+    merge_skew = git_in(merge_repo, "rev-parse", "HEAD").decode().strip()
+    areas_skew, desktop_skew, _ = changes.apply_push_pr_tree_skips(
+        "push",
+        dict.fromkeys(changes.AREAS, True),
+        repo="codemyriad/cassini-gnome",
+        commit=merge_skew,
+        git=lambda cmd: subprocess.check_output(cmd, cwd=merge_repo, env=env),
+        verifier=lambda _repo, _sha: pytest.fail("Skewed merge must not query PR verifier"),
+    )
+    assert all(areas_skew.values()) and desktop_skew is True
+
 
 def test_invalid_event_file_still_emits_all_outputs_and_success(tmp_path):
     payload = tmp_path / "event.json"
@@ -178,8 +220,13 @@ def test_invalid_event_file_still_emits_all_outputs_and_success(tmp_path):
         env=env,
     )
     parsed = json.loads(report.read_text())
-    assert all(parsed["areas"].values()) and all(parsed["package_legs"].values()) and parsed["full_ci"] is True
-    assert len(output.read_text().splitlines()) == 12 and "false" not in output.read_text()
+    assert (
+        all(parsed["areas"].values())
+        and parsed["desktop"] is True
+        and all(parsed["package_legs"].values())
+        and parsed["full_ci"] is True
+    )
+    assert len(output.read_text().splitlines()) == 13 and "false" not in output.read_text()
 
 
 def test_execution_tier_gates_pr_and_push_on_two_distro_legs_and_expands_on_full_ci_or_nightly():
@@ -492,3 +539,211 @@ def test_boards_scan_follows_variable_rooted_and_joined_paths(tmp_path):
         "tests/run.sh",
         "tests/ui/board.py",
     ]
+
+
+def test_push_identical_pr_tree_skips_only_verified_green_desktop_areas(tmp_path):
+    # Package builds run without git installed (check_pytest_ran.py SKIPS); use
+    # deterministic git/gh stubs here so every package build runs this test too.
+    changes = module("changes")
+    base_sha = "1" * 40
+    pr_sha = "2" * 40
+    merge_sha = "3" * 40
+    skew_sha = "4" * 40
+    octopus_sha = "5" * 40
+    same_tree = "a" * 40
+    diff_tree = "b" * 40
+    base_areas = dict.fromkeys(changes.AREAS, True)
+
+    rev_list_map = {
+        merge_sha: f"{merge_sha} {base_sha} {pr_sha}\n".encode(),
+        skew_sha: f"{skew_sha} {base_sha} {pr_sha}\n".encode(),
+        base_sha: f"{base_sha}\n".encode(),
+        octopus_sha: f"{octopus_sha} {base_sha} {pr_sha} {'6' * 40}\n".encode(),
+    }
+    tree_map = {
+        f"{merge_sha}^{{tree}}": f"{same_tree}\n".encode(),
+        f"{pr_sha}^{{tree}}": f"{same_tree}\n".encode(),
+        f"{skew_sha}^{{tree}}": f"{diff_tree}\n".encode(),
+    }
+
+    def stub_git(cmd):
+        if cmd[:4] == ["git", "rev-list", "--parents", "-n"] and cmd[4] == "1":
+            return rev_list_map[cmd[5]]
+        if cmd[:2] == ["git", "rev-parse"]:
+            return tree_map[cmd[2]]
+        raise AssertionError(f"Unexpected git command: {cmd}")
+
+    # 1. All 4 desktop areas green in the PR: skips recording, boards, offline, desktop; keeps source, packages, library.
+    seen_calls = []
+
+    def verify_all(repo_name, sha):
+        seen_calls.append((repo_name, sha))
+        return frozenset({"recording", "boards", "offline", "desktop"})
+
+    areas_all, desktop_all, note_all = changes.apply_push_pr_tree_skips(
+        "push",
+        base_areas,
+        repo="codemyriad/cassini-gnome",
+        commit=merge_sha,
+        git=stub_git,
+        verifier=verify_all,
+    )
+    assert seen_calls == [("codemyriad/cassini-gnome", pr_sha)]
+    assert areas_all == {
+        "source": True,
+        "packages": True,
+        "recording": False,
+        "boards": False,
+        "library": True,
+        "offline": False,
+    }
+    assert desktop_all is False and "skipping recording, boards, offline, desktop" in note_all
+
+    # Partial PR path-filter: PR only ran recording + desktop (skipped boards + offline) -> push runs boards + offline!
+    areas_partial, desktop_partial, _ = changes.apply_push_pr_tree_skips(
+        "push",
+        base_areas,
+        repo="codemyriad/cassini-gnome",
+        commit=merge_sha,
+        git=stub_git,
+        verifier=lambda _r, _s: frozenset({"recording", "desktop"}),
+    )
+    assert areas_partial["recording"] is False
+    assert areas_partial["boards"] is True and areas_partial["offline"] is True
+    assert areas_partial["source"] is True and areas_partial["packages"] is True and areas_partial["library"] is True
+    assert desktop_partial is False
+
+    # Flatpak enabled requires desktop_flatpak proof before skipping desktop.
+    _, desktop_no_fp, _ = changes.apply_push_pr_tree_skips(
+        "push",
+        base_areas,
+        repo="codemyriad/cassini-gnome",
+        commit=merge_sha,
+        flatpak_enabled=True,
+        git=stub_git,
+        verifier=lambda _r, _s: frozenset({"desktop"}),
+    )
+    assert desktop_no_fp is True
+    _, desktop_with_fp, _ = changes.apply_push_pr_tree_skips(
+        "push",
+        base_areas,
+        repo="codemyriad/cassini-gnome",
+        commit=merge_sha,
+        flatpak_enabled=True,
+        git=stub_git,
+        verifier=lambda _r, _s: frozenset({"desktop", "desktop_flatpak"}),
+    )
+    assert desktop_with_fp is False
+
+    # API error fails open to running every desktop job.
+    def fail_verifier(_r, _s):
+        raise RuntimeError("API down")
+
+    areas_err, desktop_err, note_err = changes.apply_push_pr_tree_skips(
+        "push", base_areas, repo="codemyriad/cassini-gnome", commit=merge_sha, git=stub_git, verifier=fail_verifier
+    )
+    assert all(areas_err.values()) and desktop_err is True and "running desktop jobs" in note_err
+
+    # Non-push events, missing repo, and non-main refs never query git or verifier.
+    for evt, repo_arg, ref in (
+        ("pull_request", "codemyriad/cassini-gnome", "refs/heads/main"),
+        ("schedule", "codemyriad/cassini-gnome", "refs/heads/main"),
+        ("push", "", "refs/heads/main"),
+        ("push", "codemyriad/cassini-gnome", "refs/heads/dev"),
+    ):
+        areas_noop, desktop_noop, note_noop = changes.apply_push_pr_tree_skips(
+            evt,
+            base_areas,
+            repo=repo_arg,
+            ref=ref,
+            git=lambda _c: pytest.fail("Should not query git"),
+            verifier=lambda _r, _s: pytest.fail("Should not query verifier"),
+        )
+        assert all(areas_noop.values()) and desktop_noop is True and note_noop is None
+
+    # 2. Merge skew, 1-parent commit, or 3-parent octopus merge -> never queries API, skips nothing.
+    for rev in (skew_sha, base_sha, octopus_sha):
+        areas_skew, desktop_skew, _ = changes.apply_push_pr_tree_skips(
+            "push",
+            base_areas,
+            repo="codemyriad/cassini-gnome",
+            commit=rev,
+            git=stub_git,
+            verifier=lambda _r, _s: pytest.fail("Verifier must not run on non-identical tree or non-2-parent commit"),
+        )
+        assert all(areas_skew.values()) and desktop_skew is True
+
+    # 3. End-to-end CLI invocation of changes.py on push with stubbed `git` and `gh` binaries.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_git = bin_dir / "git"
+    fake_git.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "args = sys.argv[1:]\n"
+        f"if args == ['rev-list', '--parents', '-n', '1', '{merge_sha}']:\n"
+        f"    print('{merge_sha} {base_sha} {pr_sha}')\n"
+        f"elif args in (['rev-parse', '{merge_sha}^{{tree}}'], ['rev-parse', '{pr_sha}^{{tree}}']):\n"
+        f"    print('{same_tree}')\n"
+        "else:\n"
+        "    raise SystemExit(f'unexpected git call: {args}')\n"
+    )
+    fake_git.chmod(0o755)
+    fake_gh = bin_dir / "gh"
+    fake_gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "url = sys.argv[-1]\n"
+        "if 'actions/workflows/ci.yml/runs' in url:\n"
+        f"    print(json.dumps({{'workflow_runs': [{{'id': 77, 'event': 'pull_request', 'head_sha': '{pr_sha}', "
+        "'head_repository': {'full_name': 'codemyriad/cassini-gnome'}, 'status': 'completed', 'conclusion': 'success'}]}))\n"
+        "elif 'actions/runs/77/jobs' in url:\n"
+        "    print(json.dumps({'jobs': [\n"
+        "        {'name': 'Build / Meson build profiles', 'status': 'completed', 'conclusion': 'success'},\n"
+        "        {'name': 'Meson tests / Meson tests (minimal environment)', 'status': 'completed', 'conclusion': 'success'},\n"
+        "        {'name': 'Recording / capture', 'status': 'completed', 'conclusion': 'success'},\n"
+        "        {'name': 'Recording / live-folder', 'status': 'completed', 'conclusion': 'success'},\n"
+        "        {'name': 'Boards', 'status': 'completed', 'conclusion': 'skipped'},\n"
+        "        {'name': 'Offline / pinned-offline-recognition', 'status': 'completed', 'conclusion': 'success'},\n"
+        "        {'name': 'Desktop / GNOME 50 / installed deb', 'status': 'completed', 'conclusion': 'success'},\n"
+        "    ]}))\n"
+        "else:\n"
+        "    raise SystemExit(f'unexpected gh call: {sys.argv}')\n"
+    )
+    fake_gh.chmod(0o755)
+    out_file, rep_file, sum_file = tmp_path / "push-out", tmp_path / "push-report.json", tmp_path / "push-summary.md"
+    cli_env = {k: v for k, v in os.environ.items() if not k.startswith("GITHUB_")}
+    cli_env["PATH"] = f"{bin_dir}:{cli_env.get('PATH', '')}"
+    cli_env["GITHUB_REPOSITORY"] = "codemyriad/cassini-gnome"
+    cli_env["GITHUB_REF"] = "refs/heads/main"
+    cli_env["GITHUB_STEP_SUMMARY"] = str(sum_file)
+    subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parents[1] / "build-aux/ci/changes.py"),
+            "--event",
+            "push",
+            "--commit",
+            merge_sha,
+            "--output",
+            str(out_file),
+            "--report",
+            str(rep_file),
+        ],
+        cwd=tmp_path,
+        check=True,
+        env=cli_env,
+    )
+    cli_report = json.loads(rep_file.read_text())
+    assert cli_report["areas"] == {
+        "source": True,
+        "packages": True,
+        "recording": False,
+        "boards": True,
+        "library": True,
+        "offline": False,
+    }
+    assert cli_report["desktop"] is False
+    emitted = dict(line.split("=", 1) for line in out_file.read_text().splitlines())
+    assert emitted["recording"] == "false" and emitted["offline"] == "false" and emitted["desktop"] == "false"
+    assert emitted["boards"] == "true" and emitted["source"] == "true" and emitted["packages"] == "true"

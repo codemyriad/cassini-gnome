@@ -139,8 +139,15 @@ built and tested (no rebuild at tag time). `green_main.py` requires the latest
 main push orchestrator to succeed, every nested job green, all six package
 artifacts (the stable Flatpak's among them, as proof main built and
 smoke-tested it) and all three full-run build products present and unexpired.
-A PR, another commit, a failed run or a partial/expired artifact set cannot
-supply a release. No tag or publication is created to validate this wiring.
+On a 2-parent `main` merge push whose git tree equals `HEAD^2`, `changes.py`
+skips only those desktop callers (`Recording`, `Boards`, `Offline`, `Desktop`)
+that already ran green on that exact tree in the same-repo PR run, while
+keeping `Build` (`ci-core`, `ci-boards`, `ci-offline`), `Meson tests`, `Source`,
+package builds and `Library`; `green_main.py` and `daily_test_release.py`
+verify both tree equality and per-area green PR execution before accepting a
+skipped desktop caller. A PR, another commit, a failed run or a partial/expired
+artifact set cannot supply a release. No tag or publication is created to
+validate this wiring.
 `publish` needs exactly the Debian and RPM/Arch jobs and creates the GitHub
 release with those packages and the tagged version's NEWS section
 (`build-aux/ci/release_notes.py`).
