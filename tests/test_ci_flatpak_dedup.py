@@ -228,8 +228,7 @@ PROFILE_BRANCH = re.compile(r"""profile["')]*\s*[!=]=\s*["'](?:development|defau
 
 
 def test_the_only_code_that_branches_on_the_profile_is_checked_on_both_bundles():
-    # The devel window's style (Desktop launches the devel bundle) and browser
-    # registration's protected build (companion_bridge.py runs on both bundles).
+    # Browser registration's protected build (companion_bridge.py runs on both bundles).
     # A new branch on the profile or the Flatpak ID fails here: decide whether the
     # devel bundle's goldens must come back before allowing it.
     found = sorted(
@@ -239,7 +238,6 @@ def test_the_only_code_that_branches_on_the_profile_is_checked_on_both_bundles()
         if PROFILE_BRANCH.search(line)
     )
     assert found == [
-        'src/cassini_talk/main.py: if self.profile == "development":',
         'src/cassini_talk/registration.py: return os.environ.get("FLATPAK_ID") != "io.codemyriad.CassiniTalk"',
         'src/cassini_talk/registration.py: return value.get("profile") != "default" or value.get("bindir") '
         'not in ("/usr/bin", "/usr/local/bin")',

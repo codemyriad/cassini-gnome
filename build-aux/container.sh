@@ -24,7 +24,7 @@ fi
 # so files written to bind mounts are already owned by the caller; with docker
 # the scripts chown their output themselves.
 container_run() {
-  "$CONTAINER_ENGINE" run --rm --network host "$@"
+  "$CONTAINER_ENGINE" run --rm --network host ${CASSINI_PERF_GATE:+-e CASSINI_PERF_GATE="$CASSINI_PERF_GATE"} "$@"
 }
 
 # Append to bind-mount options so SELinux hosts (Fedora, RHEL) let the
@@ -44,9 +44,13 @@ container_pull() {
   "$CONTAINER_ENGINE" image inspect "$1" >/dev/null 2>&1 || retry "$CONTAINER_ENGINE" pull -q "$1"
 }
 
-# A tag-safe name for an image reference: fedora:43 -> fedora-43
+# A tag-safe name for an image reference: fedora:44 -> fedora-44,
+# fedora:44@sha256:... -> fedora-44.
 image_slug() {
-  echo "$1" | tr ':/@' '---'
+  case "$1" in
+    *:*@sha256:*) printf '%s\n' "${1%@sha256:*}" | tr ':/@' '---' ;;
+    *) printf '%s\n' "$1" | tr ':/@' '---' ;;
+  esac
 }
 
 # Where one build attempt keeps its Meson test logs (testlog.txt, testlog.json,

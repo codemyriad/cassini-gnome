@@ -118,6 +118,319 @@ def test_idle_legacy_broker_retires_before_current_broker_starts(private):
             close_broker(private)
 
 
+class _ControlledClock:
+    def __init__(self, initial=100.0):
+        self._lock = threading.Lock()
+        self._now = float(initial)
+
+    def __call__(self):
+        with self._lock:
+            return self._now
+
+    def advance(self, seconds):
+        with self._lock:
+            self._now += float(seconds)
+
+
+class _ObservedSocket:
+    def __init__(self, inner, *, track_final=False):
+        self._inner = inner
+        self._track_final = track_final
+        self.entering_recv = threading.Event()
+        self.eof_seen = False
+        self.closed = False
+
+    def recv(self, *args, **kwargs):
+        if self._track_final:
+            self.entering_recv.set()
+        data = self._inner.recv(*args, **kwargs)
+        if self._track_final and data == b"":
+            self.eof_seen = True
+        return data
+
+    def close(self):
+        self.closed = True
+        return self._inner.close()
+
+    def __enter__(self):
+        self._inner.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        self.closed = True
+        return self._inner.__exit__(*args)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+@contextlib.contextmanager
+def _gated_legacy_retirement(private, monkeypatch, *, ignore_sigint=False, gate_unwinding_flush=False):
+    import fcntl
+    from types import SimpleNamespace
+
+    from cassini_talk import broker_lifecycle
+
+    in_flight_r, in_flight_w = os.pipe()
+    release_r, release_w = os.pipe()
+    os.set_inheritable(in_flight_w, True)
+    os.set_inheritable(release_r, True)
+    (private.parent / "sitecustomize.py").write_text(
+        "import os, signal, socket\n"
+        "if os.environ.get('CASSINI_IGNORE_RETIRE_SIGINT') == '1':\n"
+        "    signal.signal(signal.SIGINT, signal.SIG_IGN)\n"
+        "if os.environ.get('CASSINI_GATE_SECOND_FLUSH') == '1':\n"
+        "    _orig = socket.SocketIO.write\n"
+        "    _calls = 0\n"
+        "    def _gated_write(self, b):\n"
+        "        global _calls\n"
+        "        _calls += 1\n"
+        "        if _calls == 2:\n"
+        "            sent = self._sock.send(b)\n"
+        "            os.write(int(os.environ['CASSINI_FLUSH_OUT_FD']), b'1')\n"
+        "            os.read(int(os.environ['CASSINI_FLUSH_IN_FD']), 1)\n"
+        "            return sent\n"
+        "        if _calls == 3 and os.environ.get('CASSINI_GATE_UNWINDING_FLUSH') == '1':\n"
+        "            os.write(int(os.environ['CASSINI_FLUSH_OUT_FD']), b'2')\n"
+        "            os.read(int(os.environ['CASSINI_FLUSH_IN_FD']), 1)\n"
+        "            return _orig(self, b)\n"
+        "        return _orig(self, b)\n"
+        "    socket.SocketIO.write = _gated_write\n",
+        encoding="utf-8",
+    )
+
+    state = SimpleNamespace(
+        clock=_ControlledClock(),
+        final_socket=None,
+        final_socket_ready=threading.Event(),
+        sigint_state=None,
+        released_closed_states=[],
+        lock_busy_observed=threading.Event(),
+        closed_at_lock_busy=None,
+        cancel_event=None,
+        lock_busy_after_cancel=threading.Event(),
+        closed_after_cancel=None,
+        on_lock_busy_after_cancel=None,
+    )
+    connect_calls = 0
+    real_connect = browser_service.connect
+    real_inspect = broker_lifecycle.inspect
+    real_released = broker_lifecycle._released
+    real_send_signal = signal.pidfd_send_signal
+    real_flock = fcntl.flock
+
+    def spy_connect(*args, **kwargs):
+        nonlocal connect_calls
+        connect_calls += 1
+        is_final = connect_calls == 2
+        wrapped = _ObservedSocket(real_connect(*args, **kwargs), track_final=is_final)
+        if is_final:
+            state.final_socket = wrapped
+            state.final_socket_ready.set()
+        return wrapped
+
+    def spy_inspect(connection):
+        raw = connection._inner if isinstance(connection, _ObservedSocket) else connection
+        return real_inspect(raw)
+
+    def spy_send_signal(pidfd, sig, *args):
+        assert state.final_socket is not None
+        state.sigint_state = (state.final_socket.eof_seen, state.final_socket.closed)
+        return real_send_signal(pidfd, sig, *args)
+
+    def spy_released(path, cancelled, *, clock=None):
+        before = state.final_socket.closed if state.final_socket is not None else None
+        try:
+            if clock is None:
+                return real_released(path, cancelled)
+            return real_released(path, cancelled, clock=clock)
+        finally:
+            after = state.final_socket.closed if state.final_socket is not None else None
+            state.released_closed_states.append((before, after))
+
+    def spy_flock(fd, operation):
+        try:
+            return real_flock(fd, operation)
+        except BlockingIOError:
+            if state.final_socket is not None:
+                if not state.lock_busy_observed.is_set():
+                    state.closed_at_lock_busy = state.final_socket.closed
+                    state.lock_busy_observed.set()
+                if (
+                    state.cancel_event is not None
+                    and state.cancel_event.is_set()
+                    and not state.lock_busy_after_cancel.is_set()
+                ):
+                    state.closed_after_cancel = state.final_socket.closed
+                    state.lock_busy_after_cancel.set()
+                    if state.on_lock_busy_after_cancel is not None:
+                        state.on_lock_busy_after_cancel()
+            raise
+
+    monkeypatch.setattr(browser_service, "connect", spy_connect)
+    monkeypatch.setattr(broker_lifecycle, "inspect", spy_inspect)
+    monkeypatch.setattr(broker_lifecycle, "_released", spy_released)
+    monkeypatch.setattr(signal, "pidfd_send_signal", spy_send_signal)
+    monkeypatch.setattr(fcntl, "flock", spy_flock)
+
+    package = private.parent / "cassini_viewer"
+    package.mkdir()
+    (package / "__init__.py").touch()
+    shutil.copyfile(ROOT / "tests/fixtures/legacy_browser_service.py", package / "browser_service.py")
+    env = dict(
+        os.environ,
+        PYTHONPATH=str(private.parent),
+        CASSINI_LEGACY_TEST="1",
+        CASSINI_GATE_SECOND_FLUSH="1",
+        CASSINI_GATE_UNWINDING_FLUSH="1" if gate_unwinding_flush else "0",
+        CASSINI_IGNORE_RETIRE_SIGINT="1" if ignore_sigint else "0",
+        CASSINI_FLUSH_OUT_FD=str(in_flight_w),
+        CASSINI_FLUSH_IN_FD=str(release_r),
+    )
+    old = subprocess.Popen(
+        [sys.executable, "-m", "cassini_viewer.browser_service", "--serve", str(private)],
+        env=env,
+        pass_fds=(in_flight_w, release_r),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    os.close(in_flight_w)
+    os.close(release_r)
+    try:
+        readable(old.stdout)
+        assert old.stdout.readline().strip() == "READY"
+        yield old, in_flight_r, release_w, state
+    finally:
+        for fd in (in_flight_r, release_w):
+            with contextlib.suppress(OSError):
+                os.close(fd)
+        if old.poll() is None:
+            old.kill()
+            old.communicate(timeout=BOUND)
+        close_broker(private)
+
+
+def test_legacy_broker_status_flush_completes_before_retirement_sigint(private, monkeypatch):
+    """Verify SIGINT follows actual peer EOF on a frozen clock while keeping `again` open across retirement."""
+    with _gated_legacy_retirement(private, monkeypatch) as (old, in_flight_r, release_w, state):
+        with ThreadPoolExecutor(1) as executor:
+            ensuring = executor.submit(browser_service.ensure_service, private, clock=state.clock)
+            try:
+                readable(in_flight_r)
+                assert os.read(in_flight_r, 1) == b"1"
+                assert state.final_socket_ready.wait(BOUND)
+                assert state.final_socket.entering_recv.wait(BOUND)
+                assert state.sigint_state is None
+                assert not state.final_socket.eof_seen and not state.final_socket.closed
+            finally:
+                with contextlib.suppress(OSError):
+                    os.write(release_w, b"1")
+            ensuring.result(BOUND)
+        rc = old.wait(BOUND)
+        _stdout, stderr = old.communicate(timeout=BOUND)
+        assert state.sigint_state == (True, False), f"Expected (eof_seen=True, closed=False) at SIGINT:\n{stderr}"
+        assert state.released_closed_states == [(False, False), (True, True)]
+        assert state.final_socket.closed
+        assert rc == 0, f"Legacy broker exited with {rc}:\n{stderr}"
+        status = browser_service.request(path=private)
+        assert status["identity"]["pid"] != old.pid and not status["brokerStale"]
+
+
+def test_legacy_broker_eof_timeout_keeps_status_socket_open_through_retirement(private, monkeypatch):
+    """Expire the 0.5 s EOF bound while the legacy flush is gated; `again` stays open across `_released`."""
+    with _gated_legacy_retirement(private, monkeypatch) as (old, in_flight_r, _release_w, state):
+        with ThreadPoolExecutor(1) as executor:
+            ensuring = executor.submit(browser_service.ensure_service, private, clock=state.clock)
+            readable(in_flight_r)
+            assert os.read(in_flight_r, 1) == b"1"
+            assert state.final_socket_ready.wait(BOUND)
+            assert state.final_socket.entering_recv.wait(BOUND)
+            assert state.sigint_state is None and not state.final_socket.eof_seen
+            # Advance the injected clock past `_await_peer_close`'s 0.5 s bound without releasing the pipe;
+            # SIGINT interrupts `os.read` inside `SocketIO.write`, and the unwinding flush succeeds because
+            # `again` remains open until `_released` observes `.lock` release.
+            state.clock.advance(0.6)
+            ensuring.result(BOUND)
+        rc = old.wait(BOUND)
+        _stdout, stderr = old.communicate(timeout=BOUND)
+        assert state.sigint_state == (False, False), f"Expected (eof_seen=False, closed=False) on timeout:\n{stderr}"
+        assert state.released_closed_states == [(False, False), (True, True)]
+        assert state.final_socket.closed
+        assert rc == 0, f"Legacy broker exited with {rc} on EOF timeout path:\n{stderr}"
+        status = browser_service.request(path=private)
+        assert status["identity"]["pid"] != old.pid and not status["brokerStale"]
+
+
+def test_legacy_broker_retirement_lock_timeout_escalates_and_closes_status_socket(private, monkeypatch):
+    """Escalate with TimeoutError and close `again` when a wedged legacy broker never releases `.lock`."""
+    with _gated_legacy_retirement(private, monkeypatch, ignore_sigint=True) as (_old, in_flight_r, release_w, state):
+        with ThreadPoolExecutor(1) as executor:
+            ensuring = executor.submit(browser_service.ensure_service, private, clock=state.clock)
+            readable(in_flight_r)
+            assert os.read(in_flight_r, 1) == b"1"
+            assert state.final_socket_ready.wait(BOUND)
+            assert state.final_socket.entering_recv.wait(BOUND)
+            state.clock.advance(0.6)
+            assert state.lock_busy_observed.wait(BOUND)
+            assert state.sigint_state == (False, False)
+            assert state.closed_at_lock_busy is False
+            state.clock.advance(5.1)
+            with pytest.raises(TimeoutError, match="The older browser service has not finished closing"):
+                ensuring.result(BOUND)
+        assert state.released_closed_states == [(False, False)]
+        assert state.final_socket.closed
+        os.write(release_w, b"1")
+
+
+def test_legacy_broker_cancellation_after_sigint_defers_until_unwinding_flush_completes(private, monkeypatch):
+    """Defer cancellation after SIGINT until the unwinding flush and `.lock` release finish, then raise CancelledError."""
+    from concurrent.futures import CancelledError
+
+    cancelled = threading.Event()
+    post_cancel_observed = threading.Event()
+    with _gated_legacy_retirement(private, monkeypatch, gate_unwinding_flush=True) as (
+        old,
+        in_flight_r,
+        release_w,
+        state,
+    ):
+        state.cancel_event = cancelled
+        state.on_lock_busy_after_cancel = post_cancel_observed.set
+        with ThreadPoolExecutor(1) as executor:
+            ensuring = executor.submit(browser_service.ensure_service, private, cancelled=cancelled, clock=state.clock)
+            ensuring.add_done_callback(lambda _future: post_cancel_observed.set())
+            try:
+                readable(in_flight_r)
+                assert os.read(in_flight_r, 1) == b"1"
+                assert state.final_socket_ready.wait(BOUND)
+                assert state.final_socket.entering_recv.wait(BOUND)
+                state.clock.advance(0.6)
+                # Wait for SIGINT to interrupt the initial flush and park inside the unwinding flush
+                # (`_calls == 3`), and for `_released` to observe `.lock` held by the retiring broker.
+                readable(in_flight_r)
+                assert os.read(in_flight_r, 1) == b"2"
+                assert state.lock_busy_observed.wait(BOUND)
+                assert state.sigint_state == (False, False)
+                assert state.closed_at_lock_busy is False
+                # Simulate BrowserWatch closing after SIGINT while the unwinding flush remains pending.
+                cancelled.set()
+                assert post_cancel_observed.wait(BOUND)
+                assert state.lock_busy_after_cancel.is_set() and not ensuring.done()
+                assert state.closed_after_cancel is False and not state.final_socket.closed
+            finally:
+                with contextlib.suppress(OSError):
+                    os.write(release_w, b"2")
+            with pytest.raises(CancelledError):
+                ensuring.result(BOUND)
+        rc = old.wait(BOUND)
+        _stdout, stderr = old.communicate(timeout=BOUND)
+        assert state.released_closed_states == [(False, False)]
+        assert state.final_socket.closed
+        assert rc == 0, f"Legacy broker exited with {rc} when cancelled during unwinding flush:\n{stderr}"
+        assert not private.exists(), "Cancelled ensure_service must not spawn a replacement broker"
+
+
 @pytest.mark.parametrize("module,active", [("cassini_viewer", True), ("unrelated_service", False)])
 def test_recording_legacy_or_unrelated_socket_owner_is_never_signalled(private, module, active):
     with legacy(private, module, active=active) as old:

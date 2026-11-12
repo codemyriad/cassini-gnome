@@ -28,7 +28,7 @@ mkdir -m 700 "$runtime/run" "$runtime/home"
 export HOME="$runtime/home" XDG_RUNTIME_DIR="$runtime/run"
 export XDG_CONFIG_HOME="$runtime/config" XDG_CACHE_HOME="$runtime/cache" XDG_DATA_HOME="$runtime/data"
 export GSK_RENDERER=cairo GDK_BACKEND=x11 GSETTINGS_BACKEND=memory
-export ADW_DISABLE_PORTAL=1 ADW_DEBUG_ACCENT_COLOR=blue
+export ADW_DISABLE_PORTAL=1
 export GIO_USE_VFS=local GTK_USE_PORTAL=0
 export TZ=Europe/Rome LANG=en_GB.UTF-8 LC_ALL=en_GB.UTF-8
 export LANGUAGE="${CASSINI_SCREENSHOT_LANGUAGE:-en_GB}"
@@ -47,7 +47,7 @@ PYFONT
 export FONTCONFIG_FILE="$runtime/fonts.conf"
 fc-match -f '%{family}: %{file}\n' Cantarell
 export CASSINI_SCREENSHOT_ISOLATED=1 CASSINI_SCREENSHOT_OUT="$output"
-unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY DBUS_SESSION_BUS_ADDRESS
+unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY DBUS_SESSION_BUS_ADDRESS ADW_DEBUG_ACCENT_COLOR
 scale=${CASSINI_SCREENSHOT_SCALE:-1}
 case "$scale" in
   1) screen=1280x900x24 ;;

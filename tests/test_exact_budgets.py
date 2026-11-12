@@ -66,9 +66,23 @@ def test_cpu_budget_prints_numbers_and_tolerates_shared_runner_jitter_within_saf
     assert "::notice::60min-diarized openFirstPaintCpuMs CPU 110.413 ms" in capsys.readouterr().out
 
 
-def test_cpu_budget_fails_above_safe_regression_ceiling_and_supports_per_runner_baseline(capsys):
+def test_cpu_budget_fails_above_safe_regression_ceiling_and_supports_per_runner_baseline(capsys, monkeypatch):
     budgets = load_budgets()
 
+    # Outside the nightly/full-ci perf gate, ceiling overruns emit structured diagnostics without failing PRs.
+    monkeypatch.delenv("CASSINI_PERF_GATE", raising=False)
+    ungated = budgets.check_cpu_budget(
+        "4h-diarized",
+        "openWorstFrameCpuMs",
+        96.0,
+        target_ms=budgets.FRAME_CPU_TARGET_MS,
+        ceiling_ms=budgets.FRAME_CPU_CEILING_MS,
+    )
+    ungated_out = capsys.readouterr().out
+    assert ungated["measuredMs"] == 96.0 and ungated["overTarget"] is True
+    assert "CPU_BUDGET" in ungated_out and "::notice::4h-diarized openWorstFrameCpuMs CPU 96.000 ms" in ungated_out
+
+    monkeypatch.setenv("CASSINI_PERF_GATE", "1")
     with pytest.raises(AssertionError, match=">= safe ceiling 96.000 ms"):
         budgets.check_cpu_budget(
             "4h-diarized",

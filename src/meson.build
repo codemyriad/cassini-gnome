@@ -57,7 +57,6 @@ launcher = configure_file(
 
 talk_sources = files(
   'cassini_talk/__init__.py',
-  'cassini_talk/colors.py',
   'cassini_talk/main.py',
   'cassini_talk/identity.py',
   'cassini_talk/main_loop_watchdog.py',
@@ -144,7 +143,13 @@ talk_sources = files(
   'cassini_talk/meeting_time.py',
   'cassini_talk/exporting.py',
   'cassini_talk/export_dialog.py',
+  'cassini_talk/zip_export.py',
+  'cassini_talk/zip_export_dialog.py',
   'cassini_talk/received.py',
+  'cassini_talk/archive_import.py',
+  'cassini_talk/batch_import.py',
+  'cassini_talk/import_feedback.py',
+  'cassini_talk/import_dialog.py',
 
   'cassini_talk/capture_guard.py',
   'cassini_talk/background_recording.py',
@@ -243,7 +248,6 @@ talk_sources = files(
   'cassini_talk/summary.py',
   'cassini_talk/transcript.py',
   'cassini_talk/readable.py',
-  'cassini_talk/window.py',
 )
 install_data(talk_sources, install_dir: moduledir)
 
@@ -299,8 +303,8 @@ pytest = python.find_installation('python3', modules: ['pytest'], required: fals
 # G3: the suite runs as pytest_shards tests, pytest-1 .. pytest-N, balanced by
 # file from tests/shard-durations.json (tests/shard_plan.py). Each has its own
 # timeout, a private HOME, XDG base directories and basetemp (tests/conftest.py),
-# and runs alone: is_parallel false, so the shards never run concurrently with
-# each other or with any other test. The whole suite took 290-330 s of a single
+# and runs alone by default. The opt-in pytest_parallel experiment allows
+# overlap only with an explicit meson test --num-processes=2. The whole suite took 290-330 s of a single
 # 360 s deadline in the package containers (openSUSE 329 s, 2026-11-03), after
 # tripping the earlier 240 s one (D52.4); four shards took 52-61 s each in the
 # roy harness, where the single test took 226 s. A shard over half its budget prints a
@@ -320,7 +324,7 @@ if pytest.found()
             'CASSINI_TEST_SHARD=@0@/@1@'.format(shard, pytest_shards), 'CASSINI_TEST_BUDGET=@0@'.format(pytest_budget)],
       workdir: meson.project_source_root(),
       suite: 'pytest',
-      is_parallel: false,
+      is_parallel: get_option('pytest_parallel'),
       # The suite re-runs both conformance suites as subprocesses, alongside
       # Meson's own conformance tests: 11-21 s in a package build container,
       # over Meson's 30 s default on a loaded builder. Library v2 adds a 60 min

@@ -205,17 +205,6 @@ def test_po_compiles_and_translates_actual_gnome_messages(lang, tmp_path):
         messages.gettext("Open…")
         == {"en": "Open…", "it": "Apri…", "fr": "Ouvrir…", "es": "Abrir…", "pt-BR": "Abrir…", "pt-PT": "Abrir…"}[lang]
     )
-    assert (
-        messages.ngettext("{n} match", "{n} matches", 0)
-        == {
-            "en": "{n} matches",
-            "it": "{n} risultati",
-            "fr": "{n} occurrence",
-            "es": "{n} coincidencias",
-            "pt-BR": "{n} resultado",
-            "pt-PT": "{n} ocorrências",
-        }[lang]
-    )
 
 
 @pytest.mark.parametrize(

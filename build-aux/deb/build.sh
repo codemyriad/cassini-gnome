@@ -9,7 +9,7 @@
 set -eu
 cd "$(dirname "$0")/../.."
 . build-aux/container.sh
-BASE=${1:-ubuntu:26.04}
+BASE=${1:-ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96}
 VERSION=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
 DEB_VERSION=$(sed -n '1s/^[^ ]* (\([^)]*\)).*/\1/p' debian/changelog)
 if [ "$VERSION" != "${DEB_VERSION%%[+-]*}" ]; then
@@ -22,7 +22,8 @@ DEB=cassini-talk_${DEB_VERSION}_amd64.deb
 # Each base gets its own file name in dist/ and in the release:
 # ubuntu:26.04 -> cassini-talk_0.4.0~ubuntu26.04_amd64.deb,
 # debian:testing -> cassini-talk_0.4.0~debian-testing_amd64.deb.
-BASE_TAG=$(echo "${BASE##*/}" | sed 's/:\([0-9]\)/\1/; s/[:@]/-/g')
+BASE_NO_DIGEST=${BASE%@sha256:*}
+BASE_TAG=$(echo "${BASE_NO_DIGEST##*/}" | sed 's/:\([0-9]\)/\1/; s/[:@]/-/g')
 OUT=cassini-talk_${DEB_VERSION}~${BASE_TAG}_amd64.deb
 TAG=cassini-talk-deb:$(image_slug "$BASE")
 # The pinned writing-down artifacts; the package build itself is offline.

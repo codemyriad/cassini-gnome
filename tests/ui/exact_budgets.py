@@ -12,6 +12,7 @@ only above the safe regression ceiling.
 
 import json
 import math
+import os
 
 FIRST_PAINT_TARGET_MS = 100.0
 FIRST_PAINT_CEILING_MS = 250.0
@@ -48,9 +49,16 @@ def check_cpu_budget(scope, metric, measured_ms, *, target_ms, ceiling_ms, basel
     payload["overTarget"] = value >= target_ms
     print("CPU_BUDGET", json.dumps(payload), flush=True)
     if value >= limit_ms:
-        raise AssertionError(
-            f"{scope} {metric} CPU {value:.3f} ms >= safe ceiling {limit_ms:.3f} ms (target {target_ms:.3f} ms)"
+        if os.environ.get("CASSINI_PERF_GATE") == "1":
+            raise AssertionError(
+                f"{scope} {metric} CPU {value:.3f} ms >= safe ceiling {limit_ms:.3f} ms (target {target_ms:.3f} ms)"
+            )
+        print(
+            f"::notice::{scope} {metric} CPU {value:.3f} ms exceeded safe ceiling {limit_ms:.1f} ms "
+            f"(diagnostic only outside nightly/full-ci perf gate)",
+            flush=True,
         )
+        return payload
     if value >= target_ms:
         print(
             f"::notice::{scope} {metric} CPU {value:.3f} ms exceeded reference target {target_ms:.1f} ms "

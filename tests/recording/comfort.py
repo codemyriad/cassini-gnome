@@ -9,7 +9,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import traceback
 from pathlib import Path
 
@@ -31,6 +30,7 @@ from desktop_services import DesktopServices  # noqa: E402
 from gi.repository import GdkX11, Gio, Gst  # noqa: E402
 from gst_evidence import GstEvidence  # noqa: E402
 from readiness import PCMProgress, wait_until  # noqa: E402
+from teardown import recording_app_teardown  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(args.build.resolve() / "src/cassini-talk.gresource")))
 from cassini_talk import native_recorder  # noqa: E402
@@ -127,9 +127,47 @@ def until(condition, description):
     return wait_until(checked, description, diagnostics=diagnostics)
 
 
-private = tempfile.TemporaryDirectory()
-try:
-    directory = Path(private.name)
+def _on_failure():
+    (artifacts / "comfort-failure.json").write_text(json.dumps(diagnostics(), indent=2) + "\n")
+    with (artifacts / "comfort-threads.log").open("w") as dump:
+        faulthandler.dump_traceback(file=dump)
+    if app and app.recorder and app.recorder.pipeline is not None:
+        (artifacts / "comfort-pipeline.dot").write_text(
+            Gst.debug_bin_to_dot_data(app.recorder.pipeline, Gst.DebugGraphDetails.ALL)
+        )
+
+
+def _stop_active():
+    if app and app.recorder and app.recorder.pipeline is not None:
+        app.stop_native()
+        wait_until(lambda: app.recorder.pipeline is None, "failure cleanup finalizes capture", diagnostics=diagnostics)
+
+
+def _copy_library_on_error(root_dir):
+    library = Path(root_dir) / "Library"
+    if library.exists():
+        shutil.copytree(library, artifacts / "comfort-recordings", dirs_exist_ok=True)
+
+
+def _close_harness():
+    for observer in observers:
+        observer.close()
+    for pipeline in probes + producers:
+        pipeline.set_state(Gst.State.NULL)
+    trace.close()
+    services.close()
+    (artifacts / "comfort.json").write_text(json.dumps(dict(report, diagnostics=diagnostics()), indent=2) + "\n")
+
+
+with recording_app_teardown(
+    lambda: app,
+    prefix="cassini-comfort-",
+    on_error=_on_failure,
+    stop_active=_stop_active,
+    after_drain_on_error=_copy_library_on_error,
+    before_cleanup=_close_harness,
+) as private_dir:
+    directory = Path(private_dir)
     os.environ["CASSINI_LIBRARY_DIR"] = str(directory / "Library")
     schemas = directory / "schemas"
     schemas.mkdir()
@@ -339,28 +377,3 @@ try:
     assert not errors, errors
     report["callbackErrors"] = errors
     print("PASS Recording page: real Pulse/keyboard, portal, hidden notifications, disk warning/reserve")
-finally:
-    if not report:
-        (artifacts / "comfort-failure.json").write_text(json.dumps(diagnostics(), indent=2) + "\n")
-        with (artifacts / "comfort-threads.log").open("w") as dump:
-            faulthandler.dump_traceback(file=dump)
-        if app and app.recorder and app.recorder.pipeline is not None:
-            (artifacts / "comfort-pipeline.dot").write_text(
-                Gst.debug_bin_to_dot_data(app.recorder.pipeline, Gst.DebugGraphDetails.ALL)
-            )
-        library = Path(private.name) / "Library"
-        if library.exists():
-            shutil.copytree(library, artifacts / "comfort-recordings")
-    if app and app.recorder and app.recorder.pipeline is not None:
-        app.stop_native()
-        wait_until(lambda: app.recorder.pipeline is None, "failure cleanup finalizes capture", diagnostics=diagnostics)
-    if app and app.comfort:
-        app.comfort.close()
-    for observer in observers:
-        observer.close()
-    for pipeline in probes + producers:
-        pipeline.set_state(Gst.State.NULL)
-    trace.close()
-    services.close()
-    private.cleanup()
-    (artifacts / "comfort.json").write_text(json.dumps(dict(report, diagnostics=diagnostics()), indent=2) + "\n")

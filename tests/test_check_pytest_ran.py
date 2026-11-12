@@ -364,21 +364,205 @@ def test_no_matrix_job_can_disappear_even_if_its_dependents_are_missing(tmp_path
     assert check.main(["--gate", str(root)]) == 1
 
 
-def test_runtime_proof_manifest_matches_the_actual_workflow_matrices():
+def pr_matrix():
+    return {
+        name: (UBUNTU if "ubuntu" in name else FEDORA, None if name.startswith("pytest-skipped-") else FULL)
+        for name in module().REQUIRED_PR_ARTIFACTS
+    }
+
+
+def test_complete_pr_tier_matrix_passes_the_pr_gate_and_rejects_missing_or_infra_skip(tmp_path):
+    check = module()
+    root = artifacts(tmp_path / "ok", pr_matrix())
+    assert check.gate(root, tier="pr") == []
+    assert check.main(["--gate", str(root), "--tier", "pr"]) == 0
+    # Default --gate still requires the full 11-artifact matrix.
+    assert check.main(["--gate", str(root)]) == 1
+    for missing in check.REQUIRED_PR_ARTIFACTS:
+        kinds = pr_matrix()
+        del kinds[missing]
+        bad = artifacts(tmp_path / f"missing-{missing}", kinds)
+        assert any(missing in problem for problem in check.gate(bad, tier="pr"))
+        assert check.main(["--gate", str(bad), "--tier", "pr"]) == 1
+    # Alpine infra-skip is never accepted in the pr tier.
+    with_infra = artifacts(tmp_path / "infra", pr_matrix())
+    write_infra_skip(with_infra / "pytest-infra-skipped-alpine-edge")
+    assert any("pr tier" in problem for problem in check.gate(with_infra, tier="pr"))
+
+
+def test_runtime_proof_manifest_matches_the_actual_workflow_matrices(tmp_path):
+    import itertools
     import re
 
     def slug(image):
-        return image.replace(":", "-").replace("/", "-")
+        return image.split("@", 1)[0].replace(":", "-").replace("/", "-")
+
+    def three_branches(text, key, input_name):
+        match = re.search(
+            rf"{key}: \$\{{\{{ inputs\.{input_name} && \(github\.event_name == 'schedule' && "
+            r"fromJSON\('([^']+)'\) \|\| fromJSON\('([^']+)'\)\) \|\| fromJSON\('([^']+)'\) \}\}",
+            text,
+        )
+        assert match is not None, (key, input_name)
+        return json.loads(match[1]), json.loads(match[2]), json.loads(match[3])
 
     workflows = ROOT / ".github/workflows"
-    source = (workflows / "source.yml").read_text()
-    entries = re.findall(r'^          - image: (\S+)\n(?:            pytest-in: "([^"\n]+)"\n)?', source, re.M)
-    expected = {"pytest-" + ("skipped-" if job else "nodes-") + slug(image) for image, job in entries}
-    deb = json.loads(re.search(r"base: (\[[^\n]+\])", (workflows / "deb.yml").read_text())[1])
-    rpm = re.findall(r"^          - base: (\S+)$", (workflows / "packages.yml").read_text(), re.M)
-    arch = re.search(r"BASE=\$\{1:-(.+)\}", (ROOT / "build-aux/arch/build.sh").read_text())[1]
-    expected.update("pytest-ran-" + slug(image) for image in [*deb, *rpm, arch])
-    assert set(module().REQUIRED_ARTIFACTS) == expected
+    source_text = (workflows / "source.yml").read_text()
+    source_match = re.search(
+        r"include: \$\{\{ fromJSON\(format\('([^']+)', "
+        r"inputs\.extra_distros && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)', "
+        r"inputs\.deb_testing && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)', "
+        r"inputs\.rpm_opensuse && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)', "
+        r"inputs\.arch && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)'\)\) \}\}",
+        source_text,
+    )
+    assert source_match is not None
+    (
+        fmt,
+        extra_sched,
+        extra_pinned,
+        extra_f,
+        deb_sched,
+        deb_pinned,
+        deb_f,
+        rpm_sched,
+        rpm_pinned,
+        rpm_f,
+        arch_sched,
+        arch_pinned,
+        arch_f,
+    ) = source_match.groups()
+
+    deb_full_sched, deb_full_pinned, deb_pr = three_branches((workflows / "deb.yml").read_text(), "base", "deb_testing")
+    rpm_full_sched, rpm_full_pinned, rpm_pr = three_branches(
+        (workflows / "packages.yml").read_text(), "include", "rpm_opensuse"
+    )
+    packages_text = (workflows / "packages.yml").read_text()
+    arch_call = re.search(
+        r'build-aux/arch/build\.sh "\$\{\{ github\.event_name == \'schedule\' && \'([^\']+)\' \|\| \'([^\']+)\' \}\}"',
+        packages_text,
+    )
+    assert arch_call is not None
+    arch_sched_img, arch_pinned_img = arch_call.groups()
+    arch_default_img = re.search(r"BASE=\$\{1:-(.+)\}", (ROOT / "build-aux/arch/build.sh").read_text())[1]
+    assert arch_pinned_img == arch_default_img
+    assert re.search(
+        r"  arch:\n    name: Build Arch package\n    if: \$\{\{ inputs\.arch \}\}\n",
+        packages_text,
+    )
+
+    check = module()
+    for idx, (deb_testing, rpm_opensuse, arch, extra_distros) in enumerate(itertools.product((False, True), repeat=4)):
+        for is_schedule in (False, True):
+            source_entries = json.loads(
+                fmt.format(
+                    (extra_sched if is_schedule else extra_pinned) if extra_distros else extra_f,
+                    (deb_sched if is_schedule else deb_pinned) if deb_testing else deb_f,
+                    (rpm_sched if is_schedule else rpm_pinned) if rpm_opensuse else rpm_f,
+                    (arch_sched if is_schedule else arch_pinned) if arch else arch_f,
+                )
+            )
+            deb_entries = (deb_full_sched if is_schedule else deb_full_pinned) if deb_testing else deb_pr
+            rpm_entries = (rpm_full_sched if is_schedule else rpm_full_pinned) if rpm_opensuse else rpm_pr
+            arch_entries = [(arch_sched_img if is_schedule else arch_pinned_img)] if arch else []
+
+            expected = {
+                "pytest-" + ("skipped-" if item.get("pytest-in") else "nodes-") + slug(item["image"])
+                for item in source_entries
+            }
+            expected.update(
+                "pytest-ran-" + slug(image)
+                for image in [*deb_entries, *(r["base"] for r in rpm_entries), *arch_entries]
+            )
+            required, reference_slug = check.expected_gate(
+                deb_testing=deb_testing,
+                rpm_opensuse=rpm_opensuse,
+                arch=arch,
+                extra_distros=extra_distros,
+            )
+            assert set(required) == expected
+            assert reference_slug == ("fedora-latest" if extra_distros else "fedora-44")
+
+        combo_root = artifacts(
+            tmp_path / f"combo-{idx}",
+            {name: (DEBIAN, None if name.startswith("pytest-skipped-") else FULL) for name in required},
+        )
+        assert (
+            check.gate(
+                combo_root,
+                deb_testing=deb_testing,
+                rpm_opensuse=rpm_opensuse,
+                arch=arch,
+                extra_distros=extra_distros,
+            )
+            == []
+        )
+        assert (
+            check.main(
+                [
+                    "--gate",
+                    str(combo_root),
+                    "--changes-result",
+                    "success",
+                    "--deb-testing",
+                    str(deb_testing).lower(),
+                    "--rpm-opensuse",
+                    str(rpm_opensuse).lower(),
+                    "--arch",
+                    str(arch).lower(),
+                    "--extra-distros",
+                    str(extra_distros).lower(),
+                ]
+            )
+            == 0
+        )
+
+    assert set(check.expected_gate()[0]) == set(check.REQUIRED_ARTIFACTS)
+    assert (
+        check.expected_gate(deb_testing=False, rpm_opensuse=False, arch=False, extra_distros=False)[0]
+        == check.REQUIRED_PR_ARTIFACTS
+    )
+
+    # Failed or missing changes outputs fail open to requiring the full matrix.
+    pr_only_root = artifacts(tmp_path / "pr-only", pr_matrix())
+    assert (
+        check.main(
+            [
+                "--gate",
+                str(pr_only_root),
+                "--changes-result",
+                "failure",
+                "--deb-testing",
+                "false",
+                "--rpm-opensuse",
+                "false",
+                "--arch",
+                "false",
+                "--extra-distros",
+                "false",
+            ]
+        )
+        == 1
+    )
+    assert (
+        check.main(
+            [
+                "--gate",
+                str(pr_only_root),
+                "--changes-result",
+                "success",
+                "--deb-testing",
+                "",
+                "--rpm-opensuse",
+                "false",
+                "--arch",
+                "false",
+                "--extra-distros",
+                "false",
+            ]
+        )
+        == 1
+    )
 
 
 def test_missing_source_and_its_package_cannot_hide_each_other(tmp_path):

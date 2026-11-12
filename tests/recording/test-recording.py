@@ -16,7 +16,6 @@ import shutil
 import stat
 import subprocess
 import sys
-import tempfile
 import threading
 import traceback
 from pathlib import Path
@@ -44,6 +43,7 @@ gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, Gst  # noqa: E402
 from readiness import wait_until  # noqa: E402
+from teardown import recording_app_teardown  # noqa: E402
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[2] / name) for name in ("src", "tests")]
 from desktop_services import DesktopServices  # noqa: E402
@@ -218,7 +218,20 @@ try:
     wait_until(lambda: not leftover.exists(), "a leftover test folder is swept at start", diagnostics=diagnostics)
     assert folders_root().is_dir()
     app.activate()
-    with tempfile.TemporaryDirectory() as library:
+
+    def _stop_active():
+        if app.recorder and app.recorder.pipeline is not None:
+            app.stop_native()
+            wait_until(
+                lambda: app.recorder.pipeline is None, "failure cleanup finalizes capture", diagnostics=diagnostics
+            )
+
+    with recording_app_teardown(
+        app,
+        prefix="cassini-test-recording-",
+        on_error=lambda: evidence.setdefault("readiness", diagnostics()),
+        stop_active=_stop_active,
+    ) as library:
         os.environ["CASSINI_LIBRARY_DIR"] = library
         window = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
         window.monitor.refresh_now()
@@ -298,6 +311,7 @@ except BaseException:
     quiet()
     raise
 finally:
-    evidence["readiness"] = diagnostics()
+    services.close()
+    evidence.setdefault("readiness", diagnostics())
     evidence["callbackErrors"] = callback_errors
     (artifacts / "results.json").write_text(json.dumps(evidence, indent=2, default=str) + "\n")

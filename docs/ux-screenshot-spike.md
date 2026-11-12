@@ -10,6 +10,7 @@ Build and run in a separate worktree:
 meson setup _build-shot --prefix="$PWD/_install-shot" -Dprofile=development
 meson install -C _build-shot
 build-aux/ux-screenshot.sh _install-shot/bin/cassini-talk ux-artifacts/current-main.png
+build-aux/ux-shots.sh _install-shot/bin/cassini-talk _build-shot ux-artifacts
 ```
 
 The wrapper gives the app a private HOME, XDG directories, D-Bus and Xvfb display;
@@ -25,8 +26,13 @@ currently allocates an 1110×710 widget image; the JSON records the actual size.
 
 The CI workflow pins Ubuntu 26.04, Cantarell 0.303.1-4 and Inter 4.1+ds-1. A
 private fontconfig setup selects only those fonts, with Cantarell 11 as the app
-font. It forces Cairo, light style and blue accent, with Europe/Rome and
-en_GB.UTF-8. PNG, environment metadata and font versions/hashes are uploaded.
+font. It forces Cairo, light or dark style (`CASSINI_SCREENSHOT_SCHEME`) without
+pinning a system accent, with Europe/Rome and en_GB.UTF-8. `build-aux/ux-shots.sh`
+renders every board and UI flow in light and dark and writes `shots.json`. PNG,
+environment metadata, toolkit versions (`packages.txt`) and font versions/hashes are uploaded.
+On pull requests, `build-aux/ci/pr-shots.py diff` compares `ux-artifacts` against the
+`main` baseline `ux-boards` artifact, appends the link table to `$GITHUB_STEP_SUMMARY`,
+and uploads `pr-shots/` (`changes.json`, `block.md`, and changed before/after/diff PNGs).
 For local use without installing fonts system-wide, extract those font packages
 and set `CASSINI_SCREENSHOT_FONT_DIR` to their `usr/share/fonts/opentype` folder.
 

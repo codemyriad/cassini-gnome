@@ -484,7 +484,12 @@ until(
 until(lambda: capture_inputs() == [] and not privacy_indicator()["visible"], "clean privacy baseline")
 results = dict(shell=version, baseline=privacy_indicator(), cases=[])
 root = HOME / "Music/Cassini"
-for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
+appids = (
+    ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel")
+    if os.environ.get("CASSINI_QA_INCLUDE_FLATPAK", "1") == "1"
+    else ("io.codemyriad.CassiniTalk",)
+)
+for appid in appids:
     flatpak = appid.endswith(".Devel")
     command = ["flatpak", "run", "--user", "--command=gsettings", appid] if flatpak else ["gsettings"]
     subprocess.run([*command, "set", "io.codemyriad.CassiniTalk", "skip-record-first", "true"], check=True)
@@ -524,8 +529,17 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
         raise
     until(lambda appid=appid: idle_notifications(appid), "still-running notification")
     assert idle_notifications(appid) == 1
-    idle = indicator(appid)
-    assert idle["mapped"] and idle["title"] == "Ready to record browser meetings", idle
+    idle = until(
+        lambda appid=appid: (
+            item
+            if (item := indicator(appid))
+            and item.get("visible")
+            and item.get("mapped")
+            and item.get("title") == "Ready to record browser meetings"
+            else None
+        ),
+        "idle SNI title",
+    )
     assert idle["label"] == "", "an idle panel item shows only the icon"
     assert "Stop Recording" not in idle["menu"], idle
     screenshot("indicator-idle-" + appid + ".png")
@@ -535,10 +549,20 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
     until(lambda appid=appid: not (indicator(appid) or {}).get("visible"), "idle SNI hidden with Library visible")
     action(appid, "record")
     manifest = wait_for_recording(root, appid, "recorded microphone frames")
+    # NewStatus("Active") and XAyatanaNewLabel carry inline values and flip visible
+    # before NewTitle()'s asynchronous Properties.Get("Title") round-trip returns;
+    # wait for the refreshed recording title just as browser_only() does at :435.
     live = until(
-        lambda appid=appid: indicator(appid) if (indicator(appid) or {}).get("visible") else None, "recording SNI"
+        lambda appid=appid: (
+            item
+            if (item := indicator(appid))
+            and item.get("visible")
+            and item.get("mapped")
+            and item.get("title", "").startswith("Recording,")
+            else None
+        ),
+        "recording SNI",
     )
-    assert live["mapped"] and live["title"].startswith("Recording,"), live
     # The text GNOME actually renders beside the icon (XAyatanaLabel), not
     # only the item's Title: it must show the timer and keep advancing.
     first = until(lambda appid=appid: (indicator(appid) or {}).get("label"), "rendered panel timer")
@@ -637,4 +661,5 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
         )
     )
     (OUT / "status-notifier-desktop.json").write_text(json.dumps(results, indent=2) + "\n")
+assert len(results["cases"]) == len(appids)
 print(json.dumps(results, indent=2))

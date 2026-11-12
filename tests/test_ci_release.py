@@ -53,6 +53,18 @@ def test_release_requires_the_exact_commit_and_every_latest_main_workflow():
     # A later failed run cannot borrow an earlier green run's artifacts.
     with pytest.raises(ValueError, match="not green"):
         policy.select_runs(good + [dict(good[0], id=100, conclusion="failure")], "a" * 40)
+    # When both a fast push run and a full-matrix workflow_dispatch run are green on main,
+    # select_runs prefers the latest full-matrix run so all pinned native package artifacts are present.
+    dispatched = dict(good[0], id=50, event="workflow_dispatch")
+    later_push = dict(good[0], id=60, event="push")
+    assert policy.select_runs([dispatched, later_push], "a" * 40)["ci.yml"]["id"] == 50
+    # Scheduled nightly runs probe unpinned rolling base images outside merge and release gates:
+    # they neither block nor supply release artifacts.
+    red_schedule = dict(good[0], id=70, event="schedule", conclusion="failure")
+    green_schedule = dict(good[0], id=80, event="schedule", conclusion="success")
+    assert policy.select_runs([later_push, red_schedule, green_schedule], "a" * 40)["ci.yml"]["id"] == 60
+    with pytest.raises(ValueError, match="No main run"):
+        policy.select_runs([green_schedule], "a" * 40)
 
 
 def test_release_requires_every_job_green_and_the_build_and_meson_test_jobs_present():
@@ -217,13 +229,38 @@ def test_release_notes_are_the_tagged_versions_news_section():
         notes(news, "3.0.0")
 
 
+def news_version(root):
+    meson = re.search(r"^\s*version:\s*'([^']+)'", (root / "meson.build").read_text(), re.M)[1]
+    if match := re.fullmatch(r"(\d+\.\d+\.\d+)~beta\.([1-9]\d*)", meson):
+        return module("release_metadata").check_prerelease(root, f"{match[1]}-beta.{match[2]}")["newsVersion"]
+    return module("release_metadata").check(root)["version"]
+
+
 def test_the_tag_workflow_publishes_the_news_section_as_release_notes():
     root = Path(__file__).parents[1]
     workflow = (root / ".github/workflows/release.yml").read_text()
-    assert 'build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > notes.md' in workflow
-    assert "--notes-file notes.md --generate-notes" in workflow
-    version = module("release_metadata").check(root)["version"]
+    assert 'python3 build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > /dev/null' in workflow
+    assert '"repos/$GITHUB_REPOSITORY/releases/generate-notes"' in workflow
+    assert 'build-aux/ci/release_notes.py "$GITHUB_REF_NAME" --changelog changelog.md > notes.md' in workflow
+    assert "--generate-notes" not in workflow
+    assert '--notes-file notes.md "${assets[@]}"' in workflow
+    version = news_version(root)
     assert module("release_notes").notes((root / "NEWS").read_text(), version).strip()
+
+
+def test_stable_release_notes_refuse_missing_placeholder_or_developer_text():
+    rn = module("release_notes")
+    for bad_body in (
+        "Not released yet.",
+        "- Fix crash from #392.",
+        "- Enforce D95 parity.",
+        "- Keep CI green on rolling distros.",
+        "- Please log out and back in.",
+        "- Update Cassini's panel menu.",
+    ):
+        news = f"Version 1.2.3\n~~~~~~~~~~~~~\nReleased: 2026-11-12\n\n{bad_body}\n"
+        with pytest.raises(ValueError):
+            rn.notes(news, "1.2.3")
 
 
 def test_release_sums_cover_exactly_the_five_packages_by_name(tmp_path):
@@ -284,7 +321,8 @@ def test_release_sums_refuse_a_missing_or_extra_package(tmp_path, drop):
 def test_the_tag_workflow_attaches_sha256sums_and_verifies_the_published_files():
     workflow = (Path(__file__).parents[1] / ".github/workflows/release.yml").read_text()
     assert "release_sums.py artifacts --stage staged --sums SHA256SUMS > assets.txt" in workflow
-    assert '--generate-notes "${assets[@]}"' in workflow
+    assert '--notes-file notes.md "${assets[@]}"' in workflow
+    assert "--generate-notes" not in workflow
     assert 'gh release download "$GITHUB_REF_NAME"' in workflow
     assert "sha256sum --check --strict SHA256SUMS" in workflow
     assert 'test "$(wc -l < SHA256SUMS)" -eq 5' in workflow
@@ -332,8 +370,16 @@ def create_release_script():
     return "\n".join(line.removeprefix("          ") for line in block.splitlines()) + "\n"
 
 
-def run_create_release(tmp_path, debs):
+def run_create_release(
+    tmp_path,
+    debs,
+    *,
+    latest_tag="v0.4.1",
+    generated_changelog="## What's Changed\n* feat: search meeting titles in #389 by @dev\n",
+):
     """Run that block under bash -e (as GitHub runs it) against fake artifacts and a fake gh."""
+    import json
+
     root = Path(__file__).parents[1]
     (tmp_path / "source").symlink_to(root)
     artifacts = tmp_path / "artifacts"
@@ -347,20 +393,40 @@ def run_create_release(tmp_path, debs):
         (artifacts / name).write_bytes(name.encode())
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    (bin_dir / "gh").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$GH_CALLS"\n')
+    fake_gh = (
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "with open(os.environ['GH_CALLS'], 'a', encoding='utf-8') as f:\n"
+        "    f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "args = sys.argv[1:]\n"
+        "if args[:1] == ['api'] and any(a.endswith('/releases/latest') for a in args):\n"
+        "    tag = os.environ.get('FAKE_LATEST_TAG', '')\n"
+        "    if not tag:\n"
+        "        sys.exit(1)\n"
+        "    print(tag)\n"
+        "elif args[:1] == ['api'] and any(a.endswith('/releases/generate-notes') for a in args):\n"
+        "    sys.stdout.write(os.environ.get('FAKE_CHANGELOG', ''))\n"
+    )
+    (bin_dir / "gh").write_text(fake_gh)
     (bin_dir / "gh").chmod(0o755)
-    version = module("release_metadata").check(root)["version"]
+    version = news_version(root)
     env = dict(
         os.environ,
         PATH=f"{bin_dir}:{os.environ['PATH']}",
         GH_CALLS=str(tmp_path / "gh-calls"),
+        FAKE_LATEST_TAG="" if latest_tag is None else latest_tag,
+        FAKE_CHANGELOG=generated_changelog,
         GITHUB_REF_NAME="v" + version,
         GITHUB_REPOSITORY="example/repo",
     )
     script = tmp_path / "create.sh"
     script.write_text(create_release_script())
     result = subprocess.run(["bash", "-e", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True)
-    calls = (tmp_path / "gh-calls").read_text().splitlines() if (tmp_path / "gh-calls").exists() else None
+    calls = (
+        [json.loads(line) for line in (tmp_path / "gh-calls").read_text().splitlines()]
+        if (tmp_path / "gh-calls").exists()
+        else None
+    )
     return result, calls
 
 
@@ -375,9 +441,48 @@ def test_a_refused_staging_never_creates_a_release(tmp_path):
 
 
 @pytest.mark.skipif(not shutil.which("bash"), reason="bash runs the workflow step")
-def test_a_good_staging_creates_the_release_with_six_assets(tmp_path):
-    result, calls = run_create_release(tmp_path, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb"])
+def test_a_good_staging_creates_the_release_with_six_assets_and_folded_developer_changelog(tmp_path):
+    rn = module("release_notes")
+    root = Path(__file__).parents[1]
+    result, all_calls = run_create_release(tmp_path, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb"])
     assert result.returncode == 0, result.stdout + result.stderr
-    assert calls[:2] == ["release", "create"]
-    attached = [c for c in calls if c.startswith("staged/") or c == "SHA256SUMS"]
+    assert all_calls is not None and len(all_calls) == 3
+    latest_call, gen_call, create_call = all_calls
+    assert "repos/example/repo/releases/latest" in latest_call
+    assert "repos/example/repo/releases/generate-notes" in gen_call
+    assert "previous_tag_name=v0.4.1" in gen_call
+    assert create_call[:2] == ["release", "create"]
+    assert "--generate-notes" not in create_call
+    attached = [c for c in create_call if c.startswith("staged/") or c == "SHA256SUMS"]
     assert len(attached) == 6 and attached[-1] == "SHA256SUMS"
+
+    published_notes = (tmp_path / "notes.md").read_text(encoding="utf-8")
+    visible_top, sep, folded_dev = published_notes.partition(
+        "\n\n<details>\n<summary>Developer changelog</summary>\n\n"
+    )
+    assert sep
+    expected_curated = rn.notes((root / "NEWS").read_text(encoding="utf-8"), news_version(root)).strip()
+    assert visible_top == expected_curated
+    rn.validate_user_text(visible_top)
+    assert "#389" not in visible_top
+    assert "feat: search meeting titles in #389 by @dev" in folded_dev
+    assert folded_dev.endswith("\n</details>\n")
+
+
+@pytest.mark.skipif(not shutil.which("bash"), reason="bash runs the workflow step")
+def test_stable_release_handles_first_release_and_refuses_empty_changelog(tmp_path):
+    first_dir = tmp_path / "first"
+    first_dir.mkdir()
+    result, all_calls = run_create_release(first_dir, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb"], latest_tag=None)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert all_calls is not None and len(all_calls) == 3
+    assert not any(arg.startswith("previous_tag_name=") for arg in all_calls[1])
+    assert all_calls[2][:2] == ["release", "create"]
+
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    bad_result, bad_calls = run_create_release(
+        empty_dir, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb"], generated_changelog="   \n"
+    )
+    assert bad_result.returncode != 0
+    assert bad_calls is not None and not any(c[:2] == ["release", "create"] for c in bad_calls)

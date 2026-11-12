@@ -32,7 +32,7 @@ Layout:
 | `src/cassini_talk/transcript.py` | turns, interjections, search, export; no GTK |
 | `src/cassini_talk/summary.py` | the summary Markdown subset; no GTK |
 | `src/cassini_talk/player.py` | GStreamer playback |
-| `src/cassini_talk/window.py`, `src/ui/` | the window |
+| `src/cassini_talk/library_window.py`, `src/cassini_talk/meeting_page.py` | the Library and meeting views |
 | `data/` | desktop file, AppStream metadata, GSettings schema, icons, man page |
 | `build-aux/` | dependency installer, distribution test matrix, and the Flatpak, Debian, RPM and Arch package builds |
 | `src/cassini_talk/runtime.py` | the startup check for missing or old libraries; no GTK |

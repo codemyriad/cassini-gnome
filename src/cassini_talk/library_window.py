@@ -53,10 +53,14 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.recording_page = None
         self._external_meeting = False
         self.export_dialog = None
+        self.zip_export_dialog = None
         self.recording_details_dialog = None
         self.rename_dialog = None
         self._pending_selection = None
         self._opening_files = 0
+        self._import_cancels = set()
+        self._import_dialogs = set()
+        self._import_executor = None
         self._list_signature = None
         self._preview_signature_value = None
         self._live_badges = {}
@@ -139,6 +143,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("back-library", self.back_to_library),
             ("search", self.toggle_search),
             ("export", self.show_export),
+            ("export-zip", self.show_zip_export),
             ("rename", self.show_rename),
             ("move-to-trash", self.move_to_trash),
             ("recording-details", self.show_recording_details),
@@ -177,11 +182,15 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.recording_details_dialog.present(self)
 
     def _drop_files(self, _target, files, _x, _y):
-        for file in files.get_files():
-            self.open_file(file)
-        return bool(files.get_files())
+        chosen = files.get_files()
+        if chosen:
+            self.open_files(chosen)
+        return bool(chosen)
 
     def _refresh_export(self):
+        from .zip_export import exportable_meetings
+
+        app = self.get_application()
         meeting = self.meeting_page.meeting if self.meeting_page else self.selected
         action = self.lookup_action("export")
         if action:
@@ -192,6 +201,19 @@ class LibraryWindow(Adw.ApplicationWindow):
                     and meeting.lifecycle == "saved"
                     and not self.recording_page
                     and not self.search_page
+                )
+            )
+        zip_action = self.lookup_action("export-zip")
+        if zip_action:
+            zip_action.set_enabled(
+                bool(
+                    not self.recording_page
+                    and not self.search_page
+                    and not self._external_meeting
+                    and exportable_meetings(self.snapshot, trash=app.meeting_trash if app else None)
+                    and not (
+                        self.zip_export_dialog and not self.zip_export_dialog.closed and self.zip_export_dialog.busy
+                    )
                 )
             )
 
@@ -390,6 +412,26 @@ class LibraryWindow(Adw.ApplicationWindow):
                     return
             self.export_dialog.present(self)
 
+    def show_zip_export(self):
+        from .zip_export import exportable_meetings
+        from .zip_export_dialog import ZipExportDialog
+
+        app = self.get_application()
+        if (
+            self.recording_page
+            or self.search_page
+            or self._external_meeting
+            or not exportable_meetings(self.snapshot, trash=app.meeting_trash if app else None)
+        ):
+            return
+        if not self.zip_export_dialog or self.zip_export_dialog.closed:
+            try:
+                self.zip_export_dialog = ZipExportDialog(self)
+            except OSError as error:
+                self.toast(_("Could not export: {error}").format(error=str(error)))
+                return
+        self.zip_export_dialog.present(self)
+
     def protect_text_input(self, widget):
         controller = Gtk.EventControllerFocus()
         controller.connect("enter", lambda *_: self._editor_focus(widget, True))
@@ -437,6 +479,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             # Existing, undrawn GNOME primary-menu copy is retained (HARMONY 11).
             menu.append(_("Open…"), "app.open")
             menu.append(text("common.exportEllipsis"), "win.export")
+            menu.append(text("export.zip.all"), "win.export-zip")
             menu.append(text("settings.title"), "app.preferences")
             menu.append(_("_Keyboard Shortcuts"), "app.shortcuts")
             menu.append(_("_About Cassini").replace("Cassini", text("app.name")), "app.about")
@@ -1043,6 +1086,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             current = next((m for m in snapshot.meetings if m.key == self.export_dialog.meeting.key), None)
             if current and not (self.meeting_page and self._external_meeting):
                 self.export_dialog.update(current)
+        if self.zip_export_dialog and not self.zip_export_dialog.closed:
+            self.zip_export_dialog.update_snapshot(snapshot)
         if self.rename_dialog and not self.rename_dialog.closed:
             current = next((m for m in snapshot.meetings if m.key == self.rename_dialog.meeting.key), None)
             if current is not None and self.rename_allowed(current):
@@ -1487,7 +1532,44 @@ class LibraryWindow(Adw.ApplicationWindow):
 
         self.set_title(self.meeting_page.meeting.title if self.meeting_page else text("app.name"))
 
+    @staticmethod
+    def _is_folder_open_path(path):
+        return path is not None and (
+            path.name == "session.json" or (not path.suffix and path.name.startswith(("Recording-", "Received-")))
+        )
+
+    def _ensure_import_executor(self):
+        if getattr(self, "_import_executor", None) is None:
+            from concurrent.futures import ThreadPoolExecutor
+
+            self._import_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-import")
+        return self._import_executor
+
+    def open_files(self, files):
+        from .import_dialog import ImportDialog
+
+        files = tuple(files)
+        if len(files) == 1:
+            return self.open_file(files[0])
+        imports = []
+        for file in files:
+            path = Path(file.get_path()) if file.get_path() else None
+            if LibraryWindow._is_folder_open_path(path):
+                self.open_file(file)
+            else:
+                imports.append(str(path) if path else None)
+        if imports:
+            self._ensure_import_executor()
+            ImportDialog(self, tuple(imports))
+
     def open_file(self, file):
+        raw_path = file.get_path()
+        path_hint = Path(raw_path) if raw_path else None
+        if path_hint is not None and path_hint.suffix.lower() == ".zip":
+            from .import_dialog import ImportDialog
+
+            self._ensure_import_executor()
+            return ImportDialog(self, (raw_path,))
         from .open_meeting import load_open_meeting
         from .received import import_received
 
@@ -1498,21 +1580,42 @@ class LibraryWindow(Adw.ApplicationWindow):
                 path, self.monitor.scanner.root, scanner=self.monitor.scanner, capture_activity=activity
             )
 
-        def opened():
+        if LibraryWindow._is_folder_open_path(path_hint):
+
+            def opened_folder():
+                return load(Path(file.get_path())), False
+
+            self._opening_files += 1
+            future = self.monitor._executor.submit(opened_folder)
+            future.add_done_callback(lambda f: GLib.idle_add(self._opened_file, f, file))
+            return
+
+        from threading import Event
+
+        cancel = Event()
+        cancels = getattr(self, "_import_cancels", None)
+        if cancels is not None:
+            cancels.add(cancel)
+
+        def opened_import():
             if not file.get_path():
                 raise ValueError("The recording is not available as a local file")
             path = Path(file.get_path())
-            if path.is_dir() or path.name == "session.json":
-                return load(path), False
-            imported = import_received(path)
-            return load(imported.directory), True
+            if path.is_dir():
+                return self.monitor._executor.submit(lambda: (load(path), False)).result()
+            return import_received(path, cancel=cancel), True
 
         self._opening_files += 1
-        future = self.monitor._executor.submit(opened)
-        future.add_done_callback(lambda f: GLib.idle_add(self._opened_file, f, file))
+        future = self._ensure_import_executor().submit(opened_import)
+        future.add_done_callback(lambda f: GLib.idle_add(self._opened_file, f, file, cancel))
 
-    def _opened_file(self, future, file):
+    def _opened_file(self, future, file, cancel=None):
+        from concurrent.futures import CancelledError
+
         self._opening_files -= 1
+        cancels = getattr(self, "_import_cancels", None)
+        if cancels is not None and cancel is not None:
+            cancels.discard(cancel)
         if self.monitor._closed:
             return False
         try:
@@ -1534,6 +1637,8 @@ class LibraryWindow(Adw.ApplicationWindow):
                     self.monitor.watch_meeting(meeting.directory)
                     self._library_loaded(meeting)
                 self.open_meeting(meeting, external=not watched)
+        except CancelledError:
+            return False
         except (OSError, ValueError) as error:
             # Import failed: retain the Library and show its diagnostic. Opening
             # the readable header in the legacy player would disguise a failed
@@ -1564,6 +1669,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.recording_details_dialog.force_close()
         if self.export_dialog and not self.export_dialog.closed:
             self.export_dialog.cancel()
+        if self.zip_export_dialog and not self.zip_export_dialog.closed:
+            self.zip_export_dialog.cancel()
         if self.rename_dialog and not self.rename_dialog.closed:
             self.rename_dialog.force_close()
         if self.recording_page:
@@ -1586,5 +1693,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._spectro_handlers.clear()
         self.listen.stop()
         self.player.shutdown()
+        for cancel in tuple(self._import_cancels):
+            cancel.set()
+        for dialog in tuple(self._import_dialogs):
+            dialog.cancel()
+        if self._import_executor is not None:
+            self._import_executor.shutdown(wait=False, cancel_futures=True)
         self.monitor.close()
         return False

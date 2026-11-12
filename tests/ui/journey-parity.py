@@ -31,7 +31,7 @@ gi.require_version("GdkX11", "4.0")
 gi.require_version("Gsk", "4.0")
 from desktop_services import DesktopServices  # noqa: E402
 from gi.repository import GdkX11, Gio, GLib, Gst, Gtk  # noqa: E402
-from painted import painted_node  # noqa: E402
+from painted import apply_screenshot_scheme, painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk import companion  # noqa: E402
@@ -101,6 +101,17 @@ def key(window, symbol):
 
 def click(widget, *, count=1):
     until(lambda: widget.get_mapped() and widget.get_width() > 0)
+    viewport = widget.get_ancestor(Gtk.Viewport)
+    scrolled = widget.get_ancestor(Gtk.ScrolledWindow)
+    if viewport is not None and scrolled is not None and widget.get_height() <= scrolled.get_height():
+        viewport.scroll_to(widget, None)
+        until(
+            lambda: (
+                widget.compute_bounds(scrolled)[0]
+                and widget.compute_bounds(scrolled)[1].get_y() >= -1
+                and widget.compute_bounds(scrolled)[1].get_y() + widget.get_height() <= scrolled.get_height() + 1
+            )
+        )
     native = widget.get_native()
     ok, bounds = widget.compute_bounds(native)
     assert ok
@@ -141,6 +152,7 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     os.environ.update(GSETTINGS_SCHEMA_DIR=str(schemas), CASSINI_LIBRARY_DIR=str(root / "fixtures/main/root"))
     Gtk.Settings.get_default().props.gtk_enable_animations = False
+    apply_screenshot_scheme()
     app = CassiniApplication("com.gocassini.JourneyParityTest", "test", "development")
     app.transcription_enabled = False
     app.register(None)
@@ -226,7 +238,7 @@ with tempfile.TemporaryDirectory() as temporary:
     rename.close()
     until(lambda: rename.closed)
     window.back_to_library()
-    until(lambda: window.navigation.get_visible_page().get_child() == window.root_box)
+    until(lambda: window.navigation.get_visible_page().get_child() == window.root_box and not window._pending)
     meeting = next(m for m in window.snapshot.meetings if m.directory == received.directory)
     row = next(w for w in widgets(window.rows) if getattr(w, "meeting", None) == meeting)
     click(row)

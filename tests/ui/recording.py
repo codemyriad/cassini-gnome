@@ -25,6 +25,7 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 sys.path.insert(0, str(ROOT / "tests"))
 from desktop_services import DesktopServices  # noqa: E402
+from painted import apply_screenshot_scheme  # noqa: E402
 
 from cassini_talk.global_shortcut import GlobalShortcut  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
@@ -89,6 +90,7 @@ with tempfile.TemporaryDirectory() as tmp:
     )
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     os.environ["GSETTINGS_SCHEMA_DIR"] = str(schemas)
+    apply_screenshot_scheme()
     app = CassiniApplication("com.gocassini.RecordingPageTest", "test", "development")
     app.register(None)
     app.activate()

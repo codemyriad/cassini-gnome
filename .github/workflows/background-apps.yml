@@ -5,18 +5,27 @@ on:
       package_run:
         type: string
         default: ""
+      include_flatpak:
+        type: boolean
+        default: true
   workflow_dispatch:
     inputs:
       package_run:
-        description: CI run with the matching deb-0 and Flatpak artifacts
+        description: CI run with the matching deb-0 (and Flatpak when include_flatpak is true) artifacts
         required: true
+      include_flatpak:
+        description: Also install and test the Flatpak bundle alongside the installed deb
+        type: boolean
+        default: true
 permissions:
   contents: read
   actions: read
+env:
+  CASSINI_HARNESS_BASES: ubuntu:26.04@sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6 debian:testing@sha256:bdb44a6e90e7ee02e032121a81fae9f945ce86b9454c6d0d71bc43cb595ba17f
 jobs:
   desktop:
-    name: GNOME 50 / installed deb and Flatpak
-    runs-on: ubuntu-26.04
+    name: ${{ inputs.include_flatpak && 'GNOME 50 / installed deb and Flatpak' || 'GNOME 50 / installed deb' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -27,12 +36,14 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.package_run || github.run_id }}
       - uses: actions/download-artifact@v8
+        if: ${{ inputs.include_flatpak }}
         with:
           name: cassini-talk-devel-x86_64.flatpak
           path: _desktop-packages/flatpak
           github-token: ${{ github.token }}
           run-id: ${{ inputs.package_run || github.run_id }}
       - uses: actions/cache@v6
+        if: ${{ inputs.include_flatpak }}
         with:
           path: .desktop-flatpak-cache
           key: desktop-gnome50-v1
@@ -52,8 +63,12 @@ jobs:
         run: build-aux/ci/harness-cache.sh load "${{ steps.harness.outputs.path }}"
       - name: Background Apps, app-grid reopen, and stop-and-keep on quit
         run: |
-          CASSINI_DESKTOP_FLATPAK_CACHE="$PWD/.desktop-flatpak-cache" \
-            tests/desktop/run.sh _desktop-packages/deb/cassini-talk_*.deb _desktop-packages/flatpak/*.flatpak desktop-evidence
+          if [ "${{ inputs.include_flatpak }}" = "true" ]; then
+            CASSINI_DESKTOP_FLATPAK_CACHE="$PWD/.desktop-flatpak-cache" \
+              tests/desktop/run.sh _desktop-packages/deb/cassini-talk_*.deb _desktop-packages/flatpak/*.flatpak desktop-evidence
+          else
+            tests/desktop/run.sh --deb-only _desktop-packages/deb/cassini-talk_*.deb desktop-evidence
+          fi
       - uses: actions/upload-artifact@v7
         if: always()
         with:

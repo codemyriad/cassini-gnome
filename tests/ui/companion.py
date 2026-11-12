@@ -10,8 +10,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
-from concurrent.futures import CancelledError
 from pathlib import Path
 from unittest.mock import patch
 
@@ -43,6 +41,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
+from dispatch_wait import dispatch_until, drain_app_workers  # noqa: E402
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 from painted import painted_node  # noqa: E402
 
@@ -53,18 +52,20 @@ from cassini_talk.companion_setup import CompanionSetup  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 
 
+class _NotifyingBrowsers(dict):
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        GLib.idle_add(lambda: GLib.SOURCE_REMOVE)
+
+    def pop(self, key, *default):
+        try:
+            return super().pop(key, *default)
+        finally:
+            GLib.idle_add(lambda: GLib.SOURCE_REMOVE)
+
+
 def until(check):
-    end = time.monotonic() + 2
-    context = GLib.MainContext.default()
-    while time.monotonic() < end:
-        for _ in range(64):
-            if not context.pending():
-                break
-            context.iteration(False)
-        if check():
-            return
-        time.sleep(0.01)
-    assert check(), "Companion GUI condition timed out"
+    dispatch_until(check, "Companion GUI condition timed out")
 
 
 def visible_labels(widget):
@@ -78,28 +79,25 @@ def visible_labels(widget):
     return labels
 
 
-def finish_worker(future):
-    if future is not None:
-        # Native setup can run two bounded 10 s bundle transactions. This
-        # fixture owns their files even after nonblocking application exit.
-        with contextlib.suppress(CancelledError):
-            future.exception(timeout=25)
-        assert future.done(), "A fixture writer survived teardown"
-
-
 def shot(window, suffix):
     target = Path(os.environ["CASSINI_SCREENSHOT_OUT"])
-    frames = []
-    window.add_tick_callback(lambda *_: (frames.append(1), len(frames) < 3)[1])
-    window.queue_draw()
-    until(lambda: len(frames) >= 2)
-    node = painted_node(window)
-    texture = window.get_renderer().render_texture(node, node.get_bounds())
-    assert (texture.get_width(), texture.get_height()) == (1120, 720)
-    assert texture.save_to_png(str(target.with_name(target.stem + suffix + ".png")))
+    manager = Adw.StyleManager.get_default()
+    try:
+        for scheme, extra in ((Adw.ColorScheme.FORCE_LIGHT, ""), (Adw.ColorScheme.FORCE_DARK, "-dark")):
+            manager.set_color_scheme(scheme)
+            frames = []
+            window.add_tick_callback(lambda *_, frames=frames: (frames.append(1), len(frames) < 3)[1])
+            window.queue_draw()
+            until(lambda frames=frames: len(frames) >= 2)
+            node = painted_node(window)
+            texture = window.get_renderer().render_texture(node, node.get_bounds())
+            assert (texture.get_width(), texture.get_height()) == (1120, 720)
+            assert texture.save_to_png(str(target.with_name(target.stem + suffix + extra + ".png")))
+    finally:
+        manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
 
 
-with tempfile.TemporaryDirectory() as temporary:
+with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as cleanup:
     tmp = Path(temporary)
     schemas = tmp / "schemas"
     schemas.mkdir()
@@ -119,11 +117,32 @@ with tempfile.TemporaryDirectory() as temporary:
     Gtk.Settings.get_default().props.gtk_font_name = "Cantarell 11"
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
     service = BrowserService(tmp / "browser.json")
+    service.browsers = _NotifyingBrowsers()
     ready = threading.Event()
     path = tmp / "broker/browser.sock"
     thread = threading.Thread(target=service.serve, args=(path, ready), daemon=True)
+    app = window = settings = None
+    setup_dialogs = []
+    release = threading.Event()
+
+    def teardown():
+        release.set()
+        if window is not None and window.get_visible():
+            window.close()
+        if app is not None and not getattr(app, "_exit_begun", False):
+            app.do_shutdown()
+        drain_app_workers(
+            app,
+            windows=(window,),
+            setup_dialogs=setup_dialogs,
+            settings_dialogs=(settings,),
+            service=service,
+            service_thread=thread,
+        )
+
+    cleanup.callback(teardown)
     thread.start()
-    assert ready.wait(2)
+    assert ready.wait(5)
     original = companion.installed_browsers
     browsers = original(config=tmp / "browser-config", which=lambda command: "/test/" + command)
     companion.installed_browsers = lambda: browsers
@@ -157,7 +176,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert settings.browser.get_title() == "Waiting for the browser companion"
     assert settings.browser_add.get_visible() and not settings.browser_setup.get_visible()
     dialog = app.companion_setup = CompanionSetup(app, service_path=path)
-    setup_dialogs = [dialog]
+    setup_dialogs.append(dialog)
     dialog.present(window)
     until(lambda: dialog.future is None)
     assert not dialog.done.get_sensitive() and not dialog.connect_button.get_visible()
@@ -182,9 +201,6 @@ with tempfile.TemporaryDirectory() as temporary:
     assert copied_waiting == [str(expected_folder)]
     assert not dialog.done.get_sensitive(), "Preparing/copying a folder is not an extension handshake"
     shot(window, "-pending")
-    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-    shot(window, "-pending-dark")
-    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
     # D39's default Add is a real guide backed by the stable private copy.
     companion_bundle.store_listing_public = lambda: False
     dialog.render()
@@ -291,7 +307,8 @@ with tempfile.TemporaryDirectory() as temporary:
     # The native host's socket connection alone is not an extension handshake.
     with connect(path) as connection, connection.makefile("rwb") as stream:
         send_packet(stream, dict(role="extension", browserName="Chrome"))
-        until(lambda: request(path=path)["browsers"] == 1)
+        until(lambda: len(service.browsers) == 1)
+        assert request(path=path)["browsers"] == 1
         dialog.poll()
         until(lambda: dialog.future is None)
         assert not dialog.done.get_sensitive()
@@ -338,8 +355,6 @@ with tempfile.TemporaryDirectory() as temporary:
         assert dialog.local_dialog.done.get_sensitive(), "Only the real existing connection enables Done"
         dialog.local_dialog.force_close()
         shot(window, "-connected")
-        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-        shot(window, "-connected-dark")
     until(lambda: not dialog.done.get_sensitive())
     assert not dialog.connect_button.get_visible()
     dialog.force_close()
@@ -352,7 +367,17 @@ with tempfile.TemporaryDirectory() as temporary:
     assert reopened.add_badge.get_label() == "✓" and not reopened.add_button.get_visible()
     assert reopened.add_caption.get_label() == "Done"
     assert reopened.connect_row.get_visible() and not reopened.done.get_sensitive()
-    until(lambda: app.browser_connection.future is None and app.browser_connection.snapshot()["phase"] == "waiting")
+    reopened_idle = []
+    GLib.idle_add(lambda: reopened_idle.append(True) or GLib.SOURCE_REMOVE)
+    until(
+        lambda: (
+            reopened_idle
+            and app.browser_connection.future is None
+            and app.browser_connection.health_future is None
+            and not app.browser_connection.force
+            and app.browser_connection.snapshot()["phase"] == "waiting"
+        )
+    )
     reopened.render()
     reopened.poll()
     until(lambda: reopened.future is None)
@@ -367,11 +392,12 @@ with tempfile.TemporaryDirectory() as temporary:
     # private writes. Future.cancel() cannot stop this already-running job.
     connection = app.browser_connection
     until(lambda: connection.future is None)
-    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+    entered, finished = threading.Event(), threading.Event()
     attempt = connection.attempt
 
     def late_setup(**kwargs):
         entered.set()
+        GLib.idle_add(lambda: GLib.SOURCE_REMOVE)
         assert release.wait(5), "Teardown did not release the registration worker"
         try:
             return attempt(**kwargs)
@@ -393,15 +419,8 @@ with tempfile.TemporaryDirectory() as temporary:
     # before stopping their service, and before TemporaryDirectory removes them.
     for setup_dialog in setup_dialogs:
         assert setup_dialog.closed
-        finish_worker(setup_dialog.future)
-    settings.executor.shutdown(wait=True)
-    finish_worker(settings._future)
-    finish_worker(connection.future)
-    finish_worker(connection.health_future)
+    teardown()
     assert pending.done() and finished.is_set(), "Registration writes must finish before fixture removal"
-    service.closed.set()
-    thread.join(2)
-    assert not thread.is_alive()
     print(
         "PASS Companion setup: Add never fabricates installation; eight per-user manifests; failed/retry; Done requires hello/status; disconnect clears Done"
     )

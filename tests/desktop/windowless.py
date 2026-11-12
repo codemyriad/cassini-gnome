@@ -651,7 +651,12 @@ def main():
     )
     results = {"shell": version, "packages": versions, "cases": []}
     root = HOME / "Music/Cassini"
-    for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
+    appids = (
+        ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel")
+        if os.environ.get("CASSINI_QA_INCLUDE_FLATPAK", "1") == "1"
+        else ("io.codemyriad.CassiniTalk",)
+    )
+    for appid in appids:
         flatpak = appid.endswith(".Devel")
         prefix = ["flatpak", "run", "--user", "--command=gsettings", appid] if flatpak else []
         subprocess.run(
@@ -763,7 +768,7 @@ def main():
         case["quitHadNoWindow"] = True
         results["cases"].append(case)
         (OUT / "background-apps.json").write_text(json.dumps(results, indent=2) + "\n")
-    assert len(results["cases"]) == 2
+    assert len(results["cases"]) == len(appids)
     print(json.dumps(results, indent=2))
 
 

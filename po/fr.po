@@ -120,86 +120,17 @@ msgstr "Suivre la lecture"
 msgid "Keep the word being spoken in view while playing."
 msgstr "Gardez le mot prononcé visible pendant la lecture."
 
-msgid "_Record Meeting…"
-msgstr "_Enregistrer une réunion…"
-
-msgid "_Open…"
-msgstr "_Ouvrir…"
-
-msgid "Show in _Files"
-msgstr "Afficher dans _Fichiers"
-
 msgid "_Keyboard Shortcuts"
 msgstr "_Raccourcis clavier"
 
 msgid "_About Cassini"
 msgstr "_À propos de Cassini"
 
-msgid "Normal"
-msgstr "Normale"
-
-msgid "Main Menu"
-msgstr "Menu principal"
-
 msgid "Open a Meeting"
 msgstr "Ouvrir une réunion"
 
-msgid "Play a meeting recording and read along with the transcript stored inside it. Drop an .opus file here or choose one."
-msgstr "Écoutez l’enregistrement d’une réunion en suivant la transcription qu’il contient. Déposez un fichier .opus ici ou choisissez-en un."
-
-msgid "Properties"
-msgstr "Propriétés"
-
-msgid "Cassini"
-msgstr "Cassini"
-
 msgid "Transcript"
 msgstr "Transcription"
-
-msgid "Speakers"
-msgstr "Intervenants"
-
-msgid "Toggle Sidebar"
-msgstr "Afficher ou masquer le volet latéral"
-
-msgid "Search Transcript"
-msgstr "Rechercher dans la transcription"
-
-msgid "Search transcript"
-msgstr "Rechercher dans la transcription"
-
-msgid "Previous Match"
-msgstr "Occurrence précédente"
-
-msgid "Next Match"
-msgstr "Occurrence suivante"
-
-msgid "_Transcript"
-msgstr "_Transcription"
-
-msgid "_Summary"
-msgstr "_Résumé"
-
-msgid "Playback Position"
-msgstr "Position de lecture"
-
-msgid "Back 15 Seconds"
-msgstr "Reculer de 15 secondes"
-
-msgid "Play"
-msgstr "Lire"
-
-msgid "Forward 15 Seconds"
-msgstr "Avancer de 15 secondes"
-
-msgid "Playback Speed"
-msgstr "Vitesse de lecture"
-
-msgid "Keep the Spoken Word in View"
-msgstr "Garder le mot prononcé visible"
-
-msgid "_Follow Along"
-msgstr "_Suivre la lecture"
 
 msgid "General"
 msgstr "Général"
@@ -237,9 +168,6 @@ msgstr "[FICHIER…]"
 msgid "Open Meeting"
 msgstr "Ouvrir une réunion"
 
-msgid "Opus Audio"
-msgstr "Audio Opus"
-
 msgid "Recording Session"
 msgstr "Session d’enregistrement"
 
@@ -255,215 +183,6 @@ msgstr "Contributeurs de Cassini"
 msgid "Cassini Portable Meeting Format"
 msgstr "Format de réunion portable Cassini"
 
-msgid "No recording is loaded."
-msgstr "Aucun enregistrement chargé."
-
-#, python-brace-format
-msgid "Missing GStreamer elements: {elements}. Install {plugins}."
-msgstr "Éléments GStreamer manquants : {elements}. Installez {plugins}."
-
-msgid "The audio could not be played."
-msgstr "Impossible de lire l’audio."
-
-#, python-brace-format
-msgid "Play from {time}"
-msgstr "Lire à partir de {time}"
-
-#, python-brace-format
-msgid "(over {names})"
-msgstr "(en même temps que {names})"
-
-msgid "Simultaneous speech"
-msgstr "Paroles simultanées"
-
-msgid "Speaking now"
-msgstr "Parle actuellement"
-
-#, python-brace-format
-msgid "Playback failed: {error}"
-msgstr "Échec de la lecture : {error}"
-
-msgid "Only local files can be opened"
-msgstr "Seuls les fichiers locaux peuvent être ouverts"
-
-#, python-brace-format
-msgid "“{name}” is not an Opus audio file"
-msgstr "« {name} » n’est pas un fichier audio Opus"
-
-msgid "Unknown Speaker"
-msgstr "Intervenant inconnu"
-
-msgid "No Transcript"
-msgstr "Aucune transcription"
-
-msgid "This is an ordinary audio file without a Cassini transcript. It can still be played."
-msgstr "Ce fichier audio ordinaire ne contient pas de transcription Cassini. Il peut toujours être lu."
-
-msgid "Newer Format"
-msgstr "Format plus récent"
-
-msgid "This file was made with a newer version of the Cassini format. Its audio can be played, but its transcript can’t be shown."
-msgstr "Ce fichier utilise une version plus récente du format Cassini. L’audio peut être lu, mais la transcription ne peut pas être affichée."
-
-msgid "Transcript Can’t Be Read"
-msgstr "Impossible de lire la transcription"
-
-#, python-brace-format
-msgid "The transcript data in this file is damaged: {reason}. The audio can still be played."
-msgstr "Les données de transcription de ce fichier sont endommagées : {reason}. L’audio peut toujours être lu."
-
-msgid "Transcript Unavailable"
-msgstr "Transcription indisponible"
-
-#, python-brace-format
-msgid "The transcript “{id}” can’t be loaded: {reason}"
-msgstr "Impossible de charger la transcription « {id} » : {reason}"
-
-msgid "Empty Transcript"
-msgstr "Transcription vide"
-
-msgid "Nobody said anything in this transcript."
-msgstr "Personne n’a parlé dans cette transcription."
-
-msgid "Pause"
-msgstr "Pause"
-
-msgid "Playing a meeting"
-msgstr "Lecture d’une réunion"
-
-msgid "No matches"
-msgstr "Aucune occurrence"
-
-#, python-brace-format
-msgid "{current} of {total}"
-msgstr "{current} sur {total}"
-
-#, python-brace-format
-msgid "{n} match"
-msgid_plural "{n} matches"
-msgstr[0] "{n} occurrence"
-msgstr[1] "{n} occurrences"
-
-msgid "Done"
-msgstr "Terminé"
-
-msgid "Not done"
-msgstr "Non terminé"
-
-#, python-brace-format
-msgid "{n} speaker"
-msgid_plural "{n} speakers"
-msgstr[0] "{n} intervenant"
-msgstr[1] "{n} intervenants"
-
-msgid "The audio in this file does not match the transcript recorded with it. The transcript may describe a different recording."
-msgstr "L’audio de ce fichier ne correspond pas à la transcription associée. La transcription peut décrire un autre enregistrement."
-
-msgid "The transcript data in this file is damaged. Only the audio can be played."
-msgstr "Les données de transcription de ce fichier sont endommagées. Seul l’audio peut être lu."
-
-msgid "This file uses a newer Cassini format. Only the audio can be played."
-msgstr "Ce fichier utilise un format Cassini plus récent. Seul l’audio peut être lu."
-
-msgid "Recording"
-msgstr "Enregistrement"
-
-msgid "Duration"
-msgstr "Durée"
-
-msgid "Recorded"
-msgstr "Enregistré"
-
-msgid "Processed"
-msgstr "Traité"
-
-msgid "Ogg Opus, 48 kHz, mono"
-msgstr "Ogg Opus, 48 kHz, mono"
-
-msgid "Ogg Opus, 48 kHz, stereo"
-msgstr "Ogg Opus, 48 kHz, stéréo"
-
-msgid "Ogg Opus, 48 kHz"
-msgstr "Ogg Opus, 48 kHz"
-
-msgid "Format"
-msgstr "Format"
-
-msgid "Size"
-msgstr "Taille"
-
-msgid "Name"
-msgstr "Nom"
-
-msgid "Schema"
-msgstr "Schéma"
-
-msgid "Language"
-msgstr "Langue"
-
-msgid "Words"
-msgstr "Mots"
-
-msgid "Timing"
-msgstr "Repères temporels"
-
-msgid "Per word, in milliseconds"
-msgstr "Par mot, en millisecondes"
-
-msgid "Produced By"
-msgstr "Produit par"
-
-msgid "The transcript and speakers live inside this .opus file, so any audio player can still play it."
-msgstr "La transcription et les intervenants sont intégrés au fichier .opus, qui reste lisible dans tout lecteur audio."
-
-msgid "Show in Files"
-msgstr "Afficher dans Fichiers"
-
-msgid "Checking Audio…"
-msgstr "Vérification de l’audio…"
-
-msgid "Comparing the audio with the fingerprint recorded in the transcript."
-msgstr "Comparaison de l’audio avec l’empreinte enregistrée dans la transcription."
-
-msgid "Audio Matches Transcript"
-msgstr "L’audio correspond à la transcription"
-
-msgid "The audio’s SHA-256 fingerprint matches the one recorded with the transcript."
-msgstr "L’empreinte SHA-256 de l’audio correspond à celle enregistrée dans la transcription."
-
-msgid "Audio Does Not Match"
-msgstr "L’audio ne correspond pas"
-
-msgid "The file was probably re-encoded or edited after it was transcribed."
-msgstr "Le fichier a probablement été réencodé ou modifié après sa transcription."
-
-msgid "Not Verified"
-msgstr "Non vérifié"
-
-msgid "The audio was not checked."
-msgstr "L’audio n’a pas été vérifié."
-
-msgid "Damaged Transcript Data"
-msgstr "Données de transcription endommagées"
-
-msgid "Unsupported Version"
-msgstr "Version non prise en charge"
-
-msgid "Plain Audio"
-msgstr "Audio simple"
-
-msgid "This file carries no Cassini metadata."
-msgstr "Ce fichier ne contient pas de métadonnées Cassini."
-
-msgid "Could not open the folder"
-msgstr "Impossible d’ouvrir le dossier"
-
-msgid "%e %b %Y"
-msgstr "%e %b %Y"
-
-msgid "%H:%M"
-msgstr "%H:%M"
-
 msgid "Could not start audio capture. Check your audio devices and GStreamer plugins."
 msgstr "Impossible de démarrer la capture audio. Vérifiez les périphériques audio et les greffons GStreamer."
 
@@ -476,43 +195,6 @@ msgstr "Le délai de sauvegarde de l’enregistrement est dépassé."
 #, python-brace-format
 msgid "Incomplete audio was kept at {path}."
 msgstr "L’audio incomplet a été conservé dans {path}."
-
-msgid "Microphone"
-msgstr "Microphone"
-
-msgid "Desktop audio"
-msgstr "Son de cet ordinateur"
-
-msgid "Desktop audio includes all sounds on your default output. The microphone records even when you are muted in the meeting. Use headphones to avoid echo."
-msgstr "Le son de cet ordinateur inclut tous les sons de la sortie par défaut. Le microphone enregistre même si vous êtes en sourdine dans la réunion. Utilisez un casque pour éviter l’écho."
-
-msgid "With both sources enabled, microphone is on the left and desktop audio on the right. No transcript is generated."
-msgstr "Avec les deux sources activées, le microphone est à gauche et le son de cet ordinateur à droite. Aucune transcription n’est générée."
-
-msgid "Ready to record"
-msgstr "Prêt à enregistrer"
-
-msgid "Record…"
-msgstr "Enregistrer…"
-
-msgid "Saving recording…"
-msgstr "Sauvegarde de l’enregistrement…"
-
-msgid "Select at least one audio source."
-msgstr "Sélectionnez au moins une source audio."
-
-msgid "Save Recording"
-msgstr "Sauvegarder l’enregistrement"
-
-msgid "Choose a local file for the recording."
-msgstr "Choisissez un fichier local pour l’enregistrement."
-
-msgid "Stop and Save"
-msgstr "Arrêter et sauvegarder"
-
-#, python-brace-format
-msgid "Recording — {minutes:02d}:{seconds:02d}"
-msgstr "Enregistrement — {minutes:02d}:{seconds:02d}"
 
 msgid "Recording browser meeting"
 msgstr "Enregistrement d’une réunion dans le navigateur"

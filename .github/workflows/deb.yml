@@ -2,7 +2,16 @@ name: Debian package
 
 on:
   workflow_call:
+    inputs:
+      deb_testing:
+        type: boolean
+        default: true
   workflow_dispatch:
+    inputs:
+      deb_testing:
+        description: Build both Ubuntu 26.04 and Debian testing packages
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -11,20 +20,22 @@ permissions:
 # what it is tested with.
 env:
   CONTAINER_ENGINE: docker
+  CASSINI_HARNESS_BASES: ubuntu:26.04@sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6 debian:testing@sha256:bdb44a6e90e7ee02e032121a81fae9f945ce86b9454c6d0d71bc43cb595ba17f
+  CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
 
 jobs:
   build:
     name: Build .deb (${{ matrix.base }})
-    runs-on: ${{ vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 30
-    # Both builds are required (G11): each runs the pytest suite its Source
-    # distro job leaves to it. A failed debian:testing build already blocked
-    # a release (green_main.py requires every main job to succeed); it no
-    # longer leaves a pull request green either.
+    # Each active build is required (G11) and runs the pytest suite its Source
+    # distro job leaves to it. PR and main pushes gate on ubuntu:26.04; full-ci
+    # and dispatch runs build pinned debian:testing, while nightly schedule runs
+    # probe unpinned debian:testing outside merge and release gates.
     strategy:
       fail-fast: false
       matrix:
-        base: ["ubuntu:26.04", "debian:testing"]
+        base: ${{ inputs.deb_testing && (github.event_name == 'schedule' && fromJSON('["ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96", "debian:testing"]') || fromJSON('["ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96", "debian:testing@sha256:2d46f43b677a047cfab870549eea0d83d0a9bea2f55b3f481efc901043916c2a"]')) || fromJSON('["ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96"]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,6 +43,7 @@ jobs:
       - run: |
           echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
           echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"
       # The pinned writing-down artifacts (whistle/pins.json), downloaded once
       # per pin set; the package builds read them and never download.
       - uses: actions/cache@v6
@@ -89,22 +101,22 @@ jobs:
       # every input. run.sh builds an image the cache did not hold.
       - name: Harness image cache key
         id: harness
-        if: matrix.base == 'ubuntu:26.04'
+        if: startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         run: build-aux/ci/harness-cache.sh key build-refresh browser-setup >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v6
         id: harness-cache
-        if: matrix.base == 'ubuntu:26.04'
+        if: startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         with:
           path: ${{ steps.harness.outputs.path }}
           key: ${{ steps.harness.outputs.key }}
       - name: Load the cached harness images
-        if: matrix.base == 'ubuntu:26.04' && steps.harness-cache.outputs.cache-hit == 'true'
+        if: startsWith(matrix.base, 'ubuntu:26.04@sha256:') && steps.harness-cache.outputs.cache-hit == 'true'
         run: build-aux/ci/harness-cache.sh load "${{ steps.harness.outputs.path }}"
       - name: Installed package restarts after upgrades and preserves active audio
-        if: matrix.base == 'ubuntu:26.04'
+        if: startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         run: tests/build-refresh/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/build-refresh"
       - uses: actions/upload-artifact@v7
-        if: always() && matrix.base == 'ubuntu:26.04'
+        if: always() && startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         with:
           name: installed-build-refresh
           path: |
@@ -112,34 +124,34 @@ jobs:
             ${{ runner.temp }}/build-refresh/*.log
             ${{ runner.temp }}/build-refresh/*.png
       - uses: actions/setup-node@v7
-        if: matrix.base == 'ubuntu:26.04'
+        if: startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: tests/recording/package-lock.json
       - uses: actions/cache@v6
-        if: matrix.base == 'ubuntu:26.04'
+        if: startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         with:
-          path: ~/.cache/ms-playwright
+          path: ${{ runner.temp }}/ms-playwright
           key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}
       - name: Prepare the pinned browser startup harness
-        if: matrix.base == 'ubuntu:26.04'
+        if: startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         run: |
           npm ci --prefix tests/recording
           tests/recording/node_modules/.bin/playwright install chromium
       - name: Installed package connects a fresh real extension without Connect
-        if: matrix.base == 'ubuntu:26.04'
+        if: startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         run: tests/browser-setup/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/browser-startup"
       - uses: actions/upload-artifact@v7
-        if: always() && matrix.base == 'ubuntu:26.04'
+        if: always() && startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         with:
           name: browser-startup-installed
           path: ${{ runner.temp }}/browser-startup/
       - name: Save the harness images (main only)
-        if: matrix.base == 'ubuntu:26.04' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
+        if: startsWith(matrix.base, 'ubuntu:26.04@sha256:') && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
         run: build-aux/ci/harness-cache.sh save "${{ steps.harness.outputs.path }}" build-refresh browser-setup
       - uses: actions/cache/save@v6
-        if: matrix.base == 'ubuntu:26.04' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
+        if: startsWith(matrix.base, 'ubuntu:26.04@sha256:') && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
         with:
           path: ${{ steps.harness.outputs.path }}
           key: ${{ steps.harness.outputs.key }}

@@ -8,19 +8,22 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
+env:
+  CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
 jobs:
   current-window:
-    runs-on: ${{ vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
-    timeout-minutes: 15
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - name: Install GTK and pinned screenshot fonts
         run: |
-          sudo apt-get -o Acquire::Retries=5 -o Acquire::Retries::Delay=true -o Acquire::Retries::Delay::Maximum=5 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o APT::Update::Error-Mode=any update
-          sudo apt-get -o Acquire::Retries=5 -o Acquire::Retries::Delay=true -o Acquire::Retries::Delay::Maximum=5 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o APT::Update::Error-Mode=any install -y gcc libc6-dev openbox x11-utils python3-gi python3-numpy gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 \
+          sudo build-aux/ci/apt-install-bounded.sh gcc libc6-dev openbox x11-utils python3-gi python3-numpy gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gstreamer-1.0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good meson ninja-build gettext \
             libglib2.0-dev-bin libgtk-4-bin desktop-file-utils appstream xvfb xauth xdotool dbus-x11 \
             locales fontconfig python3-pil python3-pytest at-spi2-core gir1.2-atspi-2.0 libzstd1 fonts-cantarell=0.303.1-4 fonts-inter=4.1+ds-1
+          command -v gh >/dev/null || sudo build-aux/ci/apt-install-bounded.sh gh
           sudo locale-gen en_GB.UTF-8 en_US.UTF-8
       - uses: actions/cache@v6
         if: inputs.product == ''
@@ -56,61 +59,10 @@ jobs:
           echo "CASSINI_BOARD_BUILD=$PWD/_ci-boards/build" >> "$GITHUB_ENV"
       - name: Render the real current window in private Xvfb
         run: |
+          env -u GITHUB_STEP_SUMMARY python3 -I build-aux/ci/pr-shots.py --self-test
           python3 -m pytest tests/test_ux_vectors.py -k locale_clock_style -q
-          mkdir -p ux-artifacts
-          build-aux/ux-boards.sh "$BOARD_APP" ux-artifacts
-          CASSINI_SCREENSHOT_LANGUAGE=fr build-aux/ux-screenshot.sh "$BOARD_APP" ux-artifacts/first-run-fr.png 2>ux-artifacts/first-run-fr.log
-          python3 tests/ui/check-localization.py ux-artifacts/first-run-fr.png fr
-          CASSINI_SCREENSHOT_LANGUAGE=pt_BR build-aux/ux-screenshot.sh "$BOARD_APP" ux-artifacts/first-run-pt-BR.png 2>ux-artifacts/first-run-pt-BR.log
-          python3 tests/ui/check-localization.py ux-artifacts/first-run-pt-BR.png pt-BR
-          CASSINI_SCREENSHOT_SCHEME=dark build-aux/ux-boards.sh "$BOARD_APP" ux-artifacts/dark
-          python3 tests/ui/check-dark.py ux-artifacts/dark
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library.py ux-artifacts/gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/meeting.py ux-artifacts/meeting-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/interjections.py ux-artifacts/interjections.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/trash.py ux-artifacts/trash.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/trash.py ux-artifacts/dark/trash.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speakers.py ux-artifacts/speakers-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/wide-speakers.py ux-artifacts/wide-speakers.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/listening-rows.py ux-artifacts/listening-rows.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voices.py ux-artifacts/voices-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voice-preparation.py ux-artifacts/voice-preparation.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voice-models.py ux-artifacts/voice-models.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voices.py ux-artifacts/dark/voices-gui.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/voice-models.py ux-artifacts/dark/voice-models.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speakers.py ux-artifacts/dark/speakers-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/build-refresh.py ux-artifacts/build-refresh.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/quit.py ux-artifacts/quit-gui.png
+          build-aux/ux-shots.sh "$BOARD_APP" "$CASSINI_BOARD_BUILD" ux-artifacts
           CASSINI_SNI_TEST_ISOLATED=1 dbus-run-session -- python3 tests/ui/status-notifier.py
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/background.py ux-artifacts/background.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/refresh.py ux-artifacts/refresh-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/recording.py ux-artifacts/recording-gui.png
-          G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram.py ux-artifacts/spectrogram-components.png
-          G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-live.py ux-artifacts/spectrogram-live.png
-          G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-browser.py ux-artifacts/spectrogram-browser.png
-          CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram.py ux-artifacts/spectrogram-components-2x.png
-          CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-live.py ux-artifacts/spectrogram-live-2x.png
-          CASSINI_SCREENSHOT_SCALE=2 G_DEBUG=fatal-warnings CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/spectrogram-browser.py ux-artifacts/spectrogram-browser-2x.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/accessible-buttons.py ux-artifacts/accessible-buttons.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/import-export.py ux-artifacts/import-export-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/rename.py ux-artifacts/rename.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/search.py ux-artifacts/search-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/model-notices.py ux-artifacts/notices-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/settings.py ux-artifacts/settings-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/test-recording.py ux-artifacts/test-recording.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion-click.py ux-artifacts/companion-click.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion.py ux-artifacts/companion-setup.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion-health.py ux-artifacts/companion-health.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/recording-details.py ux-artifacts/recording-details.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/journey-parity.py ux-artifacts/journey-parity.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/companion-sandbox.py ux-artifacts/companion-sandbox.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/what-is-recorded.py ux-artifacts/what-is-recorded.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library-move.py ux-artifacts/library-move-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/library-publication.py ux-artifacts/library-publication-gui.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/speech-models.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/speech-models.py ux-artifacts/dark/speech-models.png
-          CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/diarization-models.py ux-artifacts/diarization-models.png
-          CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$CASSINI_BOARD_BUILD" build-aux/ux-screenshot.sh tests/ui/diarization-models.py ux-artifacts/dark/diarization-models.png
           python3 - <<'PY'
           import json,struct
           from pathlib import Path
@@ -145,15 +97,53 @@ jobs:
           notification=json.loads(Path('ux-artifacts/notification.json').read_text())
           assert [button['action'] for button in notification['buttons']] == ['app.stop-recording','app.open-recording']
           info=json.loads(root.with_suffix('.json').read_text())
-          assert info['renderer']=='cairo' and info['accent']=='blue' and info['light']
+          assert info['renderer']=='cairo' and info['light']
           assert info['tz']=='Europe/Rome' and info['lang']=='en_GB.UTF-8'
           assert info['font']=='Cantarell 11'
+          shots=json.loads(Path('ux-artifacts/shots.json').read_text())
+          assert shots['app']=='gnome' and len(shots['shots']) >= 152 and len(shots['shots']) % 2 == 0
           PY
           dpkg-query -W fonts-cantarell fonts-inter > ux-artifacts/fonts.txt
+          dpkg-query -W libgtk-4-1 libadwaita-1-0 libcairo2 libpango-1.0-0 python3-pil > ux-artifacts/packages.txt
           for font in Cantarell Inter; do fc-match -f '%{file}\n' "$font"; done | sort -u | xargs sha256sum > ux-artifacts/font-sha256.txt
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ux-boards
           path: ux-artifacts/
+          retention-days: 14
+      - name: Compare UI screenshots against main baseline
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_RUNNER: ${{ github.event.pull_request.head.repo.full_name == github.repository && vars.CM_RUNNER_DESKTOP == 'hetzner' && 'self-hosted,cm-hetzner' || 'ubuntu-26.04' }}
+        run: |
+          if gh api --help 2>&1 | grep -q -- '--allow-escape-sequences'; then
+            mkdir -p "$RUNNER_TEMP/gh-bin"
+            real_gh=$(command -v gh)
+            printf '#!/bin/sh\nif [ "${1:-}" = "api" ] && [ "${2#*/actions/jobs/}" != "${2:-}" ]; then\n  shift\n  exec "%s" api --allow-escape-sequences "$@"\nfi\nexec "%s" "$@"\n' "$real_gh" "$real_gh" > "$RUNNER_TEMP/gh-bin/gh"
+            chmod +x "$RUNNER_TEMP/gh-bin/gh"
+            export PATH="$RUNNER_TEMP/gh-bin:$PATH"
+          fi
+          rm -rf pr-shots
+          wf=ci
+          python3 -I build-aux/ci/pr-shots.py diff \
+            --layout gnome \
+            --repo "$GITHUB_REPOSITORY" \
+            --pr "$PR_NUMBER" \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA" \
+            --head-runner "$HEAD_RUNNER" \
+            --after-dir ux-artifacts \
+            --base-workflow "$wf.yml" \
+            --base-artifact ux-boards \
+            --out pr-shots
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'pull_request'
+        with:
+          name: pr-shots
+          path: pr-shots/
           retention-days: 14

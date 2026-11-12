@@ -21,7 +21,6 @@ from cassini_talk.meeting_page import MeetingPage
 from cassini_talk.portable import Word
 from cassini_talk.strings import text
 from cassini_talk.transcript import Turn
-from cassini_talk.window import TurnRow
 
 
 def children(widget):
@@ -216,45 +215,8 @@ def library_bindings():
     )
 
 
-def standalone_bindings():
-    _meeting, turn = fixture()
-    context = SimpleNamespace(
-        palette=SimpleNamespace(css_class=lambda _: "speaker-0"),
-        speaker_label={"a": "Ada", "b": "Ben"}.__getitem__,
-        turn_markup=lambda _turn: ("Hello", []),
-        active_turns=set(),
-    )
-    row = TurnRow(context)
-    row.bind(turn)
-    assert row.name.get_visible() and row.dot.get_visible() and not row.over.get_visible()
-    assert row.over.get_tooltip_text() is None
-    turn.continuation = True
-    set_crosstalk(turn, True)
-    row.bind(turn)
-    assert not row.name.get_visible() and not row.dot.get_visible()
-    assert row.over.get_visible() and row.over.get_label() == "Probably crosstalk"
-    assert row.over.get_tooltip_text() is None
-    assert not Gtk.test_accessible_has_property(row.over, Gtk.AccessibleProperty.DESCRIPTION)
-    turn.over = ["b"]
-    row.bind(turn)
-    assert row.over.get_label() == "(over Ben) · Probably crosstalk"
-    assert row.over.get_tooltip_text() == text("meeting.turn.over.tooltip")
-    assert Gtk.test_accessible_has_property(row.over, Gtk.AccessibleProperty.DESCRIPTION)
-    with using_language("it"):
-        row.bind(turn)
-        assert row.over.get_tooltip_text() == text("meeting.turn.over.tooltip")
-        assert row.over.get_tooltip_text() != "Simultaneous speech"
-    turn.over, turn.continuation = [], False
-    set_crosstalk(turn, False)
-    row.bind(turn)
-    assert not row.over.get_visible() and row.over.get_tooltip_text() is None
-    assert row.name.get_visible() and row.dot.get_visible()
-    print("PASS synchronous standalone GTK bindings: captions, continuation and hints", flush=True)
-
-
 def check_transcript_bindings():
     Adw.init()
     with using_language("en"):
         meeting_bindings()
         library_bindings()
-        standalone_bindings()

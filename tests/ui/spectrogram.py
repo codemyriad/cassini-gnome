@@ -20,7 +20,7 @@ from array import array  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
 
 from gi.repository import Adw, Gdk, GLib, Graphene, Gtk  # noqa: E402
-from painted import painted_node  # noqa: E402
+from painted import apply_screenshot_scheme, painted_node  # noqa: E402
 
 from cassini_talk.spectro_source import SpectroSource  # noqa: E402
 from cassini_talk.spectro_view_model import DisplayModel  # noqa: E402
@@ -58,6 +58,7 @@ def until(predicate):
 
 
 Adw.init()
+apply_screenshot_scheme()
 css = Gtk.CssProvider()
 css.load_from_string(".spectro-test-dark { background: #242424; color: white; padding: 12px; border-radius: 8px; }")
 Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)

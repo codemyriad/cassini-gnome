@@ -116,3 +116,80 @@ FUSE mounting. The roy host has no /dev/fuse. The native chooser proof and real
 sandbox/restart proof are separate; end-to-end document-portal mounting remains
 a desktop QA check. Main fails the same sandbox test by accepting the unsafe
 private-home export.
+
+## Batch and ZIP archive import (D96)
+
+Open (`open_multiple`), OS file activation and drag-and-drop accept several
+files at once and `.zip` archives using `import.filter.cassiniAndZip`. Multi-file
+and ZIP imports run on a dedicated single-worker `ThreadPoolExecutor` so the
+Library monitor continues scanning without contention. Queued imports present
+their `Adw.Dialog` (`import.progress` + `common.cancel`) only when started;
+closing the window cancels active and queued jobs.
+
+Each archive is checked from its directory before any member is imported, and
+the byte and ratio bounds are enforced again on the bytes actually read:
+
+- At most 2,000 entries per archive (`MAX_ENTRIES = 2_000`) and 2 MiB central
+  directory metadata before `ZipFile` allocation (`import.zip.failed.tooLarge`).
+- At most 20 GB (`20_000_000_000` bytes) total uncompressed size per archive,
+  checked across directory entries and cumulative extracted bytes
+  (`import.zip.failed.tooLarge`).
+- Any entry with uncompressed-to-compressed ratio above 100:1 refuses the
+  archive (`import.zip.failed.tooLarge`), both in directory metadata and while
+  inflating raw deflate streams in bounded chunks.
+- Encrypted archives (traditional PKWARE, strong encryption `0x0017` or WinZip
+  AES method `99` / extra `0x9901`, in central or local headers) are refused
+  without prompting (`import.zip.failed.encrypted`).
+- Leading `/` or `\`, `..` components, Windows drive prefixes (`^[A-Za-z]:`),
+  NUL bytes or special file modes refuse the whole archive before importing
+  anything (`import.zip.failed.unsafePaths`). Valid filenames containing `:`
+  and Windows relative paths using `\` separators are normalized and extracted
+  by bounded basename into a private `0700` temporary directory with `0600`
+  files while preserving their archive folder hint.
+- ZIP64 end-record `0xFFFF` / `0xFFFFFFFF` sentinels and local-vs-central
+  general-purpose bit flag differences are accepted. Directory entries count
+  toward the 2,000-entry directory cap without inflating file or unsupported
+  counts. macOS `__MACOSX/` and `._` AppleDouble sidecars, nested archives and
+  unsupported formats/methods are never opened and are counted in
+  `import.summary.unsupported`; an archive with no supported Opus entry reports
+  `import.zip.failed.empty`; unreadable or overlapping-header archives report
+  `import.zip.failed.damaged`. Any whole-archive runtime limit violation rolls
+  back notes staged from that archive so nothing from a refused archive remains.
+- Batch deduplication indexes existing `Received-*` SHA-256 metadata once per
+  batch ($O(M + N)$) while still re-verifying full file bytes on every digest
+  match, preserving committed notes on cancellation or later member failure.
+
+## Bulk stored-`.zip` export (D96)
+
+The Library primary menu exposes `export.zip.all` (`win.export-zip`) whenever at
+least one saved audio meeting outside Trash is available and no bulk export is
+running. Opening it presents an explicit selection dialog initialized with all
+eligible meetings checked (keeping bulk selection separate from row Open/preview
+and pruning trashed or removed meetings live on Library updates). Users can
+choose either `export.zip.all` or, while one or more rows are checked,
+`export.zip.selected`, then pick the destination folder through the native
+folder chooser (`export-folder-uri` is remembered as the initial folder; Flatpak
+rejects unbacked private-home paths before staging anything).
+
+Bulk export runs on a dedicated single-worker `ThreadPoolExecutor` with
+`export.zip.progress` (`done`, `total`) and `common.cancel`, and publishes
+`Cassini.zip` (or `Cassini 2.zip` on collision) atomically with directory
+`fsync`, followed by the `export.zip.done` plural toast and `common.show`:
+
+- Every archive entry uses `ZIP_STORED` (`compress_type == 0`) at the root of
+  the archive (no extra manifest file), with safe bounded UTF-8 entry names
+  (stripping leading dots and normalizing drive-like prefixes so exported names
+  always pass cross-platform path validation) and case-insensitive numeric
+  collision suffixes.
+- Enforces the same `MAX_ENTRIES = 2,000` and `MAX_BYTES = 20_000_000_000`
+  bounds during export and preflights the staged archive before publication.
+- Stages at most one meeting snapshot at a time next to the destination (never
+  `/tmp` PCM) and unlinks each temporary snapshot immediately after streaming it
+  into the `.zip`.
+- Unedited received Cassini `.opus` documents and plain imported `.opus` audio
+  files without a Cassini document yet are copied byte-for-byte so plain audio
+  is never left behind and re-importing an unedited archive deduplicates by
+  SHA-256 (`imported == 0`). Own recordings and locally edited meetings export
+  verified v1 Cassini `.opus` documents with internal Library extensions
+  stripped. Cancelling mid-write removes incomplete staged files without showing
+  an error toast.

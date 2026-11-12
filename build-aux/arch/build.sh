@@ -5,11 +5,12 @@
 set -eu
 cd "$(dirname "$0")/../.."
 . build-aux/container.sh
-BASE=${1:-archlinux:latest}
+BASE=${1:-archlinux:latest@sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899}
 
 meson_ver=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n 1)
 pkg_ver=$(sed -n 's/^pkgver=//p' build-aux/arch/PKGBUILD)
-if [ "$meson_ver" != "$pkg_ver" ]; then
+expected_pkg_ver=$(printf '%s\n' "$meson_ver" | sed 's/~beta\.\([1-9][0-9]*\)$/beta\1/')
+if [ "$expected_pkg_ver" != "$pkg_ver" ]; then
   echo "error: PKGBUILD pkgver ($pkg_ver) != meson.build version ($meson_ver)" >&2
   exit 1
 fi
@@ -77,13 +78,13 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
   test -x /usr/bin/cassini-talk
   cassini-talk --help >/dev/null   # runs the installed launcher headless
   python3 -I /in/build-aux/smoke-installed.py
-  python3 -I /in/build-aux/ci/validate_installed.py "$1"
+  python3 -I /in/build-aux/ci/validate_installed.py "$2"
 
   cp "$pkg" /out/
   chown "$(stat -c %u:%g /out)" "/out/${pkg##*/}" 2>/dev/null || true
   # Tell the clean-install step below which file this build produced.
   echo "${pkg##*/}" > "/out/$NAME_FILE"
-' sh "$pkg_ver"
+' sh "$pkg_ver" "$meson_ver"
 pkg_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 
 # The build container has makedepends and checkdepends installed, which can
