@@ -461,6 +461,7 @@ def test_runner_variables_move_the_intended_jobs():
     }
     hosted_only = {
         ("cache-hygiene.yml", "prune"),  # holds an actions: write token: never on the pool
+        ("ci-images.yml", "publish"),  # holds a packages: write token: never on the pool
         ("ci.yml", "changes"),
         ("ci.yml", "pytest-coverage"),
         ("daily-test-release.yml", "outcome"),
@@ -1707,3 +1708,27 @@ def test_pr_diagnostic_evidence_artifacts_upload_only_on_failure():
     ux_shot = (WORKFLOWS / "ux-shot.yml").read_text()
     assert ux_shot.index("- name: Compare UI screenshots against main baseline") < ux_shot.index("name: pr-shots")
     assert ux_shot.index("name: pr-shots") < ux_shot.index("name: ux-boards")
+
+
+def test_ci_images_cover_every_pinned_package_and_source_base():
+    # build-aux/ci/ci-image.sh: a pinned base the publish workflow lacks never gets a prebuilt image (its jobs
+    # silently install from scratch), and one it lists that no job uses is wasted publishing.
+    pinned = re.compile(r"[\w./:-]+@sha256:[0-9a-f]{64}")
+    used = set()
+    for wf in ("deb.yml", "packages.yml", "source.yml"):
+        for line in (WORKFLOWS / wf).read_text().splitlines():
+            if "CASSINI_HARNESS_BASES" not in line:  # the test harness images' bases, not build bases
+                used |= {b for b in pinned.findall(line) if not b.startswith("alpine:")}
+    published = set(pinned.findall((WORKFLOWS / "ci-images.yml").read_text()))
+    assert published == used
+
+
+def test_ci_image_tag_is_pinned_only_and_input_hashed(tmp_path):
+    script = ROOT / "build-aux/ci/ci-image.sh"
+    env = {**os.environ, "CASSINI_HARNESS_EPOCH": "2026-W46"}
+    base = "fedora:44@sha256:" + "0" * 64
+    tag = subprocess.run([script, "tag", "rpm", base], capture_output=True, text=True, env=env, check=True).stdout
+    assert re.fullmatch(r"ghcr\.io/codemyriad/cassini-gnome-ci:rpm-[\w.-]+-[0-9a-f]{16}-2026-W46\n", tag), tag
+    other = subprocess.run([script, "tag", "rpm", base[:-1] + "1"], capture_output=True, text=True, env=env).stdout
+    assert other and other != tag
+    assert subprocess.run([script, "tag", "rpm", "fedora:latest"], capture_output=True, env=env).returncode != 0

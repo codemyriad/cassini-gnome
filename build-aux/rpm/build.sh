@@ -34,9 +34,12 @@ name_file=.rpm-name-$(image_slug "$BASE")
 logs=$(test_log_dir "rpm-$(image_slug "$BASE")")
 container_pull "$BASE"
 pkg_cache_init
+# The build container: a prebuilt image with the BuildRequires already installed (build-aux/ci/ci-image.sh,
+# GHCR) when one exists for these exact inputs, else the base. The clean-install step below always uses $BASE.
+build_image=$(build-aux/ci/ci-image.sh use rpm "$BASE")
 # Only the package installs reach the network; each is retried (retry.sh).
 # shellcheck disable=SC2086 # PKG_CACHE_MOUNTS is a list of run options
-container_run $PKG_CACHE_MOUNTS -e VERSION="$VERSION" -e NAME_FILE="$name_file" -e NOCHECK="$NOCHECK" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BASE" sh -ec '
+container_run $PKG_CACHE_MOUNTS -e VERSION="$VERSION" -e NAME_FILE="$name_file" -e NOCHECK="$NOCHECK" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$build_image" sh -ec '
   . /in/build-aux/ci/retry.sh
   top=/build/rpmbuild src=/build/cassini-talk-$VERSION
   # Keep the Meson test logs (test_log_dir). After a successful build rpm
@@ -61,6 +64,10 @@ container_run $PKG_CACHE_MOUNTS -e VERSION="$VERSION" -e NAME_FILE="$name_file" 
     printf "%%_install_langs en:it:fr:es:pt_BR:pt_PT\n" > /etc/rpm/macros.zz-cassini-languages
     # Keep downloaded packages in the shared cache for the clean-install step (pkg_cache_init).
     printf "keepcache=True\n" >> /etc/dnf/dnf.conf
+  fi
+  if [ -f /etc/cassini-rpm-deps-installed ]; then
+    echo "BuildRequires preinstalled in this image (build-aux/ci/ci-image.sh)"
+  elif command -v dnf >/dev/null 2>&1; then
     retry dnf -y install rpm-build tar xz "dnf-command(builddep)"
     retry dnf -y --setopt=install_weak_deps=False builddep "$spec"
     retry dnf -y install rpmlint || true

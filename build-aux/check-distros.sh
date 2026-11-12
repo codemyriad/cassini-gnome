@@ -173,7 +173,10 @@ for image in "$@"; do
   {
     stage_ok=1
     run_image="$image"
-    if ! container_pull "$image"; then
+    # A prebuilt image with install-deps.sh already run (build-aux/ci/ci-image.sh, GHCR) when one exists for
+    # these exact inputs; alpine:edge keeps its own isolated install stage below.
+    case $image in alpine:*) ;; *) run_image=$(build-aux/ci/ci-image.sh use source "$image") ;; esac
+    if [ "$run_image" = "$image" ] && ! container_pull "$image"; then
       echo 1 > "$log.status"
       stage_ok=0
     elif [ "${image%@sha256:*}" = "alpine:edge" ]; then

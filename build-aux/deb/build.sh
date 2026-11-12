@@ -43,7 +43,13 @@ container_pull "$BASE"
 # mirror failure while building it is retried as a whole (retry.sh).
 # Keep dependency-install output: quiet mode hides apt/mk-build-deps failures,
 # leaving only a Dockerfile line and an exit code in CI.
-retry container_build -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
+# A prebuilt copy of this image (build-aux/ci/ci-image.sh, GHCR) when one exists for these exact inputs.
+prebuilt=$(build-aux/ci/ci-image.sh use deb "$BASE")
+if [ "$prebuilt" != "$BASE" ]; then
+  "$CONTAINER_ENGINE" tag "$prebuilt" "$TAG"
+else
+  retry container_build -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
+fi
 mkdir -p dist
 logs=$(test_log_dir "deb-$(image_slug "$BASE")")
 pkg_cache_init
