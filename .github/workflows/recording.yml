@@ -61,12 +61,7 @@ jobs:
           XDG_DATA_HOME="$pytest_root/data" /usr/bin/python3 -m pytest -q --basetemp="$pytest_root/tmp"
       # The canonical test tree includes its adjacent conformance vectors.
       # verify.py above proves the installed extension is byte-identical.
-      - run: |
-          if [ "${CASSINI_PERF_GATE:-}" = "1" ]; then
-            node --test browser-protocol/extension/tests/*.test.cjs
-          else
-            node --test --test-skip-pattern='^300ms delayed relay is discovered before native host creation$' browser-protocol/extension/tests/*.test.cjs
-          fi
+      - run: node --test browser-protocol/extension/tests/*.test.cjs
       - run: node --test tests/recording/signal.test.mjs tests/recording/app-exit.test.mjs tests/recording/replacement-span.test.mjs
       - name: Repeat native capture readiness in three fresh isolated containers
         run: |

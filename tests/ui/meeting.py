@@ -131,9 +131,7 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: time.monotonic() - started >= 4)
     advance = window.player.position - position
     window.player.pause()
-    assert advance > 0, ("2× clock advance", advance)
-    if os.environ.get("CASSINI_PERF_GATE") == "1":
-        assert 7000 <= advance <= 9000, ("2× clock advance", advance)
+    assert 7000 <= advance <= 9000, ("2× clock advance", advance)
     print(f"PASS real 2× playback: {advance} ms in 4 wall seconds", flush=True)
     window.activate_action("win.rate", GLib.Variant("s", "1.5"))
     window.player.seek(192000)

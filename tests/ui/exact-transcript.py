@@ -297,7 +297,9 @@ with tempfile.TemporaryDirectory() as temporary:
         first = (time.thread_time_ns() - started) / 1e6
         first_frame_ms = (window.get_frame_clock().get_frame_time() - frame_started) / 1000
         first_rows = len(page.list.prefix) - 1
+        assert not page.list.ready and 0 < first_rows < len(model.turns), (name, first_rows, len(model.turns))
         load_samples = []
+        load_scrolls = 0
         _, bubble, capture = native_scroll(page)
         page._follow_until = GLib.get_monotonic_time() + 3600_000_000
         previous = anchor(page)
@@ -305,8 +307,10 @@ with tempfile.TemporaryDirectory() as temporary:
         capture.emit("scroll-begin")
         bubble.emit("scroll-begin")
         while not page.list.ready:
-            if len(load_samples) >= 5 and not capture.emit("scroll", 0, 0.4):
-                bubble.emit("scroll", 0, 0.4)
+            if len(load_samples) >= 5:
+                load_scrolls += 1
+                if not capture.emit("scroll", 0, 0.4):
+                    bubble.emit("scroll", 0, 0.4)
             paint(window)
             current = anchor(page)
             if current[0] < previous[0] or (current[0] == previous[0] and current[1] < previous[1] - 1):
@@ -315,6 +319,7 @@ with tempfile.TemporaryDirectory() as temporary:
             previous = current
         bubble.emit("scroll-end")
         paint(window)
+        assert len(load_samples) >= 6 and load_scrolls > 0, (name, len(load_samples), load_scrolls)
         assert load_reverse == 0, ("Indexing scroll anchor reversed", load_reverse)
         assert all(
             sample[0][0] == 0 and abs(sample[0][1] - load_samples[0][0][1]) <= 1 for sample in load_samples[:5]
@@ -466,8 +471,8 @@ with tempfile.TemporaryDirectory() as temporary:
         ok, bounds = page.bound[target.index][2].compute_bounds(page.scroller)
         assert ok and bounds.get_y() < page.scroller.get_height() and bounds.get_y() + bounds.get_height() > 0
         report["wordActivationAndFollow"] = True
-        if os.environ.get("CASSINI_PERF_GATE") == "1":
-            assert report["openFirstPaintCpuMs"] < report["openFullyLaidOutCpuMs"], report
+        assert report["openFirstPaintCpuMs"] < report["openFullyLaidOutCpuMs"], report
+        assert report["openFirstPaintFrameClockMs"] < report["openFullyLaidOutFrameClockMs"], report
         check_cpu_budget(
             name,
             "openFirstPaintCpuMs",

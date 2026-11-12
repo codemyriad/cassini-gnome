@@ -1183,4 +1183,23 @@ def test_nightly_and_full_ci_perf_gates_are_wired_and_forwarded():
     assert '${CASSINI_PERF_GATE:+-e CASSINI_PERF_GATE="$CASSINI_PERF_GATE"}' in whistle_run
 
     recording = (WORKFLOWS / "recording.yml").read_text()
-    assert "--test-skip-pattern='^300ms delayed relay is discovered before native host creation$'" in recording
+    assert "--test-skip-pattern" not in recording
+    assert "- run: node --test browser-protocol/extension/tests/*.test.cjs" in recording
+
+    exact_ui = (ROOT / "tests/ui/exact-transcript.py").read_text()
+    assert "\n        assert not page.list.ready and 0 < first_rows < len(model.turns)" in exact_ui
+    assert "\n        assert len(load_samples) >= 6 and load_scrolls > 0" in exact_ui
+    assert '\n        assert report["openFirstPaintCpuMs"] < report["openFullyLaidOutCpuMs"], report\n' in exact_ui
+    assert (
+        '\n        assert report["openFirstPaintFrameClockMs"] < report["openFullyLaidOutFrameClockMs"], report\n'
+        in exact_ui
+    )
+
+    meeting_ui = (ROOT / "tests/ui/meeting.py").read_text()
+    assert "CASSINI_PERF_GATE" not in meeting_ui
+    assert '\n    assert 7000 <= advance <= 9000, ("2× clock advance", advance)\n' in meeting_ui
+
+    browser_rec = (ROOT / "tests/recording/browser.mjs").read_text()
+    assert "CASSINI_PERF_GATE" not in browser_rec
+    assert "\n  assert.ok(Math.abs(mutePosition+original.startOffsetMs/1000-wallMutePosition)<.4," in browser_rec
+    assert "\n  for(const measure of continuity) assert.ok(Math.abs(measure.error)<.25," in browser_rec
