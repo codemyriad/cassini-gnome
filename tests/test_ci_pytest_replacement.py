@@ -113,7 +113,7 @@ GATE = """
   pytest-coverage:
     name: Pytest coverage
     needs: [changes, source, deb, rpm-arch, meson-tests]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -419,20 +419,27 @@ def problems(files):
     # CI runs the package jobs whenever it runs Source, and gates on the proof.
     ci = jobs(files[".github/workflows/ci.yml"])
     changes_block = ci.get("changes", "")
-    if re.search(r"^    (?:if|needs):", changes_block, re.M):
-        found.append("ci.yml: changes depends on another job or condition")
+    changes_head = changes_block.split("\n    steps:\n", 1)[0]
+    if re.search(r"^    needs:", changes_head, re.M) or re.findall(r"^    if: (.+)$", changes_head, re.M) != [
+        "${{ github.event.action != 'labeled' || github.event.label.name == 'full-ci' }}"
+    ]:
+        found.append("ci.yml: changes depends on another job or unexpected condition")
     for leg in ("deb_testing", "rpm_opensuse", "arch", "flatpak", "extra_distros"):
         if f"      {leg}: ${{{{ steps.areas.outputs.{leg} }}}}\n" not in changes_block + "\n":
             found.append(f"ci.yml: changes does not expose {leg}")
-    if re.search(r"^    (?:if|needs):", ci["meson-tests"], re.M):
+    if re.search(r"^    needs:", ci["meson-tests"], re.M) or re.findall(r"^    if: (.+)$", ci["meson-tests"], re.M) != [
+        "${{ github.event.action != 'labeled' || github.event.label.name == 'full-ci' }}"
+    ]:
         found.append("ci.yml: meson-tests depends on selection or another job")
     for caller, legs in CALLER_LEGS.items():
         # These produce the proofs the unconditional coverage gate requires.
-        # Only fail-open `needs: changes` + `if: ${{ !cancelled() }}` is allowed.
+        # Only fail-open `needs: changes` + `!cancelled()` + the unrelated-label guard is allowed.
         block = ci[caller]
         if re.findall(r"^    needs: (.+)$", block, re.M) != ["changes"]:
             found.append(f"ci.yml: {caller} does not depend solely on changes")
-        if re.findall(r"^    if: (.+)$", block, re.M) != ["${{ !cancelled() }}"]:
+        if re.findall(r"^    if: (.+)$", block, re.M) != [
+            "${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}"
+        ]:
             found.append(f"ci.yml: {caller} is not fail-open via !cancelled()")
         expected_with = "    with:\n" + "".join(
             f"      {leg}: ${{{{ needs.changes.result != 'success' || needs.changes.outputs.{leg} != 'false' }}}}\n"
@@ -644,12 +651,12 @@ MUTATIONS = {
     ),
     "source gated by false or missing changes output": (
         "ci.yml",
-        "    if: ${{ !cancelled() }}\n    uses: ./.github/workflows/source.yml",
+        "    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}\n    uses: ./.github/workflows/source.yml",
         "    if: needs.changes.outputs.source != 'false'\n    uses: ./.github/workflows/source.yml",
     ),
     "source missing fail-open !cancelled()": (
         "ci.yml",
-        "    if: ${{ !cancelled() }}\n    uses: ./.github/workflows/source.yml",
+        "    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}\n    uses: ./.github/workflows/source.yml",
         "    uses: ./.github/workflows/source.yml",
     ),
     "changes missing arch output": (
@@ -659,7 +666,7 @@ MUTATIONS = {
     ),
     "meson gated by changes": (
         "ci.yml",
-        "    uses: ./.github/workflows/meson-tests.yml",
+        "    if: ${{ github.event.action != 'labeled' || github.event.label.name == 'full-ci' }}\n    uses: ./.github/workflows/meson-tests.yml",
         "    needs: changes\n    if: needs.changes.outputs.packages == 'true'\n    uses: ./.github/workflows/meson-tests.yml",
     ),
     # The review's case, and the other ways to narrow or drop the Debian run.
@@ -847,7 +854,7 @@ MUTATIONS = {
     ),
     "ci deb caller only on push": (
         "ci.yml",
-        "    if: ${{ !cancelled() }}\n    uses: ./.github/workflows/deb.yml",
+        "    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}\n    uses: ./.github/workflows/deb.yml",
         "    if: github.event_name == 'push'\n    uses: ./.github/workflows/deb.yml",
     ),
     "ci rpm-arch caller waits for build": (

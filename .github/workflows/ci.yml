@@ -9,15 +9,17 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-# D66: a newer push to a pull request cancels that PR's older run. Other runs
-# (main pushes, the nightly schedule, dispatch) get their own group by run id,
-# so they never queue behind or cancel each other.
+# D66: a newer push to a pull request cancels that PR's older push run, while
+# labeled runs use their own non-cancelling group so synchronize/opened + labeled
+# on the same head never leave CANCELLED check runs (UNSTABLE). Other runs (main
+# pushes, the nightly schedule, dispatch) get their own group by run id.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event_name == 'pull_request' && (github.event.action == 'labeled' && format('{0}-label-{1}', github.event.pull_request.number, github.run_id) || github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
 jobs:
   changes:
     name: Changed areas
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == 'full-ci' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
@@ -48,7 +50,7 @@ jobs:
   build:
     name: Build
     needs: changes
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}
     uses: ./.github/workflows/build.yml
     with:
       # Failed detection must override even partially written false outputs.
@@ -58,13 +60,14 @@ jobs:
   # tests run beside it, and the Pytest coverage gate fails unless they passed.
   meson-tests:
     name: Meson tests
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == 'full-ci' }}
     uses: ./.github/workflows/meson-tests.yml
   source:
     # Coverage requires the complete Source/package proof matrix for every enabled
     # leg. !cancelled() and != 'false' fail open even if changes detection fails.
     name: Source
     needs: changes
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}
     uses: ./.github/workflows/source.yml
     with:
       deb_testing: ${{ needs.changes.result != 'success' || needs.changes.outputs.deb_testing != 'false' }}
@@ -76,14 +79,14 @@ jobs:
   deb:
     name: Debian package
     needs: changes
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}
     uses: ./.github/workflows/deb.yml
     with:
       deb_testing: ${{ needs.changes.result != 'success' || needs.changes.outputs.deb_testing != 'false' }}
   rpm-arch:
     name: RPM and Arch packages
     needs: changes
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}
     uses: ./.github/workflows/packages.yml
     with:
       rpm_opensuse: ${{ needs.changes.result != 'success' || needs.changes.outputs.rpm_opensuse != 'false' }}
@@ -91,7 +94,7 @@ jobs:
   flatpak:
     name: Flatpak
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.flatpak != 'false' && needs.changes.outputs.packages != 'false')) }}
+    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') && (needs.changes.result != 'success' || (needs.changes.outputs.flatpak != 'false' && needs.changes.outputs.packages != 'false')) }}
     uses: ./.github/workflows/flatpak.yml
   # G11: a Source distro job skips pytest only where a package job runs it.
   # Each Source job uploads the node ids its pytest ran, or pytest-skipped-
@@ -103,7 +106,7 @@ jobs:
   pytest-coverage:
     name: Pytest coverage
     needs: [changes, source, deb, rpm-arch, meson-tests]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -165,7 +168,7 @@ jobs:
   library:
     name: Library
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.library != 'false') }}
+    if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') && (needs.changes.result != 'success' || needs.changes.outputs.library != 'false') }}
     uses: ./.github/workflows/ux-library.yml
   offline:
     name: Offline
