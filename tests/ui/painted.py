@@ -16,6 +16,8 @@ def apply_screenshot_scheme():
     from gi.repository import Adw
 
     Adw.init()
+    if settings := Gtk.Settings.get_default():
+        settings.props.gtk_cursor_blink = False
     Adw.StyleManager.get_default().set_color_scheme(
         Adw.ColorScheme.FORCE_DARK
         if os.environ.get("CASSINI_SCREENSHOT_SCHEME") == "dark"

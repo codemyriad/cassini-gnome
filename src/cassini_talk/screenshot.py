@@ -23,6 +23,7 @@ def capture(application_id, version, profile):
     target = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     Gtk.Settings.get_default().props.gtk_enable_animations = False
+    Gtk.Settings.get_default().props.gtk_cursor_blink = False
     Gtk.Settings.get_default().props.gtk_font_name = "Cantarell 11"
     Adw.StyleManager.get_default().set_color_scheme(
         Adw.ColorScheme.FORCE_DARK

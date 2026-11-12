@@ -29,7 +29,10 @@ private fontconfig setup selects only those fonts, with Cantarell 11 as the app
 font. It forces Cairo, light or dark style (`CASSINI_SCREENSHOT_SCHEME`) without
 pinning a system accent, with Europe/Rome and en_GB.UTF-8. `build-aux/ux-shots.sh`
 renders every board and UI flow in light and dark and writes `shots.json`. PNG,
-environment metadata and font versions/hashes are uploaded.
+environment metadata, toolkit versions (`packages.txt`) and font versions/hashes are uploaded.
+On pull requests, `build-aux/ci/pr-shots.py diff` compares `ux-artifacts` against the
+`main` baseline `ux-boards` artifact, appends the link table to `$GITHUB_STEP_SUMMARY`,
+and uploads `pr-shots/` (`changes.json`, `block.md`, and changed before/after/diff PNGs).
 For local use without installing fonts system-wide, extract those font packages
 and set `CASSINI_SCREENSHOT_FONT_DIR` to their `usr/share/fonts/opentype` folder.
 
