@@ -963,7 +963,7 @@
             "remote-first",
             "remote-second"
           ],
-          "eligible": false,
+          "eligible": true,
           "durationMs": 15000
         }
       ]

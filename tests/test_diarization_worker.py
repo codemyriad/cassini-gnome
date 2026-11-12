@@ -43,17 +43,31 @@ def native(monkeypatch):
     return calls
 
 
-@pytest.mark.parametrize("case", ["short", "remote"])
-def test_short_audio_and_participant_tracks_never_construct_model(tmp_path, native, case):
+@pytest.mark.parametrize("case", ["short", "me-in-call", "remote"])
+def test_short_audio_and_ineligible_me_never_construct_model_while_remote_does(tmp_path, native, case):
     track = audio(tmp_path / "track.wav", frames=3199 if case == "short" else 16000)
-    if case == "remote":
+    tracks = [track]
+    if case == "me-in-call":
+        tracks = [
+            dict(track, speaker="me", kind="microphone"),
+            dict(id="guest", speaker="track-person", kind="remote", silent=True, frames=0, sampleRate=16000),
+        ]
+    elif case == "remote":
         track.update(speaker="track-person", kind="remote")
     events = []
-    result = worker.run([track], dict(scratch=tmp_path), lambda kind, **value: events.append(dict(type=kind, **value)))
-    assert not native and not result["diagnostics"]
-    assert result["groupIds"] == (["others"] if case == "short" else [])
-    if case == "short":
-        assert events[-1]["turns"] == []
+    options = (
+        dict(scratch=tmp_path, modelPath="model", runtimePath="runtime") if case == "remote" else dict(scratch=tmp_path)
+    )
+    result = worker.run(tracks, options, lambda kind, **value: events.append(dict(type=kind, **value)))
+    assert not result["diagnostics"]
+    if case == "remote":
+        assert native == ["construct", "infer", "close"]
+        assert result["groupIds"] == ["track-person"]
+    else:
+        assert not native
+        assert result["groupIds"] == (["others"] if case == "short" else [])
+        if case == "short":
+            assert events[-1]["turns"] == []
 
 
 @pytest.mark.parametrize("change", [None, "audio", "offset", "model", "params"])

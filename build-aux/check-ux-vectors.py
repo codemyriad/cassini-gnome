@@ -13,11 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def check(source=None):
     copies = ROOT / "tests/ux"
     provenance = json.loads((copies / "UPSTREAM.json").read_text())
+    source_paths = provenance.get("sourcePaths", {})
     for name, expected in provenance["sha256"].items():
         data = (ROOT / provenance.get("paths", {}).get(name, "tests/ux/" + name)).read_bytes()
         if hashlib.sha256(data).hexdigest() != expected:
             raise ValueError(f"Golden copy changed: {name}")
-        if source is not None and data != (Path(source) / name).read_bytes():
+        if source is not None and data != (Path(source) / source_paths.get(name, name)).read_bytes():
             raise ValueError(f"Golden copy differs from coordinator: {name}")
     print(f"Verified {len(provenance['sha256'])} unchanged UX vector files at {provenance['commit']}")
 
@@ -26,11 +27,14 @@ def refresh(source, commit):
     """Read the complete approved snapshot before changing any pinned bytes."""
     provenance_path = ROOT / "tests/ux/UPSTREAM.json"
     provenance = json.loads(provenance_path.read_text())
-    snapshot = {name: (source / name).read_bytes() for name in provenance["sha256"]}
+    source_paths = provenance.get("sourcePaths", {})
+    snapshot = {name: (source / source_paths.get(name, name)).read_bytes() for name in provenance["sha256"]}
     for name, data in snapshot.items():
         target = ROOT / provenance.get("paths", {}).get(name, "tests/ux/" + name)
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
     provenance["commit"] = commit
+    provenance.pop("fileCommits", None)
     provenance["sha256"] = {name: hashlib.sha256(data).hexdigest() for name, data in snapshot.items()}
     provenance_path.write_text(json.dumps(provenance, indent=2) + "\n")
     check(source)

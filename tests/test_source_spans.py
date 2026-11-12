@@ -69,8 +69,8 @@ def test_opaque_capture_ids_sort_by_utf8_without_normalization():
 def test_worker_grouping_also_refuses_to_sum_raw_overlapping_spans():
     rows = [track("a", 0, 96000), track("b", 1000, 96000), track("c", 2000)]
     assert group_tracks(rows) == [
-        dict(id="track-receiver", tracks=["a", "c"], eligible=False, durationMs=3000),
-        dict(id="track-receiver:overlap:1", tracks=["b"], eligible=False, durationMs=3000),
+        dict(id="track-receiver", tracks=["a", "c"], eligible=True, durationMs=3000),
+        dict(id="track-receiver:overlap:1", tracks=["b"], eligible=True, durationMs=3000),
     ]
 
 

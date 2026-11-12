@@ -259,6 +259,6 @@ def group_tracks(tracks, *, origin="own"):
             or speaker == "others"
             or speaker == "me"
             and len(kinds) == 1
-            or bool(kinds[speaker] & {"tab", "media", "application"})
+            or bool(kinds[speaker] & {"remote", "tab", "media", "application"})
         )
     return list(groups.values())
