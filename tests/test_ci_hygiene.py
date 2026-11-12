@@ -1725,10 +1725,18 @@ def test_ci_images_cover_every_pinned_package_and_source_base():
 
 def test_ci_image_tag_is_pinned_only_and_input_hashed(tmp_path):
     script = ROOT / "build-aux/ci/ci-image.sh"
-    env = {**os.environ, "CASSINI_HARNESS_EPOCH": "2026-W46"}
+    # No podman or docker on PATH (as inside the package and source containers): naming a tag needs neither.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for tool in ("sh", "cat", "sha256sum", "cut", "tr", "dirname", "date"):
+        (bin_dir / tool).symlink_to(shutil.which(tool))
+    env = {k: v for k, v in os.environ.items() if k != "CONTAINER_ENGINE"}
+    env |= {"CASSINI_HARNESS_EPOCH": "2026-W46", "PATH": str(bin_dir)}
     base = "fedora:44@sha256:" + "0" * 64
-    tag = subprocess.run([script, "tag", "rpm", base], capture_output=True, text=True, env=env, check=True).stdout
+    tag = subprocess.run(["sh", script, "tag", "rpm", base], capture_output=True, text=True, env=env, check=True).stdout
     assert re.fullmatch(r"ghcr\.io/codemyriad/cassini-gnome-ci:rpm-[\w.-]+-[0-9a-f]{16}-2026-W46\n", tag), tag
-    other = subprocess.run([script, "tag", "rpm", base[:-1] + "1"], capture_output=True, text=True, env=env).stdout
+    other = subprocess.run(
+        ["sh", script, "tag", "rpm", base[:-1] + "1"], capture_output=True, text=True, env=env
+    ).stdout
     assert other and other != tag
-    assert subprocess.run([script, "tag", "rpm", "fedora:latest"], capture_output=True, env=env).returncode != 0
+    assert subprocess.run(["sh", script, "tag", "rpm", "fedora:latest"], capture_output=True, env=env).returncode != 0

@@ -24,6 +24,8 @@
 # pattern or the job's own token.
 set -eu
 cd "$(dirname "$0")/../.."
+# Naming a tag needs no container engine (the tests run it inside package and source containers).
+[ "${1:-}" != tag ] || CONTAINER_ENGINE=${CONTAINER_ENGINE:-none}
 . build-aux/container.sh
 REPO=ghcr.io/codemyriad/cassini-gnome-ci
 EPOCH=${CASSINI_HARNESS_EPOCH:-$(date -u +%G-W%V)}
