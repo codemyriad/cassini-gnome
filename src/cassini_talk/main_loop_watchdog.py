@@ -12,16 +12,28 @@ LOG = logging.getLogger(__name__)
 
 
 class MainLoopWatchdog:
-    def __init__(self):
-        from gi.repository import GLib
-
+    def __init__(self, *, armed=True):
+        self._lock = threading.Lock()
         self._stopped = threading.Event()
         self._heartbeat = None
-        self._source = GLib.timeout_add(50, self._beat)
+        self._source = 0
+        self._thread = None
         # SIGUSR1 provides an on-demand dump even before the stall threshold.
         faulthandler.register(signal.SIGUSR1, all_threads=True)
-        self._thread = threading.Thread(target=self._watch, name="cassini-stall-watchdog", daemon=True)
-        self._thread.start()
+        if armed:
+            self.arm()
+
+    def arm(self):
+        from gi.repository import GLib
+
+        with self._lock:
+            if self._stopped.is_set() or self._thread is not None:
+                return False
+            self._heartbeat = None
+            self._source = GLib.timeout_add(50, self._beat)
+            self._thread = threading.Thread(target=self._watch, name="cassini-stall-watchdog", daemon=True)
+            self._thread.start()
+            return True
 
     def _beat(self):
         self._heartbeat = (time.monotonic(), resource.getrusage(resource.RUSAGE_SELF).ru_majflt)
@@ -54,8 +66,9 @@ class MainLoopWatchdog:
     def close(self):
         from gi.repository import GLib
 
-        self._stopped.set()
-        if self._source:
-            GLib.source_remove(self._source)
-            self._source = 0
+        with self._lock:
+            self._stopped.set()
+            source, self._source = self._source, 0
+        if source:
+            GLib.source_remove(source)
         faulthandler.unregister(signal.SIGUSR1)

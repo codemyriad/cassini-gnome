@@ -71,9 +71,18 @@ with tempfile.TemporaryDirectory() as tmp:
     os.environ["GSETTINGS_SCHEMA_DIR"] = str(schema_dir)
     app = CassiniApplication("com.gocassini.LibraryTest", "test", "development")
     app.register(None)
+    assert app._watchdog is not None and app._watchdog._thread is None
+    assert not app._startup_finished
+    for model in (app.speech_models, app.diarization_models, app.voice_models):
+        if model is not None:
+            assert not model._inspect_started
     app.activate()
     window = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
-    until(lambda: not window._pending)
+    until(lambda: not window._pending and app._startup_finished)
+    assert app._watchdog._thread is not None and app._watchdog._thread.is_alive()
+    for model in (app.speech_models, app.diarization_models, app.voice_models):
+        if model is not None:
+            until(lambda model=model: not model.snapshot()["busy"])
     assert window.get_title() == text("app.name") == "Cassini talk"
     assert len(window.snapshot.meetings) == 9
     assert window.selected.title == "Budget review"

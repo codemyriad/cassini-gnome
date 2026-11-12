@@ -12,7 +12,12 @@ module importable on any Python 3 without PyGObject: no gi import at the top
 level and no syntax newer than the oldest Python we want to report on.
 """
 
+import errno
+import os
+import socket
+import stat
 import sys
+from urllib.parse import unquote
 
 PYTHON = (3, 11)
 GTK = (4, 18)
@@ -159,8 +164,90 @@ def _problems():
     return problems
 
 
+def _listening_unix_paths():
+    paths = set()
+    try:
+        with open("/proc/net/unix", encoding="utf-8", errors="surrogateescape") as handle:
+            next(handle, None)
+            for line in handle:
+                parts = line.rstrip("\r\n").split(None, 7)
+                if len(parts) == 8 and (int(parts[3], 16) & 0x10000):
+                    paths.add(parts[7])
+    except (OSError, ValueError):
+        pass
+    return paths
+
+
+def _unix_socket_connectable(target):
+    if not hasattr(socket, "AF_UNIX"):
+        return True
+    try:
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    except OSError:
+        return True
+    try:
+        probe.setblocking(False)
+        probe.connect(target)
+    except OSError as exc:
+        return exc.errno in (
+            errno.EINPROGRESS,
+            errno.EALREADY,
+            errno.EAGAIN,
+            errno.EWOULDBLOCK,
+            errno.EINTR,
+        )
+    finally:
+        probe.close()
+    return True
+
+
+def _dbus_entry_reachable(entry, listening):
+    if not entry.startswith("unix:"):
+        return True
+    params = {}
+    for item in entry[5:].split(","):
+        if "=" in item:
+            key, value = item.split("=", 1)
+            params[key] = unquote(value)
+    if "path" in params:
+        path = params["path"]
+        try:
+            mode = os.stat(path).st_mode
+        except OSError:
+            return False
+        if not stat.S_ISSOCK(mode):
+            return False
+        if path in listening or os.path.realpath(path) in listening:
+            return True
+        return _unix_socket_connectable(path)
+    if "abstract" in params and sys.platform == "linux":
+        name = params["abstract"]
+        if ("@" + name) in listening:
+            return True
+        return _unix_socket_connectable("\0" + name)
+    return True
+
+
+def sanitize_accessibility_env(environ=None):
+    """Drop a stale AT_SPI_BUS_ADDRESS so GTK falls back cleanly to org.a11y.Bus."""
+    if environ is None:
+        environ = os.environ
+    address = environ.get("AT_SPI_BUS_ADDRESS")
+    if not address:
+        return False
+    entries = [part.strip() for part in address.split(";") if part.strip()]
+    if not entries:
+        return False
+    listening = _listening_unix_paths()
+    if any(_dbus_entry_reachable(entry, listening) for entry in entries):
+        return False
+    environ.pop("AT_SPI_BUS_ADDRESS", None)
+    return True
+
+
 def check():
     """Exit with a readable message if a required library is missing or too old."""
+    sanitize_accessibility_env()
     problems = _problems()
     if problems:
         print(message(problems), file=sys.stderr)

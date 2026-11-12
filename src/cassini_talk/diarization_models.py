@@ -31,11 +31,18 @@ class DiarizationModels(SpeechModels):
     pin = nemotron_model
     invalid_notice = removed_notice = None
 
-    def __init__(self, bundle, changed, *, store, client_factory=DiarizationProbe):
+    def __init__(self, bundle, changed, *, store, client_factory=DiarizationProbe, defer_inspect=False):
         self.bundle = bundle
         self._probe = None
         self._factor = 0.05
-        super().__init__("whistle", lambda _value: None, changed, store=store, client_factory=client_factory)
+        super().__init__(
+            "whistle",
+            lambda _value: None,
+            changed,
+            store=store,
+            client_factory=client_factory,
+            defer_inspect=defer_inspect,
+        )
 
     def snapshot(self):
         state = super().snapshot()
@@ -110,6 +117,9 @@ class DiarizationModels(SpeechModels):
 
     def request(self, directory, *, origin):
         """Called by the transcription owner, never GTK. The child rechecks pins."""
+        if self.cancelled.is_set():
+            return None
+        self.wait_inspected()
         with self.loading:
             if not self.snapshot().get("ready"):
                 return None
