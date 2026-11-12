@@ -830,12 +830,8 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
                     )
                     notify(
                         dict(
-                            type="progress",
+                            type="planning",
                             trackId=tracks[0]["id"],
-                            trackOrder=0,
-                            language="en",
-                            etaMinutes=0,
-                            words=[dict(startMs=400, endMs=800, text="remarks.")],
                             cacheEntry=dict(
                                 key="b" * 64,
                                 text="remarks.",
@@ -844,7 +840,29 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
                             ),
                         )
                     )
+                    notify(
+                        dict(
+                            type="progress",
+                            trackId=tracks[0]["id"],
+                            trackOrder=0,
+                            language="en",
+                            etaMinutes=0,
+                            words=[dict(startMs=400, endMs=800, text="remarks.")],
+                        )
+                    )
                     return dict(diagnostics=[], segments=2)
+                notify(
+                    dict(
+                        type="planning",
+                        trackId=tracks[0]["id"],
+                        cacheEntry=dict(
+                            key="a" * 64,
+                            text="Opening",
+                            words=[dict(startMs=0, endMs=300, text="Opening")],
+                            language="en",
+                        ),
+                    )
+                )
                 notify(
                     dict(
                         type="progress",
@@ -853,12 +871,6 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
                         language="en",
                         etaMinutes=2,
                         words=[dict(startMs=0, endMs=300, text="Opening")],
-                        cacheEntry=dict(
-                            key="a" * 64,
-                            text="Opening",
-                            words=[dict(startMs=0, endMs=300, text="Opening")],
-                            language="en",
-                        ),
                     )
                 )
                 first_segment_emitted.set()
@@ -961,18 +973,24 @@ def test_stop_queued_and_published_library_v2_transcription(tmp_path, monkeypatc
             if not self.cancelled.is_set():
                 notify(
                     dict(
-                        type="progress",
+                        type="planning",
                         trackId=tracks[0]["id"],
-                        trackOrder=0,
-                        language="en",
-                        etaMinutes=1,
-                        words=[dict(startMs=0, endMs=300, text="Published")],
                         cacheEntry=dict(
                             key="c" * 64,
                             text="Published",
                             words=[dict(startMs=0, endMs=300, text="Published")],
                             language="en",
                         ),
+                    )
+                )
+                notify(
+                    dict(
+                        type="progress",
+                        trackId=tracks[0]["id"],
+                        trackOrder=0,
+                        language="en",
+                        etaMinutes=1,
+                        words=[dict(startMs=0, endMs=300, text="Published")],
                     )
                 )
                 durable(self.cancelled, "published running job was not cancelled")

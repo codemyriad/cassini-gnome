@@ -1453,7 +1453,8 @@ class CassiniApplication(Adw.Application):
             self._transcription_holds += 1
             self.hold()
 
-    def _stop_key(self, meeting):
+    @staticmethod
+    def _stop_key(meeting):
         directory = Path(getattr(meeting, "directory", meeting))
         try:
             return str(directory.resolve())
@@ -1461,7 +1462,8 @@ class CassiniApplication(Adw.Application):
             return str(directory.absolute())
 
     def transcription_stopping(self, meeting):
-        return self._stop_key(meeting) in self._transcription_stops
+        stops = getattr(self, "_transcription_stops", None)
+        return bool(stops) and CassiniApplication._stop_key(meeting) in stops
 
     def _refresh_transcription_controls(self):
         for window in self.get_windows():
@@ -1476,19 +1478,22 @@ class CassiniApplication(Adw.Application):
         directory = getattr(meeting, "directory", meeting)
         if self.meeting_trash.hides(directory):
             return
-        key = self._stop_key(directory)
-        if key in self._transcription_stops:
+        stops = getattr(self, "_transcription_stops", None)
+        if stops is None:
+            stops = self._transcription_stops = set()
+        key = CassiniApplication._stop_key(directory)
+        if key in stops:
             return
-        self._transcription_stops.add(key)
-        self._refresh_transcription_controls()
+        stops.add(key)
+        CassiniApplication._refresh_transcription_controls(self)
         generation = self._transcription_generation
         queue = self._ensure_transcriber()
 
         def finished():
             def complete():
-                self._transcription_stops.discard(key)
+                stops.discard(key)
                 if generation == self._transcription_generation:
-                    self._refresh_transcription_controls()
+                    CassiniApplication._refresh_transcription_controls(self)
                     if self._transcription_holds:
                         self._transcription_holds -= 1
                         self.release()
@@ -1500,14 +1505,19 @@ class CassiniApplication(Adw.Application):
             self._transcription_holds += 1
             self.hold()
         else:
-            self._transcription_stops.discard(key)
-            self._refresh_transcription_controls()
+            stops.discard(key)
+            CassiniApplication._refresh_transcription_controls(self)
 
     def write_down(self, meeting, *, resume=False):
         if self._quitting or self._capture_exiting:
             return
         directory = getattr(meeting, "directory", meeting)
-        if self.meeting_trash.hides(directory) or self.transcription_stopping(directory):
+        stopping = (
+            self.transcription_stopping(directory)
+            if hasattr(self, "transcription_stopping")
+            else CassiniApplication.transcription_stopping(self, directory)
+        )
+        if self.meeting_trash.hides(directory) or stopping:
             return
         self._ensure_transcriber()
         if self.transcriber.enqueue(directory, resume=resume):
@@ -1636,7 +1646,11 @@ class CassiniApplication(Adw.Application):
                 )
                 and meeting.lifecycle == "saved"
                 and meeting.transcript in ("queued", "running")
-                and not self.transcription_stopping(meeting)
+                and not (
+                    self.transcription_stopping(meeting)
+                    if hasattr(self, "transcription_stopping")
+                    else CassiniApplication.transcription_stopping(self, meeting)
+                )
             ):
                 self.write_down(meeting, resume=True)
             elif should_auto_write(meeting, previous):
@@ -1737,7 +1751,8 @@ class CassiniApplication(Adw.Application):
         if getattr(self, "library_recovery", None):
             self.library_recovery.close()
         self._transcription_generation += 1
-        self._transcription_stops.clear()
+        if hasattr(self, "_transcription_stops"):
+            self._transcription_stops.clear()
         if getattr(self, "_capture_background", False):
             self._capture_background = False
             self.release()

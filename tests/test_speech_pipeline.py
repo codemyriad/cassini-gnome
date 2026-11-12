@@ -262,18 +262,32 @@ def test_recognition_cache_skips_cached_segments_and_invalidates_on_model_mismat
             label = "first" if idx % 2 == 0 else "second"
             return dict(text=label, language="en", words=[dict(word=label, start=0.05, end=0.25)])
 
+    cache_file = tmp_path / ".recognition-cache.json"
+    uncached_events = []
+    pipeline.process_tracks(
+        Model(),
+        [dict(id="mic", path=str(path), offsetMs=0)],
+        None,
+        lambda kind, **values: uncached_events.append(dict(type=kind, **values)),
+    )
+    assert all("cacheEntry" not in e for e in uncached_events)
+    transcribe_calls.clear()
+
     initial_events = []
     pipeline.process_tracks(
         Model(),
         [dict(id="mic", path=str(path), offsetMs=0)],
         None,
         lambda kind, **values: initial_events.append(dict(type=kind, **values)),
+        recognition_cache=dict(path=str(cache_file), model="whistle"),
     )
     progress_events = [e for e in initial_events if e["type"] == "progress"]
     assert len(progress_events) == 2 and len(transcribe_calls) == 2
-    first_entry = progress_events[0]["cacheEntry"]
+    assert all("cacheEntry" not in e for e in progress_events)
+    initial_cache = [e["cacheEntry"] for e in initial_events if e["type"] == "planning" and "cacheEntry" in e]
+    assert len(initial_cache) == 2
+    first_entry = initial_cache[0]
 
-    cache_file = tmp_path / ".recognition-cache.json"
     cache_file.write_text(
         json.dumps(
             dict(
@@ -308,7 +322,9 @@ def test_recognition_cache_skips_cached_segments_and_invalidates_on_model_mismat
     resumed_progress = [e for e in resumed_events if e["type"] == "progress"]
     assert len(resumed_calls) == 1, "Cached first segment must skip neural inference"
     assert [e["words"] for e in resumed_progress] == [e["words"] for e in progress_events]
-    assert "cacheEntry" not in resumed_progress[0] and "cacheEntry" in resumed_progress[1]
+    assert all("cacheEntry" not in e for e in resumed_progress)
+    resumed_cache = [e["cacheEntry"] for e in resumed_events if e["type"] == "planning" and "cacheEntry" in e]
+    assert len(resumed_cache) == 1 and resumed_cache[0]["text"] == "second"
 
     mismatch_calls = []
 
