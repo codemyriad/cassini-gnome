@@ -32,6 +32,7 @@ class SpeechModels:
         persist_preference=lambda _value: None,
         capable=None,
         legacy_whistle=False,
+        defer_inspect=False,
     ):
         # D54: the app builds one ModelStore with its User-Agent and shares it.
         self.store = store
@@ -52,13 +53,29 @@ class SpeechModels:
         self._selected = selected if selected in ("whistle", self.pin.MODEL_ID) else "whistle"
         self._state = dict(downloaded=False, busy=True, downloading=False, percent=0, error=False, notice=None)
         self._thread = None
+        self._inspect_started = False
         self._inspected = threading.Event()
-        self._launch(self._inspect)
+        if not defer_inspect:
+            self.start_inspection()
 
-    def choice_for_job(self):
+    def start_inspection(self):
+        with self.lock:
+            if self._inspect_started or self.cancelled.is_set():
+                return False
+            self._inspect_started = True
+            self._launch(self._inspect)
+            return True
+
+    def wait_inspected(self):
+        if self.cancelled.is_set():
+            raise CancelledError()
+        self.start_inspection()
         while not self._inspected.wait(0.1):
             if self.cancelled.is_set():
                 raise CancelledError()
+
+    def choice_for_job(self):
+        self.wait_inspected()
         return self.snapshot()["selected"]
 
     def snapshot(self):

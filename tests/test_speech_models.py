@@ -649,3 +649,69 @@ def test_legacy_cleanup_failure_keeps_verified_v2_usable_and_retries_at_startup(
         assert len(remote.requests) == before
     finally:
         replacement.close()
+
+
+def test_deferred_inspection_waits_for_startup_or_job_demand_and_serializes_models(model_fixture, tmp_path):
+    from cassini_talk.diarization_models import DiarizationModels
+    from cassini_talk.voice_models import VoiceModels
+
+    models, store, _remote, persisted = model_fixture
+    models.close()
+
+    speech = SpeechModels("whistle", persisted.append, lambda: None, store=store, defer_inspect=True)
+    diar = DiarizationModels(tmp_path / "bundle", lambda: None, store=store, defer_inspect=True)
+    voice = VoiceModels(tmp_path / "bundle", lambda: None, store=store, defer_inspect=True)
+    try:
+        for item in (speech, diar, voice):
+            assert item._thread is None
+            assert item._inspect_started is False
+            assert item.snapshot()["busy"] is True
+
+        active_lock = threading.Lock()
+        active = 0
+        max_active = 0
+        order = []
+
+        def wrap_inspect(name, target):
+            original = target._inspect
+
+            def tracked():
+                nonlocal active, max_active
+                with active_lock:
+                    active += 1
+                    max_active = max(max_active, active)
+                    order.append(name)
+                try:
+                    return original()
+                finally:
+                    with active_lock:
+                        active -= 1
+
+            target._inspect = tracked
+
+        wrap_inspect("speech", speech)
+        wrap_inspect("diarization", diar)
+        wrap_inspect("voice", voice)
+
+        for item in (speech, diar, voice):
+            item.wait_inspected()
+
+        assert order == ["speech", "diarization", "voice"]
+        assert max_active == 1
+        assert all(not item.snapshot()["busy"] for item in (speech, diar, voice))
+
+        # On-demand callers before startup completion also trigger deferred inspection automatically.
+        early_speech = SpeechModels("whistle", persisted.append, lambda: None, store=store, defer_inspect=True)
+        early_diar = DiarizationModels(tmp_path / "bundle", lambda: None, store=store, defer_inspect=True)
+        try:
+            assert early_speech._thread is None and early_diar._thread is None
+            assert early_speech.choice_for_job() == "whistle"
+            assert early_diar.request(tmp_path, origin="own") is None
+            assert not early_speech.snapshot()["busy"] and not early_diar.snapshot()["busy"]
+        finally:
+            early_speech.close()
+            early_diar.close()
+    finally:
+        speech.close()
+        diar.close()
+        voice.close()

@@ -59,6 +59,9 @@ class CassiniApplication(Adw.Application):
         self.settings_schema = "io.codemyriad.CassiniTalk"
         self._recording_settings = None
         self._watchdog = None
+        self._startup_finished = False
+        self._startup_fallback_source = 0
+        self._startup_paint_connection = None
         self.transcriber = None
         self.library_recovery = None
         self.speech_models = None
@@ -172,7 +175,7 @@ class CassiniApplication(Adw.Application):
             self.status_notifier = StatusNotifier(self, changed=self.windowless_background.indicator_ready)
         from .main_loop_watchdog import MainLoopWatchdog
 
-        self._watchdog = MainLoopWatchdog()
+        self._watchdog = MainLoopWatchdog(armed=False)
         Gst.init(None)
         from .recording_comfort import RecordingComfort
 
@@ -206,12 +209,13 @@ class CassiniApplication(Adw.Application):
                     and self.recording_settings.get_string("speech-model") == "whistle"
                 ),
                 persist_preference=lambda value: self.recording_settings.set_string("speech-model-preference", value),
+                defer_inspect=True,
             )
             from .diarization_models import DiarizationModels
             from .transcription import bundle_path
 
             self.diarization_models = DiarizationModels(
-                bundle_path(), lambda: GLib.idle_add(self._models_changed), store=store
+                bundle_path(), lambda: GLib.idle_add(self._models_changed), store=store, defer_inspect=True
             )
             from .voice_models import VoiceModels
 
@@ -220,7 +224,9 @@ class CassiniApplication(Adw.Application):
                 lambda: GLib.idle_add(self._models_changed),
                 store=store,
                 enabled=lambda: bool(self.diarization_models.snapshot().get("ready")),
+                defer_inspect=True,
             )
+        self._schedule_startup_fallback(500)
         import threading
 
         threading.Thread(target=self._load_voices, name="cassini-voices-startup", daemon=True).start()
@@ -331,6 +337,7 @@ class CassiniApplication(Adw.Application):
         if background:
             # A hidden observer resumes queued writing from the previous build,
             # then retires. Only real automatic-recording/job holds remain.
+            GLib.idle_add(self._finish_startup, priority=GLib.PRIORITY_LOW)
             self.hold()
 
             def scanned():
@@ -348,12 +355,77 @@ class CassiniApplication(Adw.Application):
                 window.set_startup_id(self._sni_activation_token)
                 self._sni_activation_token = ""
             window.present()
+            if hasattr(self, "_complete_startup_after_paint"):
+                self._complete_startup_after_paint(window)
             self._model_notices()
             self.windowless_background.refresh()
             from .capture_guard import refresh_capture_background
 
             refresh_capture_background(self)
         return window
+
+    def _clear_startup_paint(self):
+        connection = getattr(self, "_startup_paint_connection", None)
+        if connection is not None:
+            clock, handler = connection
+            self._startup_paint_connection = None
+            clock.disconnect(handler)
+
+    def _clear_startup_hooks(self):
+        CassiniApplication._clear_startup_paint(self)
+        source = getattr(self, "_startup_fallback_source", 0)
+        if source:
+            GLib.source_remove(source)
+            self._startup_fallback_source = 0
+
+    def _schedule_startup_fallback(self, delay_ms):
+        if self._startup_finished or self._exit_begun:
+            return
+        if self._startup_fallback_source:
+            GLib.source_remove(self._startup_fallback_source)
+        self._startup_fallback_source = GLib.timeout_add(delay_ms, self._finish_startup, priority=GLib.PRIORITY_LOW)
+
+    def _complete_startup_after_paint(self, window):
+        if self._startup_finished or self._exit_begun:
+            return
+        self._schedule_startup_fallback(1000)
+        if self._startup_paint_connection is not None:
+            return
+        clock = window.get_frame_clock()
+        if clock is None:
+            return
+
+        def painted(_clock):
+            self._clear_startup_paint()
+            GLib.idle_add(self._finish_startup, priority=GLib.PRIORITY_LOW)
+
+        self._startup_paint_connection = (clock, clock.connect("after-paint", painted))
+
+    def _inspect_startup_models(self, models):
+        from concurrent.futures import CancelledError
+        from contextlib import suppress
+
+        for model in models:
+            if self._exit_begun:
+                return
+            with suppress(CancelledError):
+                model.wait_inspected()
+
+    def _finish_startup(self):
+        self._clear_startup_hooks()
+        if self._startup_finished or self._exit_begun:
+            return GLib.SOURCE_REMOVE
+        self._startup_finished = True
+        if self._watchdog:
+            self._watchdog.arm()
+        models = [m for m in (self.speech_models, self.diarization_models, self.voice_models) if m is not None]
+        if models:
+            import threading
+
+            threading.Thread(
+                target=self._inspect_startup_models, args=(models,), name="cassini-model-startup", daemon=True
+            ).start()
+        return GLib.SOURCE_REMOVE
 
     def on_restart(self, *_args):
         if self.build_refresh:
@@ -1582,6 +1654,7 @@ class CassiniApplication(Adw.Application):
 
     def begin_exit(self):
         self._quitting = self._exit_begun = True
+        CassiniApplication._clear_startup_hooks(self)
         if self.sound_check:
             self.sound_check.shutdown()
         if self.voice_backfill:
@@ -1636,6 +1709,7 @@ class CassiniApplication(Adw.Application):
         return getattr(self, "_capture_background", False) and not self._quitting and any(capture_targets(self))
 
     def do_shutdown(self):
+        self._clear_startup_hooks()
         if self.build_refresh:
             self.build_refresh.close()
         if self.status_notifier:
@@ -1713,6 +1787,7 @@ class CassiniApplication(Adw.Application):
     def on_preferences(self, *_args):
         from .settings_dialog import SettingsDialog
 
+        self._finish_startup()
         if self.settings_dialog is None or self.settings_dialog.closed:
             self.settings_dialog = SettingsDialog(self)
         self.settings_dialog.present(self.get_active_window())
@@ -1759,6 +1834,9 @@ class CassiniApplication(Adw.Application):
 
 def main(application_id, version, profile, *, installed_build=None):
     """The application's entry point."""
+    from .runtime import sanitize_accessibility_env
+
+    sanitize_accessibility_env()
     # Otherwise --help says "Usage: python3".
     GLib.set_prgname("cassini-talk")
     from .strings import text

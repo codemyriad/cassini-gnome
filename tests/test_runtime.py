@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
+import socket
+import subprocess
 import sys
 import types
+from pathlib import Path
+from urllib.parse import quote
+
+import pytest
 
 from cassini_talk import runtime
 
@@ -102,3 +109,69 @@ def test_all_elements_covers_playback_and_recording_once():
     for wanted in runtime.PLAYBACK_ELEMENTS.values():
         assert set(wanted) <= set(names)
     assert set(runtime.RECORDING_ELEMENTS) <= set(names)
+
+
+def test_sanitize_accessibility_env_drops_stale_unix_sockets_and_preserves_live_listener(tmp_path):
+    assert runtime.sanitize_accessibility_env({}) is False
+    assert runtime.sanitize_accessibility_env({"AT_SPI_BUS_ADDRESS": ""}) is False
+
+    missing_env = {"AT_SPI_BUS_ADDRESS": f"unix:path={tmp_path / 'missing-bus'},guid=0123456789abcdef"}
+    assert runtime.sanitize_accessibility_env(missing_env) is True
+    assert "AT_SPI_BUS_ADDRESS" not in missing_env
+
+    regular = tmp_path / "plain-file"
+    regular.write_text("not a socket")
+    regular_env = {"AT_SPI_BUS_ADDRESS": f"unix:path={regular}"}
+    assert runtime.sanitize_accessibility_env(regular_env) is True
+    assert "AT_SPI_BUS_ADDRESS" not in regular_env
+
+    if not hasattr(socket, "AF_UNIX"):
+        return
+
+    spaced = Path("/tmp") / f"cassini atspi {tmp_path.name}"
+    spaced.mkdir(parents=True, exist_ok=True)
+    sock_path = spaced / "bus_0"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        server.bind(str(sock_path))
+        server.listen(1)
+        server.setblocking(False)
+        encoded = quote(str(sock_path), safe="/")
+        live_env = {"AT_SPI_BUS_ADDRESS": f"unix:path={encoded},guid=0123456789abcdef"}
+        assert runtime.sanitize_accessibility_env(live_env) is False
+        assert live_env["AT_SPI_BUS_ADDRESS"].startswith("unix:path=")
+        with pytest.raises(BlockingIOError):
+            server.accept()
+    finally:
+        server.close()
+
+    # Closed listener leaving a stale socket inode on disk must also be stripped.
+    try:
+        assert sock_path.exists()
+        closed_env = {"AT_SPI_BUS_ADDRESS": f"unix:path={sock_path},guid=0123456789abcdef"}
+        assert runtime.sanitize_accessibility_env(closed_env) is True
+        assert "AT_SPI_BUS_ADDRESS" not in closed_env
+    finally:
+        sock_path.unlink(missing_ok=True)
+        spaced.rmdir()
+
+
+def test_runtime_check_strips_stale_at_spi_bus_address_without_gtk_critical(tmp_path):
+    source = Path(__file__).resolve().parents[1] / "src"
+    env = dict(
+        os.environ,
+        AT_SPI_BUS_ADDRESS=f"unix:path={tmp_path / 'stale-at-spi-bus'},guid=0123456789abcdef",
+    )
+    script = (
+        "import os\n"
+        "from cassini_talk import runtime\n"
+        "try:\n"
+        "    runtime.check()\n"
+        "except SystemExit:\n"
+        "    pass\n"
+        "assert 'AT_SPI_BUS_ADDRESS' not in os.environ\n"
+    )
+    result = subprocess.run([sys.executable, "-c", script], cwd=source, env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "Gtk-CRITICAL" not in result.stderr
+    assert "Unable to connect to the accessibility bus" not in result.stderr

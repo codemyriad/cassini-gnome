@@ -32,9 +32,9 @@ class VoiceJobClient(VoiceProbe):
 class VoiceModels(DiarizationModels):
     pin = campplus_model
 
-    def __init__(self, bundle, changed, *, store, enabled=lambda: True, client_factory=VoiceProbe):
+    def __init__(self, bundle, changed, *, store, enabled=lambda: True, client_factory=VoiceProbe, defer_inspect=False):
         self.enabled = enabled
-        super().__init__(bundle, changed, store=store, client_factory=client_factory)
+        super().__init__(bundle, changed, store=store, client_factory=client_factory, defer_inspect=defer_inspect)
 
     def _supported(self, info):
         return (
