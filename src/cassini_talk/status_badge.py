@@ -23,6 +23,10 @@ KIND_ALIASES: dict[str, str] = {
     "attention": "needsAttention",
 }
 
+GLYPH_ALIASES: dict[str, str] = {
+    "arrow": "incoming",
+}
+
 KIND_GLYPH: dict[str, str] = {
     "recording": "dot",
     "importing": "spinner",
@@ -30,14 +34,14 @@ KIND_GLYPH: dict[str, str] = {
     "transcribing": "spinner",
     "needsAttention": "alert",
     "interrupted": "alert",
-    "received": "arrow",
+    "received": "incoming",
 }
 
 GLYPH_SIZE_PX: dict[str, int] = {
     "dot": BADGE_DOT_PX,
     "spinner": BADGE_SPINNER_PX,
     "alert": BADGE_ALERT_PX,
-    "arrow": BADGE_RECEIVED_PX,
+    "incoming": BADGE_RECEIVED_PX,
 }
 
 
@@ -77,7 +81,7 @@ def _glyph_primitives() -> dict[str, tuple]:
             _stroke(1.8),
             _stroke(1.9, round_cap=True),
         ),
-        "arrow": (
+        "incoming": (
             received_arrow,
             _stroke(2.4, round_cap=True, round_join=True),
         ),
@@ -91,6 +95,13 @@ def normalize_badge_kind(kind: str) -> str:
     return canonical
 
 
+def normalize_glyph_kind(glyph_kind: str) -> str:
+    canonical = GLYPH_ALIASES.get(glyph_kind, glyph_kind)
+    if canonical not in GLYPH_SIZE_PX:
+        raise ValueError(f"Unknown badge glyph kind: {glyph_kind!r}")
+    return canonical
+
+
 def snapshot_badge_glyph(
     snapshot: Gtk.Snapshot,
     glyph_kind: str,
@@ -101,18 +112,19 @@ def snapshot_badge_glyph(
     height: int | None = None,
 ) -> None:
     """Append GSK vector nodes for glyph_kind painted in color (currentColor)."""
+    canonical = normalize_glyph_kind(glyph_kind)
     box_w = size_px if width is None else width
     box_h = size_px if height is None else height
     if box_w <= 0 or box_h <= 0:
         return
-    prims = _glyph_primitives()[glyph_kind]
+    prims = _glyph_primitives()[canonical]
     snapshot.save()
     if box_w != size_px or box_h != size_px:
         snapshot.translate(Graphene.Point().init((box_w - size_px) / 2.0, (box_h - size_px) / 2.0))
-    if glyph_kind == "dot":
+    if canonical == "dot":
         (circle,) = prims
         snapshot.append_fill(circle, Gsk.FillRule.WINDING, color)
-    elif glyph_kind == "spinner":
+    elif canonical == "spinner":
         ring, arc, ring_stroke, arc_stroke = prims
         track_color = Gdk.RGBA()
         track_color.red = color.red
@@ -123,7 +135,7 @@ def snapshot_badge_glyph(
         snapshot.scale(scale, scale)
         snapshot.append_stroke(ring, ring_stroke, track_color)
         snapshot.append_stroke(arc, arc_stroke, color)
-    elif glyph_kind == "alert":
+    elif canonical == "alert":
         ring, stem, dot, ring_stroke, stem_stroke = prims
         scale = size_px / 16.0
         snapshot.scale(scale, scale)
@@ -142,17 +154,16 @@ class BadgeGlyph(Gtk.Widget):
     """GSK vector glyph painted in currentColor with no Cairo runtime dependency."""
 
     def __init__(self, glyph_kind: str):
-        if glyph_kind not in GLYPH_SIZE_PX:
-            raise ValueError(f"Unknown badge glyph kind: {glyph_kind!r}")
+        canonical = normalize_glyph_kind(glyph_kind)
         super().__init__(
             can_target=False,
             halign=Gtk.Align.CENTER,
             valign=Gtk.Align.CENTER,
             accessible_role=Gtk.AccessibleRole.PRESENTATION,
-            css_classes=["badge-glyph", f"badge-glyph-{glyph_kind}"],
+            css_classes=["badge-glyph", f"badge-glyph-{canonical}"],
         )
-        self.glyph_kind = glyph_kind
-        self.size_px = GLYPH_SIZE_PX[glyph_kind]
+        self.glyph_kind = canonical
+        self.size_px = GLYPH_SIZE_PX[canonical]
 
     def do_measure(self, _orientation, _for_size):
         return (self.size_px, self.size_px, -1, -1)

@@ -116,7 +116,7 @@ def build_manifest(out_dir: Path) -> dict:
         elif "-2x-" in stem:
             scale, stem = 2, stem.replace("-2x-", "-", 1)
         lang = "en"
-        for suffix, code in (("-pt-BR", "pt-br"), ("-fr", "fr")):
+        for suffix, code in (("-pt-BR", "pt-br"), ("-fr", "fr"), ("-it", "it")):
             if stem.endswith(suffix):
                 lang, stem = code, stem[: -len(suffix)]
                 break

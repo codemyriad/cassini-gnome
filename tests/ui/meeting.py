@@ -159,12 +159,18 @@ with tempfile.TemporaryDirectory() as temporary:
         assert not page.write_button.get_visible()
         running = replace(meeting, transcript="running", eta_minutes=3)
         page.update(running)
-        assert "Transcribing, about 3 minutes left" in labels(page.lines)
+        assert "Transcribing · 3 min" in labels(page.lines)
         assert page._turns == running.turns, "Progress must not hide already written words"
         page.update(replace(running, eta_minutes=0))
         assert "Transcribing, less than a minute left" in labels(page.lines), "ETA-only refresh must update"
+        stopped_early = replace(
+            meeting, lifecycle="saved", transcript="done", eta_minutes=None, interrupted_at_ms=2472000
+        )
+        page.update(stopped_early)
+        assert "Interrupted at 00:41:12" in labels(page.lines)
         page.update(replace(meeting, transcript="done", eta_minutes=None))
         assert not any(value.startswith("Transcribing") for value in labels(page.lines))
+        assert "Interrupted at 00:41:12" not in labels(page.lines)
 
         empty = replace(meeting, words=(), turns=(), preview_turns=(), transcript="done", eta_minutes=None)
         assert empty.no_speech and empty.can_write_down

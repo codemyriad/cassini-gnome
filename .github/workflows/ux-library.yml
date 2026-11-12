@@ -26,9 +26,9 @@ jobs:
           root=Path('tests/ux')
           formats=json.loads((root/'format-vectors.json').read_bytes())
           states=json.loads((root/'states-vectors.json').read_bytes())
-          expected={'format':sum(len(v) for key,v in formats.items() if isinstance(v,list) and key!='changelog'),'state':len(states['vectors']),'library':len(json.loads(Path('ux/library-vectors/cases.json').read_text())['cases'])}
+          expected={'format':sum(len(v) for key,v in formats.items() if isinstance(v,list) and key!='changelog'),'state':len(states['vectors']),'entryState':len(states['entryVectors']),'library':len(json.loads(Path('ux/library-vectors/cases.json').read_text())['cases'])}
           cases=list(ET.parse('ux-artifacts/library-tests.xml').iter('testcase'))
-          passed={kind:sum(c.attrib['name'].startswith(prefix) and not list(c) for c in cases) for kind,prefix in [('format','test_format_vector['),('state','test_state_vector['),('library','test_shared_library_vector[')]}
+          passed={kind:sum(c.attrib['name'].startswith(prefix) and not list(c) for c in cases) for kind,prefix in [('format','test_format_vector['),('state','test_state_vector['),('entryState','test_entry_state_vector['),('library','test_shared_library_vector[')]}
           assert passed==expected,(passed,expected)
           result={'expected':expected,'passed':passed,'goldenSource':json.loads((root/'UPSTREAM.json').read_text())}
           Path('ux-artifacts/vector-results.json').write_text(json.dumps(result,indent=2)+'\n')

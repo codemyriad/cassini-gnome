@@ -1,5 +1,5 @@
 {
- "version": 4,
+ "version": 5,
  "note": "Binding golden vectors for both apps (HARMONY.md section 6). Times are epoch ms; format in the given tz with fixed en-GB patterns, 24 h clock. Both apps must pass all of them as unit tests; add vectors only via the coordinator.",
  "tz": "Europe/Rome",
  "nowMs": 1793107080000,
@@ -276,11 +276,11 @@
   },
   {
    "minutes": 1,
-   "out": "Transcribing, about 1 minute left"
+   "out": "Transcribing · 1 min"
   },
   {
    "minutes": 4,
-   "out": "Transcribing, about 4 minutes left"
+   "out": "Transcribing · 4 min"
   }
  ],
  "searchCount": [

@@ -36,7 +36,7 @@ def test_badge_constants_kind_mapping_and_applied_token_roles():
         "dot": 6,
         "spinner": 10,
         "alert": 11,
-        "arrow": 11,
+        "incoming": 11,
     }
     assert status_badge.KIND_GLYPH == {
         "recording": "dot",
@@ -45,21 +45,26 @@ def test_badge_constants_kind_mapping_and_applied_token_roles():
         "transcribing": "spinner",
         "needsAttention": "alert",
         "interrupted": "alert",
-        "received": "arrow",
+        "received": "incoming",
     }
     assert status_badge.normalize_badge_kind("attention") == "needsAttention"
+    assert status_badge.normalize_glyph_kind("arrow") == "incoming"
+    assert status_badge.normalize_glyph_kind("incoming") == "incoming"
     for canonical in status_badge.KIND_GLYPH:
         assert status_badge.normalize_badge_kind(canonical) == canonical
     with pytest.raises(ValueError, match="Unknown status badge kind"):
         status_badge.normalize_badge_kind("unknown")
+    with pytest.raises(ValueError, match="Unknown badge glyph kind"):
+        status_badge.normalize_glyph_kind("unknown")
 
     assert tokens.APPLIED_W2_BADGE_ROLES.issubset(tokens.CSS_ROLE_TOKENS)
     assert tokens.UNAPPLIED_W1_ROLES.isdisjoint(tokens.APPLIED_W2_BADGE_ROLES)
 
 
-@pytest.mark.parametrize("glyph_kind", ("dot", "spinner", "alert", "arrow"))
+@pytest.mark.parametrize("glyph_kind", ("dot", "spinner", "alert", "incoming", "arrow"))
 def test_headless_gsk_glyph_primitives_render_visible_currentcolor_ink(cairo_renderer, glyph_kind):
-    size = status_badge.GLYPH_SIZE_PX[glyph_kind]
+    canonical = status_badge.normalize_glyph_kind(glyph_kind)
+    size = status_badge.GLYPH_SIZE_PX[canonical]
     color = Gdk.RGBA()
     color.parse("rgb(192,28,40)")
 

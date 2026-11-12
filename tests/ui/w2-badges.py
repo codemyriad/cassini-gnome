@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""W2.1 status badge screenshot fixture: one Library row per badge kind in light and dark."""
+"""W2.1/W2.2 status badge screenshot fixture: one Library row per badge kind in light, dark, and Italian."""
 
 import os
 import shutil
@@ -23,10 +23,11 @@ from gi.repository import Gio, GLib, Gtk  # noqa: E402
 from painted import apply_screenshot_scheme, painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
-from cassini_talk import tokens  # noqa: E402
+from cassini_talk import tokens, ux_formats  # noqa: E402
+from cassini_talk.i18n import language  # noqa: E402
 from cassini_talk.library import LibrarySnapshot, Meeting  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
-from cassini_talk.meeting_state import Badge, MeetingError  # noqa: E402
+from cassini_talk.meeting_state import MeetingError, import_entry_badge  # noqa: E402
 from cassini_talk.status_badge import (  # noqa: E402
     BADGE_GAP_PX,
     BADGE_HEIGHT_PX,
@@ -34,15 +35,16 @@ from cassini_talk.status_badge import (  # noqa: E402
     KIND_GLYPH,
     StatusBadge,
 )
+from cassini_talk.strings import text  # noqa: E402
 
 
 @dataclass(frozen=True, kw_only=True)
 class ImportingFixtureMeeting(Meeting):
-    """Preview row for the W2.1 Importing glyph/tone before W2.2 adds lifecycle='importing'."""
+    """Transient import-entry row exercising W0.4 entryVectors import_entry_badge()."""
 
     def badge(self, *, live_ms=0):
         _ = live_ms
-        return Badge("importing", "Importing…", "grey")
+        return import_entry_badge({"importing": True})
 
     def row_texts(self):
         return ("", None)
@@ -216,6 +218,35 @@ with tempfile.TemporaryDirectory() as temporary:
         "received",
         "importing",
     ]
+    assert [b.get_label() for b in badges] == [
+        text("states.badge.recording", liveBadge="12:48"),
+        text("states.badge.saving"),
+        ux_formats.eta(4),
+        text("states.badge.needsAttention"),
+        text("states.badge.interrupted"),
+        text("states.badge.received"),
+        text("states.badge.importing"),
+    ]
+    if language() == "it":
+        assert [b.get_label() for b in badges] == [
+            "Registrazione 12:48",
+            "Salvataggio…",
+            "In trascrizione · 4 min",
+            "Richiede attenzione",
+            "Interrotta",
+            "Ricevuta",
+            "Importazione…",
+        ]
+    else:
+        assert [b.get_label() for b in badges] == [
+            "Recording 12:48",
+            "Saving…",
+            "Transcribing · 4 min",
+            "Needs attention",
+            "Interrupted",
+            "Received",
+            "Importing…",
+        ]
 
     expected_fg = {
         "recording": tokens.token("record-ink", dark=is_dark),
@@ -248,7 +279,35 @@ with tempfile.TemporaryDirectory() as temporary:
     assert alias_badge.get_label() == "Recording 1:05"
     assert alias_badge.get_text() == "Recording 1:05"
 
-    # Verify selected-row invariance: Needs attention is selected and keeps warn-ink, not row inherit.
+    # Verify interrupted position lives in the detail preview, outside the badge (W0.4 / L-26).
+    def preview_labels():
+        out = []
+
+        def walk(widget):
+            if isinstance(widget, Gtk.Label):
+                out.append(widget.get_label())
+            child = widget.get_first_child()
+            while child:
+                walk(child)
+                child = child.get_next_sibling()
+
+        walk(window.preview)
+        return out
+
+    def find_row_by_key(target_key):
+        cursor = window.rows.get_first_child()
+        while cursor:
+            if getattr(cursor, "meeting", None) is not None and cursor.meeting.key == target_key:
+                return cursor
+            cursor = cursor.get_next_sibling()
+        raise AssertionError(f"Missing row for {target_key!r}")
+
+    window.rows.select_row(find_row_by_key(interrupted.key))
+    expected_interrupted_detail = text("meeting.interruptedAt", position="00:41:12")
+    assert expected_interrupted_detail in preview_labels()
+
+    # Restore Needs attention selection for screenshot comparability and verify selected-row invariance.
+    window.rows.select_row(find_row_by_key(attention.key))
     selected_row = window.rows.get_selected_row()
     assert selected_row is not None and selected_row.meeting.key == attention.key
     selected_badge = find_badges(selected_row)[0]
@@ -258,4 +317,4 @@ with tempfile.TemporaryDirectory() as temporary:
     texture = window.get_renderer().render_texture(node, node.get_bounds())
     assert texture.save_to_png(os.environ["CASSINI_SCREENSHOT_OUT"])
     window.close()
-print("W2.1 status badges GUI passed")
+print("W2.2 status badges GUI passed")

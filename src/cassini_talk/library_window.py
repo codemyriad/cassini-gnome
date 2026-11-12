@@ -1027,6 +1027,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.has_audio,
             meeting.legacy_transcript_file,
             meeting.lifecycle,
+            meeting.interrupted_at_ms,
             meeting.transcript,
             meeting.eta_minutes,
             meeting.error,
@@ -1351,6 +1352,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         publication = self.publication_line(meeting)
         if publication:
             self.preview.append(publication)
+        if meeting.lifecycle == "saved" and (interrupted_line := meeting.interrupted_text()):
+            self.preview.append(label(interrupted_line, "dim-label", wrap=True, xalign=0))
         trash_error = self.trash_error_line(meeting)
         if trash_error:
             self.preview.append(trash_error)

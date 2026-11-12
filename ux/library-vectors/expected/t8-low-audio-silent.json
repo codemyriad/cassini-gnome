@@ -12,7 +12,7 @@
           "transcript": "done",
           "etaMinutes": null,
           "error": null,
-          "badge": "Interrupted at 00:00:10",
+          "badge": "Interrupted",
           "title": "Call with Ana",
           "startMs": 1793107079000,
           "durationMs": 10000,
