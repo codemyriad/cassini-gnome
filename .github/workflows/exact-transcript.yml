@@ -1,12 +1,17 @@
 name: Exact transcript renderer
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    - cron: "29 2 * * *"
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: exact-transcript-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
+  group: exact-transcript-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
 jobs:
   native-gtk:
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER_DESKTOP == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
@@ -29,9 +34,12 @@ jobs:
           GSETTINGS_SCHEMA_DIR: ${{ github.workspace }}/_exact-schemas
           CASSINI_RUN_TIMEOUT: "900"
         run: |
-          CASSINI_TRANSCRIPT_RENDER=listview CASSINI_CUSTOM_OUT="$PWD/exact-results/listview.json" build-aux/ux-screenshot.sh tests/ui/exact-transcript.py exact-results/listview.png
+          if [ "${CASSINI_PERF_GATE:-}" = "1" ]; then
+            CASSINI_TRANSCRIPT_RENDER=listview CASSINI_CUSTOM_OUT="$PWD/exact-results/listview.json" build-aux/ux-screenshot.sh tests/ui/exact-transcript.py exact-results/listview.png
+          fi
           CASSINI_CUSTOM_OUT="$PWD/exact-results/exact.json" build-aux/ux-screenshot.sh tests/ui/exact-transcript.py exact-results/exact.png
-          python3 - <<'PY'
+          if [ "${CASSINI_PERF_GATE:-}" = "1" ]; then
+            python3 - <<'PY'
           import json
           from pathlib import Path
           baseline = {r['name']: r for r in json.loads(Path('exact-results/listview.json').read_text())}
@@ -39,6 +47,7 @@ jobs:
               delta = row['rssMiB'] - baseline[row['name']]['rssMiB']
               assert delta <= 20, (row['name'], 'RSS overhead MiB', delta)
           PY
+          fi
       - name: Standalone default reader search, word seek and native scroll
         env:
           CASSINI_CUSTOM_BUILD: ${{ github.workspace }}/_exact-build

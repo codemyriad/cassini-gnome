@@ -1141,3 +1141,65 @@ def test_all_ci_container_images_are_digest_pinned_and_bump_script_validates(tmp
         assert pin_images.main(["--check"], root=tmp_path) == 1, rel
         target.write_text(before)
         assert pin_images.check_repo(tmp_path) == [], rel
+
+
+PERF_GATE_EXPR = (
+    "${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || "
+    "contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}"
+)
+
+
+def test_nightly_and_full_ci_perf_gates_are_wired_and_forwarded():
+    exact = (WORKFLOWS / "exact-transcript.yml").read_text()
+    trigger = exact.split("\njobs:\n", 1)[0]
+    assert re.search(r"^  schedule:\n    - cron: ", trigger, re.M)
+    assert re.search(r"^  pull_request:\n    types: \[opened, synchronize, reopened, labeled\]$", trigger, re.M)
+    assert re.search(r"^  workflow_dispatch:$", trigger, re.M)
+    assert (
+        "group: exact-transcript-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}"
+        in trigger
+    )
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in trigger
+    assert "tests/ui/exact-transcript.py exact-results/exact.png" in exact
+    assert "tests/ui/exact-reader.py exact-results/reader.png" in exact
+    assert 'if [ "${CASSINI_PERF_GATE:-}" = "1" ]; then\n            CASSINI_TRANSCRIPT_RENDER=listview' in exact
+
+    for name in (
+        "source.yml",
+        "deb.yml",
+        "packages.yml",
+        "meson-tests.yml",
+        "recording.yml",
+        "ux-shot.yml",
+        "whistle.yml",
+        "exact-transcript.yml",
+    ):
+        text = (WORKFLOWS / name).read_text()
+        assert f"CASSINI_PERF_GATE: {PERF_GATE_EXPR}" in text, name
+
+    container_sh = (ROOT / "build-aux/container.sh").read_text()
+    assert '${CASSINI_PERF_GATE:+-e CASSINI_PERF_GATE="$CASSINI_PERF_GATE"}' in container_sh
+    whistle_run = (ROOT / "tests/whistle/run.sh").read_text()
+    assert '${CASSINI_PERF_GATE:+-e CASSINI_PERF_GATE="$CASSINI_PERF_GATE"}' in whistle_run
+
+    recording = (WORKFLOWS / "recording.yml").read_text()
+    assert "--test-skip-pattern" not in recording
+    assert "- run: node --test browser-protocol/extension/tests/*.test.cjs" in recording
+
+    exact_ui = (ROOT / "tests/ui/exact-transcript.py").read_text()
+    assert "\n        assert not page.list.ready and 0 < first_rows < len(model.turns)" in exact_ui
+    assert "\n        assert len(load_samples) >= 6 and load_scrolls > 0" in exact_ui
+    assert '\n        assert report["openFirstPaintCpuMs"] < report["openFullyLaidOutCpuMs"], report\n' in exact_ui
+    assert (
+        '\n        assert report["openFirstPaintFrameClockMs"] < report["openFullyLaidOutFrameClockMs"], report\n'
+        in exact_ui
+    )
+
+    meeting_ui = (ROOT / "tests/ui/meeting.py").read_text()
+    assert "CASSINI_PERF_GATE" not in meeting_ui
+    assert '\n    assert 7000 <= advance <= 9000, ("2× clock advance", advance)\n' in meeting_ui
+
+    browser_rec = (ROOT / "tests/recording/browser.mjs").read_text()
+    assert "CASSINI_PERF_GATE" not in browser_rec
+    assert "\n  assert.ok(Math.abs(mutePosition+original.startOffsetMs/1000-wallMutePosition)<.4," in browser_rec
+    assert "\n  for(const measure of continuity) assert.ok(Math.abs(measure.error)<.25," in browser_rec

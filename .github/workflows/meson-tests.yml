@@ -27,6 +27,7 @@ jobs:
         shell: bash
         env:
           PYTEST_ADDOPTS: '-vv -o faulthandler_timeout=60'
+          CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
         run: |
           set -o pipefail
           # Keep Meson's individual limits; leave time to retain logs before
