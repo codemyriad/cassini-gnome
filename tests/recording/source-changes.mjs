@@ -23,7 +23,9 @@ export function savedCapture(current, reason) {
  return current;
 }
 
-export async function run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence}) {
+export async function run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence, senderMe}) {
+ // Me is the page's sender track with a sender-me-v1 companion, else the app's OS microphone copy.
+ const me = senderMe ? 'local' : 'microphone';
  const {constants} = JSON.parse(await readFile(path.resolve(import.meta.dirname, '../../browser-protocol/conformance/multistream/lifecycle.json')));
  let producer;
  async function choose(directory, me, others) {
@@ -74,17 +76,17 @@ export async function run({context, call, join, record, recording, samples, powe
   const directory = await recording('Fallback browser meeting');
   const otherDirectory = await recording('Unaffected browser meeting');
   const initial = await samples(directory);
-  const initialMic = initial.tracks.find(t => t.kind === 'microphone');
+  const initialMic = initial.tracks.find(t => t.kind === me);
   const initialRemote = initial.tracks.find(t => t.kind === 'remote');
   await choose(directory, false, true);
   const frozenMic = (await samples(directory)).tracks.find(t => t.file === initialMic.file).frames;
-  const otherBefore = (await samples(otherDirectory)).tracks.find(t => t.kind === 'microphone').frames;
-  await poll(async () => (await samples(otherDirectory)).tracks.find(t => t.kind === 'microphone').frames >= otherBefore + 48000, 'other meeting microphone continues');
+  const otherBefore = (await samples(otherDirectory)).tracks.find(t => t.kind === me).frames;
+  await poll(async () => (await samples(otherDirectory)).tracks.find(t => t.kind === me).frames >= otherBefore + 48000, 'other meeting microphone continues');
   assert.equal((await samples(directory)).tracks.find(t => t.file === initialMic.file).frames, frozenMic);
   await choose(directory, true, false);
   const frozenRemote = (await samples(directory)).tracks.find(t => t.file === initialRemote.file).frames;
-  const micBefore = (await samples(directory)).tracks.findLast(t => t.kind === 'microphone' && !t.ended).frames;
-  await poll(async () => (await samples(directory)).tracks.findLast(t => t.kind === 'microphone' && !t.ended).frames >= micBefore + 48000, 'Me continues while browser packets are discarded');
+  const micBefore = (await samples(directory)).tracks.findLast(t => t.kind === me && !t.ended).frames;
+  await poll(async () => (await samples(directory)).tracks.findLast(t => t.kind === me && !t.ended).frames >= micBefore + 48000, 'Me continues while browser packets are discarded');
   assert.equal((await samples(directory)).tracks.find(t => t.file === initialRemote.file).frames, frozenRemote);
   await choose(directory, true, true);
   await poll(async () => (await samples(directory)).tracks.some(t => t.kind === 'remote' && t.file !== initialRemote.file && t.frames >= 96000), 'new browser span has two seconds');
@@ -100,7 +102,7 @@ export async function run({context, call, join, record, recording, samples, powe
   producer = spawn('/usr/bin/python3', ['-c', `import gi,signal\ngi.require_version('Gst','1.0')\nfrom gi.repository import Gst,GLib\nGst.init(None)\np=Gst.parse_launch('audiotestsrc is-live=true freq=1210 volume=0.25 ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=1 ! pulsesink device=cassini_desktop sync=false')\nloop=GLib.MainLoop()\nsignal.signal(signal.SIGTERM,lambda *_:loop.quit())\np.set_state(Gst.State.PLAYING)\ntry:loop.run()\nfinally:p.set_state(Gst.State.NULL)\n`], {stdio: ['ignore', 'ignore', 'pipe']});
   producer.stderr.pipe(createWriteStream(path.join(artifacts, 'system-fallback-producer.log')));
   const beforeLoss = await samples(directory);
-  const mic = beforeLoss.tracks.findLast(t => t.kind === 'microphone' && !t.ended);
+  const mic = beforeLoss.tracks.findLast(t => t.kind === me && !t.ended);
   const independentBefore = (await samples(otherDirectory)).tracks.find(t => t.kind === 'remote').frames;
   await first.meeting.reload();
   const fallback = await poll(async () => {
@@ -111,7 +113,12 @@ export async function run({context, call, join, record, recording, samples, powe
   const system = fallback.tracks.find(t => t.kind === 'system');
   assert.equal(event.source, 'system'); assert.equal(event.reason, 'lost');
   assert.equal(system.startOffsetMs, event.atMs);
-  assert.ok(fallback.tracks.find(t => t.file === mic.file).frames > mic.frames + 48000, 'microphone continues in the same WAV');
+  if (senderMe) {
+   // The page's Me left with the page: it has a gap, never an OS microphone stand-in.
+   assert.ok(!fallback.tracks.some(t => t.kind === 'microphone'), 'Me never falls back to the OS microphone');
+  } else {
+   assert.ok(fallback.tracks.find(t => t.file === mic.file).frames > mic.frames + 48000, 'microphone continues in the same WAV');
+  }
   assert.ok((await samples(otherDirectory)).tracks.find(t => t.kind === 'remote').frames > independentBefore + 48000);
   assert.ok(!(await samples(otherDirectory)).tracks.some(t => t.kind === 'system'), 'loss must affect only its own meeting');
   const systemWanted = power(system, 1210), microphoneBleed = power(system, 660);
@@ -141,12 +148,20 @@ export async function run({context, call, join, record, recording, samples, powe
   assert.ok(restoredWanted > .001 && systemBleed < restoredWanted * .01,
    JSON.stringify({restoredWanted, systemBleed}));
   assert.equal(returned.manifest.state, 'recording');
-  assert.ok(returned.tracks.find(t => t.file === mic.file && !t.ended));
+  if (senderMe) {
+   // The returned page sends a 440 Hz tone; Me records it again from the page sender.
+   const returnedMe = await poll(async () => (await samples(directory)).tracks.find(t => t.kind === 'local' && !t.ended && t.frames >= 48000 && power(t, 440) > .001),
+    'returned page sender records Me again');
+   assert.ok(power(returnedMe, 660) < power(returnedMe, 440) * .01, 'restored Me is the page sender tone, not the earlier microphone');
+   assert.ok(!(await samples(directory)).tracks.some(t => t.kind === 'microphone'), 'Me never falls back to the OS microphone');
+  } else {
+   assert.ok(returned.tracks.find(t => t.file === mic.file && !t.ended));
+  }
   assert.ok(returned.tracks.find(t => t.file === system.file).ended);
   assert.equal((await call()).statuses.filter(s => s.path === directory && s.recording).length, 1);
   assert.ok((await samples(otherDirectory)).tracks.find(t => t.kind === 'remote').frames > independentBefore + 96000);
   evidence.scenarios.push({name: 'same-tab-return-restores-browser-in-same-folder', directory,
-   originalMic: mic.file, restoredWanted, systemBleed});
+   originalMic: mic?.file, restoredWanted, systemBleed});
   // Lose the page again before the separate worker-recovery/expiry proof.
   await first.meeting.reload();
   await poll(async () => {

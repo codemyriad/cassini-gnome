@@ -410,7 +410,7 @@
               await Promise.allSettled([...state.tracks.values()].map(recorder => recorder.stop("callChanged")));
               state.tracks.clear(); discover(true); return;
             }
-            const sources = new Map(), roots = new Set();
+            const sources = new Map(), roots = new Set(), localSenders = [];
             for (const pc of peers) {
               rememberReceivers(pc);
               for (const {receiver} of getTransceivers(pc)) if (receiver?.track) roots.add(sourceRoot(receiver.track));
@@ -431,21 +431,45 @@
                 knownLocalTracks.add(sender.track);
                 knownLocalTracks.add(sourceRoot(sender.track));
                 if (message.captureLocal === false || peerGenerations.get(pc) !== callGeneration) continue;
-                // One Me source per microphone: the same track or clones of it sent on several
-                // peers is one voice, also after a replaceTrack makes two senders converge.
-                // A sender keeps its source across replaceTrack (mute, device) and capture restarts.
-                const current = state.senderGroups.get(sender);
-                let group = null;
-                for (const candidate of state.localGroups)
-                  if ([...candidate.owners].some(([other, owner]) => other !== sender && sourceRoot(owner.track) === sourceRoot(sender.track))) { group = candidate; break; }
-                group ||= current || localGroups.get(sender);
-                if (!group) { group = { kind: "local" }; group.root = group; }
-                if (!state.localGroups.has(group)) { group.owners = new Map(); state.localGroups.add(group); }
-                if (current && current !== group) current.owners.delete(sender);
-                state.senderGroups.set(sender, group);
-                localGroups.set(sender, group);
-                group.owners.set(sender, { pc, track: sender.track });
+                localSenders.push({ sender, pc });
               }
+            }
+            // One Me source per microphone: the same track or clones of it sent on several
+            // peers is one voice, also after a replaceTrack makes two senders converge.
+            // A sender keeps its source across replaceTrack (mute, device) and capture restarts,
+            // unless it switched to a microphone its group's other senders do not send.
+            const assign = ({ sender, pc }, group) => {
+              if (!state.localGroups.has(group)) { group.owners = new Map(); state.localGroups.add(group); }
+              const current = state.senderGroups.get(sender);
+              if (current && current !== group) current.owners.delete(sender);
+              state.senderGroups.set(sender, group);
+              localGroups.set(sender, group);
+              group.owners.set(sender, { pc, track: sender.track });
+            };
+            const previousGroup = sender => state.senderGroups.get(sender) || localGroups.get(sender);
+            // Senders still on their source's microphone claim it first, so the order of
+            // senders never decides which one keeps the identity.
+            const switched = [];
+            for (const entry of localSenders) {
+              const previous = previousGroup(entry.sender);
+              if (previous && previous.mic === sourceRoot(entry.sender.track)) assign(entry, previous);
+              else switched.push(entry);
+            }
+            for (const entry of switched) {
+              const { sender } = entry, mic = sourceRoot(sender.track);
+              // The microphone each other sender of a group sends now (or resumes after a null mute).
+              const otherMics = candidate => [...candidate.owners].flatMap(([other, owner]) => {
+                const track = other.track || owner.track;
+                return other === sender || !track || track.readyState === "ended" || isDisplayTrack(track) || closed(owner.pc) ? [] : [sourceRoot(track)];
+              });
+              let group = null;
+              for (const candidate of state.localGroups)
+                if (otherMics(candidate).includes(mic)) { group = candidate; break; }
+              const previous = previousGroup(sender);
+              if (!group && previous && !(state.localGroups.has(previous) && otherMics(previous).length)) group = previous;
+              if (!group) { group = { kind: "local" }; group.root = group; }
+              if (!state.localGroups.has(group) || !otherMics(group).length) group.mic = mic;
+              assign(entry, group);
             }
             // Preserve the same source across replaceTrack(null)/restore mute cycles; a sender
             // leaves its source only when its peer closes or its last track ends.

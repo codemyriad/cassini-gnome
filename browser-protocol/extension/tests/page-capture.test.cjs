@@ -306,3 +306,57 @@ test('replacing a sender track with a clone of another sender microphone converg
  assert.equal(live.length,1,'the same microphone is never recorded twice');
  assert.equal(live[0].enabled(),true);
 }));
+
+test('a sender that switches from a shared microphone to another one records the new microphone as its own Me source',()=>fixture(async f=>{
+ const [headset]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const [desk]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const a=micSender(headset),b=micSender(headset.clone());
+ f.peer.senders=[a];second.senders=[b];
+ await f.start('mesh',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,1,'one shared microphone is one Me source');
+ const shared=f.captures[0];
+ b.track=desk;await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,2,'the switched sender microphone is recorded too');
+ const switched=live.find(c=>c!==shared);
+ assert.ok(switched,'the shared microphone capture continues');
+ assert.equal(shared.stopped,false);
+ assert.notEqual(switched.sourceTrackId,shared.sourceTrackId,'two microphones are two Me sources');
+ assert.equal(shared.enabled(),true);assert.equal(switched.enabled(),true);
+ b.track=headset.clone();await f.scan();
+ const after=f.captures.filter(c=>!c.stopped);
+ assert.deepEqual(after.map(c=>c.sourceTrackId),[shared.sourceTrackId],'switching back converges on the shared Me source');
+}));
+
+test('a sender that switched microphones between captures is its own Me source after resume',()=>fixture(async f=>{
+ const [headset]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const [desk]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const a=micSender(headset),b=micSender(headset);
+ f.peer.senders=[a];second.senders=[b];
+ await f.start('before-loss',{captureLocal:true,sourceOutcomes:true});
+ const shared=f.captures[0].sourceTrackId;await f.stop();
+ b.track=desk;
+ await f.start('resumed',{captureLocal:true,sourceOutcomes:true});
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,2,'both microphones record after resume');
+ assert.ok(live.some(c=>c.sourceTrackId===shared),'the shared microphone keeps its Me source');
+}));
+
+test('whichever sender switches away from a shared microphone, the shared one keeps its Me source',()=>fixture(async f=>{
+ const [headset]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const [desk]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const a=micSender(headset.clone()),b=micSender(headset);
+ f.peer.senders=[a];second.senders=[b];
+ await f.start('mesh',{captureLocal:true,sourceOutcomes:true});
+ const shared=f.captures[0].sourceTrackId;
+ a.track=desk;await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,2,'both microphones record');
+ assert.equal(new Set(live.map(c=>c.sourceTrackId)).size,2);
+ const headsetCapture=live.find(c=>c.sourceTrackId===shared);
+ assert.ok(headsetCapture,'the headset keeps the shared Me source');
+ assert.equal(headsetCapture.enabled(),true);
+}));
