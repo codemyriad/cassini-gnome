@@ -3,11 +3,12 @@
 
 from bisect import bisect_right
 
-from gi.repository import Gdk, Graphene, Gtk
+from gi.repository import Adw, Gdk, Graphene, Gtk
 
 from . import ux_formats as fmt
 from .listening_timeline_model import snap_start, time_index
 from .strings import text
+from .tokens import timeline_tick_colour
 
 
 class TurnTicks(Gtk.Widget):
@@ -138,9 +139,14 @@ class ListeningTimeline(Gtk.Overlay):
         if not duration or not self._target:
             return
         left, width = self._geometry()
-        found, colour = self.scale.get_style_context().lookup_color("accent_color")
-        if not found:
-            colour = self.scale.get_color()
+        tick_hex = timeline_tick_colour(dark=Adw.StyleManager.get_default().get_dark())
+        if tick_hex is not None:
+            colour = Gdk.RGBA()
+            colour.parse(tick_hex)
+        else:
+            found, colour = self.scale.get_style_context().lookup_color("accent_color")
+            if not found:
+                colour = self.scale.get_color()
         for turn in self._target:
             x = left + turn.start_ms * width / duration
             rect = Graphene.Rect()

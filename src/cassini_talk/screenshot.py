@@ -149,6 +149,10 @@ def capture(application_id, version, profile):
             app.settings_dialog.set_visible_page_name(board.removeprefix("settings-"))
             opened_settings = True
             settled_frame = None
+        if window.meeting_page is not None and not window.meeting_page.list.ready:
+            settled_frame = None
+            time.sleep(0.01)
+            continue
         if board == "speakers" and opened_meeting and not window.meeting_page.speakers_dialog.voices_loaded:
             settled_frame = None
             time.sleep(0.01)

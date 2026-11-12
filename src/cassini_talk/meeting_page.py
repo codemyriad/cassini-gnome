@@ -15,8 +15,6 @@ from .listening_shortcuts import ListeningShortcuts
 from .listening_timeline import ListeningTimeline
 from .markup_runs import bridge_link_spaces
 from .meeting_text import (
-    COLOURS,
-    DARK_COLOURS,
     FollowRows,
     changed_header_rows,
     reading_markup,
@@ -26,6 +24,7 @@ from .meeting_text import (
     speaking_shares,
 )
 from .strings import plural, text
+from .tokens import speaker_colour
 from .transcript_label import TranscriptLabel
 from .transcript_row import ExactTurnRow
 
@@ -390,8 +389,7 @@ class MeetingPage(Adw.NavigationPage):
         return True
 
     def _colour(self, speaker):
-        palette = DARK_COLOURS if Adw.StyleManager.get_default().get_dark() else COLOURS
-        return palette[speaker.colour_index % len(palette)]
+        return speaker_colour(speaker, dark=Adw.StyleManager.get_default().get_dark())
 
     def _turn_markup(self, turn, *, position=None):
         return reading_markup(

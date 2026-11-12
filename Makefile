@@ -49,6 +49,7 @@ test: build
 
 lint:
 	python3 browser-protocol/verify.py --pinned browser-extension
+	python3 build-aux/generate-brand-tokens.py --check
 	ruff check src tests
 	ruff format --check src tests
 
