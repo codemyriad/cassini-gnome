@@ -1,0 +1,40 @@
+name: Actions cache hygiene
+
+# Deletes cache entries nothing will read again (closed pull requests' caches, superseded keys on main), so the
+# repository's 10 GB quota never evicts a hot entry: build-aux/ci/cache_hygiene.py. Nightly it deletes; a manual
+# run only prints what it would delete unless `delete` is ticked.
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: Delete (otherwise only list what would be deleted)
+        type: boolean
+        default: false
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: cache-hygiene
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Delete cache entries nothing will read again
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DELETE: ${{ (github.event_name == 'schedule' || inputs.delete) && 'yes' || 'no' }}
+        run: |
+          if [ "$DELETE" = yes ]; then
+            python3 build-aux/ci/cache_hygiene.py --delete
+          else
+            python3 build-aux/ci/cache_hygiene.py
+          fi
