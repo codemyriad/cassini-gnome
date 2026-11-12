@@ -5,7 +5,7 @@
 set -eu
 cd "$(dirname "$0")/../.."
 . build-aux/container.sh
-BASE=${1:-archlinux:latest}
+BASE=${1:-archlinux:latest@sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899}
 
 meson_ver=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n 1)
 pkg_ver=$(sed -n 's/^pkgver=//p' build-aux/arch/PKGBUILD)

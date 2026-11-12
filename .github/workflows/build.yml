@@ -24,7 +24,7 @@ jobs:
   products:
     name: Meson build profiles
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
-    container: ubuntu:26.04
+    container: ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96
     # About 1.5 min without the tests, 2.5 with a cold pin cache (D66: 2-4x p95).
     timeout-minutes: 10
     steps:

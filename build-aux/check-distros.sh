@@ -16,8 +16,8 @@ case ${1:-} in -h|--help) sed -n '2,10s/^# \{0,1\}//p' "$0"; exit 0 ;; esac
 cd "$(dirname "$0")/.."
 . build-aux/container.sh
 
-DEFAULT_IMAGES="debian:testing ubuntu:26.04 fedora:latest
-registry.opensuse.org/opensuse/tumbleweed:latest archlinux:latest alpine:edge"
+DEFAULT_IMAGES="debian:testing@sha256:2d46f43b677a047cfab870549eea0d83d0a9bea2f55b3f481efc901043916c2a ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96 fedora:latest@sha256:a7d72ba2745b100a3351087472e5ee7b2450af7cf331e7673007e3817612839c
+registry.opensuse.org/opensuse/tumbleweed:latest@sha256:27356084647aa08ad9e9c5e0ebfd2742f9f65279860e862b3a65148450c113da archlinux:latest@sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899 alpine:edge@sha256:020dfcbaaf4cc1078bf2d9c7ba31a8466e334061dcd2f248001d68f79e52c000"
 [ $# -gt 0 ] || set -- $DEFAULT_IMAGES
 
 LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/cassini-check-distros.XXXXXX")
@@ -176,7 +176,7 @@ for image in "$@"; do
     if ! container_pull "$image"; then
       echo 1 > "$log.status"
       stage_ok=0
-    elif [ "$image" = "alpine:edge" ]; then
+    elif [ "${image%@sha256:*}" = "alpine:edge" ]; then
       chmod -R u+w "$outcome_dir" 2>/dev/null || true
       rm -rf "$outcome_dir"
       mkdir -p "$outcome_dir"
@@ -223,7 +223,7 @@ for image in "$@"; do
   problems=$(sed -n 's/^@@problems //p' "$log" | tail -n 1)
   if [ "$(cat "$log.status")" = 0 ] && [ "$step" = ok ]; then
     verdict=PASS note=$versions
-  elif [ "$image" = "alpine:edge" ] && [ "$(cat "$log.status")" = 0 ] && [ "$step" = "infra-skip-install-deps" ] && [ -f "$outcome_dir/infra-skipped.json" ] && [ ! -e "$outcome_dir/outcome.json" ]; then
+  elif [ "${image%@sha256:*}" = "alpine:edge" ] && [ "$(cat "$log.status")" = 0 ] && [ "$step" = "infra-skip-install-deps" ] && [ -f "$outcome_dir/infra-skipped.json" ] && [ ! -e "$outcome_dir/outcome.json" ]; then
     verdict=SKIP note="upstream apk install failure on primary and fallback mirrors"
   else
     verdict=FAIL note="at '${step:-start}'${problems:+: $problems}${versions:+ ($versions)}"

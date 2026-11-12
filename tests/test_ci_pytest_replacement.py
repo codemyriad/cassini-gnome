@@ -45,6 +45,18 @@ OS_RELEASE = "cp /etc/os-release /logs/os-release  # G11: the image that ran the
 # no package job uses fedora:latest or alpine:edge on extra_distros runs, and
 # fedora:44 is the non-package reference on two-distro PR/push runs.
 KEEPS_PYTEST = {True: {"fedora:latest", "alpine:edge"}, False: {"fedora:44"}}
+HAS_DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
+IMAGE_PINS = json.loads((ROOT / "build-aux/ci/image-pins.json").read_text())["images"]
+
+
+def pinned_image(tag: str) -> str:
+    return f"{tag}@{IMAGE_PINS[tag]['digest']}"
+
+
+def strip_digest(ref: str) -> str:
+    return HAS_DIGEST.sub("", ref)
+
+
 CALLER_LEGS = {
     "source": ("deb_testing", "rpm_opensuse", "arch", "extra_distros"),
     "deb": ("deb_testing",),
@@ -323,7 +335,10 @@ def problems(files):
         if any(not isinstance(e, dict) or not ({"image"} <= set(e) <= {"image", "pytest-in"}) for e in entries):
             found.append("Source matrix has a key this guard cannot read")
             break
-        kept = {e["image"] for e in entries if not e.get("pytest-in")}
+        if any(not isinstance(e.get("image"), str) or not HAS_DIGEST.search(e["image"]) for e in entries):
+            found.append("Source matrix has an unpinned image reference")
+            break
+        kept = {strip_digest(e["image"]) for e in entries if not e.get("pytest-in")}
         if kept != KEEPS_PYTEST[extra_distros]:
             found.append(
                 f"Source (extra_distros={extra_distros}) keeps pytest on {sorted(kept)}, "
@@ -352,12 +367,14 @@ def problems(files):
     ):
         if files[script].count(OS_RELEASE) != 1:
             found.append(f"{script}: does not save the os-release of the container that ran the tests")
-    if [
+    deb_df = [
         line for line in code(files["build-aux/deb/Dockerfile"].splitlines()) if re.match(r"(FROM|ARG BASE)\b", line)
-    ] != [
-        "ARG BASE=ubuntu:26.04",
-        "FROM ${BASE}",
-    ]:
+    ]
+    if (
+        len(deb_df) != 2
+        or not re.fullmatch(r"ARG BASE=ubuntu:26\.04@sha256:[0-9a-f]{64}", deb_df[0])
+        or deb_df[1] != "FROM ${BASE}"
+    ):
         found.append("build-aux/deb/Dockerfile: the build image is not the BASE build.sh names")
 
     # CI runs the package jobs whenever it runs Source, and gates on the proof.
@@ -397,12 +414,24 @@ def problems(files):
     }
     deb_full, deb_pr = parse_tier_json(workflows["deb"], "base", "deb_testing")
     rpm_full, rpm_pr = parse_tier_json(workflows["rpm"], "include", "rpm_opensuse")
-    if deb_full != ["ubuntu:26.04", "debian:testing"] or deb_pr != ["ubuntu:26.04"]:
+    if (
+        not deb_full
+        or not deb_pr
+        or any(not isinstance(b, str) or not HAS_DIGEST.search(b) for b in [*deb_full, *deb_pr])
+        or [strip_digest(b) for b in deb_full] != ["ubuntu:26.04", "debian:testing"]
+        or [strip_digest(b) for b in deb_pr] != ["ubuntu:26.04"]
+    ):
         found.append(f"deb: unexpected tier matrix full={deb_full!r} pr={deb_pr!r}")
     if (
-        rpm_pr != [{"base": "fedora:44", "name": "fedora"}]
+        not rpm_pr
+        or len(rpm_pr) != 1
+        or rpm_pr[0].get("name") != "fedora"
+        or not isinstance(rpm_pr[0].get("base"), str)
+        or not HAS_DIGEST.search(rpm_pr[0]["base"])
+        or strip_digest(rpm_pr[0]["base"]) != "fedora:44"
         or not rpm_full
-        or {r.get("base") for r in rpm_full}
+        or any(not isinstance(r.get("base"), str) or not HAS_DIGEST.search(r["base"]) for r in rpm_full)
+        or {strip_digest(r["base"]) for r in rpm_full}
         != {
             "fedora:44",
             "registry.opensuse.org/opensuse/tumbleweed:latest",
@@ -614,8 +643,12 @@ MUTATIONS = {
         "gir1.2-gtk-4.0 <!nocheck>",
         "gir1.2-gtk-4.0 <pkg.cassini.never>",
     ),
-    "deb image gone": ("deb.yml", '["ubuntu:26.04", "debian:testing"]', '["ubuntu:26.04"]'),
-    "pr deb image gone": ("deb.yml", "fromJSON('[\"ubuntu:26.04\"]')", "fromJSON('[]')"),
+    "deb image gone": (
+        "deb.yml",
+        f'["{pinned_image("ubuntu:26.04")}", "{pinned_image("debian:testing")}"]',
+        f'["{pinned_image("ubuntu:26.04")}"]',
+    ),
+    "pr deb image gone": ("deb.yml", f"fromJSON('[\"{pinned_image('ubuntu:26.04')}\"]')", "fromJSON('[]')"),
     "rpm --no-suite": (
         "build-aux/rpm/cassini-talk.spec",
         "%meson_test --num-processes=2\n",
@@ -641,12 +674,12 @@ MUTATIONS = {
     "rpm check step dropped": ("packages.yml", CHECK_STEP, "\n", 0),
     "tumbleweed image gone": (
         "packages.yml",
-        '{"base":"registry.opensuse.org/opensuse/tumbleweed:latest","name":"opensuse"}',
+        f'{{"base":"{pinned_image("registry.opensuse.org/opensuse/tumbleweed:latest")}","name":"opensuse"}}',
         '{"base":"opensuse/leap:16.0","name":"opensuse"}',
     ),
     "pr rpm image gone": (
         "packages.yml",
-        'fromJSON(\'[{"base":"fedora:44","name":"fedora"}]\')',
+        f'fromJSON(\'[{{"base":"{pinned_image("fedora:44")}","name":"fedora"}}]\')',
         "fromJSON('[]')",
     ),
     "arch --no-suite": (
@@ -664,21 +697,25 @@ MUTATIONS = {
     "arch BUILDENV": ("build-aux/arch/PKGBUILD", "options=(", "BUILDENV=(!check)\noptions=("),
     "arch without libadwaita": ("build-aux/arch/PKGBUILD", "  'libadwaita>=1.8'\n", ""),
     "arch check step dropped": ("packages.yml", CHECK_STEP, "\n", 1),
-    "arch image moved": ("build-aux/arch/build.sh", "BASE=${1:-archlinux:latest}", "BASE=${1:-archlinux:base}"),
+    "arch image moved": (
+        "build-aux/arch/build.sh",
+        f"BASE=${{1:-{pinned_image('archlinux:latest')}}}",
+        "BASE=${1:-archlinux:base}",
+    ),
     "source keeps fedora skip": (
         "source.yml",
-        '{"image":"fedora:latest"}',
-        '{"image":"fedora:latest","pytest-in":"RPM and Arch packages / Build .rpm (fedora:latest)"}',
+        f'{{"image":"{pinned_image("fedora:latest")}"}}',
+        f'{{"image":"{pinned_image("fedora:latest")}","pytest-in":"RPM and Arch packages / Build .rpm (fedora:latest)"}}',
     ),
     "source pr fedora skip": (
         "source.yml",
-        '{"image":"fedora:44"}',
-        '{"image":"fedora:44","pytest-in":"RPM and Arch packages / Build .rpm (fedora:44)"}',
+        f'{{"image":"{pinned_image("fedora:44")}"}}',
+        f'{{"image":"{pinned_image("fedora:44")}","pytest-in":"RPM and Arch packages / Build .rpm ({pinned_image("fedora:44")})"}}',
     ),
     "source names a wrong job": (
         "source.yml",
-        '"Debian package / Build .deb (debian:testing)"',
-        '"Debian package / Build .deb (ubuntu:26.04)"',
+        f'"Debian package / Build .deb ({pinned_image("debian:testing")})"',
+        f'"Debian package / Build .deb ({pinned_image("ubuntu:26.04")})"',
     ),
     "source skips unconditionally": ("source.yml", "${{ matrix.pytest-in && '1' || '' }}", "'1'"),
     # The red-team bypasses of 9a8b13e, each confirmed by an independent run.
@@ -795,8 +832,8 @@ MUTATIONS = {
     "pr-paths packages not always": ("build-aux/ci/pr-paths.json", '    "packages",\n', ""),
     "source unknown matrix key": (
         "source.yml",
-        '{"image":"fedora:latest"}',
-        '{"image":"fedora:latest","pytest_in":"RPM and Arch packages / Build .rpm (fedora:44)"}',
+        f'{{"image":"{pinned_image("fedora:latest")}"}}',
+        f'{{"image":"{pinned_image("fedora:latest")}","pytest_in":"RPM and Arch packages / Build .rpm (fedora:44)"}}',
     ),
     "ci source leg fails closed on empty output": (
         "ci.yml",
@@ -846,8 +883,8 @@ MUTATIONS = {
     ),
     "deb Dockerfile ignores BASE": (
         "build-aux/deb/Dockerfile",
-        "ARG BASE=ubuntu:26.04\nFROM ${BASE}",
-        "ARG BASE_IMAGE=ubuntu:26.04\nFROM ${BASE_IMAGE}",
+        f"ARG BASE={pinned_image('ubuntu:26.04')}\nFROM ${{BASE}}",
+        f"ARG BASE_IMAGE={pinned_image('ubuntu:26.04')}\nFROM ${{BASE_IMAGE}}",
     ),
     "deb os-release not saved": ("build-aux/deb/build.sh", "    " + OS_RELEASE + "\n", ""),
     "source os-release not saved": ("build-aux/check-distros.sh", "  " + OS_RELEASE + "\n", ""),

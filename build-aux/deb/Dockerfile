@@ -1,6 +1,6 @@
 # Builds the .deb in a clean container. See build-aux/deb/build.sh.
 # The build context is debian/, so only debian/control is sent to the engine.
-ARG BASE=ubuntu:26.04
+ARG BASE=ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96
 FROM ${BASE}
 ENV DEBIAN_FRONTEND=noninteractive
 # Ubuntu's minimal image discards MO files at package-install time. Retain our

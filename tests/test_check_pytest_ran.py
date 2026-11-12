@@ -395,7 +395,7 @@ def test_runtime_proof_manifest_matches_the_actual_workflow_matrices(tmp_path):
     import re
 
     def slug(image):
-        return image.replace(":", "-").replace("/", "-")
+        return image.split("@", 1)[0].replace(":", "-").replace("/", "-")
 
     def two_branches(text, key, input_name):
         match = re.search(

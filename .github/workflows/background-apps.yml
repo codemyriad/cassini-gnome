@@ -20,6 +20,8 @@ on:
 permissions:
   contents: read
   actions: read
+env:
+  CASSINI_HARNESS_BASES: ubuntu:26.04@sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6 debian:testing@sha256:bdb44a6e90e7ee02e032121a81fae9f945ce86b9454c6d0d71bc43cb595ba17f
 jobs:
   desktop:
     name: ${{ inputs.include_flatpak && 'GNOME 50 / installed deb and Flatpak' || 'GNOME 50 / installed deb' }}
