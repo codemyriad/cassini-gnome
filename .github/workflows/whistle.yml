@@ -128,10 +128,10 @@ jobs:
         if: always() && env.CASSINI_OFFLINE_HARNESS_IMAGE != ''
         run: tests/whistle/refresh-image.sh remove "$CASSINI_OFFLINE_HARNESS_IMAGE" "$CASSINI_OFFLINE_HARNESS_JOB"
       - name: Save the harness images (main only)
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-pool.outputs.harness-whistle != 'true' && steps.harness-cache.outputs.cache-hit != 'true'
         run: build-aux/ci/harness-cache.sh save "${{ steps.harness.outputs.path }}" whistle
       - uses: actions/cache/save@v6
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-cache.outputs.cache-hit != 'true'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.harness-pool.outputs.harness-whistle != 'true' && steps.harness-cache.outputs.cache-hit != 'true'
         with:
           path: ${{ steps.harness.outputs.path }}
           key: ${{ steps.harness.outputs.key }}
