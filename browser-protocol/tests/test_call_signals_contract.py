@@ -196,6 +196,12 @@ class CallSignalContractTests(unittest.TestCase):
         for name in ['cross-document-split', 'cross-frame-split', 'retired-port-split',
                      'stale-received-half', 'stale-sent-half', 'mic-preview', 'synthetic-sender']:
             self.assertEqual(cases[name]['expectState'], 'unknown')
+        # Captured-microphone lineage through WebAudio and MediaStream.clone() (extension 0.2.28).
+        for name in ['webaudio-processed-mic', 'media-stream-clone', 'webaudio-mixed-mic-and-screen']:
+            self.assertEqual(cases[name]['expectState'], 'active')
+        for name in ['webaudio-display-audio', 'webaudio-generated-or-media-element', 'webaudio-disconnected-mic']:
+            self.assertEqual(cases[name]['expectState'], 'unknown')
+            self.assertTrue(cases[name]['capturedTrackActuallySent'])
         for route in VECTORS['routing']:
             if 'qualificationCase' in route:
                 state = cases[route['qualificationCase']]['expectState']

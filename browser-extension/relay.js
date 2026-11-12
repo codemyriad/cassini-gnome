@@ -7,8 +7,10 @@
   const observerDocumentStart = globalThis.__cassiniRepairInjection !== true;
   const protocol = 1;
   // A page opened before an update keeps its old hook (reinjection never replaces it), and a
-  // revision 1 hook would record screen-share audio as Me: that page needs a reload.
-  const hookRevision = 2;
+  // revision 1 hook would record screen-share audio as Me, and a revision 2 page (with its
+  // document-start collector) loses the microphone through WebAudio, so automatic recording never
+  // starts on Microsoft Teams: that page needs a reload.
+  const hookRevision = 3;
   let instanceId = null, hookReady = false, handshakeComplete = false, retired = false, handshakeTimer = null;
   const waiters = new Set();
   const listeners = new Map();

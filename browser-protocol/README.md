@@ -187,6 +187,8 @@ Listen-only, stale or unbound observations stay unknown; manual recording remain
 D80.5 binds the cohort to one current browser document/frame and relay port:
 fresh page-captured sending and remote received progress may be on different PCs.
 The real split-PC Talk flow must publish acknowledged active evidence in CI.
+A microphone the page processes through WebAudio (Microsoft Teams) or copies with
+`MediaStream.clone()` still counts as page-captured (companion 0.2.28).
 A microphone preview, synthetic sender, passive viewer, or combination across
 documents/frames cannot qualify; unrelated split PCs within one document/frame
 are intentional interactive-media positives, like echo.
