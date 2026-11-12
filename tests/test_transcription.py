@@ -636,3 +636,66 @@ def test_retry_keeps_partial_words_until_recomputation_catches_up(tmp_path, stat
     finally:
         release.set()
         queue.close()
+
+
+def test_enqueue_resume_while_prepare_is_in_flight_does_not_strand_queued_meeting(tmp_path):
+    from cassini_talk.transcription import REFERENCE
+
+    session = capture(tmp_path)
+    write_metadata(session.directory, transcript=dict(status="queued", reference=REFERENCE))
+    entered, release = threading.Event(), threading.Event()
+    finished = Finished()
+    calls = []
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            calls.append(len(tracks))
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=0, endMs=200, text="Let us review the quarterly budget today")],
+                )
+            )
+            return dict(diagnostics=[])
+
+    queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
+    original_mark = queue._mark_queued
+    first_pass = True
+
+    def gated_mark(directory, resume):
+        nonlocal first_pass
+        if first_pass:
+            first_pass = False
+            entered.set()
+            durable(release, "the test did not release in-flight prepare")
+        return original_mark(directory, resume)
+
+    queue._mark_queued = gated_mark
+    try:
+        assert queue.enqueue(session.directory, resume=False)
+        durable(entered, "the first prepare pass did not start")
+        # While a non-resume prepare is still scanning, a resume=True handoff arrives:
+        # it must not add a second hold, and must not be lost when the first pass returns None.
+        assert not queue.enqueue(session.directory, resume=True)
+        release.set()
+        finished.wait(1, exactly=True)
+        assert calls == [2]
+        updated = LibraryScanner(tmp_path).scan().meetings[0]
+        assert updated.transcript == "done"
+        assert [w.text for w in updated.words] == ["Let us review the quarterly budget today"]
+    finally:
+        release.set()
+        queue.close()
