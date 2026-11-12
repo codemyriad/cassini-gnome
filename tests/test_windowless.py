@@ -162,12 +162,16 @@ def test_indicator_remains_visible_for_recording_with_library_open():
     presence = WindowlessBackground(app)
     presence.refresh("Recording, 00:12", "00:12")
     assert updates[-1] == dict(
-        recording=True, message="Recording, 00:12", label="00:12", windowless=False, automatic=True
+        recording=True, saving=False, message="Recording, 00:12", label="00:12", windowless=False, automatic=True
     )
     assert not app.background_recording.requests
     presence.refresh()  # Activation/level refresh before the next timer tick.
     assert updates[-1]["recording"] and updates[-1]["message"] == "Recording, 00:12"
     assert updates[-1]["label"] == "00:12", "the panel timer must not blank between ticks"
+    recorder.stopping = True
+    presence.refresh()
+    assert updates[-1]["recording"] and updates[-1]["saving"]
+    recorder.stopping = False
     app._quitting = True
     presence.refresh()
     assert updates[-1]["recording"], "Capture must stay visible until audio finishes"
