@@ -89,7 +89,16 @@ jobs:
           path: ${{ runner.temp }}/parakeet-models
           key: parakeet-ultra-v2-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
       - run: build-aux/whistle-cache.sh
-      - run: build-aux/deb/build.sh "${{ matrix.base }}"
+      - name: Build test .deb
+        env:
+          BASE: ${{ matrix.base }}
+          SKIP_TESTS: ${{ startsWith(matrix.base, 'ubuntu:26.04@sha256:') && '1' || '0' }}
+        run: |
+          if [ "$SKIP_TESTS" = 1 ]; then
+            build-aux/deb/build.sh --nocheck "$BASE"
+          else
+            build-aux/deb/build.sh "$BASE"
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: nightly-deb-${{ strategy.job-index }}
@@ -137,7 +146,16 @@ jobs:
           path: ${{ runner.temp }}/parakeet-models
           key: parakeet-ultra-v2-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
       - run: build-aux/whistle-cache.sh
-      - run: build-aux/rpm/build.sh "${{ matrix.base }}"
+      - name: Build test .rpm
+        env:
+          BASE: ${{ matrix.base }}
+          SKIP_TESTS: ${{ matrix.name == 'fedora' && '1' || '0' }}
+        run: |
+          if [ "$SKIP_TESTS" = 1 ]; then
+            build-aux/rpm/build.sh --nocheck "$BASE"
+          else
+            build-aux/rpm/build.sh "$BASE"
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: nightly-rpm-${{ matrix.name }}

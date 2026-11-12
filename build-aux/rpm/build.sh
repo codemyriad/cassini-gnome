@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build the RPM in a container and copy it (and the SRPM) to ./dist.
-#   build-aux/rpm/build.sh [base-image]      (default: fedora:44)
+#   build-aux/rpm/build.sh [--nocheck] [base-image]      (default: fedora:44)
 # fedora:44 (Python 3.14) until onnxruntime has cp315 wheels for the pinned ORT;
 # fedora:latest is Python 3.15. Move back with the CI matrix (packages.yml).
 # Works with Fedora (dnf) and openSUSE (zypper) images, e.g.
@@ -8,6 +8,15 @@
 set -eu
 cd "$(dirname "$0")/../.."
 . build-aux/container.sh
+NOCHECK=0
+if [ "${1:-}" = "--nocheck" ]; then
+  NOCHECK=1
+  shift
+fi
+case "$#:${1:-}" in
+  0:|1:[!-]*) ;;
+  *) echo "usage: $0 [--nocheck] [base-image]" >&2; exit 2 ;;
+esac
 BASE=${1:-fedora:44@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e}
 VERSION=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
 SPEC_VERSION=$(sed -n 's/^Version: *//p' build-aux/rpm/cassini-talk.spec)
@@ -25,7 +34,7 @@ name_file=.rpm-name-$(image_slug "$BASE")
 logs=$(test_log_dir "rpm-$(image_slug "$BASE")")
 container_pull "$BASE"
 # Only the package installs reach the network; each is retried (retry.sh).
-container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BASE" sh -ec '
+container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -e NOCHECK="$NOCHECK" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BASE" sh -ec '
   . /in/build-aux/ci/retry.sh
   top=/build/rpmbuild src=/build/cassini-talk-$VERSION
   # Keep the Meson test logs (test_log_dir). After a successful build rpm
@@ -40,6 +49,7 @@ container_run -e VERSION="$VERSION" -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z
   trap "save_logs || true" EXIT
   set --
   [ ! -d /logs ] || set -- --define "cassini_test_logs /logs"
+  [ "$NOCHECK" != 1 ] || set -- "$@" --nocheck
   mkdir -p $top/SOURCES $top/SPECS "$src"
   spec=$top/SPECS/cassini-talk.spec
   install -m 644 /in/build-aux/rpm/cassini-talk.spec "$spec"

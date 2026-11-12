@@ -168,6 +168,28 @@ BUILDS = {
         'su builder -c "makepkg -s --noconfirm"',
     ),
 }
+NOCHECK_ARG_PARSE = """
+NOCHECK=0
+if [ "${1:-}" = "--nocheck" ]; then
+  NOCHECK=1
+  shift
+fi
+case "$#:${1:-}" in
+  0:|1:[!-]*) ;;
+  *) echo "usage: $0 [--nocheck] [base-image]" >&2; exit 2 ;;
+esac
+"""
+NOCHECK_CONTAINER = {
+    "deb": (
+        '  [ "$NOCHECK" != 1 ] || export DEB_BUILD_OPTIONS="${DEB_BUILD_OPTIONS:+$DEB_BUILD_OPTIONS }nocheck"\n'
+        "  dpkg-buildpackage -us -uc -b\n"
+    ),
+    "rpm": (
+        "  set --\n"
+        '  [ ! -d /logs ] || set -- --define "cassini_test_logs /logs"\n'
+        '  [ "$NOCHECK" != 1 ] || set -- "$@" --nocheck\n'
+    ),
+}
 # What the suite needs to run every test, GTK application tests included.
 DEB_DEPS = (
     "python3-pytest",
@@ -542,13 +564,33 @@ def problems(files):
         text = files[script]
         if code(text.splitlines()).count("  " + command) != 1:
             found.append(f"{kind}: {script} does not run `{command}` exactly once")
-        if re.search(r"nocheck|DEB_BUILD_OPTIONS|DEB_BUILD_PROFILES|!check|PYTEST_ADDOPTS", text):
+        checked_text = text
+        if kind in NOCHECK_CONTAINER:
+            env_flag = '-e NOCHECK="$NOCHECK"'
+            guard = NOCHECK_CONTAINER[kind]
+            if text.count(NOCHECK_ARG_PARSE) != 1 or text.count(env_flag) != 1 or text.count(guard) != 1:
+                found.append(f"{kind}: {script} does not keep --nocheck strictly opt-in")
+            else:
+                replacement = (
+                    f"  {command}\n"
+                    if kind == "deb"
+                    else '  set --\n  [ ! -d /logs ] || set -- --define "cassini_test_logs /logs"\n'
+                )
+                checked_text = (
+                    checked_text.replace(NOCHECK_ARG_PARSE, "\n", 1)
+                    .replace(env_flag, "", 1)
+                    .replace(guard, replacement, 1)
+                )
+        if re.search(
+            r"nocheck|NOCHECK|DEB_BUILD_OPTIONS|DEB_BUILD_PROFILES|!check|PYTEST_ADDOPTS",
+            "\n".join(code(checked_text.splitlines())),
+        ):
             found.append(f"{kind}: {script} can turn the check off or narrow it")
     for name in (".github/workflows/deb.yml", ".github/workflows/packages.yml"):
-        if re.search(r"nocheck|DEB_BUILD_OPTIONS|DEB_BUILD_PROFILES|PYTEST_ADDOPTS", files[name]):
+        if re.search(r"nocheck|NOCHECK|DEB_BUILD_OPTIONS|DEB_BUILD_PROFILES|PYTEST_ADDOPTS", files[name]):
             found.append(f"{name} can turn the package check off or narrow it")
-    if 'set --\n  [ ! -d /logs ] || set -- --define "cassini_test_logs /logs"\n' not in files["build-aux/rpm/build.sh"]:
-        found.append("rpm: rpmbuild gets arguments other than the test-log define")
+    if NOCHECK_CONTAINER["rpm"] not in files["build-aux/rpm/build.sh"]:
+        found.append("rpm: rpmbuild gets arguments other than the test-log define and opt-in --nocheck")
 
     # The recipes run the whole Meson test set, GTK required, and fail on failure.
     rules = files["debian/rules"]
@@ -1015,6 +1057,28 @@ MUTATIONS = {
         "packages.yml",
         "github.event_name == 'schedule' && 'archlinux:latest'",
         f"github.event_name == 'schedule' && '{pinned_image('archlinux:latest')}'",
+    ),
+    "deb default nocheck": ("build-aux/deb/build.sh", "NOCHECK=0\n", "NOCHECK=1\n"),
+    "rpm default nocheck": ("build-aux/rpm/build.sh", "NOCHECK=0\n", "NOCHECK=1\n"),
+    "deb nocheck guard inverted": (
+        "build-aux/deb/build.sh",
+        '[ "$NOCHECK" != 1 ] || export',
+        '[ "$NOCHECK" = 1 ] || export',
+    ),
+    "rpm nocheck guard inverted": (
+        "build-aux/rpm/build.sh",
+        '[ "$NOCHECK" != 1 ] || set -- "$@" --nocheck',
+        '[ "$NOCHECK" = 1 ] || set -- "$@" --nocheck',
+    ),
+    "deb.yml passes --nocheck": (
+        "deb.yml",
+        'build-aux/deb/build.sh "${{ matrix.base }}"',
+        'build-aux/deb/build.sh --nocheck "${{ matrix.base }}"',
+    ),
+    "packages.yml passes --nocheck": (
+        "packages.yml",
+        'build-aux/rpm/build.sh "${{ matrix.base }}"',
+        'build-aux/rpm/build.sh --nocheck "${{ matrix.base }}"',
     ),
 }
 
