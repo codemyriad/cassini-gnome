@@ -17,7 +17,9 @@
   const PC=globalThis.RTCPeerConnection, Sender=globalThis.RTCRtpSender,
     Receiver=globalThis.RTCRtpReceiver, Transceiver=globalThis.RTCRtpTransceiver,
     Track=globalThis.MediaStreamTrack, Stream=globalThis.MediaStream,
-    Stats=globalThis.RTCStatsReport;
+    Stats=globalThis.RTCStatsReport, AudioNodeClass=globalThis.AudioNode, AudioParamClass=globalThis.AudioParam,
+    Context=globalThis.AudioContext, SourceNode=globalThis.MediaStreamAudioSourceNode,
+    DestinationNode=globalThis.MediaStreamAudioDestinationNode, NativeWeakMap=globalThis.WeakMap;
   if (!PC || typeof globalThis.crypto?.randomUUID!=='function') return;
   const method=(prototype,key)=>descriptor(prototype||{},key)?.value;
   const getter=(prototype,key)=>descriptor(prototype||{},key)?.get;
@@ -50,7 +52,8 @@
     signaling=getter(PC.prototype,'signalingState');
   const transceivers=method(PC.prototype,'getTransceivers'), senderStats=method(Sender?.prototype,'getStats'),
     receiverStats=method(Receiver?.prototype,'getStats'), statsEach=method(Stats?.prototype,'forEach'),
-    streamTracks=method(Stream?.prototype,'getAudioTracks'), clone=method(Track?.prototype,'clone');
+    streamTracks=method(Stream?.prototype,'getAudioTracks'), clone=method(Track?.prototype,'clone'),
+    streamClone=method(Stream?.prototype,'clone'), trackLabel=getter(Track?.prototype,'label');
   const clock=performance, nativeNow=clock.now, origin=clock.timeOrigin,
     nativeTimeout=setTimeout, nativeClear=clearTimeout, nativeInterval=setInterval,
     locationObject=location, href=getter(locationObject,'href'), uuid=crypto.randomUUID, cryptoObject=crypto;
@@ -64,16 +67,125 @@
   let overflow=false, generation=0, revision=0, receivedVersion=0, sentVersion=0,
     address=addressOf(), sampling=false, heard=false;
   const documentGeneration=call(uuid,cryptoObject);
-  const root=track=>{for(let i=0;i<roots.length;i++)if(roots[i].track===track)return roots[i].root;return null};
-  const rememberRoot=(track,ancestor=track)=>{if(roots.length<1024)add(roots,{track,root:ancestor});else overflow=true};
+  // Captured-microphone lineage: a getUserMedia audio track (its own root), a
+  // proven clone of a lineage track, or the output track of a native WebAudio
+  // MediaStreamAudioDestinationNode (node). An output track has a root only
+  // while a live captured microphone source reaches that node (see reaches).
+  const weakGet=method(NativeWeakMap?.prototype,'get'),weakSet=method(NativeWeakMap?.prototype,'set');
+  const lookup=(map,key)=>{try{return call(weakGet,map,[key])}catch{return undefined}};
+  const remember=(map,key,value)=>{try{call(weakSet,map,[key,value]);return true}catch{return false}};
+  const lineageIndex=NativeWeakMap&&weakGet&&weakSet?new NativeWeakMap():null;
+  const lineageOf=track=>{
+    if(lineageIndex)return lookup(lineageIndex,track)||null;
+    for(let i=0;i<roots.length;i++)if(roots[i].track===track)return roots[i];return null;
+  };
+  const rememberRoot=(track,ancestor=track,node=null)=>{
+    if(lineageOf(track))return;
+    if(roots.length>=1024){overflow=true;return}
+    const value={track,root:ancestor,node};
+    if(lineageIndex&&!remember(lineageIndex,track,value))return;add(roots,value);
+  };
   const live=track=>get(trackKind,track)==='audio'&&get(trackState,track)==='live';
+  // WebAudio graph, recorded only from native calls that succeeded. A missing
+  // edge can only withhold lineage; every recorded edge exists natively.
+  const graph=!!(lineageIndex&&AudioNodeClass&&method(AudioNodeClass.prototype,'connect')&&method(AudioNodeClass.prototype,'disconnect'));
+  const nodeInputs=getter(AudioNodeClass?.prototype,'numberOfInputs'),nodeOutputs=getter(AudioNodeClass?.prototype,'numberOfOutputs'),
+    nodeContext=getter(AudioNodeClass?.prototype,'context'),contextState=getter(globalThis.BaseAudioContext?.prototype,'state'),
+    paramValue=getter(AudioParamClass?.prototype,'value'),sourceStream=getter(SourceNode?.prototype,'mediaStream'),
+    destinationStream=getter(DestinationNode?.prototype,'stream');
+  const sources=graph?new NativeWeakMap():null,destinations=graph?new NativeWeakMap():null,
+    inbound=graph?new NativeWeakMap():null,outbound=graph?new NativeWeakMap():null;
+  const audioNode=value=>get(nodeInputs,value)!==null;
+  const contextOf=node=>get(contextState,get(nodeContext,node));
+  // One evaluation shares a memo of output nodes (in progress counts as no
+  // lineage, which also cuts cycles) and a total work budget: exhausting it
+  // withholds lineage. Every output node is walked at most once.
+  const evaluation=()=>({memo:new NativeWeakMap(),budget:4096,depth:0});
+  // Per output node: the source tracks that fed it a rooted microphone, for
+  // the terminal check (bounded; overflow never ends by ancestry).
+  const ancestry=graph?new NativeWeakMap():null;
+  const feed=(node,tracks)=>{
+    let value=lookup(ancestry,node);
+    if(!value){value={tracks:list(),overflow:false};if(!remember(ancestry,node,value))return}
+    for(let i=0;i<tracks.length;i++){
+      let known=false;for(let j=0;j<value.tracks.length;j++)if(value.tracks[j]===tracks[i]){known=true;break}
+      if(known)continue;if(value.tracks.length<16)add(value.tracks,tracks[i]);else value.overflow=true;
+    }
+  };
+  function sourceRoot(source,state){
+    let found=null;
+    for(let i=0;i<source.tracks.length;i++){
+      const track=source.tracks[i];
+      if(!live(track)||get(trackEnabled,track)!==true||get(trackMuted,track)!==false)return null;
+      const ancestor=lineage(track,state);if(!ancestor)return null;found=found||ancestor;
+    }
+    return found;
+  }
+  // Only port 0 carries lineage (output 0 into input 0): channel splitters,
+  // mergers and multi-port nodes can route other inputs alone to a port.
+  // Every walk visits all rooted sources so nested outputs keep their ancestry.
+  function reaches(node,state){
+    const known=lookup(state.memo,node);if(known!==undefined)return known;
+    remember(state.memo,node,null);
+    // Only a running context renders its graph into the output track.
+    if(!graph||state.depth>8||contextOf(node)!=='running')return null;
+    const queue=list(),seen=new NativeWeakMap();add(queue,node);remember(seen,node,true);
+    let found=null;
+    walk:for(let i=0;i<queue.length;i++){
+      // An exhausted budget stops the walk; what it already proved stays genuine.
+      if(--state.budget<0)break;
+      const current=queue[i],source=lookup(sources,current);
+      if(source){
+        state.depth++;let rooted=null;try{rooted=sourceRoot(source,state)}finally{state.depth--}
+        if(rooted){found=found||rooted;feed(node,source.tracks)}
+        continue;
+      }
+      const inputs=lookup(inbound,current);if(!inputs)continue;
+      for(let j=0;j<inputs.length;j++){
+        if(--state.budget<0)break walk;
+        const edge=inputs[j];
+        if(edge.output!==0||edge.input!==0||lookup(seen,edge.from))continue;
+        remember(seen,edge.from,true);add(queue,edge.from);
+      }
+    }
+    remember(state.memo,node,found);
+    return found;
+  }
+  function lineage(track,state){
+    const value=lineageOf(track);if(!value)return null;
+    return value.root||reaches(value.node,state);
+  }
+  const root=track=>lineage(track,evaluation());
+  // An output ends like a track: natively, when its context closed, or when
+  // every source track that ever fed it a rooted microphone has ended (nested
+  // outputs recursively). Disconnecting or suspending a graph is not an end.
+  // One check memoizes each output node (in progress counts as not ended,
+  // which cuts cycles) under a work budget whose exhaustion means not ended.
+  const terminalCheck=()=>({memo:new NativeWeakMap(),budget:4096,depth:0});
+  const finished=(track,state)=>{
+    if(get(trackState,track)==='ended')return true;
+    const value=lineageOf(track);if(!value||value.root||state.depth>8||--state.budget<0)return false;
+    const known=lookup(state.memo,value.node);if(known!==undefined)return known;
+    remember(state.memo,value.node,false);
+    let ended=contextOf(value.node)==='closed';
+    if(!ended){
+      const fed=lookup(ancestry,value.node);
+      ended=!!fed&&!fed.overflow&&fed.tracks.length>0;
+      state.depth++;
+      try{for(let i=0;ended&&i<fed.tracks.length;i++)if(!finished(fed.tracks[i],state))ended=false}
+      finally{state.depth--}
+    }
+    remember(state.memo,value.node,ended);
+    return ended;
+  };
   const closed=pc=>get(signaling,pc)==='closed'||get(connection,pc)==='closed';
   const connected=pc=>!closed(pc)&&(get(connection,pc)==='connected'||get(ice,pc)==='connected'||get(ice,pc)==='completed');
   const terminal=()=>{
     if(!qualified.length)return false;
+    const check=terminalCheck();
     for(let i=0;i<qualified.length;i++){
       const entry=qualified[i];if(!closed(entry.pc))return false;
-      for(let j=0;j<entry.tracks.length;j++)if(get(trackState,entry.tracks[j])!=='ended')return false;
+      for(let j=0;j<entry.tracks.length;j++)if(!finished(entry.tracks[j],check))return false;
     }
     for(let i=0;i<peers.length;i++)if(!closed(peers[i].pc))return false;
     return true;
@@ -104,7 +216,87 @@
     },()=>{});
     return promise;
   };
-  if(clone)Track.prototype.clone=function(){const track=call(clone,this,arguments),ancestor=root(this);if(ancestor)rememberRoot(track,ancestor);return track};
+  if(clone)Track.prototype.clone=function(){const track=call(clone,this,arguments),value=lineageOf(this);if(value)rememberRoot(track,value.root,value.node);return track};
+  // MediaStream.clone() clones natively, past the track wrapper. Chrome keeps
+  // audio track order; an index pair inherits only with the same native label.
+  if(streamClone&&streamTracks&&trackLabel)Stream.prototype.clone=function(){
+    const stream=call(streamClone,this,arguments);
+    try{
+      const from=call(streamTracks,this),to=call(streamTracks,stream);
+      if(from.length===to.length)for(let i=0;i<from.length;i++){
+        const value=lineageOf(from[i]);
+        if(value&&get(trackLabel,from[i])===get(trackLabel,to[i]))rememberRoot(to[i],value.root,value.node);
+      }
+    }catch{}
+    return stream;
+  };
+  if(graph&&streamTracks){
+    const connect=method(AudioNodeClass.prototype,'connect'),disconnect=method(AudioNodeClass.prototype,'disconnect');
+    // A source carries lineage only when every audio track its stream held at
+    // creation has lineage; display, media-element, received and generated
+    // audio never do. The native mediaStream getter names the actual stream.
+    const rememberSource=node=>{
+      const stream=get(sourceStream,node);if(!stream)return;
+      const tracks=call(streamTracks,stream),copy=list();
+      for(let i=0;i<tracks.length;i++){if(!lineageOf(tracks[i]))return;add(copy,tracks[i])}
+      if(copy.length)call(weakSet,sources,[node,{tracks:copy}]);
+    };
+    const rememberDestination=node=>{
+      const stream=get(destinationStream,node);if(!stream)return;
+      const tracks=call(streamTracks,stream);call(weakSet,destinations,[node,true]);
+      for(let i=0;i<tracks.length;i++)rememberRoot(tracks[i],null,node);
+    };
+    const factory=(prototype,key,remember)=>{
+      const native=method(prototype,key);if(!native)return;
+      prototype[key]=function(){const node=call(native,this,arguments);try{remember(node)}catch{}return node};
+    };
+    const wrap=(name,Class,remember)=>{if(Class)globalThis[name]=new Proxy(Class,{construct(target,args,newTarget){const node=construct(target,args,newTarget);try{remember(node)}catch{}return node}})};
+    if(sourceStream){factory(Context?.prototype,'createMediaStreamSource',rememberSource);wrap('MediaStreamAudioSourceNode',SourceNode,rememberSource)}
+    if(destinationStream){factory(Context?.prototype,'createMediaStreamDestination',rememberDestination);wrap('MediaStreamAudioDestinationNode',DestinationNode,rememberDestination)}
+    const edges=(map,node)=>{let value=lookup(map,node);if(!value){value=list();call(weakSet,map,[node,value])}return value};
+    // WebIDL unsigned long; anything but a number is unknown (-1).
+    // Read only supplied argument slots: an omitted slot must never inherit a
+    // page-installed numeric prototype property.
+    const argument=(args,position)=>position<args.length?args[position]:undefined;
+    const index=(args,position,fallback)=>{const value=argument(args,position);return value===undefined?fallback:typeof value==='number'?value>>>0:-1};
+    const link=(from,args)=>{
+      const to=argument(args,0);if(!audioNode(to))return; // AudioParam modulation never carries lineage.
+      const output=index(args,1,0),input=index(args,2,0);if(output<0||input<0)return;
+      // Input-less generated/element sources and output-less sinks can never
+      // carry captured audio into an output track; leave them unrecorded.
+      if(!lookup(sources,from)&&get(nodeInputs,from)===0)return;
+      if(!lookup(destinations,to)&&get(nodeOutputs,to)===0)return;
+      const outs=edges(outbound,from),ins=edges(inbound,to);
+      for(let i=0;i<outs.length;i++)if(outs[i].to===to&&outs[i].output===output&&outs[i].input===input)return;
+      if(outs.length>=256||ins.length>=256)return;
+      add(outs,{to,output,input});add(ins,{from,output,input});
+    };
+    const drop=(array,i)=>{for(let j=i;j<array.length-1;j++)array[j]=array[j+1];array.length--};
+    // Remove every recorded edge that the native call may have removed;
+    // unknown arguments match everything (removing lineage is conservative).
+    const unlink=(from,args,all)=>{
+      const outs=lookup(outbound,from);if(!outs)return;
+      let to=null,output=-1,input=-1;
+      if(!all&&args.length>0){
+        const first=argument(args,0);
+        if(audioNode(first)){to=first;if(args.length>1)output=index(args,1,-1);if(args.length>2)input=index(args,2,-1)}
+        else if(get(paramValue,first)!==null)return;
+        else output=index(args,0,-1);
+      }
+      for(let i=outs.length-1;i>=0;i--){
+        const edge=outs[i];
+        if((to!==null&&edge.to!==to)||(output>=0&&edge.output!==output)||(input>=0&&edge.input!==input))continue;
+        drop(outs,i);const ins=lookup(inbound,edge.to);
+        if(ins)for(let j=ins.length-1;j>=0;j--)if(ins[j].from===from&&ins[j].output===edge.output&&ins[j].input===edge.input)drop(ins,j);
+      }
+    };
+    AudioNodeClass.prototype.connect=function(){const result=call(connect,this,arguments);try{link(this,arguments)}catch{}return result};
+    AudioNodeClass.prototype.disconnect=function(){
+      const result=call(disconnect,this,arguments);
+      try{unlink(this,arguments,false)}catch{try{unlink(this,arguments,true)}catch{}}
+      return result;
+    };
+  }
   const Wrapped=new Proxy(PC,{construct(target,args,newTarget){const pc=construct(target,args,newTarget);register(pc);return pc}});
   globalThis.RTCPeerConnection=Wrapped;
   if(globalThis.webkitRTCPeerConnection===PC)globalThis.webkitRTCPeerConnection=Wrapped;

@@ -23,6 +23,8 @@ const extensionId=[...createHash('sha256').update(key).digest('hex').slice(0,32)
 assert.notEqual(extensionId,'pcafdaahfhjiolfpfnlhmljfgoabbaij');
 const pair=['call-signals-v1','verified-auto-admission-v1'];
 import {privateControl,packet,barrier} from './rtc-evidence-control.mjs';
+const positive=['duplex','captured-clone','echo','unanswered-early-media','repaired-frame-positive-media','primordial-poison-positive','webaudio-mic','stream-clone'];
+const negative=['passive-viewer','mic-preview','synthetic-sender','unanswered-ringing-no-capture','cross-frame-capture','cross-frame-split','cross-document-split','forged-page-evidence','webaudio-non-mic'];
 const report={decision:'D80.5',scope:'real loaded companion/worker/native-control fixture and R1 media; interactive captured-media session, not answered human intent; no GNOME/Mac adoption or native recording proof',completed:false,cases:[]};
 async function gathered(page,index) {
   return page.evaluate(async index=>{
@@ -35,7 +37,7 @@ async function gathered(page,index) {
   },index);
 }
 try{
-  for(const fixture of ['duplex','passive-viewer','mic-preview','synthetic-sender','captured-clone','unrelated-mic-peer','unrelated-mic-same-backend','echo','unanswered-early-media','unanswered-ringing-no-capture','cross-frame-capture','cross-frame-split','cross-document-split','forged-page-evidence','repaired-frame-positive-media','primordial-poison-positive'].filter(name=>!process.env.CASSINI_RTC_CASE||name===process.env.CASSINI_RTC_CASE)){
+  for(const fixture of ['duplex','passive-viewer','mic-preview','synthetic-sender','captured-clone','unrelated-mic-peer','unrelated-mic-same-backend','echo','unanswered-early-media','unanswered-ringing-no-capture','cross-frame-capture','cross-frame-split','cross-document-split','forged-page-evidence','repaired-frame-positive-media','primordial-poison-positive','webaudio-mic','webaudio-non-mic','stream-clone'].filter(name=>!process.env.CASSINI_RTC_CASE||name===process.env.CASSINI_RTC_CASE)){
     report.runningFixture=fixture;
     console.log("RTC fixture:",fixture);
     const context=await chromium.launchPersistentContext(path.join(directory,'profile-'+fixture),{channel:'chromium',headless:true,
@@ -68,7 +70,24 @@ try{
           window.capture=await iframe.contentWindow.navigator.mediaDevices.getUserMedia({audio:true});
         }
         if(fixture.startsWith('unrelated-mic-'))peers.push(new RTCPeerConnection());
-        if(fixture==='synthetic-sender'){
+        if(fixture==='webaudio-mic'){
+          // Microsoft Teams: the microphone is processed through WebAudio and
+          // the MediaStreamDestination output is what the sender transmits.
+          window.audio=new AudioContext();window.fixtureGain=audio.createGain();window.fixtureOutput=audio.createMediaStreamDestination();
+          audio.createMediaStreamSource(capture).connect(fixtureGain);fixtureGain.connect(fixtureOutput);await audio.resume();
+          const track=fixtureOutput.stream.getAudioTracks()[0];cassiniRtcDeclareCaptured(track);peers[0].addTrack(track);
+        }else if(fixture==='webaudio-non-mic'){
+          // A live captured microphone exists in the page, but the sent output
+          // is fed only by generated and media-element audio; the microphone
+          // merely modulates a gain parameter.
+          window.audio=new AudioContext();const output=audio.createMediaStreamDestination(),tone=audio.createOscillator(),feed=audio.createMediaStreamDestination();
+          tone.connect(feed);tone.start();const element=new Audio();element.muted=true;element.srcObject=feed.stream;
+          const gain=audio.createGain();audio.createMediaStreamSource(capture).connect(gain.gain);
+          audio.createMediaElementSource(element).connect(gain);gain.connect(output);await audio.resume();await element.play();
+          peers[0].addTrack(output.stream.getAudioTracks()[0]);
+        }else if(fixture==='stream-clone'){
+          const track=capture.clone().getAudioTracks()[0];cassiniRtcDeclareCaptured(track);peers[0].addTrack(track);
+        }else if(fixture==='synthetic-sender'){
           window.audio=new AudioContext();const tone=audio.createOscillator(),output=audio.createMediaStreamDestination();tone.connect(output);tone.start();await audio.resume();
           peers[0].addTrack(output.stream.getAudioTracks()[0]);
         }else if(capture&&!['mic-preview','unrelated-mic-peer','unrelated-mic-same-backend'].includes(fixture)){
@@ -154,8 +173,8 @@ try{
         ...(fixture==='unrelated-mic-same-backend'?{nativeRemoteIdentityShared:true}:{}),
         ...(['echo','unanswered-early-media','unrelated-mic-peer','unrelated-mic-same-backend'].includes(fixture)?{acceptedPositive:'D80.4/D80.5 interactive captured-media session in one document/frame'}: {})};
       report.cases.push(observation);
-      if(['passive-viewer','mic-preview','synthetic-sender','unanswered-ringing-no-capture','cross-frame-capture','cross-frame-split','cross-document-split','forged-page-evidence'].includes(fixture))assert.equal(candidateR1,false,fixture);
-      if(['duplex','captured-clone','echo','unanswered-early-media','repaired-frame-positive-media','primordial-poison-positive'].includes(fixture))assert.equal(candidateR1,true,fixture);
+      if(negative.includes(fixture))assert.equal(candidateR1,false,fixture);
+      if(positive.includes(fixture))assert.equal(candidateR1,true,fixture);
       if(fixture.startsWith('unrelated-mic-')){assert.equal(candidateR1,true,'D80.5 '+fixture);assert.equal(topology.samePeerConnection,false);assert.equal(observed.samePeerCount,0)}
       assert.equal(observed.cohortQualified,candidateR1,'native document/frame cohort '+fixture);
       if(separateFrame){
@@ -167,8 +186,17 @@ try{
         observation.separateSenderObservation=foreign;
         assert.equal(foreign.capturedSendingPeers,1);assert.equal(foreign.receivedPeers,0);assert.equal(foreign.cohortQualified,false);
       }
-      if(['passive-viewer','mic-preview','synthetic-sender','unanswered-ringing-no-capture','cross-frame-capture','cross-frame-split','cross-document-split','forged-page-evidence'].includes(fixture))assert.equal(observed.samePeerCount,0,'packaged hook '+fixture);
-      if(['duplex','captured-clone','echo','unanswered-early-media','repaired-frame-positive-media','primordial-poison-positive'].includes(fixture))assert.equal(observed.samePeerCount,1,'packaged hook '+fixture);
+      if(negative.includes(fixture))assert.equal(observed.samePeerCount,0,'packaged hook '+fixture);
+      if(positive.includes(fixture))assert.equal(observed.samePeerCount,1,'packaged hook '+fixture);
+      if(fixture==='webaudio-mic'){
+        // Disconnecting the processed path withdraws captured provenance at
+        // once; reconnecting it qualifies again after fresh send progress.
+        await caller.evaluate(()=>fixtureGain.disconnect(fixtureOutput));
+        await caller.waitForFunction(()=>__cassiniCallEvidenceV1.read().capturedSendingPeers===0&&!__cassiniCallEvidenceV1.read().cohortQualified);
+        await caller.evaluate(()=>fixtureGain.connect(fixtureOutput));
+        await caller.waitForFunction(()=>__cassiniCallEvidenceV1.read().cohortQualified===true);
+        observation.webAudioDisconnectWithdraws=true;
+      }
       if(fixture==='passive-viewer')await caller.waitForFunction(()=>cassiniObservedDiscovery?.sourceCount===1&&cassiniObservedDiscovery.heard===true);
       observation.legacySourceObservation=await caller.evaluate(()=>cassiniObservedDiscovery);
       const tabId=await worker.evaluate(async url=>(await chrome.tabs.query({})).find(tab=>tab.url===url).id,url+'caller');
@@ -357,4 +385,4 @@ try{
   await writeFile(path.join(artifacts,'rtc-evidence-observations.json'),JSON.stringify(report,null,2));
   await rm(directory,{recursive:true,force:true});
 }
-console.log('PASS loaded worker/native-control D80.5: same-document/frame captured-media cohorts qualify, including split PCs; passive, preview, synthetic, cross-frame and cross-document media remain unknown.');
+console.log('PASS loaded worker/native-control D80.5: same-document/frame captured-media cohorts qualify, including split PCs; microphones processed through WebAudio or MediaStream.clone() qualify; passive, preview, synthetic, generated/media-element WebAudio, cross-frame and cross-document media remain unknown.');

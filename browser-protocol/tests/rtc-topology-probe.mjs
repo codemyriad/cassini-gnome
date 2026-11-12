@@ -12,6 +12,10 @@ export function installRtcTopologyProbe() {
       return stream;
     });
   };
+  // A fixture declares the ground-truth provenance of a track it derived from
+  // the microphone by other means (WebAudio, MediaStream.clone), independently
+  // of the packaged hook under test.
+  window.cassiniRtcDeclareCaptured = track => captured.add(track);
   const clone = MediaStreamTrack.prototype.clone;
   MediaStreamTrack.prototype.clone = function (...args) {
     const result = Reflect.apply(clone, this, args);

@@ -3,7 +3,9 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `156b40c`, ships companion 0.2.27 with browser-sourced `Me` capture on
+The current pin, `572397f`, ships companion 0.2.28: microphone lineage through WebAudio and
+`MediaStream.clone()`, so automatic recording starts on Microsoft Teams and other sites that
+process the microphone, with tabs opened before the update asked to reload (hook revision 3). It keeps browser-sourced `Me` capture on
 separated WebRTC calls (`captureLocal: true` on `start` and `resumeCapture`, sent only to a
 companion advertising `sender-me-v1`; an older companion keeps the app's own microphone for `Me`),
 one `Me` source per microphone across peer connections (a sender that switches to another microphone becomes its own source), sender mute judged on the render clock,

@@ -19,8 +19,8 @@ def value(root, path, pattern):
 
 def check(root, tag=None):
     extension_version = json.loads((root / "browser-extension/manifest.json").read_text()).get("version")
-    if extension_version != "0.2.27":
-        raise ValueError("Browser companion version must be 0.2.27")
+    if extension_version != "0.2.28":
+        raise ValueError("Browser companion version must be 0.2.28")
     versions = {
         "meson": value(root, "meson.build", r"^\s*version:\s*'([^']+)'"),
         "debian": value(root, "debian/changelog", r"\Acassini-talk \(([^)]+)\)").split("+")[0].split("-")[0],
@@ -53,8 +53,8 @@ def check_prerelease(root, version_name):
     package_version = f"{base}~beta.{beta}"
     arch_version = f"{base}beta{beta}"
     extension_version = json.loads((root / "browser-extension/manifest.json").read_text()).get("version")
-    if extension_version != "0.2.27":
-        raise ValueError("Browser companion version must be 0.2.27")
+    if extension_version != "0.2.28":
+        raise ValueError("Browser companion version must be 0.2.28")
     versions = {
         "meson": value(root, "meson.build", r"^\s*version:\s*'([^']+)'"),
         "debian": value(root, "debian/changelog", r"\Acassini-talk \(([^)]+)\)").split("+")[0].split("-")[0],
