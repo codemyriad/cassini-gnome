@@ -1,4 +1,4 @@
-# Status badges — W0.4 / L-25, L-26
+# Status badges — W0.4 / L-25, L-26, L-46
 
 This amends HARMONY sections 2–3. The source is the alignment canvas
 `ui/Spec-Badge.dc.html`, `ui/Badge-*.dc.html` and decisions L-25/L-26,
@@ -22,9 +22,18 @@ meeting, outside the badge.
 | interrupted | interrupted | Interrupted | amber | alert |
 | received | received | Received | outline | incoming |
 
-Tone roles: red uses `record-tint` / `record-ink`; neutral uses `neutral-tint`
-/ `ink-2`; amber uses `warn-tint` / `warn-ink`; outline is transparent, with
-`line` outline and `ink-2` text. These are token references, not another palette.
+Tone roles: red uses `record-tint` / `record-ink`; neutral uses `ink` at 10%
+opacity for its fill and opaque `ink-2` for text/glyphs; amber uses `warn-tint`
+/ `warn-ink`; outline is transparent, with `line` outline and `ink-2` text.
+These are token references, not another palette.
+
+L-46 supersedes the earlier neutral-tint fill: composite the neutral wash over
+whatever is behind the pill, including selected surfaces, in both light and
+dark appearances. Do not substitute an opaque `neutral-tint` or fade the whole
+badge; text and glyph opacity are unchanged. Source: Alex's second token reply
+(12 Nov), summarised in `vision-canvas/lessons/alex-tokens-response-2.md`,
+“For every app”, item 5. This is a fill treatment, not a new tone id, label,
+state, precedence or selected-row foreground override.
 The canvas visual name `attention` maps to the current model id
 `needsAttention`; identifiers are not new user-facing copy.
 

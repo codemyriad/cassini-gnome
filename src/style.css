@@ -40,12 +40,12 @@
   --app-record-trough: #eab8bd;
   --app-badge-red-bg: var(--cx-record-tint);
   --app-badge-red-fg: var(--cx-record-ink);
-  --app-badge-transcribing-bg: var(--cx-neutral-tint);
-  --app-badge-transcribing-fg: var(--cx-neutral-ink);
+  --app-badge-transcribing-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
+  --app-badge-transcribing-fg: var(--cx-ink-2);
   --app-badge-amber-bg: var(--cx-warn-tint);
   --app-badge-amber-fg: var(--cx-warn-ink);
-  --app-badge-grey-bg: var(--cx-neutral-tint);
-  --app-badge-grey-fg: var(--cx-neutral-ink);
+  --app-badge-grey-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
+  --app-badge-grey-fg: var(--cx-ink-2);
   --app-badge-received-fg: var(--cx-ink-2);
   --app-badge-received-ring: var(--cx-line);
   --app-warn-line-bg: alpha(#e5a50a, 0.18);

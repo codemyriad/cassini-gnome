@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/codemyriad/cassini-ux",
-  "commit": "793209cb3425bece7143178458fddd94b691e12d",
+  "commit": "cb6b592d700f9c44fbe4375e72c3e7238aba77ef",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -83,7 +83,7 @@
     "format-vectors.json": "561e2acb1f44473904d87280447ea98e45f8185ae399a47084bec50f82595960",
     "states-vectors.json": "2857b5af75191714b04b9974aebe7903b41e9dd96857c6b79c969bac0ae2ce67",
     "LIBRARY-RULES.md": "a558724842725d345767fcb19f2802a86c6f18c566127f7e1fd57a51265c02f2",
-    "STATUS-BADGES.md": "eecbb0bddf22571055a87816a19631c2f1bf4f1320d146714ec7d4d1723755ab",
+    "STATUS-BADGES.md": "339fbe365297bbd553deca3287cce1cbe32a82bd34a375095a55f21c6c3f3ea5",
     "meeting.schema.json": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e",
     "library-vectors/verify.py": "d3d2a864c28f6b42d77e659f3b65f60a526a93dd3575d3b6a2d6f23f11cf2348",
     "library-vectors/README.md": "4ebeb57bd2b4df449f56a1fb4bf2c1679655fdf462566036c861f70fa359f1f4",
@@ -234,10 +234,5 @@
     "listen-by-speaker/README.md": "vectors/listen-by-speaker/README.md",
     "format-vectors.json": "vectors/format/format-vectors.json",
     "states-vectors.json": "vectors/states/states-vectors.json"
-  },
-  "fileCommits": {
-    "diarization/README.md": "b0e469493197bbb7270179153e937dab89e68910",
-    "diarization/SHA256SUMS": "b0e469493197bbb7270179153e937dab89e68910",
-    "diarization/assign-vectors.json": "b0e469493197bbb7270179153e937dab89e68910"
   }
 }

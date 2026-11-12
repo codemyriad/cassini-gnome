@@ -250,12 +250,12 @@ with tempfile.TemporaryDirectory() as temporary:
 
     expected_fg = {
         "recording": tokens.token("record-ink", dark=is_dark),
-        "saving": tokens.token("neutral-ink", dark=is_dark),
-        "transcribing": tokens.token("neutral-ink", dark=is_dark),
+        "saving": tokens.token("ink-2", dark=is_dark),
+        "transcribing": tokens.token("ink-2", dark=is_dark),
         "needsAttention": tokens.token("warn-ink", dark=is_dark),
         "interrupted": tokens.token("warn-ink", dark=is_dark),
         "received": tokens.token("ink-2", dark=is_dark),
-        "importing": tokens.token("neutral-ink", dark=is_dark),
+        "importing": tokens.token("ink-2", dark=is_dark),
     }
     for badge_widget in badges:
         assert badge_widget.glyph_widget.get_accessible_role() == Gtk.AccessibleRole.PRESENTATION
