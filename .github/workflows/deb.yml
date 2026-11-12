@@ -3,12 +3,12 @@ name: Debian package
 on:
   workflow_call:
     inputs:
-      full_ci:
+      deb_testing:
         type: boolean
         default: true
   workflow_dispatch:
     inputs:
-      full_ci:
+      deb_testing:
         description: Build both Ubuntu 26.04 and Debian testing packages
         type: boolean
         default: true
@@ -32,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        base: ${{ inputs.full_ci && fromJSON('["ubuntu:26.04", "debian:testing"]') || fromJSON('["ubuntu:26.04"]') }}
+        base: ${{ inputs.deb_testing && fromJSON('["ubuntu:26.04", "debian:testing"]') || fromJSON('["ubuntu:26.04"]') }}
     steps:
       - uses: actions/checkout@v7
         with:

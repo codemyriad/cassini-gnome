@@ -130,8 +130,8 @@ def test_invalid_event_file_still_emits_all_outputs_and_success(tmp_path):
         env=env,
     )
     parsed = json.loads(report.read_text())
-    assert all(parsed["areas"].values()) and parsed["full_ci"] is True
-    assert len(output.read_text().splitlines()) == 7 and "false" not in output.read_text()
+    assert all(parsed["areas"].values()) and all(parsed["package_legs"].values()) and parsed["full_ci"] is True
+    assert len(output.read_text().splitlines()) == 12 and "false" not in output.read_text()
 
 
 def test_execution_tier_gates_pr_and_push_on_two_distro_legs_and_expands_on_full_ci_or_nightly():
@@ -148,18 +148,171 @@ def test_execution_tier_gates_pr_and_push_on_two_distro_legs_and_expands_on_full
     for label in ("full-ci", "FULL-CI"):
         labeled = {"pull_request": {**base_pr["pull_request"], "labels": [{"name": label}]}}
         assert changes.execution_tier("pull_request", labeled) is True
-        areas, reason, _paths = changes.detect(
-            "pull_request", labeled, git=lambda _: pytest.fail("full-ci queried git")
-        )
+        areas, reason, paths = changes.detect("pull_request", labeled, git=lambda _: pytest.fail("full-ci queried git"))
         assert all(areas.values()) and "full-ci" in reason
+        assert all(changes.resolve_package_legs("pull_request", full_ci=True, reason=reason, paths=paths).values())
     assert changes.execution_tier("push", {}) is False
-    assert changes.execution_tier("schedule", {}) is True
-    assert changes.execution_tier("workflow_dispatch", {}) is True
-    # Malformed label payloads fail open to full CI.
+    assert not any(
+        changes.resolve_package_legs("push", full_ci=False, reason="Full run outside a PR", paths=[]).values()
+    )
+    for full_event in ("schedule", "workflow_dispatch"):
+        assert changes.execution_tier(full_event, {}) is True
+        assert all(
+            changes.resolve_package_legs(full_event, full_ci=True, reason="Full run outside a PR", paths=[]).values()
+        )
+    # Malformed label payloads fail open to full CI and every package leg.
     for bad in ({}, {"pull_request": {"labels": "bad"}}, {"pull_request": {"labels": [{}]}}):
         assert changes.execution_tier("pull_request", bad) is True
-        areas, _reason, _paths = changes.detect("pull_request", bad)
+        areas, reason, paths = changes.detect("pull_request", bad)
         assert all(areas.values())
+        assert all(changes.resolve_package_legs("pull_request", full_ci=False, reason=reason, paths=paths).values())
+
+
+ALL_PACKAGE_LEGS = {"deb_testing", "rpm_opensuse", "arch", "flatpak", "extra_distros"}
+
+
+@pytest.mark.skipif(
+    shutil.which("git") is None, reason="Git integration runs in the source/build jobs; this environment has no git"
+)
+@pytest.mark.parametrize(
+    ("changed_path", "expected_legs"),
+    [
+        # Per-recipe contract checks on unlabeled PRs (Codex #387):
+        ("build-aux/flatpak/io.codemyriad.CassiniTalk.json", {"flatpak"}),
+        ("build-aux/flatpak/io.codemyriad.CassiniTalk.Devel.json", {"flatpak"}),
+        ("build-aux/flatpak/smoke.sh", {"flatpak"}),
+        ("tests/flatpak/trash.py", {"flatpak"}),
+        ("tests/desktop/run.sh", {"flatpak"}),
+        ("build-aux/arch/PKGBUILD", {"arch"}),
+        ("build-aux/arch/build.sh", {"arch"}),
+        ("debian/rules", {"deb_testing"}),
+        ("debian/control", {"deb_testing"}),
+        ("build-aux/deb/build.sh", {"deb_testing"}),
+        ("build-aux/deb/Dockerfile", {"deb_testing"}),
+        ("build-aux/rpm/cassini-talk.spec", {"rpm_opensuse"}),
+        ("build-aux/rpm/build.sh", {"rpm_opensuse"}),
+        ("build-aux/check-distros.sh", {"extra_distros"}),
+        ("build-aux/install-deps.sh", {"extra_distros"}),
+        # Shared packaging inputs enable every affected package recipe:
+        ("whistle/pins.json", {"deb_testing", "rpm_opensuse", "arch", "flatpak"}),
+        ("src/cassini_talk/sherpa-pins.json", {"deb_testing", "rpm_opensuse", "arch", "flatpak"}),
+        ("build-aux/smoke-installed.py", {"deb_testing", "rpm_opensuse", "arch", "flatpak"}),
+        ("meson.build", ALL_PACKAGE_LEGS),
+        (".github/workflows/flatpak.yml", ALL_PACKAGE_LEGS),
+        ("build-aux/ci/prepare_tumbleweed.sh", ALL_PACKAGE_LEGS),
+        # Non-packaging PRs stay on the fast two-distro default:
+        ("src/cassini_talk/player.py", set()),
+        ("tests/test_transcript.py", set()),
+        ("docs/ci.md", set()),
+        ("po/it.po", set()),
+        ("data/io.codemyriad.CassiniTalk.gschema.xml", set()),
+    ],
+)
+def test_unlabeled_packaging_pr_enables_affected_package_legs_per_recipe(tmp_path, changed_path, expected_legs):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git_env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+
+    def git(*args):
+        return subprocess.check_output(
+            ["git", "-c", "user.name=CI fixture", "-c", "user.email=ci@example.invalid", *args],
+            cwd=repo,
+            env=git_env,
+        )
+
+    git("init", "--initial-branch=main")
+    (repo / "README.md").write_text("seed\n")
+    git("add", ".")
+    git("commit", "-m", "Base")
+    base = git("rev-parse", "HEAD").decode().strip()
+
+    target = repo / changed_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("updated\n")
+    git("add", "-A")
+    git("commit", "-m", "Change")
+    head = git("rev-parse", "HEAD").decode().strip()
+
+    payload_file = tmp_path / "event.json"
+    payload_file.write_text(json.dumps({"pull_request": {"labels": [], "base": {"sha": base}, "head": {"sha": head}}}))
+    output_file, report_file = tmp_path / "outputs", tmp_path / "report.json"
+    script = Path(__file__).parents[1] / "build-aux/ci/changes.py"
+    clean_env = {k: v for k, v in git_env.items() if not k.startswith("GITHUB_")}
+    subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--event",
+            "pull_request",
+            "--payload",
+            str(payload_file),
+            "--output",
+            str(output_file),
+            "--report",
+            str(report_file),
+        ],
+        cwd=repo,
+        check=True,
+        env=clean_env,
+    )
+    parsed = json.loads(report_file.read_text())
+    assert parsed["full_ci"] is False
+    assert parsed["areas"]["packages"] is True
+    assert set(parsed["package_legs"]) == ALL_PACKAGE_LEGS
+    assert {leg for leg, enabled in parsed["package_legs"].items() if enabled} == expected_legs
+    emitted = dict(line.split("=", 1) for line in output_file.read_text().splitlines())
+    for leg in ALL_PACKAGE_LEGS:
+        assert emitted[leg] == ("true" if leg in expected_legs else "false")
+    assert emitted["full_ci"] == "false"
+
+
+@pytest.mark.skipif(
+    shutil.which("git") is None, reason="Git integration runs in the source/build jobs; this environment has no git"
+)
+def test_actual_git_rename_of_packaging_recipe_enables_affected_leg(tmp_path):
+    env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+
+    def git(*args):
+        return subprocess.check_output(
+            ["git", "-c", "user.name=CI fixture", "-c", "user.email=ci@example.invalid", *args], cwd=tmp_path, env=env
+        )
+
+    git("init", "--initial-branch=main")
+    recipe = tmp_path / "build-aux/flatpak/smoke.sh"
+    recipe.parent.mkdir(parents=True)
+    recipe.write_text("#!/bin/sh\n")
+    git("add", ".")
+    git("commit", "-m", "Before")
+    base = git("rev-parse", "HEAD").decode().strip()
+    recipe.rename(tmp_path / "notes.txt")
+    git("add", "-A")
+    git("commit", "-m", "Moved recipe")
+    head = git("rev-parse", "HEAD").decode().strip()
+    changes = module("changes")
+    payload = {"pull_request": {"labels": [], "base": {"sha": base}, "head": {"sha": head}}}
+    _areas, reason, paths = changes.detect(
+        "pull_request", payload, git=lambda command: subprocess.check_output(command, cwd=tmp_path, env=env)
+    )
+    legs = changes.resolve_package_legs("pull_request", full_ci=False, reason=reason, paths=paths)
+    assert legs == {
+        "deb_testing": False,
+        "rpm_opensuse": False,
+        "arch": False,
+        "flatpak": True,
+        "extra_distros": False,
+    }
+
+
+def test_every_package_leg_pattern_names_an_existing_file():
+    root = Path(__file__).parents[1]
+    package_legs = json.loads((root / "build-aux/ci/pr-paths.json").read_text())["package_legs"]
+    assert set(package_legs) == ALL_PACKAGE_LEGS
+    tracked = [path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()]
+    missing = {
+        leg: [pattern for pattern in patterns if not any(fnmatch.fnmatchcase(path, pattern) for path in tracked)]
+        for leg, patterns in package_legs.items()
+    }
+    assert {leg: bad for leg, bad in missing.items() if bad} == {}
 
 
 def test_product_reuse_preserves_executable_and_checks_commit_profile_and_digest(tmp_path):

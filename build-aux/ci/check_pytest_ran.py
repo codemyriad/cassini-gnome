@@ -114,6 +114,37 @@ TIERS = {
 }
 
 
+def expected_gate(*, deb_testing=True, rpm_opensuse=True, arch=True, extra_distros=True):
+    required = []
+    if deb_testing:
+        required.append("pytest-skipped-debian-testing")
+    required.append("pytest-skipped-ubuntu-26.04")
+    if extra_distros:
+        required.append("pytest-nodes-fedora-latest")
+        reference_slug = REFERENCE
+    else:
+        required.append("pytest-nodes-fedora-44")
+        reference_slug = PR_REFERENCE
+    if rpm_opensuse:
+        required.append("pytest-skipped-registry.opensuse.org-opensuse-tumbleweed-latest")
+    if arch:
+        required.append("pytest-skipped-archlinux-latest")
+    if extra_distros:
+        required.append("pytest-nodes-alpine-edge")
+    if deb_testing:
+        required.append("pytest-ran-debian-testing")
+    required.extend(("pytest-ran-ubuntu-26.04", "pytest-ran-fedora-44"))
+    if rpm_opensuse:
+        required.append("pytest-ran-registry.opensuse.org-opensuse-tumbleweed-latest")
+    if arch:
+        required.append("pytest-ran-archlinux-latest")
+    return tuple(required), reference_slug
+
+
+def _leg_enabled(changes_result, value):
+    return changes_result != "success" or value != "false"
+
+
 def shard_count(meson_build=ROOT / "src/meson.build"):
     return int(re.search(r"^pytest_shards = (\d+)$", meson_build.read_text(), re.M)[1])
 
@@ -407,18 +438,34 @@ def source(logs, image, shards, out, *, install_outcome=None):
     return ("nodes" if ran else "skipped"), image
 
 
-def gate(directory, *, tier="full"):
+def gate(
+    directory,
+    *,
+    tier=None,
+    deb_testing=True,
+    rpm_opensuse=True,
+    arch=True,
+    extra_distros=True,
+):
     """Reject missing matrix jobs before comparing releases and test cases."""
-    if tier not in TIERS:
-        raise ValueError(f"unknown gate tier: {tier}")
-    required, reference_slug = TIERS[tier]
+    if tier is not None:
+        if tier not in TIERS:
+            raise ValueError(f"unknown gate tier: {tier}")
+        is_full = tier == "full"
+        deb_testing = rpm_opensuse = arch = extra_distros = is_full
+    required, reference_slug = expected_gate(
+        deb_testing=deb_testing,
+        rpm_opensuse=rpm_opensuse,
+        arch=arch,
+        extra_distros=extra_distros,
+    )
     selected, found = resolve_artifacts(directory)
     if found:
         return found
     for name, path in sorted(selected.items()):
         if name.startswith("pytest-infra-skipped-"):
-            if tier != "full":
-                found.append(f"infrastructure skip is not part of the {tier} tier: {name}")
+            if not extra_distros:
+                found.append(f"infrastructure skip is not part of the pr tier: {name}")
             else:
                 found.extend(infra_problems(name.removeprefix("pytest-infra-skipped-"), path))
     if found:
@@ -426,7 +473,7 @@ def gate(directory, *, tier="full"):
     missing = []
     canary_infra = f"pytest-infra-skipped-{ALPINE_CANARY}"
     for name in required:
-        if tier == "full" and name == f"pytest-nodes-{ALPINE_CANARY}" and canary_infra in selected:
+        if extra_distros and name == f"pytest-nodes-{ALPINE_CANARY}" and canary_infra in selected:
             continue
         record = "skipped" if name.startswith("pytest-skipped-") else "nodes.json"
         if name not in selected or not (selected[name] / record).is_file():
@@ -501,10 +548,28 @@ def main(argv=None):
     parser.add_argument("--install-outcome", type=Path, help="--source: host-only install outcome directory")
     parser.add_argument("--slug", help="--source: the image slug of this job's matrix image")
     parser.add_argument("--gate", type=Path, help="the downloaded pytest-* artifacts, one directory each")
-    parser.add_argument("--tier", choices=sorted(TIERS), default="full", help="--gate: matrix tier to require")
+    parser.add_argument("--tier", choices=sorted(TIERS), default=None, help="--gate: shorthand matrix tier")
+    parser.add_argument("--changes-result", default="success", help="--gate: needs.changes.result (fail-open)")
+    parser.add_argument("--deb-testing", default=None, help="--gate: needs.changes.outputs.deb_testing")
+    parser.add_argument("--rpm-opensuse", default=None, help="--gate: needs.changes.outputs.rpm_opensuse")
+    parser.add_argument("--arch", default=None, help="--gate: needs.changes.outputs.arch")
+    parser.add_argument("--extra-distros", default=None, help="--gate: needs.changes.outputs.extra_distros")
     args = parser.parse_args(argv)
     if args.gate:
-        found = gate(args.gate, tier=args.tier)
+        default_leg = "false" if args.tier == "pr" else "true"
+        found = gate(
+            args.gate,
+            deb_testing=_leg_enabled(
+                args.changes_result, default_leg if args.deb_testing is None else args.deb_testing
+            ),
+            rpm_opensuse=_leg_enabled(
+                args.changes_result, default_leg if args.rpm_opensuse is None else args.rpm_opensuse
+            ),
+            arch=_leg_enabled(args.changes_result, default_leg if args.arch is None else args.arch),
+            extra_distros=_leg_enabled(
+                args.changes_result, default_leg if args.extra_distros is None else args.extra_distros
+            ),
+        )
         if not found:
             selected, _ = resolve_artifacts(args.gate)
             canary_infra = selected.get(f"pytest-infra-skipped-{ALPINE_CANARY}")

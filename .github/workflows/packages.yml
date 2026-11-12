@@ -3,13 +3,20 @@ name: RPM and Arch packages
 on:
   workflow_call:
     inputs:
-      full_ci:
+      rpm_opensuse:
+        type: boolean
+        default: true
+      arch:
         type: boolean
         default: true
   workflow_dispatch:
     inputs:
-      full_ci:
-        description: Build Fedora, openSUSE Tumbleweed, and Arch packages
+      rpm_opensuse:
+        description: Build both Fedora 44 and openSUSE Tumbleweed RPM packages
+        type: boolean
+        default: true
+      arch:
+        description: Build Arch Linux package
         type: boolean
         default: true
 
@@ -35,7 +42,7 @@ jobs:
         # 3.14 and is supported until 2027-06 (43 ends 2026-12-02). PR and main
         # pushes gate on fedora:44; nightly and full-ci runs also build openSUSE
         # Tumbleweed and Arch.
-        include: ${{ inputs.full_ci && fromJSON('[{"base":"fedora:44","name":"fedora"},{"base":"registry.opensuse.org/opensuse/tumbleweed:latest","name":"opensuse"}]') || fromJSON('[{"base":"fedora:44","name":"fedora"}]') }}
+        include: ${{ inputs.rpm_opensuse && fromJSON('[{"base":"fedora:44","name":"fedora"},{"base":"registry.opensuse.org/opensuse/tumbleweed:latest","name":"opensuse"}]') || fromJSON('[{"base":"fedora:44","name":"fedora"}]') }}
     steps:
       - uses: actions/checkout@v7
       - run: |
@@ -93,7 +100,7 @@ jobs:
 
   arch:
     name: Build Arch package
-    if: ${{ inputs.full_ci }}
+    if: ${{ inputs.arch }}
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 30
     steps:
