@@ -507,9 +507,36 @@ with tempfile.TemporaryDirectory() as tmp:
         _browser_capture_phases={},
         close=lambda: None,
     )
+    import concurrent.futures
+
+    from cassini_talk.library import LibrarySnapshot, Meeting
+
+    pre_mux_snapshot = window._source_snapshot
+    synthetic_saved = tuple(
+        Meeting(
+            id=f"00000000-0000-4000-8000-{i:012d}",
+            directory=Path(tmp) / f"Recording-00000000-0000-4000-8000-{i:012d}",
+            title=f"Archived call {i}",
+            started_at_ms=1_793_106_000_000 - i * 60_000,
+            duration_ms=600_000,
+            lifecycle="saved",
+            has_audio=True,
+            quote_line="“Synthetic archived call.”",
+        )
+        for i in range(250)
+    )
     app.comfort.known[mux_meeting.key] = mux_meeting
-    window._library_loaded(mux_meeting)
+    window._source_snapshot = LibrarySnapshot(
+        meetings=(mux_meeting, *synthetic_saved),
+        directories=(mux_meeting.directory, *(m.directory for m in synthetic_saved)),
+    )
+    window._updated(window._source_snapshot)
     window.capture_changed()
+    assert len(window.snapshot.meetings) == 251
+    unrelated_rows_before = [window._row_by_key[m.key] for m in synthetic_saved]
+    unrelated_children_before = [r.get_child() for r in unrelated_rows_before]
+    mux_row_before = window._row_by_key[mux_meeting.key]
+
     window.open_meeting(mux_meeting)
     mux_page = window.recording_page
     assert mux_page is not None
@@ -520,16 +547,44 @@ with tempfile.TemporaryDirectory() as tmp:
 
     mux_entered, release_mux = threading.Event(), threading.Event()
     original_stop_browser = capture_guard.stop_browser_captures
+    original_executor = concurrent.futures.ThreadPoolExecutor
+    original_row = window._row
+    original_fill_row = window._fill_row
+    row_builds, row_fills, stop_order = [], [], []
+
+    class StopOrderExecutor(original_executor):
+        def submit(self, fn, /, *args, **kwargs):
+            if fn is gated_mux_stop:
+                stop_order.append("worker_submitted")
+            return super().submit(fn, *args, **kwargs)
+
+    def tracked_row(meeting):
+        row_builds.append(meeting.key)
+        return original_row(meeting)
+
+    def tracked_fill_row(row, meeting, signature=None):
+        stop_order.append("row_filled")
+        row_fills.append(meeting.key)
+        return original_fill_row(row, meeting, signature)
 
     def gated_mux_stop(*_args, **_kwargs):
         mux_entered.set()
         assert release_mux.wait(10)
         return [str(mux_capture.directory)]
 
+    concurrent.futures.ThreadPoolExecutor = StopOrderExecutor
+    window._row = tracked_row
+    window._fill_row = tracked_fill_row
     capture_guard.stop_browser_captures = gated_mux_stop
     try:
         mux_page.stop.emit("clicked")
-        # Exact click frame — before any main-loop iteration, broker poll, or scanner worker:
+        # Exact click frame — worker submitted before GTK UI update, zero unrelated rows rebuilt:
+        assert stop_order == ["worker_submitted", "row_filled"]
+        assert row_builds == [], "Stop must not rebuild cached Library rows"
+        assert row_fills == [mux_meeting.key], "Stop must update only the stopped meeting's row"
+        assert window._row_by_key[mux_meeting.key] is mux_row_before
+        assert [window._row_by_key[m.key] for m in synthetic_saved] == unrelated_rows_before
+        assert [r.get_child() for r in unrelated_rows_before] == unrelated_children_before
         assert not mux_page.stop.get_sensitive()
         assert mux_page.stop_content.get_label() == text("states.badge.saving")
         assert not mux_page.capture._controls["stop"].get_sensitive()
@@ -539,17 +594,25 @@ with tempfile.TemporaryDirectory() as tmp:
         assert mux_page.meeting.lifecycle == "saving"
         mux_row_meeting = next(m for m in window.snapshot.meetings if m.key == mux_meeting.key)
         assert mux_row_meeting.lifecycle == "saving"
-        assert text("states.badge.saving") in texts(window.rows)
+        assert text("states.badge.saving") in texts(mux_row_before)
         assert mux_entered.wait(10)
         release_mux.set()
         until(lambda: not app._browser_stops)
+        # Delivery while broker has not confirmed publication finished keeps 'saving' and retains all cached rows:
+        assert row_builds == []
+        assert window.snapshot.meetings[0].lifecycle == "saving"
+        assert [window._row_by_key[m.key] for m in synthetic_saved] == unrelated_rows_before
     finally:
         release_mux.set()
+        concurrent.futures.ThreadPoolExecutor = original_executor
+        window._row = original_row
+        window._fill_row = original_fill_row
         capture_guard.stop_browser_captures = original_stop_browser
         mux_capture.stop(at_ms=5000)
-        window._library_loaded(live_meeting(mux_capture.directory, "saved"))
         window._activity_source = None
         app._browser_snapshot = dict(statuses=[])
+        window._source_snapshot = pre_mux_snapshot
+        window._library_loaded(live_meeting(mux_capture.directory, "saved"))
 
     window.close()
     app.comfort.close()

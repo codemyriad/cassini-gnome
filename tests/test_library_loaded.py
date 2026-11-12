@@ -137,3 +137,178 @@ def test_real_direct_open_survives_an_unrelated_incremental_monitor_scan(
         assert next(row for row in delivered[-1].meetings if row.id == retained.id).title == retained.title
     finally:
         monitor.close()
+
+
+def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(tmp_path):
+    """Pressing Stop on a 5,001-meeting Library must update only the stopped
+    meeting's row in place and retain all 5,000 cached unrelated rows."""
+    from datetime import UTC
+
+    class FakeWidget:
+        def __init__(self, visible=True):
+            self.visible = visible
+            self.child = None
+            self.children = []
+            self.selected_row = None
+
+        def set_visible(self, v):
+            self.visible = v
+
+        def set_visible_child_name(self, name):
+            self.visible_name = name
+
+        def get_visible_child_name(self):
+            return getattr(self, "visible_name", "library")
+
+        def set_spinning(self, _v):
+            pass
+
+        def handler_block(self, _h):
+            pass
+
+        def handler_unblock(self, _h):
+            pass
+
+        def remove_all(self):
+            self.children.clear()
+
+        def append(self, item):
+            self.children.append(item)
+
+        def select_row(self, row):
+            self.selected_row = row
+
+        def get_row_at_index(self, idx):
+            return self.children[idx]
+
+        def get_selected_row(self):
+            return self.selected_row
+
+        def set_child(self, c):
+            self.child = c
+
+        def get_child(self):
+            return self.child
+
+    live_id = "00000000-0000-4000-8000-000000005001"
+    live = Meeting(
+        id=live_id,
+        directory=tmp_path / f"Recording-{live_id}",
+        title="Live browser call",
+        started_at_ms=1_793_107_000_000,
+        duration_ms=42_000,
+        lifecycle="recording",
+        capture_source="chromium",
+        has_audio=True,
+    )
+    saved = tuple(
+        Meeting(
+            id=f"00000000-0000-4000-8000-{i:012d}",
+            directory=tmp_path / f"Recording-00000000-0000-4000-8000-{i:012d}",
+            title=f"Saved meeting {i}",
+            started_at_ms=1_793_106_000_000 - i * 60_000,
+            duration_ms=600_000,
+            lifecycle="saved",
+            has_audio=True,
+            quote_line="“Synthetic quote.”",
+        )
+        for i in range(5000)
+    )
+    source_snapshot = LibrarySnapshot(meetings=(live, *saved))
+
+    app = SimpleNamespace(
+        library_recovery=None,
+        meeting_trash=SimpleNamespace(project=lambda snap: snap, hides=lambda _d: False, allowed=lambda *_: False),
+        observe_library=lambda *_args: None,
+        comfort=SimpleNamespace(elapsed=lambda _m: 42_000),
+        _quitting=False,
+        library_relocator=None,
+    )
+    row_builds, row_fills = [], []
+    window = SimpleNamespace(
+        get_application=lambda: app,
+        now_ms=1_793_107_080_000,
+        tz=UTC,
+        _fixed_now=None,
+        _activity={live_id: "recording"},
+        _source_snapshot=source_snapshot,
+        snapshot=None,
+        _observed_phases=None,
+        _loaded_key=None,
+        _loaded_directory=None,
+        _external_meeting=False,
+        search_page=None,
+        recording_page=None,
+        meeting_page=None,
+        export_dialog=None,
+        zip_export_dialog=None,
+        rename_dialog=None,
+        _pending_recording=None,
+        _pending_selection=None,
+        _opening_files=0,
+        _list_signature=None,
+        _row_by_key={},
+        _rows_layout=None,
+        _group_layout_key=None,
+        _rows_tz=None,
+        _live_badges={},
+        selected=None,
+        _selection_handler=1,
+        _focused_editors=set(),
+        privacy_footer=FakeWidget(),
+        received_hint=FakeWidget(),
+        root_box=FakeWidget(),
+        rows=FakeWidget(),
+        loading=FakeWidget(),
+        open_pending_recording=lambda: False,
+        lookup_action=lambda _name: None,
+        _update_live=lambda: None,
+        _selected=lambda _rows, row: setattr(window, "selected", getattr(row, "meeting", None)),
+    )
+    for name in ("_project_activity", "_refresh_export", "_row_signature", "_updated"):
+        setattr(window, name, getattr(LibraryWindow, name).__get__(window))
+
+    def fake_fill(row, m, sig=None):
+        row_fills.append(m.key)
+        row.meeting = m
+        row._row_signature = window._row_signature(m) if sig is None else sig
+        row.set_child((m.key, m.lifecycle))
+
+    def fake_row(m):
+        row_builds.append(m.key)
+        r = FakeWidget()
+        fake_fill(r, m)
+        return r
+
+    window._day_heading = lambda _title: FakeWidget()
+    window._fill_row = fake_fill
+    window._row = fake_row
+
+    # Initial load builds 5,001 rows once:
+    window._updated(source_snapshot)
+    assert len(row_builds) == 5001
+    unrelated_rows = [window._row_by_key[m.key] for m in saved]
+    unrelated_children = [r.get_child() for r in unrelated_rows]
+    live_row = window._row_by_key[live.key]
+
+    # Pressing Stop transitions activity to 'saving' — zero unrelated rows may rebuild:
+    row_builds.clear()
+    row_fills.clear()
+    window._activity = {live_id: "saving"}
+    window._updated(source_snapshot)
+
+    assert row_builds == [], "Stop must never rebuild cached rows via _row()"
+    assert row_fills == [live.key], "Stop must update only the stopped meeting's row"
+    assert window._row_by_key[live.key] is live_row
+    assert live_row.meeting.lifecycle == "saving"
+    assert [window._row_by_key[m.key] for m in saved] == unrelated_rows
+    assert [r.get_child() for r in unrelated_rows] == unrelated_children
+
+    # Subsequent fresh scan with identical 5,000 unrelated rows also retains every cached row:
+    row_fills.clear()
+    fresh_saved = tuple(replace(m) for m in saved)
+    window._updated(LibrarySnapshot(meetings=(replace(live, lifecycle="saved"), *fresh_saved)))
+    assert row_builds == []
+    assert row_fills == [live.key]
+    assert [window._row_by_key[m.key] for m in saved] == unrelated_rows
+    assert [r.get_child() for r in unrelated_rows] == unrelated_children
