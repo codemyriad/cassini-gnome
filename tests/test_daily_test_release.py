@@ -132,6 +132,7 @@ class FakeGitHub:
         statuses_by_dep: dict[int, list[dict]] | None = None,
         pulls_by_commit: dict[str, list[dict]] | None = None,
         tags_by_name: dict[str, dict | None] | None = None,
+        commits_by_sha: dict[str, dict | None] | None = None,
     ):
         self.repo = repo
         self.main_sha = main_sha
@@ -142,6 +143,7 @@ class FakeGitHub:
         self.statuses_by_dep = statuses_by_dep or {}
         self.pulls_by_commit = pulls_by_commit or {}
         self.tags_by_name = tags_by_name or {}
+        self.commits_by_sha = commits_by_sha or {}
         self.posts: list[tuple[str, dict]] = []
         self.requests: list[str] = []
 
@@ -184,6 +186,16 @@ class FakeGitHub:
             return self.statuses_by_dep.get(int(match[1]), []) if page == 1 else []
         if match := re.fullmatch(r"commits/([0-9a-f]{40})/pulls", base_path):
             return self.pulls_by_commit.get(match[1], []) if page == 1 else []
+        if match := re.fullmatch(r"commits/([0-9a-f]{40})", base_path):
+            sha = match[1]
+            if sha in self.commits_by_sha:
+                commit_obj = self.commits_by_sha[sha]
+                if commit_obj is not None:
+                    return commit_obj
+                if allow_404:
+                    return None
+                raise subprocess.CalledProcessError(1, ["gh", "api"], stderr="gh: Not Found (HTTP 404)")
+            return {"sha": sha, "parents": []}
         raise AssertionError(f"Unexpected GET {path}")
 
     def pages(self, path: str, key: str | None = None):
@@ -540,6 +552,301 @@ def test_green_main_ci_accepts_two_distro_push_run_43174555655_while_stable_rele
                 mutated = [dict(j, **bad) if i == idx else j for i, j in enumerate(run_43174555655_jobs)]
                 api_bad = FakeGitHub(main_sha=sha, ci_pages=[[push_run]], jobs_by_run={run_id: mutated})
                 assert mod.green_main_ci(api_bad, sha) is False, (job["name"], bad)
+
+
+def test_green_main_ci_accepts_identical_tree_pr_desktop_skips_and_rejects_unverified_skips():
+    mod = load_module("daily_test_release")
+    merge_sha = "1" * 40
+    base_sha = "2" * 40
+    pr_sha = "3" * 40
+    same_tree = "4" * 40
+    diff_tree = "5" * 40
+    pr_merge_sha = "6" * 40
+    release_base_sha = "7" * 40
+    release_merge_sha = "8" * 40
+
+    push_skipped_desktop_jobs = [
+        {"name": "Changed areas", "status": "completed", "conclusion": "success"},
+        {"name": "Meson tests / Meson tests (minimal environment)", "status": "completed", "conclusion": "success"},
+        {"name": "Build / Meson build profiles", "status": "completed", "conclusion": "success"},
+        {"name": "Library / vectors", "status": "completed", "conclusion": "success"},
+        {"name": "Source / Lint and test", "status": "completed", "conclusion": "success"},
+        {
+            "name": "Source / Build and test on fedora:44@sha256:" + "a" * 64,
+            "status": "completed",
+            "conclusion": "success",
+        },
+        {
+            "name": "Debian package / Build .deb (ubuntu:26.04@sha256:" + "b" * 64 + ")",
+            "status": "completed",
+            "conclusion": "success",
+        },
+        {
+            "name": "RPM and Arch packages / Build .rpm (fedora:44@sha256:" + "a" * 64 + ")",
+            "status": "completed",
+            "conclusion": "success",
+        },
+        {"name": "RPM and Arch packages / Build Arch package", "status": "completed", "conclusion": "skipped"},
+        {"name": "Flatpak", "status": "completed", "conclusion": "skipped"},
+        {"name": "Pytest coverage", "status": "completed", "conclusion": "success"},
+        {"name": "Recording", "status": "completed", "conclusion": "skipped"},
+        {"name": "Boards", "status": "completed", "conclusion": "skipped"},
+        {"name": "Offline", "status": "completed", "conclusion": "skipped"},
+        {"name": "Desktop", "status": "completed", "conclusion": "skipped"},
+    ]
+    pr_green_jobs = [
+        {"name": "Build / Meson build profiles", "status": "completed", "conclusion": "success"},
+        {"name": "Meson tests / Meson tests (minimal environment)", "status": "completed", "conclusion": "success"},
+        {"name": "Recording / capture", "status": "completed", "conclusion": "success"},
+        {"name": "Recording / live-folder", "status": "completed", "conclusion": "success"},
+        {"name": "Boards / current-window", "status": "completed", "conclusion": "success"},
+        {"name": "Offline / pinned-offline-recognition", "status": "completed", "conclusion": "success"},
+        {"name": "Desktop / GNOME 50 / installed deb", "status": "completed", "conclusion": "success"},
+    ]
+    push_run = {
+        "id": 200,
+        "event": "push",
+        "head_branch": "main",
+        "head_sha": merge_sha,
+        "head_repository": {"full_name": "codemyriad/cassini-gnome"},
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://example.invalid/runs/200",
+    }
+    pr_run = {
+        "id": 100,
+        "event": "pull_request",
+        "head_branch": "ci/feature",
+        "head_sha": pr_sha,
+        "head_repository": {"full_name": "codemyriad/cassini-gnome"},
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://example.invalid/runs/100",
+        "referenced_workflows": [
+            {
+                "path": f"codemyriad/cassini-gnome/.github/workflows/meson-tests.yml@{pr_merge_sha}",
+                "ref": "refs/pull/42/merge",
+                "sha": pr_merge_sha,
+            },
+            {
+                "path": f"codemyriad/cassini-gnome/.github/workflows/build.yml@{pr_merge_sha}",
+                "ref": "refs/pull/42/merge",
+                "sha": pr_merge_sha,
+            },
+        ],
+    }
+    identical_commits = {
+        merge_sha: {
+            "sha": merge_sha,
+            "parents": [{"sha": base_sha}, {"sha": pr_sha}],
+            "commit": {"tree": {"sha": same_tree}},
+        },
+        pr_sha: {"sha": pr_sha, "parents": [{"sha": base_sha}], "commit": {"tree": {"sha": same_tree}}},
+        pr_merge_sha: {
+            "sha": pr_merge_sha,
+            "parents": [{"sha": base_sha}, {"sha": pr_sha}],
+            "commit": {"tree": {"sha": same_tree}},
+        },
+    }
+
+    # 1. Identical tree + all 4 PR desktop areas green -> accepted!
+    api_ok = FakeGitHub(
+        main_sha=merge_sha,
+        ci_pages=[[push_run, pr_run]],
+        jobs_by_run={200: push_skipped_desktop_jobs, 100: pr_green_jobs},
+        commits_by_sha=identical_commits,
+    )
+    assert mod.green_main_ci(api_ok, merge_sha) is True
+
+    # 2. Newer no-op labeled PR runs (either conclusion='skipped' or conclusion='success' with all jobs skipped)
+    # do NOT mask the earlier green PR run on pr_sha.
+    for noop_conclusion in ("skipped", "success"):
+        noop_run = dict(pr_run, id=150, conclusion=noop_conclusion)
+        noop_jobs = [{"name": "Changed areas", "status": "completed", "conclusion": "skipped"}]
+        api_noop = FakeGitHub(
+            main_sha=merge_sha,
+            ci_pages=[[push_run, noop_run, pr_run]],
+            jobs_by_run={200: push_skipped_desktop_jobs, 150: noop_jobs, 100: pr_green_jobs},
+            commits_by_sha=identical_commits,
+        )
+        assert mod.green_main_ci(api_noop, merge_sha) is True, noop_conclusion
+
+    # 3. PR path-filtered Boards (skipped in PR): main push skipping Boards is REJECTED,
+    # whereas main push running Boards green while skipping Recording/Offline/Desktop is ACCEPTED.
+    pr_without_boards = [
+        {"name": "Boards", "status": "completed", "conclusion": "skipped"}
+        if j["name"] == "Boards / current-window"
+        else j
+        for j in pr_green_jobs
+    ]
+    api_unverified_boards = FakeGitHub(
+        main_sha=merge_sha,
+        ci_pages=[[push_run, pr_run]],
+        jobs_by_run={200: push_skipped_desktop_jobs, 100: pr_without_boards},
+        commits_by_sha=identical_commits,
+    )
+    assert mod.green_main_ci(api_unverified_boards, merge_sha) is False
+    push_ran_boards = [
+        {"name": "Boards / current-window", "status": "completed", "conclusion": "success"}
+        if j["name"] == "Boards"
+        else j
+        for j in push_skipped_desktop_jobs
+    ]
+    api_push_boards = FakeGitHub(
+        main_sha=merge_sha,
+        ci_pages=[[push_run, pr_run]],
+        jobs_by_run={200: push_ran_boards, 100: pr_without_boards},
+        commits_by_sha=identical_commits,
+    )
+    assert mod.green_main_ci(api_push_boards, merge_sha) is True
+
+    # 4. Tree mismatch, 1-parent squash commit, missing commit (404), fork PR, or newer failed/pending PR run -> REJECTED.
+    skew_commits = {
+        **identical_commits,
+        pr_sha: {"sha": pr_sha, "parents": [{"sha": base_sha}], "commit": {"tree": {"sha": diff_tree}}},
+    }
+    squash_commits = {
+        merge_sha: {"sha": merge_sha, "parents": [{"sha": base_sha}], "commit": {"tree": {"sha": same_tree}}}
+    }
+    for bad_commits in (skew_commits, squash_commits, {merge_sha: None}):
+        api_bad_tree = FakeGitHub(
+            main_sha=merge_sha,
+            ci_pages=[[push_run, pr_run]],
+            jobs_by_run={200: push_skipped_desktop_jobs, 100: pr_green_jobs},
+            commits_by_sha=bad_commits,
+        )
+        assert mod.green_main_ci(api_bad_tree, merge_sha) is False
+
+    fork_pr_run = dict(pr_run, head_repository={"full_name": "attacker/cassini-gnome"})
+    api_fork = FakeGitHub(
+        main_sha=merge_sha,
+        ci_pages=[[push_run, fork_pr_run]],
+        jobs_by_run={200: push_skipped_desktop_jobs, 100: pr_green_jobs},
+        commits_by_sha=identical_commits,
+    )
+    assert mod.green_main_ci(api_fork, merge_sha) is False
+
+    for newer_bad in (
+        dict(pr_run, id=160, conclusion="failure"),
+        dict(pr_run, id=160, status="in_progress", conclusion=None),
+    ):
+        api_superseded = FakeGitHub(
+            main_sha=merge_sha,
+            ci_pages=[[push_run, newer_bad, pr_run]],
+            jobs_by_run={200: push_skipped_desktop_jobs, 160: pr_green_jobs, 100: pr_green_jobs},
+            commits_by_sha=identical_commits,
+        )
+        assert mod.green_main_ci(api_superseded, merge_sha) is False
+
+    # 5. Codex #415: identical PR head SHA whose green PR run targeted another branch (e.g. release)
+    # and therefore checked out a different synthetic merge tree (diff_tree != same_tree) MUST be
+    # rejected — both alone and when newer than an earlier main-targeted PR run!
+    release_pr_run = dict(
+        pr_run,
+        id=170,
+        referenced_workflows=[
+            {
+                "path": f"codemyriad/cassini-gnome/.github/workflows/meson-tests.yml@{release_merge_sha}",
+                "ref": "refs/pull/99/merge",
+                "sha": release_merge_sha,
+            }
+        ],
+    )
+    release_commits = {
+        **identical_commits,
+        release_merge_sha: {
+            "sha": release_merge_sha,
+            "parents": [{"sha": release_base_sha}, {"sha": pr_sha}],
+            "commit": {"tree": {"sha": diff_tree}},
+        },
+    }
+    for pr_runs in ([release_pr_run], [release_pr_run, pr_run]):
+        api_release_tree = FakeGitHub(
+            main_sha=merge_sha,
+            ci_pages=[[push_run, *pr_runs]],
+            jobs_by_run={200: push_skipped_desktop_jobs, 170: pr_green_jobs, 100: pr_green_jobs},
+            commits_by_sha=release_commits,
+        )
+        assert mod.green_main_ci(api_release_tree, merge_sha) is False
+
+    # Unavailable or malformed checkout-tree evidence also fails closed.
+    other_sha = "9" * 40
+    for bad_run, bad_commits in (
+        ({k: v for k, v in pr_run.items() if k != "referenced_workflows"}, identical_commits),
+        (dict(pr_run, referenced_workflows=[]), identical_commits),
+        (
+            dict(
+                pr_run,
+                referenced_workflows=[
+                    pr_run["referenced_workflows"][0],
+                    {
+                        "path": f"codemyriad/cassini-gnome/.github/workflows/build.yml@{other_sha}",
+                        "ref": "refs/pull/42/merge",
+                        "sha": other_sha,
+                    },
+                ],
+            ),
+            identical_commits,
+        ),
+        (
+            dict(
+                pr_run,
+                referenced_workflows=[
+                    {
+                        "path": f"codemyriad/cassini-gnome/.github/workflows/meson-tests.yml@{pr_merge_sha}",
+                        "ref": "refs/heads/release",
+                        "sha": pr_merge_sha,
+                    }
+                ],
+            ),
+            identical_commits,
+        ),
+        (
+            dict(
+                pr_run,
+                referenced_workflows=[
+                    {
+                        "path": f"attacker/cassini-gnome/.github/workflows/meson-tests.yml@{pr_merge_sha}",
+                        "ref": "refs/pull/42/merge",
+                        "sha": pr_merge_sha,
+                    }
+                ],
+            ),
+            identical_commits,
+        ),
+        (pr_run, {**identical_commits, pr_merge_sha: None}),
+        (
+            pr_run,
+            {
+                **identical_commits,
+                pr_merge_sha: {
+                    "sha": pr_merge_sha,
+                    "parents": [{"sha": base_sha}, {"sha": other_sha}],
+                    "commit": {"tree": {"sha": same_tree}},
+                },
+            },
+        ),
+    ):
+        api_bad_evidence = FakeGitHub(
+            main_sha=merge_sha,
+            ci_pages=[[push_run, bad_run]],
+            jobs_by_run={200: push_skipped_desktop_jobs, 100: pr_green_jobs},
+            commits_by_sha=bad_commits,
+        )
+        assert mod.green_main_ci(api_bad_evidence, merge_sha) is False
+
+    # 6. Non-desktop gate jobs (`Pytest coverage`, `Library / vectors`, `Meson tests`) can NEVER be skipped.
+    for required_name in ("Pytest coverage", "Library / vectors", "Meson tests / Meson tests (minimal environment)"):
+        bad_push_jobs = [
+            dict(j, conclusion="skipped") if j["name"] == required_name else j for j in push_skipped_desktop_jobs
+        ]
+        api_bad_gate = FakeGitHub(
+            main_sha=merge_sha,
+            ci_pages=[[push_run, pr_run]],
+            jobs_by_run={200: bad_push_jobs, 100: pr_green_jobs},
+            commits_by_sha=identical_commits,
+        )
+        assert mod.green_main_ci(api_bad_gate, merge_sha) is False, required_name
 
 
 def test_version_bump_advances_past_released_tags_and_reserves_drafts_and_failures():

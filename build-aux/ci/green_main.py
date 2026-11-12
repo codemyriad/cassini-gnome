@@ -39,10 +39,233 @@ TEST_RELEASE_SKIPPABLE_PREFIXES = (
     "Source / Build and test on fedora:latest",
     "Source / Build and test on alpine:edge",
 )
+MAX_PAGES = 50
+DESKTOP_AREAS = ("recording", "boards", "offline", "desktop")
+DESKTOP_JOB_AREAS = {
+    "Recording": "recording",
+    "Recording / capture": "recording",
+    "Recording / live-folder": "recording",
+    "Boards": "boards",
+    "Boards / current-window": "boards",
+    "Offline": "offline",
+    "Offline / pinned-offline-recognition": "offline",
+    "Desktop": "desktop",
+    "Desktop / GNOME 50 / installed deb": "desktop",
+    "Desktop / GNOME 50 / installed deb and Flatpak": "desktop",
+}
+_PR_AREA_CALLERS = {
+    "recording": ("Recording", frozenset({"Recording / capture", "Recording / live-folder"})),
+    "boards": ("Boards", frozenset({"Boards / current-window"})),
+    "offline": ("Offline", frozenset({"Offline / pinned-offline-recognition"})),
+    "desktop": (
+        "Desktop",
+        frozenset({"Desktop / GNOME 50 / installed deb", "Desktop / GNOME 50 / installed deb and Flatpak"}),
+    ),
+}
 
 
 def api(repo, path):
-    return json.loads(subprocess.check_output(["gh", "api", f"repos/{repo}/{path}"]))
+    return json.loads(
+        subprocess.check_output(["gh", "api", f"repos/{repo}/{path}"], stderr=subprocess.PIPE, timeout=60)
+    )
+
+
+def _fetch_commit_or_none(repo, sha):
+    try:
+        return api(repo, f"commits/{sha}")
+    except subprocess.CalledProcessError as error:
+        out = (
+            error.output.decode("utf-8", errors="replace") if isinstance(error.output, bytes) else (error.output or "")
+        )
+        err = (
+            error.stderr.decode("utf-8", errors="replace") if isinstance(error.stderr, bytes) else (error.stderr or "")
+        )
+        combined = f"{out}\n{err}"
+        if "HTTP 404" in combined or '"status": "404"' in combined or '"status":"404"' in combined:
+            return None
+        raise
+
+
+def desktop_area_for_job(name):
+    return DESKTOP_JOB_AREAS.get(name)
+
+
+def green_desktop_areas_in_pr_jobs(jobs):
+    if not jobs:
+        return frozenset()
+    for job in jobs:
+        if job.get("status", "completed") != "completed" or job.get("conclusion") not in ("success", "skipped"):
+            return frozenset()
+    for prefix in REQUIRED_JOBS:
+        if not any(
+            j.get("name", "").startswith(prefix)
+            and j.get("status", "completed") == "completed"
+            and j.get("conclusion") == "success"
+            for j in jobs
+        ):
+            return frozenset()
+    verified = set()
+    for area, (caller, expected) in _PR_AREA_CALLERS.items():
+        area_jobs = [j for j in jobs if j.get("name", "") == caller or j.get("name", "").startswith(f"{caller} / ")]
+        if not area_jobs or any(
+            j.get("status", "completed") != "completed" or j.get("conclusion") != "success" for j in area_jobs
+        ):
+            continue
+        names = {j.get("name", "") for j in area_jobs}
+        if area == "desktop":
+            if not (names & expected):
+                continue
+            verified.add("desktop")
+            if "Desktop / GNOME 50 / installed deb and Flatpak" in names:
+                verified.add("desktop_flatpak")
+        elif expected <= names:
+            verified.add(area)
+    return frozenset(verified)
+
+
+def _is_noop_skipped_pr_run(run, jobs):
+    if run.get("status") != "completed":
+        return False
+    if run.get("conclusion") == "skipped":
+        return True
+    if run.get("conclusion") in ("success", "neutral") and jobs:
+        return all(j.get("status", "completed") == "completed" and j.get("conclusion") == "skipped" for j in jobs)
+    return False
+
+
+def _pr_run_checkout_sha(run, repo):
+    refs = run.get("referenced_workflows")
+    if not isinstance(refs, list) or not refs:
+        return None
+    prefix = f"{repo}/.github/workflows/"
+    shas = set()
+    pull_refs = set()
+    for item in refs:
+        if not isinstance(item, dict):
+            return None
+        sha = item.get("sha")
+        ref = item.get("ref")
+        path = item.get("path")
+        if (
+            not isinstance(sha, str)
+            or not re.fullmatch(r"[0-9a-f]{40}", sha)
+            or not isinstance(ref, str)
+            or not re.fullmatch(r"refs/pull/[1-9]\d*/merge", ref)
+            or not isinstance(path, str)
+            or not path.startswith(prefix)
+            or not path.endswith(f"@{sha}")
+        ):
+            return None
+        shas.add(sha)
+        pull_refs.add(ref)
+    if len(shas) != 1 or len(pull_refs) != 1:
+        return None
+    return next(iter(shas))
+
+
+def _pr_run_tested_tree_matches(run, *, repo, pr_sha, expected_tree, fetch_commit):
+    checkout_sha = _pr_run_checkout_sha(run, repo)
+    if checkout_sha is None:
+        return False
+    checkout_data = fetch_commit(checkout_sha)
+    if not isinstance(checkout_data, dict) or checkout_data.get("sha") not in (None, checkout_sha):
+        return False
+    if checkout_sha != pr_sha:
+        parents = checkout_data.get("parents")
+        if (
+            not isinstance(parents, list)
+            or len(parents) != 2
+            or not isinstance(parents[0], dict)
+            or not re.fullmatch(r"[0-9a-f]{40}", parents[0].get("sha") or "")
+            or not isinstance(parents[1], dict)
+            or parents[1].get("sha") != pr_sha
+        ):
+            return False
+    tested_tree = (((checkout_data.get("commit") or {}).get("tree") or {}).get("sha")) or ""
+    return bool(re.fullmatch(r"[0-9a-f]{40}", tested_tree)) and tested_tree == expected_tree
+
+
+def verified_pr_desktop_areas_for_pr_head(
+    repo,
+    pr_sha,
+    expected_tree,
+    *,
+    get_commit=None,
+    list_runs=None,
+    list_jobs=None,
+):
+    if (
+        not re.fullmatch(r"[\w.-]+/[\w.-]+", repo)
+        or not re.fullmatch(r"[0-9a-f]{40}", pr_sha)
+        or not re.fullmatch(r"[0-9a-f]{40}", expected_tree)
+    ):
+        return frozenset()
+    fetch_commit = get_commit or (lambda sha: _fetch_commit_or_none(repo, sha))
+    fetch_runs = list_runs or (
+        lambda sha: pages(repo, f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={sha}", "workflow_runs")
+    )
+    fetch_jobs = list_jobs or (lambda run_id: pages(repo, f"actions/runs/{run_id}/jobs?filter=latest", "jobs"))
+    matches = [
+        r
+        for r in fetch_runs(pr_sha)
+        if r.get("event") == "pull_request"
+        and r.get("head_sha") == pr_sha
+        and (r.get("head_repository") or {}).get("full_name") == repo
+        and r.get("path") in (None, ".github/workflows/ci.yml")
+    ]
+    for run in sorted(matches, key=lambda r: r["id"], reverse=True):
+        if run.get("status") == "completed" and run.get("conclusion") == "skipped":
+            continue
+        if run.get("status") != "completed":
+            return frozenset()
+        jobs = list(fetch_jobs(run["id"]))
+        if _is_noop_skipped_pr_run(run, jobs):
+            continue
+        if run.get("conclusion") != "success":
+            return frozenset()
+        if not _pr_run_tested_tree_matches(
+            run, repo=repo, pr_sha=pr_sha, expected_tree=expected_tree, fetch_commit=fetch_commit
+        ):
+            return frozenset()
+        return green_desktop_areas_in_pr_jobs(jobs)
+    return frozenset()
+
+
+def verified_pr_desktop_areas(repo, commit, *, get_commit=None, list_runs=None, list_jobs=None):
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        return frozenset()
+    fetch_commit = get_commit or (lambda sha: _fetch_commit_or_none(repo, sha))
+    merge_data = fetch_commit(commit)
+    parents = merge_data.get("parents") if isinstance(merge_data, dict) else None
+    if not isinstance(parents, list) or len(parents) != 2:
+        return frozenset()
+    pr_sha = parents[1].get("sha", "") if isinstance(parents[1], dict) else ""
+    if not re.fullmatch(r"[0-9a-f]{40}", pr_sha):
+        return frozenset()
+    merge_tree = (((merge_data.get("commit") or {}).get("tree") or {}).get("sha")) or ""
+    if not re.fullmatch(r"[0-9a-f]{40}", merge_tree):
+        return frozenset()
+    pr_data = fetch_commit(pr_sha)
+    pr_tree = (
+        (((pr_data if isinstance(pr_data, dict) else {}).get("commit") or {}).get("tree") or {}).get("sha")
+    ) or ""
+    if merge_tree != pr_tree:
+        return frozenset()
+    return verified_pr_desktop_areas_for_pr_head(
+        repo,
+        pr_sha,
+        merge_tree,
+        get_commit=fetch_commit,
+        list_runs=list_runs,
+        list_jobs=list_jobs,
+    )
+
+
+def _desktop_skip_verified(name, verified_desktop_areas, *, require_flatpak_desktop=False):
+    area = desktop_area_for_job(name)
+    if area is None or area not in verified_desktop_areas:
+        return False
+    return not (area == "desktop" and require_flatpak_desktop and "desktop_flatpak" not in verified_desktop_areas)
 
 
 def select_runs(runs, commit):
@@ -72,14 +295,33 @@ def select_runs(runs, commit):
     return chosen
 
 
-def validate_jobs(jobs, url):
-    # A continue-on-error or skipped matrix job must not silently supply release inputs.
-    if not jobs or any(j.get("status", "completed") != "completed" or j.get("conclusion") != "success" for j in jobs):
+def validate_jobs(jobs, url, *, verified_desktop_areas=frozenset()):
+    # A continue-on-error or skipped matrix job must not silently supply release inputs;
+    # only identical-tree desktop jobs already proven green in the merged PR may skip on push.
+    if not jobs:
+        raise ValueError(
+            f"Every main job must succeed before release (run full main CI via 'gh workflow run ci.yml --ref main' if only the two-distro push gate ran): {url}"
+        )
+    flatpak_ran = any(
+        (j.get("name") == "Flatpak" or j.get("name", "").startswith("Flatpak / ")) and j.get("conclusion") == "success"
+        for j in jobs
+    )
+    for job in jobs:
+        status = job.get("status", "completed")
+        conclusion = job.get("conclusion")
+        if status == "completed" and conclusion == "success":
+            continue
+        if (
+            status == "completed"
+            and conclusion == "skipped"
+            and _desktop_skip_verified(job.get("name", ""), verified_desktop_areas, require_flatpak_desktop=flatpak_ran)
+        ):
+            continue
         raise ValueError(
             f"Every main job must succeed before release (run full main CI via 'gh workflow run ci.yml --ref main' if only the two-distro push gate ran): {url}"
         )
     for prefix in REQUIRED_JOBS:
-        if not any(j.get("name", "").startswith(prefix) for j in jobs):
+        if not any(j.get("name", "").startswith(prefix) and j.get("conclusion") == "success" for j in jobs):
             raise ValueError(f"No {prefix.removesuffix(' / ')} job in this main run: {url}")
 
 
@@ -87,7 +329,7 @@ def _skippable_for_test_release(name):
     return name in TEST_RELEASE_SKIPPABLE_JOBS or name.startswith(TEST_RELEASE_SKIPPABLE_PREFIXES)
 
 
-def validate_test_release_jobs(jobs, url):
+def validate_test_release_jobs(jobs, url, *, verified_desktop_areas=frozenset()):
     if not jobs:
         raise ValueError(f"No main jobs recorded for test release: {url}")
     for job in jobs:
@@ -96,9 +338,12 @@ def validate_test_release_jobs(jobs, url):
         conclusion = job.get("conclusion")
         if conclusion == "success":
             continue
-        if conclusion == "skipped" and _skippable_for_test_release(job.get("name", "")):
+        name = job.get("name", "")
+        if conclusion == "skipped" and (
+            _skippable_for_test_release(name) or _desktop_skip_verified(name, verified_desktop_areas)
+        ):
             continue
-        raise ValueError(f"Main gate job did not succeed ({job.get('name')}: {conclusion}): {url}")
+        raise ValueError(f"Main gate job did not succeed ({name}: {conclusion}): {url}")
     for prefix in REQUIRED_JOBS:
         if not any(j.get("name", "").startswith(prefix) and j.get("conclusion") == "success" for j in jobs):
             raise ValueError(f"No green {prefix.removesuffix(' / ')} job in this main run: {url}")
@@ -112,14 +357,14 @@ def validate_artifacts(artifacts):
 
 
 def pages(repo, path, key):
-    values, page = [], 1
-    while True:
-        separator = "&" if "?" in path else "?"
+    values = []
+    separator = "&" if "?" in path else "?"
+    for page in range(1, MAX_PAGES + 1):
         response = api(repo, f"{path}{separator}per_page=100&page={page}")
         values.extend(response[key])
         if len(response[key]) < 100:
             return values
-        page += 1
+    raise ValueError(f"Pagination limit exceeded for {path}")
 
 
 def main():
@@ -133,7 +378,13 @@ def main():
     runs = pages(args.repo, f"actions/runs?head_sha={args.commit}&branch=main", "workflow_runs")
     chosen = select_runs(runs, args.commit)
     for run in chosen.values():
-        validate_jobs(pages(args.repo, f"actions/runs/{run['id']}/jobs?filter=latest", "jobs"), run["html_url"])
+        jobs = pages(args.repo, f"actions/runs/{run['id']}/jobs?filter=latest", "jobs")
+        verified = frozenset()
+        if run.get("event") == "push" and any(
+            j.get("conclusion") == "skipped" and desktop_area_for_job(j.get("name", "")) is not None for j in jobs
+        ):
+            verified = verified_pr_desktop_areas(args.repo, args.commit)
+        validate_jobs(jobs, run["html_url"], verified_desktop_areas=verified)
     ci = chosen["ci.yml"]
     artifacts = pages(args.repo, f"actions/runs/{ci['id']}/artifacts", "artifacts")
     validate_artifacts(artifacts)

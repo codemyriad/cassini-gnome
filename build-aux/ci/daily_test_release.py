@@ -127,8 +127,22 @@ def main_ci_state(api: GitHub, sha: str) -> str:
     if latest.get("conclusion") != "success":
         return "red"
     jobs = list(api.pages(f"actions/runs/{latest['id']}/jobs?filter=latest", "jobs"))
+    verified = frozenset()
+    if latest.get("event") == "push" and any(
+        j.get("conclusion") == "skipped" and green_main.desktop_area_for_job(j.get("name", "")) is not None
+        for j in jobs
+    ):
+        verified = green_main.verified_pr_desktop_areas(
+            api.repo,
+            sha,
+            get_commit=lambda c: api.request(f"commits/{c}", allow_404=True),
+            list_runs=lambda p: api.pages(
+                f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={p}", "workflow_runs"
+            ),
+            list_jobs=lambda rid: list(api.pages(f"actions/runs/{rid}/jobs?filter=latest", "jobs")),
+        )
     try:
-        green_main.validate_test_release_jobs(jobs, latest.get("html_url", ""))
+        green_main.validate_test_release_jobs(jobs, latest.get("html_url", ""), verified_desktop_areas=verified)
     except ValueError:
         return "red"
     return "green"

@@ -22,6 +22,9 @@ jobs:
     if: ${{ github.event.action != 'labeled' || github.event.label.name == 'full-ci' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       source: ${{ steps.areas.outputs.source }}
       packages: ${{ steps.areas.outputs.packages }}
@@ -29,6 +32,7 @@ jobs:
       boards: ${{ steps.areas.outputs.boards }}
       library: ${{ steps.areas.outputs.library }}
       offline: ${{ steps.areas.outputs.offline }}
+      desktop: ${{ steps.areas.outputs.desktop }}
       deb_testing: ${{ steps.areas.outputs.deb_testing }}
       rpm_opensuse: ${{ steps.areas.outputs.rpm_opensuse }}
       arch: ${{ steps.areas.outputs.arch }}
@@ -41,7 +45,9 @@ jobs:
           fetch-depth: 0
       - name: Detect PR paths, defaulting to every area on failure
         id: areas
-        run: python3 build-aux/ci/changes.py --report changed-areas.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 build-aux/ci/changes.py --commit "$GITHUB_SHA" --report changed-areas.json
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
@@ -53,9 +59,10 @@ jobs:
     if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') }}
     uses: ./.github/workflows/build.yml
     with:
-      # Failed detection must override even partially written false outputs.
-      boards: ${{ needs.changes.result != 'success' || needs.changes.outputs.boards != 'false' }}
-      offline: ${{ needs.changes.result != 'success' || needs.changes.outputs.offline != 'false' }}
+      # Failed detection must override even partially written false outputs;
+      # non-PR runs always pack all three BUILD_PRODUCTS for green_main.py.
+      boards: ${{ github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.boards != 'false' }}
+      offline: ${{ github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.offline != 'false' }}
   # H: Build packs the products Recording, Boards and Offline test; the Meson
   # tests run beside it, and the Pytest coverage gate fails unless they passed.
   meson-tests:
@@ -180,7 +187,7 @@ jobs:
   desktop:
     name: Desktop
     needs: [changes, deb, flatpak]
-    if: ${{ always() && !cancelled() && needs.deb.result == 'success' && ((needs.changes.result == 'success' && needs.changes.outputs.flatpak == 'false' && needs.flatpak.result == 'skipped') || needs.flatpak.result == 'success') }}
+    if: ${{ always() && !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.desktop != 'false') && needs.deb.result == 'success' && ((needs.changes.result == 'success' && needs.changes.outputs.flatpak == 'false' && needs.flatpak.result == 'skipped') || needs.flatpak.result == 'success') }}
     permissions:
       contents: read
       actions: read

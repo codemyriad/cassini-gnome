@@ -945,7 +945,7 @@ def test_pr_two_distro_legs_and_full_ci_label_wiring():
     ci_text = (WORKFLOWS / "ci.yml").read_text()
     assert "  pull_request:\n    types: [opened, synchronize, reopened, labeled]\n" in ci_text
     ci_jobs = dict(jobs(WORKFLOWS / "ci.yml"))
-    for leg in ("deb_testing", "rpm_opensuse", "arch", "flatpak", "extra_distros", "full_ci"):
+    for leg in ("desktop", "deb_testing", "rpm_opensuse", "arch", "flatpak", "extra_distros", "full_ci"):
         assert f"{leg}: ${{{{ steps.areas.outputs.{leg} }}}}" in ci_jobs["changes"]
     assert (
         "if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') && "
@@ -953,7 +953,9 @@ def test_pr_two_distro_legs_and_full_ci_label_wiring():
         "(needs.changes.outputs.flatpak != 'false' && needs.changes.outputs.packages != 'false')) }}"
     ) in ci_jobs["flatpak"]
     assert (
-        "if: ${{ always() && !cancelled() && needs.deb.result == 'success' && "
+        "if: ${{ always() && !cancelled() && "
+        "(needs.changes.result != 'success' || needs.changes.outputs.desktop != 'false') && "
+        "needs.deb.result == 'success' && "
         "((needs.changes.result == 'success' && needs.changes.outputs.flatpak == 'false' && "
         "needs.flatpak.result == 'skipped') || needs.flatpak.result == 'success') }}"
     ) in ci_jobs["desktop"]
@@ -963,6 +965,19 @@ def test_pr_two_distro_legs_and_full_ci_label_wiring():
     )
     bg_text = (WORKFLOWS / "background-apps.yml").read_text()
     assert "tests/desktop/run.sh --deb-only _desktop-packages/deb/cassini-talk_*.deb desktop-evidence" in bg_text
+
+    # Every checkout in ci.yml and its called workflows must use default GITHUB_SHA
+    # (no custom ref:), so referenced_workflows[*].sha names the exact tested tree.
+    called_workflows = {WORKFLOWS / "ci.yml"} | {
+        WORKFLOWS / match.group(1)
+        for match in re.finditer(r"^\s*uses:\s*\./\.github/workflows/([^\s]+)$", ci_text, re.M)
+    }
+    assert len(called_workflows) == 12
+    for wf in sorted(called_workflows):
+        for _, block in jobs(wf):
+            for step in re.split(r"\n(?=      - )", block):
+                if "actions/checkout@" in step:
+                    assert not re.search(r"^\s*ref\s*:", step, re.M), (wf.name, step)
 
 
 def _load_pin_images():
@@ -1428,6 +1443,7 @@ def test_labeled_pr_isolation_and_full_dag_across_events():
             "boards",
             "library",
             "offline",
+            "desktop",
             "deb_testing",
             "rpm_opensuse",
             "arch",
@@ -1497,6 +1513,28 @@ def test_labeled_pr_isolation_and_full_dag_across_events():
     # Push to main, schedule, workflow_dispatch, and release tag push:
     res_main = _simulate_dag(ci_dag, event="push", action="", changes_outputs={**all_areas_true, "full_ci": "false"})
     assert {j for j, s in res_main.items() if s == "success"} == all_ci_jobs
+    res_main_skip = _simulate_dag(
+        ci_dag,
+        event="push",
+        action="",
+        changes_outputs={
+            **pr_code_outputs,
+            "recording": "false",
+            "boards": "false",
+            "offline": "false",
+            "desktop": "false",
+        },
+    )
+    assert {j for j, s in res_main_skip.items() if s == "success"} == {
+        "changes",
+        "build",
+        "meson-tests",
+        "source",
+        "deb",
+        "rpm-arch",
+        "pytest-coverage",
+        "library",
+    }
     for evt in ("schedule", "workflow_dispatch"):
         res_sched = _simulate_dag(ci_dag, event=evt, action="", changes_outputs=all_areas_true)
         assert {j for j, s in res_sched.items() if s == "success"} == all_ci_jobs
