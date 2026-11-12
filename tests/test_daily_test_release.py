@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import re
@@ -36,6 +37,7 @@ class FakeGit:
         dirty: str = "",
         timestamp: int = 1794470400,
         side_commits: dict[str, str] | None = None,
+        fragments_by_commit: dict[str, dict[str, str]] | None = None,
     ):
         self.head = head
         self.commits = commits  # chronological first-parent chain on main
@@ -44,6 +46,12 @@ class FakeGit:
         self.timestamp = timestamp
         # Maps off-main commit SHA -> its merge-base SHA on self.commits
         self.side_commits = side_commits or {}
+        self.fragments_by_commit = fragments_by_commit or {}
+        self._blobs: dict[str, str] = {}
+        for mapping in self.fragments_by_commit.values():
+            for raw in mapping.values():
+                blob = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:40]
+                self._blobs[blob] = raw
 
     def _resolve(self, rev: str) -> str | None:
         clean = rev.removesuffix("^{commit}")
@@ -96,6 +104,17 @@ class FakeGit:
         if args[:5] == ("log", "--first-parent", "-n", "50", "--format=%H"):
             j = self.commits.index(args[5])
             return "\n".join(reversed(self.commits[: j + 1][-50:]))
+        if len(args) == 5 and args[:2] == ("ls-tree", "-r") and args[3:] == ("--", "release-notes.d"):
+            rev = self._resolve(args[2]) or args[2]
+            entries = self.fragments_by_commit.get(rev, {})
+            lines: list[str] = []
+            for path, raw in sorted(entries.items()):
+                blob = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:40]
+                self._blobs[blob] = raw
+                lines.append(f"100644 blob {blob}\t{path}")
+            return "\n".join(lines)
+        if len(args) == 3 and args[:2] == ("cat-file", "blob"):
+            return self._blobs[args[2]]
         raise AssertionError(f"Unhandled FakeGit args: {args}")
 
 
@@ -645,10 +664,127 @@ def test_literal_code_span_and_notes_bounds():
         ]
     }
     api = FakeGitHub(main_sha=c1, pulls_by_commit=huge_pulls)
+    rn = load_module("release_notes")
     notes = mod.build_notes(api, c0, c1, git)
     encoded = notes.encode("utf-8")
     assert len(encoded) <= mod.MAX_NOTES_BYTES
-    assert notes.endswith("\n- ...\n")
+    assert notes.startswith(rn.EMPTY_USER_NOTES + "\n\n<details>\n<summary>Developer changelog</summary>\n\n")
+    assert notes.endswith("\n- ...\n</details>\n")
+
+
+def test_user_release_notes_fragments_grouping_overflow_tracking_and_anti_leak(tmp_path):
+    mod = load_module("daily_test_release")
+    rn = load_module("release_notes")
+
+    # 1. Every committed fragment in release-notes.d/ (including 0 after stable cleanup, or omitted groups)
+    #    parses cleanly and renders within the 500-char store limit.
+    repo_fragments = rn.load_fragments_dir(ROOT / "release-notes.d")
+    rendered_repo = rn.render_user_notes(repo_fragments)
+    assert len(rendered_repo) <= rn.USER_NOTES_LIMIT == 500
+    rn.validate_user_text(rendered_repo)
+
+    plus_one = [*repo_fragments, ("new", "Open any audio file from your computer directly into Cassini.")]
+    rendered_plus_one = rn.render_user_notes(plus_one)
+    assert len(rendered_plus_one) <= rn.USER_NOTES_LIMIT == 500
+    rn.validate_user_text(rendered_plus_one)
+
+    # 2. Empty unpublished fragment set (e.g. after stable-release cleanup) produces the exact plain fallback text.
+    empty_dir = tmp_path / "empty-release-notes.d"
+    empty_dir.mkdir()
+    assert rn.load_fragments_dir(empty_dir) == []
+    assert rn.render_user_notes([]) == (
+        "Fixes and improvements under the hood. Nothing changes in how you use Cassini."
+    )
+
+    # 3. Fixed fixtures verify grouping order (New -> Better -> Fixed) and >500-char overflow truncation.
+    short_fixture = [
+        ("fixed", "Saved voices keep their sample position steady."),
+        ("better", "Search in the Library matches meeting titles."),
+        ("new", "Export your Library as a single ZIP archive."),
+    ]
+    grouped_short = rn.render_user_notes(short_fixture)
+    assert grouped_short.index("New\n") < grouped_short.index("Better\n") < grouped_short.index("Fixed\n")
+    rn.validate_user_text(grouped_short)
+
+    fixture_fragments = [
+        ("fixed", "Exported meetings keep their original recording date when opened in another time zone."),
+        ("better", "Search in the Library matches meeting titles even before a recording is written down."),
+        ("new", "Import several meeting files or a ZIP archive into your Library at once."),
+        ("new", "Export your entire Library or selected meetings as a single ZIP archive."),
+        ("better", "Long transcripts scroll smoothly without jumping while you read or play back."),
+        ("better", "Parakeet Ultra is used automatically once downloaded, while Whistle stays built in."),
+        ("fixed", "Saved voices keep their sample playback position steady when you switch speakers."),
+        ("fixed", "Stopping a recording from the top bar updates the window title immediately."),
+    ]
+    overflowed = rn.render_user_notes(fixture_fragments)
+    assert len(overflowed) <= 500
+    assert "Fixed\n" not in overflowed
+    assert overflowed.startswith(
+        "New\n"
+        "- Import several meeting files or a ZIP archive into your Library at once.\n"
+        "- Export your entire Library or selected meetings as a single ZIP archive."
+    )
+    assert overflowed.endswith("\n\nand smaller fixes")
+    rn.validate_user_text(overflowed)
+
+    # 4. Forbidden developer markers can never reach user-facing text.
+    for bad_body in (
+        "Fix transcript jump in #390.",
+        "Align export contract with D84 parity.",
+        "Speed up CI package verification.",
+        "Fold merged PR titles under details.",
+        "Please reload your browser tab after updating.",
+        "Cassini's Library keeps your meetings.",
+        "Update build-aux/ci/daily_test_release.py notes.",
+        "Not released yet.",
+    ):
+        with pytest.raises(ValueError):
+            rn.parse_fragment(f"kind: fixed\n---\n{bad_body}\n", name="release-notes.d/bad-entry.md")
+    with pytest.raises(ValueError, match="filename"):
+        rn.parse_fragment("kind: new\n---\nValid sentence.\n", name="release-notes.d/Bad_Name.md")
+
+    # 5. Baseline tracking excludes already-published fragments and keeps PR titles strictly inside <details>.
+    c0, c1, c2 = "1" * 40, "2" * 40, "3" * 40
+    frag_old = "kind: new\n---\nAlready shipped in the previous test build.\n"
+    frag_new = "kind: better\n---\nSearch in the Library matches meeting titles.\n"
+    git = FakeGit(
+        head=c2,
+        commits=[c0, c1, c2],
+        fragments_by_commit={
+            c1: {"release-notes.d/already-shipped.md": frag_old},
+            c2: {
+                "release-notes.d/already-shipped.md": frag_old,
+                "release-notes.d/search-titles.md": frag_new,
+            },
+        },
+    )
+    pulls = {
+        c2: [
+            {
+                "number": 389,
+                "title": "feat(library): search meeting titles with D95 CI gate in window.py",
+                "merged_at": "2026-11-12T02:00:00Z",
+                "base": {"ref": "main"},
+                "merge_commit_sha": c2,
+            }
+        ]
+    }
+    api = FakeGitHub(main_sha=c2, pulls_by_commit=pulls)
+    user_only = mod.build_user_notes(c1, c2, git)
+    full_body = mod.build_notes(api, c1, c2, git, user_notes=user_only)
+
+    assert "Already shipped" not in user_only
+    assert user_only == "Better\n- Search in the Library matches meeting titles."
+    assert len(user_only) <= 500
+    rn.validate_user_text(user_only)
+
+    visible_top, sep, folded_dev = full_body.partition("\n\n<details>\n<summary>Developer changelog</summary>\n\n")
+    assert sep
+    assert visible_top == user_only
+    rn.validate_user_text(visible_top)
+    assert "#389" not in visible_top and "D95" not in visible_top and "CI" not in visible_top
+    assert "feat(library): search meeting titles with D95 CI gate in window.py" in folded_dev
+    assert "(#389)" in folded_dev
 
 
 def test_apply_patches_all_six_files_and_arch_build_script_accepts_prerelease(tmp_path):

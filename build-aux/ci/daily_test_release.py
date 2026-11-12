@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import green_main  # noqa: E402
 import release_metadata  # noqa: E402
+import release_notes  # noqa: E402
 import release_sums  # noqa: E402
 
 ENVIRONMENT = "gnome-daily-test-release"
@@ -255,7 +256,35 @@ def collect_history(api: GitHub, sha: str, git: GitRepo) -> tuple[set[str], set[
     return released_bases, reserved_pairs, baseline
 
 
-def build_notes(api: GitHub, baseline: str | None, sha: str, git: GitRepo) -> str:
+def _tree_fragments(git: GitRepo, rev: str) -> dict[str, str]:
+    blobs: dict[str, str] = {}
+    output = git.run("ls-tree", "-r", rev, "--", "release-notes.d")
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        meta, sep, path = line.partition("\t")
+        if not sep or Path(path).name.startswith("."):
+            continue
+        parts = meta.split()
+        if len(parts) == 3 and parts[1] == "blob":
+            blobs[path] = parts[2]
+    return blobs
+
+
+def unpublished_fragments(baseline: str | None, sha: str, git: GitRepo) -> list[tuple[str, str]]:
+    if baseline is not None and baseline != sha and not git.is_ancestor(baseline, sha):
+        baseline = git.run("merge-base", baseline, sha)
+    if baseline == sha:
+        return []
+    current = _tree_fragments(git, sha)
+    previous = _tree_fragments(git, baseline) if baseline is not None else {}
+    pending_paths = [path for path, blob in sorted(current.items()) if previous.get(path) != blob]
+    return [
+        release_notes.parse_fragment(git.run("cat-file", "blob", current[path]), name=path) for path in pending_paths
+    ]
+
+
+def build_developer_changelog(api: GitHub, baseline: str | None, sha: str, git: GitRepo, *, budget_bytes: int) -> str:
     if baseline is not None:
         if baseline != sha and not git.is_ancestor(baseline, sha):
             baseline = git.run("merge-base", baseline, sha)
@@ -288,7 +317,7 @@ def build_notes(api: GitHub, baseline: str | None, sha: str, git: GitRepo) -> st
 
     kept: list[str] = []
     suffix = "- ...\n"
-    budget = MAX_NOTES_BYTES - len(header.encode("utf-8"))
+    budget = budget_bytes - len(header.encode("utf-8"))
     used = 0
     for index, line in enumerate(bullets):
         encoded = (line + "\n").encode("utf-8")
@@ -299,6 +328,28 @@ def build_notes(api: GitHub, baseline: str | None, sha: str, git: GitRepo) -> st
         kept.append(line)
         used += len(encoded)
     return header + "\n".join(kept) + "\n"
+
+
+def build_user_notes(baseline: str | None, sha: str, git: GitRepo) -> str:
+    return release_notes.render_user_notes(unpublished_fragments(baseline, sha, git))
+
+
+def build_notes(
+    api: GitHub,
+    baseline: str | None,
+    sha: str,
+    git: GitRepo,
+    *,
+    user_notes: str | None = None,
+) -> str:
+    rendered_user = build_user_notes(baseline, sha, git) if user_notes is None else user_notes
+    wrapper_overhead = len(
+        f"{rendered_user}\n\n<details>\n<summary>Developer changelog</summary>\n\n\n</details>\n".encode()
+    )
+    developer_changelog = build_developer_changelog(
+        api, baseline, sha, git, budget_bytes=MAX_NOTES_BYTES - wrapper_overhead
+    )
+    return release_notes.build_prerelease_body(rendered_user, developer_changelog)
 
 
 def plan(api: GitHub, sha: str, root: Path, run_id: int, *, git: GitRepo | None = None) -> dict:
@@ -316,7 +367,8 @@ def plan(api: GitHub, sha: str, root: Path, run_id: int, *, git: GitRepo | None 
         return {"build": False, "reason": "main is unchanged since the last test release"}
 
     version_info = next_version(meson_version, released_bases, reserved_pairs)
-    notes = build_notes(api, baseline, sha, git_repo)
+    user_notes = build_user_notes(baseline, sha, git_repo)
+    notes = build_notes(api, baseline, sha, git_repo, user_notes=user_notes)
 
     if api.request("commits/main").get("sha") != sha or not green_main_ci(api, sha):
         return {"build": False, "reason": "main or its CI changed while planning"}
@@ -349,14 +401,17 @@ def plan(api: GitHub, sha: str, root: Path, run_id: int, *, git: GitRepo | None 
         "baseline": baseline,
         "deployment_id": deployment["id"],
         **payload,
+        "user_notes": user_notes,
         "notes": notes,
     }
 
 
 def plan_metadata(value: dict) -> dict:
-    meta = {key: item for key, item in value.items() if key != "notes"}
+    meta = {key: item for key, item in value.items() if key not in {"notes", "user_notes"}}
     if "notes" in value:
         meta["notes_sha256"] = hashlib.sha256(value["notes"].encode("utf-8")).hexdigest()
+    if "user_notes" in value:
+        meta["user_notes_sha256"] = hashlib.sha256(value["user_notes"].encode("utf-8")).hexdigest()
     return meta
 
 
