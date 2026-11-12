@@ -912,14 +912,24 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
         queue.close()
 
 
-def test_stop_queued_and_published_library_v2_transcription(tmp_path):
+def test_stop_queued_and_published_library_v2_transcription(tmp_path, monkeypatch):
+    import shutil
     from concurrent.futures import CancelledError
 
-    from cassini_talk.library_publication import capture_parent, publish_stopped
+    from cassini_talk import portable
+    from cassini_talk.library_publication import capture_parent
+    from cassini_talk.library_v2 import finalize, mixdown
 
+    def copy_plain_opus(_spans, dest, _choice, _cancel=None):
+        shutil.copyfile(Path(__file__).parent / "conformance" / "opus" / "002-plain-audio.opus", dest)
+        with open(dest, "rb") as stream:
+            return portable.compute_audio_digest(stream)["sampleCount"]
+
+    monkeypatch.setattr(mixdown, "total_samples", lambda _spans: 4800)
+    monkeypatch.setattr(mixdown, "encode", copy_plain_opus)
     blocker = capture(tmp_path)
     managed = capture(capture_parent(tmp_path))
-    assert publish_stopped(managed) is not None
+    assert finalize.finalize(tmp_path, managed.manifest["id"], zone="UTC") is not None
     published_session = managed.directory
     blocker_started = threading.Event()
     release_blocker = threading.Event()
