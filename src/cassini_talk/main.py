@@ -1264,7 +1264,7 @@ class CassiniApplication(Adw.Application):
                         self._notify_shortcut_saved(path)
                     if self.transcription_enabled:
                         for path in paths:
-                            self.write_down(path)
+                            self.write_down(path, resume=True)
                 except (OSError, ValueError) as error:
                     self.recording_error = str(error)
                 finally:
@@ -1550,7 +1550,7 @@ class CassiniApplication(Adw.Application):
         for recording in snapshot.get("recordings", []):
             path = recording.get("path")
             if isinstance(path, str) and path not in previous:
-                self.write_down(path)
+                self.write_down(path, resume=True)
 
     def on_stop_recording(self, *_):
         for window in self.get_windows():

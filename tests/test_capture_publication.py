@@ -246,3 +246,194 @@ def test_native_publication_failure_is_distinct_from_a_capture_start_failure(tmp
         assert not capture_busy(recorder.session.manifest["id"])
     finally:
         recorder.close()
+
+
+def test_browser_stop_queued_during_opus_publication_starts_transcription_when_published(tmp_path, monkeypatch):
+    from durable import Finished
+    from test_browser_capture import start as start_wire
+
+    from cassini_talk.browser_audio_proxy import BrowserAudioProxy
+    from cassini_talk.browser_service import BrowserService, request
+    from cassini_talk.meeting_store import read_metadata
+    from cassini_talk.transcription import TranscriptionQueue
+
+    root = tmp_path / "Library"
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "private-config"))
+    entered, release, ready = threading.Event(), threading.Event(), threading.Event()
+    original = finalize.finalize
+
+    def slow_publish(*args, **kwargs):
+        entered.set()
+        assert release.wait(DURABLE_BOUND)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(finalize, "finalize", slow_publish)
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            notify(dict(type="planned", etaMinutes=0, segments=1))
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=0, endMs=300, text="Let us review the quarterly budget today")],
+                )
+            )
+            return dict(diagnostics=[])
+
+    finished = Finished()
+    queue = TranscriptionQueue(lambda _d: None, finished, root=root, bundle=tmp_path, client_factory=Client)
+    service = BrowserService(tmp_path / "broker-config.json", tap_factory=Tap, notifier=lambda *_args: None)
+    socket = tmp_path / "broker/service.sock"
+    worker = threading.Thread(target=service.serve, args=(socket, ready), daemon=True)
+    worker.start()
+    assert ready.wait(2)
+    client = BrowserAudioProxy(path=socket)
+    try:
+        path = start_wire(client, "teams-stop-queued", service=service)["path"]
+        remote(client, "remote")
+        stopped = request("stop-all", path=socket)
+        assert entered.wait(3)
+        assert stopped["stoppedPaths"] == [path]
+        assert not list(root.glob("*.opus"))
+
+        # Stop acknowledged PCM before .opus muxing finished: write_down records durable
+        # queued intent and waits for publication.
+        assert queue.enqueue(path, resume=True)
+        finished.wait(1, exactly=True)
+        assert read_metadata(path)["transcript"]["status"] == "queued"
+
+        # Now .opus muxing finishes and the broker reports the saved recording.
+        release.set()
+        capture = next(iter(service.captures.values()))
+        saved(capture)
+        snapshot = request(path=socket)
+        assert any(r.get("path") == path for r in snapshot["recordings"])
+
+        # Resuming write_down on the published recording runs inference immediately.
+        assert queue.enqueue(path, resume=True)
+        finished.wait(2, exactly=True)
+
+        (meeting,) = LibraryScanner(root).scan().meetings
+        assert meeting.published_file is not None and meeting.published_file.exists()
+        assert meeting.transcript == "done"
+        assert [w.text for w in meeting.words] == ["Let us review the quarterly budget today"]
+    finally:
+        release.set()
+        queue.close()
+        client.close()
+        service.closed.set()
+        worker.join(3)
+        assert not worker.is_alive()
+
+
+def test_real_publication_finishing_after_prepared_checks_resume_does_not_strand_browser_recording(
+    tmp_path, monkeypatch
+):
+    from durable import Finished, durable
+    from test_library import capture
+
+    from cassini_talk.library_publication import capture_parent, publish_stopped
+    from cassini_talk.meeting_store import read_metadata
+    from cassini_talk.transcription import TranscriptionQueue
+
+    root = tmp_path / "Library"
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(root))
+    session = capture(capture_parent(root))
+    lock_released, allow_after_release = threading.Event(), threading.Event()
+    finished = Finished()
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            notify(dict(type="planned", etaMinutes=0, segments=1))
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=0, endMs=300, text="Let us review the quarterly budget today")],
+                )
+            )
+            return dict(diagnostics=[])
+
+    queue = TranscriptionQueue(lambda _d: None, finished, root=root, bundle=tmp_path, client_factory=Client)
+    real_lock = queue.lock
+    original_prepared = queue._prepared
+    arm_gate = [True]
+    watch_exit = [False]
+
+    class GateLock:
+        def acquire(self, *args, **kwargs):
+            return real_lock.acquire(*args, **kwargs)
+
+        def release(self):
+            return real_lock.release()
+
+        def __enter__(self):
+            return real_lock.__enter__()
+
+        def __exit__(self, *exc):
+            result = real_lock.__exit__(*exc)
+            if watch_exit[0]:
+                watch_exit[0] = False
+                lock_released.set()
+                durable(allow_after_release, "the test did not release _prepared after lock exit")
+            return result
+
+    def gated_prepared(directory, future):
+        if arm_gate[0]:
+            arm_gate[0] = False
+            watch_exit[0] = True
+        return original_prepared(directory, future)
+
+    queue.lock = GateLock()
+    queue._prepared = gated_prepared
+    try:
+        # 1. Stop delivers while .opus muxing is still running: durable queued intent is recorded,
+        # and _mark_queued returns None because published_file is still None.
+        accepted = int(queue.enqueue(session.directory, resume=True))
+        assert accepted == 1
+        durable(lock_released, "_prepared did not reach its lock release")
+        assert read_metadata(session.directory)["transcript"]["status"] == "queued"
+
+        # 2. Right after _prepared checks _resume_pending and releases queue.lock, real .opus
+        # publication finishes and triggers enqueue(resume=True) before _prepared finishes retiring.
+        published = publish_stopped(session)
+        assert published is not None and (root / published.name).is_file()
+        resumed = queue.enqueue(session.directory, resume=True)
+        assert resumed
+        accepted += int(resumed)
+        allow_after_release.set()
+
+        finished.wait(accepted, exactly=True)
+        (meeting,) = LibraryScanner(root).scan().meetings
+        assert meeting.published_file == root / published.name
+        assert meeting.transcript == "done"
+        assert [w.text for w in meeting.words] == ["Let us review the quarterly budget today"]
+    finally:
+        allow_after_release.set()
+        queue.close()
