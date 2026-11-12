@@ -1,0 +1,84 @@
+name: CI distro images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/ci-images.yml
+      - build-aux/ci/ci_image_core.py
+      - build-aux/ci/ci_images.py
+      - build-aux/ci/prepare_build_image.py
+      - build-aux/ci/pin_images.py
+      - build-aux/ci/image-pins.json
+      - build-aux/ci/ubuntu-build.Dockerfile
+      - build-aux/ci/install-minimal-build-deps.sh
+      - build-aux/ci/apt-install-bounded.sh
+      - build-aux/ci/source.Dockerfile
+      - build-aux/ci/alpine_edge_install.sh
+      - build-aux/ci/prepare_tumbleweed.sh
+      - build-aux/ci/retry.sh
+      - build-aux/check-distros.sh
+      - build-aux/install-deps.sh
+      - build-aux/deb/Dockerfile
+      - debian/control
+      - build-aux/rpm/Dockerfile
+      - build-aux/rpm/cassini-talk.spec
+      - build-aux/arch/Dockerfile
+      - build-aux/arch/PKGBUILD
+  schedule:
+    # Rebuild every prebuilt distro image nightly before the 02:11 UTC CI schedule.
+    - cron: "25 1 * * *"
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: Rebuild all images with --no-cache even when the input hash tag already exists
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-images
+  cancel-in-progress: false
+
+jobs:
+  matrix:
+    name: Image matrix
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: matrix
+        run: echo "matrix=$(python3 build-aux/ci/ci_images.py matrix)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.key }}
+    needs: matrix
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # Holds a packages: write token: run on ephemeral GitHub-hosted runners only, never the pool.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and push prebuilt CI image
+        env:
+          CONTAINER_ENGINE: docker
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_KEY: ${{ matrix.key }}
+          REBUILD: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.rebuild)) && '1' || '0' }}
+        run: |
+          if [ "$REBUILD" = 1 ]; then
+            python3 build-aux/ci/ci_images.py build "$IMAGE_KEY" --push --rebuild
+          else
+            python3 build-aux/ci/ci_images.py build "$IMAGE_KEY" --push
+          fi

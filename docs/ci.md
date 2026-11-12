@@ -129,8 +129,9 @@ keeps the harness stages in a cache that main saves and pull requests only
 restore (`build-aux/ci/harness-cache.sh`, D66); a miss just builds them. The
 cache key's step resolves each base once and pins it for the whole job
 (`$GITHUB_ENV`), so the key, the restored tag and a fresh build name the same
-base even if the registry moves it mid-job. The products under test and the
-package builds' distro images are never cached.
+base even if the registry moves it mid-job. The products under test are never
+cached in GitHub Actions, and clean-install smoke containers always start from
+the bare distro base image.
 
 ## Releases
 
@@ -272,7 +273,8 @@ blocking merges or releases; validate and refresh all distro image pins in one
 step via:
 
 ```sh
-python3 build-aux/ci/pin_images.py --bump   # or: make bump-ci-images
+python3 build-aux/ci/pin_images.py --bump          # bump base + prebuilt digests (or: make bump-ci-images)
+python3 build-aux/ci/pin_images.py --sync-prebuilt # pin current GHCR prebuilt digests without bumping bases
 ```
 
 `python3 build-aux/ci/pin_images.py --check` (also enforced in `tests/test_ci_hygiene.py`)
@@ -280,3 +282,28 @@ verifies that every managed workflow, build script, and Dockerfile matches
 `build-aux/ci/image-pins.json`, that PR/main/`full-ci`/`workflow_dispatch` paths
 stay digest-pinned, and that scheduled nightly runs keep the rolling legs
 unpinned outside merge and release gates.
+
+### Prebuilt per-distro build-dependency images (`ci-images.yml`)
+
+`.github/workflows/ci-images.yml` builds and publishes prebuilt CI
+build-dependency images to GHCR (`ghcr.io/codemyriad/cassini-gnome/ci-<key>`)
+for:
+- `ubuntu-build` (shared minimal build-tools image for `build.yml` and `meson-tests.yml`),
+- `source-*` (`build-aux/check-distros.sh` across the seven pinned distro bases), and
+- `deb-*`, `rpm-*`, and `arch-archlinux` (`build-aux/{deb,rpm,arch}/build.sh`).
+
+Each image is built `FROM` the `@sha256`-pinned raw base in
+`build-aux/ci/image-pins.json` and tagged with the 16-hex SHA-256 hash of its
+dependency-declaring inputs (`debian/control`, `cassini-talk.spec`, `PKGBUILD`,
+`check-distros.sh`, `install-deps.sh`, `install-minimal-build-deps.sh`, its
+Dockerfile, and its pinned base digest). Only scheduled nightly and `main`
+branch runs on GitHub-hosted runners receive `packages: write` (`pull_request`
+never pushes to GHCR). Consumers pull strictly by `@sha256` digest from
+`prebuilt_images` in `build-aux/ci/image-pins.json` via
+`build-aux/ci/ci_images.py`; when a PR modifies any dependency-declaring input
+(or before a GHCR digest is pinned), `ci_images.py` returns a miss and the job
+rebuilds locally from the `@sha256`-pinned raw base so missing or removed build
+dependencies fail in that PR. Clean-install smoke containers
+(`container_offline_smoke`) always run on the bare raw base image so runtime
+`Depends`/`Requires`/`depends` resolution stays proven from scratch, and
+scheduled nightly unpinned rolling legs never resolve to prebuilt images.

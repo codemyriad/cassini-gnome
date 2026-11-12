@@ -23,9 +23,13 @@ mkdir -p dist
 # Per base image, so parallel builds do not swap names.
 name_file=.pkg-name-$(image_slug "$BASE")
 logs=$(test_log_dir "arch-$(image_slug "$BASE")")
-container_pull "$BASE"
+BUILD_IMAGE=$(python3 build-aux/ci/ci_images.py pull arch "$BASE" || true)
+if [ -z "$BUILD_IMAGE" ]; then
+  container_pull "$BASE"
+  BUILD_IMAGE=$BASE
+fi
 # Only the package installs reach the network; each is retried (retry.sh).
-container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BASE" sh -ec '
+container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BUILD_IMAGE" sh -ec '
   . /in/build-aux/ci/retry.sh
   # Keep the Meson test logs, also when check() fails (test_log_dir).
   save_logs() {
@@ -35,12 +39,14 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
     chown -R "$(stat -c %u:%g /logs)" /logs
   }
   trap "save_logs || true" EXIT
-  # The minimal image excludes non-English MO files. Preserve Cassini
-  # catalogs for the real installed-language smoke test.
-  printf "\nNoExtract = !usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" >> /etc/pacman.conf
-  retry pacman -Syu --noconfirm --needed base-devel
-  useradd -m builder
-  echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
+  if [ ! -f /etc/cassini-arch-deps-installed ]; then
+    # The minimal image excludes non-English MO files. Preserve Cassini
+    # catalogs for the real installed-language smoke test.
+    printf "\nNoExtract = !usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" >> /etc/pacman.conf
+    retry pacman -Syu --noconfirm --needed base-devel
+    useradd -m builder
+    echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
+  fi
 
   # Stage PKGBUILD plus a tarball of the source tree in a scratch dir.
   name=cassini-talk-$1
@@ -57,17 +63,19 @@ container_run -e NAME_FILE="$name_file" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:r
   chown -R builder: /build/pkg
 
   cd /build/pkg
-  # Install the PKGBUILD dependencies first, retried, so makepkg -s (which
-  # also builds and runs check()) finds them all and never downloads.
-  deps=$(su builder -c "makepkg --printsrcinfo" | sed -n "s/^\t\(make\|check\)\{0,1\}depends = //p")
-  # Word splitting is wanted: one argument per dependency.
-  retry pacman -S --noconfirm --needed --asdeps $deps
+  if [ ! -f /etc/cassini-arch-deps-installed ]; then
+    # Install the PKGBUILD dependencies first, retried, so makepkg -s (which
+    # also builds and runs check()) finds them all and never downloads.
+    deps=$(su builder -c "makepkg --printsrcinfo" | sed -n "s/^\t\(make\|check\)\{0,1\}depends = //p")
+    # Word splitting is wanted: one argument per dependency.
+    retry pacman -S --noconfirm --needed --asdeps $deps
+  fi
   su builder -c "makepkg -s --noconfirm"
   # The exact file this PKGBUILD produces, not whatever matches a glob.
   pkg=$(su builder -c "makepkg --packagelist" | grep -v -- "-debug-")
   [ "$(echo "$pkg" | wc -l)" = 1 ] && [ -f "$pkg" ] || { echo "unexpected package list: $pkg" >&2; exit 1; }
 
-  if retry pacman -S --noconfirm --needed namcap >/dev/null; then
+  if command -v namcap >/dev/null 2>&1 || retry pacman -S --noconfirm --needed namcap >/dev/null; then
     namcap PKGBUILD "$pkg" || true
   else
     echo "namcap not available; skipping"
@@ -90,6 +98,7 @@ pkg_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 # The build container has makedepends and checkdepends installed, which can
 # hide a missing dependency; install the package in a fresh container, then
 # check it there with no network, writing the D11 goldens down offline.
+container_pull "$BASE"
 container_offline_smoke "$BASE" '
   . /ci/retry.sh
   printf "\nNoExtract = !usr/share/locale/*/LC_MESSAGES/cassini-talk.mo\n" >> /etc/pacman.conf

@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  packages: read
 # D66: a newer push to a pull request cancels that PR's older push run, while
 # labeled runs use their own non-cancelling group so synchronize/opened + labeled
 # on the same head never leave CANCELLED check runs (UNSTABLE). Other runs (main

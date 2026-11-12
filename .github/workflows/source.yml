@@ -34,9 +34,11 @@ on:
         default: true
 permissions:
   contents: read
+  packages: read
 env:
   CONTAINER_ENGINE: docker
   CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
+  GHCR_READ_TOKEN: ${{ github.token }}
 jobs:
   lint-and-test:
     name: Lint and test

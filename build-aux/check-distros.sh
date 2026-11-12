@@ -81,15 +81,15 @@ rm -rf _build* _install _flatpak dist obj-* .flatpak-builder debian/.debhelper d
 rm -rf src/cassini_talk/__pycache__ tests/__pycache__
 
 # Only these two steps reach the network: package installs, retried.
-step "align container snapshot"
-retry sh build-aux/ci/prepare_tumbleweed.sh
-
-step "install-deps"
-# Fedora recommends GPU drivers, portals and audio daemons that this headless
-# source gate never uses. Keep every declared runtime/build dependency, the
-# full suite and the strict plugin/startup smoke below. Other images retain
-# their existing package selection.
 if [ ! -f /etc/cassini-deps-installed ]; then
+  step "align container snapshot"
+  retry sh build-aux/ci/prepare_tumbleweed.sh
+
+  step "install-deps"
+  # Fedora recommends GPU drivers, portals and audio daemons that this headless
+  # source gate never uses. Keep every declared runtime/build dependency, the
+  # full suite and the strict plugin/startup smoke below. Other images retain
+  # their existing package selection.
   if command -v dnf >/dev/null 2>&1; then
     retry sh build-aux/install-deps.sh --all --yes --required-only
   else
@@ -172,36 +172,52 @@ for image in "$@"; do
   echo "################ $image"
   {
     stage_ok=1
-    run_image="$image"
-    if ! container_pull "$image"; then
-      echo 1 > "$log.status"
-      stage_ok=0
-    elif [ "${image%@sha256:*}" = "alpine:edge" ]; then
+    run_image=$(python3 build-aux/ci/ci_images.py pull source "$image" || true)
+    if [ -n "$run_image" ] && [ "${image%@sha256:*}" = "alpine:edge" ]; then
       chmod -R u+w "$outcome_dir" 2>/dev/null || true
       rm -rf "$outcome_dir"
       mkdir -p "$outcome_dir"
-      "$CONTAINER_ENGINE" rm -f "$ALPINE_INSTALL_CTR" >/dev/null 2>&1 || true
-      install_rc=0
-      "$CONTAINER_ENGINE" run --name "$ALPINE_INSTALL_CTR" --network host \
-        -e ALPINE_INSTALL_OUTCOME_DIR=/install-outcome \
-        -v "$PWD":/in:ro$Z -v "$outcome_dir:/install-outcome:rw$Z" \
-        "$image" sh -c "$ALPINE_INSTALL_INNER" || install_rc=$?
-      if [ "$install_rc" = 0 ]; then
-        if "$CONTAINER_ENGINE" commit "$ALPINE_INSTALL_CTR" "$ALPINE_INSTALLED_IMG" >/dev/null; then
-          "$CONTAINER_ENGINE" rm -f "$ALPINE_INSTALL_CTR" >/dev/null 2>&1 || true
-          run_image="$ALPINE_INSTALLED_IMG"
-        else
-          "$CONTAINER_ENGINE" rm -f "$ALPINE_INSTALL_CTR" >/dev/null 2>&1 || true
-          echo 1 > "$log.status"
-          stage_ok=0
-        fi
+      if container_run "$run_image" sh -ec 'test -f /etc/cassini-deps-installed && cat /etc/os-release' > "$outcome_dir/os-release"; then
+        printf '{\n  "image": "%s",\n  "step": "install-deps",\n  "status": "installed"\n}\n' "${image%@sha256:*}" > "$outcome_dir/outcome.json"
+        chmod 0444 "$outcome_dir"/*
+        chmod 0555 "$outcome_dir"
       else
-        "$CONTAINER_ENGINE" rm -f "$ALPINE_INSTALL_CTR" >/dev/null 2>&1 || true
+        rm -rf "$outcome_dir"
+        run_image=
+      fi
+    fi
+    if [ -z "$run_image" ]; then
+      run_image="$image"
+      if ! container_pull "$image"; then
+        echo 1 > "$log.status"
         stage_ok=0
-        if [ "$install_rc" = 75 ] && [ -f "$outcome_dir/infra-skipped.json" ] && [ ! -e "$outcome_dir/outcome.json" ]; then
-          echo 0 > "$log.status"
+      elif [ "${image%@sha256:*}" = "alpine:edge" ]; then
+        chmod -R u+w "$outcome_dir" 2>/dev/null || true
+        rm -rf "$outcome_dir"
+        mkdir -p "$outcome_dir"
+        "$CONTAINER_ENGINE" rm -f "$ALPINE_INSTALL_CTR" >/dev/null 2>&1 || true
+        install_rc=0
+        "$CONTAINER_ENGINE" run --name "$ALPINE_INSTALL_CTR" --network host \
+          -e ALPINE_INSTALL_OUTCOME_DIR=/install-outcome \
+          -v "$PWD":/in:ro$Z -v "$outcome_dir:/install-outcome:rw$Z" \
+          "$image" sh -c "$ALPINE_INSTALL_INNER" || install_rc=$?
+        if [ "$install_rc" = 0 ]; then
+          if "$CONTAINER_ENGINE" commit "$ALPINE_INSTALL_CTR" "$ALPINE_INSTALLED_IMG" >/dev/null; then
+            "$CONTAINER_ENGINE" rm -f "$ALPINE_INSTALL_CTR" >/dev/null 2>&1 || true
+            run_image="$ALPINE_INSTALLED_IMG"
+          else
+            "$CONTAINER_ENGINE" rm -f "$ALPINE_INSTALL_CTR" >/dev/null 2>&1 || true
+            echo 1 > "$log.status"
+            stage_ok=0
+          fi
         else
-          echo "$install_rc" > "$log.status"
+          "$CONTAINER_ENGINE" rm -f "$ALPINE_INSTALL_CTR" >/dev/null 2>&1 || true
+          stage_ok=0
+          if [ "$install_rc" = 75 ] && [ -f "$outcome_dir/infra-skipped.json" ] && [ ! -e "$outcome_dir/outcome.json" ]; then
+            echo 0 > "$log.status"
+          else
+            echo "$install_rc" > "$log.status"
+          fi
         fi
       fi
     fi

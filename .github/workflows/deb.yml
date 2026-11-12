@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 # The runners have both; build.sh would pick podman, but rootful docker is
 # what it is tested with.
@@ -22,6 +23,7 @@ env:
   CONTAINER_ENGINE: docker
   CASSINI_HARNESS_BASES: ubuntu:26.04@sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6 debian:testing@sha256:bdb44a6e90e7ee02e032121a81fae9f945ce86b9454c6d0d71bc43cb595ba17f
   CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
+  GHCR_READ_TOKEN: ${{ github.token }}
 
 jobs:
   build:

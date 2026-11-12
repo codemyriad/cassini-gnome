@@ -22,12 +22,14 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 # The runners have both; the build scripts would pick podman, but rootful
 # docker is what they are tested with.
 env:
   CONTAINER_ENGINE: docker
   CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
+  GHCR_READ_TOKEN: ${{ github.token }}
 
 jobs:
   rpm:

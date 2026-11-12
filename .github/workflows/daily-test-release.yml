@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 # Serialize reservations and publication across scheduled and manual slots; never retry silently.
 concurrency:
@@ -17,6 +18,7 @@ concurrency:
 
 env:
   CONTAINER_ENGINE: docker
+  GHCR_READ_TOKEN: ${{ github.token }}
 
 jobs:
   plan:

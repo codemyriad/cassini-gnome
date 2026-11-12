@@ -29,6 +29,14 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[2]
 PINS_FILE = Path("build-aux/ci/image-pins.json")
 
+_CI_DIR = str(Path(__file__).resolve().parent)
+if _CI_DIR not in sys.path:
+    sys.path.insert(0, _CI_DIR)
+import ci_images  # noqa: E402
+
+PREBUILT_SPECS = ci_images.PREBUILT_SPECS
+PREBUILT_INPUT_FILES = ci_images.PREBUILT_INPUT_FILES
+
 FIXED_IMAGES = (
     "ubuntu:26.04",
     "fedora:44",
@@ -82,7 +90,11 @@ IMAGE_TARGETS: dict[str, tuple[str, ...]] = {
     "build-aux/deb/build.sh": ("ubuntu:26.04",),
     "build-aux/deb/Dockerfile": ("ubuntu:26.04",),
     "build-aux/rpm/build.sh": ("fedora:44",),
+    "build-aux/rpm/Dockerfile": ("fedora:44",),
     "build-aux/arch/build.sh": ("archlinux:latest",),
+    "build-aux/arch/Dockerfile": ("archlinux:latest",),
+    "build-aux/ci/source.Dockerfile": ("ubuntu:26.04",),
+    "build-aux/ci/ubuntu-build.Dockerfile": ("ubuntu:26.04",),
     "Makefile": ("registry.opensuse.org/opensuse/tumbleweed:latest",),
     "tests/recording/Audio.Dockerfile": ("ubuntu:26.04",),
 }
@@ -138,6 +150,13 @@ def resolve_image(tag: str) -> dict[str, str]:
     return {"digest": digest, "amd64_digest": amd64_digest}
 
 
+def resolve_optional_digest(tag: str) -> str | None:
+    try:
+        return resolve_image(tag)["digest"]
+    except (OSError, subprocess.CalledProcessError, RuntimeError, ValueError):
+        return None
+
+
 def load_pins(root: Path = ROOT) -> dict:
     data = json.loads((root / PINS_FILE).read_text())
     images = data.get("images")
@@ -149,6 +168,25 @@ def load_pins(root: Path = ROOT) -> dict:
         for key in ("digest", "amd64_digest"):
             if not isinstance(entry.get(key), str) or not DIGEST_RE.fullmatch(entry[key]):
                 raise ValueError(f"{PINS_FILE}: {tag}.{key} is not a valid sha256 digest")
+    prebuilt = data.get("prebuilt_images")
+    expected_keys = {spec.key for spec in PREBUILT_SPECS}
+    if not isinstance(prebuilt, dict) or set(prebuilt) != expected_keys:
+        raise ValueError(f"{PINS_FILE}: expected prebuilt_images keys {sorted(expected_keys)}")
+    for spec in PREBUILT_SPECS:
+        entry = prebuilt[spec.key]
+        if not isinstance(entry, dict):
+            raise ValueError(f"{PINS_FILE}: prebuilt_images.{spec.key} must be an object")
+        if entry.get("repository") != spec.repository:
+            raise ValueError(f"{PINS_FILE}: prebuilt_images.{spec.key}.repository must be {spec.repository!r}")
+        if entry.get("base") != spec.base:
+            raise ValueError(f"{PINS_FILE}: prebuilt_images.{spec.key}.base must be {spec.base!r}")
+        if not isinstance(entry.get("base_digest"), str) or not DIGEST_RE.fullmatch(entry["base_digest"]):
+            raise ValueError(f"{PINS_FILE}: prebuilt_images.{spec.key}.base_digest is not a valid sha256 digest")
+        if not isinstance(entry.get("input_hash"), str) or not ci_images.INPUT_HASH_RE.fullmatch(entry["input_hash"]):
+            raise ValueError(f"{PINS_FILE}: prebuilt_images.{spec.key}.input_hash is not 16 lowercase hex chars")
+        digest = entry.get("digest")
+        if digest is not None and (not isinstance(digest, str) or not DIGEST_RE.fullmatch(digest)):
+            raise ValueError(f"{PINS_FILE}: prebuilt_images.{spec.key}.digest must be null or a valid sha256 digest")
     return data
 
 
@@ -420,6 +458,14 @@ def check_repo(root: Path = ROOT) -> list[str]:
         if path.is_file() and f"CASSINI_HARNESS_BASES: {expected_hb}" not in path.read_text():
             problems.append(f"{rel_path}: missing CASSINI_HARNESS_BASES: {expected_hb}")
 
+    for spec in PREBUILT_SPECS:
+        entry = pins["prebuilt_images"][spec.key]
+        expected_base_digest = pins["images"][spec.base]["digest"]
+        if entry["base_digest"] != expected_base_digest:
+            problems.append(
+                f"{PINS_FILE}: prebuilt_images.{spec.key}.base_digest out of sync with images[{spec.base!r}]"
+            )
+
     problems.extend(_check_rolling_nightly_wiring(root, pins))
 
     # Scan all workflows and Dockerfiles for any unpinned container:, FROM, or stray :latest image.
@@ -474,19 +520,68 @@ def check_repo(root: Path = ROOT) -> list[str]:
     return problems
 
 
-def bump_repo(root: Path = ROOT, resolver=resolve_image) -> None:
-    resolved = {tag: resolver(tag) for tag in IMAGES}
+def _build_prebuilt_pins(
+    root: Path,
+    resolved_images: dict[str, dict[str, str]],
+    prebuilt_resolver,
+) -> dict[str, dict[str, str | None]]:
+    prebuilt: dict[str, dict[str, str | None]] = {}
+    for spec in PREBUILT_SPECS:
+        base_digest = resolved_images[spec.base]["digest"]
+        input_hash = ci_images.compute_input_hash(spec, base_digest, root=root)
+        tag_ref = f"{spec.repository}:{input_hash}"
+        gh_digest = prebuilt_resolver(tag_ref)
+        if gh_digest is not None and not DIGEST_RE.fullmatch(gh_digest):
+            raise RuntimeError(f"{tag_ref}: invalid prebuilt digest {gh_digest!r}")
+        prebuilt[spec.key] = {
+            "repository": spec.repository,
+            "base": spec.base,
+            "base_digest": base_digest,
+            "input_hash": input_hash,
+            "digest": gh_digest,
+        }
+    return prebuilt
+
+
+def _write_pins_file(
+    root: Path,
+    resolved_images: dict[str, dict[str, str]],
+    prebuilt: dict[str, dict[str, str | None]],
+    *,
+    updated: str | None = None,
+) -> dict:
     pins = {
-        "updated": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d"),
+        "updated": updated or dt.datetime.now(dt.UTC).strftime("%Y-%m-%d"),
         "bump_command": "python3 build-aux/ci/pin_images.py --bump",
         "canary_exceptions": sorted(CANARY_EXEMPT_WORKFLOWS),
         "nightly_unpinned_rolling": list(ROLLING_IMAGES),
-        "images": resolved,
+        "images": resolved_images,
+        "prebuilt_images": prebuilt,
     }
     pins_path = root / PINS_FILE
     pins_path.parent.mkdir(parents=True, exist_ok=True)
     pins_path.write_text(json.dumps(pins, indent=2, sort_keys=False) + "\n")
+    return pins
+
+
+def bump_repo(root: Path = ROOT, resolver=resolve_image, prebuilt_resolver=None) -> None:
+    resolved = {tag: resolver(tag) for tag in IMAGES}
+    if prebuilt_resolver is None:
+        prebuilt_resolver = (
+            resolve_optional_digest if resolver is resolve_image else (lambda tag: resolver(tag)["digest"])
+        )
+    prebuilt = _build_prebuilt_pins(root, resolved, prebuilt_resolver)
+    pins = _write_pins_file(root, resolved, prebuilt)
     apply_pins(root=root, pins=pins)
+
+
+def sync_prebuilt_repo(root: Path = ROOT, prebuilt_resolver=resolve_optional_digest) -> None:
+    raw_data = json.loads((root / PINS_FILE).read_text())
+    images = raw_data.get("images")
+    if not isinstance(images, dict) or set(images) != set(IMAGES):
+        raise ValueError(f"{PINS_FILE}: expected images keys {sorted(IMAGES)}")
+    prebuilt = _build_prebuilt_pins(root, images, prebuilt_resolver)
+    _write_pins_file(root, images, prebuilt)
 
 
 def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
@@ -498,10 +593,18 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
         action="store_true",
         help="Resolve current OCI digests and update image-pins.json + targets",
     )
+    group.add_argument(
+        "--sync-prebuilt",
+        action="store_true",
+        help="Resolve GHCR digests for current prebuilt_images without bumping base images",
+    )
     args = parser.parse_args(argv)
 
-    if args.bump:
-        bump_repo(root=root)
+    if args.bump or args.sync_prebuilt:
+        if args.bump:
+            bump_repo(root=root)
+        else:
+            sync_prebuilt_repo(root=root)
         problems = check_repo(root=root)
         if problems:
             for p in problems:

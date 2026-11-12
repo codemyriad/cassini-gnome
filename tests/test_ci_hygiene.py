@@ -461,6 +461,8 @@ def test_runner_variables_move_the_intended_jobs():
     }
     hosted_only = {
         ("cache-hygiene.yml", "prune"),  # holds an actions: write token: never on the pool
+        ("ci-images.yml", "build"),  # holds a packages: write token: never on the pool
+        ("ci-images.yml", "matrix"),
         ("ci.yml", "changes"),
         ("ci.yml", "pytest-coverage"),
         ("daily-test-release.yml", "outcome"),
@@ -709,7 +711,8 @@ def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
     products = dict(jobs(WORKFLOWS / "build.yml"))["products"]
     for line in ("meson test -C _build-core --print-errorlogs", "meson compile -C _build-core cassini-talk-pot"):
         assert line in tests and line not in products
-    assert re.search(r"container: ubuntu:26\.04@sha256:[0-9a-f]{64}\b", tests) and not re.search(
+    assert not re.search(r"^\s+container:", tests, re.M) and not re.search(r"^\s+container:", products, re.M)
+    assert re.search(r"prepare_build_image\.py ubuntu:26\.04@sha256:[0-9a-f]{64}\b", tests) and not re.search(
         r"^    if:", tests, re.M
     )
     for step in re.split(r"^      - ", tests, flags=re.M)[1:]:
@@ -1032,6 +1035,7 @@ def test_all_ci_container_images_are_digest_pinned_and_bump_script_validates(tmp
     to_copy = {
         pin_images.PINS_FILE.as_posix(),
         *pin_images.IMAGE_TARGETS,
+        *pin_images.PREBUILT_INPUT_FILES,
         *pin_images.HARNESS_WORKFLOWS,
         *pin_images.RELEASE_GATE_SCRIPTS,
         *[p.relative_to(ROOT).as_posix() for p in (ROOT / ".github/workflows").glob("*.yml")],
@@ -1080,7 +1084,7 @@ def test_all_ci_container_images_are_digest_pinned_and_bump_script_validates(tmp
     mutations = [
         (
             ".github/workflows/build.yml",
-            lambda s: re.sub(r"container: ubuntu:26\.04@sha256:[0-9a-f]{64}", "container: ubuntu:26.04", s),
+            lambda s: re.sub(r"ubuntu:26\.04@sha256:[0-9a-f]{64}", "ubuntu:26.04", s),
         ),
         (
             ".github/workflows/daily-test-release.yml",
@@ -1745,3 +1749,38 @@ def test_pr_diagnostic_evidence_artifacts_upload_only_on_failure():
     ux_shot = (WORKFLOWS / "ux-shot.yml").read_text()
     assert ux_shot.index("- name: Compare UI screenshots against main baseline") < ux_shot.index("name: pr-shots")
     assert ux_shot.index("name: pr-shots") < ux_shot.index("name: ux-boards")
+
+
+def _permission_package_modes(text: str) -> list[str]:
+    modes: list[str] = []
+    perm_indent: int | None = None
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(stripped)
+        if perm_indent is not None and indent <= perm_indent:
+            perm_indent = None
+        if re.match(r"^permissions:\s*$", stripped):
+            perm_indent = indent
+        elif perm_indent is not None and (m := re.match(r"^packages:\s*(\S+)", stripped)):
+            modes.append(m.group(1).strip())
+    return modes
+
+
+def test_ghcr_package_writes_are_restricted_to_main_and_schedule_hosted_jobs():
+    write_locations: list[str] = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        text = workflow.read_text()
+        for mode in _permission_package_modes(text):
+            assert mode in ("read", "write"), (workflow.name, mode)
+            if mode == "write":
+                write_locations.append(workflow.name)
+                header = text.split("\njobs:\n", 1)[0]
+                assert "pull_request" not in header, workflow.name
+                for job_name, block in jobs(workflow):
+                    if "write" in _permission_package_modes(block):
+                        assert "runs-on: ubuntu-26.04" in block and "vars." not in block, (workflow.name, job_name)
+                        assert "github.ref == 'refs/heads/main'" in block, (workflow.name, job_name)
+                        assert "github.event_name != 'pull_request'" in block, (workflow.name, job_name)
+    assert write_locations == ["ci-images.yml"]

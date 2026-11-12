@@ -38,17 +38,24 @@ TAG=cassini-talk-deb:$(image_slug "$BASE")
 # The pinned writing-down artifacts; the package build itself is offline.
 build-aux/whistle-cache.sh
 build-aux/sherpa-cache.sh
-container_pull "$BASE"
-# The image only installs the build dependencies (no build, no test), so a
-# mirror failure while building it is retried as a whole (retry.sh).
-# Keep dependency-install output: quiet mode hides apt/mk-build-deps failures,
-# leaving only a Dockerfile line and an exit code in CI.
-retry container_build -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
+# Use the @sha256-pinned prebuilt GHCR image when debian/control + Dockerfile
+# match build-aux/ci/image-pins.json; otherwise build locally from $BASE so a PR
+# that modifies Build-Depends validates its change immediately.
+BUILD_IMAGE=$(python3 build-aux/ci/ci_images.py pull deb "$BASE" || true)
+if [ -z "$BUILD_IMAGE" ]; then
+  container_pull "$BASE"
+  # The image only installs the build dependencies (no build, no test), so a
+  # mirror failure while building it is retried as a whole (retry.sh).
+  # Keep dependency-install output: quiet mode hides apt/mk-build-deps failures,
+  # leaving only a Dockerfile line and an exit code in CI.
+  retry container_build -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
+  BUILD_IMAGE=$TAG
+fi
 mkdir -p dist
 logs=$(test_log_dir "deb-$(image_slug "$BASE")")
 pkg_cache_init
 # shellcheck disable=SC2086 # PKG_CACHE_MOUNTS is a list of run options
-container_run $PKG_CACHE_MOUNTS -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/logs:rw$Z"} -e DEB="$DEB" -e OUT="$OUT" -e NOCHECK="$NOCHECK" "$TAG" sh -ec '
+container_run $PKG_CACHE_MOUNTS -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/logs:rw$Z"} -e DEB="$DEB" -e OUT="$OUT" -e NOCHECK="$NOCHECK" "$BUILD_IMAGE" sh -ec '
   . /in/build-aux/ci/retry.sh
   # Keep the Meson test logs, also when a test fails (test_log_dir).
   save_logs() {
@@ -84,6 +91,7 @@ container_run $PKG_CACHE_MOUNTS -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${lo
 # The build container has every Build-Depends installed, which can hide a
 # missing Depends; install the package in a fresh container, then check it
 # there with no network, writing the D11 goldens down offline.
+container_pull "$BASE"
 # shellcheck disable=SC2086 # PKG_CACHE_MOUNTS is a list of run options
 container_offline_smoke "$BASE" '
   . /ci/retry.sh

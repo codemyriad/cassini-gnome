@@ -32,11 +32,15 @@ mkdir -p dist
 # Per base image, so parallel builds (make -j packages) do not swap names.
 name_file=.rpm-name-$(image_slug "$BASE")
 logs=$(test_log_dir "rpm-$(image_slug "$BASE")")
-container_pull "$BASE"
+BUILD_IMAGE=$(python3 build-aux/ci/ci_images.py pull rpm "$BASE" || true)
+if [ -z "$BUILD_IMAGE" ]; then
+  container_pull "$BASE"
+  BUILD_IMAGE=$BASE
+fi
 pkg_cache_init
 # Only the package installs reach the network; each is retried (retry.sh).
 # shellcheck disable=SC2086 # PKG_CACHE_MOUNTS is a list of run options
-container_run $PKG_CACHE_MOUNTS -e VERSION="$VERSION" -e NAME_FILE="$name_file" -e NOCHECK="$NOCHECK" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BASE" sh -ec '
+container_run $PKG_CACHE_MOUNTS -e VERSION="$VERSION" -e NAME_FILE="$name_file" -e NOCHECK="$NOCHECK" -v "$PWD":/in:ro$Z -v "$PWD/dist":/out:rw$Z ${logs:+-v "$logs:/logs:rw$Z"} "$BUILD_IMAGE" sh -ec '
   . /in/build-aux/ci/retry.sh
   top=/build/rpmbuild src=/build/cassini-talk-$VERSION
   # Keep the Meson test logs (test_log_dir). After a successful build rpm
@@ -55,24 +59,28 @@ container_run $PKG_CACHE_MOUNTS -e VERSION="$VERSION" -e NAME_FILE="$name_file" 
   mkdir -p $top/SOURCES $top/SPECS "$src"
   spec=$top/SPECS/cassini-talk.spec
   install -m 644 /in/build-aux/rpm/cassini-talk.spec "$spec"
-  if command -v dnf >/dev/null 2>&1; then
-    # The minimal Fedora image otherwise installs only en_US translations.
-    mkdir -p /etc/rpm
-    printf "%%_install_langs en:it:fr:es:pt_BR:pt_PT\n" > /etc/rpm/macros.zz-cassini-languages
-    # Keep downloaded packages in the shared cache for the clean-install step (pkg_cache_init).
-    printf "keepcache=True\n" >> /etc/dnf/dnf.conf
-    retry dnf -y install rpm-build tar xz "dnf-command(builddep)"
-    retry dnf -y --setopt=install_weak_deps=False builddep "$spec"
-    retry dnf -y install rpmlint || true
+  if [ ! -f /etc/cassini-rpm-deps-installed ]; then
+    if command -v dnf >/dev/null 2>&1; then
+      # The minimal Fedora image otherwise installs only en_US translations.
+      mkdir -p /etc/rpm
+      printf "%%_install_langs en:it:fr:es:pt_BR:pt_PT\n" > /etc/rpm/macros.zz-cassini-languages
+      # Keep downloaded packages in the shared cache for the clean-install step (pkg_cache_init).
+      printf "keepcache=True\n" >> /etc/dnf/dnf.conf
+      retry dnf -y install rpm-build tar xz "dnf-command(builddep)"
+      retry dnf -y --setopt=install_weak_deps=False builddep "$spec"
+      retry dnf -y install rpmlint || true
+    elif command -v zypper >/dev/null 2>&1; then
+      retry sh /in/build-aux/ci/prepare_tumbleweed.sh
+      retry zypper -n install rpm-build tar xz
+      requires=$(rpmspec -q --buildrequires "$spec" | tr -d " ")
+      # Word splitting is wanted: one argument per BuildRequires.
+      retry zypper -n install $requires
+      retry zypper -n install rpmlint || true
+    else
+      echo "error: no dnf or zypper in this image" >&2; exit 1
+    fi
   elif command -v zypper >/dev/null 2>&1; then
     retry sh /in/build-aux/ci/prepare_tumbleweed.sh
-    retry zypper -n install rpm-build tar xz
-    requires=$(rpmspec -q --buildrequires "$spec" | tr -d " ")
-    # Word splitting is wanted: one argument per BuildRequires.
-    retry zypper -n install $requires
-    retry zypper -n install rpmlint || true
-  else
-    echo "error: no dnf or zypper in this image" >&2; exit 1
   fi
 
   # Source1-5, named after their pinned URLs, from .whistle-cache: every
@@ -124,6 +132,7 @@ rpm_name=$(cat "dist/$name_file") && rm -f "dist/$name_file"
 # The build container has every BuildRequires installed, which can hide a
 # missing Requires; install the package in a fresh container, then check it
 # there with no network, writing the D11 goldens down offline.
+container_pull "$BASE"
 # shellcheck disable=SC2086 # PKG_CACHE_MOUNTS is a list of run options
 container_offline_smoke "$BASE" '
   . /ci/retry.sh
