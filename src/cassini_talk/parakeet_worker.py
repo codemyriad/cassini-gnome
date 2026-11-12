@@ -50,7 +50,12 @@ def main(bundle, model_path, runtime_path):
 
         options = message.get("diarization")
         summary = process_tracks(
-            model, tracks, bundle / "silero_vad.onnx", emit, extra_seconds=estimate(tracks, options)
+            model,
+            tracks,
+            bundle / "silero_vad.onnx",
+            emit,
+            extra_seconds=estimate(tracks, options),
+            recognition_cache=message.get("recognitionCache"),
         )
         summary = complete(summary, tracks, options, emit)
         emit("complete", model=MODEL_TAG, **summary)

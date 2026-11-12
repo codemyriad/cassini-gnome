@@ -27,10 +27,38 @@ build = Path(os.environ["CASSINI_TEST_BUILD"])
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-talk.gresource")))
 sys.path.insert(0, str(ROOT / "tests"))
 from desktop_services import DesktopServices  # noqa: E402
+from painted import painted_node  # noqa: E402
 
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
 from cassini_talk.library_window import LibraryWindow  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
+
+
+def shot(window, suffix):
+    out = os.environ.get("CASSINI_SCREENSHOT_OUT")
+    if not out:
+        return
+    target = Path(out)
+    settings = Gtk.Settings.get_default()
+    previous_anim = settings.props.gtk_enable_animations
+    manager = Adw.StyleManager.get_default()
+    previous_scheme = manager.get_color_scheme()
+    settings.props.gtk_enable_animations = False
+    try:
+        for scheme, extra in ((Adw.ColorScheme.FORCE_LIGHT, ""), (Adw.ColorScheme.FORCE_DARK, "-dark")):
+            manager.set_color_scheme(scheme)
+            until(lambda: not window.meeting_page or window.meeting_page._style_source == 0)
+            frames = []
+            window.add_tick_callback(lambda *_, frames=frames: (frames.append(True), len(frames) < 3)[1])
+            window.queue_draw()
+            until(lambda frames=frames: len(frames) >= 2)
+            node = painted_node(window)
+            texture = window.get_renderer().render_texture(node, node.get_bounds())
+            assert texture.save_to_png(str(target.with_name(target.stem + suffix + extra + ".png")))
+    finally:
+        manager.set_color_scheme(previous_scheme)
+        settings.props.gtk_enable_animations = previous_anim
+        until(lambda: not window.meeting_page or window.meeting_page._style_source == 0)
 
 
 def until(check):
@@ -147,24 +175,85 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not window.player.playing
     # D26: both surfaces explain a completed empty transcript and run the
     # normal write-down action. No real model, device or user Library is used.
-    with patch.object(window.monitor, "callback", lambda _snapshot: None):
+    with (
+        patch.object(window.monitor, "callback", lambda _snapshot: None),
+        patch.object(window, "_source_snapshot", window._source_snapshot),
+        patch.object(window, "snapshot", window.snapshot),
+    ):
         from dataclasses import replace
         from types import SimpleNamespace
+
+        base_snapshot = window._source_snapshot
+
+        def sync_snapshot(current):
+            updated = replace(
+                base_snapshot,
+                meetings=tuple(current if m.key == current.key else m for m in base_snapshot.meetings),
+            )
+            window._source_snapshot = updated
+            window._updated(updated)
 
         # Queued/running meetings must explain the wait even before the first
         # words arrive, and keep showing it alongside a growing transcript.
         queued = replace(meeting, words=(), turns=(), preview_turns=(), transcript="queued", eta_minutes=None)
-        page.update(queued)
+        sync_snapshot(queued)
         assert "Transcribing…" in labels(page.lines), "Queued without words must show progress immediately"
         assert not page.write_button.get_visible()
         running = replace(meeting, transcript="running", eta_minutes=3)
-        page.update(running)
+        sync_snapshot(running)
         assert "Transcribing, about 3 minutes left" in labels(page.lines)
         assert page._turns == running.turns, "Progress must not hide already written words"
-        page.update(replace(running, eta_minutes=0))
+        assert page.stop_transcription_button is not None and page.stop_transcription_button.get_label() == "Stop"
+        assert page.stop_transcription_button.get_sensitive()
+        shot(window, "-transcribing")
+        with patch.object(app, "stop_transcription") as stop_call:
+            page.stop_transcription_button.emit("clicked")
+            stop_call.assert_called_once_with(running)
+        app._transcription_stops.add(app._stop_key(running))
+        try:
+            page.update(running)
+            assert page.stop_transcription_button is not None and not page.stop_transcription_button.get_sensitive()
+        finally:
+            app._transcription_stops.clear()
+        stopped_partial = replace(meeting, transcript="none", eta_minutes=None)
+        sync_snapshot(stopped_partial)
+        assert page.stop_transcription_button is None
+        assert page.write_button.get_visible() and page.write_button.get_label() == "Write it down"
+        assert page._turns == stopped_partial.turns, "Stopping transcription must keep partial words visible"
+        shot(window, "-stopped")
+        sync_snapshot(replace(running, eta_minutes=0))
         assert "Transcribing, less than a minute left" in labels(page.lines), "ETA-only refresh must update"
-        page.update(replace(meeting, transcript="done", eta_minutes=None))
+        sync_snapshot(replace(meeting, transcript="done", eta_minutes=None))
         assert not any(value.startswith("Transcribing") for value in labels(page.lines))
+
+        # Library preview also offers Stop while queued/running and restores Write it down once stopped.
+        settings = Gtk.Settings.get_default()
+        previous_anim = settings.props.gtk_enable_animations
+        settings.props.gtk_enable_animations = False
+        try:
+            sync_snapshot(running)
+            window.back_to_library()
+            until(lambda: window.meeting_page is None and window.navigation.get_visible_page() is not None)
+            window.rows.select_row(window._row_by_key[running.key])
+            until(lambda: window.selected is not None and window.selected.key == running.key)
+            assert (
+                window.stop_transcription_button is not None and window.stop_transcription_button.get_label() == "Stop"
+            )
+            assert window.stop_transcription_button.get_sensitive()
+            shot(window, "-library-transcribing")
+            with patch.object(app, "stop_transcription") as stop_call:
+                window.stop_transcription_button.emit("clicked")
+                stop_call.assert_called_once_with(running)
+            window._selected(None, SimpleNamespace(meeting=stopped_partial))
+            assert window.stop_transcription_button is None
+            assert "Write it down" in labels(window.preview)
+            window._source_snapshot = base_snapshot
+            window._updated(base_snapshot)
+            window.open_meeting(meeting)
+            page = window.meeting_page
+            until(lambda: page.list.ready)
+        finally:
+            settings.props.gtk_enable_animations = previous_anim
 
         empty = replace(meeting, words=(), turns=(), preview_turns=(), transcript="done", eta_minutes=None)
         assert empty.no_speech and empty.can_write_down
@@ -385,6 +474,9 @@ with tempfile.TemporaryDirectory() as temporary:
     class Controller(GObject.Object):
         __gsignals__ = {name: (GObject.SignalFlags.RUN_LAST, None, (str,)) for name in ("finished", "error")}
         pipeline = object()
+        session = None
+        line = None
+        minutes_left = None
 
         def stop(self):
             self.pipeline = None

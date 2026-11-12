@@ -219,3 +219,109 @@ def test_fir_slice_boundaries_keep_scalar_pcm_bytes(length, low, first, last):
                 total += float(coefficient) * float(samples[index])
         expected.append(total)
     assert fir_values(samples, low, first, last).tobytes() == np.asarray(expected, dtype="<f4").tobytes()
+
+
+def test_recognition_cache_skips_cached_segments_and_invalidates_on_model_mismatch(tmp_path, monkeypatch):
+    import json
+    import wave
+
+    from cassini_talk import speech_pipeline as pipeline
+
+    path = tmp_path / "two-segments.wav"
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        # Segment 1 (0..0.5s speech), 1.0s silence (0.5..1.5s), Segment 2 (1.5..2.0s speech).
+        speech_a = np.full(8000, 4000, dtype="<i2")
+        silence = np.zeros(16000, dtype="<i2")
+        speech_b = np.full(8000, 6000, dtype="<i2")
+        wav.writeframes(np.concatenate((speech_a, silence, speech_b)).tobytes())
+
+    class Detector:
+        frame_size = 512
+        runtime = dict(inputStage="fake")
+
+        def __init__(self, *_args):
+            pass
+
+        def probability(self, frame):
+            return 1.0 if float(np.abs(frame).max()) > 0.01 else 0.0
+
+        def reset(self):
+            pass
+
+    monkeypatch.setattr(pipeline, "SpeechDetector", Detector)
+    transcribe_calls = []
+
+    class Model:
+        def transcribe(self, samples, language, word_timestamps):
+            assert language is None and word_timestamps is True
+            idx = len(transcribe_calls)
+            transcribe_calls.append(float(np.abs(samples).mean()))
+            label = "first" if idx % 2 == 0 else "second"
+            return dict(text=label, language="en", words=[dict(word=label, start=0.05, end=0.25)])
+
+    initial_events = []
+    pipeline.process_tracks(
+        Model(),
+        [dict(id="mic", path=str(path), offsetMs=0)],
+        None,
+        lambda kind, **values: initial_events.append(dict(type=kind, **values)),
+    )
+    progress_events = [e for e in initial_events if e["type"] == "progress"]
+    assert len(progress_events) == 2 and len(transcribe_calls) == 2
+    first_entry = progress_events[0]["cacheEntry"]
+
+    cache_file = tmp_path / ".recognition-cache.json"
+    cache_file.write_text(
+        json.dumps(
+            dict(
+                format=pipeline.RECOGNITION_CACHE_FORMAT,
+                model="whistle",
+                segments={
+                    first_entry["key"]: {
+                        "text": first_entry["text"],
+                        "words": first_entry["words"],
+                        "language": first_entry["language"],
+                    }
+                },
+            )
+        )
+    )
+
+    resumed_calls = []
+
+    class ResumedModel:
+        def transcribe(self, samples, language, word_timestamps):
+            resumed_calls.append(len(samples))
+            return dict(text="second", language="en", words=[dict(word="second", start=0.05, end=0.25)])
+
+    resumed_events = []
+    pipeline.process_tracks(
+        ResumedModel(),
+        [dict(id="mic", path=str(path), offsetMs=0)],
+        None,
+        lambda kind, **values: resumed_events.append(dict(type=kind, **values)),
+        recognition_cache=dict(path=str(cache_file), model="whistle"),
+    )
+    resumed_progress = [e for e in resumed_events if e["type"] == "progress"]
+    assert len(resumed_calls) == 1, "Cached first segment must skip neural inference"
+    assert [e["words"] for e in resumed_progress] == [e["words"] for e in progress_events]
+    assert "cacheEntry" not in resumed_progress[0] and "cacheEntry" in resumed_progress[1]
+
+    mismatch_calls = []
+
+    class MismatchModel:
+        def transcribe(self, samples, language, word_timestamps):
+            mismatch_calls.append(len(samples))
+            return dict(text="recomputed", language="en", words=[dict(word="recomputed", start=0.05, end=0.25)])
+
+    pipeline.process_tracks(
+        MismatchModel(),
+        [dict(id="mic", path=str(path), offsetMs=0)],
+        None,
+        lambda *_args, **_kw: None,
+        recognition_cache=dict(path=str(cache_file), model="parakeet@different"),
+    )
+    assert len(mismatch_calls) == 2, "Model mismatch must ignore stale recognition cache"

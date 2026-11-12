@@ -74,6 +74,7 @@ class CassiniApplication(Adw.Application):
         self.voice_store = VoiceStore(changed=lambda: GLib.idle_add(self._voices_changed))
         self.voice_backfill = None
         self._transcription_holds = 0
+        self._transcription_stops = set()
         self._transcription_generation = 0
         self._quitting = False
         self._exit_begun = False  # begin_exit ran: services are shut down for good.
@@ -1452,11 +1453,61 @@ class CassiniApplication(Adw.Application):
             self._transcription_holds += 1
             self.hold()
 
-    def write_down(self, meeting, *, resume=False):
+    def _stop_key(self, meeting):
+        directory = Path(getattr(meeting, "directory", meeting))
+        try:
+            return str(directory.resolve())
+        except OSError:
+            return str(directory.absolute())
+
+    def transcription_stopping(self, meeting):
+        return self._stop_key(meeting) in self._transcription_stops
+
+    def _refresh_transcription_controls(self):
+        for window in self.get_windows():
+            if hasattr(window, "_updated"):
+                snapshot = getattr(window, "_source_snapshot", None) or getattr(window, "snapshot", None)
+                if snapshot is not None:
+                    window._updated(snapshot)
+
+    def stop_transcription(self, meeting):
         if self._quitting or self._capture_exiting:
             return
         directory = getattr(meeting, "directory", meeting)
         if self.meeting_trash.hides(directory):
+            return
+        key = self._stop_key(directory)
+        if key in self._transcription_stops:
+            return
+        self._transcription_stops.add(key)
+        self._refresh_transcription_controls()
+        generation = self._transcription_generation
+        queue = self._ensure_transcriber()
+
+        def finished():
+            def complete():
+                self._transcription_stops.discard(key)
+                if generation == self._transcription_generation:
+                    self._refresh_transcription_controls()
+                    if self._transcription_holds:
+                        self._transcription_holds -= 1
+                        self.release()
+                return False
+
+            GLib.idle_add(complete)
+
+        if queue.stop(directory, done=finished):
+            self._transcription_holds += 1
+            self.hold()
+        else:
+            self._transcription_stops.discard(key)
+            self._refresh_transcription_controls()
+
+    def write_down(self, meeting, *, resume=False):
+        if self._quitting or self._capture_exiting:
+            return
+        directory = getattr(meeting, "directory", meeting)
+        if self.meeting_trash.hides(directory) or self.transcription_stopping(directory):
             return
         self._ensure_transcriber()
         if self.transcriber.enqueue(directory, resume=resume):
@@ -1585,6 +1636,7 @@ class CassiniApplication(Adw.Application):
                 )
                 and meeting.lifecycle == "saved"
                 and meeting.transcript in ("queued", "running")
+                and not self.transcription_stopping(meeting)
             ):
                 self.write_down(meeting, resume=True)
             elif should_auto_write(meeting, previous):
@@ -1685,6 +1737,7 @@ class CassiniApplication(Adw.Application):
         if getattr(self, "library_recovery", None):
             self.library_recovery.close()
         self._transcription_generation += 1
+        self._transcription_stops.clear()
         if getattr(self, "_capture_background", False):
             self._capture_background = False
             self.release()

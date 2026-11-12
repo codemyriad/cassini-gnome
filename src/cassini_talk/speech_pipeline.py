@@ -24,6 +24,7 @@ import numpy as np
 from . import placement
 
 RATE = 16000
+RECOGNITION_CACHE_FORMAT = "cassini.recognition-cache.v1"
 FIR = json.loads(Path(__file__).with_name("fir-48k-16k.json").read_text())
 TAPS = np.asarray(FIR["coefficients"], dtype="<f4")
 
@@ -364,10 +365,73 @@ def segment_ranges(path, detector, heartbeat=None, *, chunks=None):
     return ranges
 
 
-def recognise_segment(model, path, segment, offset_ms=0, *, samples=None, audio_end_ms=None):
+def _segment_cache_key(input_hash, offset_ms, segment, audio_end_ms, presence):
+    return hashlib.sha256(
+        json.dumps(
+            [
+                input_hash,
+                offset_ms,
+                segment["startSample"],
+                segment["endSample"],
+                segment.get("reason"),
+                audio_end_ms,
+                presence,
+            ],
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+
+def _valid_cached_entry(key, entry):
+    return (
+        isinstance(key, str)
+        and len(key) == 64
+        and isinstance(entry, dict)
+        and isinstance(entry.get("text"), str)
+        and isinstance(entry.get("language"), str)
+        and isinstance(entry.get("words"), list)
+        and len(entry["words"]) <= 10000
+        and all(
+            isinstance(w, dict)
+            and type(w.get("startMs")) is int
+            and type(w.get("endMs")) is int
+            and 0 <= w["startMs"] <= w["endMs"]
+            and isinstance(w.get("text"), str)
+            and bool(w["text"])
+            for w in entry["words"]
+        )
+    )
+
+
+def read_recognition_cache(options):
+    if not isinstance(options, dict):
+        return {}
+    path, model = options.get("path"), options.get("model")
+    if not isinstance(path, str) or not path or not isinstance(model, str) or not model:
+        return {}
+    from .received import regular_input
+
+    try:
+        with regular_input(path) as stream:
+            raw = stream.read(16 * 1024 * 1024 + 1)
+        if len(raw) > 16 * 1024 * 1024:
+            return {}
+        value = json.loads(raw)
+        if value.get("format") != RECOGNITION_CACHE_FORMAT or value.get("model") != model:
+            return {}
+        segments = value.get("segments")
+        if not isinstance(segments, dict) or len(segments) > 100000:
+            return {}
+        return {k: v for k, v in segments.items() if _valid_cached_entry(k, v)}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {}
+
+
+def recognise_segment(model, path, segment, offset_ms=0, *, samples=None, audio_end_ms=None, input_hash=None):
     if samples is None:
         samples = np.concatenate(list(resampled_chunks(path, segment["startSample"], segment["endSample"])))
-    input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
+    if input_hash is None:
+        input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
     result = model.transcribe(samples, language=None, word_timestamps=True)
     # D55: session ms of the segment's first 16 kHz sample, from the one placement. G11: a
     # word ends within the PCM it was recognised from, counted in whole ms from that first
@@ -446,12 +510,13 @@ def placed_offset(track, diagnostics):
     return offset
 
 
-def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
+def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recognition_cache=None):
     """One complete queue job; all inference and floating PCM stay in the child."""
     import time
 
     from . import recognition_fallback as fallback
 
+    cached_segments = read_recognition_cache(recognition_cache)
     detector = SpeechDetector(vad_model)
     plan = []
     meters = {}
@@ -496,20 +561,42 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
 
     def recognise(order, track, segment, offset, samples, audio_end):
         nonlocal elapsed, processed, remaining
-        started = time.monotonic()
-        value, words, detected, input_hash = recognise_segment(
-            model, track["path"], segment, offset, samples=samples, audio_end_ms=audio_end
-        )
-        # D63 #3: a word outside its track's presence is never written, on either
-        # path, so it neither counts as a VAD word nor joins a fallback window.
-        kept = present_words(words, track.get("sessionPresence"))
-        if len(kept) != len(words):
-            words, value = kept, dict(value, text=" ".join(word["text"] for word in kept))
-        elapsed += time.monotonic() - started
+        input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
+        presence = track.get("sessionPresence")
+        cache_key = _segment_cache_key(input_hash, offset, segment, audio_end, presence)
+        cached = cached_segments.get(cache_key)
         seconds = (segment["endSample"] - segment["startSample"]) / RATE
-        processed += seconds
-        remaining = max(0, remaining - seconds)
-        factor = elapsed / processed if processed else initial_factor
+        if cached is not None:
+            words = [dict(word) for word in cached["words"]]
+            detected = cached["language"]
+            value = dict(segment, text=cached["text"])
+            remaining = max(0, remaining - seconds)
+            factor = elapsed / processed if processed else initial_factor
+            cache_entry = None
+        else:
+            started = time.monotonic()
+            value, words, detected, input_hash = recognise_segment(
+                model,
+                track["path"],
+                segment,
+                offset,
+                samples=samples,
+                audio_end_ms=audio_end,
+                input_hash=input_hash,
+            )
+            # D63 #3: a word outside its track's presence is never written, on either
+            # path, so it neither counts as a VAD word nor joins a fallback window.
+            kept = present_words(words, presence)
+            if len(kept) != len(words):
+                words, value = kept, dict(value, text=" ".join(word["text"] for word in kept))
+            elapsed += time.monotonic() - started
+            processed += seconds
+            remaining = max(0, remaining - seconds)
+            factor = elapsed / processed if processed else initial_factor
+            cache_entry = dict(
+                key=cache_key, text=value["text"], words=[dict(word) for word in words], language=detected
+            )
+            cached_segments[cache_key] = cache_entry
         return dict(
             inputSha256=input_hash,
             trackId=track["id"],
@@ -519,6 +606,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             language=detected,
             etaMinutes=eta(),
             realtimeFactor=factor,
+            **({"cacheEntry": cache_entry} if cache_entry is not None else {}),
         )
 
     by_order = {order: list(entries) for order, entries in groupby(plan, key=lambda entry: entry[0])}
@@ -560,7 +648,8 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
             for (start, end), samples in zip(windows, fallback.audio_windows(chunks, windows, beat), strict=True):
                 segment = dict(startSample=start, endSample=end, reason="noVadWindow")
                 event = recognise(order, track, segment, offset, samples, audio_end)
-                heartbeat(track)
+                entry = event.pop("cacheEntry", None)
+                notify("planning", trackId=track["id"], **({"cacheEntry": entry} if entry is not None else {}))
                 base = placement.word_ms(offset, start)
                 kept = fallback.energetic(event["words"], samples, base)
                 previous = events[-1]["segment"]["endSample"] if events else None
@@ -598,9 +687,10 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0):
                 if speaker not in held:
                     emit(event)
                     continue
+                entry = event.pop("cacheEntry", None)
                 held[speaker].append(event)
                 # Held events send nothing; keep the parent's reply deadline alive.
-                heartbeat(track)
+                notify("planning", trackId=track["id"], **({"cacheEntry": entry} if entry is not None else {}))
                 if not fallback.fires(frames[speaker], spoken[speaker]):
                     for event in held.pop(speaker):
                         emit(event)

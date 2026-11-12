@@ -1027,6 +1027,11 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.legacy_transcript_file,
             meeting.lifecycle,
             meeting.transcript,
+            (
+                self.get_application().transcription_stopping(meeting)
+                if self.get_application() and hasattr(self.get_application(), "transcription_stopping")
+                else False
+            ),
             meeting.eta_minutes,
             meeting.error,
             meeting.publication_notice,
@@ -1387,10 +1392,23 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         self.read_button.connect("clicked", lambda *_: self._open_selected())
         actions.append(self.read_button)
-        if writing and meeting.can_write_down and meeting.transcript == "none":
+        stopping = (
+            self.get_application().transcription_stopping(meeting)
+            if self.get_application() and hasattr(self.get_application(), "transcription_stopping")
+            else False
+        )
+        self.stop_transcription_button = None
+        if writing and meeting.can_write_down and meeting.transcript == "none" and not stopping:
             write = Gtk.Button(label=text("common.writeDown"))
             write.connect("clicked", lambda *_: self.get_application().write_down(meeting))
             actions.insert_child_after(write, self.play_button)
+        elif meeting.lifecycle == "saved" and meeting.metadata_editable and meeting.transcript in ("queued", "running"):
+            stop = self.stop_transcription_button = Gtk.Button(
+                label=text("common.stop"),
+                sensitive=not stopping,
+            )
+            stop.connect("clicked", lambda *_: self.get_application().stop_transcription(meeting))
+            actions.insert_child_after(stop, self.play_button)
         self.preview.append(actions)
         self.preview.append(Gtk.Separator(margin_top=4))
         self.preview.append(label(text("library.preview.transcriptHeading"), "small", "heading", "dim-label", xalign=0))

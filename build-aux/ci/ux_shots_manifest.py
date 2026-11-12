@@ -28,6 +28,7 @@ FLOW_SOURCES = (
     ("companion-health", "tests/ui/companion-health.py"), ("companion-setup-", "tests/ui/companion.py"),
     ("import-export-gui", "tests/ui/import-export.py"), ("interjections-", "tests/ui/interjections.py"),
     ("journey-parity", "tests/ui/journey-parity.py"), ("listening-rows", "tests/ui/listening-rows.py"),
+    ("meeting-gui-", "tests/ui/meeting.py"),
     ("recording-details-", "tests/ui/recording-details.py"), ("recording-gui", "tests/ui/recording.py"),
     ("rename", "tests/ui/rename.py"), ("spectrogram-browser", "tests/ui/spectrogram-browser.py"),
     ("spectrogram-components", "tests/ui/spectrogram.py"), ("spectrogram-", "tests/ui/spectrogram-live.py"),

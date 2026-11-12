@@ -784,3 +784,218 @@ def test_enqueue_resume_right_after_prepared_releases_lock_never_loses_resume_ha
     finally:
         allow_after_release.set()
         queue.close()
+
+
+def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_queued_job_finish(tmp_path):
+    from concurrent.futures import CancelledError
+
+    first = capture(tmp_path)
+    second = capture(tmp_path)
+    finished = Finished()
+    first_segment_emitted = threading.Event()
+    stop_completed = threading.Event()
+    second_started = threading.Event()
+    client_instances = []
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            self.cancelled = threading.Event()
+            self.closed = False
+            self.recognition_cache = None
+            client_instances.append(self)
+
+        def start(self):
+            return self
+
+        def cancel(self):
+            self.cancelled.set()
+
+        def close(self):
+            self.closed = True
+
+        def process_tracks(self, tracks, notify):
+            if Path(tracks[0]["path"]).parent == first.directory:
+                if self.recognition_cache and Path(self.recognition_cache["path"]).is_file():
+                    cached = json.loads(Path(self.recognition_cache["path"]).read_text())["segments"]
+                    assert "a" * 64 in cached
+                    notify(
+                        dict(
+                            type="progress",
+                            trackId=tracks[0]["id"],
+                            trackOrder=0,
+                            language="en",
+                            etaMinutes=1,
+                            words=[dict(startMs=0, endMs=300, text="Opening")],
+                        )
+                    )
+                    notify(
+                        dict(
+                            type="progress",
+                            trackId=tracks[0]["id"],
+                            trackOrder=0,
+                            language="en",
+                            etaMinutes=0,
+                            words=[dict(startMs=400, endMs=800, text="remarks.")],
+                            cacheEntry=dict(
+                                key="b" * 64,
+                                text="remarks.",
+                                words=[dict(startMs=400, endMs=800, text="remarks.")],
+                                language="en",
+                            ),
+                        )
+                    )
+                    return dict(diagnostics=[], segments=2)
+                notify(
+                    dict(
+                        type="progress",
+                        trackId=tracks[0]["id"],
+                        trackOrder=0,
+                        language="en",
+                        etaMinutes=2,
+                        words=[dict(startMs=0, endMs=300, text="Opening")],
+                        cacheEntry=dict(
+                            key="a" * 64,
+                            text="Opening",
+                            words=[dict(startMs=0, endMs=300, text="Opening")],
+                            language="en",
+                        ),
+                    )
+                )
+                first_segment_emitted.set()
+                durable(self.cancelled, "stop() did not cancel the active client")
+                raise CancelledError()
+            assert not self.cancelled.is_set(), "Queued job reused a cancelled client"
+            second_started.set()
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=0, endMs=500, text="Second meeting finished.")],
+                )
+            )
+            return dict(diagnostics=[], segments=1)
+
+    queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
+    try:
+        assert queue.enqueue(first.directory)
+        assert queue.enqueue(second.directory)
+        durable(first_segment_emitted, "first job never emitted its first segment")
+        assert queue.stop(first.directory, done=stop_completed.set)
+        durable(stop_completed, "stop() did not finish")
+        finished.wait(2, exactly=True)
+        assert second_started.is_set()
+        assert client_instances[0].closed
+
+        meetings = {m.directory: m for m in LibraryScanner(tmp_path).scan().meetings}
+        stopped = meetings[first.directory]
+        completed = meetings[second.directory]
+        assert stopped.transcript == "none" and stopped.can_write_down and stopped.error is None
+        assert stopped.eta_minutes is None
+        assert [w.text for w in stopped.words] == ["Opening"]
+        cache_path = first.directory / ".recognition-cache.json"
+        assert cache_path.is_file()
+        assert set(json.loads(cache_path.read_text())["segments"]) == {"a" * 64}
+        assert completed.transcript == "done"
+        assert [w.text for w in completed.words] == ["Second meeting finished."]
+
+        # Resuming the stopped meeting reuses the saved recognition cache and cleans it up on completion.
+        assert queue.enqueue(first.directory)
+        finished.wait(3, exactly=True)
+        resumed = {m.directory: m for m in LibraryScanner(tmp_path).scan().meetings}[first.directory]
+        assert resumed.transcript == "done"
+        assert [w.text for w in resumed.words] == ["Opening", "remarks."]
+        assert not cache_path.exists()
+    finally:
+        queue.close()
+
+
+def test_stop_queued_and_published_library_v2_transcription(tmp_path):
+    from concurrent.futures import CancelledError
+
+    from cassini_talk.library_publication import capture_parent, publish_stopped
+
+    blocker = capture(tmp_path)
+    managed = capture(capture_parent(tmp_path))
+    assert publish_stopped(managed) is not None
+    published_session = managed.directory
+    blocker_started = threading.Event()
+    release_blocker = threading.Event()
+    queued_stopped = threading.Event()
+    running_started = threading.Event()
+    running_stopped = threading.Event()
+    finished = Finished()
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            self.cancelled = threading.Event()
+
+        def start(self):
+            return self
+
+        def cancel(self):
+            self.cancelled.set()
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            session_dir = Path(tracks[0].get("sessionDirectory") or Path(tracks[0]["path"]).parent)
+            if session_dir == blocker.directory:
+                blocker_started.set()
+                durable(release_blocker, "blocker was not released")
+                return dict(diagnostics=[], segments=0)
+            running_started.set()
+            if not self.cancelled.is_set():
+                notify(
+                    dict(
+                        type="progress",
+                        trackId=tracks[0]["id"],
+                        trackOrder=0,
+                        language="en",
+                        etaMinutes=1,
+                        words=[dict(startMs=0, endMs=300, text="Published")],
+                        cacheEntry=dict(
+                            key="c" * 64,
+                            text="Published",
+                            words=[dict(startMs=0, endMs=300, text="Published")],
+                            language="en",
+                        ),
+                    )
+                )
+                durable(self.cancelled, "published running job was not cancelled")
+                raise CancelledError()
+            raise CancelledError()
+
+    queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
+    try:
+        assert queue.enqueue(blocker.directory)
+        durable(blocker_started, "blocker never started")
+        assert queue.enqueue(published_session)
+        until(
+            lambda: (
+                next(m for m in LibraryScanner(tmp_path).scan().meetings if m.directory == published_session).transcript
+                == "queued"
+            )
+        )
+        assert queue.stop(published_session, done=queued_stopped.set)
+        durable(queued_stopped, "queued v2 stop did not complete")
+        stopped_queued = next(m for m in LibraryScanner(tmp_path).scan().meetings if m.directory == published_session)
+        assert stopped_queued.transcript == "none" and stopped_queued.can_write_down
+        release_blocker.set()
+        finished.wait(2, exactly=True)
+
+        # Now start running transcription on the published v2 meeting and stop mid-run.
+        assert queue.enqueue(published_session)
+        durable(running_started, "published v2 job never started")
+        assert queue.stop(published_session, done=running_stopped.set)
+        durable(running_stopped, "running v2 stop did not complete")
+        finished.wait(3, exactly=True)
+        stopped_running = next(m for m in LibraryScanner(tmp_path).scan().meetings if m.directory == published_session)
+        assert stopped_running.transcript == "none" and stopped_running.can_write_down and stopped_running.error is None
+        assert (published_session / ".recognition-cache.json").is_file()
+    finally:
+        release_blocker.set()
+        queue.close()
