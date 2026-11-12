@@ -2,9 +2,9 @@ name: Daily test release
 
 on:
   schedule:
-    # 09:00, 14:00 and 20:00 Europe/Berlin: 08:00, 13:00, 19:00 UTC in winter (CET);
-    # becomes 07:00, 12:00, 18:00 UTC in summer time (CEST).
-    - cron: "0 8,13,19 * * *"
+    # GitHub's IANA timezone support follows CET/CEST without a seasonal workflow edit.
+    - cron: "0 9,14,20 * * *"
+      timezone: Europe/Berlin
   workflow_dispatch:
 
 permissions:

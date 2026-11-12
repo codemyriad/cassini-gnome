@@ -283,12 +283,28 @@ def find_actionlint() -> str | None:
     return str(fallback) if fallback.is_file() else None
 
 
+def parse_schedule_entries(workflow_text: str) -> list[dict[str, str]]:
+    on_block = workflow_text.split("\njobs:\n", 1)[0]
+    match = re.search(r"^  schedule:\n((?:    .*\n)+)", on_block, re.M)
+    if match is None:
+        return []
+    entries: list[dict[str, str]] = []
+    for raw_line in match[1].splitlines():
+        stripped = raw_line.split("#", 1)[0].rstrip()
+        if not stripped.strip():
+            continue
+        if first := re.fullmatch(r"    -\s*([a-z-]+):\s*(.+)", stripped):
+            entries.append({first[1]: first[2].strip().strip("\"'")})
+        elif cont := re.fullmatch(r"      ([a-z-]+):\s*(.+)", stripped):
+            entries[-1][cont[1]] = cont[2].strip().strip("\"'")
+    return entries
+
+
 def test_workflow_schedule_pinning_and_ci_push_unfiltered(tmp_path):
     daily_path = ROOT / ".github/workflows/daily-test-release.yml"
     release_path = ROOT / ".github/workflows/release.yml"
     daily = daily_path.read_text()
-    assert 'cron: "0 8,13,19 * * *"' in daily
-    assert "07:00, 12:00, 18:00 UTC in summer time" in daily
+    assert parse_schedule_entries(daily) == [{"cron": "0 9,14,20 * * *", "timezone": "Europe/Berlin"}]
     assert "workflow_dispatch:" in daily
     assert "cancel-in-progress: false" in daily
     # Every checkout in daily-test-release.yml pins an exact commit SHA (never floating main).
