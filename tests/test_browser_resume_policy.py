@@ -12,7 +12,14 @@ from cassini_talk.browser_capture import BrowserCapture
 from cassini_talk.browser_service import AudioTransport, BrowserConnection, BrowserService
 from cassini_talk.session_events import source_state
 
-CAPABILITIES = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1"]
+CAPABILITIES = [
+    "independent-sessions-v1",
+    "call-evidence-v1",
+    "page-state-v1",
+    "multi-stream-v1",
+    "resume-capture-v1",
+    "sender-me-v1",
+]
 
 
 @pytest.fixture

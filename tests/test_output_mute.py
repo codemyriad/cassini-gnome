@@ -488,6 +488,7 @@ def test_source_change_closes_history_before_slow_device_shutdown(tmp_path, monk
                 title="Retirement",
             ),
             others_source="system",
+            native_me=True,  # Me alone while the page is gone needs the app's microphone.
         )
         session = capture.host.session
         now = [1000.125]
