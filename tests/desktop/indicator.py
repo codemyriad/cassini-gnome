@@ -415,6 +415,7 @@ def browser_only(appid, microphone):
                 captureId=capture,
                 requestId=request_id,
                 microphone=microphone,
+                captureLocal=True,  # A sender-me-v1 companion records Me from the page sender.
                 timelineOriginMs=int(time.time() * 1000),
                 title="D41.1 browser-only privacy measurement",
             )
