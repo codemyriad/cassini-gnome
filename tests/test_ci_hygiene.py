@@ -1189,6 +1189,49 @@ def test_nightly_and_full_ci_perf_gates_are_wired_and_forwarded():
     recording = (WORKFLOWS / "recording.yml").read_text()
     assert "--test-skip-pattern" not in recording
     assert "- run: node --test browser-protocol/extension/tests/*.test.cjs" in recording
+    capture_steps = re.split(r"\n(?=      - )", dict(jobs(WORKFLOWS / "recording.yml"))["capture"])[1:]
+    host_pytest_steps = [
+        step
+        for step in capture_steps
+        if "name: Python tests with private data on the temporary-file filesystem" in step
+    ]
+    assert len(host_pytest_steps) == 1
+    host_pytest_if = re.search(r"^        if:\s*(.+)$", host_pytest_steps[0], re.M)
+    assert host_pytest_if is not None
+    rec_perf_expr = re.search(r"^  CASSINI_PERF_GATE:\s*(.+)$", recording, re.M).group(1)
+    for evt, act, lbls, expected_gate in (
+        ("pull_request", "opened", (), False),
+        ("pull_request", "synchronize", ("bug", "ui-shots"), False),
+        ("push", "", (), False),
+        ("schedule", "", (), True),
+        ("workflow_dispatch", "", (), True),
+        ("pull_request", "synchronize", ("full-ci",), True),
+        ("pull_request", "labeled", ("FULL-CI",), True),
+    ):
+        gate_val = str(_eval_actions_expr(rec_perf_expr, event=evt, action=act, labels=lbls))
+        assert gate_val == ("1" if expected_gate else ""), (evt, act, lbls, gate_val)
+        step_runs = bool(
+            _eval_actions_expr(
+                host_pytest_if.group(1),
+                event=evt,
+                action=act,
+                labels=lbls,
+                env={"CASSINI_PERF_GATE": gate_val},
+            )
+        )
+        assert step_runs is expected_gate, (evt, act, lbls, step_runs)
+    # Every capture scenario step in Recording/capture still runs unconditionally on PR and push.
+    unconditional_capture_markers = (
+        "node --test browser-protocol/extension/tests/*.test.cjs",
+        "node --test tests/recording/signal.test.mjs",
+        "tests/recording/native.py",
+        "tests/recording/browser.mjs",
+        "tests/recording/gtk.py",
+        "tests/recording/stall.py",
+    )
+    for marker in unconditional_capture_markers:
+        matching = [step for step in capture_steps if marker in step]
+        assert len(matching) == 1 and not re.search(r"^        if:", matching[0], re.M), marker
 
     exact_ui = (ROOT / "tests/ui/exact-transcript.py").read_text()
     assert "\n        assert not page.list.ready and 0 < first_rows < len(model.turns)" in exact_ui
@@ -1231,25 +1274,36 @@ def _eval_actions_expr(
     event: str = "pull_request",
     action: str = "synchronize",
     label: str = "",
+    labels: tuple[str, ...] = (),
     pr_number: int = 392,
     run_id: int = 100,
     needs_results: dict[str, str] | None = None,
     changes_outputs: dict[str, str] | None = None,
+    env: dict[str, str] | None = None,
     ancestors_ok: bool = True,
+    failed: bool = False,
+    cancelled: bool = False,
 ):
     py = expr.removeprefix("${{").removesuffix("}}").strip()
     for job_id in sorted((needs_results or {}), key=len, reverse=True):
         if "-" in job_id:
             py = py.replace(f"needs.{job_id}.", f"needs.{job_id.replace('-', '_')}.")
-    py = py.replace("always()", "True").replace("cancelled()", "False").replace("failure()", "False")
-    py = py.replace("success()", str(ancestors_ok))
+    py = re.sub(r"([A-Za-z0-9_.]+)\.\*\.([A-Za-z0-9_]+)", r"_star(\1, '\2')", py)
+    py = py.replace("always()", "True")
+    py = py.replace("cancelled()", str(cancelled))
+    py = py.replace("failure()", str(failed))
+    py = py.replace("success()", str(ancestors_ok and not failed and not cancelled))
     py = py.replace("&&", " and ").replace("||", " or ")
     py = re.sub(r"!(?!=)", " not ", py)
+    effective_labels = labels or ((label,) if label else ())
     event_ns = (
         SimpleNamespace(
             action=_CIString(action),
             label=SimpleNamespace(name=_CIString(label)),
-            pull_request=SimpleNamespace(number=pr_number),
+            pull_request=SimpleNamespace(
+                number=pr_number,
+                labels=[SimpleNamespace(name=_CIString(lbl)) for lbl in effective_labels],
+            ),
         )
         if event == "pull_request"
         else _NULL
@@ -1262,12 +1316,27 @@ def _eval_actions_expr(
             else _NULL
         )
         needs_dict[k.replace("-", "_")] = SimpleNamespace(result=_CIString(v), outputs=outputs_ns)
+    env_ns = SimpleNamespace(**{k: _CIString(v) for k, v in (env or {}).items()})
+
+    def _star(seq, attr: str):
+        return [getattr(item, attr) for item in seq] if isinstance(seq, list) else []
+
+    def _contains(search, item) -> bool:
+        if isinstance(search, list):
+            return any(_CIString(str(x)) == str(item) for x in search)
+        if isinstance(search, str):
+            return str(item).casefold() in search.casefold()
+        return False
+
     ctx = {
         "github": SimpleNamespace(event_name=_CIString(event), event=event_ns, run_id=run_id),
         "needs": SimpleNamespace(**needs_dict),
+        "env": env_ns,
         "True": True,
         "False": False,
         "format": lambda template, *args: template.format(*args),
+        "contains": _contains,
+        "_star": _star,
     }
     return eval(py, {"__builtins__": {}}, ctx)
 

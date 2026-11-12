@@ -55,8 +55,12 @@ jobs:
           key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}
       - run: tests/recording/node_modules/.bin/playwright install --with-deps chromium
       - name: Python tests with private data on the temporary-file filesystem
+        if: ${{ env.CASSINI_PERF_GATE == '1' }}
         run: |
           # GIO's home Trash must share a filesystem with the test Library.
+          # PR and main-push runs delegate the suite to the Ubuntu/Fedora package
+          # jobs (check_pytest_ran.py); nightly, dispatch and full-ci run it here
+          # so CASSINI_PERF_GATE budgets execute on the pinned desktop host.
           pytest_root=$(mktemp -d "$HOME/cassini-pytest.XXXXXX")
           XDG_DATA_HOME="$pytest_root/data" /usr/bin/python3 -m pytest -q --basetemp="$pytest_root/tmp"
       # The canonical test tree includes its adjacent conformance vectors.
