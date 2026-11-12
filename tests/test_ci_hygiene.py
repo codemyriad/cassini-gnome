@@ -696,6 +696,7 @@ def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
     assert [line.strip() for line in ci["meson-tests"].strip().splitlines()] == [
         "meson-tests:",
         "name: Meson tests",
+        "if: ${{ github.event.action != 'labeled' || github.event.label.name == 'full-ci' }}",
         "uses: ./.github/workflows/meson-tests.yml",
     ]
     for name in ("recording", "boards", "offline"):
@@ -943,7 +944,8 @@ def test_pr_two_distro_legs_and_full_ci_label_wiring():
     for leg in ("deb_testing", "rpm_opensuse", "arch", "flatpak", "extra_distros", "full_ci"):
         assert f"{leg}: ${{{{ steps.areas.outputs.{leg} }}}}" in ci_jobs["changes"]
     assert (
-        "if: ${{ !cancelled() && (needs.changes.result != 'success' || "
+        "if: ${{ !cancelled() && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') && "
+        "(needs.changes.result != 'success' || "
         "(needs.changes.outputs.flatpak != 'false' && needs.changes.outputs.packages != 'false')) }}"
     ) in ci_jobs["flatpak"]
     assert (
@@ -1156,10 +1158,13 @@ def test_nightly_and_full_ci_perf_gates_are_wired_and_forwarded():
     assert re.search(r"^  pull_request:\n    types: \[opened, synchronize, reopened, labeled\]$", trigger, re.M)
     assert re.search(r"^  workflow_dispatch:$", trigger, re.M)
     assert (
-        "group: exact-transcript-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}"
-        in trigger
+        "group: exact-transcript-${{ github.event_name == 'pull_request' && "
+        "(github.event.action == 'labeled' && format('{0}-label-{1}', github.event.pull_request.number, github.run_id) "
+        "|| github.event.pull_request.number) || github.run_id }}"
+    ) in trigger
+    assert (
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}" in trigger
     )
-    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in trigger
     assert "tests/ui/exact-transcript.py exact-results/exact.png" in exact
     assert "tests/ui/exact-reader.py exact-results/reader.png" in exact
     assert 'if [ "${CASSINI_PERF_GATE:-}" = "1" ]; then\n            CASSINI_TRANSCRIPT_RENDER=listview' in exact
@@ -1203,3 +1208,234 @@ def test_nightly_and_full_ci_perf_gates_are_wired_and_forwarded():
     assert "CASSINI_PERF_GATE" not in browser_rec
     assert "\n  assert.ok(Math.abs(mutePosition+original.startOffsetMs/1000-wallMutePosition)<.4," in browser_rec
     assert "\n  for(const measure of continuity) assert.ok(Math.abs(measure.error)<.25," in browser_rec
+
+
+def _parse_workflow_dag(workflow: Path) -> dict[str, tuple[list[str], str | None]]:
+    dag: dict[str, tuple[list[str], str | None]] = {}
+    for name, block in jobs(workflow):
+        header = re.split(r"\n    (?:steps|uses):", block, maxsplit=1)[0]
+        if list_needs := re.search(r"^    needs:\s*\[([^\]]*)\]\s*$", header, re.M):
+            needs = [item.strip() for item in list_needs.group(1).split(",") if item.strip()]
+        elif single_need := re.search(r"^    needs:\s*([A-Za-z0-9_-]+)\s*$", header, re.M):
+            needs = [single_need.group(1)]
+        else:
+            needs = []
+        cond_match = re.search(r"^    if:\s*(.+)$", header, re.M)
+        cond = cond_match.group(1).strip().removeprefix("${{").removesuffix("}}").strip() if cond_match else None
+        dag[name] = (needs, cond)
+    return dag
+
+
+def _eval_actions_expr(
+    expr: str,
+    *,
+    event: str = "pull_request",
+    action: str = "synchronize",
+    label: str = "",
+    pr_number: int = 392,
+    run_id: int = 100,
+    needs_results: dict[str, str] | None = None,
+    changes_outputs: dict[str, str] | None = None,
+    ancestors_ok: bool = True,
+):
+    py = expr.removeprefix("${{").removesuffix("}}").strip()
+    for job_id in sorted((needs_results or {}), key=len, reverse=True):
+        if "-" in job_id:
+            py = py.replace(f"needs.{job_id}.", f"needs.{job_id.replace('-', '_')}.")
+    py = py.replace("always()", "True").replace("cancelled()", "False").replace("failure()", "False")
+    py = py.replace("success()", str(ancestors_ok))
+    py = py.replace("&&", " and ").replace("||", " or ")
+    py = re.sub(r"!(?!=)", " not ", py)
+    event_ns = (
+        SimpleNamespace(
+            action=_CIString(action),
+            label=SimpleNamespace(name=_CIString(label)),
+            pull_request=SimpleNamespace(number=pr_number),
+        )
+        if event == "pull_request"
+        else _NULL
+    )
+    needs_dict: dict[str, object] = {}
+    for k, v in (needs_results or {}).items():
+        outputs_ns = (
+            SimpleNamespace(**{ok: _CIString(ov) for ok, ov in (changes_outputs or {}).items()})
+            if k == "changes"
+            else _NULL
+        )
+        needs_dict[k.replace("-", "_")] = SimpleNamespace(result=_CIString(v), outputs=outputs_ns)
+    ctx = {
+        "github": SimpleNamespace(event_name=_CIString(event), event=event_ns, run_id=run_id),
+        "needs": SimpleNamespace(**needs_dict),
+        "True": True,
+        "False": False,
+        "format": lambda template, *args: template.format(*args),
+    }
+    return eval(py, {"__builtins__": {}}, ctx)
+
+
+def _simulate_dag(
+    dag: dict[str, tuple[list[str], str | None]],
+    *,
+    changes_outputs: dict[str, str] | None = None,
+    changes_failed: bool = False,
+    **kwargs,
+) -> dict[str, str]:
+    status_fns = ("always()", "cancelled()", "failure()", "success()")
+    results: dict[str, str] = {}
+    remaining = list(dag)
+
+    def ancestors(job: str) -> set[str]:
+        seen: set[str] = set()
+        stack = list(dag[job][0])
+        while stack:
+            dep = stack.pop()
+            if dep not in seen:
+                seen.add(dep)
+                stack.extend(dag[dep][0])
+        return seen
+
+    while remaining:
+        for job in list(remaining):
+            needs, cond = dag[job]
+            if any(dep not in results for dep in needs):
+                continue
+            anc_ok = all(results[anc] == "success" for anc in ancestors(job))
+            if cond is None:
+                run = anc_ok
+            else:
+                effective = cond if any(fn in cond for fn in status_fns) else f"success() && ({cond})"
+                run = bool(
+                    _eval_actions_expr(
+                        effective,
+                        needs_results={dep: results[dep] for dep in needs},
+                        changes_outputs=changes_outputs if results.get("changes") == "success" else {},
+                        ancestors_ok=anc_ok,
+                        **kwargs,
+                    )
+                )
+            if not run:
+                results[job] = "skipped"
+            elif job == "changes" and changes_failed:
+                results[job] = "failure"
+            else:
+                results[job] = "success"
+            remaining.remove(job)
+    return results
+
+
+def test_labeled_pr_isolation_and_full_dag_across_events():
+    for wf_name, prefix in (("ci.yml", "ci"), ("exact-transcript.yml", "exact-transcript")):
+        header = (WORKFLOWS / wf_name).read_text().split("\njobs:\n", 1)[0]
+        group_tpl = re.search(r"^  group: (.+)$", header, re.M).group(1)
+        cancel_expr = re.search(r"^  cancel-in-progress: (.+)$", header, re.M).group(1)
+
+        def render_group(tpl=group_tpl, **kw):
+            return re.sub(r"\$\{\{.*?\}\}", lambda m: str(_eval_actions_expr(m.group(0), **kw)), tpl)
+
+        assert render_group(event="pull_request", action="opened", pr_number=42, run_id=10) == f"{prefix}-42"
+        assert render_group(event="pull_request", action="synchronize", pr_number=42, run_id=11) == f"{prefix}-42"
+        assert render_group(event="pull_request", action="labeled", pr_number=42, run_id=12) == f"{prefix}-42-label-12"
+        assert render_group(event="pull_request", action="labeled", pr_number=42, run_id=13) == f"{prefix}-42-label-13"
+        assert render_group(event="push", action="", run_id=99) == f"{prefix}-99"
+        assert render_group(event="schedule", action="", run_id=100) == f"{prefix}-100"
+        assert bool(_eval_actions_expr(cancel_expr, event="pull_request", action="opened")) is True
+        assert bool(_eval_actions_expr(cancel_expr, event="pull_request", action="synchronize")) is True
+        assert bool(_eval_actions_expr(cancel_expr, event="pull_request", action="labeled")) is False
+        assert bool(_eval_actions_expr(cancel_expr, event="push", action="")) is False
+        assert bool(_eval_actions_expr(cancel_expr, event="schedule", action="")) is False
+
+    ci_dag = _parse_workflow_dag(WORKFLOWS / "ci.yml")
+    exact_dag = _parse_workflow_dag(WORKFLOWS / "exact-transcript.yml")
+    release_dag = _parse_workflow_dag(WORKFLOWS / "release.yml")
+
+    all_areas_true = dict.fromkeys(
+        (
+            "source",
+            "packages",
+            "recording",
+            "boards",
+            "library",
+            "offline",
+            "deb_testing",
+            "rpm_opensuse",
+            "arch",
+            "flatpak",
+            "extra_distros",
+            "full_ci",
+        ),
+        "true",
+    )
+    pr_code_outputs = {
+        **all_areas_true,
+        "deb_testing": "false",
+        "rpm_opensuse": "false",
+        "arch": "false",
+        "flatpak": "false",
+        "extra_distros": "false",
+        "full_ci": "false",
+    }
+    pr_docs_outputs = {
+        **pr_code_outputs,
+        "recording": "false",
+        "boards": "false",
+        "library": "false",
+        "offline": "false",
+    }
+    all_ci_jobs = set(ci_dag)
+
+    # Unlabeled PR (code changes vs docs-only):
+    for action in ("opened", "synchronize", "reopened"):
+        res_code = _simulate_dag(ci_dag, event="pull_request", action=action, changes_outputs=pr_code_outputs)
+        assert {j for j, s in res_code.items() if s == "success"} == all_ci_jobs - {"flatpak"}
+        res_docs = _simulate_dag(ci_dag, event="pull_request", action=action, changes_outputs=pr_docs_outputs)
+        assert {j for j, s in res_docs.items() if s == "success"} == {
+            "changes",
+            "build",
+            "meson-tests",
+            "source",
+            "deb",
+            "rpm-arch",
+            "pytest-coverage",
+            "desktop",
+        }
+        assert _simulate_dag(exact_dag, event="pull_request", action=action) == {"native-gtk": "success"}
+
+    # Labeled PR with full-ci (case-insensitive): runs full matrix + native-gtk:
+    for lbl in ("full-ci", "FULL-CI"):
+        res_full = _simulate_dag(
+            ci_dag, event="pull_request", action="labeled", label=lbl, changes_outputs=all_areas_true
+        )
+        assert {j for j, s in res_full.items() if s == "success"} == all_ci_jobs
+        assert _simulate_dag(exact_dag, event="pull_request", action="labeled", label=lbl) == {"native-gtk": "success"}
+
+    # Unrelated label on PR: skips every job cleanly in both workflows:
+    for unrelated in ("bug", "documentation", "dependencies", "enhancement"):
+        res_skip = _simulate_dag(
+            ci_dag, event="pull_request", action="labeled", label=unrelated, changes_outputs=all_areas_true
+        )
+        assert {j for j, s in res_skip.items() if s == "success"} == set()
+        assert _simulate_dag(exact_dag, event="pull_request", action="labeled", label=unrelated) == {
+            "native-gtk": "skipped"
+        }
+
+    # Fail-open invariant when changes fails on a PR:
+    res_fail_open = _simulate_dag(ci_dag, event="pull_request", action="synchronize", changes_failed=True)
+    assert {j for j, s in res_fail_open.items() if s == "success"} == all_ci_jobs - {"changes"}
+
+    # Push to main, schedule, workflow_dispatch, and release tag push:
+    res_main = _simulate_dag(ci_dag, event="push", action="", changes_outputs={**all_areas_true, "full_ci": "false"})
+    assert {j for j, s in res_main.items() if s == "success"} == all_ci_jobs
+    for evt in ("schedule", "workflow_dispatch"):
+        res_sched = _simulate_dag(ci_dag, event=evt, action="", changes_outputs=all_areas_true)
+        assert {j for j, s in res_sched.items() if s == "success"} == all_ci_jobs
+        assert _simulate_dag(exact_dag, event=evt, action="") == {"native-gtk": "success"}
+    res_tag = _simulate_dag(release_dag, event="push", action="")
+    assert {j for j, s in res_tag.items() if s == "success"} == {"main-inputs", "deb", "packages", "publish"}
+
+    # Prove _simulate_dag catches the skipped-ancestor bug class on implicit-success jobs (`release.yml:publish`).
+    regressed_release = dict(release_dag)
+    regressed_release["label-gate"] = ([], "github.event_name == 'pull_request'")
+    regressed_release["main-inputs"] = (["label-gate"], "always()")
+    regressed_release["deb"] = (["main-inputs"], "always() && needs.main-inputs.result == 'success'")
+    regressed_release["packages"] = (["main-inputs"], "always() && needs.main-inputs.result == 'success'")
+    assert _simulate_dag(regressed_release, event="push", action="")["publish"] == "skipped"
