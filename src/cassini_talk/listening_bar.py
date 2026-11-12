@@ -5,8 +5,8 @@ from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
 from .listening_bar_model import BREAKPOINTS, bar_layout, bar_state, excerpt, merge_choices
-from .meeting_text import COLOURS, DARK_COLOURS
 from .strings import text
+from .tokens import speaker_colour
 
 
 class ListeningBar(Gtk.Revealer):
@@ -178,8 +178,7 @@ class ListeningBar(Gtk.Revealer):
         turn = listen.turn
         speaker = meeting.speaker_for(listen.speaker)
         self.body.update_property([Gtk.AccessibleProperty.LABEL], [text("listen.bar.a11y", name=speaker.name)])
-        palette = DARK_COLOURS if Adw.StyleManager.get_default().get_dark() else COLOURS
-        colour = palette[getattr(speaker, "colour_index", 0) % len(palette)]
+        colour = speaker_colour(speaker, dark=Adw.StyleManager.get_default().get_dark())
         self.dot.set_markup(f'<span foreground="{colour}">●</span>')
         self.name.set_label(speaker.name)
         self.name.set_tooltip_text(speaker.name)

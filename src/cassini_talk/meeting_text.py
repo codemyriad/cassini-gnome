@@ -7,10 +7,11 @@ from html import escape
 
 from .portable import Word
 from .speaker_merges import resolve_merges
+from .tokens import SPEAKER_COLOURS, SPEAKER_DARK_COLOURS, aside_chip_wash, played_word_colours
 from .transcript import Turn, build_turns, display_items, join_items, visible_turns
 
-COLOURS = ("#1c71d8", "#b34d00", "#813d9c", "#21804b", "#bd2028", "#167c8b")
-DARK_COLOURS = ("#78aeed", "#ffa348", "#ce91df", "#77d39a", "#ff9298", "#79c7d1")
+COLOURS = SPEAKER_COLOURS
+DARK_COLOURS = SPEAKER_DARK_COLOURS
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,12 +72,13 @@ def speaking_shares(words, speaker_ids):
     return result
 
 
-def _item_link(word, value, position, uri):
+def _item_link(word, value, position, uri, *, dark=False):
     value = escape(value)
     if word.low_confidence:
         value = f"<i>{value}</i>"
     if word.start_ms <= position < word.end_ms:
-        value = f'<span background="#fbe7a1" foreground="#202024">{value}</span>'
+        bg, fg = played_word_colours(dark=dark)
+        value = f'<span background="{bg}" foreground="{fg}">{value}</span>'
     elif word.start_ms > position:
         value = f'<span alpha="60%">{value}</span>'
     return f'<a href="{uri}">{value}</a>'
@@ -87,7 +89,7 @@ def item_markup(words, position, *, dark=False, values=None):
     if values is None:
         values = display_items(words)
     return " ".join(
-        _item_link(word, value, position, f"item:{index}")
+        _item_link(word, value, position, f"item:{index}", dark=dark)
         for index, (word, value) in enumerate(zip(words, values, strict=True))
         if value
     )
@@ -101,7 +103,9 @@ def reading_markup(turn, position, speaker_name, *, dark=False, chip_links=False
     values = {id(owner): owner.items for owner in [turn] + [aside for _, aside in turn.asides]}
 
     def link(owner, index):
-        return _item_link(owner.words[index], values[id(owner)][index], position, f"{prefixes[id(owner)]}:{index}")
+        return _item_link(
+            owner.words[index], values[id(owner)][index], position, f"{prefixes[id(owner)]}:{index}", dark=dark
+        )
 
     def chip(aside):
         name = speaker_name(aside.speaker)
@@ -119,7 +123,7 @@ def reading_markup(turn, position, speaker_name, *, dark=False, chip_links=False
 
             prefix, suffix, separator = hit(prefix), hit(suffix), hit(separator)
         links = separator.join(link(aside, i) for i, value in enumerate(aside.items) if value)
-        bg, alpha = ("#ffffff", "10%") if dark else ("#000006", "7%")
+        bg, alpha = aside_chip_wash(dark=dark)
         markup = f'<span size="small" background="{bg}" bgalpha="{alpha}">{prefix}{links}{suffix}</span>'
         plain = (f"({name}: " if opening else "") + aside.text + (")" if closing else "")
         return markup, plain

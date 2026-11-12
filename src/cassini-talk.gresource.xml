@@ -2,6 +2,7 @@
 <gresources>
   <gresource prefix="/io/codemyriad/CassiniTalk">
     <file preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
+    <file>tokens.css</file>
     <file>style.css</file>
   </gresource>
 </gresources>

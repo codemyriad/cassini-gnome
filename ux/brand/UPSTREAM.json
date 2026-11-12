@@ -1,0 +1,11 @@
+{
+  "repository": "codemyriad/cassini-ux",
+  "branch": "brand/tokens-json",
+  "commit": "e244ad6a830e4ef77d87fb452143f7100c767139",
+  "files": [
+    "brand/tokens.json"
+  ],
+  "sha256": {
+    "tokens.json": "f534ccd38e2aa9d05fe9e4bb3dd352c588eead915fff21293ebb1d6945cdefb0"
+  }
+}

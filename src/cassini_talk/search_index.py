@@ -16,6 +16,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .meeting_text import reading_turns
+from .tokens import search_hit_colours
 from .transcript import row_text
 
 START, END = "\x01", "\x02"
@@ -89,15 +90,13 @@ def title_match_query(value):
     return " AND ".join(phrases) or None
 
 
-def marked_markup(value, *, selected=False):
+def marked_markup(value, *, selected=False, dark=False):
     value = escape(value)
-    colour = "#ffffff" if selected else "#fbe7a1"
-    return value.replace(START, f'<span background="{colour}" foreground="#202024" weight="semibold">').replace(
-        END, "</span>"
-    )
+    bg, fg = search_hit_colours(dark=dark, selected=selected)
+    return value.replace(START, f'<span background="{bg}" foreground="{fg}" weight="semibold">').replace(END, "</span>")
 
 
-def excerpt_markup(marked, *, limit=220, selected=False):
+def excerpt_markup(marked, *, limit=220, selected=False, dark=False):
     """Bound GTK layout work, retaining the first hit and complete markup spans."""
     plain = marked.replace(START, "").replace(END, "")
     first = marked.find(START)
@@ -119,7 +118,7 @@ def excerpt_markup(marked, *, limit=220, selected=False):
     output = "…" if lo else ""
     for active, chars in parts:
         value = "".join(chars)
-        output += marked_markup(START + value + END if active else value, selected=selected)
+        output += marked_markup(START + value + END if active else value, selected=selected, dark=dark)
     return output + ("…" if hi < len(plain) else "")
 
 

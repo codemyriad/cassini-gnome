@@ -8,8 +8,8 @@ from concurrent.futures import CancelledError
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from . import speaker_edits, ux_formats
-from .meeting_text import COLOURS, DARK_COLOURS
 from .strings import text
+from .tokens import speaker_colour
 from .voices_logic import name_key, pick_name, ranked
 
 LOG = logging.getLogger(__name__)
@@ -170,8 +170,7 @@ class SpeakersDialog(Adw.Dialog):
             return
         self.heading.set_label(speaker.name)
         self.talk.set_label(text("speakers.talkTime", talkTime=ux_formats.talk_time(speaker.talk_ms)))
-        palette = DARK_COLOURS if Adw.StyleManager.get_default().get_dark() else COLOURS
-        colour = palette[speaker.colour_index % len(palette)]
+        colour = speaker_colour(speaker, dark=Adw.StyleManager.get_default().get_dark())
         self.avatar.set_markup(f'<span foreground="{colour}">{speaker.colour_index + 1}</span>')
         self.sample = speaker.sample_span
         self.sample_from.set_label(

@@ -183,19 +183,6 @@ msgstr "Colaboradores do Cassini"
 msgid "Cassini Portable Meeting Format"
 msgstr "Formato portátil de reunião Cassini"
 
-msgid "Could not start audio capture. Check your audio devices and GStreamer plugins."
-msgstr "Não foi possível iniciar a captura de áudio. Verifique os dispositivos de áudio e os módulos do GStreamer."
-
-msgid "Could not finish the recording."
-msgstr "Não foi possível concluir a gravação."
-
-msgid "Timed out while saving the recording."
-msgstr "O tempo para guardar a gravação esgotou-se."
-
-#, python-brace-format
-msgid "Incomplete audio was kept at {path}."
-msgstr "O áudio incompleto foi guardado em {path}."
-
 msgid "Recording browser meeting"
 msgstr "A gravar uma reunião no navegador"
 

@@ -14,6 +14,7 @@ jobs:
         run: |
           sudo build-aux/ci/apt-install-bounded.sh python3-pytest python3-gi python3-jsonschema
       - run: python3 build-aux/check-ux-vectors.py
+      - run: python3 build-aux/generate-brand-tokens.py --check
       - run: python3 ux/library-vectors/verify.py
       - name: Run every frozen vector and the read-only scanner/watcher cases
         run: |
