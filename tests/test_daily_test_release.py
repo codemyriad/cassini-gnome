@@ -209,8 +209,84 @@ def write_candidate_tree(root: Path, version: str = "0.4.2") -> Path:
     return root
 
 
-def test_workflow_schedule_pinning_and_ci_push_unfiltered():
-    daily = (ROOT / ".github/workflows/daily-test-release.yml").read_text()
+def parse_event_filters(workflow_text: str, event_name: str) -> dict[str, list[str]]:
+    on_block = workflow_text.split("\njobs:\n", 1)[0]
+    match = re.search(rf"^  {re.escape(event_name)}:\n((?:    .*\n)+)", on_block, re.M)
+    if match is None:
+        return {}
+    filters: dict[str, list[str]] = {}
+    current_key: str | None = None
+    for raw_line in match[1].splitlines():
+        stripped = raw_line.split("#", 1)[0].rstrip()
+        if not stripped.strip():
+            continue
+        if key_match := re.fullmatch(r"    ([a-z-]+):\s*(.*)", stripped):
+            key, rest = key_match[1], key_match[2].strip()
+            if rest.startswith("[") and rest.endswith("]"):
+                items = [item.strip().strip("\"'") for item in rest[1:-1].split(",") if item.strip()]
+                filters[key] = items
+                current_key = None
+            elif not rest:
+                filters[key] = []
+                current_key = key
+            else:
+                filters[key] = [rest.strip("\"'")]
+                current_key = None
+        elif current_key and (item_match := re.fullmatch(r"      -\s*(.+)", stripped)):
+            filters[current_key].append(item_match[1].strip().strip("\"'"))
+    for positive, negative in (("tags", "tags-ignore"), ("branches", "branches-ignore"), ("paths", "paths-ignore")):
+        if positive in filters and negative in filters:
+            raise ValueError(
+                f'both "{positive}" and "{negative}" filters cannot be used for the same event "{event_name}"'
+            )
+    return filters
+
+
+def github_ref_filter_matches(patterns: list[str], ref_name: str) -> bool:
+    if not patterns or not any(not p.startswith("!") for p in patterns):
+        raise ValueError("GitHub ref filter requires at least one positive pattern")
+
+    def glob_re(pat: str) -> re.Pattern[str]:
+        parts: list[str] = ["^"]
+        idx = 0
+        while idx < len(pat):
+            if pat[idx : idx + 2] == "**":
+                parts.append(".*")
+                idx += 2
+            elif pat[idx] == "*":
+                parts.append("[^/]*")
+                idx += 1
+            elif pat[idx] == "?":
+                parts.append("[^/]")
+                idx += 1
+            else:
+                parts.append(re.escape(pat[idx]))
+                idx += 1
+        parts.append("$")
+        return re.compile("".join(parts))
+
+    matched = False
+    for pat in patterns:
+        if pat.startswith("!"):
+            if glob_re(pat[1:]).fullmatch(ref_name):
+                matched = False
+        elif glob_re(pat).fullmatch(ref_name):
+            matched = True
+    return matched
+
+
+def find_actionlint() -> str | None:
+    found = shutil.which("actionlint")
+    if found:
+        return found
+    fallback = Path.home() / "go/bin/actionlint"
+    return str(fallback) if fallback.is_file() else None
+
+
+def test_workflow_schedule_pinning_and_ci_push_unfiltered(tmp_path):
+    daily_path = ROOT / ".github/workflows/daily-test-release.yml"
+    release_path = ROOT / ".github/workflows/release.yml"
+    daily = daily_path.read_text()
     assert 'cron: "0 8,13,19 * * *"' in daily
     assert "07:00, 12:00, 18:00 UTC in summer time" in daily
     assert "workflow_dispatch:" in daily
@@ -225,17 +301,51 @@ def test_workflow_schedule_pinning_and_ci_push_unfiltered():
     assert "uses: actions/cache@" not in daily
     assert daily.count("uses: actions/cache/restore@v6") == 9
 
-    # iOS #124 lesson: ci.yml must run on every push to main without path filters.
-    ci = (ROOT / ".github/workflows/ci.yml").read_text()
-    on_block = ci.split("\njobs:\n", 1)[0]
-    push_block = re.search(r"^  push:\n((?:    .*\n)+)", on_block, re.M)
-    assert push_block is not None
-    assert "branches: [main]" in push_block[1]
-    assert "paths" not in push_block[1]
+    # Enforce GitHub Actions event-filter mutual exclusion across every repository workflow.
+    for wf_path in sorted((ROOT / ".github/workflows").glob("*.yml")):
+        wf_text = wf_path.read_text()
+        for ev in ("push", "pull_request", "pull_request_target"):
+            parse_event_filters(wf_text, ev)
 
-    # Production release.yml ignores pre-release tags containing hyphens.
-    release_wf = (ROOT / ".github/workflows/release.yml").read_text()
-    assert 'tags-ignore: ["*-*"]' in release_wf
+    # iOS #124 lesson: ci.yml must run on every push to main without path filters.
+    ci_push = parse_event_filters((ROOT / ".github/workflows/ci.yml").read_text(), "push")
+    assert ci_push == {"branches": ["main"]}
+
+    # Production release.yml triggers on stable v* tags and excludes pre-release tags without tags-ignore conflict.
+    release_wf = release_path.read_text()
+    release_push = parse_event_filters(release_wf, "push")
+    assert release_push == {"tags": ["v*", "!*-*"]}
+    patterns = release_push["tags"]
+    for stable_tag in ("v0.4.2", "v0.4.3", "v1.0.0", "v12.34.56"):
+        assert github_ref_filter_matches(patterns, stable_tag), stable_tag
+    for excluded_tag in ("v0.4.3-beta.1", "v0.4.3-beta.10", "v0.4.3-rc.1", "v1.0.0-alpha.1", "0.4.3", "nightly"):
+        assert not github_ref_filter_matches(patterns, excluded_tag), excluded_tag
+
+    mod = load_module("daily_test_release")
+    bumped = mod.next_version("0.4.2", {"0.4.2"}, set())
+    assert not github_ref_filter_matches(patterns, f"v{bumped['version_name']}")
+    assert github_ref_filter_matches(patterns, f"v{bumped['base_version']}")
+
+    broken_release = release_wf.replace('tags: ["v*", "!*-*"]', 'tags: ["v*"]\n    tags-ignore: ["*-*"]', 1)
+    with pytest.raises(ValueError, match='both "tags" and "tags-ignore" filters cannot be used'):
+        parse_event_filters(broken_release, "push")
+
+    actionlint = find_actionlint()
+    if actionlint is not None:
+        cmd = [
+            actionlint,
+            "-color=false",
+            "-ignore",
+            r'label "ubuntu-26\.04" is unknown',
+            "-ignore",
+            "SC2010:",
+        ]
+        subprocess.run([*cmd, str(daily_path), str(release_path)], check=True)
+        bad_wf = tmp_path / "bad-release.yml"
+        bad_wf.write_text(broken_release, encoding="utf-8")
+        proc = subprocess.run([*cmd, str(bad_wf)], capture_output=True, text=True, check=False)
+        assert proc.returncode != 0
+        assert 'both "tags" and "tags-ignore" filters cannot be used' in proc.stdout
 
 
 def test_green_main_ci_rejects_fork_and_pr_runs_and_paginates():
