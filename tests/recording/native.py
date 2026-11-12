@@ -22,7 +22,9 @@ from readiness import PCMProgress, wait_until  # noqa: E402
 from signal_power import stereo_tones  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from cassini_talk.recorder import Recorder  # noqa: E402
+from cassini_talk.library_publication import capture_parent  # noqa: E402
+from cassini_talk.native_recorder import NativeRecorder  # noqa: E402
+from cassini_talk.recording_session import RecordingSession  # noqa: E402
 
 Gst.init(None)
 artifacts = Path(os.environ.get("CASSINI_TEST_ARTIFACTS", str(Path(__file__).parent / "artifacts" / "native")))
@@ -31,15 +33,24 @@ artifacts.mkdir(parents=True, exist_ok=True)
 fault_log = (artifacts / "threads.log").open("w")
 faulthandler.dump_traceback_later(60, file=fault_log, exit=True)
 producers, monitors, observations = [], [], []
-capture_progress = None
 evidence = {"passed": False}
-recorder = Recorder()
+recorder = NativeRecorder()
 trace = GstEvidence(artifacts)
-trace.hook_messages(Recorder)
-trace.hook_failure(Recorder)
+trace.hook_messages(NativeRecorder)
+trace.hook_appends(RecordingSession)
 errors, finished = [], []
 recorder.connect("error", lambda _r, message: errors.append(message))
 recorder.connect("finished", lambda _r, path: finished.append(path))
+
+
+def capture_snapshot():
+    if recorder.session is None:
+        return None
+    with recorder._lock:
+        return {
+            kind: dict(frames=writer.frames, sampleRate=48000, channels=1)
+            for kind, writer in recorder.session.writers.items()
+        }
 
 
 def diagnostics():
@@ -48,7 +59,7 @@ def diagnostics():
         gst=trace.snapshot(),
         finished=finished,
         producers=[p.snapshot() for p in observations],
-        capture=capture_progress.snapshot() if capture_progress else None,
+        capture=capture_snapshot(),
     )
 
 
@@ -91,25 +102,59 @@ try:
         observation.close()
     for monitor in monitors:
         monitor.set_state(Gst.State.NULL)
-    destination = artifacts / "native.opus"
+    library = artifacts / "library"
+    sessions_dir = capture_parent(library)
     checkpoint("starting-capture")
-    recorder.start(destination)
-    capture_progress = PCMProgress(recorder.pipeline.get_by_name("capture").get_static_pad("src"))
+    recorder.start(sessions_dir, observe_output=False)
 
     def captured_enough():
         assert not errors, errors
         trace.healthy("capturing")
-        return capture_progress.reached(2.5)
+        if recorder.session is None:
+            return False
+        with recorder._lock:
+            return all(
+                recorder.session.writers.get(kind) is not None
+                and recorder.session.writers[kind].frames >= int(48000 * 2.5)
+                for kind in ("microphone", "system")
+            )
 
-    wait_until(captured_enough, "recorder receives 2.5 seconds of complete PCM", diagnostics=diagnostics)
+    wait_until(captured_enough, "recorder receives 2.5 seconds of complete PCM on both sides", diagnostics=diagnostics)
     assert not errors, errors
-    capture_progress.close()
     checkpoint("finalizing")
     recorder.stop()
-    wait_until(lambda: bool(finished or errors), "recorder finalizes Opus", diagnostics=diagnostics)
+    wait_until(lambda: bool(finished or errors), "recorder finalizes session and Opus", diagnostics=diagnostics)
     assert not errors, errors
-    assert finished == [str(destination)]
+    session_dir = recorder.session.directory
+    assert finished == [str(session_dir)]
+    assert recorder.publication is not None and recorder.publication_error is None
+    opus_files = list(library.glob("*.opus"))
+    assert len(opus_files) == 1, opus_files
+    destination = opus_files[0]
+
     checkpoint("decoding")
+    tracks = {track["kind"]: session_dir / track["file"] for track in recorder.session.manifest["tracks"]}
+    assert set(tracks) == {"microphone", "system"}, tracks
+    channel_samples = {}
+    for kind, wav_path in tracks.items():
+        with wave.open(str(wav_path)) as audio:
+            assert audio.getnchannels() == 1
+            assert audio.getframerate() == 48000
+            assert audio.getnframes() >= 48000 * 2
+            channel_samples[kind] = struct.unpack(f"<{audio.getnframes()}h", audio.readframes(audio.getnframes()))
+    rate = 48000
+    frame_count = min(len(channel_samples["microphone"]), len(channel_samples["system"]))
+    assert frame_count >= rate * 2
+    samples = [
+        sample
+        for pair in zip(
+            channel_samples["microphone"][:frame_count],
+            channel_samples["system"][:frame_count],
+            strict=True,
+        )
+        for sample in pair
+    ]
+
     decoded = artifacts / "native.wav"
     pipeline = Gst.parse_launch(
         "filesrc name=input ! oggdemux ! opusdec ! audioconvert ! audio/x-raw,format=S16LE ! wavenc ! filesink name=output"
@@ -123,11 +168,15 @@ try:
     finally:
         pipeline.set_state(Gst.State.NULL)
     with wave.open(str(decoded)) as audio:
-        assert audio.getnchannels() == 2
-        rate = audio.getframerate()
-        evidence["decoded"] = dict(frames=audio.getnframes(), rate=rate, channels=audio.getnchannels())
+        assert audio.getnchannels() == 1
+        assert audio.getframerate() == rate
         assert audio.getnframes() >= rate * 2
-        samples = struct.unpack(f"<{audio.getnframes() * 2}h", audio.readframes(audio.getnframes()))
+        evidence["decoded"] = dict(
+            frames=frame_count,
+            opusFrames=audio.getnframes(),
+            rate=rate,
+            channels=2,
+        )
 
     # Frames 1 s to 2 s, in the same 100 ms windows as the browser proofs: a
     # Pulse skew correction can flip a tone's phase mid-interval (signal_power).
@@ -139,7 +188,7 @@ try:
     assert amplitudes["left880"] < 0.01 and amplitudes["right440"] < 0.01, amplitudes
     evidence["passed"] = True
     print(
-        "PASS actual PulseAudio capture → Opus → decoded audio: microphone left, desktop right, no cross-channel bleed"
+        "PASS actual PulseAudio capture → NativeRecorder WAVs + published Opus: microphone 440 Hz, desktop 880 Hz, no cross-channel bleed"
     )
 except BaseException:
     evidence["failure"] = traceback.format_exc()
@@ -152,9 +201,20 @@ finally:
     try:
         for observation in observations:
             observation.close()
-        if capture_progress:
-            capture_progress.close()
-        recorder._cleanup()
+        if recorder.pipeline is not None or recorder.starting or recorder.stopping or recorder._finishing:
+            recorder.cancel_publication()
+            recorder.stop()
+            wait_until(
+                lambda: (
+                    recorder.pipeline is None
+                    and not recorder.starting
+                    and not recorder.stopping
+                    and not recorder._finishing
+                ),
+                "native recorder cleanup",
+                diagnostics=diagnostics,
+            )
+        recorder.close()
         for pipeline in producers + monitors:
             pipeline.set_state(Gst.State.NULL)
         cleanup_ok = True

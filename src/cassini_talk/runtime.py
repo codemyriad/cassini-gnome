@@ -40,7 +40,7 @@ PULSE_PLUGIN = "gstreamer1.0-pulseaudio on older Debian/Ubuntu releases"
 GST_ELEMENTS = ("oggdemux", "opusdec")
 # What playbin needs per file type: Cassini .opus files and recorded WAV tracks.
 PLAYBACK_ELEMENTS = {".opus": GST_ELEMENTS, ".wav": ("wavparse",)}
-# What Record Meeting needs (see recorder.capture_pipeline).
+# What Record Meeting and Opus publication/export need.
 RECORDING_ELEMENTS = ("pulsesrc", "audiointerleave", "opusenc", "oggmux")
 
 INSTALL = (

@@ -20,7 +20,7 @@ import gi  # noqa: E402
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 
-from cassini_talk import native_recorder, native_tap, recorder  # noqa: E402
+from cassini_talk import native_recorder, native_tap  # noqa: E402
 
 Gst.init(None)
 
@@ -45,8 +45,7 @@ def descriptions(monkeypatch):
         with pytest.raises(Described):
             native_recorder.NativeRecorder._branch(SimpleNamespace(_test_sources=False), kind)
     monkeypatch.undo()
-    taps = [d for d in recorder.capture_pipeline().split(" capture.sink_") if "pulsesrc" in d]
-    return seen + [d[d.index("pulsesrc") :] for d in taps]
+    return seen
 
 
 def converted(chain, level, rate):
@@ -83,7 +82,7 @@ def chain_of(description):
 
 def test_each_capture_tap_keeps_float_silence_all_zeros(monkeypatch):
     taps = descriptions(monkeypatch)
-    assert len(taps) == 6 and all(tap.startswith("pulsesrc") for tap in taps)
+    assert len(taps) == 4 and all(tap.startswith("pulsesrc") for tap in taps)
     for tap in taps:
         for rate in (48000, 44100):
             for level in (0.0, 6e-8):
