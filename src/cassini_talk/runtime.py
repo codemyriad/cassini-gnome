@@ -181,11 +181,21 @@ def _listening_unix_paths():
 def _unix_socket_connectable(target):
     if not hasattr(socket, "AF_UNIX"):
         return True
-    probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    except OSError:
+        return True
+    try:
+        probe.setblocking(False)
         probe.connect(target)
     except OSError as exc:
-        return exc.errno in (errno.EINPROGRESS, errno.EAGAIN, errno.EWOULDBLOCK, errno.EINTR)
+        return exc.errno in (
+            errno.EINPROGRESS,
+            errno.EALREADY,
+            errno.EAGAIN,
+            errno.EWOULDBLOCK,
+            errno.EINTR,
+        )
     finally:
         probe.close()
     return True
