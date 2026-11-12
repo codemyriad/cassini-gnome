@@ -8,7 +8,7 @@
 set -eu
 cd "$(dirname "$0")/../.."
 . build-aux/container.sh
-BASE=${1:-fedora:44}
+BASE=${1:-fedora:44@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e}
 VERSION=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
 SPEC_VERSION=$(sed -n 's/^Version: *//p' build-aux/rpm/cassini-talk.spec)
 if [ "$VERSION" != "$SPEC_VERSION" ]; then

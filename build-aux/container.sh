@@ -44,9 +44,13 @@ container_pull() {
   "$CONTAINER_ENGINE" image inspect "$1" >/dev/null 2>&1 || retry "$CONTAINER_ENGINE" pull -q "$1"
 }
 
-# A tag-safe name for an image reference: fedora:43 -> fedora-43
+# A tag-safe name for an image reference: fedora:44 -> fedora-44,
+# fedora:44@sha256:... -> fedora-44.
 image_slug() {
-  echo "$1" | tr ':/@' '---'
+  case "$1" in
+    *:*@sha256:*) printf '%s\n' "${1%@sha256:*}" | tr ':/@' '---' ;;
+    *) printf '%s\n' "$1" | tr ':/@' '---' ;;
+  esac
 }
 
 # Where one build attempt keeps its Meson test logs (testlog.txt, testlog.json,

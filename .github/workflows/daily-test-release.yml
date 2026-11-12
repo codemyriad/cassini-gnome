@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        base: ["ubuntu:26.04", "debian:testing"]
+        base: ["ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96", "debian:testing@sha256:2d46f43b677a047cfab870549eea0d83d0a9bea2f55b3f481efc901043916c2a"]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -105,9 +105,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - base: fedora:44
+          - base: fedora:44@sha256:15da97ed9aa94dd3d92c3925eb89520f6c80e07ea7ee24cba848d1f8b6912b3e
             name: fedora
-          - base: registry.opensuse.org/opensuse/tumbleweed:latest
+          - base: registry.opensuse.org/opensuse/tumbleweed:latest@sha256:27356084647aa08ad9e9c5e0ebfd2742f9f65279860e862b3a65148450c113da
             name: opensuse
     steps:
       - uses: actions/checkout@v7

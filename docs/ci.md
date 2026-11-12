@@ -239,3 +239,36 @@ progress across a cold install while still bounding mirror stalls and total work
 `CASSINI_HARNESS_BUILD_STALL_TIMEOUT` accepts 1–300 seconds (default 180) and
 `CASSINI_HARNESS_BUILD_TIMEOUT` accepts 1–900 seconds (default 900) for bounded
 diagnostics. No build or test retry is added, and test/job timeouts are unchanged.
+
+## Container image pins
+
+Every container image used on PR, `main` push, `full-ci`, `workflow_dispatch`,
+and release paths (`daily-test-release.yml`, package build scripts, and test
+Dockerfiles) is pinned by `@sha256:` digest in `build-aux/ci/image-pins.json`
+(`ubuntu:26.04`, `debian:testing`, `fedora:44`, `fedora:latest`,
+`registry.opensuse.org/opensuse/tumbleweed:latest`, `archlinux:latest`, and
+`alpine:edge`, plus the Flatpak builder image in `flatpak.yml`). The installed
+and offline harness workflows also export the pinned `linux/amd64` base digests
+from `image-pins.json` so PR, main, and release runs never float on a moving
+registry tag.
+
+On scheduled nightly runs (`github.event_name == 'schedule'` in `ci.yml`, plus
+`.github/workflows/rpm-canary.yml`), the rolling legs (`debian:testing`,
+`registry.opensuse.org/opensuse/tumbleweed:latest`, `archlinux:latest`,
+`alpine:edge`, and `fedora:latest`) run against their **unpinned** floating tags
+outside both merge and release gates (`green_main.py` and
+`daily_test_release.py` accept only `push` and `workflow_dispatch` runs), while
+fixed releases (`ubuntu:26.04` and `fedora:44`) remain digest-pinned. A red
+nightly rolling leg therefore signals an upstream base-image change without
+blocking merges or releases; validate and refresh all distro image pins in one
+step via:
+
+```sh
+python3 build-aux/ci/pin_images.py --bump   # or: make bump-ci-images
+```
+
+`python3 build-aux/ci/pin_images.py --check` (also enforced in `tests/test_ci_hygiene.py`)
+verifies that every managed workflow, build script, and Dockerfile matches
+`build-aux/ci/image-pins.json`, that PR/main/`full-ci`/`workflow_dispatch` paths
+stay digest-pinned, and that scheduled nightly runs keep the rolling legs
+unpinned outside merge and release gates.

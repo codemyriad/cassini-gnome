@@ -395,66 +395,93 @@ def test_runtime_proof_manifest_matches_the_actual_workflow_matrices(tmp_path):
     import re
 
     def slug(image):
-        return image.replace(":", "-").replace("/", "-")
+        return image.split("@", 1)[0].replace(":", "-").replace("/", "-")
 
-    def two_branches(text, key, input_name):
+    def three_branches(text, key, input_name):
         match = re.search(
-            rf"{key}: \$\{{\{{ inputs\.{input_name} && fromJSON\('([^']+)'\) \|\| fromJSON\('([^']+)'\) \}}\}}",
+            rf"{key}: \$\{{\{{ inputs\.{input_name} && \(github\.event_name == 'schedule' && "
+            r"fromJSON\('([^']+)'\) \|\| fromJSON\('([^']+)'\)\) \|\| fromJSON\('([^']+)'\) \}\}",
             text,
         )
         assert match is not None, (key, input_name)
-        return json.loads(match[1]), json.loads(match[2])
+        return json.loads(match[1]), json.loads(match[2]), json.loads(match[3])
 
     workflows = ROOT / ".github/workflows"
     source_text = (workflows / "source.yml").read_text()
     source_match = re.search(
         r"include: \$\{\{ fromJSON\(format\('([^']+)', "
-        r"inputs\.extra_distros && '([^']*)' \|\| '([^']*)', "
-        r"inputs\.deb_testing && '([^']*)' \|\| '([^']*)', "
-        r"inputs\.rpm_opensuse && '([^']*)' \|\| '([^']*)', "
-        r"inputs\.arch && '([^']*)' \|\| '([^']*)'\)\) \}\}",
+        r"inputs\.extra_distros && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)', "
+        r"inputs\.deb_testing && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)', "
+        r"inputs\.rpm_opensuse && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)', "
+        r"inputs\.arch && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)'\)\) \}\}",
         source_text,
     )
     assert source_match is not None
-    fmt, extra_t, extra_f, deb_t, deb_f, rpm_t, rpm_f, arch_t, arch_f = source_match.groups()
+    (
+        fmt,
+        extra_sched,
+        extra_pinned,
+        extra_f,
+        deb_sched,
+        deb_pinned,
+        deb_f,
+        rpm_sched,
+        rpm_pinned,
+        rpm_f,
+        arch_sched,
+        arch_pinned,
+        arch_f,
+    ) = source_match.groups()
 
-    deb_full, deb_pr = two_branches((workflows / "deb.yml").read_text(), "base", "deb_testing")
-    rpm_full, rpm_pr = two_branches((workflows / "packages.yml").read_text(), "include", "rpm_opensuse")
-    arch_image = re.search(r"BASE=\$\{1:-(.+)\}", (ROOT / "build-aux/arch/build.sh").read_text())[1]
+    deb_full_sched, deb_full_pinned, deb_pr = three_branches((workflows / "deb.yml").read_text(), "base", "deb_testing")
+    rpm_full_sched, rpm_full_pinned, rpm_pr = three_branches(
+        (workflows / "packages.yml").read_text(), "include", "rpm_opensuse"
+    )
+    packages_text = (workflows / "packages.yml").read_text()
+    arch_call = re.search(
+        r'build-aux/arch/build\.sh "\$\{\{ github\.event_name == \'schedule\' && \'([^\']+)\' \|\| \'([^\']+)\' \}\}"',
+        packages_text,
+    )
+    assert arch_call is not None
+    arch_sched_img, arch_pinned_img = arch_call.groups()
+    arch_default_img = re.search(r"BASE=\$\{1:-(.+)\}", (ROOT / "build-aux/arch/build.sh").read_text())[1]
+    assert arch_pinned_img == arch_default_img
     assert re.search(
         r"  arch:\n    name: Build Arch package\n    if: \$\{\{ inputs\.arch \}\}\n",
-        (workflows / "packages.yml").read_text(),
+        packages_text,
     )
 
     check = module()
     for idx, (deb_testing, rpm_opensuse, arch, extra_distros) in enumerate(itertools.product((False, True), repeat=4)):
-        source_entries = json.loads(
-            fmt.format(
-                extra_t if extra_distros else extra_f,
-                deb_t if deb_testing else deb_f,
-                rpm_t if rpm_opensuse else rpm_f,
-                arch_t if arch else arch_f,
+        for is_schedule in (False, True):
+            source_entries = json.loads(
+                fmt.format(
+                    (extra_sched if is_schedule else extra_pinned) if extra_distros else extra_f,
+                    (deb_sched if is_schedule else deb_pinned) if deb_testing else deb_f,
+                    (rpm_sched if is_schedule else rpm_pinned) if rpm_opensuse else rpm_f,
+                    (arch_sched if is_schedule else arch_pinned) if arch else arch_f,
+                )
             )
-        )
-        deb_entries = deb_full if deb_testing else deb_pr
-        rpm_entries = rpm_full if rpm_opensuse else rpm_pr
-        arch_entries = [arch_image] if arch else []
+            deb_entries = (deb_full_sched if is_schedule else deb_full_pinned) if deb_testing else deb_pr
+            rpm_entries = (rpm_full_sched if is_schedule else rpm_full_pinned) if rpm_opensuse else rpm_pr
+            arch_entries = [(arch_sched_img if is_schedule else arch_pinned_img)] if arch else []
 
-        expected = {
-            "pytest-" + ("skipped-" if item.get("pytest-in") else "nodes-") + slug(item["image"])
-            for item in source_entries
-        }
-        expected.update(
-            "pytest-ran-" + slug(image) for image in [*deb_entries, *(r["base"] for r in rpm_entries), *arch_entries]
-        )
-        required, reference_slug = check.expected_gate(
-            deb_testing=deb_testing,
-            rpm_opensuse=rpm_opensuse,
-            arch=arch,
-            extra_distros=extra_distros,
-        )
-        assert set(required) == expected
-        assert reference_slug == ("fedora-latest" if extra_distros else "fedora-44")
+            expected = {
+                "pytest-" + ("skipped-" if item.get("pytest-in") else "nodes-") + slug(item["image"])
+                for item in source_entries
+            }
+            expected.update(
+                "pytest-ran-" + slug(image)
+                for image in [*deb_entries, *(r["base"] for r in rpm_entries), *arch_entries]
+            )
+            required, reference_slug = check.expected_gate(
+                deb_testing=deb_testing,
+                rpm_opensuse=rpm_opensuse,
+                arch=arch,
+                extra_distros=extra_distros,
+            )
+            assert set(required) == expected
+            assert reference_slug == ("fedora-latest" if extra_distros else "fedora-44")
 
         combo_root = artifacts(
             tmp_path / f"combo-{idx}",

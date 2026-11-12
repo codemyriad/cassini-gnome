@@ -9,7 +9,7 @@ PREFIX = $(CURDIR)/_install
 PROFILE = development
 
 .PHONY: help deps build test test-recording lint format run install uninstall pot \
-	whistle-cache deb rpm rpm-opensuse arch flatpak flatpak-devel packages check-distros clean
+	whistle-cache deb rpm rpm-opensuse arch flatpak flatpak-devel packages check-distros bump-ci-images clean
 
 help:
 	@echo "Development:"
@@ -81,7 +81,7 @@ rpm: whistle-cache
 	build-aux/rpm/build.sh
 
 rpm-opensuse: whistle-cache
-	build-aux/rpm/build.sh registry.opensuse.org/opensuse/tumbleweed:latest
+	build-aux/rpm/build.sh registry.opensuse.org/opensuse/tumbleweed:latest@sha256:27356084647aa08ad9e9c5e0ebfd2742f9f65279860e862b3a65148450c113da
 
 arch: whistle-cache
 	build-aux/arch/build.sh
@@ -96,6 +96,9 @@ packages: whistle-cache deb rpm rpm-opensuse arch flatpak
 
 check-distros:
 	build-aux/check-distros.sh
+
+bump-ci-images:
+	python3 build-aux/ci/pin_images.py --bump
 
 clean:
 	rm -rf $(BUILDDIR) _build-system _install _flatpak .flatpak-builder repo

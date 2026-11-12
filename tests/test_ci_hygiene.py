@@ -95,7 +95,9 @@ def test_every_local_test_run_is_bounded():
     # whose run.sh refuses the built image if it inherited an ENTRYPOINT.
     for name, script in images.items():
         for base in re.findall(r"^FROM\s+(\S+)", (ROOT / name).read_text(), re.M | re.I):
-            assert base == "ubuntu:26.04" or ("$" in base and ENTRYPOINT_CHECK in script.read_text()), (name, base)
+            assert re.fullmatch(r"ubuntu:26\.04@sha256:[0-9a-f]{64}", base) or (
+                "$" in base and ENTRYPOINT_CHECK in script.read_text()
+            ), (name, base)
     entrypoints = [name for name in sorted(images) if re.search(r"^ENTRYPOINT", (ROOT / name).read_text(), re.M | re.I)]
     assert entrypoints == ["tests/recording/Audio.Dockerfile"]
     audio = [line for line in commands(ROOT / "tests/recording/run.sh") if "docker run " in line]
@@ -705,7 +707,9 @@ def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
     products = dict(jobs(WORKFLOWS / "build.yml"))["products"]
     for line in ("meson test -C _build-core --print-errorlogs", "meson compile -C _build-core cassini-talk-pot"):
         assert line in tests and line not in products
-    assert "container: ubuntu:26.04" in tests and not re.search(r"^    if:", tests, re.M)
+    assert re.search(r"container: ubuntu:26\.04@sha256:[0-9a-f]{64}\b", tests) and not re.search(
+        r"^    if:", tests, re.M
+    )
     for step in re.split(r"^      - ", tests, flags=re.M)[1:]:
         if "if:" in step:
             assert step.startswith("uses: actions/upload-artifact@v7\n") and "if: always()" in step
@@ -953,3 +957,187 @@ def test_pr_two_distro_legs_and_full_ci_label_wiring():
     )
     bg_text = (WORKFLOWS / "background-apps.yml").read_text()
     assert "tests/desktop/run.sh --deb-only _desktop-packages/deb/cassini-talk_*.deb desktop-evidence" in bg_text
+
+
+def _load_pin_images():
+    spec = importlib.util.spec_from_file_location("pin_images", ROOT / "build-aux/ci/pin_images.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_all_ci_container_images_are_digest_pinned_and_bump_script_validates(tmp_path):
+    pin_images = _load_pin_images()
+    assert pin_images.check_repo(ROOT) == []
+    assert pin_images.main(["--check"], root=ROOT) == 0
+
+    # Verify image_slug and deb BASE_TAG strip @sha256:... while preserving tag-safe slugs and filenames.
+    slug_out = subprocess.run(
+        [
+            "sh",
+            "-ec",
+            "CONTAINER_ENGINE=true . build-aux/container.sh\n"
+            'image_slug "ubuntu:26.04@sha256:' + "a" * 64 + '"\n'
+            'image_slug "registry.opensuse.org/opensuse/tumbleweed:latest@sha256:' + "b" * 64 + '"\n'
+            'image_slug "alpine:edge@sha256:' + "c" * 64 + '"\n',
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert slug_out == [
+        "ubuntu-26.04",
+        "registry.opensuse.org-opensuse-tumbleweed-latest",
+        "alpine-edge",
+    ]
+    deb_tag_out = subprocess.run(
+        [
+            "sh",
+            "-ec",
+            'for BASE in "ubuntu:26.04@sha256:' + "a" * 64 + '" "debian:testing@sha256:' + "b" * 64 + '"; do\n'
+            "  BASE_NO_DIGEST=${BASE%@sha256:*}\n"
+            '  echo "$(echo "${BASE_NO_DIGEST##*/}" | sed \'s/:\\([0-9]\\)/\\1/; s/[:@]/-/g\')"\n'
+            "done\n",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert deb_tag_out == ["ubuntu26.04", "debian-testing"]
+
+    # Build a synthetic copy of the managed files in tmp_path to exercise bump_repo and drift checks offline.
+    to_copy = {
+        pin_images.PINS_FILE.as_posix(),
+        *pin_images.IMAGE_TARGETS,
+        *pin_images.HARNESS_WORKFLOWS,
+        *pin_images.RELEASE_GATE_SCRIPTS,
+        *[p.relative_to(ROOT).as_posix() for p in (ROOT / ".github/workflows").glob("*.yml")],
+        *[
+            p.relative_to(ROOT).as_posix()
+            for p in [*ROOT.glob("**/Dockerfile"), *ROOT.glob("**/*.Dockerfile"), *ROOT.glob("**/Containerfile")]
+            if not p.relative_to(ROOT).as_posix().startswith(".")
+        ],
+    }
+    for rel in sorted(to_copy):
+        dst = tmp_path / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / rel, dst)
+    assert pin_images.check_repo(tmp_path) == []
+
+    # Deterministic bump rewrites image-pins.json and all target files cleanly while keeping
+    # scheduled nightly rolling legs unpinned (Codex #389).
+    import hashlib
+
+    def fake_resolver(tag: str) -> dict[str, str]:
+        d1 = "sha256:" + hashlib.sha256(f"index:{tag}".encode()).hexdigest()
+        d2 = "sha256:" + hashlib.sha256(f"amd64:{tag}".encode()).hexdigest()
+        return {"digest": d1, "amd64_digest": d2}
+
+    pin_images.bump_repo(root=tmp_path, resolver=fake_resolver)
+    assert pin_images.check_repo(tmp_path) == []
+    # rpm-canary.yml intentionally stays unpinned fedora:latest, and scheduled nightly rolling
+    # legs in source.yml / deb.yml / packages.yml remain unpinned after --bump.
+    assert "build-aux/rpm/build.sh fedora:latest" in (tmp_path / ".github/workflows/rpm-canary.yml").read_text()
+    bumped_source = (tmp_path / ".github/workflows/source.yml").read_text()
+    assert '{"image":"fedora:latest"},{"image":"alpine:edge"}' in bumped_source
+    assert ',{"image":"debian:testing","pytest-in":"Debian package / Build .deb (debian:testing)"}' in bumped_source
+    assert (
+        ',{"image":"registry.opensuse.org/opensuse/tumbleweed:latest",'
+        '"pytest-in":"RPM and Arch packages / Build .rpm (registry.opensuse.org/opensuse/tumbleweed:latest)"}'
+    ) in bumped_source
+    assert ',{"image":"archlinux:latest","pytest-in":"RPM and Arch packages / Build Arch package"}' in bumped_source
+    assert ', "debian:testing"]' in (tmp_path / ".github/workflows/deb.yml").read_text()
+    bumped_packages = (tmp_path / ".github/workflows/packages.yml").read_text()
+    assert '{"base":"registry.opensuse.org/opensuse/tumbleweed:latest","name":"opensuse"}' in bumped_packages
+    assert "github.event_name == 'schedule' && 'archlinux:latest'" in bumped_packages
+
+    # Unpinning a PR/main/release image, pinning a nightly schedule rolling leg, or admitting
+    # schedule into release gates fails --check.
+    bumped_pins = pin_images.load_pins(tmp_path)["images"]
+    mutations = [
+        (
+            ".github/workflows/build.yml",
+            lambda s: re.sub(r"container: ubuntu:26\.04@sha256:[0-9a-f]{64}", "container: ubuntu:26.04", s),
+        ),
+        (
+            ".github/workflows/daily-test-release.yml",
+            lambda s: re.sub(
+                r"registry\.opensuse\.org/opensuse/tumbleweed:latest@sha256:[0-9a-f]{64}",
+                "registry.opensuse.org/opensuse/tumbleweed:latest",
+                s,
+            ),
+        ),
+        (
+            ".github/workflows/flatpak.yml",
+            lambda s: re.sub(r"@sha256:[0-9a-f]{64}", ":gnome-50", s, count=1),
+        ),
+        (
+            ".github/workflows/deb.yml",
+            lambda s: re.sub(r"CASSINI_HARNESS_BASES: .*", "CASSINI_HARNESS_BASES: ubuntu:26.04@sha256:" + "f" * 64, s),
+        ),
+        (
+            "tests/recording/Audio.Dockerfile",
+            lambda s: re.sub(r"FROM ubuntu:26\.04@sha256:[0-9a-f]{64}", "FROM ubuntu:26.04", s),
+        ),
+        (
+            "build-aux/deb/Dockerfile",
+            lambda s: re.sub(r"ARG BASE=ubuntu:26\.04@sha256:[0-9a-f]{64}", "ARG BASE=ubuntu:26.04", s),
+        ),
+        (
+            ".github/workflows/source.yml",
+            lambda s: s.replace(
+                '{"image":"fedora:latest"},{"image":"alpine:edge"}',
+                f'{{"image":"fedora:latest@{bumped_pins["fedora:latest"]["digest"]}"}},{{"image":"alpine:edge"}}',
+            ),
+        ),
+        (
+            ".github/workflows/deb.yml",
+            lambda s: s.replace(
+                ', "debian:testing"]',
+                f', "debian:testing@{bumped_pins["debian:testing"]["digest"]}"]',
+            ),
+        ),
+        (
+            ".github/workflows/packages.yml",
+            lambda s: s.replace(
+                '{"base":"registry.opensuse.org/opensuse/tumbleweed:latest","name":"opensuse"}',
+                (
+                    f'{{"base":"registry.opensuse.org/opensuse/tumbleweed:latest@'
+                    f'{bumped_pins["registry.opensuse.org/opensuse/tumbleweed:latest"]["digest"]}","name":"opensuse"}}'
+                ),
+            ),
+        ),
+        (
+            ".github/workflows/packages.yml",
+            lambda s: s.replace(
+                "github.event_name == 'schedule' && 'archlinux:latest'",
+                f"github.event_name == 'schedule' && 'archlinux:latest@{bumped_pins['archlinux:latest']['digest']}'",
+            ),
+        ),
+        (
+            "build-aux/ci/green_main.py",
+            lambda s: s.replace(
+                'MAIN_EVENTS = ("push", "workflow_dispatch")',
+                'MAIN_EVENTS = ("push", "schedule", "workflow_dispatch")',
+            ),
+        ),
+        (
+            "build-aux/ci/daily_test_release.py",
+            lambda s: s.replace(
+                'TRUSTED_CI_EVENTS = {"push", "workflow_dispatch"}',
+                'TRUSTED_CI_EVENTS = {"push", "schedule", "workflow_dispatch"}',
+            ),
+        ),
+    ]
+    for rel, mutate in mutations:
+        target = tmp_path / rel
+        before = target.read_text()
+        after = mutate(before)
+        assert after != before, rel
+        target.write_text(after)
+        assert pin_images.check_repo(tmp_path), rel
+        assert pin_images.main(["--check"], root=tmp_path) == 1, rel
+        target.write_text(before)
+        assert pin_images.check_repo(tmp_path) == [], rel

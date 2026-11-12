@@ -29,7 +29,9 @@ STABLE_VERSION_RE = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 STABLE_TAG_RE = re.compile(r"v(\d+\.\d+\.\d+)")
 TEST_VERSION_RE = re.compile(r"(\d+\.\d+\.\d+)-beta\.([1-9]\d*)")
 TEST_TAG_RE = re.compile(r"v(\d+\.\d+\.\d+)-beta\.([1-9]\d*)")
-TRUSTED_CI_EVENTS = {"push", "schedule", "workflow_dispatch"}
+# Scheduled nightly ci.yml runs probe unpinned rolling base images outside merge
+# and release gates; daily test releases only admit pinned push / dispatch runs.
+TRUSTED_CI_EVENTS = {"push", "workflow_dispatch"}
 MAX_PAGES = 50
 MAX_NOTES_BYTES = 60_000
 
