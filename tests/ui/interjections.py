@@ -30,8 +30,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from desktop_services import DesktopServices  # noqa: E402
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
-from painted import painted_node  # noqa: E402
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
+from painted import apply_screenshot_scheme, painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.library import LibrarySpeaker  # noqa: E402
@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory() as temporary:
         CASSINI_SCREENSHOT_NOW="1793107080000",
     )
     Gtk.Settings.get_default().set_property("gtk-enable-animations", False)
-    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+    apply_screenshot_scheme()
     app = CassiniApplication("io.codemyriad.CassiniInterjectionsTest", "test", "development")
     app.register(None)
     app.activate()

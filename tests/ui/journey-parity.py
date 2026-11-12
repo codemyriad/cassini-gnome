@@ -31,7 +31,7 @@ gi.require_version("GdkX11", "4.0")
 gi.require_version("Gsk", "4.0")
 from desktop_services import DesktopServices  # noqa: E402
 from gi.repository import GdkX11, Gio, GLib, Gst, Gtk  # noqa: E402
-from painted import painted_node  # noqa: E402
+from painted import apply_screenshot_scheme, painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk import companion  # noqa: E402
@@ -152,6 +152,7 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(["glib-compile-schemas", str(schemas)], check=True)
     os.environ.update(GSETTINGS_SCHEMA_DIR=str(schemas), CASSINI_LIBRARY_DIR=str(root / "fixtures/main/root"))
     Gtk.Settings.get_default().props.gtk_enable_animations = False
+    apply_screenshot_scheme()
     app = CassiniApplication("com.gocassini.JourneyParityTest", "test", "development")
     app.transcription_enabled = False
     app.register(None)

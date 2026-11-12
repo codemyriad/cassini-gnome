@@ -17,6 +17,7 @@
       "src/**",
       "build-aux/ux-screenshot.sh",
       "build-aux/ux-boards.sh",
+      "build-aux/ux-shots.sh",
       "ux/library-vectors/**",
       ".github/workflows/ux-shot.yml",
       "browser-extension/**",
