@@ -23,6 +23,7 @@ from .player import Player
 from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
 from .spectrogram_strip import SpectrogramStrip
 from .strings import text
+from .tokens import speaker_slot
 from .transcript import row_text
 
 
@@ -562,7 +563,6 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _spectrogram_style(self, *_):
         dark = self._spectro_style.get_dark()
-        (self.add_css_class if dark else self.remove_css_class)("spectro-dark")
         self.spectrograms.configure(
             dark=dark, reduced_motion=not self._spectro_settings.get_property("gtk-enable-animations")
         )
@@ -1190,7 +1190,7 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _speaker(self, speaker, *, chip=False, meeting=None):
         meeting = self.selected if meeting is None else meeting
-        box = Gtk.Box(spacing=6, css_classes=["speaker-chip"] if chip else [])
+        box = Gtk.Box(spacing=6, css_classes=["speaker-chip", f"speaker-chip-{speaker_slot(speaker)}"] if chip else [])
         box.append(
             label(
                 speaker.name,

@@ -9,7 +9,7 @@ from cassini_talk.markup_runs import bridge_link_spaces
 
 def test_bridging_preserves_all_text_word_links_and_highlight_boundaries():
     markup = (
-        '<a href="item:0"><span background="#fbe7a1" foreground="#202024">Now</span></a> '
+        '<a href="item:0"><span background="#BDDCE4" foreground="#1A1611">Now</span></a> '
         '<a href="item:1"><span alpha="60%">later</span></a> '
         '<a href="aside:0:0">aside &amp; text</a>'
     )
@@ -31,7 +31,7 @@ def test_only_generated_adjacent_seek_links_are_bridged():
 
 def test_nested_chip_background_and_separators_remain_exactly_as_stored():
     markup = (
-        '<span background="#000006" bgalpha="7%"> <b>Sam:</b> '
+        '<span background="#1A1611" bgalpha="7%"> <b>Sam:</b> '
         '<a href="aside:0:0"><span alpha="60%">Sounds</span></a> '
         '<a href="aside:0:1"><span alpha="60%">good.</span></a> </span>'
     )

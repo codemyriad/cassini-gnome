@@ -79,5 +79,7 @@ CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/speech-models.py
 CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/speech-models.py "$out/dark/speech-models.png"
 CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/diarization-models.py "$out/diarization-models.png"
 CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/diarization-models.py "$out/dark/diarization-models.png"
+CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/w1-token-states.py "$out/w1.png"
+CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/w1-token-states.py "$out/dark/w1.png"
 
 python3 build-aux/ci/ux_shots_manifest.py "$out"

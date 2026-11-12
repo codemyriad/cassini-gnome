@@ -32,8 +32,8 @@ FLOW_SOURCES = (
     ("rename", "tests/ui/rename.py"), ("spectrogram-browser", "tests/ui/spectrogram-browser.py"),
     ("spectrogram-components", "tests/ui/spectrogram.py"), ("spectrogram-", "tests/ui/spectrogram-live.py"),
     ("speech-models-", "tests/ui/speech-models.py"), ("test-recording-", "tests/ui/test-recording.py"),
-    ("trash-", "tests/ui/trash.py"), ("what-is-recorded-", "tests/ui/what-is-recorded.py"),
-    ("wide-speakers", "tests/ui/wide-speakers.py"),
+    ("trash-", "tests/ui/trash.py"), ("w1-", "tests/ui/w1-token-states.py"),
+    ("what-is-recorded-", "tests/ui/what-is-recorded.py"), ("wide-speakers", "tests/ui/wide-speakers.py"),
 )  # fmt: skip
 
 
@@ -64,9 +64,14 @@ def _chrome_luminance(data: bytes) -> tuple[int, int, float]:
             break
     bpp = 4 if color_type == 6 else 3
     stride, raw = width * bpp, zlib.decompress(bytes(idat))
-    target_y = min(height // 2, 48 if width >= 2000 else 24)
+    top_y = min(height // 2, 48 if width >= 2000 else 24)
+    mid_y = height // 2
+    targets = {top_y, mid_y}
+    step = max(1, width // 32)
+    xs = range(0, width, step) if width < 32 else range(step, width - step, step)
+    row_lums: list[float] = []
     prev, cur, offset = bytearray(stride), bytearray(stride), 0
-    for y in range(target_y + 1):
+    for y in range(max(targets) + 1):
         flt, line = raw[offset], raw[offset + 1 : offset + 1 + stride]
         offset += 1 + stride
         for i in range(stride):
@@ -86,16 +91,19 @@ def _chrome_luminance(data: bytes) -> tuple[int, int, float]:
                 cur[i] = (line[i] + (a if pa <= pb and pa <= pc else (b if pb <= pc else c))) & 0xFF
             else:
                 raise ValueError(f"Unsupported PNG filter {flt}")
-        if y < target_y:
+        if y in targets:
+            samples = [
+                (cur[x * bpp] + cur[x * bpp + 1] + cur[x * bpp + 2]) / 3.0
+                for x in xs
+                if bpp == 3 or cur[x * bpp + 3] >= 200
+            ]
+            if samples:
+                row_lums.append(sum(samples) / len(samples))
+        if y < max(targets):
             prev[:] = cur
-    step = max(1, width // 32)
-    xs = range(0, width, step) if width < 32 else range(step, width - step, step)
-    samples = [
-        (cur[x * bpp] + cur[x * bpp + 1] + cur[x * bpp + 2]) / 3.0 for x in xs if bpp == 3 or cur[x * bpp + 3] >= 200
-    ]
-    if not samples:
+    if not row_lums:
         raise ValueError("No opaque pixels on sampled chrome scanline")
-    return width, height, sum(samples) / len(samples)
+    return width, height, max(row_lums)
 
 
 def build_manifest(out_dir: Path) -> dict:

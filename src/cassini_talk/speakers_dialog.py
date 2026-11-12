@@ -9,7 +9,7 @@ from gi.repository import Adw, Gio, GLib, Gtk
 
 from . import speaker_edits, ux_formats
 from .strings import text
-from .tokens import speaker_colour
+from .tokens import speaker_slot
 from .voices_logic import name_key, pick_name, ranked
 
 LOG = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ class SpeakersDialog(Adw.Dialog):
         self.voice_settings.connect("clicked", self._open_voice_settings)
         content.append(self.voice_settings)
         self.error = Gtk.Label(
-            label=text("speakers.changeFailed"), xalign=0, wrap=True, visible=False, css_classes=["warning"]
+            label=text("speakers.changeFailed"), xalign=0, wrap=True, visible=False, css_classes=["error"]
         )
         content.append(self.error)
         footer = Gtk.Box(spacing=8)
@@ -170,8 +170,8 @@ class SpeakersDialog(Adw.Dialog):
             return
         self.heading.set_label(speaker.name)
         self.talk.set_label(text("speakers.talkTime", talkTime=ux_formats.talk_time(speaker.talk_ms)))
-        colour = speaker_colour(speaker, dark=Adw.StyleManager.get_default().get_dark())
-        self.avatar.set_markup(f'<span foreground="{colour}">{speaker.colour_index + 1}</span>')
+        self.avatar.set_css_classes(["speaker-avatar", f"speaker-avatar-{speaker_slot(speaker)}"])
+        self.avatar.set_label(str(speaker.colour_index + 1))
         self.sample = speaker.sample_span
         self.sample_from.set_label(
             text("speakers.sampleFrom", position=ux_formats.position(self.sample[0])) if self.sample else ""

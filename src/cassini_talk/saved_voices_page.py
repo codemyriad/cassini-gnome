@@ -80,7 +80,7 @@ class SavedVoicesPage(Adw.NavigationPage):
             for row, _play, _forget in self.rows.values():
                 self.people.remove(row)
             self.rows = {}
-            for voice in state["voices"]:
+            for idx, voice in enumerate(state["voices"]):
                 row = Adw.ActionRow(title=voice["name"], use_markup=False)
                 caption = text(
                     "savedVoices.row.meta",
@@ -90,7 +90,15 @@ class SavedVoicesPage(Adw.NavigationPage):
                 if stale(voice):
                     caption += "\n" + text("savedVoices.row.stale")
                 row.set_subtitle(caption)
-                avatar = Adw.Avatar(size=40, text=voice["name"], show_initials=True)
+                words = [part for part in voice["name"].strip().split() if part]
+                initials = (
+                    (words[0][0] + words[-1][0]).upper() if len(words) >= 2 else (words[0][0].upper() if words else "?")
+                )
+                avatar = Gtk.Label(
+                    label=initials,
+                    valign=Gtk.Align.CENTER,
+                    css_classes=["speaker-avatar", f"speaker-avatar-{(idx % 6) + 1}"],
+                )
                 row.add_prefix(avatar)
                 play = Gtk.Button(
                     icon_name="media-playback-start-symbolic",

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""App-wide semantic colour role mapping backed by generated _brand_tokens.py (W1.1)."""
+"""App-wide semantic colour role mapping backed by generated _brand_tokens.py (Wave 1)."""
 
 from ._brand_tokens import DERIVED_TOKENS, TOKENS, UPSTREAM_COMMIT
 
@@ -138,8 +138,8 @@ DEFERRED_W2_ROLES: frozenset[str] = frozenset(
     }
 )
 
-# Decided Wave 1 roles not yet switched in W1.1 plumbing (left empty in W1 look preview).
-UNAPPLIED_W1_ROLES: frozenset[str] = frozenset(ROLE_TOKENS) - DEFERRED_W2_ROLES
+# All decided Wave 1 roles are active in the Wave 1 look preview.
+UNAPPLIED_W1_ROLES: frozenset[str] = frozenset()
 
 
 def token(name: str, *, dark: bool = False) -> str:
@@ -160,52 +160,36 @@ def speaker_slot(speaker_or_index: object, *, provenance: str | None = None) -> 
     return (colour_index % 6) + 1
 
 
+def speaker_colour(speaker_or_index: object, *, dark: bool = False, provenance: str | None = None) -> str:
+    return token(f"speaker-{speaker_slot(speaker_or_index, provenance=provenance)}", dark=dark)
+
+
 def speaker_avatar_wash(speaker_or_index: object, *, dark: bool = False, provenance: str | None = None) -> str:
     return token(f"avatar-{speaker_slot(speaker_or_index, provenance=provenance)}", dark=dark)
 
 
-# BEGIN PRE-W1 LEGACY FALLBACKS
-SPEAKER_COLOURS = ("#1c71d8", "#b34d00", "#813d9c", "#21804b", "#bd2028", "#167c8b")
-SPEAKER_DARK_COLOURS = ("#78aeed", "#ffa348", "#ce91df", "#77d39a", "#ff9298", "#79c7d1")
-
-
-def speaker_colour(speaker_or_index: object, *, dark: bool = False, provenance: str | None = None) -> str:
-    _ = provenance
-    colour_index = (
-        speaker_or_index if isinstance(speaker_or_index, int) else int(getattr(speaker_or_index, "colour_index", 0))
-    )
-    palette = SPEAKER_DARK_COLOURS if dark else SPEAKER_COLOURS
-    return palette[colour_index % len(palette)]
-
-
 def played_word_colours(*, dark: bool = False) -> tuple[str, str]:
-    _ = dark
-    return ("#fbe7a1", "#202024")
+    return (token("highlight", dark=dark), token("highlight-ink", dark=dark))
 
 
 def aside_chip_wash(*, dark: bool = False) -> tuple[str, str]:
-    return ("#ffffff", "10%") if dark else ("#000006", "7%")
+    return (token("ink", dark=dark), "10%" if dark else "7%")
 
 
 def search_hit_colours(*, dark: bool = False, selected: bool = False) -> tuple[str, str]:
-    _ = dark
-    return ("#ffffff" if selected else "#fbe7a1", "#202024")
+    _ = selected
+    return (token("highlight", dark=dark), token("highlight-ink", dark=dark))
 
 
 def spectrogram_colours(kind: str, *, dark: bool = False, silent: bool = False) -> tuple[str, str]:
-    ink = ("#ff8a8e" if dark else "#c01c28") if kind == "pill" else ("#ffffff" if dark else "#2e2e32")
+    ink = token("record-ink" if kind == "pill" else "ink", dark=dark)
     if not silent:
         return (ink, ink)
-    bg = "#f8e45c" if dark else ("#e5a50a" if kind == "pill" else "#c58a00")
-    return (ink, bg)
-
-
-# END PRE-W1 LEGACY FALLBACKS
+    return (ink, token("warn-ink", dark=dark))
 
 
 def timeline_tick_colour(*, dark: bool = False) -> str | None:
-    _ = dark
-    return None
+    return token("accent", dark=dark)
 
 
 __all__ = [
@@ -215,8 +199,6 @@ __all__ = [
     "DERIVED_TOKENS",
     "PYTHON_ROLE_TOKENS",
     "ROLE_TOKENS",
-    "SPEAKER_COLOURS",
-    "SPEAKER_DARK_COLOURS",
     "SPEAKER_ROLE_TOKENS",
     "TOKENS",
     "UNAPPLIED_W1_ROLES",

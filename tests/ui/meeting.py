@@ -205,8 +205,9 @@ with tempfile.TemporaryDirectory() as temporary:
         # Growing transcripts splice stable rows and never drag a paused reader back.
         from dataclasses import replace
 
-        from cassini_talk.meeting_text import COLOURS, DARK_COLOURS, reading_turns
+        from cassini_talk.meeting_text import reading_turns
         from cassini_talk.portable import Word
+        from cassini_talk.tokens import speaker_colour
 
         timed = tuple(
             Word(meeting.speakers[i % len(meeting.speakers)].id, i * 1000, i * 1000 + 900, f"Item {i}")
@@ -242,7 +243,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert 'href="aside:0:0"' in inline.get_label()
         inline.emit("activate-link", "aside:0:0")
         until(lambda: window.player.position == 900)
-        assert 'foreground="#202024">Yes &lt;&amp;&gt;.' in inline.get_label()
+        assert 'background="#BDDCE4" foreground="#1A1611">Yes &lt;&amp;&gt;.' in inline.get_label()
         show_synthetic(timed)
         until(lambda: page.scroller.get_vadjustment().get_upper() > 5000)
         adjustment = page.scroller.get_vadjustment()
@@ -287,22 +288,23 @@ with tempfile.TemporaryDirectory() as temporary:
         style = Adw.StyleManager.get_default()
         style.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
 
-        def transcript_colours(palette):
+        def transcript_colours(dark):
             if not page.bound:
                 return False
             for turn, _words, row in page.bound.values():
                 name = row.get_first_child().get_first_child()
                 caption = name.get_child() if isinstance(name, Gtk.Button) else name
-                expected = palette[page.meeting.speaker_for(turn.speaker).colour_index % len(palette)]
+                expected = speaker_colour(page.meeting.speaker_for(turn.speaker), dark=dark)
                 if expected not in caption.get_label():
                     return False
             return True
 
-        until(lambda: style.get_dark() and transcript_colours(DARK_COLOURS))
-        assert page._colour(meeting.speakers[0]) == DARK_COLOURS[0]
-        assert any(DARK_COLOURS[0] in value for value in labels(page.speakers))
+        until(lambda: style.get_dark() and transcript_colours(True))
+        dark_first = speaker_colour(meeting.speakers[0], dark=True)
+        assert page._colour(meeting.speakers[0]) == dark_first
+        assert any(dark_first in value for value in labels(page.speakers))
         style.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
-        until(lambda: not style.get_dark() and transcript_colours(COLOURS))
+        until(lambda: not style.get_dark() and transcript_colours(False))
     page.update(meeting)
     assert page._companion.get_visible()
     page.set_connected(True)

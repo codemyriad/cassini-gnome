@@ -7,11 +7,8 @@ from html import escape
 
 from .portable import Word
 from .speaker_merges import resolve_merges
-from .tokens import SPEAKER_COLOURS, SPEAKER_DARK_COLOURS, aside_chip_wash, played_word_colours
+from .tokens import aside_chip_wash, played_word_colours
 from .transcript import Turn, build_turns, display_items, join_items, visible_turns
-
-COLOURS = SPEAKER_COLOURS
-DARK_COLOURS = SPEAKER_DARK_COLOURS
 
 
 @dataclass(frozen=True, slots=True)

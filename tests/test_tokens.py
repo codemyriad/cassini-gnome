@@ -85,6 +85,7 @@ def parse_css_theme(
 def test_vendored_tokens_sha256_generated_files_and_literal_scan_pass():
     gen = _load_generator()
     gen.check_all(ROOT)
+    assert not gen.scan_source_literals(ROOT, allow_pre_w1=False)
 
     upstream = json.loads(UPSTREAM.read_text(encoding="utf-8"))
     commit = upstream["commit"]
@@ -191,6 +192,7 @@ def test_every_applied_w1_role_resolves_to_its_token_and_unapplied_set_is_exact(
 
     allowed_w1 = set(tokens.ROLE_TOKENS) - tokens.DEFERRED_W2_ROLES
     assert not (tokens.UNAPPLIED_W1_ROLES - allowed_w1)
+    assert not tokens.UNAPPLIED_W1_ROLES, f"Wave 1 preview left roles unapplied: {sorted(tokens.UNAPPLIED_W1_ROLES)}"
 
     for adw_name, target in tokens.ADW_ROLE_TOKENS.items():
         role = f"adw:{adw_name}"

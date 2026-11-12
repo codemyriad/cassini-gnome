@@ -94,3 +94,25 @@ def test_accent_unpinned_and_ux_shots_script_wired():
     assert "accent']==" not in workflow and 'accent"]==' not in workflow
     assert 'build-aux/ux-shots.sh "$BOARD_APP" "$CASSINI_BOARD_BUILD" ux-artifacts' in workflow
     assert 'python3 build-aux/ci/ux_shots_manifest.py "$out"' in shots_sh
+
+
+def test_scrimmed_light_modal_dialog_passes_chrome_luminance_check(tmp_path):
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        return struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", zlib.crc32(tag + payload))
+
+    width, height = 64, 64
+    scrimmed_row = b"\x00" + b"\x78\x78\x75\xff" * width
+    dialog_row = b"\x00" + (b"\x78\x78\x75\xff" * 16 + b"\xff\xff\xff\xff" * 32 + b"\x78\x78\x75\xff" * 16)
+    rows = [dialog_row if y == height // 2 else scrimmed_row for y in range(height)]
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(b"".join(rows)))
+        + chunk(b"IEND", b"")
+    )
+
+    (tmp_path / "export.png").write_bytes(png)
+    _write(tmp_path, "dark/export.png", "dark", (width, height))
+    manifest = manifest_mod.build_manifest(tmp_path)
+    assert [row["key"] for row in manifest["shots"]] == ["export.light", "export.dark"]
