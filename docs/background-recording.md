@@ -66,9 +66,10 @@ streams GNOME saw (`status-notifier-desktop.json`):
 | System audio only | sink monitor | shown |
 | D18 muted lesson: system audio, speakers muted | sink monitor | shown; the recorded tone is silent while muted (PipeWire 1.6 null sink) |
 | Browser companion, The others only | none | **not shown** |
-| Browser companion, Me + The others | mic | shown |
+| Browser companion, Me + The others | none | **not shown** |
 
-The browser rows use the real broker and recording session; the tab's PCM comes
-from the test over the companion's audio protocol instead of Chrome. A meeting
-page's own microphone stream belongs to the browser and is not part of the
+The browser rows use the real broker and recording session; both `Me` (`kind: "local"`)
+and `The others` (`kind: "remote"`) arrive from the test over the companion's audio
+protocol instead of Chrome, so Cassini opens no OS microphone capture stream of its own.
+A meeting page's own microphone stream belongs to the browser and is not part of the
 measurement. In every row the indicator item shows “Recording, {liveBig}”.

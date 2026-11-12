@@ -7,6 +7,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from uuid import uuid4
 
+from .recording_details import ACMeter
 from .recording_session import ProtocolError, browser_label_source, chunk_plan, source_parameters, source_track_identity
 
 ME_KINDS = {"microphone", "local"}
@@ -95,6 +96,7 @@ class WireTrack:
     # with one is dormant exactly while that generation has departed
     # (BrowserCapture.dormant); `dormant` above applies only to spans without one.
     document: str | None = None
+    meter: ACMeter | None = None
 
 
 class BrowserStreams:
@@ -112,6 +114,7 @@ class BrowserStreams:
         self.selection_at = 0
         self.picture_enabled = picture_enabled
         self.picture = None
+        self.local_level = None
 
     def enabled(self, track):
         return (
@@ -180,9 +183,10 @@ class BrowserStreams:
             source_track_id=source_track_id,
             label_source=label_source,
             available=self.browser,
-            dormant=self.departing and kind not in ME_KINDS and document is None,
+            dormant=self.departing and kind != "microphone" and document is None,
             clock=clock,
             document=document,
+            meter=ACMeter(rate, channels) if kind == "local" else None,
         )
         if self.enabled(track):
             with self.session.change([]):
@@ -222,6 +226,8 @@ class BrowserStreams:
             if selected:
                 self.session.append(track.recorded, selected, selected_offset)
                 track.recorded_at = time.monotonic()
+                if track.meter is not None and track.meter.feed(selected):
+                    self.local_level = track.meter.level
                 if self.picture_enabled is not None and self.picture_enabled():
                     record = next(t for t in self.session.manifest["tracks"] if t["id"] == track.recorded)
                     spans = record.get("spans") or [record]

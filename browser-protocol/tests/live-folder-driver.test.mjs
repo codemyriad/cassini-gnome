@@ -215,7 +215,7 @@ test('the folder clock reads make.py\'s synthetic run as the oracle places it', 
   assert.equal(F(manifest, { kind: 'system' }), 99500);     // the fallback ends at restored
   assert.equal(F(manifest, t => t.id === 'span-a1'), 95350.0625);
   assert.equal(F(manifest, 'no-such-source'), -Infinity);
-  assert.deepEqual(extent(manifest.tracks.find(t => t.id === 'microphone-1')), [0, 2100]);
+  assert.deepEqual(extent(manifest.tracks.find(t => t.id === 'span-l1')), [251.0625, 2100.0625]);
   assert.deepEqual(eventsOf(manifest, 'othersSource').map(e => [e.source, e.reason]),
     [['browser', 'start'], ['system', 'lost'], ['browser', 'restored']]);
   assert.equal(await clock.waitFolder(m => m.state === 'completed' && 'done', 'synthetic folder is complete', 1000), 'done');

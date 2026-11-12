@@ -1,0 +1,11 @@
+--- a/extension/background.js
++++ b/extension/background.js
+@@ -610,7 +610,7 @@
+ const spanDocument = frame => frame.frameId === 0 ? frame.documentGeneration : frame.mainFrame?.documentGeneration;
+ function stampDocument(packet, documentGeneration) {
+   if (packet?.type !== "track") return packet;
+-  const { documentGeneration: _ignored, ...track } = packet;
++  const { documentGeneration: _ignored, labelSource: _dropped, ...track } = packet;
+   return validDocument(documentGeneration) ? { ...track, documentGeneration } : track;
+ }
+ 

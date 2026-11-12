@@ -269,6 +269,7 @@ def test_a_stepping_and_drifting_wall_clock_moves_no_capture_stamp(tmp_path, wal
         dict(type="start", captureId="clock", timelineOriginMs=origin, microphone=True, callGeneration="g1"),
         others_source="system",
         reason="missing",
+        native_me=True,
     )
     session = capture.host.session
     mapping = getattr(capture, "session_clock", None)
@@ -346,7 +347,7 @@ def test_a_native_tap_opened_after_a_wall_step_stamps_pcm_on_the_monotonic_mappi
 
     capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=factory)
     origin = int(time.time() * 1000) - 1500  # The page's origin, 1.5 s before start.
-    capture.start(dict(type="start", captureId="tap", timelineOriginMs=origin, microphone=True))
+    capture.start(dict(type="start", captureId="tap", timelineOriginMs=origin, microphone=True), native_me=True)
     try:
         assert taps == ["microphone"]
         wall.go(2000, 250)

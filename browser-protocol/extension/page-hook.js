@@ -1,6 +1,9 @@
 (() => {
   if (!window.RTCPeerConnection || globalThis.__cassiniPageHook) return;
-  globalThis.__cassiniPageHook = {protocol:1};
+  // Revision 2 excludes display-share audio from Me and gates sender mute on the render clock.
+  // The relay refuses an older hook still alive in a page opened before an update (reload required).
+  const hookRevision = 2;
+  globalThis.__cassiniPageHook = {protocol:1, revision:hookRevision};
   const peers = new Set(), closedPeers = new WeakSet();
   const original = window.RTCPeerConnection;
   // Capture before wrapping: hook reads must never register peers recursively.
@@ -19,6 +22,8 @@
   }
   const peerGenerations = new WeakMap();
   const knownLocalTracks = new WeakSet();
+  const knownDisplayTracks = new WeakSet();
+  const localGroups = new WeakMap(); // sender -> its Me source identity, across capture restarts
   const knownReceiverRoots = new WeakSet();
   const sourceRoots = new WeakMap();
   const sourceKeys = new WeakMap();
@@ -55,6 +60,14 @@
     return sourceKeys.get(root);
   }
   const sourceRoot = track => sourceRoots.get(track) || track;
+  function sending(sender, pc) {
+    const track = sender.track;
+    if (!track || track.readyState !== "live" || !track.enabled || track.muted || closed(pc)) return false;
+    const transceiver = getTransceivers(pc).find(t => t.sender === sender);
+    if (transceiver && !["sendonly", "sendrecv"].includes(transceiver.currentDirection)) return false;
+    const encodings = sender.getParameters().encodings;
+    return !encodings?.length || encodings.some(e => e.active !== false);
+  }
   function rememberReceivers(pc) {
     for (const {receiver} of getTransceivers(pc)) if (receiver?.track) {
       knownReceiverRoots.add(sourceRoot(receiver.track));
@@ -83,7 +96,22 @@
     if (participants.size !== 1 || names.size !== 1) return null;
     return {label:[...names.values().next().value].slice(0, 200).join(""), labelSource:"dom"};
   }
-  // Remember microphone origins before they become senders, including local previews.
+  // Remember microphone and display-share origins before they become senders or previews.
+  function isDisplayTrack(track) {
+    if (!track) return false;
+    const root = sourceRoot(track);
+    if (knownDisplayTracks.has(track) || knownDisplayTracks.has(root)) return true;
+    try {
+      for (const candidate of [track, root]) {
+        if (typeof candidate.getSettings === "function" && candidate.getSettings()?.displaySurface) {
+          knownDisplayTracks.add(track);
+          knownDisplayTracks.add(root);
+          return true;
+        }
+      }
+    } catch {}
+    return false;
+  }
   const devices = navigator.mediaDevices;
   if (devices?.getUserMedia) {
     const getUserMedia = devices.getUserMedia;
@@ -94,13 +122,56 @@
       });
     };
   }
+  if (devices?.getDisplayMedia) {
+    const getDisplayMedia = devices.getDisplayMedia;
+    devices.getDisplayMedia = function (...args) {
+      return Reflect.apply(getDisplayMedia, this, args).then(stream => {
+        stream.getAudioTracks().forEach(track => knownDisplayTracks.add(track));
+        return stream;
+      });
+    };
+  }
+  // MediaStream.clone() clones its tracks natively, past the track clone wrapper below.
+  const streamPrototype = globalThis.MediaStream?.prototype;
+  if (streamPrototype?.clone && streamPrototype?.getAudioTracks) {
+    const cloneStream = streamPrototype.clone;
+    streamPrototype.clone = function (...args) {
+      const stream = Reflect.apply(cloneStream, this, args);
+      try {
+        const from = this.getAudioTracks(), to = stream.getAudioTracks();
+        if (from.length === to.length) from.forEach((track, index) => inherit(to[index], track));
+        // Unpaired clones of a stream holding display audio must never become Me.
+        else if (from.some(isDisplayTrack)) to.forEach(track => knownDisplayTracks.add(track));
+      } catch {}
+      return stream;
+    };
+  }
+  function inherit(track, from) {
+    sourceRoots.set(track, sourceRoot(from));
+    if (knownLocalTracks.has(sourceRoot(from))) knownLocalTracks.add(track);
+    if (knownDisplayTracks.has(sourceRoot(from)) || knownDisplayTracks.has(from)) knownDisplayTracks.add(track);
+  }
+  // Sender-level mute keeps feeding the microphone into capture; recorders note each change on
+  // the render clock at once, so audio buffered while muted never passes after unmuting.
+  const gateChanged = () => { for (const recorder of active?.tracks.values() || []) try { recorder.observe?.(); } catch {} };
+  const senderPrototype = globalThis.RTCRtpSender?.prototype;
+  for (const name of ["replaceTrack", "setParameters"]) {
+    const method = senderPrototype?.[name];
+    if (typeof method !== "function") continue;
+    senderPrototype[name] = function (...args) {
+      gateChanged();
+      const value = Reflect.apply(method, this, args);
+      gateChanged();
+      if (typeof value?.then === "function") value.then(gateChanged, gateChanged);
+      return value;
+    };
+  }
   const trackPrototype = globalThis.MediaStreamTrack?.prototype;
   if (trackPrototype?.clone) {
     const clone = trackPrototype.clone;
     trackPrototype.clone = function (...args) {
       const track = Reflect.apply(clone, this, args);
-      sourceRoots.set(track, sourceRoot(this));
-      if (knownLocalTracks.has(sourceRoot(this))) knownLocalTracks.add(track);
+      inherit(track, this);
       return track;
     };
   }
@@ -270,7 +341,7 @@
         // A replacement relay cannot start a new capture until the departing
         // relay's token has drained. Only the newest instance needs the reply.
         if (active) waitingHandshake = message.instanceId;
-        else emit(null, {type:"hookReady", protocol:1, instanceId:message.instanceId});
+        else emit(null, {type:"hookReady", protocol:1, revision:hookRevision, instanceId:message.instanceId});
       }
       return;
     }
@@ -282,7 +353,7 @@
     }
     if (message.type === "start" && !active) {
       refreshCall();
-      const state = { token: message.token, callGeneration, sourceOutcomes: message.sourceOutcomes === true, pending: new Map(), sourceUpdates: new Set(), announcedSources: new Set(), tracks: new Map(), recordsByTrack: new WeakMap(), warnings: new Map(), refusedTracks: new WeakSet(), sources: new Map(), spanIds: new Set(), localMetadata: new Map(), next: 0, stopping: false, scanning: false };
+      const state = { token: message.token, callGeneration, sourceOutcomes: message.sourceOutcomes === true, pending: new Map(), sourceUpdates: new Set(), announcedSources: new Set(), tracks: new Map(), recordsByTrack: new WeakMap(), warnings: new Map(), refusedTracks: new WeakSet(), sources: new Map(), spanIds: new Set(), localGroups: new Set(), senderGroups: new Map(), groupTracks: new Map(), next: 0, stopping: false, scanning: false };
       active = state;
       const send = packet => new Promise((resolve, reject) => {
         refreshCall();
@@ -339,7 +410,7 @@
               await Promise.allSettled([...state.tracks.values()].map(recorder => recorder.stop("callChanged")));
               state.tracks.clear(); discover(true); return;
             }
-            const sources = new Map(), roots = new Set();
+            const sources = new Map(), roots = new Set(), localSenders = [];
             for (const pc of peers) {
               rememberReceivers(pc);
               for (const {receiver} of getTransceivers(pc)) if (receiver?.track) roots.add(sourceRoot(receiver.track));
@@ -353,25 +424,80 @@
                 }
               }
               for (const sender of getSenders(pc)) if (sender.track) {
+                if (isDisplayTrack(sender.track)) {
+                  roots.add(sourceRoot(sender.track));
+                  continue;
+                }
                 knownLocalTracks.add(sender.track);
                 knownLocalTracks.add(sourceRoot(sender.track));
                 if (message.captureLocal === false || peerGenerations.get(pc) !== callGeneration) continue;
-                const metadata = { kind: "local", sender, pc, root: sender };
-                sources.set(sender.track, metadata);
-                state.localMetadata.set(sender.track, metadata);
+                localSenders.push({ sender, pc });
               }
             }
-            // Preserve the same source across replaceTrack(null)/restore mute cycles.
-            for (const [track, metadata] of state.localMetadata) {
-              if (track.readyState === "ended" || closed(metadata.pc) || (metadata.sender.track && metadata.sender.track !== track)) state.localMetadata.delete(track);
-              else if (!sources.has(track)) sources.set(track, metadata);
+            // One Me source per microphone: the same track or clones of it sent on several
+            // peers is one voice, also after a replaceTrack makes two senders converge.
+            // A sender keeps its source across replaceTrack (mute, device) and capture restarts,
+            // unless it switched to a microphone its group's other senders do not send.
+            const assign = ({ sender, pc }, group) => {
+              if (!state.localGroups.has(group)) { group.owners = new Map(); state.localGroups.add(group); }
+              const current = state.senderGroups.get(sender);
+              if (current && current !== group) current.owners.delete(sender);
+              state.senderGroups.set(sender, group);
+              localGroups.set(sender, group);
+              group.owners.set(sender, { pc, track: sender.track });
+            };
+            const previousGroup = sender => state.senderGroups.get(sender) || localGroups.get(sender);
+            // Senders still on their source's microphone claim it first, so the order of
+            // senders never decides which one keeps the identity.
+            const switched = [];
+            for (const entry of localSenders) {
+              const previous = previousGroup(entry.sender);
+              if (previous && previous.mic === sourceRoot(entry.sender.track)) assign(entry, previous);
+              else switched.push(entry);
+            }
+            for (const entry of switched) {
+              const { sender } = entry, mic = sourceRoot(sender.track);
+              // The microphone each other sender of a group sends now (or resumes after a null mute).
+              const otherMics = candidate => [...candidate.owners].flatMap(([other, owner]) => {
+                const track = other.track || owner.track;
+                return other === sender || !track || track.readyState === "ended" || isDisplayTrack(track) || closed(owner.pc) ? [] : [sourceRoot(track)];
+              });
+              let group = null;
+              for (const candidate of state.localGroups) {
+                const others = otherMics(candidate);
+                // A microphone handed to another peer after its last sender closed keeps its Me source.
+                if (others.includes(mic) || (!others.length && candidate.mic === mic)) { group = candidate; break; }
+              }
+              const previous = previousGroup(sender);
+              if (!group && previous && !(state.localGroups.has(previous) && otherMics(previous).length)) group = previous;
+              if (!group) { group = { kind: "local" }; group.root = group; }
+              if (!state.localGroups.has(group) || !otherMics(group).length) group.mic = mic;
+              assign(entry, group);
+            }
+            // Preserve the same source across replaceTrack(null)/restore mute cycles; a sender
+            // leaves its source only when its peer closes or its last track ends.
+            for (const group of state.localGroups) {
+              for (const [sender, owner] of group.owners)
+                if (owner.track.readyState === "ended" || isDisplayTrack(owner.track) || closed(owner.pc) || state.senderGroups.get(sender) !== group) {
+                  group.owners.delete(sender);
+                  if (state.senderGroups.get(sender) === group) state.senderGroups.delete(sender);
+                }
+              if (!group.owners.size) { state.localGroups.delete(group); state.groupTracks.delete(group); continue; }
+              const candidates = [...new Set([...group.owners.values()].map(owner => owner.track))].filter(track => track.readyState === "live");
+              const transmitting = track => [...group.owners].some(([sender, owner]) => sender.track === track && sending(sender, owner.pc));
+              let track = state.groupTracks.get(group);
+              if (!candidates.includes(track) || (!transmitting(track) && candidates.some(transmitting))) track = candidates.find(transmitting) || candidates[0];
+              if (!track) continue;
+              state.groupTracks.set(group, track);
+              sources.set(track, group);
+              for (const owner of group.owners.values()) roots.add(sourceRoot(owner.track));
             }
             for (const track of sources.keys()) roots.add(sourceRoot(track));
             for (const media of document.querySelectorAll("audio,video")) {
               if (media.srcObject instanceof MediaStream) {
                 for (const track of media.srcObject.getAudioTracks()) {
-                  // A removed sender must not reappear as the page's raw microphone preview.
-                  if (!roots.has(sourceRoot(track)) && !knownReceiverRoots.has(sourceRoot(track)) && !knownLocalTracks.has(sourceRoot(track)) &&
+                  // A removed sender or display-share preview must not reappear as standalone page media.
+                  if (!roots.has(sourceRoot(track)) && !knownReceiverRoots.has(sourceRoot(track)) && !knownLocalTracks.has(sourceRoot(track)) && !isDisplayTrack(track) &&
                       (!trackGenerations.has(sourceRoot(track)) || trackGenerations.get(sourceRoot(track)) === callGeneration)) {
                     trackGenerations.set(sourceRoot(track), callGeneration);
                     sources.set(track, { kind: "media", root: sourceRoot(track) });
@@ -382,19 +508,22 @@
             }
             for (const [track, recorder] of state.tracks) {
               if (recorder.failed) state.refusedTracks.add(track);
-              if (track.readyState === "ended" || !sources.has(track) || recorder.failed) { await recorder.stop(track.readyState === "ended" ? "ended" : "replaced").catch(error => { if (!recorder.failed) warn(error); }); state.tracks.delete(track); }
+              // A track whose source changed (page media now sent as Me, a microphone adopted by
+              // another Me source) restarts under that source: an old recorder keeps its old identity.
+              const owner = sources.get(track);
+              const moved = owner && state.recordsByTrack.get(track)?.sourceTrackId !== sourceKey(owner.root || sourceRoot(track));
+              if (track.readyState === "ended" || !owner || recorder.failed || moved) { await recorder.stop(track.readyState === "ended" ? "ended" : "replaced").catch(error => { if (!recorder.failed) warn(error); }); state.tracks.delete(track); }
             }
             for (const [track, metadata] of sources) {
               if (state.stopping) break;
               if (track.kind !== "audio" || track.readyState !== "live" || state.tracks.has(track) || state.refusedTracks.has(track)) continue;
+              // Me is audible while any of its current senders transmits this microphone.
               const enabled = () => {
                 if (!track.enabled || track.muted) return false;
-                if (!metadata.sender) return true;
-                if (closed(metadata.pc) || metadata.sender.track !== track) return false;
-                const transceiver = getTransceivers(metadata.pc).find(t => t.sender === metadata.sender);
-                if (transceiver && !["sendonly", "sendrecv"].includes(transceiver.currentDirection)) return false;
-                const encodings = metadata.sender.getParameters().encodings;
-                return !encodings?.length || encodings.some(e => e.active !== false);
+                if (!metadata.owners) return true;
+                for (const [sender, owner] of metadata.owners)
+                  if (sender.track && sourceRoot(sender.track) === sourceRoot(track) && sending(sender, owner.pc)) return true;
+                return false;
               };
               const sourceTrackId = sourceKey(metadata.root || sourceRoot(track));
               const record = state.sources.get(sourceTrackId) || { sourceTrackId, kind: metadata.kind,
@@ -442,7 +571,7 @@
       emit(state.token, { type: "stopped" });
       active = null;
       if (waitingHandshake) {
-        emit(null, {type:"hookReady", protocol:1, instanceId:waitingHandshake});
+        emit(null, {type:"hookReady", protocol:1, revision:hookRevision, instanceId:waitingHandshake});
         waitingHandshake = null;
       }
     }

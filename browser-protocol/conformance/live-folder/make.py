@@ -31,7 +31,9 @@ HERE = Path(__file__).resolve().parent
 SCENARIO = json.loads((HERE / 'scenario.json').read_text())
 RATE = 8000
 SESSION = '02000000-0000-4000-8000-000000000002'
-A_KEY, B_KEY, C_KEY, NEW_KEY = 'doc-1:source:1', 'doc-1:source:2', 'doc-1:source:3', 'doc-1:source:4'
+A_KEY, B_KEY, C_KEY, L_KEY, NEW_KEY = (
+    'doc-1:source:1', 'doc-1:source:2', 'doc-1:source:3', 'doc-1:source:4', 'doc-1:source:5'
+)
 TONE_A = ((SCENARIO['constants']['TONE_A_HZ'], 8000),)
 TONE_B = ((SCENARIO['constants']['TONE_B_HZ'], 8000),)
 MIC_HZ = 660
@@ -92,6 +94,12 @@ def remote(identifier, key, label, start, count, content):
                                                                clockUncertaintyMs=2))
 
 
+def local(identifier, key, label, start, count, content, gaps=()):
+    return dict(id=identifier, label=label, kind='local', channels=1, startOffsetMs=start, frames=count,
+                content=content, gaps=list(gaps), sourceTrackId=key,
+                extra=dict(labelSource='browser', clockMethod='outputTimestamp', clockUncertaintyMs=2))
+
+
 def native(identifier, label, kind, channels, start, count, content, gaps=()):
     return dict(id=identifier, label=label, kind=kind, channels=channels, startOffsetMs=start, frames=count,
                 content=content, gaps=list(gaps), extra=dict(labelSource='device'))
@@ -100,20 +108,21 @@ def native(identifier, label, kind, channels, start, count, content, gaps=()):
 def base():
     """The passing run: (session fields, track plans, evidence)."""
     a1, b1 = 251.0625, 68637.25
-    a2, b2 = 99300.5, 99310.125
+    a2, b2, l3 = 99300.5, 99310.125, 99500
     tracks = [
         remote('span-a1', A_KEY, 'remote: participant-a', a1, frames(a1, 95350.0625), [
             (0, frames(a1, 5450.0625), TONE_A),  # the tone outlives the request by the jitter buffer
             (frames(a1, 66250.0625), frames(a1, 95350.0625), TONE_A)]),
-        native('microphone-1', 'Microphone', 'microphone', 1, 0, frames(0, 2100), [(0, frames(0, 2100), MIC)]),
+        local('span-l1', L_KEY, 'Headset Microphone', a1, frames(a1, 2100.0625), [(0, frames(a1, 2100.0625), MIC)]),
         remote('span-b1', B_KEY, 'remote: participant-b', b1, frames(b1, 95350), [(0, frames(b1, 95350), TONE_B)]),
-        native('microphone-2', 'Microphone', 'microphone', 1, 90250, frames(90250, END_MS),
-               [(400, frames(90250, END_MS), MIC)],
-               [dict(atMs=90250, durationMs=50, frames=400, kind='prefix')]),
+        local('span-l2', L_KEY, 'Headset Microphone', 90250, frames(90250, 95350),
+              [(400, frames(90250, 95350), MIC)],
+              [dict(atMs=90250, durationMs=50, frames=400, kind='prefix')]),
         native('system-1', 'Computer sound', 'system', 2, 95912.5, frames(95912.5, 99500),
                [(0, frames(95912.5, 99500), SYSTEM)]),
         remote('span-a2', A_KEY, 'remote: participant-a', a2, frames(a2, END_MS), [(0, frames(a2, END_MS), TONE_A)]),
         remote('span-b2', B_KEY, 'remote: participant-b', b2, frames(b2, END_MS), [(0, frames(b2, END_MS), TONE_B)]),
+        local('span-l3', L_KEY, 'Headset Microphone', l3, frames(l3, END_MS), [(0, frames(l3, END_MS), MIC)]),
     ]
     session = dict(version=1, id=SESSION, createdAt='2026-11-04T12:00:00Z', title='Live folder oracle',
                    source='chromium', state='completed', events=[
@@ -217,9 +226,17 @@ def selection_at_60s(session, tracks, evidence):
 
 
 def mic_from_zero(session, tracks, evidence):
-    first = _track(tracks, 'microphone-1')
-    first.update(frames=frames(0, END_MS), content=[(0, frames(0, END_MS), MIC)])
-    tracks.remove(_track(tracks, 'microphone-2'))
+    first = _track(tracks, 'span-l1')
+    first.update(frames=frames(first['startOffsetMs'], 95350.0625),
+                 content=[(0, frames(first['startOffsetMs'], 95350.0625), MIC)])
+    tracks.remove(_track(tracks, 'span-l2'))
+
+
+def me_across_loss(session, tracks, evidence):
+    second = _track(tracks, 'span-l2')
+    second.update(frames=frames(second['startOffsetMs'], END_MS),
+                  content=[(400, frames(second['startOffsetMs'], END_MS), MIC)])
+    tracks.remove(_track(tracks, 'span-l3'))
 
 
 def overlap_same_key(session, tracks, evidence):
@@ -243,15 +260,18 @@ def no_clock_method(session, tracks, evidence):
 
 
 def short_wav(session, tracks, evidence):
-    _track(tracks, 'microphone-1')['wavFrames'] = frames(0, 2000)
+    first = _track(tracks, 'span-l1')
+    first['wavFrames'] = frames(first['startOffsetMs'], 2000.0625)
 
 
 def wrong_end_offset(session, tracks, evidence):
-    _track(tracks, 'microphone-1')['endShiftMs'] = 5
+    _track(tracks, 'span-l1')['endShiftMs'] = 5
 
 
-def local_kind(session, tracks, evidence):
-    _track(tracks, 'microphone-1')['kind'] = 'local'
+def microphone_kind(session, tracks, evidence):
+    first = _track(tracks, 'span-l1')
+    first.pop('sourceTrackId')
+    first.update(kind='microphone', extra=dict(labelSource='device'))
 
 
 def duplicate_track_id(session, tracks, evidence):
@@ -328,8 +348,8 @@ def system_never_ends(session, tracks, evidence):
 
 
 def mic_late_no_prefix(session, tracks, evidence):
-    mic = _track(tracks, 'microphone-2')
-    mic.update(startOffsetMs=90650, frames=frames(90650, END_MS), gaps=[])
+    mic = _track(tracks, 'span-l2')
+    mic.update(startOffsetMs=90650, frames=frames(90650, 95350), gaps=[])
     mic['content'] = [(0, mic['frames'], MIC)]
 
 
@@ -384,11 +404,11 @@ def overlapping_piece(session, tracks, evidence):
 
 def rotated_wavs(session, tracks, evidence):
     # GNOME at a small WAV limit: A in three pieces (cut in the mute and after it), B and the
-    # second microphone span (with its prefix gap) in two.
+    # second local Me span (with its prefix gap) in two.
     a1 = _track(tracks, 'span-a1')
     rotate(a1, frames(a1['startOffsetMs'], 30000.0625), frames(a1['startOffsetMs'], 70000.0625))
     rotate(_track(tracks, 'span-b1'), 100000)
-    rotate(_track(tracks, 'microphone-2'), frames(90250, 100000))
+    rotate(_track(tracks, 'span-l2'), frames(90250, 93000))
 
 
 def folder_leads(session, tracks, evidence):
@@ -405,8 +425,8 @@ def fractional_mic(session, tracks, evidence):
     # places 1/50 ms below it on the 16 kHz grid (D55).
     on = next(e for e in session['events'] if e['type'] == 'selection' and e['me'] and e['reason'] == 'user')
     on['atMs'] = 90250.02
-    mic = _track(tracks, 'microphone-2')
-    mic.update(startOffsetMs=90250.02, frames=mic['frames'] - 1)  # its last frame still ends by end.atMs
+    mic = _track(tracks, 'span-l2')
+    mic.update(startOffsetMs=90250.02, frames=mic['frames'] - 1)  # its last frame still ends in the kill bracket
     mic['content'] = [(400, mic['frames'], MIC)]
 
 
@@ -449,6 +469,7 @@ MUTANTS = {
     'never-audio-row': (never_audio_row, ['O4.outcomeRows']),
     'selection-at-60s': (selection_at_60s, ['O5.selection', 'O5.micOn', 'O5.micAudio']),
     'mic-from-zero': (mic_from_zero, ['O5.micOff', 'O5.micOn', 'O5.micAudio']),
+    'me-across-loss': (me_across_loss, ['O3.spans', 'O3.lossAbsent', 'O3.resumedStart']),
     'overlap-same-key': (overlap_same_key, ['O3.noOverlap', 'O3.spans', 'O3.lossAbsent', 'O3.resumedStart',
                                             'O3.resumedTone']),
     'resumed-new-key': (resumed_new_key, ['O3.spans', 'O3.resumedStart', 'O3.resumedTone', 'O4.keys',
@@ -458,7 +479,7 @@ MUTANTS = {
     'no-clock-method': (no_clock_method, ['O6.clockMethod']),
     'short-wav': (short_wav, ['O0.files']),
     'wrong-end-offset': (wrong_end_offset, ['O0.offsets']),
-    'local-kind': (local_kind, ['O0.kinds']),
+    'microphone-kind': (microphone_kind, ['O0.kinds']),
     'duplicate-track-id': (duplicate_track_id, ['O0.unique', 'O0.schema']),
     'interrupted': (interrupted, ['O0.state']),
     'open-track': (open_track, ['O0.ended']),

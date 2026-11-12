@@ -12,7 +12,7 @@ from cassini_talk.call_admission import CAPABILITIES
 
 
 class Extension:
-    def __init__(self, path, tabs=(3, 4), instance=None):
+    def __init__(self, path, tabs=(3, 4), instance=None, extra=()):
         self.path = path
         self.connection = connect(path, timeout=2)
         self.stream = self.connection.makefile("rwb")
@@ -20,7 +20,8 @@ class Extension:
         self.profile, self.signal_sequence = instance or str(uuid4()), -1
         send_packet(self.stream, dict(role="extension", browserInstance=instance))
         send_packet(
-            self.stream, dict(type="hello", version=1, capabilities=sorted(CAPABILITIES | {"independent-sessions-v1"}))
+            self.stream,
+            dict(type="hello", version=1, capabilities=sorted(CAPABILITIES | {"independent-sessions-v1", *extra})),
         )
         assert read_packet(self.stream) == dict(type="configure", capabilities=sorted(CAPABILITIES))
         send_packet(self.stream, dict(type="configured", capabilities=sorted(CAPABILITIES)))
@@ -75,19 +76,19 @@ class Extension:
 
 def test_record_snapshots_current_calls_and_each_stop_targets_one_session(service):  # noqa: F811
     server, path = service
-    peer = Extension(path)
+    peer = Extension(path, extra=("sender-me-v1",))
     try:
         with ThreadPoolExecutor(1) as executor:
             started = executor.submit(request, "start-all", path=path, microphone=False)
             # The two Starts run on worker threads, so either may arrive first.
             first = peer.receive()
-            assert first["tabId"] in (3, 4) and first["independent"] and not first["captureLocal"]
+            assert first["tabId"] in (3, 4) and first["independent"] and first["captureLocal"] is True
             assert first["microphone"] is False
             peer.inventory((3, 4, 5))  # A later call does not join manual Record.
             peer.answer(first)
             second = peer.receive()
             assert {first["tabId"], second["tabId"]} == {3, 4} and second["microphone"] is False
-            assert second["independent"] and not second["captureLocal"]
+            assert second["independent"] and second["captureLocal"] is True
             peer.answer(second)
             snapshot = started.result(2)
             assert snapshot["attempted"] == 2 and not snapshot["failures"]

@@ -102,7 +102,10 @@ class RefusalTests(unittest.TestCase):
         replay = load()['replay']
         rejected = {'op': 'refuse', 'atMs': 0, 'side': 'browser', 'code': 'startRejected'}
         tap = {'op': 'refuse', 'atMs': 0, 'side': 'others', 'code': 'deviceUnavailable'}
+        mic = {'op': 'refuse', 'atMs': 0, 'side': 'me', 'code': 'deviceUnavailable'}
         for profile, steps, others in (('noFallback', [rejected, tap], 'browser'),
+                                       ('fallback', [rejected, mic], 'browser'),
+                                       ('noFallback', [rejected, mic], 'browser'),
                                        ('fallback', [dict(rejected, code='startFailed'), tap], 'browser'),
                                        ('fallback', [dict(rejected, detail='busy'), tap], 'browser'),
                                        ('fallback', [rejected], 'system'), ('fallback', [tap], False)):
@@ -119,11 +122,10 @@ class RefusalTests(unittest.TestCase):
                               'start-rejected-falls-back-to-computer-sound', 'start-rejected-without-fallback-records-nothing',
                               'start-failed-timeout-never-falls-back', 'late-turn-on-refused-is-appended',
                               'mid-call-failure-is-not-a-refusal', 'host-setup-broken-is-not-a-refusal',
-                              'start-rejected-busy-no-fallback', 'start-rejected-then-mic-refused',
-                              'start-rejected-and-both-native-refused', 'cap-keeps-first-15-and-latest',
+                              'start-rejected-busy-no-fallback', 'start-rejected-and-system-refused',
+                              'cap-keeps-first-15-and-latest',
                               'message-cut-at-200-code-points', 'others-unavailable-me-keeps-recording',
-                              'start-rejected-without-code-falls-back', 'empty-message-is-omitted',
-                              'start-rejected-and-mic-refused-without-fallback'}, names)
+                              'start-rejected-without-code-falls-back', 'empty-message-is-omitted'}, names)
         for case in WRITER['cases']:
             self.assertIn('opened', case['expected'], case['name'])
             self.assertIn('selection', case['expected'], case['name'])
@@ -185,10 +187,11 @@ class RefusalTests(unittest.TestCase):
                                          "            item = dict(item, side='browser')", 'unknown-side-is-not-shown'),
             'an unknown code has no line': ("if known else 'details.sources.failed'", "if known else None",
                                             'unknown-code-uses-sources-failed'),
-            # Review of #35 (59015e8).
-            'the fallback drops me': ("                opened.add('others')\n",
-                                      "                opened.add('others')\n            opened.discard('me')\n",
-                                      'start-rejected-falls-back-to-computer-sound'),
+            # Review of #35 (59015e8) + Option A browser-local Me capture.
+            'browser start opens native me': (
+                "        {'browser'}\n",
+                "        {'me', 'browser'}\n",
+                'start-rejected-falls-back-to-computer-sound'),
             'a refused side still gets a track': ('    opened = requested - set(start)\n', '    opened = set(requested)\n',
                                                   'mic-denied-others-keep-recording'),
             'an others refusal ends everything': (

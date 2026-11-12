@@ -64,7 +64,7 @@ def test_failed_replacement_keeps_old_source_and_manifest(server, via_callback):
                 raise OSError("Device unavailable")
 
     try:
-        start(client, "change-failure", microphone=False)
+        start(client, "change-failure", microphone=False, capture_local=False)
         remote(client, "remote")
         capture = service.captures["change-failure"]
         capture.fallback()
@@ -96,7 +96,7 @@ def test_failed_replacement_keeps_old_source_and_manifest(server, via_callback):
 def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):  # noqa: F811
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
-    start(client, "close-limit")
+    start(client, "close-limit", capture_local=False)
     capture = service.captures["close-limit"]
     with capture.lock:
         if limit == "tracks":
@@ -118,7 +118,9 @@ def test_browser_close_failure_finalizes_and_releases_microphone(server, limit):
     assert json.loads((capture.directory / "session.json").read_text())["state"] == "interrupted"
 
 
-def test_me_only_browser_loss_closes_local_span_and_publishes_activity(server):  # noqa: F811
+def test_me_only_browser_loss_closes_local_span_and_saves_the_recording(server):  # noqa: F811
+    from cassini_talk.browser_capture import BROWSER_ME_LOST
+
     service, path, _ = server
     client = BrowserAudioProxy(path=path)
     try:
@@ -132,13 +134,15 @@ def test_me_only_browser_loss_closes_local_span_and_publishes_activity(server): 
         original = capture.changed
         capture.changed = lambda c, event: (changed.append(event), original(c, event))
         capture.fallback()
-        assert capture.browser_lost and not capture.streams.browser
-        assert capture.streams.tracks["local"].recorded is None
+        # Me comes only from the page and The others are off: nothing could record
+        # or be resumed, so the loss saves the recording instead of running on empty.
+        assert capture.finished and capture.end_reason == "error"
         assert next(t for t in capture.host.session.manifest["tracks"] if t["id"] == "local")["ended"]
-        assert capture.host.session.manifest["events"] == events  # No invented others event.
-        assert changed == ["sources"]
-        assert set(capture.native_taps) == {"microphone"} and not capture.microphone.stopped
-        capture.stop()
+        saved = capture.host.session.manifest
+        assert saved["events"][:-1] == events and saved["events"][-1]["type"] == "end"  # No invented others event.
+        assert saved["problem"] == BROWSER_ME_LOST
+        assert changed[-1] == "finished"
+        assert set(capture.native_taps) == set() and capture.microphone is None
     finally:
         client.close()
 
@@ -157,7 +161,7 @@ def test_retiring_source_error_cannot_stop_its_confirmed_replacement(server):  #
             self.failed("Old device closed")
 
     try:
-        start(client, "retiring-source", microphone=False)
+        start(client, "retiring-source", microphone=False, capture_local=False)
         capture = service.captures["retiring-source"]
         capture.tap_factory = Retiring
         capture.fallback()

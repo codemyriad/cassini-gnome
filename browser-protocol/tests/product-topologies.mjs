@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connectReceiveSlots, switchReceiveSlot, installZoomLikeAudio } from '../scenarios/product-topologies.mjs';
+import { eventValue } from './support/event-value.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const server = createServer(async (request, response) => {
@@ -28,12 +30,12 @@ function power(data, frequency, rate = 48000) {
   }
   return (real ** 2 + imaginary ** 2) / count ** 2;
 }
-async function waitFor(check) {
-  const deadline = Date.now() + 15000;
-  while (!check()) { assert.ok(Date.now() < deadline, 'timed out waiting for recorded samples'); await new Promise(resolve => setTimeout(resolve, 25)); }
-}
 async function start(page, packets, errors) {
-  await page.exposeFunction('recordPacket', packet => packets.push(packet));
+  const received = new EventEmitter();
+  await page.exposeFunction('recordPacket', packet => {
+    packets.push(packet);
+    received.emit('packet');
+  });
   await page.exposeFunction('recordFailure', message => errors.push(message));
   await page.evaluate(() => {
     window.fixtureStopped = false; window.fixtureReady = false;
@@ -52,6 +54,10 @@ async function start(page, packets, errors) {
       moduleURL: location.origin + '/capture.js', workletURL: location.origin + '/pcm-worklet.js' }, '*');
   });
   await page.waitForFunction(() => fixtureReady);
+  return check => eventValue(changed => {
+    received.on('packet', changed);
+    return () => received.off('packet', changed);
+  }, check, { label: 'recorded samples' });
 }
 async function observePrejoin(page) {
   await page.evaluate(() => {
@@ -87,7 +93,7 @@ try {
     await page.goto(address); await remote.goto(address);
     await connectReceiveSlots(page, remote, [[440], [660], [880]], { prejoin: true });
     const prejoinPackets = [], prejoinErrors = [];
-    await start(page, prejoinPackets, prejoinErrors);
+    const waitForPackets = await start(page, prejoinPackets, prejoinErrors);
     const before = await observePrejoin(page);
     assert.equal(prejoinPackets.length, 0, 'connected empty receive slots open no native track');
     assert.ok(before.samples.every(sample => sample.length === 0), 'pre-join receives no inbound audio RTP');
@@ -100,7 +106,7 @@ try {
     assert.equal(joined.sourceCount, 3);
     results.push({ model: 'Pre-join receive slots then inbound RTP', status: 'passed',
       chromium: browser.version(), prejoin: before, joined, liveProductTest: false });
-    await waitFor(() => prejoinPackets.some(packet => packet.type === 'track') &&
+    await waitForPackets(() => prejoinPackets.some(packet => packet.type === 'track') &&
       prejoinPackets.filter(packet => packet.type === 'track').every(track => pcm(prejoinPackets, track.id).length >= 24000));
     assert.equal(prejoinPackets.filter(packet => packet.type === 'track').length, 1, 'only the packet-proven receiver opens');
     assert.ok(prejoinPackets.find(packet => packet.type === 'audio').offsetMs >= joinedAt,
@@ -139,12 +145,12 @@ try {
     await page.goto(address); await remote.goto(address);
     if (frequencies) await connectReceiveSlots(page, remote, frequencies);
     else await installZoomLikeAudio(page);
-    await start(page, packets, errors);
+    const waitForPackets = await start(page, packets, errors);
     if (frequencies) {
       // Admitted bytes can initially contain receiver/AGC startup silence or
       // attenuation. Wait for the actual expected tone in the same analysis
       // window used below; neither the power/bleed limits nor timeout change.
-      await waitFor(() => {
+      await waitForPackets(() => {
         const tracks = packets.filter(p => p.type === 'track');
         return tracks.length === frequencies.length && tracks.every((track, index) => {
           const audio = pcm(packets, track.id);
@@ -166,7 +172,7 @@ try {
         await switchReceiveSlot(remote, 0, [990]);
         // Decoder/jitter buffering can deliver old audio after replaceTrack.
         // Observe the replacement waveform, not just another second of bytes.
-        await waitFor(() => {
+        await waitForPackets(() => {
           const audio = pcm(packets, tracks[0].id);
           return audio.length >= before + 96000 && power(audio, 990) > 0.001 && power(audio, 440) < power(audio, 990) * 0.01;
         });

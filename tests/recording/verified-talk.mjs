@@ -54,7 +54,7 @@ export async function run({context, remoteBrowser, call, automatic, poll, sample
   assert.equal(admitted.inventory.browserDocumentId, admitted.signal.documentGeneration);
   assert.equal(admitted.inventory.documentGeneration, admitted.signal.sourceDocumentGeneration);
   assert.equal(admitted.inventory.callGeneration, admitted.signal.callEvidence.callGeneration);
-  assert.ok(admitted.state.browserPeers.some(peer => peer.automaticVerified && peer.diagnostics.extensionVersion === '0.2.26'));
+  assert.ok(admitted.state.browserPeers.some(peer => peer.automaticVerified && peer.diagnostics.extensionVersion === '0.2.27'));
   const directory = admitted.capture.path;
   const audio = await poll(async () => {
    const audio = await samples(directory);

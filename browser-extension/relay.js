@@ -6,6 +6,9 @@
   previous?.retire();
   const observerDocumentStart = globalThis.__cassiniRepairInjection !== true;
   const protocol = 1;
+  // A page opened before an update keeps its old hook (reinjection never replaces it), and a
+  // revision 1 hook would record screen-share audio as Me: that page needs a reload.
+  const hookRevision = 2;
   let instanceId = null, hookReady = false, handshakeComplete = false, retired = false, handshakeTimer = null;
   const waiters = new Set();
   const listeners = new Map();
@@ -129,12 +132,20 @@
     control({ type: "discover" });
   });
   listen("message", event => {
+    // isTrusted rejects synthetic dispatchEvent, not page postMessage forgery.
+    // Admission uses the unconditionally claimed immutable native global;
+    // discovery only wakes a browser-bound read of it, never supplies proof.
     if (event.isTrusted !== true || event.source !== window || event.data?.channel !== "cassini-page") return;
     const { type, packet, request } = event.data;
     if (retired && !(drainingToken && event.data.token === drainingToken)) return;
     if (type === "hookReady") {
       if (event.data.protocol !== protocol || event.data.instanceId !== instanceId || !instanceId) return;
       if(hookReady&&handshakeComplete)return;
+      if (!(event.data.revision >= hookRevision)) {
+        if (handshakeComplete) return;
+        handshakeComplete = true; clearTimeout(handshakeTimer);
+        send({type:"relayUnavailable", protocol, instanceId}); settle(); return;
+      }
       hookReady = true; handshakeComplete = true; clearTimeout(handshakeTimer);
       send({type:"relayReady", protocol, instanceId}); settle();
       control({type:"discover"}); return;

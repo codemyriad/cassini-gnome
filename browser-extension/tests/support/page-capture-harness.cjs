@@ -13,7 +13,7 @@ module.exports = async function fixture(run, settings={}) {
  }
  for(const name of ['getStats','createOffer','createAnswer','setLocalDescription','setRemoteDescription','addTrack','addTransceiver'])Peer.prototype[name]=()=>{};
  Peer.prototype.setRemoteDescription=function(){return this.descriptionTask || Promise.resolve()};
- class Stream {constructor(tracks){this.tracks=tracks}getAudioTracks(){return this.tracks}}
+ class Stream {constructor(tracks){this.tracks=tracks}getAudioTracks(){return this.tracks}clone(){return new Stream(this.tracks.map(track=>Object.assign(Object.create(Track.prototype),track,{id:track.id+'-stream-clone'})))}}
  class Context {constructor(){if(contextError)throw Error('generated context attach failure')}sampleRate=48000;state='running';async close(){this.state='closed'}}
  const control=async data=>{for(const fn of listeners)await fn({isTrusted:true,source:window,data:{channel:'cassini-control',...data}})};
  const window={location:{href:'https://meet.test/call-A'},RTCPeerConnection:Peer,addEventListener:(_n,fn)=>listeners.push(fn),postMessage(message){
@@ -29,7 +29,12 @@ module.exports = async function fixture(run, settings={}) {
   return {failed:false,async stop(){item.stopped=true}};
  };
  const ContextClass=settings.Context || Context;
- const context=vm.createContext({window,navigator:{},document:{querySelectorAll:()=>media},MediaStream:Stream,MediaStreamTrack:Track,AudioContext:ContextClass,
+ let nextInput=0;
+ const navigator={mediaDevices:{
+  async getUserMedia(){return new Stream([new Track({id:`user-mic-${++nextInput}`,label:'Headset Microphone',kind:'audio',readyState:'live',enabled:true,muted:false})])},
+  async getDisplayMedia(){return new Stream([new Track({id:`display-audio-${++nextInput}`,label:'Tab audio',kind:'audio',readyState:'live',enabled:true,muted:false})])}
+ }};
+ const context=vm.createContext({window,navigator,document:{querySelectorAll:()=>media},MediaStream:Stream,MediaStreamTrack:Track,AudioContext:ContextClass,
   crypto:{randomUUID:()=>`id-${++uuid}`},performance:{now:()=>now},setInterval:fn=>(timers.push(fn),timers.length),clearInterval(){},
   setTimeout,clearTimeout,queueMicrotask});
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../../page-hook.js'),'utf8'),context,{importModuleDynamically:vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER});
@@ -43,7 +48,7 @@ module.exports = async function fixture(run, settings={}) {
  const tick=async()=>{now+=1000;await timers[0]();};
  const scan=async()=>{assert.ok(timers[1],'capture scan exists');await timers.at(-1)();};
  let activeToken='recording';
- try {await run({peer,window,remote,tick,scan,captures,messages,cachedPeer:()=>new Peer(),receive(data){if(data.type==="start")activeToken=data.token;return control(data)},render(track,card){const element={srcObject:new Stream([track]),closest:()=>card};media.push(element);return element},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
+ try {await run({peer,window,navigator,Track,remote,tick,scan,captures,messages,cachedPeer:()=>new Peer(),receive(data){if(data.type==="start")activeToken=data.token;return control(data)},render(track,card){const element={srcObject:new Stream([track]),closest:()=>card};media.push(element);return element},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
  finally {await control({type:'stop',token:activeToken});delete globalThis.__cassiniPageCapture;}
 }
 ;

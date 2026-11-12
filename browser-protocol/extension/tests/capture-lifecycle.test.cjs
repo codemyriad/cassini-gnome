@@ -34,10 +34,10 @@ test('transient suspension resumes without source failure and preserves the elap
  // D61: the gap moves the shared calibration object; the origin maps onto performance.now() 1000.
  assert.equal(chunks[0].offsetMs,0);assert.equal(packets.find(p=>p.type==='track').clockMethod,'outputTimestamp');
 }));
-function clock() {
+function clock(onSchedule = () => {}) {
  let now=1000, serial=0; const timers=new Map();
  return {now:()=>now, timers,
-  schedule(fn,ms){const id=++serial;timers.set(id,{fn,at:now+ms});return id},
+  schedule(fn,ms){const id=++serial;timers.set(id,{fn,at:now+ms});onSchedule(ms);return id},
   cancel(id){timers.delete(id)},
   async advance(ms){now+=ms;for(const [id,timer]of [...timers])if(timer.at<=now){timers.delete(id);await timer.fn()}},
  };
@@ -233,8 +233,23 @@ test('source connects only after render readiness and PCM arms only after the na
 
 
 for(const recover of [false,true])test(`a timed-out source stays visible through relay/status/retries (${recover?'recovered':'still failing'}) while healthy audio continues`,async()=>mocked(async({capture,nodes,contexts,renderers,Context})=>{
- const vm=require('node:vm'),{setup,until,event}=require('./support/app-control-harness.cjs');
- const pageFixture=require('./support/page-capture-harness.cjs'),time=clock();
+ const vm=require('node:vm'),{setup,event}=require('./support/app-control-harness.cjs');
+ const {eventValue}=await import('./support/event-value.mjs');
+ const pageFixture=require('./support/page-capture-harness.cjs');
+ const readinessTimer=event(),workletDeadlines=new Map();
+ const time=clock(ms=>{
+  if(ms!==4000||!nodes.length)return;
+  const count=(workletDeadlines.get(nodes.length)||0)+1;
+  workletDeadlines.set(nodes.length,count);
+  // The new worklet first bounds context.resume(), then bounds render readiness.
+  if(count===2)readinessTimer.emit();
+ });
+ const waitFor=(publication,read,label)=>eventValue(changed=>{
+  publication.addListener(changed);
+  return ()=>publication.removeListener(changed);
+ },read,{label});
+ const waitForRenderDeadline=count=>waitFor(readinessTimer,()=>nodes.length===count&&workletDeadlines.get(count)>=2&&
+  [...time.timers.values()].some(timer=>timer.at===time.now()+4000),'render readiness deadline');
  // The background takes the session origin from the real wall clock: put the page's
  // Date.now() on it, as one browser does, so calibration sees no day-sized skew.
  const skew=new Date().getTime()-Date.now(),paged=Date.now;Date.now=()=>paged()+skew;
@@ -257,8 +272,7 @@ for(const recover of [false,true])test(`a timed-out source stays visible through
    for(const packet of queued.splice(0))await receive(packet);
    const started=await app.command({type:'command',requestId:'start-clock',action:'start',tabId:2,mode:'tracks',independent:true,captureLocal:true});
    assert.equal(started.ok,true);
-   try { await until(()=>nodes.length===1); } catch(error) { throw new Error(JSON.stringify({captures:f.captures.length,page:f.messages,control:frame.sent}),{cause:error}); }
-   await tick();
+   try { await waitForRenderDeadline(1); } catch(error) { throw new Error(JSON.stringify({captures:f.captures.length,page:f.messages,control:frame.sent}),{cause:error}); }
    await time.advance(4000);await pageStart;
    assert.equal(f.captures[0].recorder.state,'retrying');assert.equal(nodes.length,2);
    assert.equal(nodes[0].port.onmessage,null);assert.equal(nodes[0].disconnected,true);
@@ -268,23 +282,28 @@ for(const recover of [false,true])test(`a timed-out source stays visible through
    const status=()=>app.api.controlStatus();
    assert.deepEqual(Array.from(status().failedSources),[source]);
    assert.equal(status().message,'Audio render clock did not become ready.');
-   const healthyID=app.audio[0].sent.find(p=>p.type==='track'&&p.sourceTrackId===other).id;
+   const audio=app.audio[0];
+   const healthyID=audio.sent.find(p=>p.type==='track'&&p.sourceTrackId===other).id;
+   const waitForHealthyPCM=count=>waitFor(audio.onPost,()=>audio.sent.filter(p=>p.type==='audio'&&p.id===healthyID).length===count,'healthy PCM');
    nodes[1].port.onmessage({data:{pcm:new ArrayBuffer(256),frame:128}});
-   await until(()=>app.audio[0].sent.some(p=>p.type==='audio'&&p.id===healthyID));
+   await waitForHealthyPCM(1);
    assert.deepEqual(Array.from(status().failedSources),[source]);
    assert.equal(status().message,'Audio render clock did not become ready.','another declaration/PCM must not clear this source');
-   const retry=time.advance(1000);await tick();assert.equal(nodes.length,3);
+   const retry=time.advance(1000);await waitForRenderDeadline(3);assert.equal(nodes.length,3);
    await time.advance(4000);await retry;
    assert.equal(nodes[2].disconnected,true);assert.deepEqual(Array.from(status().failedSources),[source]);
    assert.equal(f.messages.filter(p=>p.type==='warning'&&p.sourceTrackId===source&&!p.recovered).length,1,'unchanged retries do not re-warn');
    nodes[1].port.onmessage({data:{pcm:new ArrayBuffer(256),frame:256}});
-   await until(()=>app.audio[0].sent.filter(p=>p.type==='audio'&&p.id===healthyID).length===2);
+   await waitForHealthyPCM(2);
    assert.equal(app.audio[0].closed,false);assert.equal(status().recording,true);
    if(recover){
     Context.deferReadiness=false;await time.advance(5000);
     assert.equal(nodes.length,4);assert.deepEqual(Array.from(status().failedSources),[source],'a new declaration alone is not recovery');
+    const control=app.ports[0],beforeRecovery=control.sent.length;
     nodes[3].port.onmessage({data:{pcm:new ArrayBuffer(256),frame:48000}});
-    await until(()=>status().failedSources.length===0);
+    await waitFor(control.onPost,()=>control.sent.slice(beforeRecovery)
+     .some(packet=>packet.type==='status'&&packet.failedSources?.length===0),'recovered source status');
+    assert.equal(status().failedSources.length,0);
     assert.notEqual(status().message,'Audio render clock did not become ready.');
    }
    assert.equal((await app.command({type:'command',requestId:'stop-clock',action:'stop',tabId:2,independent:true})).ok,true);
@@ -295,33 +314,88 @@ for(const recover of [false,true])test(`a timed-out source stays visible through
  }finally{app.close()}
 }));
 
-for(const first of ['io','retired'])test(`source-local ${first} refusal retries a new span after retired cleanup while healthy PCM continues`,async()=>mocked(async({capture,nodes,Context,retryDelay})=>{
+for(const first of ['io','retired'])test(`source-local ${first} refusal retries a new span after retired cleanup while healthy PCM continues`,{timeout:10000},async()=>mocked(async({capture,nodes,Context,retryDelay})=>{
  const time=clock(),packets=[],pending=[],warnings=[],failures=[],context=new Context();
+ let admitted,retried,recovered,firstHealthy,secondHealthy;
+ const fourInFlight=new Promise(resolve=>{admitted=resolve}),retrying=new Promise(resolve=>{retried=resolve});
+ const recovery=new Promise(resolve=>{recovered=resolve});
+ const healthyFirst=new Promise(resolve=>{firstHealthy=resolve}),healthySecond=new Promise(resolve=>{secondHealthy=resolve});
  const ended=()=>Object.assign(new Error('Only this source span ended'),{code:'state',scope:'source',retired:true});
  const send=async p=>{
   packets.push(p);
-  if(p.id==='B'&&p.type==='audio')return new Promise((resolve,reject)=>pending.push({resolve,reject}));
+  if(p.id==='B'&&p.type==='audio')return new Promise((resolve,reject)=>{
+   pending.push({resolve,reject});if(pending.length===4)admitted();
+  });
   if(p.id==='B'&&p.type==='trackEnd')throw ended();
  };
  const options={stream:{},reportOutcomes:true,label:'Guest',kind:'local',origin:100000,workletURL:'',sharedContext:context,
   clock:time.now,schedule:time.schedule,cancel:time.cancel,send,fail:m=>failures.push(m)};
- const a=await capture({...options,id:'A',sourceTrackId:'root-A'});
- const b=await capture({...options,id:'B',sourceTrackId:'root-B',nextSpanId:()=> 'B-retry',warn:(m,d)=>warnings.push(d.kind)});
+ let healthyA=0;
+ const a=await capture({...options,id:'A',sourceTrackId:'root-A',onAudio:()=>{
+  healthyA++;
+  if(healthyA===1)firstHealthy();
+  if(healthyA===2)secondHealthy();
+ }});
+ const b=await capture({...options,id:'B',sourceTrackId:'root-B',nextSpanId:()=> 'B-retry',warn:(m,d)=>{
+  warnings.push(d.kind);if(d.kind==='retry')retried();if(d.kind==='recovered')recovered();
+ }});
  const emit=(node,frame)=>node.port.onmessage({data:{pcm:new ArrayBuffer(256),frame}});
  for(let i=0;i<4;i++)emit(nodes[1],i*128);
- const deadline=Date.now()+2000;
- while(pending.length<4){assert.ok(Date.now()<deadline,'Four admitted source chunks were not in flight');await tick();}
+ await fourInFlight;assert.equal(pending.length,4,'Four admitted source chunks must be in flight');
  pending[0].reject(first==='io'?Object.assign(new Error('B disk full'),{code:'io',scope:'source'}):ended());
  pending[1].resolve();pending[2].reject(ended());pending[3].reject(ended());
- while(b.state!=='retrying'){assert.ok(Date.now()<deadline,'B did not enter retry state');await tick();}
- emit(nodes[0],0);await tick();
+ await retrying;assert.equal(b.state,'retrying');
+ emit(nodes[0],0);await healthyFirst;
  assert.equal(a.state,'recording');assert.equal(time.timers.size,1);
  await time.advance(retryDelay(0));
- assert.equal(nodes.length,3);emit(nodes[2],512);emit(nodes[0],128);await tick();
+ assert.equal(nodes.length,3);emit(nodes[2],512);emit(nodes[0],128);await Promise.all([recovery,healthySecond]);
  assert.equal(b.state,'recording');assert.equal(a.state,'recording');
- assert.ok(packets.findIndex(p=>p.type==='trackEnd'&&p.id==='B') < packets.findIndex(p=>p.type==='track'&&p.id==='B-retry'));
+ const closed=packets.findIndex(p=>p.type==='trackEnd'&&p.id==='B');
+ const opened=packets.findIndex(p=>p.type==='track'&&p.id==='B-retry');
+ assert.ok(closed>=0&&closed<opened,'old span must emit trackEnd before its replacement opens');
+ assert.equal(packets[closed].reason,first==='retired'?'ended':'retry');
+ assert.equal(nodes[1].disconnected,true);
  assert.equal(packets.filter(p=>p.type==='audio'&&p.id==='A').length,2);
  assert.equal(packets.filter(p=>p.type==='audio'&&p.id==='B-retry').length,1);
  assert.deepEqual(failures,[]);assert.deepEqual(warnings,['retry','recovered']);
  await a.stop();await b.stop();
+}));
+
+const samplesOf=packets=>packets.filter(p=>p.type==='audio').map(p=>{const bytes=Buffer.from(p.pcm,'base64');return new Int16Array(bytes.buffer,bytes.byteOffset,bytes.length/2)});
+const zeroSpans=samples=>{const spans=[];let start=null;samples.forEach((v,i)=>{if(v===0&&start===null)start=i;if(v!==0&&start!==null){spans.push([start,i]);start=null}});if(start!==null)spans.push([start,samples.length]);return spans};
+test('sender mute is judged on the render clock: audio rendered while muted stays silent when delivered after unmuting',async()=>mocked(async({capture,nodes,Context,MUTE_GUARD_MS})=>{
+ const packets=[],time=clock(),context=new Context();let on=true;
+ const recorder=await capture({stream:{},id:'me',label:'Me',kind:'local',origin:100000,workletURL:'',sharedContext:context,enabled:()=>on,
+  clock:time.now,schedule:time.schedule,cancel:time.cancel,send:async p=>packets.push(p)});
+ const chunk=frame=>nodes[0].port.onmessage({data:{pcm:new Int16Array(8192).fill(1000).buffer,frame}});
+ // replaceTrack(null) at render frame 4096: the hook notifies before and after the call.
+ context.currentTime=4096/48000;recorder.observe();on=false;recorder.observe();
+ // Restored at frame 12288, before either chunk holding the muted frames reaches the main thread.
+ context.currentTime=12288/48000;on=true;recorder.observe();
+ chunk(0);chunk(8192);await tick();await tick();
+ const samples=Int16Array.from(samplesOf(packets).flatMap(s=>[...s]));
+ assert.equal(samples.length,16384);
+ const guard=48000*MUTE_GUARD_MS/1000;
+ assert.deepEqual(zeroSpans(samples),[[4096,12288+guard]],'exactly the muted frames and one input-latency guard are silent');
+ await recorder.stop();assert.equal(time.timers.size,0,'stop cancels the mute poll');
+}));
+test('a sender mute seen only by the poll still silences audio delivered after unmuting',async()=>mocked(async({capture,nodes,Context,MUTE_POLL_MS})=>{
+ const packets=[],time=clock(),context=new Context();let on=true;
+ const recorder=await capture({stream:{},id:'me',label:'Me',kind:'local',origin:100000,workletURL:'',sharedContext:context,enabled:()=>on,
+  clock:time.now,schedule:time.schedule,cancel:time.cancel,send:async p=>packets.push(p)});
+ context.currentTime=1024/48000;await time.advance(MUTE_POLL_MS); // last observed audible at frame 1024
+ on=false;context.currentTime=2048/48000;await time.advance(MUTE_POLL_MS); // mute seen at the next poll
+ context.currentTime=8192/48000;on=true; // unmuted again before the worklet's chunk arrives
+ nodes[0].port.onmessage({data:{pcm:new Int16Array(8192).fill(1000).buffer,frame:0}});await tick();
+ const [samples]=samplesOf(packets);
+ assert.deepEqual(zeroSpans(samples),[[1024,8192]]);
+ await recorder.stop();assert.equal(time.timers.size,0);
+}));
+test('sources without a sender gate keep their PCM and schedule no mute poll',async()=>mocked(async({capture,nodes,Context})=>{
+ const packets=[],time=clock(),context=new Context();
+ const recorder=await capture({stream:{},id:'guest',label:'Guest',kind:'remote',origin:100000,workletURL:'',sharedContext:context,
+  clock:time.now,schedule:time.schedule,cancel:time.cancel,send:async p=>packets.push(p)});
+ assert.equal(time.timers.size,0);
+ nodes[0].port.onmessage({data:{pcm:new Int16Array(8192).fill(1000).buffer,frame:0}});await tick();
+ assert.deepEqual(zeroSpans(samplesOf(packets)[0]),[]);await recorder.stop();
 }));

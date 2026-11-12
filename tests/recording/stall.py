@@ -249,7 +249,11 @@ def run_case(name, stall):
     observer = Observer()
     fsync, record = os.fsync, dict(case=name)
     try:
-        capture.start(dict(type="start", captureId=name, timelineOriginMs=int(time.time() * 1000), microphone=True))
+        # An older companion: Me is the app's microphone, one of the two stalled native sides.
+        capture.start(
+            dict(type="start", captureId=name, timelineOriginMs=int(time.time() * 1000), microphone=True),
+            native_me=True,
+        )
         capture.fallback("lost")  # The others' side on computer sound.
         assert set(capture.native_taps) == set(KINDS), capture.native_taps
         levels, progress = QueueLevels(capture), Progress(capture)

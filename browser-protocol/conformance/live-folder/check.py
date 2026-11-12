@@ -299,11 +299,18 @@ class Run:
         self.actions = evidence['actions']
         self.events = [e for e in self.doc.get('events') or [] if isinstance(e, dict)]
         self.browser = [t for t in self.tracks if t.get('kind') not in NATIVE]
+        self.wire = [t for t in self.tracks if t.get('kind') not in ('microphone', 'system')]
         self.keys = {}
         for track in self.browser:
             if track.get('sourceTrackId') is not None and _placeable(track):
                 self.keys.setdefault(track['sourceTrackId'], []).append(track)
         for spans in self.keys.values():
+            spans.sort(key=lambda t: extent(t)[0])
+        self.local_keys = {}
+        for track in self.tracks:
+            if track.get('kind') == 'local' and track.get('sourceTrackId') is not None and _placeable(track):
+                self.local_keys.setdefault(track['sourceTrackId'], []).append(track)
+        for spans in self.local_keys.values():
             spans.sort(key=lambda t: extent(t)[0])
         self.roles = {'A': [], 'B': []}
         for key, spans in sorted(self.keys.items(), key=lambda item: extent(item[1][0])[0]):
@@ -456,7 +463,7 @@ class Run:
         rule('oneFolder', folders == [name] and same is True,
              dict(newFolders=folders, folder=name, id=self.doc.get('id'), sameUuid=same))
         kinds = sorted({t.get('kind') for t in self.tracks})
-        rule('kinds', set(kinds) <= {'remote', 'microphone', 'system'}, kinds)
+        rule('kinds', set(kinds) <= {'remote', 'local', 'system'}, kinds)
         state = [self.doc.get('state'), self.doc.get('problem'), self.doc.get('problemKind')]
         rule('state', state == ['completed', None, None], state)
         last = self.events[-1] if self.events else None
@@ -554,25 +561,32 @@ class Run:
             rule('state', False, 'needs one lost in the kill bracket, one restored after it and a placed frame')
         a, b = self.key('A'), self.key('B')
         kill = self.actions['kill']['requestedAtMs']
+        me_tracks = [t for t in self.tracks if t.get('kind') in ME and _placeable(t)]
+        pre_me = [t for t in me_tracks if extent(t)[0] < kill]
+        post_me = [t for t in me_tracks if extent(t)[0] >= kill]
         pre = {role: [t for t in self.keys[key] if extent(t)[0] < kill] for role, key in (('A', a), ('B', b))}
         counts = {role: [len(pre[role]), len(self.post_kill(key))] for role, key in (('A', a), ('B', b))}
-        rule('spans', all(v == [1, 1] for v in counts.values()), dict(preAndPostKill=counts))
-        # SPEC S-6: the Others are absent over the loss; the dead transport's audio is never zero-filled.
+        rule('spans', all(v == [1, 1] for v in counts.values()) and len(pre_me) >= 1 and len(post_me) == 1,
+             dict(preAndPostKill=counts, me=[len(pre_me), len(post_me)]))
+        # SPEC S-6: browser tracks (Others and Me) end at the loss; dead transport audio is never
+        # zero-filled and Me never falls back to a raw OS microphone across the gap.
         ends = {}
-        for role, spans in pre.items():
+        for role, spans in (*pre.items(), ('me', pre_me)):
             present = [b / 16 for t in spans for _, b in gaps.presence(t)['present']]
             ends[role] = max(present) if present else None
         rule('lossAbsent', all(_number(v) and self.bracket('kill', v, C['ACTION_SLACK_MS']) for v in ends.values()),
              dict(lastPresentBeforeLossMs=ends, kill=self.actions['kill']))
         overlaps = []
-        for key, spans in self.keys.items():
+        all_keyed = [*self.keys.items(), *self.local_keys.items()]
+        for key, spans in all_keyed:
             for one, two in zip(spans, spans[1:]):
                 if extent(two)[0] < extent(one)[1] - 1e-9:
                     overlaps.append([one['id'], two['id']])
         rule('noOverlap', not overlaps, overlaps)
-        labels = {key: sorted({t.get('label') for t in spans}) for key, spans in self.keys.items()}
+        labels = {key: sorted({t.get('label') for t in spans}) for key, spans in all_keyed}
         rule('labels', all(len(v) == 1 for v in labels.values()), labels)
         starts = {role: [extent(t)[0] for t in self.post_kill(key)] for role, key in (('A', a), ('B', b))}
+        starts['me'] = [extent(t)[0] for t in post_me]
         rule('resumedStart', lost is not None and all(starts.values()) and
              all(s >= lost['atMs'] for v in starts.values() for s in v), starts)
         tones = {}
@@ -611,13 +625,16 @@ class Run:
 
     # O4 remote with no packets ---------------------------------------------------------------
     def o4(self, rule):
-        unkeyed = [t.get('id') for t in self.browser if t.get('sourceTrackId') is None]
-        rule('keys', not unkeyed and len(self.keys) == 2, dict(keys=sorted(self.keys), unkeyed=unkeyed))
+        unkeyed = [t.get('id') for t in self.wire if t.get('sourceTrackId') is None]
+        shared = sorted(set(self.keys) & set(self.local_keys))
+        rule('keys', not unkeyed and not shared and len(self.keys) == 2 and len(self.local_keys) == 1,
+             dict(remoteKeys=sorted(self.keys), localKeys=sorted(self.local_keys), unkeyed=unkeyed))
         rows = self.sources()
-        want = {key: sorted(t['id'] for t in spans) for key, spans in self.keys.items()}
+        all_keys = {**self.keys, **self.local_keys}
+        want = {key: sorted(t['id'] for t in spans) for key, spans in all_keys.items()}
         have = {s.get('sourceTrackId'): sorted(s.get('trackIds') or []) for s in rows}
         outcomes = sorted(s.get('captureOutcome') for s in rows)
-        rule('outcomeRows', len(rows) == 2 and have == want and outcomes == ['captured', 'captured'],
+        rule('outcomeRows', len(rows) == 3 and not shared and have == want and outcomes == ['captured'] * 3,
              dict(rows=have, outcomes=outcomes))
         slot = self.e['slotC']
         rule('evidence', self.e['maxSourceCount'] == 3 and slot['connectionState'] == 'connected' and
@@ -647,7 +664,7 @@ class Run:
         started = [t for t in mic if at_event(extent(t)[0], at) and extent(t)[1] >= on + C['PROOF_MS']]
         rule('micOn', len(started) == 1, dict(starts=[extent(t)[0] for t in mic], atMs=at, placedMs=on))
         if len(started) != 1:
-            rule('micAudio', False, 'no microphone span starts at the me:true selection')
+            rule('micAudio', False, 'no local Me span starts at the me:true selection')
             return
         track = started[0]
         data, layout = self.f.window([track], extent(track)[0], extent(track)[1])
@@ -655,12 +672,15 @@ class Run:
         loud = sum(1 for i in range(0, len(data), size) if any(data[i:i + size]))
         hz = self.e['nativeTones']['microphone']
         level = self.f.tone([track], at, at + C['PROOF_MS'], hz)
-        rule('micAudio', loud >= 32 and _audible(level), dict(nonZero32msFrames=loud, toneHz=hz, tone=level))
+        resumed = [self.f.tone([t], extent(t)[0], extent(t)[0] + C['PROOF_MS'], hz)
+                   for t in mic if extent(t)[0] > on + SAMPLE_MS + 1e-9]
+        rule('micAudio', loud >= 32 and _audible(level) and all(_audible(v) for v in resumed),
+             dict(nonZero32msFrames=loud, toneHz=hz, tone=level, resumedTones=resumed))
 
     # O6 clock sanity ----------------------------------------------------------------------------
     def o6(self, rule):
-        missing = [t.get('id') for t in self.browser if t.get('clockMethod') not in ('outputTimestamp', 'roundTrip')]
-        rule('clockMethod', not missing, missing or 'every remote span')
+        missing = [t.get('id') for t in self.wire if t.get('clockMethod') not in ('outputTimestamp', 'roundTrip')]
+        rule('clockMethod', not missing, missing or 'every browser span')
         end = self.last_frame()
         rule('lastFrame', end is not None and self.bracket('stop', end, C['ACTION_SLACK_MS']),
              dict(endMs=end, stop=self.actions['stop']))
@@ -694,13 +714,16 @@ class Run:
         end = self.events[-1] if self.events and self.events[-1].get('type') == 'end' else {}
         outcomes = {s.get('sourceTrackId'): s.get('captureOutcome') for s in self.sources()}
         role = {key: r for r, keys in self.roles.items() for key in keys}
+        for key in self.local_keys:
+            role.setdefault(key, 'me')
         return dict(
             written=dict(othersSource=[[e.get('source'), e.get('reason')] for e in self.others_events()]),
             categorical=dict(
                 othersSource=self.others_form(),
                 selection=[[e.get('me'), e.get('others'), e.get('reason')] for e in chosen],
                 state=self.doc.get('state'), problemKind=self.doc.get('problemKind'), endReason=end.get('reason'),
-                remoteSources=len(self.keys), resumeRequests=len(self.resume_requests()[1]),
+                remoteSources=len(self.keys), localSources=len(self.local_keys),
+                resumeRequests=len(self.resume_requests()[1]),
                 spans=dict(A=[len(self.keys[k]) for k in self.roles['A']], B=[len(self.keys[k]) for k in self.roles['B']],
                            microphone=sum(t.get('kind') in ME and _placeable(t) for t in self.tracks),
                            system=sum(t.get('kind') == 'system' and _placeable(t) for t in self.tracks)),

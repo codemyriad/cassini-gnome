@@ -13,7 +13,8 @@ window.join = async (frequency, captured = false) => {
     return {oscillator, destination, track: destination.stream.getAudioTracks()[0]};
   }
   const source = captured
-    ? {track: (await navigator.mediaDevices.getUserMedia({audio: true})).getAudioTracks()[0]}
+    // Unprocessed, so the recorded Me is the capture device's exact test tone.
+    ? {track: (await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false}})).getAudioTracks()[0]}
     : tone(frequency);
   const pc = new RTCPeerConnection({iceServers: []});
   const sender = pc.addTrack(source.track);

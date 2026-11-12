@@ -34,6 +34,7 @@ def capture_at(root, microphone=False, others_source="browser", opened_at=None):
         ),
         others_source=others_source,
         reason="missing" if others_source == "system" else "start",
+        native_me=microphone,
     )
     return capture
 

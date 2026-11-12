@@ -259,7 +259,8 @@ def test_browser_writer_cases(broker, case, monkeypatch):
     service, path, library = broker
     browser = next(s for s in start_refusals(case) if s["side"] == "browser")
     Taps.refused = {KINDS[s["side"]]: s for s in start_refusals(case) if s["side"] != "browser"}
-    peer = Extension(path, (3,))
+    # The shared vectors describe a sender-me-v1 companion: a rejected Start opens no native Me.
+    peer = Extension(path, (3,), extra=("sender-me-v1",))
     cleanup_timed_out = threading.Event()
     try:
         with ThreadPoolExecutor(1) as pool:

@@ -24,7 +24,19 @@ const server = createServer((_req, res) => {res.setHeader('Content-Type', 'text/
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const evidence = {scenarios: [], console: []}, pending = [], pairs = [];
 let context, remoteBrowser, ui, microphone;
-let legacyCompanion;
+let legacyCompanion, senderMe;
+// The meeting page's microphone: Chromium's fake capture device plays this
+// 660 Hz tone, the same tone the private OS microphone carries.
+async function microphoneTone(file, frequency=660) {
+ const rate = 48000, frames = rate, data = Buffer.alloc(44 + frames * 2);
+ data.write('RIFF'); data.writeUInt32LE(data.length - 8, 4); data.write('WAVEfmt ', 8); data.writeUInt32LE(16, 16);
+ data.writeUInt16LE(1, 20); data.writeUInt16LE(1, 22); data.writeUInt32LE(rate, 24); data.writeUInt32LE(rate * 2, 28);
+ data.writeUInt16LE(2, 32); data.writeUInt16LE(16, 34); data.write('data', 36); data.writeUInt32LE(frames * 2, 40);
+ // A whole number of cycles per second loops without a seam.
+ for (let i=0; i<frames; i++) data.writeInt16LE(Math.round(6000 * Math.sin(2 * Math.PI * frequency * i / rate)), 44 + i * 2);
+ await writeFile(file, data);
+ return file;
+}
 async function poll(check, label, timeout=20000) {
  const end = Date.now() + timeout;
  while (Date.now() < end) {const value = await check(); if (value) return value; await new Promise(r => setTimeout(r, 100));}
@@ -76,6 +88,8 @@ async function join(title, localHz, remoteHz, id) {
  }
  await meeting.evaluate(async ({title, localHz}) => {document.title = title; await window.join(localHz, true);}, {title, localHz});
  await remote.evaluate(hz => window.join(hz), remoteHz);
+ // The far end is another computer: its speaker playing our Me must not reach this desktop's sink.
+ await remote.evaluate(() => {document.querySelector('audio').muted = true;});
  const offer = await meeting.evaluate(async () => {await meeting.pc.setLocalDescription(await meeting.pc.createOffer()); return meeting.description();});
  const answer = await remote.evaluate(async offer => {await meeting.pc.setRemoteDescription(offer); await meeting.pc.setLocalDescription(await meeting.pc.createAnswer()); return meeting.description();}, offer);
  await meeting.evaluate(answer => meeting.pc.setRemoteDescription(answer), answer);
@@ -110,6 +124,9 @@ try {
  const manifest = JSON.parse(await readFile(path.join(extension, 'manifest.json')));
  assert.ok(manifest.key, 'the companion has a pinned key');
  legacyCompanion = manifest.version === '0.2.25';
+ // sender-me-v1 (0.2.27+): Me is the page's own sender track, and Cassini opens no OS microphone.
+ senderMe = manifest.version.split('.').map(Number).reduce((value, part) => value * 1000 + part, 0) >= 2027;
+ evidence.senderMe = senderMe;
  evidence.companionVersion = manifest.version;
  const id = [...createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32)].map(c => String.fromCharCode(97 + parseInt(c, 16))).join('');
  assert.equal(id, 'pcafdaahfhjiolfpfnlhmljfgoabbaij');
@@ -134,7 +151,8 @@ try {
   throw new Error(`Virtual microphone fixture failed before browser capture: ${error.message}. See microphone-producer.log and pulse-server.log.`, {cause: error});
  }
  const flags = ['--no-sandbox', '--ozone-platform=x11', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection', '--disable-features=WebRtcHideLocalIpsWithMdns', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
- context = await chromium.launchPersistentContext(profile, {channel: 'chromium', headless: false, ignoreDefaultArgs: ['--mute-audio'], args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...flags]});
+ const pageMicrophone = await microphoneTone(path.join(profile, 'page-microphone-660.wav'));
+ context = await chromium.launchPersistentContext(profile, {channel: 'chromium', headless: false, ignoreDefaultArgs: ['--mute-audio'], args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...flags, `--use-file-for-fake-audio-capture=${pageMicrophone}`]});
  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  assert.equal(new URL(worker.url()).host, id);
  worker.on('console', message => evidence.console.push(message.text()));
@@ -152,8 +170,10 @@ try {
  const powers = [];
  for (let i=0; i<directories.length; i++) {
   const audio = await samples(directories[i]);
-  const microphone = audio.tracks.find(t => t.kind === 'microphone'), remote = audio.tracks.find(t => t.kind === 'remote');
-  assert.ok(microphone && remote && !audio.tracks.some(t => t.kind === 'local'), 'native mic copy plus browser remote, without page-local duplication');
+  const me = senderMe ? 'local' : 'microphone', duplicate = senderMe ? 'microphone' : 'local';
+  const microphone = audio.tracks.find(t => t.kind === me), remote = audio.tracks.find(t => t.kind === 'remote');
+  assert.ok(microphone && remote && !audio.tracks.some(t => t.kind === duplicate),
+   senderMe ? 'page sender Me plus browser remote, without an OS microphone copy' : 'native mic copy plus browser remote, without page-local duplication');
   const wanted = power(remote, [880, 990][i]), bleed = power(remote, [990, 880][i]), mic = power(microphone, 660);
   assert.ok(wanted > .001 && bleed < wanted * .01 && mic > .001, `muted source/mic isolation: ${JSON.stringify({wanted, bleed, mic})}`);
   powers.push({wanted, bleed, mic});
@@ -321,7 +341,7 @@ try {
  evidence.scenarios.push({name: legacyCompanion ? 'legacy-prejoin-and-inbound-rtp-stay-manual' : 'verified-prejoin-receive-slots-auto-record-on-qualified-call', beforeJoin,
   sourceCount: candidate.sourceCount, heardBefore: candidate.heard, heardAfter: heard.heard, directory: joinedDirectory});
 
- await (await import('./source-changes.mjs')).run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence});
+ await (await import('./source-changes.mjs')).run({context, call, join, record, recording, samples, power, poll, automatic, id, artifacts, evidence, senderMe});
  }
  console.log('PASS real Library Record/individual Stop/global Stop; concurrent muted source capture and mic copies; legacy verified-admission boundary and manual hidden controls');
 } catch (error) {

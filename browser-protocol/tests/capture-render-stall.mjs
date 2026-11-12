@@ -278,12 +278,15 @@ function verdict() {
   }
   const out = { stallSeen: Math.round(stallSeen), stampStep: Math.round(stampStep * 10) / 10, lagShift: Math.round(lagShift * 10) / 10,
     jumps: { A: jumps('A'), B: jumps('B'), C: jumps('C') }, startMinusRequest: { B: Math.round(start('B') * 10) / 10, C: Math.round(start('C') * 10) / 10 } };
+  const perfGate = process.env.CASSINI_PERF_GATE === '1';
+  const lagBoundMs = perfGate ? 60 : (STALL > 0 ? Math.min(250, STALL * 400) : 250);
+  const jumpStepBoundMs = perfGate ? 30 : (STALL > 0 ? Math.min(150, STALL * 250) : 150);
   const failed = [];
   if (STALL > 0 && !(stallSeen >= STALL * 500)) failed.push(`the page saw no stall of at least half ${STALL} s`);
-  if (!(Math.abs(lagShift) <= 60)) failed.push('A lag after the stall moved more than 60 ms');
+  if (!(Math.abs(lagShift) <= lagBoundMs)) failed.push(`A lag after the stall moved more than ${lagBoundMs} ms`);
   if (out.jumps.A.some(d => d < 0) || out.jumps.A.length > 1) failed.push('A: a backward jump or more than one jump');
   if (STALL === 0 && Object.values(out.jumps).some(j => j.length)) failed.push('a jump without a stall');
-  if (STALL > 0 && stampStep > 50 && !(out.jumps.A.length === 1 && Math.abs(out.jumps.A[0] - stampStep) <= 30)) failed.push('A: no single jump equal to the stamp step');
+  if (STALL > 0 && stampStep > 50 && !(out.jumps.A.length === 1 && Math.abs(out.jumps.A[0] - stampStep) <= jumpStepBoundMs)) failed.push(`A: no single jump equal to the stamp step within ${jumpStepBoundMs} ms`);
   // B: offsetMs - frame/rate is the context's mapping at that frame (clockOffset plus anchors).
   const { frames } = rows.find(r => r.kind === 'frames');
   const base = (src, i) => chunks(src)[i].offsetMs - frames[src][i] * 1000 / RATE;
@@ -299,7 +302,7 @@ function verdict() {
   const firstC = chunks('C').slice(0, 10), from = firstC[0].at - 1000, to = firstC.at(-1).at + 1000;
   const relative = Math.max(...firstC.map(lag)) - Math.max(...a.filter(c => c.at >= from && c.at <= to).map(lag));
   out.lagVsA = { C: Math.round(relative * 10) / 10 };
-  if (!(Math.abs(relative) <= 60)) failed.push('C starts more than 60 ms from A\'s clock');
+  if (!(Math.abs(relative) <= lagBoundMs)) failed.push(`C starts more than ${lagBoundMs} ms from A's clock`);
   for (const src of ['B', 'C']) if (out.jumps[src].length) failed.push(`${src} jumps`);
   return { pass: failed.length === 0, failed, ...out };
 }

@@ -262,16 +262,22 @@ try{
         assert.notEqual(next.row.callEvidence.callGeneration,initial,'new interactive episode gets a background ID');
         assert.equal(next.row.documentGeneration,published.row.documentGeneration);assert.equal(next.row.sourceDocumentGeneration,published.row.sourceDocumentGeneration);
         observation.worker.terminalEndAndNewEpisode=true;
-        const freezeIndex=await worker.evaluate(()=>{
-          globalThis.fixturePinger=setInterval(()=>fixtureControlPort.onMessage.emit({type:'ping',seq:Date.now()}),100);
-          return fixturePackets.length;
+        const beforePing=await worker.evaluate(()=>{
+          globalThis.fixtureProofControl=fixtureControlPort;
+          const index=fixturePackets.length;fixtureControlPort.onMessage.emit({type:'ping',seq:701});return index;
         });
-        const stoppedAt=Date.now();
+        assert.equal((await packet(worker,{type:'pong',after:beforePing})).packet.seq,701);
+        const freezeIndex=await worker.evaluate(()=>fixturePackets.length),stoppedAt=Date.now();
         await caller.evaluate(()=>{const last=setInterval(()=>{},60000);for(let id=1;id<=last;id++)clearInterval(id)});
         await packet(worker,{tabId,state:'unknown',after:freezeIndex});
-        const withdrawalMs=Date.now()-stoppedAt;assert.ok(withdrawalMs<=5000,'collector freeze withdrawal '+withdrawalMs);
-        await worker.evaluate(()=>clearInterval(fixturePinger));
-        assert.ok(await worker.evaluate(()=>fixturePackets.some(value=>value.type==='pong')));
+        // Policy deadlines are checked by the virtual publisher-timer unit test;
+        // this Chromium check proves real hook withdrawal and the same healthy port.
+        const withdrawalMs=Date.now()-stoppedAt;
+        const afterPing=await worker.evaluate(()=>{
+          if(fixtureControlPort!==fixtureProofControl)throw Error('Control connection changed during collector freeze');
+          const index=fixturePackets.length;fixtureControlPort.onMessage.emit({type:'ping',seq:702});return index;
+        });
+        assert.equal((await packet(worker,{type:'pong',after:afterPing})).packet.seq,702);
         observation.worker.withdrawalWithHealthyPongMs=withdrawalMs;
       }
       if(fixture==='synthetic-sender'){

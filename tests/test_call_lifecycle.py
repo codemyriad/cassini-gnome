@@ -350,7 +350,7 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                     mode="tracks",
                     tabId=3,
                     independent=True,
-                    captureLocal=False,
+                    captureLocal=True,
                     callGeneration=case["callGeneration"],
                     keepOnNavigation=True,
                     resumeCapture=dict(
@@ -381,7 +381,7 @@ def test_shared_actions_use_actual_capture_devices_spans_and_end(tmp_path, monke
                 assert not any(t["kind"] == "system" for t in capture.host.session.manifest["tracks"])
             else:
                 assert len(restored) == 1
-            assert capture.host.session.manifest["tracks"][0]["kind"] == "microphone"
+            assert not any(t["kind"] == "microphone" for t in capture.host.session.manifest["tracks"])
         assert len(list((tmp_path / "Library").iterdir())) == 1
         assert all(args[1] == "stop" for args, _kwargs in commands)
     finally:
