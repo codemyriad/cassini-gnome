@@ -78,13 +78,14 @@ jobs:
           path: ${{ runner.temp }}/pytest/
           if-no-files-found: error
       # G3: the Meson test logs (testlog.txt with each shard's --durations,
-      # testlog.json, the pytest junit XML), also on success, to track creep;
+      # testlog.json, the pytest junit XML), also on success outside pull
+      # requests to track creep (on pull requests, uploaded on failure);
       # a shard over half its timeout becomes a warning annotation here.
       - name: Warn about pytest shards over half their budget
         if: always()
         run: grep -rhs '^::warning ' "$CASSINI_TEST_LOGS" --include=testlog.txt || true
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: meson-logs-deb-${{ strategy.job-index }}
           path: ${{ runner.temp }}/meson-logs/
@@ -116,7 +117,7 @@ jobs:
         if: startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         run: tests/build-refresh/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/build-refresh"
       - uses: actions/upload-artifact@v7
-        if: always() && startsWith(matrix.base, 'ubuntu:26.04@sha256:')
+        if: ${{ (failure() || (github.event_name != 'pull_request' && always())) && startsWith(matrix.base, 'ubuntu:26.04@sha256:') }}
         with:
           name: installed-build-refresh
           path: |
@@ -143,7 +144,7 @@ jobs:
         if: startsWith(matrix.base, 'ubuntu:26.04@sha256:')
         run: tests/browser-setup/run.sh dist/cassini-talk_*.deb "$RUNNER_TEMP/browser-startup"
       - uses: actions/upload-artifact@v7
-        if: always() && startsWith(matrix.base, 'ubuntu:26.04@sha256:')
+        if: ${{ (failure() || (github.event_name != 'pull_request' && always())) && startsWith(matrix.base, 'ubuntu:26.04@sha256:') }}
         with:
           name: browser-startup-installed
           path: ${{ runner.temp }}/browser-startup/

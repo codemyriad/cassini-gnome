@@ -104,7 +104,7 @@ jobs:
       - name: Test recording judges real Pulse streams, then deletes them
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/test-recording.py --build "$CASSINI_RECORDING_BUILD"
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: recording-evidence
           path: tests/recording/artifacts/
@@ -170,7 +170,7 @@ jobs:
       - name: Live folder through the real app, hosts and extension (shared test 2)
         run: CASSINI_RUN_TIMEOUT=360 CASSINI_TEST_BUILD="$CASSINI_RECORDING_BUILD" tests/recording/run.sh node tests/recording/live-folder.mjs
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: live-folder-evidence
           path: tests/recording/artifacts/
