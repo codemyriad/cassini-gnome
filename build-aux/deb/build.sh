@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build the Debian package in a container, install it there and smoke-test it,
 # then copy it to ./dist. Uses podman or docker (see build-aux/container.sh).
-#   build-aux/deb/build.sh [base-image]      (default: ubuntu:26.04)
+#   build-aux/deb/build.sh [--nocheck] [base-image]      (default: ubuntu:26.04)
 # Base images known to work: ubuntu:26.04, ubuntu:25.10, debian:testing,
 # debian:sid.
 # The package needs GTK >= 4.18 and libadwaita >= 1.8, so older releases
@@ -9,6 +9,15 @@
 set -eu
 cd "$(dirname "$0")/../.."
 . build-aux/container.sh
+NOCHECK=0
+if [ "${1:-}" = "--nocheck" ]; then
+  NOCHECK=1
+  shift
+fi
+case "$#:${1:-}" in
+  0:|1:[!-]*) ;;
+  *) echo "usage: $0 [--nocheck] [base-image]" >&2; exit 2 ;;
+esac
 BASE=${1:-ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96}
 VERSION=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" meson.build | head -n1)
 DEB_VERSION=$(sed -n '1s/^[^ ]* (\([^)]*\)).*/\1/p' debian/changelog)
@@ -37,7 +46,7 @@ container_pull "$BASE"
 retry container_build -f build-aux/deb/Dockerfile --build-arg BASE="$BASE" -t "$TAG" debian
 mkdir -p dist
 logs=$(test_log_dir "deb-$(image_slug "$BASE")")
-container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/logs:rw$Z"} -e DEB="$DEB" -e OUT="$OUT" "$TAG" sh -ec '
+container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/logs:rw$Z"} -e DEB="$DEB" -e OUT="$OUT" -e NOCHECK="$NOCHECK" "$TAG" sh -ec '
   . /in/build-aux/ci/retry.sh
   # Keep the Meson test logs, also when a test fails (test_log_dir).
   save_logs() {
@@ -55,6 +64,7 @@ container_run -v "$PWD:/in:ro$Z" -v "$PWD/dist:/out:rw$Z" ${logs:+-v "$logs:/log
     --exclude=./debian/cassini-talk --exclude=./debian/tmp --exclude=./tests/recording/node_modules \
     --exclude=./tests/recording/artifacts --exclude=./.pytest_cache --exclude=./.ruff_cache \
     --exclude=__pycache__ . | tar -xf -
+  [ "$NOCHECK" != 1 ] || export DEB_BUILD_OPTIONS="${DEB_BUILD_OPTIONS:+$DEB_BUILD_OPTIONS }nocheck"
   dpkg-buildpackage -us -uc -b
   test -f "../$DEB"
   lintian --info --fail-on error "../$DEB"

@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -1109,3 +1110,201 @@ def test_plan_waits_bounded_for_in_progress_main_ci_and_keeps_admitted_sha(tmp_p
         mod.build_notes = orig_build_notes
     assert skipped_late == {"build": False, "reason": "main CI changed while planning"}
     assert api_late_red.posts == []
+
+
+def test_daily_test_release_nocheck_only_for_ubuntu_deb_and_fedora_rpm_and_keeps_lint_and_smoke(tmp_path):
+    daily = (ROOT / ".github/workflows/daily-test-release.yml").read_text()
+
+    # Daily test release passes --nocheck ONLY for ubuntu:26.04 deb and fedora rpm;
+    # debian:testing, openSUSE, and Arch keep build-time tests enabled.
+    deb_step = (
+        "      - name: Build test .deb\n"
+        "        env:\n"
+        "          BASE: ${{ matrix.base }}\n"
+        "          SKIP_TESTS: ${{ startsWith(matrix.base, 'ubuntu:26.04@sha256:') && '1' || '0' }}\n"
+        "        run: |\n"
+        '          if [ "$SKIP_TESTS" = 1 ]; then\n'
+        '            build-aux/deb/build.sh --nocheck "$BASE"\n'
+        "          else\n"
+        '            build-aux/deb/build.sh "$BASE"\n'
+        "          fi\n"
+    )
+    rpm_step = (
+        "      - name: Build test .rpm\n"
+        "        env:\n"
+        "          BASE: ${{ matrix.base }}\n"
+        "          SKIP_TESTS: ${{ matrix.name == 'fedora' && '1' || '0' }}\n"
+        "        run: |\n"
+        '          if [ "$SKIP_TESTS" = 1 ]; then\n'
+        '            build-aux/rpm/build.sh --nocheck "$BASE"\n'
+        "          else\n"
+        '            build-aux/rpm/build.sh "$BASE"\n'
+        "          fi\n"
+    )
+    assert daily.count(deb_step) == 1
+    assert daily.count(rpm_step) == 1
+    assert "\n      - run: build-aux/arch/build.sh\n" in daily
+    assert daily.count("--nocheck") == 2
+
+    # CI and stable release workflows never pass --nocheck.
+    for wf in ("ci.yml", "deb.yml", "packages.yml", "release.yml", "rpm-canary.yml"):
+        assert "nocheck" not in (ROOT / ".github/workflows" / wf).read_text(), wf
+    assert "nocheck" not in (ROOT / "build-aux/arch/build.sh").read_text()
+
+    if not shutil.which("sh"):
+        return
+
+    # Exercise build-aux/deb/build.sh and build-aux/rpm/build.sh end-to-end with a stubbed
+    # container engine to prove:
+    # 1) invalid arguments fail closed (exit 2) without invoking the container engine,
+    # 2) default mode keeps build-time tests on even if NOCHECK=1 is in the caller environment,
+    # 3) --nocheck sets DEB_BUILD_OPTIONS+=nocheck / rpmbuild --nocheck while preserving
+    #    lintian/rpmlint, smoke-installed.py, validate_installed.py, and container_offline_smoke.
+    repo = tmp_path / "repo"
+    (repo / "build-aux/deb").mkdir(parents=True)
+    (repo / "build-aux/rpm").mkdir(parents=True)
+    (repo / "build-aux/ci").mkdir(parents=True)
+    (repo / "debian").mkdir(parents=True)
+    (repo / "tests/parakeet").mkdir(parents=True)
+    for rel in (
+        "build-aux/container.sh",
+        "build-aux/ci/retry.sh",
+        "build-aux/deb/build.sh",
+        "build-aux/deb/Dockerfile",
+        "build-aux/rpm/build.sh",
+    ):
+        dst = repo / rel
+        shutil.copyfile(ROOT / rel, dst)
+        dst.chmod((ROOT / rel).stat().st_mode)
+    for stub in ("build-aux/whistle-cache.sh", "build-aux/sherpa-cache.sh"):
+        p = repo / stub
+        p.write_text("#!/bin/sh\nexit 0\n")
+        p.chmod(0o755)
+    parakeet_cache = tmp_path / "parakeet-cache"
+    (
+        parakeet_cache
+        / "parakeet-ultra-0.6b-int8-v2"
+        / "50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366"
+    ).mkdir(parents=True)
+    (repo / "tests/parakeet/prepare_model.py").write_text("import sys\nsys.exit(0)\n")
+    (repo / "meson.build").write_text("project(\n  'cassini-talk',\n  version: '0.4.3~beta.1',\n)\n")
+    (repo / "debian/changelog").write_text("cassini-talk (0.4.3~beta.1) unstable; urgency=medium\n")
+    (repo / "debian/control").write_text("Source: cassini-talk\n")
+    (repo / "build-aux/rpm/cassini-talk.spec").write_text("Name: cassini-talk\nVersion: 0.4.3~beta.1\n")
+
+    log_file = tmp_path / "engine.jsonl"
+    fake_engine = tmp_path / "fake-engine"
+    fake_engine.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, pathlib, subprocess, sys\n"
+        "args = sys.argv[1:]\n"
+        "log_path = pathlib.Path(os.environ['FAKE_ENGINE_LOG'])\n"
+        "entry = {'cmd': args[0], 'args': args[1:]}\n"
+        "if args[0] == 'run' and 'sh' in args and '-ec' in args:\n"
+        "    idx = args.index('-ec')\n"
+        "    script = args[idx + 1]\n"
+        "    env_map = {}\n"
+        "    out_dir = None\n"
+        "    for i, tok in enumerate(args):\n"
+        "        if tok == '-e' and i + 1 < len(args) and '=' in args[i + 1]:\n"
+        "            k, v = args[i + 1].split('=', 1)\n"
+        "            env_map[k] = v\n"
+        "        elif tok == '-v' and i + 1 < len(args) and ':/out:' in args[i + 1]:\n"
+        "            out_dir = pathlib.Path(args[i + 1].split(':', 1)[0])\n"
+        "    if 'NOCHECK' in env_map:\n"
+        "        entry['kind'] = 'build'\n"
+        "        entry['env'] = env_map\n"
+        "        entry['has_lintian'] = 'lintian --info --fail-on error \"../$DEB\"' in script\n"
+        "        entry['has_rpmlint'] = 'rpmlint -r /in/build-aux/rpm/cassini-talk-rpmlintrc' in script\n"
+        "        entry['has_smoke'] = (\n"
+        "            'python3 -I /in/build-aux/smoke-installed.py' in script\n"
+        "            and 'python3 -I /in/build-aux/ci/validate_installed.py' in script\n"
+        "        )\n"
+        "        if 'DEB' in env_map:\n"
+        "            probe = subprocess.check_output(\n"
+        "                ['sh', '-ec', (\n"
+        '                    \'[ "$NOCHECK" != 1 ] || export DEB_BUILD_OPTIONS="${DEB_BUILD_OPTIONS:+$DEB_BUILD_OPTIONS }nocheck"; \'\n'
+        '                    \'printf "%s" "${DEB_BUILD_OPTIONS:-}"\'\n'
+        "                )],\n"
+        "                env={'PATH': os.environ['PATH'], 'NOCHECK': env_map['NOCHECK'], 'DEB_BUILD_OPTIONS': env_map.get('DEB_BUILD_OPTIONS', '')},\n"
+        "                text=True,\n"
+        "            )\n"
+        "            entry['deb_build_options'] = probe\n"
+        "            if out_dir is not None:\n"
+        "                (out_dir / env_map['OUT']).write_bytes(b'deb')\n"
+        "        elif 'NAME_FILE' in env_map:\n"
+        "            probe = subprocess.check_output(\n"
+        "                ['sh', '-ec', (\n"
+        "                    'set --; '\n"
+        '                    \'[ "$NOCHECK" != 1 ] || set -- "$@" --nocheck; \'\n'
+        '                    \'printf "%s" "$*"\'\n'
+        "                )],\n"
+        "                env={'PATH': os.environ['PATH'], 'NOCHECK': env_map['NOCHECK']},\n"
+        "                text=True,\n"
+        "            )\n"
+        "            entry['rpmbuild_extra_args'] = probe\n"
+        "            if out_dir is not None:\n"
+        "                rpm_file = f\"cassini-talk-{env_map['VERSION']}-1.fc44.x86_64.rpm\"\n"
+        "                (out_dir / rpm_file).write_bytes(b'rpm')\n"
+        "                (out_dir / env_map['NAME_FILE']).write_text(rpm_file + '\\n')\n"
+        "    elif '--network' in args and args[args.index('--network') + 1] == 'none':\n"
+        "        entry['kind'] = 'offline_smoke'\n"
+        "        entry['has_offline_smoke'] = 'smoke-installed.py --whistle' in script\n"
+        "with log_path.open('a') as fh:\n"
+        "    fh.write(json.dumps(entry) + '\\n')\n"
+    )
+    fake_engine.chmod(0o755)
+
+    base_env = {
+        **os.environ,
+        "CONTAINER_ENGINE": str(fake_engine),
+        "FAKE_ENGINE_LOG": str(log_file),
+        "CASSINI_PARAKEET_TEST_CACHE": str(parakeet_cache),
+        "NOCHECK": "1",  # Ambient NOCHECK=1 must NEVER turn checks off without --nocheck!
+    }
+
+    # Invalid CLI invocations must exit 2 before calling CONTAINER_ENGINE.
+    for script in ("build-aux/deb/build.sh", "build-aux/rpm/build.sh"):
+        for bad_args in (["--unknown"], [""], ["ubuntu:26.04", "--nocheck"], ["--nocheck", ""]):
+            res = subprocess.run([str(repo / script), *bad_args], cwd=repo, env=base_env, capture_output=True)
+            assert res.returncode == 2, (script, bad_args)
+    assert not log_file.exists()
+
+    def run_build(script: str, cli_args: list[str]) -> list[dict]:
+        log_file.unlink(missing_ok=True)
+        subprocess.run([str(repo / script), *cli_args], cwd=repo, env=base_env, check=True)
+        return [json.loads(line) for line in log_file.read_text().splitlines()]
+
+    # Default deb build (e.g. debian:testing): tests stay ON despite ambient NOCHECK=1.
+    deb_default = run_build("build-aux/deb/build.sh", ["debian:testing@sha256:" + "2" * 64])
+    deb_run = next(e for e in deb_default if e.get("kind") == "build")
+    assert deb_run["env"]["NOCHECK"] == "0"
+    assert deb_run["deb_build_options"] == ""
+    assert deb_run["has_lintian"] is True and deb_run["has_smoke"] is True
+    assert any(e.get("kind") == "offline_smoke" and e["has_offline_smoke"] for e in deb_default)
+
+    # --nocheck deb build (ubuntu:26.04 daily test release): nocheck enabled, lintian + smoke + offline smoke preserved.
+    deb_nocheck = run_build("build-aux/deb/build.sh", ["--nocheck", "ubuntu:26.04@sha256:" + "0" * 64])
+    deb_nc_run = next(e for e in deb_nocheck if e.get("kind") == "build")
+    assert deb_nc_run["env"]["NOCHECK"] == "1"
+    assert deb_nc_run["deb_build_options"] == "nocheck"
+    assert deb_nc_run["has_lintian"] is True and deb_nc_run["has_smoke"] is True
+    assert any(e.get("kind") == "offline_smoke" and e["has_offline_smoke"] for e in deb_nocheck)
+
+    # Default rpm build (e.g. openSUSE): tests stay ON despite ambient NOCHECK=1.
+    rpm_default = run_build(
+        "build-aux/rpm/build.sh", ["registry.opensuse.org/opensuse/tumbleweed:latest@sha256:" + "3" * 64]
+    )
+    rpm_run = next(e for e in rpm_default if e.get("kind") == "build")
+    assert rpm_run["env"]["NOCHECK"] == "0"
+    assert rpm_run["rpmbuild_extra_args"] == ""
+    assert rpm_run["has_rpmlint"] is True and rpm_run["has_smoke"] is True
+    assert any(e.get("kind") == "offline_smoke" and e["has_offline_smoke"] for e in rpm_default)
+
+    # --nocheck rpm build (fedora:44 daily test release): --nocheck passed to rpmbuild, rpmlint + smoke + offline smoke preserved.
+    rpm_nocheck = run_build("build-aux/rpm/build.sh", ["--nocheck", "fedora:44@sha256:" + "1" * 64])
+    rpm_nc_run = next(e for e in rpm_nocheck if e.get("kind") == "build")
+    assert rpm_nc_run["env"]["NOCHECK"] == "1"
+    assert rpm_nc_run["rpmbuild_extra_args"] == "--nocheck"
+    assert rpm_nc_run["has_rpmlint"] is True and rpm_nc_run["has_smoke"] is True
+    assert any(e.get("kind") == "offline_smoke" and e["has_offline_smoke"] for e in rpm_nocheck)
