@@ -121,8 +121,9 @@ def test_green_main_push_accepts_verified_identical_tree_desktop_skips_only(tmp_
     assert "recording" not in policy.green_desktop_areas_in_pr_jobs(partial_pr_jobs)
 
     # End-to-end green_main.main() accepts push desktop skips with verified identical-tree PR,
-    # and still rejects desktop skips on workflow_dispatch.
-    merge_sha, pr_sha, tree_sha = "a" * 40, "b" * 40, "c" * 40
+    # and still rejects desktop skips on workflow_dispatch or when the PR run tested a different
+    # synthetic merge tree (e.g. a PR targeting a release branch) or lacks checkout-tree evidence.
+    merge_sha, pr_sha, tree_sha, pr_merge_sha, diff_tree = "a" * 40, "b" * 40, "c" * 40, "d" * 40, "e" * 40
     artifacts = [dict(name=name, expired=False) for name in policy.PACKAGES | policy.BUILD_PRODUCTS]
     pr_jobs = [
         dict(name="Build / Meson build profiles", status="completed", conclusion="success"),
@@ -132,7 +133,7 @@ def test_green_main_push_accepts_verified_identical_tree_desktop_skips_only(tmp_
         dict(name="Desktop / GNOME 50 / installed deb and Flatpak", status="completed", conclusion="success"),
     ]
 
-    def make_fake_api(main_event):
+    def make_fake_api(main_event, *, tested_tree=tree_sha, include_ref_wf=True, commit_404=False):
         def fake_api(_repo, path):
             base = path.split("?", 1)[0]
             if base == "actions/runs":
@@ -162,20 +163,33 @@ def test_green_main_push_accepts_verified_identical_tree_desktop_skips_only(tmp_
                 }
             if base == f"commits/{pr_sha}":
                 return {"sha": pr_sha, "parents": [{"sha": "0" * 40}], "commit": {"tree": {"sha": tree_sha}}}
-            if base == "actions/workflows/ci.yml/runs":
+            if base == f"commits/{pr_merge_sha}":
+                if commit_404:
+                    raise subprocess.CalledProcessError(1, ["gh", "api"], stderr="gh: Not Found (HTTP 404)")
                 return {
-                    "workflow_runs": [
-                        dict(
-                            id=9,
-                            path=".github/workflows/ci.yml",
-                            head_sha=pr_sha,
-                            event="pull_request",
-                            head_repository={"full_name": "codemyriad/cassini-gnome"},
-                            status="completed",
-                            conclusion="success",
-                        )
-                    ]
+                    "sha": pr_merge_sha,
+                    "parents": [{"sha": "0" * 40}, {"sha": pr_sha}],
+                    "commit": {"tree": {"sha": tested_tree}},
                 }
+            if base == "actions/workflows/ci.yml/runs":
+                pr_run = dict(
+                    id=9,
+                    path=".github/workflows/ci.yml",
+                    head_sha=pr_sha,
+                    event="pull_request",
+                    head_repository={"full_name": "codemyriad/cassini-gnome"},
+                    status="completed",
+                    conclusion="success",
+                )
+                if include_ref_wf:
+                    pr_run["referenced_workflows"] = [
+                        {
+                            "path": f"codemyriad/cassini-gnome/.github/workflows/meson-tests.yml@{pr_merge_sha}",
+                            "ref": "refs/pull/9/merge",
+                            "sha": pr_merge_sha,
+                        }
+                    ]
+                return {"workflow_runs": [pr_run]}
             if base == "actions/runs/9/jobs":
                 return {"jobs": pr_jobs}
             raise AssertionError(f"Unexpected path {path}")
@@ -188,11 +202,17 @@ def test_green_main_push_accepts_verified_identical_tree_desktop_skips_only(tmp_
     policy.main()
     assert out_push.read_text() == "run_id=10\n"
 
-    out_dispatch = tmp_path / "out-dispatch"
-    monkeypatch.setattr(policy, "api", make_fake_api("workflow_dispatch"))
-    monkeypatch.setattr(sys, "argv", ["green_main.py", "--commit", merge_sha, "--output", str(out_dispatch)])
-    with pytest.raises(ValueError, match="Every main job must succeed"):
-        policy.main()
+    for bad_label, bad_api in (
+        ("workflow_dispatch", make_fake_api("workflow_dispatch")),
+        ("release_branch_tree", make_fake_api("push", tested_tree=diff_tree)),
+        ("missing_ref_wf", make_fake_api("push", include_ref_wf=False)),
+        ("checkout_commit_404", make_fake_api("push", commit_404=True)),
+    ):
+        out_bad = tmp_path / f"out-{bad_label}"
+        monkeypatch.setattr(policy, "api", bad_api)
+        monkeypatch.setattr(sys, "argv", ["green_main.py", "--commit", merge_sha, "--output", str(out_bad)])
+        with pytest.raises(ValueError, match="Every main job must succeed"):
+            policy.main()
 
 
 def test_release_requires_all_unexpired_package_artifacts():

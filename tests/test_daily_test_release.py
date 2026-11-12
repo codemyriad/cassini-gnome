@@ -561,6 +561,9 @@ def test_green_main_ci_accepts_identical_tree_pr_desktop_skips_and_rejects_unver
     pr_sha = "3" * 40
     same_tree = "4" * 40
     diff_tree = "5" * 40
+    pr_merge_sha = "6" * 40
+    release_base_sha = "7" * 40
+    release_merge_sha = "8" * 40
 
     push_skipped_desktop_jobs = [
         {"name": "Changed areas", "status": "completed", "conclusion": "success"},
@@ -619,6 +622,18 @@ def test_green_main_ci_accepts_identical_tree_pr_desktop_skips_and_rejects_unver
         "status": "completed",
         "conclusion": "success",
         "html_url": "https://example.invalid/runs/100",
+        "referenced_workflows": [
+            {
+                "path": f"codemyriad/cassini-gnome/.github/workflows/meson-tests.yml@{pr_merge_sha}",
+                "ref": "refs/pull/42/merge",
+                "sha": pr_merge_sha,
+            },
+            {
+                "path": f"codemyriad/cassini-gnome/.github/workflows/build.yml@{pr_merge_sha}",
+                "ref": "refs/pull/42/merge",
+                "sha": pr_merge_sha,
+            },
+        ],
     }
     identical_commits = {
         merge_sha: {
@@ -627,6 +642,11 @@ def test_green_main_ci_accepts_identical_tree_pr_desktop_skips_and_rejects_unver
             "commit": {"tree": {"sha": same_tree}},
         },
         pr_sha: {"sha": pr_sha, "parents": [{"sha": base_sha}], "commit": {"tree": {"sha": same_tree}}},
+        pr_merge_sha: {
+            "sha": pr_merge_sha,
+            "parents": [{"sha": base_sha}, {"sha": pr_sha}],
+            "commit": {"tree": {"sha": same_tree}},
+        },
     }
 
     # 1. Identical tree + all 4 PR desktop areas green -> accepted!
@@ -718,7 +738,104 @@ def test_green_main_ci_accepts_identical_tree_pr_desktop_skips_and_rejects_unver
         )
         assert mod.green_main_ci(api_superseded, merge_sha) is False
 
-    # 5. Non-desktop gate jobs (`Pytest coverage`, `Library / vectors`, `Meson tests`) can NEVER be skipped.
+    # 5. Codex #415: identical PR head SHA whose green PR run targeted another branch (e.g. release)
+    # and therefore checked out a different synthetic merge tree (diff_tree != same_tree) MUST be
+    # rejected — both alone and when newer than an earlier main-targeted PR run!
+    release_pr_run = dict(
+        pr_run,
+        id=170,
+        referenced_workflows=[
+            {
+                "path": f"codemyriad/cassini-gnome/.github/workflows/meson-tests.yml@{release_merge_sha}",
+                "ref": "refs/pull/99/merge",
+                "sha": release_merge_sha,
+            }
+        ],
+    )
+    release_commits = {
+        **identical_commits,
+        release_merge_sha: {
+            "sha": release_merge_sha,
+            "parents": [{"sha": release_base_sha}, {"sha": pr_sha}],
+            "commit": {"tree": {"sha": diff_tree}},
+        },
+    }
+    for pr_runs in ([release_pr_run], [release_pr_run, pr_run]):
+        api_release_tree = FakeGitHub(
+            main_sha=merge_sha,
+            ci_pages=[[push_run, *pr_runs]],
+            jobs_by_run={200: push_skipped_desktop_jobs, 170: pr_green_jobs, 100: pr_green_jobs},
+            commits_by_sha=release_commits,
+        )
+        assert mod.green_main_ci(api_release_tree, merge_sha) is False
+
+    # Unavailable or malformed checkout-tree evidence also fails closed.
+    other_sha = "9" * 40
+    for bad_run, bad_commits in (
+        ({k: v for k, v in pr_run.items() if k != "referenced_workflows"}, identical_commits),
+        (dict(pr_run, referenced_workflows=[]), identical_commits),
+        (
+            dict(
+                pr_run,
+                referenced_workflows=[
+                    pr_run["referenced_workflows"][0],
+                    {
+                        "path": f"codemyriad/cassini-gnome/.github/workflows/build.yml@{other_sha}",
+                        "ref": "refs/pull/42/merge",
+                        "sha": other_sha,
+                    },
+                ],
+            ),
+            identical_commits,
+        ),
+        (
+            dict(
+                pr_run,
+                referenced_workflows=[
+                    {
+                        "path": f"codemyriad/cassini-gnome/.github/workflows/meson-tests.yml@{pr_merge_sha}",
+                        "ref": "refs/heads/release",
+                        "sha": pr_merge_sha,
+                    }
+                ],
+            ),
+            identical_commits,
+        ),
+        (
+            dict(
+                pr_run,
+                referenced_workflows=[
+                    {
+                        "path": f"attacker/cassini-gnome/.github/workflows/meson-tests.yml@{pr_merge_sha}",
+                        "ref": "refs/pull/42/merge",
+                        "sha": pr_merge_sha,
+                    }
+                ],
+            ),
+            identical_commits,
+        ),
+        (pr_run, {**identical_commits, pr_merge_sha: None}),
+        (
+            pr_run,
+            {
+                **identical_commits,
+                pr_merge_sha: {
+                    "sha": pr_merge_sha,
+                    "parents": [{"sha": base_sha}, {"sha": other_sha}],
+                    "commit": {"tree": {"sha": same_tree}},
+                },
+            },
+        ),
+    ):
+        api_bad_evidence = FakeGitHub(
+            main_sha=merge_sha,
+            ci_pages=[[push_run, bad_run]],
+            jobs_by_run={200: push_skipped_desktop_jobs, 100: pr_green_jobs},
+            commits_by_sha=bad_commits,
+        )
+        assert mod.green_main_ci(api_bad_evidence, merge_sha) is False
+
+    # 6. Non-desktop gate jobs (`Pytest coverage`, `Library / vectors`, `Meson tests`) can NEVER be skipped.
     for required_name in ("Pytest coverage", "Library / vectors", "Meson tests / Meson tests (minimal environment)"):
         bad_push_jobs = [
             dict(j, conclusion="skipped") if j["name"] == required_name else j for j in push_skipped_desktop_jobs

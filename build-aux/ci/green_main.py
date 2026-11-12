@@ -65,7 +65,25 @@ _PR_AREA_CALLERS = {
 
 
 def api(repo, path):
-    return json.loads(subprocess.check_output(["gh", "api", f"repos/{repo}/{path}"], timeout=60))
+    return json.loads(
+        subprocess.check_output(["gh", "api", f"repos/{repo}/{path}"], stderr=subprocess.PIPE, timeout=60)
+    )
+
+
+def _fetch_commit_or_none(repo, sha):
+    try:
+        return api(repo, f"commits/{sha}")
+    except subprocess.CalledProcessError as error:
+        out = (
+            error.output.decode("utf-8", errors="replace") if isinstance(error.output, bytes) else (error.output or "")
+        )
+        err = (
+            error.stderr.decode("utf-8", errors="replace") if isinstance(error.stderr, bytes) else (error.stderr or "")
+        )
+        combined = f"{out}\n{err}"
+        if "HTTP 404" in combined or '"status": "404"' in combined or '"status":"404"' in combined:
+            return None
+        raise
 
 
 def desktop_area_for_job(name):
@@ -115,9 +133,74 @@ def _is_noop_skipped_pr_run(run, jobs):
     return False
 
 
-def verified_pr_desktop_areas_for_pr_head(repo, pr_sha, *, list_runs=None, list_jobs=None):
-    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo) or not re.fullmatch(r"[0-9a-f]{40}", pr_sha):
+def _pr_run_checkout_sha(run, repo):
+    refs = run.get("referenced_workflows")
+    if not isinstance(refs, list) or not refs:
+        return None
+    prefix = f"{repo}/.github/workflows/"
+    shas = set()
+    pull_refs = set()
+    for item in refs:
+        if not isinstance(item, dict):
+            return None
+        sha = item.get("sha")
+        ref = item.get("ref")
+        path = item.get("path")
+        if (
+            not isinstance(sha, str)
+            or not re.fullmatch(r"[0-9a-f]{40}", sha)
+            or not isinstance(ref, str)
+            or not re.fullmatch(r"refs/pull/[1-9]\d*/merge", ref)
+            or not isinstance(path, str)
+            or not path.startswith(prefix)
+            or not path.endswith(f"@{sha}")
+        ):
+            return None
+        shas.add(sha)
+        pull_refs.add(ref)
+    if len(shas) != 1 or len(pull_refs) != 1:
+        return None
+    return next(iter(shas))
+
+
+def _pr_run_tested_tree_matches(run, *, repo, pr_sha, expected_tree, fetch_commit):
+    checkout_sha = _pr_run_checkout_sha(run, repo)
+    if checkout_sha is None:
+        return False
+    checkout_data = fetch_commit(checkout_sha)
+    if not isinstance(checkout_data, dict) or checkout_data.get("sha") not in (None, checkout_sha):
+        return False
+    if checkout_sha != pr_sha:
+        parents = checkout_data.get("parents")
+        if (
+            not isinstance(parents, list)
+            or len(parents) != 2
+            or not isinstance(parents[0], dict)
+            or not re.fullmatch(r"[0-9a-f]{40}", parents[0].get("sha") or "")
+            or not isinstance(parents[1], dict)
+            or parents[1].get("sha") != pr_sha
+        ):
+            return False
+    tested_tree = (((checkout_data.get("commit") or {}).get("tree") or {}).get("sha")) or ""
+    return bool(re.fullmatch(r"[0-9a-f]{40}", tested_tree)) and tested_tree == expected_tree
+
+
+def verified_pr_desktop_areas_for_pr_head(
+    repo,
+    pr_sha,
+    expected_tree,
+    *,
+    get_commit=None,
+    list_runs=None,
+    list_jobs=None,
+):
+    if (
+        not re.fullmatch(r"[\w.-]+/[\w.-]+", repo)
+        or not re.fullmatch(r"[0-9a-f]{40}", pr_sha)
+        or not re.fullmatch(r"[0-9a-f]{40}", expected_tree)
+    ):
         return frozenset()
+    fetch_commit = get_commit or (lambda sha: _fetch_commit_or_none(repo, sha))
     fetch_runs = list_runs or (
         lambda sha: pages(repo, f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={sha}", "workflow_runs")
     )
@@ -140,6 +223,10 @@ def verified_pr_desktop_areas_for_pr_head(repo, pr_sha, *, list_runs=None, list_
             continue
         if run.get("conclusion") != "success":
             return frozenset()
+        if not _pr_run_tested_tree_matches(
+            run, repo=repo, pr_sha=pr_sha, expected_tree=expected_tree, fetch_commit=fetch_commit
+        ):
+            return frozenset()
         return green_desktop_areas_in_pr_jobs(jobs)
     return frozenset()
 
@@ -147,7 +234,7 @@ def verified_pr_desktop_areas_for_pr_head(repo, pr_sha, *, list_runs=None, list_
 def verified_pr_desktop_areas(repo, commit, *, get_commit=None, list_runs=None, list_jobs=None):
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         return frozenset()
-    fetch_commit = get_commit or (lambda sha: api(repo, f"commits/{sha}"))
+    fetch_commit = get_commit or (lambda sha: _fetch_commit_or_none(repo, sha))
     merge_data = fetch_commit(commit)
     parents = merge_data.get("parents") if isinstance(merge_data, dict) else None
     if not isinstance(parents, list) or len(parents) != 2:
@@ -164,7 +251,14 @@ def verified_pr_desktop_areas(repo, commit, *, get_commit=None, list_runs=None, 
     ) or ""
     if merge_tree != pr_tree:
         return frozenset()
-    return verified_pr_desktop_areas_for_pr_head(repo, pr_sha, list_runs=list_runs, list_jobs=list_jobs)
+    return verified_pr_desktop_areas_for_pr_head(
+        repo,
+        pr_sha,
+        merge_tree,
+        get_commit=fetch_commit,
+        list_runs=list_runs,
+        list_jobs=list_jobs,
+    )
 
 
 def _desktop_skip_verified(name, verified_desktop_areas, *, require_flatpak_desktop=False):

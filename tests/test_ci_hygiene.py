@@ -965,6 +965,19 @@ def test_pr_two_distro_legs_and_full_ci_label_wiring():
     bg_text = (WORKFLOWS / "background-apps.yml").read_text()
     assert "tests/desktop/run.sh --deb-only _desktop-packages/deb/cassini-talk_*.deb desktop-evidence" in bg_text
 
+    # Every checkout in ci.yml and its called workflows must use default GITHUB_SHA
+    # (no custom ref:), so referenced_workflows[*].sha names the exact tested tree.
+    called_workflows = {WORKFLOWS / "ci.yml"} | {
+        WORKFLOWS / match.group(1)
+        for match in re.finditer(r"^\s*uses:\s*\./\.github/workflows/([^\s]+)$", ci_text, re.M)
+    }
+    assert len(called_workflows) == 12
+    for wf in sorted(called_workflows):
+        for _, block in jobs(wf):
+            for step in re.split(r"\n(?=      - )", block):
+                if "actions/checkout@" in step:
+                    assert not re.search(r"^\s*ref\s*:", step, re.M), (wf.name, step)
+
 
 def _load_pin_images():
     spec = importlib.util.spec_from_file_location("pin_images", ROOT / "build-aux/ci/pin_images.py")

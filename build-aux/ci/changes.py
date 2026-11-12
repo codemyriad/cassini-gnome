@@ -117,7 +117,7 @@ def apply_push_pr_tree_skips(
         if not re.fullmatch(r"[0-9a-f]{40}", head_tree) or head_tree != pr_tree:
             return areas, True, f"Push merge tree differs from PR {pr_sha[:12]}; running desktop jobs"
         check_pr = verifier or green_main.verified_pr_desktop_areas_for_pr_head
-        verified = check_pr(repo, pr_sha)
+        verified = check_pr(repo, pr_sha, head_tree)
         skipped = []
         for area in PUSH_SKIPPABLE_AREAS:
             if area in verified:
