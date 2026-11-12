@@ -1,4 +1,77 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+@import url("tokens.css");
+
+/* BEGIN PRE-W1 LEGACY FALLBACKS */
+:root {
+  /* App semantic colour roles (mapped to --cx-* in tokens.CSS_ROLE_TOKENS; W1.1 keeps pre-switch values). */
+  --app-window-bg: @window_bg_color;
+  --app-window-fg: @window_fg_color;
+  --app-view-bg: @view_bg_color;
+  --app-view-fg: @view_fg_color;
+  --app-dim-fg: inherit;
+  --app-placeholder-fg: inherit;
+  --app-sidebar-bg: @sidebar_bg_color;
+  --app-sidebar-fg: @sidebar_fg_color;
+  --app-headerbar-bg: @headerbar_bg_color;
+  --app-hairline: alpha(@view_fg_color, 0.12);
+  --app-border: alpha(@view_fg_color, 0.18);
+  --app-export-border: alpha(@view_fg_color, 0.16);
+  --app-details-border: alpha(currentColor, 0.15);
+  --app-auto-tag-border: alpha(@view_fg_color, 0.3);
+  --app-wash-subtle: alpha(@view_fg_color, 0.06);
+  --app-wash-chip: alpha(@view_fg_color, 0.08);
+  --app-wash-trough: alpha(@view_fg_color, 0.12);
+  --app-row-selected-bg: alpha(@sidebar_fg_color, 0.10);
+  --app-search-selected-bg: alpha(currentColor, 0.12);
+  --app-primary-bg: #1c71d8;
+  --app-primary-fg: white;
+  --app-accent-bg: @accent_bg_color;
+  --app-accent-ink: @accent_color;
+  --app-accent-tint: alpha(@accent_bg_color, 0.13);
+  --app-accent-wash: alpha(@accent_color, 0.08);
+  --app-avatar-wash: alpha(@accent_color, 0.12);
+  --app-model-selected-bg: alpha(@accent_bg_color, 0.07);
+  --app-record-bg: #c01c28;
+  --app-record-fg: white;
+  --app-record-ink: #c01c28;
+  --app-record-dot: #c01c28;
+  --app-record-tint: #fbe4e6;
+  --app-record-halo: #fbe4e6;
+  --app-record-trough: #eab8bd;
+  --app-badge-red-bg: #fbe4e6;
+  --app-badge-red-fg: #c01c28;
+  --app-badge-transcribing-bg: #e1edfb;
+  --app-badge-transcribing-fg: #1c71d8;
+  --app-badge-amber-bg: #fcefc9;
+  --app-badge-amber-fg: #7a4d00;
+  --app-badge-grey-bg: alpha(@sidebar_fg_color, 0.08);
+  --app-badge-grey-fg: inherit;
+  --app-warn-line-bg: alpha(#e5a50a, 0.18);
+  --app-warn-line-fg: inherit;
+  --app-mic-silent-bg: #fcefc9;
+  --app-mic-silent-fg: #7a4d00;
+  --app-mic-silent-btn-bg: white;
+  --app-mic-silent-btn-fg: #7a4d00;
+  --app-mic-silent-trough: #ead9ad;
+  --app-live-silent-trough: #f1d9a6;
+  --app-dup-warn-bg: alpha(@warning_bg_color, 0.12);
+  --app-dup-warn-border: alpha(@warning_color, 0.35);
+  --app-success-bg: @success_bg_color;
+  --app-success-fg: @success_fg_color;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-record-ink: #ff7b7f;
+    --app-record-dot: #ff8a8e;
+    --app-record-tint: #4a2a2d;
+    --app-mic-silent-bg: alpha(#f8e45c, 0.18);
+    --app-mic-silent-fg: #f8e45c;
+    --app-mic-silent-btn-bg: alpha(#f8e45c, 0.12);
+    --app-mic-silent-btn-fg: #f8e45c;
+  }
+}
+/* END PRE-W1 LEGACY FALLBACKS */
 
 .words link,
 .words link:visited {
@@ -7,149 +80,144 @@
 }
 
 /* Shared Library boards, HARMONY §10. */
-.library-window { font-size: 15px; background: @view_bg_color; color: @view_fg_color; }
+.library-window { font-size: 15px; background: var(--app-view-bg); color: var(--app-view-fg); }
 .library-window .small { font-size: 13px; }
 .library-window .library-title { font-size: 24px; font-weight: 700; }
-.library-window .library-header { min-height: 47px; padding: 0 6px; box-shadow: none; border-bottom: 1px solid alpha(@view_fg_color, 0.12); }
-.library-window .library-sidebar { background: @sidebar_bg_color; color: @sidebar_fg_color; }
+.library-window .library-header { min-height: 47px; padding: 0 6px; box-shadow: none; border-bottom: 1px solid var(--app-hairline); }
+.library-window .library-sidebar { background: var(--app-sidebar-bg); color: var(--app-sidebar-fg); }
 .library-window .library-rows { background: transparent; padding: 0 8px; }
 .library-window .day-heading { padding: 12px 12px 6px; background: transparent; }
 .library-window .meeting-row { padding: 0; border-radius: 10px; margin: 2px 0; color: inherit; }
-.library-window .meeting-row:selected { background: alpha(@sidebar_fg_color, 0.10); color: inherit; }
+.library-window .meeting-row:selected { background: var(--app-row-selected-bg); color: inherit; }
 .library-window .dim-label { color: inherit; opacity: 0.72; }
 .library-window .meeting-row:selected .dim-label { color: inherit; }
 .library-window .badge { border-radius: 100px; padding: 1px 8px; font-size: 13px; font-weight: 600; }
-.library-window .badge-red { background: #fbe4e6; color: #c01c28; }
-.library-window .badge-accent { background: #e1edfb; color: #1c71d8; }
-.library-window .badge-amber { background: #fcefc9; color: #7a4d00; }
-.library-window .badge-grey { background: alpha(@sidebar_fg_color, 0.08); color: inherit; }
-.library-window .speaker-chip { border-radius: 100px; background: alpha(@view_fg_color, 0.08); padding: 5px 12px; }
+.library-window .badge-red { background: var(--app-badge-red-bg); color: var(--app-badge-red-fg); }
+.library-window .badge-accent { background: var(--app-badge-transcribing-bg); color: var(--app-badge-transcribing-fg); }
+.library-window .badge-amber { background: var(--app-badge-amber-bg); color: var(--app-badge-amber-fg); }
+.library-window .badge-grey { background: var(--app-badge-grey-bg); color: inherit; }
+.library-window .speaker-chip { border-radius: 100px; background: var(--app-wash-chip); padding: 5px 12px; }
 .library-window .speaker-name { font-weight: 600; }
 .library-window .speaker-chip .speaker-name { color: inherit; font-weight: 400; }
-.library-window .auto-tag { font-size: 11px; font-weight: 500; color: inherit; opacity: 0.72; border: 1px solid alpha(@view_fg_color, 0.3); border-radius: 5px; padding: 0 3px; }
+.library-window .auto-tag { font-size: 11px; font-weight: 500; color: inherit; opacity: 0.72; border: 1px solid var(--app-auto-tag-border); border-radius: 5px; padding: 0 3px; }
 .library-window button { border-radius: 6px; }
-.library-window button.suggested-action { background: #1c71d8; color: white; }
-.library-window .cassini-record { background: #c01c28; color: white; font-weight: 600; min-height: 30px; padding: 0 12px; }
+.library-window button.suggested-action { background: var(--app-primary-bg); color: var(--app-primary-fg); }
+.library-window .cassini-record { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; min-height: 30px; padding: 0 12px; }
 .library-window .big-record { min-width: 74px; border-radius: 100px; min-height: 44px; padding: 0 22px; }
 .library-window .record-dot { font-size: 12px; }
-.library-window .first-run-icon { background: alpha(@view_fg_color, 0.08); border-radius: 24px; padding: 24px; margin-bottom: 0; }
+.library-window .first-run-icon { background: var(--app-wash-chip); border-radius: 24px; padding: 24px; margin-bottom: 0; }
 .library-window .excerpt { line-height: 1.5; }
 
-.library-window .live-pill { background: #fbe4e6; border-radius: 6px; padding: 4px 4px 4px 12px; min-height: 26px; }
-.library-window .live-dot { background: #c01c28; border-radius: 100px; }
-.library-window .live-timer { color: #c01c28; font-weight: 600; font-feature-settings: "tnum"; }
-.library-window .live-levels progressbar trough { min-width: 30px; min-height: 4px; background: #eab8bd; border-radius: 2px; }
-.library-window .live-levels progressbar progress { min-height: 4px; background: #c01c28; border-radius: 2px; }
-.library-window .static-stop:disabled { background: #c01c28; color: white; opacity: 1; min-height: 26px; padding: 0 9px; }
+.library-window .live-pill { background: var(--app-record-tint); border-radius: 6px; padding: 4px 4px 4px 12px; min-height: 26px; }
+.library-window .live-dot { background: var(--app-record-dot); border-radius: 100px; }
+.library-window .live-timer { color: var(--app-record-ink); font-weight: 600; font-feature-settings: "tnum"; }
+.library-window .live-levels progressbar trough { min-width: 30px; min-height: 4px; background: var(--app-record-trough); border-radius: 2px; }
+.library-window .live-levels progressbar progress { min-height: 4px; background: var(--app-record-bg); border-radius: 2px; }
+.library-window .static-stop:disabled { background: var(--app-record-bg); color: var(--app-record-fg); opacity: 1; min-height: 26px; padding: 0 9px; }
 
 /* UX3: native colours, with speaker colours confined to the reading page. */
-.meeting-transcript { background: @view_bg_color; color: @view_fg_color; padding: 22px 48px; }
+.meeting-transcript { background: var(--app-view-bg); color: var(--app-view-fg); padding: 22px 48px; }
 .transcript-word-action { min-width: 0; min-height: 0; padding: 0; border: 0; }
 .meeting-transcript row { padding: 0; background: transparent; }
-.companion-card { background: alpha(@accent_bg_color, 0.13); border-radius: 10px; padding: 16px; margin-bottom: 22px; }
-.companion-card image { color: @accent_bg_color; }
-.meeting-player { border-top: 1px solid alpha(@view_fg_color, 0.12); min-height: 64px; padding: 0 20px; background: @headerbar_bg_color; }
+.companion-card { background: var(--app-accent-tint); border-radius: 10px; padding: 16px; margin-bottom: 22px; }
+.companion-card image { color: var(--app-accent-bg); }
+.meeting-player { border-top: 1px solid var(--app-hairline); min-height: 64px; padding: 0 20px; background: var(--app-headerbar-bg); }
 .meeting-player button.suggested-action { border-radius: 50%; min-width: 40px; min-height: 40px; padding: 0; }
 .meeting-player scale { padding: 0; }
 .inline-line { border-radius: 10px; padding: 12px; margin-bottom: 8px; }
-.warn-line { background: alpha(#e5a50a, 0.18); }
-.info-line { background: alpha(@accent_bg_color, 0.13); }
+.warn-line { background: var(--app-warn-line-bg); }
+.info-line { background: var(--app-accent-tint); }
 .meeting-transcript .words { font-size: 15px; line-height: 1.5; }
-.responsibility-card { background: alpha(@view_fg_color, 0.06); border-radius: 12px; padding: 16px; }
+.responsibility-card { background: var(--app-wash-subtle); border-radius: 12px; padding: 16px; }
 
 /* UX6 recording comfort. */
-.recording-page { background: @window_bg_color; color: @window_fg_color; }
+.recording-page { background: var(--app-window-bg); color: var(--app-window-fg); }
 .recording-timer { font-size: 44px; font-weight: 600; font-feature-settings: "tnum"; letter-spacing: -0.8px; }
-.recording-dot { background: #c01c28; border-radius: 100px; box-shadow: 0 0 0 8px #fbe4e6; }
+.recording-dot { background: var(--app-record-bg); border-radius: 100px; box-shadow: 0 0 0 8px var(--app-record-halo); }
 .library-window .recording-stop { min-height: 48px; min-width: 110px; padding: 0; border-radius: 100px; font-size: 16px; }
-.recording-title { min-height: 38px; font-size: 16px; padding: 0 12px; background: @view_bg_color; }
-.recording-sources { border: 1px solid alpha(@view_fg_color, 0.18); border-radius: 12px; }
+.recording-title { min-height: 38px; font-size: 16px; padding: 0 12px; background: var(--app-view-bg); }
+.recording-sources { border: 1px solid var(--app-border); border-radius: 12px; }
 .recording-source { padding: 12px 16px; min-height: 38px; }
-.recording-sources progressbar trough { min-width: 96px; min-height: 6px; border-radius: 2px; background: alpha(@view_fg_color, 0.12); }
-.recording-sources progressbar progress { min-height: 6px; background: @view_fg_color; }
-.mic-silent { background: #fcefc9; color: #7a4d00; border-radius: 11px 11px 0 0; }
-.mic-silent button { background: white; color: #7a4d00; }
-.mic-silent progressbar trough { background: #ead9ad; }
-.recording-change { color: @accent_color; font-size: 13px; font-weight: 600; margin: 0 8px; }
-.recording-path-card { background: alpha(@view_fg_color, 0.06); border-radius: 12px; padding: 12px 14px; }
+.recording-sources progressbar trough { min-width: 96px; min-height: 6px; border-radius: 2px; background: var(--app-wash-trough); }
+.recording-sources progressbar progress { min-height: 6px; background: var(--app-view-fg); }
+.mic-silent { background: var(--app-mic-silent-bg); color: var(--app-mic-silent-fg); border-radius: 11px 11px 0 0; }
+.mic-silent button { background: var(--app-mic-silent-btn-bg); color: var(--app-mic-silent-btn-fg); }
+.mic-silent progressbar trough { background: var(--app-mic-silent-trough); }
+.recording-change { color: var(--app-accent-ink); font-size: 13px; font-weight: 600; margin: 0 8px; }
+.recording-path-card { background: var(--app-wash-subtle); border-radius: 12px; padding: 12px 14px; }
 .what-is-recorded { font-size: 15px; }
 .what-is-recorded .small, .what-is-recorded .subtitle { font-size: 13px; }
 .what-is-recorded .title-2 { font-size: 20px; }
 .what-is-recorded row { min-height: 60px; }
 .what-is-recorded row .title { font-weight: 600; }
-.library-window .static-stop { background: #c01c28; color: white; font-weight: 600; min-height: 26px; padding: 0 9px; }
+.library-window .static-stop { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; min-height: 26px; padding: 0 9px; }
 .library-window .live-pill button.flat { min-height: 0; min-width: 0; padding: 0; }
 
-.live-levels progressbar.mic-silent-meter trough { background: #f1d9a6; }
+.live-levels progressbar.mic-silent-meter trough { background: var(--app-live-silent-trough); }
 .library-window .static-stop:disabled { background-image: none; opacity: 1; }
-.library-window .static-stop:disabled label { opacity: 1; color: white; }
+.library-window .static-stop:disabled label { opacity: 1; color: var(--app-record-fg); }
 
 /* UX4 received context and UX7 export. */
-.received-folder { background: alpha(@view_fg_color, 0.06); border-radius: 10px; padding: 14px; }
+.received-folder { background: var(--app-wash-subtle); border-radius: 10px; padding: 14px; }
 .export-dialog { font-size: 15px; }
 .export-heading { font-size: 20px; font-weight: 700; }
-.export-choices { border: 1px solid alpha(@view_fg_color, 0.16); border-radius: 10px; }
+.export-choices { border: 1px solid var(--app-export-border); border-radius: 10px; }
 .export-choice { padding: 14px; min-height: 48px; }
-.export-choice + .export-choice { border-top: 1px solid alpha(@view_fg_color, 0.12); }
-.export-choice.selected { background: alpha(@accent_bg_color, 0.13); border-radius: 9px; }
-.export-destination { background: alpha(@view_fg_color, 0.06); border-radius: 10px; padding: 12px; }
+.export-choice + .export-choice { border-top: 1px solid var(--app-hairline); }
+.export-choice.selected { background: var(--app-accent-tint); border-radius: 9px; }
+.export-destination { background: var(--app-wash-subtle); border-radius: 10px; padding: 12px; }
 .export-dialog .small { font-size: 13px; }
 .export-choice:last-child { min-height: 32px; }
 
 /* Search shares native sidebar colours with the Library in either scheme. */
 .search-results { background: transparent; padding: 0 8px; }
 .search-results > row { border-radius: 10px; padding: 0; margin: 3px 0; }
-.search-results > row:selected { background: alpha(currentColor, 0.12); color: @window_fg_color; }
+.search-results > row:selected { background: var(--app-search-selected-bg); color: var(--app-window-fg); }
 .search-result { padding: 10px 8px; }
 .search-quote { line-height: 1.45; }
 .library-window button.search-chip, .library-window .search-chip > button { border-radius: 999px; min-height: 26px; padding: 0 10px; }
-.library-window button.search-chip:not(:checked), .library-window .search-chip > button { background: @view_bg_color; border: 1px solid alpha(@view_fg_color, 0.18); }
-.library-window .search-chip.suggested-action > button, .library-window button.search-chip:checked { background: #1c71d8; color: white; border-color: #1c71d8; }
+.library-window button.search-chip:not(:checked), .library-window .search-chip > button { background: var(--app-view-bg); border: 1px solid var(--app-border); }
+.library-window .search-chip.suggested-action > button, .library-window button.search-chip:checked { background: var(--app-primary-bg); color: var(--app-primary-fg); border-color: var(--app-primary-bg); }
 .search-filters flowboxchild, .search-actions flowboxchild { padding: 0; }
 
-.cassini-preferences .speech-model-selected { background: alpha(@accent_bg_color, 0.07); }
+.cassini-preferences .speech-model-selected { background: var(--app-model-selected-bg); }
 
 /* UX10: native dialog colours also keep pending/connected steps clear in dark mode. */
 .companion-setup { font-size: 15px; }
-.companion-step-badge { min-width: 24px; min-height: 24px; border: 2px solid @accent_color; border-radius: 50%; color: @accent_color; font-weight: 700; }
-.companion-step-badge.done { border-color: @success_bg_color; background: @success_bg_color; color: @success_fg_color; }
+.companion-step-badge { min-width: 24px; min-height: 24px; border: 2px solid var(--app-accent-ink); border-radius: 50%; color: var(--app-accent-ink); font-weight: 700; }
+.companion-step-badge.done { border-color: var(--app-success-bg); background: var(--app-success-bg); color: var(--app-success-fg); }
 
 /* UX16: native surfaces; the avatar uses the same first-speaking colour. */
 .speaker-edit { padding: 0; }
 .speakers-dialog { font-size: 15px; }
 .speakers-dialog .small { font-size: 13px; }
-.speaker-avatar { min-width: 40px; min-height: 40px; border-radius: 50%; background: alpha(@accent_color, 0.12); font-weight: 700; }
+.speaker-avatar { min-width: 40px; min-height: 40px; border-radius: 50%; background: var(--app-avatar-wash); font-weight: 700; }
 
 .speaker-duplicate {
   padding: 12px;
   border-radius: 10px;
-  background-color: alpha(@warning_bg_color, 0.12);
-  border: 1px solid alpha(@warning_color, 0.35);
+  background-color: var(--app-dup-warn-bg);
+  border: 1px solid var(--app-dup-warn-border);
 }
-.details-side { padding: 12px; border: 1px solid alpha(currentColor, 0.15); border-radius: 12px; }
+.details-side { padding: 12px; border: 1px solid var(--app-details-border); border-radius: 12px; }
 .details-span { padding: 6px 0; }
-.details-marker { background: @accent_bg_color; border-radius: 3px; }
+.details-marker { background: var(--app-accent-bg); border-radius: 3px; }
 .details-time { font-variant-numeric: tabular-nums; opacity: 0.75; }
 
 /* D36: recording colour follows the actual application appearance. */
-.library-window.spectro-dark .live-pill { background: #4a2a2d; }
-.library-window.spectro-dark .live-timer { color: #ff7b7f; }
-.library-window.spectro-dark .live-dot { background: #ff8a8e; }
-.library-window.spectro-dark .mic-silent { background: alpha(#f8e45c, 0.18); color: #f8e45c; }
-.library-window.spectro-dark .mic-silent button { background: alpha(#f8e45c, 0.12); color: #f8e45c; }
 .library-window .spectro-stopping { opacity: 0.45; transition: opacity 220ms ease-out; }
 
 .library-window .spectro-check { padding: 0 8px; min-width: 0; }
 
 /* D70: reserve the accent edge so choosing a target never shifts a row. */
 .speaker-row { border-left: 3px solid transparent; border-radius: 6px; }
-.speaker-row.listening { border-left-color: @accent_color; background: alpha(@accent_color, 0.08); }
+.speaker-row.listening { border-left-color: var(--app-accent-ink); background: var(--app-accent-wash); }
 .speaker-caption { font-feature-settings: "tnum"; font-weight: 400; }
 
-.listening-bar { min-height: 44px; padding: 4px 8px; border-top: 1px solid alpha(@view_fg_color, 0.12); background: @headerbar_bg_color; }
+.listening-bar { min-height: 44px; padding: 4px 8px; border-top: 1px solid var(--app-hairline); background: var(--app-headerbar-bg); }
 .listening-bar button { min-width: 24px; padding: 4px; }
 
 .meeting-player > label { font-feature-settings: "tnum"; }
 .meeting-transcript .words { border-left: 3px solid transparent; padding-left: 8px; }
-.meeting-transcript .words.listen-current { border-left-color: @accent_color; background: alpha(@accent_color, 0.08); }
+.meeting-transcript .words.listen-current { border-left-color: var(--app-accent-ink); background: var(--app-accent-wash); }
 .transcript-name, .transcript-time { padding: 0; min-height: 0; }

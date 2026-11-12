@@ -8,6 +8,7 @@ from functools import cache
 from gi.repository import Gdk, GLib, Graphene, Gsk, Gtk
 
 from .spectro_view_model import HOLE, OFF, SILENT
+from .tokens import spectrogram_colours
 
 
 def rect(x, y, width, height):
@@ -18,8 +19,8 @@ def rect(x, y, width, height):
 
 @cache
 def palette(kind, dark, silent):
-    ink = ("ff8a8e" if dark else "c01c28") if kind == "pill" else ("ffffff" if dark else "2e2e32")
-    background = ("f8e45c" if dark else ("e5a50a" if kind == "pill" else "c58a00")) if silent else ink
+    ink_hex, bg_hex = spectrogram_colours(kind, dark=dark, silent=silent)
+    ink, background = ink_hex.lstrip("#"), bg_hex.lstrip("#")
     rgb = [int(ink[i : i + 2], 16) / 255 for i in (0, 2, 4)]
     bg = [int(background[i : i + 2], 16) / 255 for i in (0, 2, 4)]
     base = (0.26 if dark else 0.42) if kind == "pill" else (0.18 if dark else 0.26)

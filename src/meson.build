@@ -80,6 +80,8 @@ talk_sources = files(
   'cassini_talk/speaker_merges.py',
   'cassini_talk/speaker_edits.py',
   'cassini_talk/speakers_dialog.py',
+  'cassini_talk/_brand_tokens.py',
+  'cassini_talk/tokens.py',
   'cassini_talk/meeting_text.py',
   'cassini_talk/markup_runs.py',
   'cassini_talk/listen.py',
@@ -352,6 +354,9 @@ install_subdir('../browser-extension',
 protocol_python = python.find_installation('python3')
 test('browser-protocol-integrity', protocol_python,
   args: [meson.project_source_root() / 'browser-protocol/verify.py', '--pinned', meson.project_source_root() / 'browser-extension'],
+)
+test('brand-tokens-integrity', protocol_python,
+  args: [meson.project_source_root() / 'build-aux/generate-brand-tokens.py', '--check'],
 )
 protocol_tests = python.find_installation('python3', modules: ['jsonschema', 'rfc3339_validator'], required: false)
 if protocol_tests.found()
