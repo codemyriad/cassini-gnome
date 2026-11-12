@@ -692,7 +692,7 @@ def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
     ]
     for name in ("recording", "boards", "offline"):
         assert re.search(r"^    needs: \[changes, build\]$", ci[name], re.M) and "meson-tests" not in ci[name], name
-    assert "needs: [source, deb, rpm-arch, meson-tests]" in ci["pytest-coverage"]
+    assert "needs: [changes, source, deb, rpm-arch, meson-tests]" in ci["pytest-coverage"]
     for var in ("SOURCE", "DEB", "RPM_ARCH", "MESON_TESTS"):
         assert f'test "${var}" = success ||' in ci["pytest-coverage"]
     (tests,) = dict(jobs(WORKFLOWS / "meson-tests.yml")).values()
@@ -924,3 +924,26 @@ def test_rpm_canary_guard_runs_pinned_abi_and_skips_unpinned_until_pypi_ships_wh
         )
         assert rc == 1 and out_bad.read_text().strip() == "should_build=false", idx
         assert "PyPI wheel check failed" in summary_bad.read_text(), idx
+
+
+def test_pr_two_distro_legs_and_full_ci_label_wiring():
+    ci_text = (WORKFLOWS / "ci.yml").read_text()
+    assert "  pull_request:\n    types: [opened, synchronize, reopened, labeled]\n" in ci_text
+    ci_jobs = dict(jobs(WORKFLOWS / "ci.yml"))
+    for leg in ("deb_testing", "rpm_opensuse", "arch", "flatpak", "extra_distros", "full_ci"):
+        assert f"{leg}: ${{{{ steps.areas.outputs.{leg} }}}}" in ci_jobs["changes"]
+    assert (
+        "if: ${{ !cancelled() && (needs.changes.result != 'success' || "
+        "(needs.changes.outputs.flatpak != 'false' && needs.changes.outputs.packages != 'false')) }}"
+    ) in ci_jobs["flatpak"]
+    assert (
+        "if: ${{ always() && !cancelled() && needs.deb.result == 'success' && "
+        "((needs.changes.result == 'success' && needs.changes.outputs.flatpak == 'false' && "
+        "needs.flatpak.result == 'skipped') || needs.flatpak.result == 'success') }}"
+    ) in ci_jobs["desktop"]
+    assert (
+        "include_flatpak: ${{ needs.changes.result != 'success' || needs.changes.outputs.flatpak != 'false' }}"
+        in ci_jobs["desktop"]
+    )
+    bg_text = (WORKFLOWS / "background-apps.yml").read_text()
+    assert "tests/desktop/run.sh --deb-only _desktop-packages/deb/cassini-talk_*.deb desktop-evidence" in bg_text

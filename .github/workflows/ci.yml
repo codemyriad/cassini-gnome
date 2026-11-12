@@ -3,6 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: "11 2 * * *"
   workflow_dispatch:
@@ -26,6 +27,12 @@ jobs:
       boards: ${{ steps.areas.outputs.boards }}
       library: ${{ steps.areas.outputs.library }}
       offline: ${{ steps.areas.outputs.offline }}
+      deb_testing: ${{ steps.areas.outputs.deb_testing }}
+      rpm_opensuse: ${{ steps.areas.outputs.rpm_opensuse }}
+      arch: ${{ steps.areas.outputs.arch }}
+      flatpak: ${{ steps.areas.outputs.flatpak }}
+      extra_distros: ${{ steps.areas.outputs.extra_distros }}
+      full_ci: ${{ steps.areas.outputs.full_ci }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -53,33 +60,49 @@ jobs:
     name: Meson tests
     uses: ./.github/workflows/meson-tests.yml
   source:
-    # Coverage requires this complete Source/package proof matrix on every run.
-    # Keep it independent of changes detection, even false/missing outputs.
+    # Coverage requires the complete Source/package proof matrix for every enabled
+    # leg. !cancelled() and != 'false' fail open even if changes detection fails.
     name: Source
+    needs: changes
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/source.yml
-  # The three package workflows are called directly, so Desktop waits only for
-  # the deb and Flatpak it installs, not for the RPM and Arch builds (G2).
+    with:
+      deb_testing: ${{ needs.changes.result != 'success' || needs.changes.outputs.deb_testing != 'false' }}
+      rpm_opensuse: ${{ needs.changes.result != 'success' || needs.changes.outputs.rpm_opensuse != 'false' }}
+      arch: ${{ needs.changes.result != 'success' || needs.changes.outputs.arch != 'false' }}
+      extra_distros: ${{ needs.changes.result != 'success' || needs.changes.outputs.extra_distros != 'false' }}
+  # The package workflows are called directly, so Desktop waits only for the
+  # deb (and Flatpak when enabled), not for the RPM and Arch builds (G2).
   deb:
     name: Debian package
+    needs: changes
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/deb.yml
+    with:
+      deb_testing: ${{ needs.changes.result != 'success' || needs.changes.outputs.deb_testing != 'false' }}
   rpm-arch:
     name: RPM and Arch packages
+    needs: changes
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/packages.yml
+    with:
+      rpm_opensuse: ${{ needs.changes.result != 'success' || needs.changes.outputs.rpm_opensuse != 'false' }}
+      arch: ${{ needs.changes.result != 'success' || needs.changes.outputs.arch != 'false' }}
   flatpak:
     name: Flatpak
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.flatpak != 'false' && needs.changes.outputs.packages != 'false')) }}
     uses: ./.github/workflows/flatpak.yml
   # G11: a Source distro job skips pytest only where a package job runs it.
   # Each Source job uploads the node ids its pytest ran, or pytest-skipped-
   # <image>; each package job that proved a complete run uploads its node
   # ids as pytest-ran-<image>. This fails on any skip without that proof
   # from the same release, and on any package job that left out a test the
-  # fedora:latest Source job ran, whatever skipped, narrowed or broke it.
+  # tier's Fedora Source job ran, whatever skipped, narrowed or broke it.
   # It also fails unless the Meson tests, Build's until H, ran and passed.
   pytest-coverage:
     name: Pytest coverage
-    needs: [source, deb, rpm-arch, meson-tests]
+    needs: [changes, source, deb, rpm-arch, meson-tests]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -90,7 +113,19 @@ jobs:
           pattern: pytest-*
           path: ${{ runner.temp }}/pytest
       - name: Every skipped pytest suite ran in full in a package job of the same release
-        run: python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/pytest"
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          DEB_TESTING: ${{ needs.changes.outputs.deb_testing }}
+          RPM_OPENSUSE: ${{ needs.changes.outputs.rpm_opensuse }}
+          ARCH: ${{ needs.changes.outputs.arch }}
+          EXTRA_DISTROS: ${{ needs.changes.outputs.extra_distros }}
+        run: |
+          python3 build-aux/ci/check_pytest_ran.py --gate "$RUNNER_TEMP/pytest" \
+            --changes-result "$CHANGES" \
+            --deb-testing "$DEB_TESTING" \
+            --rpm-opensuse "$RPM_OPENSUSE" \
+            --arch "$ARCH" \
+            --extra-distros "$EXTRA_DISTROS"
       - name: Source and package callers ran and passed
         if: ${{ !cancelled() }}
         env:
@@ -141,9 +176,11 @@ jobs:
       product: ci-offline
   desktop:
     name: Desktop
-    needs: [deb, flatpak]
-    if: ${{ !cancelled() && needs.deb.result == 'success' && needs.flatpak.result == 'success' }}
+    needs: [changes, deb, flatpak]
+    if: ${{ always() && !cancelled() && needs.deb.result == 'success' && ((needs.changes.result == 'success' && needs.changes.outputs.flatpak == 'false' && needs.flatpak.result == 'skipped') || needs.flatpak.result == 'success') }}
     permissions:
       contents: read
       actions: read
     uses: ./.github/workflows/background-apps.yml
+    with:
+      include_flatpak: ${{ needs.changes.result != 'success' || needs.changes.outputs.flatpak != 'false' }}

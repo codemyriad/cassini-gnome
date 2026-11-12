@@ -462,7 +462,12 @@ until(
 until(lambda: capture_inputs() == [] and not privacy_indicator()["visible"], "clean privacy baseline")
 results = dict(shell=version, baseline=privacy_indicator(), cases=[])
 root = HOME / "Music/Cassini"
-for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
+appids = (
+    ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel")
+    if os.environ.get("CASSINI_QA_INCLUDE_FLATPAK", "1") == "1"
+    else ("io.codemyriad.CassiniTalk",)
+)
+for appid in appids:
     flatpak = appid.endswith(".Devel")
     command = ["flatpak", "run", "--user", "--command=gsettings", appid] if flatpak else ["gsettings"]
     subprocess.run([*command, "set", "io.codemyriad.CassiniTalk", "skip-record-first", "true"], check=True)
@@ -615,4 +620,5 @@ for appid in ("io.codemyriad.CassiniTalk", "io.codemyriad.CassiniTalk.Devel"):
         )
     )
     (OUT / "status-notifier-desktop.json").write_text(json.dumps(results, indent=2) + "\n")
+assert len(results["cases"]) == len(appids)
 print(json.dumps(results, indent=2))

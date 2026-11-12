@@ -1,7 +1,37 @@
 name: Source checks
 on:
   workflow_call:
+    inputs:
+      deb_testing:
+        type: boolean
+        default: true
+      rpm_opensuse:
+        type: boolean
+        default: true
+      arch:
+        type: boolean
+        default: true
+      extra_distros:
+        type: boolean
+        default: true
   workflow_dispatch:
+    inputs:
+      deb_testing:
+        description: Include debian:testing (delegated to Debian package)
+        type: boolean
+        default: true
+      rpm_opensuse:
+        description: Include openSUSE Tumbleweed (delegated to RPM and Arch packages)
+        type: boolean
+        default: true
+      arch:
+        description: Include Arch Linux (delegated to RPM and Arch packages)
+        type: boolean
+        default: true
+      extra_distros:
+        description: Run fedora:latest and alpine:edge instead of fedora:44
+        type: boolean
+        default: true
 permissions:
   contents: read
 env:
@@ -46,20 +76,11 @@ jobs:
         # G11 (D66 rule 5, D20): the pytest suite is skipped only where
         # `pytest-in` names a package job that runs the identical suite in the
         # identical image; its recipe sets CASSINI_TEST_REQUIRE_GTK, so its
-        # check fails rather than skips the GTK application tests. The build,
-        # the other Meson tests, both installs and the smoke test always run.
-        include:
-          - image: debian:testing
-            pytest-in: "Debian package / Build .deb (debian:testing)"
-          - image: ubuntu:26.04
-            pytest-in: "Debian package / Build .deb (ubuntu:26.04)"
-          # No package job uses fedora:latest (the rpm is pinned to fedora:44).
-          - image: fedora:latest
-          - image: registry.opensuse.org/opensuse/tumbleweed:latest
-            pytest-in: "RPM and Arch packages / Build .rpm (registry.opensuse.org/opensuse/tumbleweed:latest)"
-          - image: archlinux:latest
-            pytest-in: "RPM and Arch packages / Build Arch package"
-          - image: alpine:edge
+        # check fails rather than skips the GTK application tests. PR and main
+        # pushes gate on ubuntu:26.04 (skipping to deb) plus fedora:44 (keeping
+        # the non-package reference pytest run), adding any packaging legs whose
+        # inputs changed on the PR; nightly and full-ci runs cover all six.
+        include: ${{ fromJSON(format('[{{"image":"ubuntu:26.04","pytest-in":"Debian package / Build .deb (ubuntu:26.04)"}},{0}{1}{2}{3}]', inputs.extra_distros && '{"image":"fedora:latest"},{"image":"alpine:edge"}' || '{"image":"fedora:44"}', inputs.deb_testing && ',{"image":"debian:testing","pytest-in":"Debian package / Build .deb (debian:testing)"}' || '', inputs.rpm_opensuse && ',{"image":"registry.opensuse.org/opensuse/tumbleweed:latest","pytest-in":"RPM and Arch packages / Build .rpm (registry.opensuse.org/opensuse/tumbleweed:latest)"}' || '', inputs.arch && ',{"image":"archlinux:latest","pytest-in":"RPM and Arch packages / Build Arch package"}' || '')) }}
     env:
       CASSINI_SKIP_PYTEST: ${{ matrix.pytest-in && '1' || '' }}
     steps:
