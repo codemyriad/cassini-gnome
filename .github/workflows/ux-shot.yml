@@ -97,7 +97,7 @@ jobs:
           assert info['tz']=='Europe/Rome' and info['lang']=='en_GB.UTF-8'
           assert info['font']=='Cantarell 11'
           shots=json.loads(Path('ux-artifacts/shots.json').read_text())
-          assert shots['app']=='gnome' and len(shots['shots']) >= 176
+          assert shots['app']=='gnome' and len(shots['shots']) >= 152 and len(shots['shots']) % 2 == 0
           PY
           dpkg-query -W fonts-cantarell fonts-inter > ux-artifacts/fonts.txt
           for font in Cantarell Inter; do fc-match -f '%{file}\n' "$font"; done | sort -u | xargs sha256sum > ux-artifacts/font-sha256.txt

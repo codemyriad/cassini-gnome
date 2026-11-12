@@ -55,7 +55,6 @@ def until(condition, message):
 def shot(window, name):
     manager = Adw.StyleManager.get_default()
     original = manager.get_color_scheme()
-    render_shot(window, name)
     try:
         for label, scheme in (("light", Adw.ColorScheme.FORCE_LIGHT), ("dark", Adw.ColorScheme.FORCE_DARK)):
             manager.set_color_scheme(scheme)
@@ -119,7 +118,6 @@ def native_states(window, page, recorder):
         ),
         "silent-microphone warning reached the rendered history",
     )
-    shot(window, "spectrogram-silent-dark")
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
     shot(window, "spectrogram-silent")
     microphone.set_property("volume", old_volume)
@@ -341,7 +339,7 @@ with tempfile.TemporaryDirectory() as temporary:
             shot(window, "spectrogram-recording")
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
             until(lambda: all(v.dark for v in views), "theme propagated to every strip")
-            shot(window, "spectrogram-recording-dark")
+            Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
             settings = Gtk.Settings.get_default()
             settings.set_property("gtk-enable-animations", False)
             assert all(v.reduced_motion for v in views)
