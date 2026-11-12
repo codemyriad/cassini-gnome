@@ -38,14 +38,16 @@
   --app-record-tint: #fbe4e6;
   --app-record-halo: #fbe4e6;
   --app-record-trough: #eab8bd;
-  --app-badge-red-bg: #fbe4e6;
-  --app-badge-red-fg: #c01c28;
-  --app-badge-transcribing-bg: #e1edfb;
-  --app-badge-transcribing-fg: #1c71d8;
-  --app-badge-amber-bg: #fcefc9;
-  --app-badge-amber-fg: #7a4d00;
-  --app-badge-grey-bg: alpha(@sidebar_fg_color, 0.08);
-  --app-badge-grey-fg: inherit;
+  --app-badge-red-bg: var(--cx-record-tint);
+  --app-badge-red-fg: var(--cx-record-ink);
+  --app-badge-transcribing-bg: var(--cx-neutral-tint);
+  --app-badge-transcribing-fg: var(--cx-neutral-ink);
+  --app-badge-amber-bg: var(--cx-warn-tint);
+  --app-badge-amber-fg: var(--cx-warn-ink);
+  --app-badge-grey-bg: var(--cx-neutral-tint);
+  --app-badge-grey-fg: var(--cx-neutral-ink);
+  --app-badge-received-fg: var(--cx-ink-2);
+  --app-badge-received-ring: var(--cx-line);
   --app-warn-line-bg: alpha(#e5a50a, 0.18);
   --app-warn-line-fg: inherit;
   --app-mic-silent-bg: #fcefc9;
@@ -91,11 +93,12 @@
 .library-window .meeting-row:selected { background: var(--app-row-selected-bg); color: inherit; }
 .library-window .dim-label { color: inherit; opacity: 0.72; }
 .library-window .meeting-row:selected .dim-label { color: inherit; }
-.library-window .badge { border-radius: 100px; padding: 1px 8px; font-size: 13px; font-weight: 600; }
-.library-window .badge-red { background: var(--app-badge-red-bg); color: var(--app-badge-red-fg); }
-.library-window .badge-accent { background: var(--app-badge-transcribing-bg); color: var(--app-badge-transcribing-fg); }
-.library-window .badge-amber { background: var(--app-badge-amber-bg); color: var(--app-badge-amber-fg); }
-.library-window .badge-grey { background: var(--app-badge-grey-bg); color: inherit; }
+.badge { min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 13px; font-weight: 600; line-height: 1; font-feature-settings: "tnum"; }
+.badge .badge-label { font-size: 13px; font-weight: 600; line-height: 1; font-feature-settings: "tnum"; }
+.badge-kind-recording, .library-window .badge-red { background: var(--app-badge-red-bg); color: var(--app-badge-red-fg); }
+.badge-kind-importing, .badge-kind-saving, .badge-kind-transcribing, .library-window .badge-accent, .library-window .badge-grey { background: var(--app-badge-grey-bg); color: var(--app-badge-grey-fg); }
+.badge-kind-needsAttention, .badge-kind-interrupted, .library-window .badge-amber { background: var(--app-badge-amber-bg); color: var(--app-badge-amber-fg); }
+.badge-kind-received { background: transparent; color: var(--app-badge-received-fg); box-shadow: inset 0 0 0 1px var(--app-badge-received-ring); }
 .library-window .speaker-chip { border-radius: 100px; background: var(--app-wash-chip); padding: 5px 12px; }
 .library-window .speaker-name { font-weight: 600; }
 .library-window .speaker-chip .speaker-name { color: inherit; font-weight: 400; }

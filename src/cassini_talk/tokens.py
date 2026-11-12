@@ -82,6 +82,8 @@ CSS_ROLE_TOKENS: dict[str, str] = {
     "badge-amber-fg": "warn-ink",
     "badge-grey-bg": "neutral-tint",
     "badge-grey-fg": "neutral-ink",
+    "badge-received-fg": "ink-2",
+    "badge-received-ring": "line",
     "warn-line-bg": "warn-tint",
     "warn-line-fg": "warn-ink",
     "mic-silent-bg": "warn-tint",
@@ -138,8 +140,24 @@ DEFERRED_W2_ROLES: frozenset[str] = frozenset(
     }
 )
 
+# Badge CSS roles applied in W2.1 (GNOME-COM-02, GNOME-COM-03).
+APPLIED_W2_BADGE_ROLES: frozenset[str] = frozenset(
+    {
+        "badge-red-bg",
+        "badge-red-fg",
+        "badge-transcribing-bg",
+        "badge-transcribing-fg",
+        "badge-amber-bg",
+        "badge-amber-fg",
+        "badge-grey-bg",
+        "badge-grey-fg",
+        "badge-received-fg",
+        "badge-received-ring",
+    }
+)
+
 # Decided Wave 1 roles not yet switched in W1.1 plumbing (left empty in W1 look preview).
-UNAPPLIED_W1_ROLES: frozenset[str] = frozenset(ROLE_TOKENS) - DEFERRED_W2_ROLES
+UNAPPLIED_W1_ROLES: frozenset[str] = frozenset(ROLE_TOKENS) - DEFERRED_W2_ROLES - APPLIED_W2_BADGE_ROLES
 
 
 def token(name: str, *, dark: bool = False) -> str:
@@ -210,6 +228,7 @@ def timeline_tick_colour(*, dark: bool = False) -> str | None:
 
 __all__ = [
     "ADW_ROLE_TOKENS",
+    "APPLIED_W2_BADGE_ROLES",
     "CSS_ROLE_TOKENS",
     "DEFERRED_W2_ROLES",
     "DERIVED_TOKENS",
