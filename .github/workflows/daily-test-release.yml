@@ -1,0 +1,260 @@
+name: Daily test release
+
+on:
+  schedule:
+    # 09:00, 14:00 and 20:00 Europe/Berlin: 08:00, 13:00, 19:00 UTC in winter (CET);
+    # becomes 07:00, 12:00, 18:00 UTC in summer time (CEST).
+    - cron: "0 8,13,19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize reservations and publication across scheduled and manual slots; never retry silently.
+concurrency:
+  group: gnome-daily-test-release
+  cancel-in-progress: false
+
+env:
+  CONTAINER_ENGINE: docker
+
+jobs:
+  plan:
+    name: Plan test release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      deployments: write
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      sha: ${{ steps.plan.outputs.sha }}
+      plan: ${{ steps.plan.outputs.plan }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Check green main, collect merged PR titles and reserve the next beta number
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I build-aux/ci/daily_test_release.py plan
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: daily-test-release-plan
+          path: test-release-plan.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+  deb:
+    name: Build test .deb (${{ matrix.base }})
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        base: ["ubuntu:26.04", "debian:testing"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: daily-test-release-plan
+          path: ${{ runner.temp }}/plan
+      - name: Apply reserved test version
+        env:
+          DAILY_TEST_PLAN: ${{ needs.plan.outputs.plan }}
+          GITHUB_SHA: ${{ needs.plan.outputs.sha }}
+        run: python3 -I build-aux/ci/daily_test_release.py apply --plan-dir "$RUNNER_TEMP/plan"
+      - run: echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v6
+        with:
+          path: .whistle-cache
+          key: whistle-${{ hashFiles('whistle/pins.json') }}
+      - uses: actions/cache/restore@v6
+        with:
+          path: .sherpa-cache
+          key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
+      - uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/parakeet-models
+          key: parakeet-ultra-v2-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+      - run: build-aux/whistle-cache.sh
+      - run: build-aux/deb/build.sh "${{ matrix.base }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nightly-deb-${{ strategy.job-index }}
+          path: dist/*.deb
+          if-no-files-found: error
+
+  rpm:
+    name: Build test .rpm (${{ matrix.base }})
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - base: fedora:44
+            name: fedora
+          - base: registry.opensuse.org/opensuse/tumbleweed:latest
+            name: opensuse
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: daily-test-release-plan
+          path: ${{ runner.temp }}/plan
+      - name: Apply reserved test version
+        env:
+          DAILY_TEST_PLAN: ${{ needs.plan.outputs.plan }}
+          GITHUB_SHA: ${{ needs.plan.outputs.sha }}
+        run: python3 -I build-aux/ci/daily_test_release.py apply --plan-dir "$RUNNER_TEMP/plan"
+      - run: echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v6
+        with:
+          path: .whistle-cache
+          key: whistle-${{ hashFiles('whistle/pins.json') }}
+      - uses: actions/cache/restore@v6
+        with:
+          path: .sherpa-cache
+          key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
+      - uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/parakeet-models
+          key: parakeet-ultra-v2-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+      - run: build-aux/whistle-cache.sh
+      - run: build-aux/rpm/build.sh "${{ matrix.base }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nightly-rpm-${{ matrix.name }}
+          path: dist/*.rpm
+          if-no-files-found: error
+
+  arch:
+    name: Build test Arch package
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: daily-test-release-plan
+          path: ${{ runner.temp }}/plan
+      - name: Apply reserved test version
+        env:
+          DAILY_TEST_PLAN: ${{ needs.plan.outputs.plan }}
+          GITHUB_SHA: ${{ needs.plan.outputs.sha }}
+        run: python3 -I build-aux/ci/daily_test_release.py apply --plan-dir "$RUNNER_TEMP/plan"
+      - run: echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v6
+        with:
+          path: .whistle-cache
+          key: whistle-${{ hashFiles('whistle/pins.json') }}
+      - uses: actions/cache/restore@v6
+        with:
+          path: .sherpa-cache
+          key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
+      - uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/parakeet-models
+          key: parakeet-ultra-v2-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+      - run: build-aux/whistle-cache.sh
+      - run: build-aux/arch/build.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nightly-arch
+          path: dist/*.pkg.tar.zst
+          if-no-files-found: error
+
+  publish:
+    name: Publish nightly pre-release
+    needs: [plan, deb, rpm, arch]
+    if: needs.plan.outputs.build == 'true' && needs.deb.result == 'success' && needs.rpm.result == 'success' && needs.arch.result == 'success'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: source
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: daily-test-release-plan
+          path: plan
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: nightly-deb-*
+          merge-multiple: true
+          path: artifacts/deb
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: nightly-rpm-*
+          merge-multiple: true
+          path: artifacts/rpm
+      - uses: actions/download-artifact@v8
+        with:
+          name: nightly-arch
+          path: artifacts/arch
+      - name: Stage native packages, create nightly pre-release and verify SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAILY_TEST_PLAN: ${{ needs.plan.outputs.plan }}
+          GITHUB_SHA: ${{ needs.plan.outputs.sha }}
+        run: python3 -I source/build-aux/ci/daily_test_release.py publish --root source --plan-dir plan --artifacts artifacts --work-dir work
+
+  outcome:
+    name: Record test release outcome
+    needs: [plan, deb, rpm, arch, publish]
+    if: always() && (needs.plan.outputs.build == 'true' || needs.plan.result == 'failure' || needs.plan.result == 'cancelled')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      deployments: write
+    steps:
+      - name: Report preparation failure even if checkout or plan upload failed
+        if: needs.plan.result != 'success'
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          line="[GNOME] daily test release failed: release preparation ${PLAN_RESULT} (${RUN_URL})"
+          echo "::error::${line}"
+          echo "${line}" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+      - uses: actions/checkout@v7
+        if: needs.plan.outputs.build == 'true'
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - name: Record deployment status or report failure
+        if: needs.plan.outputs.build == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAILY_TEST_PLAN: ${{ needs.plan.outputs.plan }}
+          GITHUB_SHA: ${{ needs.plan.outputs.sha }}
+          DEB_RESULT: ${{ needs.deb.result }}
+          RPM_RESULT: ${{ needs.rpm.result }}
+          ARCH_RESULT: ${{ needs.arch.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 -I build-aux/ci/daily_test_release.py finish

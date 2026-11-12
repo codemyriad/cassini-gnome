@@ -217,12 +217,19 @@ def test_release_notes_are_the_tagged_versions_news_section():
         notes(news, "3.0.0")
 
 
+def news_version(root):
+    meson = re.search(r"^\s*version:\s*'([^']+)'", (root / "meson.build").read_text(), re.M)[1]
+    if match := re.fullmatch(r"(\d+\.\d+\.\d+)~beta\.([1-9]\d*)", meson):
+        return module("release_metadata").check_prerelease(root, f"{match[1]}-beta.{match[2]}")["newsVersion"]
+    return module("release_metadata").check(root)["version"]
+
+
 def test_the_tag_workflow_publishes_the_news_section_as_release_notes():
     root = Path(__file__).parents[1]
     workflow = (root / ".github/workflows/release.yml").read_text()
     assert 'build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > notes.md' in workflow
     assert "--notes-file notes.md --generate-notes" in workflow
-    version = module("release_metadata").check(root)["version"]
+    version = news_version(root)
     assert module("release_notes").notes((root / "NEWS").read_text(), version).strip()
 
 
@@ -349,7 +356,7 @@ def run_create_release(tmp_path, debs):
     bin_dir.mkdir()
     (bin_dir / "gh").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$GH_CALLS"\n')
     (bin_dir / "gh").chmod(0o755)
-    version = module("release_metadata").check(root)["version"]
+    version = news_version(root)
     env = dict(
         os.environ,
         PATH=f"{bin_dir}:{os.environ['PATH']}",

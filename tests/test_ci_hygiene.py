@@ -434,6 +434,9 @@ def test_runner_variables_move_the_intended_jobs():
     expected = {
         "CM_RUNNER": {
             ("build.yml", "products"),
+            ("daily-test-release.yml", "arch"),
+            ("daily-test-release.yml", "deb"),
+            ("daily-test-release.yml", "rpm"),
             ("deb.yml", "build"),
             ("flatpak.yml", "flatpak"),
             ("meson-tests.yml", "meson-tests"),
@@ -457,6 +460,9 @@ def test_runner_variables_move_the_intended_jobs():
     hosted_only = {
         ("ci.yml", "changes"),
         ("ci.yml", "pytest-coverage"),
+        ("daily-test-release.yml", "outcome"),
+        ("daily-test-release.yml", "plan"),
+        ("daily-test-release.yml", "publish"),
         ("release-check.yml", "metadata"),
         ("release.yml", "deb"),
         ("release.yml", "main-inputs"),
