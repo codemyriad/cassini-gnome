@@ -255,6 +255,86 @@ def test_native_finished_resumes_the_queue_intent_saved_by_a_background_close(ap
         queue.close()
 
 
+def test_browser_stop_and_saved_recording_callbacks_resume_queued_intent(application_class, tmp_path, monkeypatch):
+    from durable import Finished
+    from gi.repository import GLib
+    from test_library import capture
+
+    from cassini_talk import capture_guard, meeting_store
+    from cassini_talk.transcription import TranscriptionQueue
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=0, endMs=200, text="Let us review the quarterly budget today")],
+                )
+            )
+            return dict(diagnostics=[])
+
+    # 1. observe_browser_recordings resumes a recording queued while its .opus was still publishing.
+    first = capture(tmp_path)
+    meeting_store.update_metadata(first.directory, transcript=dict(status="queued", reference=None))
+    first_done = Finished()
+    queue = TranscriptionQueue(lambda _d: None, first_done, root=tmp_path, bundle=tmp_path, client_factory=Client)
+    try:
+        app = SimpleNamespace(transcription_enabled=True, write_down=queue.enqueue)
+        application_class.observe_browser_recordings(app, dict(recordings=[dict(path=str(first.directory))]), set())
+        first_done.wait(1, exactly=True)
+        assert meeting_store.read_metadata(first.directory)["transcript"]["status"] == "done"
+    finally:
+        queue.close()
+
+    # 2. stop_browser_recordings also passes resume=True when durable queue intent already exists.
+    second = capture(tmp_path)
+    meeting_store.update_metadata(second.directory, transcript=dict(status="queued", reference=None))
+    second_done = Finished()
+    queue2 = TranscriptionQueue(lambda _d: None, second_done, root=tmp_path, bundle=tmp_path, client_factory=Client)
+    monkeypatch.setattr(capture_guard, "stop_browser_captures", lambda *_a, **_kw: [str(second.directory)])
+    loop = GLib.MainLoop()
+    timed_out = []
+    timeout_id = GLib.timeout_add_seconds(5, lambda: timed_out.append(True) or loop.quit() or GLib.SOURCE_REMOVE)
+    app2 = SimpleNamespace(
+        _browser_stops=set(),
+        _browser_stop_repeats={},
+        _record_start_group=None,
+        hold=lambda: None,
+        release=loop.quit,
+        _notify_shortcut_saved=lambda _path: None,
+        transcription_enabled=True,
+        write_down=queue2.enqueue,
+        _native_changed=lambda: None,
+        build_refresh=None,
+    )
+    app2.stop_browser_recordings = application_class.stop_browser_recordings.__get__(app2)
+    try:
+        app2.stop_browser_recordings(second.directory)
+        loop.run()
+        assert not timed_out, "stop_browser_recordings did not deliver on the main loop"
+        second_done.wait(1, exactly=True)
+        assert meeting_store.read_metadata(second.directory)["transcript"]["status"] == "done"
+    finally:
+        if not timed_out:
+            GLib.source_remove(timeout_id)
+        queue2.close()
+
+
 @pytest.mark.parametrize("status", ["queued", "running"])
 @pytest.mark.parametrize("phase", ["recording", "saving"])
 def test_published_queued_work_starts_when_saving_clears_even_if_file_was_seen(application_class, status, phase):

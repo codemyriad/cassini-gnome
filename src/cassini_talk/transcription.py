@@ -418,6 +418,7 @@ class TranscriptionQueue:
         self.preparer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-queue-metadata")
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-transcription")
         self.pending = set()
+        self._resume_pending = set()
         self._voice_reruns = {}
         self.voice_pending = set()
         self._background_voices = {}
@@ -437,7 +438,11 @@ class TranscriptionQueue:
     def enqueue(self, directory, *, resume=False):
         directory = Path(directory).absolute()
         with self.lock:
-            if self.closed or directory in self.pending or directory in self._cancelled_meetings:
+            if self.closed or directory in self._cancelled_meetings:
+                return False
+            if directory in self.pending:
+                if resume and directory not in self._job_futures:
+                    self._resume_pending.add(directory)
                 return False
             self.pending.add(directory)
             if self._active_directory in self._background_voices and self.client:
@@ -543,28 +548,58 @@ class TranscriptionQueue:
             self._completed(directory)
         else:
             if prepared is None:
-                self._completed(directory)
+                retry = None
+                retired = False
+                with self.lock:
+                    if (
+                        directory in self._resume_pending
+                        and not self.closed
+                        and directory not in self._cancelled_meetings
+                    ):
+                        self._resume_pending.discard(directory)
+                        retry = self.preparer.submit(self._mark_queued, directory, True)
+                        self._prepare_futures[directory] = retry
+                    else:
+                        retired = self._retire_locked(directory)
+                if retry is not None:
+                    retry.add_done_callback(lambda f: self._prepared(directory, f))
+                    return
+                if retired:
+                    self.finished(directory)
             else:
                 # The durable queue intent and its Future are both complete
                 # before GTK observes this change and considers a restart.
                 self.changed(directory)
+                retired = False
                 with self.lock:
+                    self._resume_pending.discard(directory)
                     if not self.closed and directory not in self._cancelled_meetings:
-                        future = self.executor.submit(self._job, directory, *prepared)
-                        self._job_futures[directory] = future
-                        future.add_done_callback(lambda _f: self._completed(directory))
+                        self._prepare_futures.pop(directory, None)
+                        job_future = self.executor.submit(self._job, directory, *prepared)
+                        self._job_futures[directory] = job_future
+                        job_future.add_done_callback(lambda f: self._completed(directory, job_future=f))
                         return
-                self._completed(directory)
+                    retired = self._retire_locked(directory)
+                if retired:
+                    self.finished(directory)
 
-    def _completed(self, directory):
+    def _retire_locked(self, directory, *, job_future=None):
+        if directory not in self.pending:
+            return False
+        if job_future is not None and self._job_futures.get(directory) is not job_future:
+            return False
+        self.pending.remove(directory)
+        self._resume_pending.discard(directory)
+        self._prepare_futures.pop(directory, None)
+        self._job_futures.pop(directory, None)
+        self._idle.notify_all()
+        return True
+
+    def _completed(self, directory, *, job_future=None):
         with self.lock:
-            if directory not in self.pending:
-                return
-            self.pending.remove(directory)
-            self._prepare_futures.pop(directory, None)
-            self._job_futures.pop(directory, None)
-            self._idle.notify_all()
-        self.finished(directory)
+            retired = self._retire_locked(directory, job_future=job_future)
+        if retired:
+            self.finished(directory)
 
     def _failed(self, directory, error):
         if self.closed or directory in self._cancelled_meetings:
@@ -1129,6 +1164,7 @@ class TranscriptionQueue:
         directory = Path(directory).absolute()
         with self.lock:
             self._cancelled_meetings.add(directory)
+            self._resume_pending.discard(directory)
             futures = [
                 mapping.get(directory) for mapping in (self._prepare_futures, self._job_futures, self._voice_futures)
             ]
@@ -1173,6 +1209,7 @@ class TranscriptionQueue:
             if self.closed:
                 return
             self.closed = True
+            self._resume_pending.clear()
             client = self.client
         if client and hasattr(client, "cancel"):
             client.cancel()
