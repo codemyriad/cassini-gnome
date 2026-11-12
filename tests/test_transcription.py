@@ -699,3 +699,88 @@ def test_enqueue_resume_while_prepare_is_in_flight_does_not_strand_queued_meetin
     finally:
         release.set()
         queue.close()
+
+
+def test_enqueue_resume_right_after_prepared_releases_lock_never_loses_resume_handoff(tmp_path):
+    from cassini_talk.transcription import REFERENCE
+
+    session = capture(tmp_path)
+    write_metadata(session.directory, transcript=dict(status="queued", reference=REFERENCE))
+    lock_released, allow_after_release = threading.Event(), threading.Event()
+    finished = Finished()
+    calls = []
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            calls.append(len(tracks))
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=0, endMs=200, text="Let us review the quarterly budget today")],
+                )
+            )
+            return dict(diagnostics=[])
+
+    queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
+    real_lock = queue.lock
+    original_prepared = queue._prepared
+    arm_gate = [True]
+    watch_exit = [False]
+
+    class GateLock:
+        def acquire(self, *args, **kwargs):
+            return real_lock.acquire(*args, **kwargs)
+
+        def release(self):
+            return real_lock.release()
+
+        def __enter__(self):
+            return real_lock.__enter__()
+
+        def __exit__(self, *exc):
+            result = real_lock.__exit__(*exc)
+            if watch_exit[0]:
+                watch_exit[0] = False
+                lock_released.set()
+                durable(allow_after_release, "the test did not release _prepared after lock exit")
+            return result
+
+    def gated_prepared(directory, future):
+        if arm_gate[0]:
+            arm_gate[0] = False
+            watch_exit[0] = True
+        return original_prepared(directory, future)
+
+    queue.lock = GateLock()
+    queue._prepared = gated_prepared
+    try:
+        accepted = int(queue.enqueue(session.directory, resume=False))
+        durable(lock_released, "_prepared did not reach its lock release")
+        # Right after _prepared exits its lock for a None prepare result, a resume=True
+        # handoff arrives before _prepared invokes completion callbacks: because pending
+        # removal was atomic with the retry check, this enqueue is accepted immediately.
+        resumed = queue.enqueue(session.directory, resume=True)
+        assert resumed, "Pending removal was not atomic with the retry check under queue.lock"
+        accepted += int(resumed)
+        allow_after_release.set()
+        finished.wait(accepted, exactly=True)
+        assert calls == [2]
+        updated = LibraryScanner(tmp_path).scan().meetings[0]
+        assert updated.transcript == "done"
+        assert [w.text for w in updated.words] == ["Let us review the quarterly budget today"]
+    finally:
+        allow_after_release.set()
+        queue.close()

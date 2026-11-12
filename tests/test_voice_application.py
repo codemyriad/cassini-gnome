@@ -259,7 +259,6 @@ def test_browser_stop_and_saved_recording_callbacks_resume_queued_intent(applica
     from durable import Finished
     from gi.repository import GLib
     from test_library import capture
-    from test_library_monitor import spin_until
 
     from cassini_talk import capture_guard, meeting_store
     from cassini_talk.transcription import TranscriptionQueue
@@ -308,13 +307,15 @@ def test_browser_stop_and_saved_recording_callbacks_resume_queued_intent(applica
     second_done = Finished()
     queue2 = TranscriptionQueue(lambda _d: None, second_done, root=tmp_path, bundle=tmp_path, client_factory=Client)
     monkeypatch.setattr(capture_guard, "stop_browser_captures", lambda *_a, **_kw: [str(second.directory)])
-    released = []
+    loop = GLib.MainLoop()
+    timed_out = []
+    timeout_id = GLib.timeout_add_seconds(5, lambda: timed_out.append(True) or loop.quit() or GLib.SOURCE_REMOVE)
     app2 = SimpleNamespace(
         _browser_stops=set(),
         _browser_stop_repeats={},
         _record_start_group=None,
         hold=lambda: None,
-        release=lambda: released.append(True),
+        release=loop.quit,
         _notify_shortcut_saved=lambda _path: None,
         transcription_enabled=True,
         write_down=queue2.enqueue,
@@ -324,11 +325,13 @@ def test_browser_stop_and_saved_recording_callbacks_resume_queued_intent(applica
     app2.stop_browser_recordings = application_class.stop_browser_recordings.__get__(app2)
     try:
         app2.stop_browser_recordings(second.directory)
-        ctx = GLib.MainContext.default()
-        spin_until(lambda: (ctx.iteration(False), bool(released))[1])
+        loop.run()
+        assert not timed_out, "stop_browser_recordings did not deliver on the main loop"
         second_done.wait(1, exactly=True)
         assert meeting_store.read_metadata(second.directory)["transcript"]["status"] == "done"
     finally:
+        if not timed_out:
+            GLib.source_remove(timeout_id)
         queue2.close()
 
 
