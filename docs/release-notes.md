@@ -7,7 +7,7 @@ Cassini has two changelogs for two different readers:
 | **Reader** | Developers and anyone debugging a build | People using Cassini and testers deciding what to try |
 | **Source** | Merged PR titles on `main` (automatic) | `release-notes.d/<short-slug>.md` (test builds) and `NEWS` (stable releases) |
 | **Says** | Every change | What you will notice, and anything you need to do |
-| **Shown** | Folded `<details>` section at the bottom of the GitHub pre-release | Top of the GitHub (pre-)release and GNOME release description |
+| **Shown** | Folded `<details>` section at the bottom of the GitHub (pre-)release | Top of the GitHub (pre-)release and GNOME release description |
 
 Release notes never contain PR titles, `#123` numbers, decision IDs (`D95`), file names, `CI`, tests, refactors, or build tooling.
 

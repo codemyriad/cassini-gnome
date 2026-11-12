@@ -103,9 +103,14 @@ jobs:
           python3 source/build-aux/ci/release_sums.py artifacts --stage staged --sums SHA256SUMS > assets.txt
           mapfile -t assets < assets.txt
           test "${#assets[@]}" -eq 6
-          # The tagged version's NEWS section, in plain language, then GitHub's PR list.
-          python3 source/build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > notes.md
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md --generate-notes "${assets[@]}"
+          # The tagged version's NEWS section, in plain language, with GitHub's PR list folded under <details>.
+          prev_args=()
+          if prev_tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null) && [ -n "$prev_tag" ] && [ "$prev_tag" != "$GITHUB_REF_NAME" ]; then
+            prev_args=(-f "previous_tag_name=$prev_tag")
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f "tag_name=$GITHUB_REF_NAME" "${prev_args[@]}" --jq .body > changelog.md
+          python3 source/build-aux/ci/release_notes.py "$GITHUB_REF_NAME" --changelog changelog.md > notes.md
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md "${assets[@]}"
       # What a downloader gets: every attached package, fetched back from the
       # release, matches its SHA256SUMS line, and nothing is missing or extra.
       - name: Verify the published packages against SHA256SUMS

@@ -672,24 +672,40 @@ def test_literal_code_span_and_notes_bounds():
     assert notes.endswith("\n- ...\n</details>\n")
 
 
-def test_user_release_notes_fragments_grouping_overflow_tracking_and_anti_leak():
+def test_user_release_notes_fragments_grouping_overflow_tracking_and_anti_leak(tmp_path):
     mod = load_module("daily_test_release")
     rn = load_module("release_notes")
 
-    # 1. Every committed fragment in release-notes.d/ parses cleanly and renders within the 500-char store limit.
+    # 1. Every committed fragment in release-notes.d/ (including 0 after stable cleanup, or omitted groups)
+    #    parses cleanly and renders within the 500-char store limit.
     repo_fragments = rn.load_fragments_dir(ROOT / "release-notes.d")
-    assert len(repo_fragments) >= 5
     rendered_repo = rn.render_user_notes(repo_fragments)
     assert len(rendered_repo) <= rn.USER_NOTES_LIMIT == 500
     rn.validate_user_text(rendered_repo)
-    assert rendered_repo.index("New\n") < rendered_repo.index("Better\n") < rendered_repo.index("Fixed\n")
 
-    # 2. Empty unpublished fragment set produces the exact plain fallback text.
+    plus_one = [*repo_fragments, ("new", "Open any audio file from your computer directly into Cassini.")]
+    rendered_plus_one = rn.render_user_notes(plus_one)
+    assert len(rendered_plus_one) <= rn.USER_NOTES_LIMIT == 500
+    rn.validate_user_text(rendered_plus_one)
+
+    # 2. Empty unpublished fragment set (e.g. after stable-release cleanup) produces the exact plain fallback text.
+    empty_dir = tmp_path / "empty-release-notes.d"
+    empty_dir.mkdir()
+    assert rn.load_fragments_dir(empty_dir) == []
     assert rn.render_user_notes([]) == (
         "Fixes and improvements under the hood. Nothing changes in how you use Cassini."
     )
 
-    # 3. Grouping order (New -> Better -> Fixed) and >500-character overflow keeping 'new' items + 'and smaller fixes'.
+    # 3. Fixed fixtures verify grouping order (New -> Better -> Fixed) and >500-char overflow truncation.
+    short_fixture = [
+        ("fixed", "Saved voices keep their sample position steady."),
+        ("better", "Search in the Library matches meeting titles."),
+        ("new", "Export your Library as a single ZIP archive."),
+    ]
+    grouped_short = rn.render_user_notes(short_fixture)
+    assert grouped_short.index("New\n") < grouped_short.index("Better\n") < grouped_short.index("Fixed\n")
+    rn.validate_user_text(grouped_short)
+
     fixture_fragments = [
         ("fixed", "Exported meetings keep their original recording date when opened in another time zone."),
         ("better", "Search in the Library matches meeting titles even before a recording is written down."),
@@ -702,6 +718,7 @@ def test_user_release_notes_fragments_grouping_overflow_tracking_and_anti_leak()
     ]
     overflowed = rn.render_user_notes(fixture_fragments)
     assert len(overflowed) <= 500
+    assert "Fixed\n" not in overflowed
     assert overflowed.startswith(
         "New\n"
         "- Import several meeting files or a ZIP archive into your Library at once.\n"

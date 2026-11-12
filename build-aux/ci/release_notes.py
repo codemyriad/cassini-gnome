@@ -131,6 +131,15 @@ def build_prerelease_body(user_notes: str, developer_changelog: str) -> str:
     return f"{user_notes}\n\n<details>\n<summary>Developer changelog</summary>\n\n{dev}\n</details>\n"
 
 
+def build_stable_body(curated_notes: str, developer_changelog: str) -> str:
+    cleaned = curated_notes.strip()
+    validate_user_text(cleaned, source="stable release notes")
+    dev = developer_changelog.strip()
+    if not dev:
+        raise ValueError("Developer changelog must not be empty")
+    return f"{cleaned}\n\n<details>\n<summary>Developer changelog</summary>\n\n{dev}\n</details>\n"
+
+
 def notes(news: str, version: str) -> str:
     """The curated NEWS section for stable `version`, refusing missing or developer-only text."""
     sections = re.split(r"^Version (\d+\.\d+\.\d+)\n~+\n", news, flags=re.MULTILINE)
@@ -147,9 +156,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version", help="X.Y.Z, or the tag vX.Y.Z")
     parser.add_argument("--news", type=Path, default=Path(__file__).resolve().parents[2] / "NEWS")
+    parser.add_argument(
+        "--changelog",
+        type=Path,
+        default=None,
+        help="Optional developer changelog file to fold under <details> beneath the curated NEWS section",
+    )
     args = parser.parse_args()
     try:
-        print(notes(args.news.read_text(encoding="utf-8"), args.version.removeprefix("v")), end="")
+        curated = notes(args.news.read_text(encoding="utf-8"), args.version.removeprefix("v"))
+        output = build_stable_body(curated, args.changelog.read_text(encoding="utf-8")) if args.changelog else curated
+        print(output, end="")
     except (OSError, ValueError) as error:
         parser.error(str(error))
 
