@@ -119,7 +119,7 @@ def test_pinned_gnome_gap_fixture_through_native_input_callbacks(tmp_path, monke
     NativeRecorder, Gst = recorder_class()
     expected = json.loads((FIXTURE / "session-gnome.json").read_text())
     monkeypatch.setattr(recording_session, "uuid4", lambda: UUID(expected["id"]))
-    session = RecordingSession(tmp_path, title=expected["title"], source="gnome")
+    session = RecordingSession(tmp_path, title=expected["title"], source="gnome", clock=lambda: 0.0)
     session.manifest["createdAt"] = expected["createdAt"]
     recorder = NativeRecorder()
     recorder.session = session

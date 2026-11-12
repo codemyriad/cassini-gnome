@@ -36,7 +36,7 @@ def write_metadata(directory, **changes):
 
 
 def capture(root, *, completed=True):
-    session = RecordingSession(root, "Capture title")
+    session = RecordingSession(root, "Capture title", clock=lambda: 0.0)
     session.add_track("mic", "Not a person", "microphone", 48000, 1)
     session.add_track("others", "Raw receiver is not a speaker", "remote", 48000, 1)
     session.append("mic", b"\x01\x00" * 4800, 250)
