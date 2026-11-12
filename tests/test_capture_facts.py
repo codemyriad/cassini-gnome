@@ -172,7 +172,7 @@ def test_successful_job_records_this_attempt_wall_time_and_skip_reason(
             speechSegments=3,
             speakerSeparation=dict(
                 status="skipped",
-                reason="notApplicable" if overlap else "modelsNotInstalled",
+                reason="modelsNotInstalled",
                 futureSeparation={"keep": True},
             ),
             futureWriting={"keep": True},
@@ -207,7 +207,12 @@ def test_separation_facts_count_native_voices_and_report_cache_partial_or_failur
     assert separation_result(None, [], set()) == dict(status="failed", reason="processingFailed")
     assert separation_result(result, [dict(group, durationMs=199)], set())["reason"] == "tooShort"
     remote = [dict(id="remote", kind="remote", speaker="track-remote", frames=16000, sampleRate=16000)]
-    assert separation_unavailable(None, remote, "own")["reason"] == "notApplicable"
+    assert separation_unavailable(None, remote, "own")["reason"] == "unavailable"
+    mic_and_silent_remote = [
+        dict(id="mic", kind="microphone", speaker="me", frames=16000, sampleRate=16000),
+        dict(id="remote", kind="remote", speaker="track-remote", silent=True, frames=0, sampleRate=16000),
+    ]
+    assert separation_unavailable(None, mic_and_silent_remote, "own")["reason"] == "notApplicable"
 
 
 def test_optional_details_schema_rejects_false_measurements_but_accepts_absence(tmp_path):

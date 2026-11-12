@@ -23,7 +23,8 @@ jobs:
     name: Plan test release
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    # Bounded 45 min wait for an in-progress main CI run plus 10 min checkout/planning headroom.
+    timeout-minutes: 55
     permissions:
       contents: read
       actions: read

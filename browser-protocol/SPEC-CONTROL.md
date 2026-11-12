@@ -245,16 +245,43 @@ claims that PCM capture survived termination. The status adds an `interrupted`
 list of those saved statuses after recovery; `sessions` still contains only live captures.
 
 Independent starts may include `captureLocal` (default true) and `microphone`
-(default true). `captureLocal: false` excludes page sender/microphone-preview
-sources. Apps that supply their own per-session microphone copy set it false,
-so that copy is not duplicated by the page sender. The background passes the
+(default true). Separated WebRTC meeting starts keep `captureLocal: true` so
+`"Me"` is captured from the call's own WebRTC sender (`kind: "local"`,
+respecting the user's in-call microphone choice and mute state, while excluding
+`getDisplayMedia` screen- or tab-share audio since extension 0.2.27) rather than opening a raw OS
+microphone tap. `captureLocal: false` excludes page sender/microphone-preview
+sources for callers that explicitly omit page senders. The background passes the
 microphone choice to the native host in its start message, along with
-`independent: true`, `captureId` (the background token, an opaque string of
+`independent: true`, `captureLocal` (whether the page records Me from its sender; an
+app that sees it absent or false records Me itself), `captureId` (the background token, an opaque string of
 at most128 characters) and `timelineOriginMs` (its Date.now() session origin), which
-lets the platform's own microphone share the source timeline. These optional
+lets the platform's own inputs share the source timeline. These optional
 start fields do not change the version1 PCM transport; legacy hosts ignore them.
 No page controls the choice or supplies an output path. Invalid option types are
 refused before any audio side effect.
+
+Sender Me (`sender-me-v1`, extension 0.2.27) is the hello capability an app checks
+before it relies on the page sender for Me and stops opening its own microphone.
+With it, the hook records one Me source per microphone: the same track, or clones
+of it, sent on several peer connections is one source, audible while any current
+sender transmits it, and kept across `replaceTrack(null)` mute and peer handoff.
+A sender mute is placed on the render clock, so audio rendered while muted stays
+silent even when its chunk arrives after unmuting. Audio from `getDisplayMedia`,
+its track clones and `MediaStream.clone()` copies is never Me. Since extension 0.2.28
+the hook follows WebAudio with the collector's graph rules: an output track reached by
+`getDisplayMedia` audio (also through a media element whose `srcObject` holds it) and
+by no audible captured microphone is display audio and never Me; a microphone processed
+through WebAudio stays Me, also while the page mixes shared-screen sound into it. The
+microphone counts only under the collector's rules (live, enabled, unmuted, port 0,
+running context, every track of a stream source); shared-screen audio counts through
+any port, through any track of a stream source and through nested outputs even when
+they also carry a microphone, and a graph too deep or wide to
+walk is treated as shared-screen audio. A page opened
+before the update keeps its older MAIN hook; its readiness reply lacks hook
+revision 3 (0.2.28: WebAudio lineage; revision 2 was 0.2.27's display-share exclusion),
+so the relay reports it unavailable and the tab is `reloadRequired`
+rather than ready. Without the capability an app keeps sending
+`captureLocal: false` and records Me from its own microphone, as before.
 
 When an independent recording stops because its page/PCM path was lost, its stop
 message adds `failureReason: "lost"`; an explicit Stop omits it. The platform can
@@ -467,7 +494,7 @@ how often an app may ask to resume a system/lost fallback (once per loss and
 control connection, D52.5) is under "Control heartbeat" below.
 
 ```json
-{"type":"command","requestId":"join-stand-in","action":"start","mode":"tracks","tabId":2,"independent":true,"callGeneration":"call-A","captureLocal":false,"keepOnNavigation":true,"resumeCapture":{"captureId":"stand-in-F","timelineOriginMs":1793500000000,"lostAtMs":0}}
+{"type":"command","requestId":"join-stand-in","action":"start","mode":"tracks","tabId":2,"independent":true,"callGeneration":"call-A","captureLocal":true,"keepOnNavigation":true,"resumeCapture":{"captureId":"stand-in-F","timelineOriginMs":1793500000000,"lostAtMs":0}}
 ```
 
 `keepOnNavigation:true` (page-state-v1) applies to a resume Start as to any
@@ -1283,10 +1310,46 @@ AND a live local audio-capture track actually sent by the page in that bound
 session. Fresh received-media and captured-sender media progress must both be
 observed; connected state, a live/enabled track or an accumulated stats counter
 without fresh progress is insufficient. Track provenance must come from the
-page's getUserMedia result or a
-proven clone, not a permission grant, preview, allocated sendonly slot or synthetic
-MediaStreamDestination. No hostname, label, graph, energy, playback or RTP count
-can supply the missing capture-sender proof. Observation must not open a microphone.
+page's getUserMedia result, a
+proven clone, or a WebAudio output that a live captured microphone reaches (below), not a
+permission grant, preview, allocated sendonly slot or synthetic MediaStreamDestination.
+No hostname, label, graph shape, energy, playback or RTP count
+can supply the missing capture-sender proof.
+
+**Captured-microphone lineage (extension 0.2.28).** The collector records lineage only
+from native calls that succeeded in its own document/frame: a getUserMedia audio
+track; a `MediaStreamTrack.clone()` of a lineage track; a `MediaStream.clone()`
+copy, paired by audio-track position and equal native label; and the output track of a
+`MediaStreamAudioDestinationNode` (factory or constructor). A
+`MediaStreamAudioSourceNode` is a microphone source only when every audio track of
+its native `mediaStream` had lineage at creation. Lineage follows
+`AudioNode.connect(node, output, input)` edges on port 0 only (output 0 into input 0),
+because channel splitters, mergers and multi-port nodes can route other inputs alone to
+a port. A `disconnect()` removes every recorded edge it may have removed; only supplied
+argument slots are read, and arguments that are not numbers match every index. An
+output track has a root only while its context is `running` and a source whose tracks
+are all live, enabled, unmuted and themselves rooted reaches its node; chained contexts
+resolve recursively, each output walked at most once per read under a fixed work
+budget whose exhaustion withholds lineage. AudioParam modulation, media-element,
+received, generated and `getDisplayMedia` audio never supply lineage. An output that
+mixes a captured microphone with other audio is rooted through that microphone;
+without it the remaining inputs are not. Lineage is structural, like a sent raw
+microphone: it does not judge content (a zero gain still counts, as an enabled
+microphone in a silent room does). For the terminal check, an output track is ended natively,
+when its context closed, or when every source track that ever fed it a rooted
+microphone has ended (through nested outputs too, each walked once per check
+under a work budget whose exhaustion means not ended); disconnecting or suspending a
+graph is not an end. Not covered:
+microphone audio carried outside the graph (AudioWorklet or ScriptProcessor message
+ports, `MediaStreamTrackProcessor`/`Generator`, Insertable Streams) and nodes made by
+constructors reached through a prototype's `constructor`; these stay unknown, with
+manual recording preserved. Edges are bounded per node; an unrecorded edge can only
+withhold lineage. A `disconnect()` made through another frame's or realm's
+`AudioNode` methods is invisible to this collector, so the edge it removed can keep
+an output rooted. Exploiting that requires a live, enabled, captured microphone in
+this frame that the page deliberately unhooks through a foreign realm; such a page
+already qualifies by sending that microphone itself (D80.4), so it gains no
+admission it lacks. No collector state is shared across frames to close this. Observation must not open a microphone.
 A listen-only call without an outbound captured sender remains unknown for this
 rule, with explicit manual recording preserved.
 
@@ -1328,6 +1391,16 @@ call. The formerly negative unrelated-mic/same-backend case is a documented
 positive, like echo; a shared backend is neither required nor evidence. Cross-
 document and cross-frame combinations remain negative. An unanswered UI alone
 neither admits nor denies the rule.
+
+A mic-permitted page, including a dictation or microphone-test page, can also
+create a synthetic received half: generated audio can traverse a real connected
+loopback/peer connection and produce genuine native receive progress. If the
+same document/frame is actually sending a live page-captured mic with fresh send
+progress, that combination can look active without another human participant.
+This is an accepted D80.4/D80.5 cost of the interactive captured-media definition,
+not proof of answered-call intent or a remotely originated human voice. It does
+not admit a synthetic **outbound** sender without captured-mic provenance, a
+permission grant without actual sending, or a passive viewer without that sender.
 
 A producer implementing this contract advertises `verified-auto-admission-v1`
 alongside `call-signals-v1`. It does not advertise the stricter feature merely
@@ -1383,7 +1456,7 @@ current-document checks does the worker apply its existing callChanged lifecycle
 end a previous recording as callEnded, fence old sources and assign the new
 background call generation. There is no page-epoch shortcut around that lifecycle.
 Capture scanning and DOM sender deduplication have no access to the collector's
-private getUserMedia-root/clone provenance.
+private getUserMedia-root/clone/WebAudio provenance.
 
 The collector strips URL fragments with captured indexOf/slice, without a late
 Symbol.split lookup. Its native then calls use a private fixed-species constructor

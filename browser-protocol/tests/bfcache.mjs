@@ -5,6 +5,9 @@ import assert from 'node:assert/strict';
 import {createHash,generateKeyPairSync} from 'node:crypto';
 import {createServer} from 'node:http';
 import {createServer as createSocketServer} from 'node:net';
+import {EventEmitter} from 'node:events';
+import {watch} from 'node:fs';
+import {eventValue} from './support/event-value.mjs';
 import {connectReceiveSlots} from '../scenarios/product-topologies.mjs';
 import {cp,mkdir,mkdtemp,readFile,rm,writeFile,chmod} from 'node:fs/promises';
 import os from 'node:os';import path from 'node:path';import {fileURLToPath} from 'node:url';
@@ -36,12 +39,15 @@ const server=createServer((request,response)=>{
  ${retained?'<form method="POST" action="/meeting#away"><button>Navigate away</button></form>':'<a href="/away">Navigate away</a>'}`);
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-async function observed(check,label){const deadline=Date.now()+15000;while(true){const value=await check();if(value)return value;assert.ok(Date.now()<deadline,'Timed out: '+label);await new Promise(resolve=>setTimeout(resolve,25));}}
+const notifications=new EventEmitter();
+const observed=(kind,read,label)=>eventValue(notify=>{
+ notifications.on(kind,notify);return()=>notifications.off(kind,notify);
+},read,{label});
 const profile=path.join(temporary,'profile'),events=[];let control,controlServer;
 if(retained) {
  const hosts=path.join(profile,'NativeMessagingHosts'),audioRoot=path.join(temporary,'recordings'),socket=path.join(temporary,'control.sock');
  await mkdir(hosts,{recursive:true});await mkdir(audioRoot);
- controlServer=createSocketServer(peer=>{control=peer;let pending='';peer.setEncoding('utf8');peer.on('data',data=>{pending+=data;for(let end;(end=pending.indexOf('\n'))>=0;){events.push(JSON.parse(pending.slice(0,end)));pending=pending.slice(end+1)}})});
+ controlServer=createSocketServer(peer=>{control=peer;let pending='';peer.setEncoding('utf8');peer.on('data',data=>{pending+=data;for(let end;(end=pending.indexOf('\n'))>=0;){events.push(JSON.parse(pending.slice(0,end)));pending=pending.slice(end+1);notifications.emit('native')}})});
  await new Promise(resolve=>controlServer.listen(socket,resolve));
  for(const [name,fixture]of [['io.codemyriad.cassini','browser_host_fixture.py'],['io.codemyriad.cassini.control','control_host_fixture.py']]) {
   const executable=path.join(temporary,name+'.py');
@@ -50,8 +56,9 @@ if(retained) {
  }
 }
 async function command(requestId,action,tabId) {
+ const reply=observed('native',()=>events.find(e=>e.type==='result'&&e.requestId===requestId),'native '+action+' result');
  control.write(JSON.stringify({type:'command',requestId,action,tabId,independent:true,...(action==='start'?{mode:'tracks',keepOnNavigation:true,captureLocal:false,microphone:false}:{})})+'\n');
- const result=await observed(()=>events.find(e=>e.type==='result'&&e.requestId===requestId),'native '+action+' result');
+ const result=await reply;
  assert.equal(result.ok,true,JSON.stringify(result));return result;
 }
 let context,browserSession,page,worker,popup,remote,sessionId,nextId=0;const logs=[],pageErrors=[];
@@ -73,6 +80,7 @@ try {
   if(message.method==='Log.entryAdded')logs.push(message.params.entry.text);
   if(message.method==='Runtime.consoleAPICalled')logs.push(message.params.args.map(a=>a.value??a.description??'').join(' '));
   if(message.method==='Runtime.exceptionThrown')logs.push(message.params.exceptionDetails.exception?.description||message.params.exceptionDetails.text);
+  notifications.emit('log');
  });
  async function call(method,params={}){
   const requestId=++nextId;
@@ -85,9 +93,16 @@ try {
   await browserSession.send('Target.sendMessageToTarget',{sessionId,message:JSON.stringify({id:requestId,method,params})});return reply;
  }
  await call('Runtime.enable');await call('Log.enable');
+ // The same tested event helper runs in the worker's isolated fixture realm.
+ await worker.evaluate('globalThis.fixtureEventValue='+eventValue.toString());
+ const consoleReady=observed('log',()=>logs.some(s=>s.includes('cassini BFCache worker log probe')),'worker console observer');
  await worker.evaluate(()=>{
   console.warn('cassini BFCache worker log probe');
   globalThis.fixtureConnections=[];globalThis.fixtureNativePackets=[];globalThis.fixtureNativeConnections=0;
+  const observers=new Set(),changed=()=>{for(const notify of observers)notify()};
+  globalThis.fixtureConnectionValue=read=>fixtureEventValue(notify=>{
+   observers.add(notify);return()=>observers.delete(notify);
+  },read,{label:'BFCache worker connection'});
   const nativeConnect=chrome.runtime.connectNative.bind(chrome.runtime);
   chrome.runtime.connectNative=name=>{
    const port=nativeConnect(name);
@@ -99,20 +114,20 @@ try {
   };
   chrome.runtime.onConnect.addListener(port=>{
    if(port.name!=='cassini-frame'||port.sender.frameId!==0)return;
-   const row={tabId:port.sender.tab.id,documentId:port.sender.documentId,ready:false,disconnected:false};fixtureConnections.push(row);
+   const row={tabId:port.sender.tab.id,documentId:port.sender.documentId,ready:false,disconnected:false};fixtureConnections.push(row);changed();
    // Observe native lifecycle/handshake only; never read lastError here.
    // An observer read would mask the unchecked receiving-callback regression.
-   port.onMessage.addListener(m=>{if(m.type==='relayReady')row.ready=true});
-   port.onDisconnect.addListener(()=>{row.disconnected=true});
+   port.onMessage.addListener(m=>{if(m.type==='relayReady'){row.ready=true;changed()}});
+   port.onDisconnect.addListener(()=>{row.disconnected=true;changed()});
   });
  });
- await observed(()=>logs.some(s=>s.includes('cassini BFCache worker log probe')),'worker console observer');
+ await consoleReady;
  page=await context.newPage();page.on('pageerror',error=>pageErrors.push(error.message));
  const pageSession=await context.newCDPSession(page);await pageSession.send('Page.enable');
  pageSession.on('Page.backForwardCacheNotUsed',value=>{report.cacheNotUsed=value});
  const url=`http://127.0.0.1:${server.address().port}/meeting`;
  await page.goto(url);
- const initial=await observed(()=>worker.evaluate(()=>fixtureConnections.find(r=>r.ready)),'initial relay handshake');
+ const initial=await worker.evaluate(()=>fixtureConnectionValue(()=>fixtureConnections.find(r=>r.ready)));
  const document=await page.evaluate(()=>fixtureDocument);report.initial=initial;report.initialDocument=document;
  if(retained){popup=await context.newPage();await popup.goto(`chrome-extension://${id}/popup.html`);}
  const status=()=>popup.evaluate(tabId=>chrome.runtime.sendMessage({target:'background',type:'status',tabId}),initial.tabId);
@@ -122,7 +137,7 @@ try {
   // so the page allocates no capture context that could block BFCache eligibility.
   remote=await context.newPage();await remote.goto(`http://127.0.0.1:${server.address().port}/peer`);
   await connectReceiveSlots(page,remote,[null]);
-  await observed(()=>events.filter(e=>e.type==='meetings').at(-1)?.meetings.some(m=>m.tabId===initial.tabId&&m.sourceCount===1),'real receiving-slot inventory');
+  await observed('native',()=>events.filter(e=>e.type==='meetings').at(-1)?.meetings.some(m=>m.tabId===initial.tabId&&m.sourceCount===1),'real receiving-slot inventory');
   started=await command('bfcache-start','start',initial.tabId);report.started=started.status;
   assert.equal((await status()).recording,true);
   // Cache eligibility requires quiescent page APIs. Native session retention is
@@ -135,8 +150,8 @@ try {
  if(retained){await page.getByRole('button',{name:'Navigate away'}).click();await page.waitForURL(url+'#away',{waitUntil:'commit'});}
  else {await page.getByRole('link',{name:'Navigate away'}).click();await page.waitForURL('**/away',{waitUntil:'commit'});}
  await page.waitForFunction(original=>fixtureDocument!==original,document);
- await observed(()=>worker.evaluate(()=>fixtureConnections.length>=2),'away-page relay');
- await observed(()=>worker.evaluate(initial=>fixtureConnections.find(r=>r.documentId===initial.documentId)?.disconnected,initial),'cached-page port closes in Chrome');
+ await worker.evaluate(()=>fixtureConnectionValue(()=>fixtureConnections.length>=2));
+ await worker.evaluate(initial=>fixtureConnectionValue(()=>fixtureConnections.find(r=>r.documentId===initial.documentId)?.disconnected),initial);
  if(retained) {
   report.cachedStatus=await status();assert.equal(report.cachedStatus.recording,true);
   assert.equal(report.cachedStatus.captureId,started.status.captureId);assert.equal(report.cachedStatus.path,started.status.path);
@@ -144,18 +159,21 @@ try {
   assert.equal(events.some(e=>e.type==='status'&&e.sessions?.some(s=>s.stopping)),false,'cache entry must not stop the retained capture');
  }
  await page.goBack({waitUntil:'commit'});await page.waitForURL(url,{waitUntil:'commit'});
- const restored=await observed(()=>page.evaluate(original=>{
-  const shows=fixtureLifecycle.filter(e=>e.type==='pageshow');
-  return fixtureDocument!==original||shows.length>=2?{document:fixtureDocument,lifecycle:fixtureLifecycle,sameConstructor:RTCPeerConnection===fixtureConstructor,notRestoredReasons:performance.getEntriesByType('navigation')[0]?.notRestoredReasons?.toJSON?.()}:null;
- },document),'actual persisted pageshow');
+ const restored=await page.evaluate(({original,waitSource})=>{
+  const wait=(0,eval)('('+waitSource+')');
+  return wait(notify=>{addEventListener('pageshow',notify);return()=>removeEventListener('pageshow',notify)},()=>{
+   const shows=fixtureLifecycle.filter(e=>e.type==='pageshow');
+   return fixtureDocument!==original||shows.length>=2?{document:fixtureDocument,lifecycle:fixtureLifecycle,sameConstructor:RTCPeerConnection===fixtureConstructor,notRestoredReasons:performance.getEntriesByType('navigation')[0]?.notRestoredReasons?.toJSON?.()}:null;
+  },{label:'actual persisted pageshow'});
+ },{original:document,waitSource:eventValue.toString()});
  report.restored=restored;
  assert.equal(restored.document,document,'history must restore the same document, not reload');
  assert.equal(restored.lifecycle.at(-1).type,'pageshow');assert.equal(restored.lifecycle.at(-1).persisted,true,'must actually restore from BFCache');
  assert.equal(restored.sameConstructor,true,'cached MAIN hook must not be wrapped again');
- const connections=await observed(()=>worker.evaluate(initial=>{
+ const connections=await worker.evaluate(initial=>fixtureConnectionValue(()=>{
   const rows=fixtureConnections.filter(r=>r.tabId===initial.tabId&&r.documentId===initial.documentId);
   return rows.length>=2&&rows.at(-1).ready?rows:null;
- },initial),'new relay handshake in the same browser document');
+ }),initial);
  assert.equal(connections.length,2,'one replacement relay after one BFCache restore');report.connections=connections;
  // This readiness probe runs only AFTER observing the fresh handshake, so it
  // cannot repair a missing pageshow reconnection and turn this test green.
@@ -168,7 +186,15 @@ try {
   assert.equal(report.status.timelineOriginMs,started.status.timelineOriginMs);assert.equal(report.status.callGeneration,started.status.callGeneration);
   await connectReceiveSlots(page,remote,[[440]]);
   const manifestFile=path.join(started.status.path,'session.json');
-  report.recorded=await observed(async()=>{const m=JSON.parse(await readFile(manifestFile,'utf8'));return m.tracks.some(t=>t.frames>=t.sampleRate)&&m},'actual PCM after persisted restore');
+  report.recorded=await eventValue((notify,fail)=>{
+   // Watch the directory so an atomic manifest replacement is also observed.
+   const watcher=watch(path.dirname(manifestFile),notify);watcher.on('error',fail);return()=>watcher.close();
+  },async()=>{
+   let m;
+   try{m=JSON.parse(await readFile(manifestFile,'utf8'))}
+   catch(error){if(error.code==='ENOENT'||error instanceof SyntaxError)return null;throw error}
+   return m.tracks.some(t=>t.frames>=t.sampleRate)&&m;
+  },{label:'actual PCM after persisted restore'});
   assert.equal((await status()).recording,true,'restored capture must still be running');
   assert.equal(events.some(e=>e.type==='status'&&e.sessions?.some(s=>s.stopping)),false,'no automatic Stop or loss during cache/restore');
   report.nativeBeforeStop=await worker.evaluate(()=>({connections:fixtureNativeConnections,packets:fixtureNativePackets}));

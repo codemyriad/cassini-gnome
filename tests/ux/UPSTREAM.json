@@ -121,9 +121,9 @@
     "session-events/browser-off-on.expected.json": "bf324a9af624c31cca085da73817957babd98bcccab2f9742595a63b9ecd11f0",
     "SESSION-EVENTS.md": "c4a2d46cf7ea0ce5ab5e55d9c0a8b413496ed003e3d7a1b5991d1d4821d126cd",
     "diarization/ATTRIBUTION.md": "f94b2bd0a87de7bbc4ad3dd90ee843973261517e1b407e6a1eb1c3ebc014dc6c",
-    "diarization/README.md": "9dfbc38bdd6be0d5d76b44069ad70df1756ecc1e9ec061434ee3571657135dc7",
-    "diarization/SHA256SUMS": "3552eee0ac27dfa63f848594f77b5e91c090b67cb1b3e711794acbb735176f14",
-    "diarization/assign-vectors.json": "1980752b37b5a5cc97e8686bf0ebef2eba0bc75c26cf40e948fcc41858680254",
+    "diarization/README.md": "d6a6c2f4c0e820d88d81194d20b271cea79a5dbfba70b6e824db6b43170358cb",
+    "diarization/SHA256SUMS": "1cf22119601ebad3f6952dea78a706cd0f25c0b248784726d57fbee7e9dad4bd",
+    "diarization/assign-vectors.json": "0fa71b00bbfd88103dbba9f4f058c28d5640207680adf33ac684e35f51a515e1",
     "diarization/build.py": "54bcb2ef10472899fc83441456100f46037144eea4a2230359cdddb2ae7aac3e",
     "diarization/fetch-pins.json": "303cba14363838dbfc50bbd9ebc236d0caeeaf1ba25afe9a07bbb5dcc2d25219",
     "diarization/golden.json": "221668f7db8d3435e6f2bfc22bdce291031387b3b5a219717fc967511782625a",
@@ -231,5 +231,10 @@
     "listen-by-speaker/README.md": "vectors/listen-by-speaker/README.md",
     "format-vectors.json": "vectors/format/format-vectors.json",
     "states-vectors.json": "vectors/states/states-vectors.json"
+  },
+  "fileCommits": {
+    "diarization/README.md": "b0e469493197bbb7270179153e937dab89e68910",
+    "diarization/SHA256SUMS": "b0e469493197bbb7270179153e937dab89e68910",
+    "diarization/assign-vectors.json": "b0e469493197bbb7270179153e937dab89e68910"
   }
 }

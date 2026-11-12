@@ -1,0 +1,36 @@
+--- a/scripts/nextcloud_compatibility.py
++++ b/scripts/nextcloud_compatibility.py
+@@ -12,6 +12,7 @@
+ from pathlib import Path
+ import re
+ import shlex
++import shutil
+ import subprocess
+ import sys
+ import tarfile
+@@ -146,7 +147,15 @@
+     (out / "env.sh").write_text("".join(f"export {k}={shlex.quote(v)}\n" for k, v in values.items()))
+
+
+-def download(url, destination):
++def download(url, destination, expected_sha=None):
++    cache = os.environ.get("CASSINI_COMPAT_APP_CACHE")
++    if expected_sha:
++        require(cache, "locked app cache is not configured")
++        archive = Path(cache) / (expected_sha + ".tar.gz")
++        require(archive.is_file(), "locked app cache entry missing")
++        require(sha(archive) == expected_sha, "locked app cache checksum mismatch")
++        shutil.copyfile(archive, destination)
++        return
+     with urllib.request.urlopen(url, timeout=90) as response, open(destination, "wb") as target:
+         while chunk := response.read(1024 * 1024):
+             target.write(chunk)
+@@ -172,7 +181,7 @@
+     else:
+         with tempfile.TemporaryDirectory(prefix="cassini-compat-app-") as tmp:
+             archive = Path(tmp) / "app.tar.gz"
+-            download(lock["url"], archive)
++            download(lock["url"], archive, lock["sha256"])
+             require(sha(archive) == lock["sha256"], f"{app} archive checksum mismatch")
+             with tarfile.open(archive) as tf:
+                 require(all(Path(m.name).parts and Path(m.name).parts[0] == app for m in tf.getmembers()),

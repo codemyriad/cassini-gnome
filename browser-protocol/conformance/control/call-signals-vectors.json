@@ -3576,6 +3576,132 @@
         "sentProgressAgeMs": 0
       },
       {
+        "name": "webaudio-processed-mic",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "captureLineage": "getUserMedia -> MediaStreamAudioSourceNode -> AudioNode.connect -> MediaStreamAudioDestinationNode -> RTCRtpSender, context running"
+      },
+      {
+        "name": "media-stream-clone",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "captureLineage": "getUserMedia stream -> MediaStream.clone() -> RTCRtpSender"
+      },
+      {
+        "name": "webaudio-mixed-mic-and-screen",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": true,
+        "capturedTrackActuallySent": true,
+        "expectState": "active",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "captureLineage": "captured microphone and getDisplayMedia audio both reach the sent MediaStreamAudioDestinationNode"
+      },
+      {
+        "name": "webaudio-display-audio",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": false,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "captureLineage": "getDisplayMedia audio -> MediaStreamAudioSourceNode -> MediaStreamAudioDestinationNode -> RTCRtpSender"
+      },
+      {
+        "name": "webaudio-generated-or-media-element",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": false,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "captureLineage": "OscillatorNode, AudioBufferSourceNode or MediaElementAudioSourceNode -> MediaStreamAudioDestinationNode; a microphone only modulating an AudioParam"
+      },
+      {
+        "name": "webaudio-disconnected-mic",
+        "connectedSession": true,
+        "liveReceivedProgress": true,
+        "pageCapturedRootOrClone": false,
+        "capturedTrackActuallySent": true,
+        "expectState": "unknown",
+        "receiverBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "senderBinding": {
+          "browserDocumentId": "chrome-A",
+          "frameId": 0,
+          "portIncarnation": "relay-A"
+        },
+        "receivedProgressAgeMs": 0,
+        "sentProgressAgeMs": 0,
+        "captureLineage": "captured microphone source disconnected from the sent MediaStreamAudioDestinationNode"
+      },
+      {
         "name": "echo-or-microphone-test",
         "connectedSession": true,
         "liveReceivedProgress": true,
@@ -3856,7 +3982,7 @@
             "independent": true,
             "mode": "tracks",
             "callGeneration": "call-A",
-            "captureLocal": false,
+            "captureLocal": true,
             "microphone": false
           },
           {
@@ -3874,7 +4000,7 @@
             "independent": true,
             "mode": "tracks",
             "callGeneration": "call-A",
-            "captureLocal": false,
+            "captureLocal": true,
             "microphone": false
           }
         ],
@@ -3918,7 +4044,7 @@
             "independent": true,
             "mode": "tracks",
             "callGeneration": "call-A",
-            "captureLocal": false,
+            "captureLocal": true,
             "microphone": false
           },
           {
@@ -3936,7 +4062,7 @@
             "independent": true,
             "mode": "tracks",
             "callGeneration": "call-A",
-            "captureLocal": false,
+            "captureLocal": true,
             "microphone": false
           }
         ],

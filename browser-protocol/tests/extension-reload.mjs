@@ -35,6 +35,17 @@ async function observed(check, label) {
     await new Promise(resolve=>setTimeout(resolve,25));
   }
 }
+async function receivedPCM(worker, label) {
+  let timer;
+  try {
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), 15000);
+    });
+    return await Promise.race([worker.evaluate(() => fixtureAudio), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 let context;
 try {
   context = await chromium.launchPersistentContext(profile, {
@@ -103,25 +114,31 @@ try {
   assert.equal(bridge?.connected, true, `MAIN-world discovery survived, but the replacement worker has no live relay: ${JSON.stringify(bridge)}`);
   // A fixture native sink acknowledges production audio packets in memory.
   // It never invokes an installed app, microphone, filesystem writer or speaker.
-  async function installAudioSink(targetWorker) {
-  await targetWorker.evaluate(tabId => {
-    globalThis.fixtureAudio = [];
+  async function installAudioSink(targetWorker, minimumBytes) {
+  await targetWorker.evaluate(({tabId, minimumBytes}) => {
+    const pcm = [];
+    let bytes = 0, complete;
+    globalThis.fixtureAudio = new Promise(resolve => { complete = resolve; });
     const actualNative = chrome.runtime.connectNative.bind(chrome.runtime);
     chrome.runtime.connectNative = name => {
       if (name !== 'io.codemyriad.cassini') return actualNative(name);
       const event = () => { const listeners = []; return {addListener:fn=>listeners.push(fn),emit:m=>listeners.forEach(fn=>fn(m))}; };
       return {onMessage:event(),onDisconnect:event(),closed:false,
         postMessage(packet) {
-          fixtureAudio.push(packet);
+          if (packet.type === 'audio' && packet.pcm && bytes < minimumBytes) {
+            pcm.push(packet.pcm);
+            bytes += atob(packet.pcm).length;
+            if (bytes >= minimumBytes) complete(pcm);
+          }
           queueMicrotask(() => this.onMessage.emit(packet.type === 'start' ? {type:'started',path:'/fixture/Meeting',features:packet.features || []} :
             packet.type === 'stop' ? {type:'stopped',path:'/fixture/Meeting'} : {type:'ack'}));
         }, disconnect() { if (!this.closed) { this.closed=true;this.onDisconnect.emit(); } }};
     };
     const actualQuery = chrome.tabs.query.bind(chrome.tabs);
     chrome.tabs.query = async query => query.active ? [await chrome.tabs.get(tabId)] : actualQuery(query);
-  }, tabId);
+  }, {tabId, minimumBytes});
   }
-  await installAudioSink(fresh);
+  await installAudioSink(fresh, 48000);
   const status = () => popup.evaluate(() => chrome.runtime.sendMessage({target:'background',type:'status'}));
   let current = await observed(async () => { const value = await status(); return value.browserHealth?.filesOk === undefined ? null : value; }, "packaged-file self-check");
   assert.equal(current.browserHealth.state, 'ready');
@@ -166,14 +183,7 @@ try {
     heard:await meeting.evaluate(() => discovery.at(-1).heard),callEvidence:beforeStart.tabEvidence.callEvidence.state}));
   const started = await popup.evaluate(() => chrome.runtime.sendMessage({target:'background',type:'start',mode:'tracks'}));
   assert.equal(started.recording, true, JSON.stringify(started));
-  const audioDeadline = Date.now() + 15000;
-  let audio;
-  do {
-    audio = await fresh.evaluate(() => fixtureAudio.filter(packet => packet.type === 'audio').map(packet => packet.pcm));
-    assert.ok(Date.now() < audioDeadline, `new worker received no PCM after reload: ${JSON.stringify(await status())}`);
-    if (audio.reduce((n,value)=>n+Buffer.from(value,'base64').length,0) < 48000)
-      await new Promise(resolve => setTimeout(resolve,25));
-  } while (audio.reduce((n,value)=>n+Buffer.from(value,'base64').length,0) < 48000);
+  const audio = await receivedPCM(fresh, 'PCM after idle reload');
   const pcm = Buffer.concat(audio.map(value => Buffer.from(value,'base64')));
   let power = 0;
   for (let i=0;i<pcm.length;i+=2) power += (pcm.readInt16LE(i)/32768)**2;
@@ -200,10 +210,10 @@ try {
   },'replacement relay ready after active capture drains');
   const readyEvent = await meeting.evaluate(instanceId=>captureLifecycle.findIndex(m=>m.type==='hookReady'&&m.instanceId===instanceId),readyAfterDrain.browserHealth.extensionInstance);
   assert.ok(readyEvent>lifecycle.findIndex(m=>m.type==='stopped'&&m.token===departingToken));
-  await installAudioSink(activeWorker);
+  await installAudioSink(activeWorker, 1);
   const restarted = await activeReloadPopup.evaluate(()=>chrome.runtime.sendMessage({target:'background',type:'start',mode:'tracks'}));
   assert.equal(restarted.recording,true,JSON.stringify(restarted));
-  await observed(()=>activeWorker.evaluate(()=>fixtureAudio.some(p=>p.type==='audio'&&p.pcm)), 'replacement capture PCM after active reload');
+  await receivedPCM(activeWorker, 'replacement capture PCM after active reload');
   const stopped = await activeReloadPopup.evaluate(() => chrome.runtime.sendMessage({target:'background',type:'stop'}));
   assert.equal(stopped.recording,false);
   assert.equal(await meeting.evaluate(() => fixtureDocument), document);

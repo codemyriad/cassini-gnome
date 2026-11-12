@@ -317,12 +317,11 @@ class LibrarySnapshot:
         result = []
         for meeting in self.meetings:
             title = ux_formats.day_group(meeting.display_start, now_ms=now_ms, tz=tz)
-            if result and result[-1].title == title:
-                previous = result[-1]
-                result[-1] = LibraryGroup(title, previous.meetings + (meeting,))
+            if result and result[-1][0] == title:
+                result[-1][1].append(meeting)
             else:
-                result.append(LibraryGroup(title, (meeting,)))
-        return tuple(result)
+                result.append((title, [meeting]))
+        return tuple(LibraryGroup(title, tuple(meetings)) for title, meetings in result)
 
     def as_dict(self, *, now_ms, tz):
         groups = []

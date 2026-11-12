@@ -50,7 +50,7 @@ jobs:
           PY
           fi
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: exact-transcript-measurements
           path: exact-results/

@@ -12,7 +12,14 @@ from cassini_talk.browser_capture import BrowserCapture
 from cassini_talk.browser_service import AudioTransport, BrowserConnection, BrowserService
 from cassini_talk.session_events import source_state
 
-CAPABILITIES = ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1"]
+CAPABILITIES = [
+    "independent-sessions-v1",
+    "call-evidence-v1",
+    "page-state-v1",
+    "multi-stream-v1",
+    "resume-capture-v1",
+    "sender-me-v1",
+]
 
 
 @pytest.fixture
@@ -119,7 +126,7 @@ def test_ask_waits_until_the_extension_releases_the_tab(policy):
             mode="tracks",
             tabId=3,
             independent=True,
-            captureLocal=False,
+            captureLocal=True,
             callGeneration="call-A",
             keepOnNavigation=True,
             resumeCapture=dict(
@@ -598,10 +605,14 @@ def test_resume_names_the_exact_committed_seam_even_when_output_time_leads_reque
     now = [100.0]
     monkeypatch.setattr(capture, "elapsed_ms", lambda: now[0])
     try:
-        # A device packet is timestamped at its beginning. Its final frame can
+        # A wire packet is timestamped at its beginning. Its final frame can
         # lead the clock while fallback commits at the accepted PCM boundary.
-        _identifier, microphone = capture.native_taps["microphone"]
-        microphone.append(b"\x01\x00" * 480, now[0])
+        import base64
+
+        capture.handle(dict(type="track", id="me", label="Me", kind="local", sampleRate=48000, channels=1))
+        capture.handle(
+            dict(type="audio", id="me", sequence=0, offsetMs=now[0], pcm=base64.b64encode(b"\x01\x00" * 480).decode())
+        )
         capture.close()
         cut = source_state(capture.host.session.manifest["events"]).since_ms
         assert cut > now[0]

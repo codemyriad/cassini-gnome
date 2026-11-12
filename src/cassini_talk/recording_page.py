@@ -62,8 +62,10 @@ class RecordingPage(Adw.NavigationPage):
         started = fmt.row_time(meeting.started_at_ms, tz=window.tz) if meeting.started_at_ms is not None else ""
         timer_box.append(label(text("recording.since", time=started), "dim-label", xalign=0))
         live.append(timer_box)
-        self.stop = Gtk.Button(css_classes=["cassini-record", "recording-stop"], valign=Gtk.Align.CENTER)
-        self.stop.set_child(Adw.ButtonContent(icon_name="media-playback-stop-symbolic", label=text("common.stop")))
+        self.stop_content = Adw.ButtonContent(icon_name="media-playback-stop-symbolic", label=text("common.stop"))
+        self.stop = Gtk.Button(
+            child=self.stop_content, css_classes=["cassini-record", "recording-stop"], valign=Gtk.Align.CENTER
+        )
         self.stop.connect("clicked", lambda *_: window.stop_meeting(self.meeting))
         live.append(self.stop)
         column.append(live)
@@ -235,12 +237,24 @@ class RecordingPage(Adw.NavigationPage):
         status = self.app.comfort.status(self.meeting)
         sources = self.app.comfort.sources(self.meeting)
         self.timer.set_label(fmt.live_big(self.elapsed()))
+        from pathlib import Path
+
+        from .library import meeting_id
+
         stopping = self.app._browser_stops
-        self.stop.set_sensitive(
-            self.meeting.lifecycle == "recording"
-            and None not in stopping
-            and str(self.meeting.directory) not in stopping
+        stopping_ids = {
+            identifier for entry in stopping if isinstance(entry, str) and (identifier := meeting_id(Path(entry)))
+        }
+        local_native = self.app.comfort._native_for(self.meeting)
+        is_stopping = (
+            self.meeting.lifecycle == "saving"
+            or (local_native is not None and local_native.stopping)
+            or None in stopping
+            or str(self.meeting.directory) in stopping
+            or self.meeting.id in stopping_ids
         )
+        self.stop_content.set_label(text("states.badge.saving" if is_stopping else "common.stop"))
+        self.stop.set_sensitive(self.meeting.lifecycle == "recording" and not is_stopping)
         self.change_sources.set_sensitive(
             self.stop.get_sensitive() and str(self.meeting.directory) not in self.app._source_changes
         )

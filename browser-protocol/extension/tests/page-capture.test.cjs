@@ -151,6 +151,7 @@ test('a replacement relay is ready only after the departing capture token drains
  assert.equal(f.messages.some(m=>m.type==='hookReady'),false);
  await f.stop();
  assert.equal(f.messages.find(m=>m.type==='hookReady').instanceId,'replacement');
+ assert.equal(f.messages.find(m=>m.type==='hookReady').revision,3,'the relay accepts only a hook with the display-share exclusion and WebAudio lineage');
  await f.start('replacement-capture');
  assert.equal(f.captures.length,2,'the same live peer can record through the replacement relay');
 }));
@@ -213,4 +214,251 @@ test('closed connection with stale connected ICE stops capture and cannot return
  for(const name of ['getReceivers','getSenders','getTransceivers','getStats','close'])f.peer[name]();
  f.peer.connectionState='connected';f.peer.signalingState='stable';remote.packets=20;await f.tick();await f.scan();
  assert.equal(f.captures.length,1,'terminal peer cannot open a replacement span');
+}));
+
+test('display-share audio senders and previews are excluded while call microphone senders record as local',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const [display]=(await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true})).getAudioTracks();
+ const preExistingDisplay=new f.Track({id:'pre-display',label:'Shared screen',kind:'audio',readyState:'live',
+  enabled:true,muted:false,getSettings:()=>({displaySurface:'monitor'})});
+ f.render(display);
+ f.render(preExistingDisplay);
+ f.peer.senders=[
+  {track:mic,getParameters:()=>({encodings:[]})},
+  {track:display.clone(),getParameters:()=>({encodings:[]})},
+  {track:preExistingDisplay,getParameters:()=>({encodings:[]})}
+ ];
+ await f.start('local-only',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,1);
+ assert.equal(f.captures[0].kind,'local');
+ assert.equal(f.captures[0].label,'local: Headset Microphone');
+}));
+
+const micSender=(track,extra={})=>({track,getParameters:()=>({encodings:[]}),...extra});
+test('display-share audio cloned through MediaStream.clone() is never recorded as Me or page media',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const shared=await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+ const [streamClone]=shared.clone().getAudioTracks();
+ assert.notEqual(streamClone,shared.getAudioTracks()[0]);
+ f.render(streamClone);
+ f.peer.senders=[micSender(mic),micSender(streamClone)];
+ await f.start('local-only',{captureLocal:true,sourceOutcomes:true});
+ assert.deepEqual(f.captures.map(c=>c.label),['local: Headset Microphone']);
+}));
+
+// Microsoft Teams sends a WebAudio output (getUserMedia -> source -> nodes -> destination).
+async function webAudioSenders(f,inputs){
+ const audio=new f.AudioContext(),mixer=audio.createGain(),output=audio.createMediaStreamDestination(),sources={};
+ for(const [name,stream] of Object.entries(inputs))(sources[name]=name==='element'?audio.createMediaElementSource({srcObject:stream}):audio.createMediaStreamSource(stream)).connect(mixer);
+ mixer.connect(output);
+ const [track]=output.stream.getAudioTracks();f.peer.senders.push(micSender(track));
+ return {audio,mixer,output,sources,track};
+}
+test('a microphone processed through WebAudio is recorded as Me, also when shared-screen sound is mixed in',()=>fixture(async f=>{
+ const mic=await f.navigator.mediaDevices.getUserMedia({audio:true}),screen=await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+ const g=await webAudioSenders(f,{mic:mic.clone(),screen});
+ await f.start('local-only',{captureLocal:true,sourceOutcomes:true});
+ assert.deepEqual(f.captures.map(c=>[c.kind,c.label]),[['local','local: MediaStreamAudioDestinationNode']]);
+ assert.equal(f.captures[0].enabled(),true);
+ // With the microphone disconnected, only shared-screen audio reaches the output: not Me.
+ g.sources.mic.disconnect();await f.scan();
+ assert.equal(f.captures[0].stopped,true,'the output that now carries only screen audio leaves Me');
+ assert.equal(f.captures.length,1,'nor does it reappear as page media');
+}));
+test('a mixed output leaves Me once its microphone is stopped, disabled, routed off port 0 or its context stops rendering',()=>fixture(async f=>{
+ for(const change of ['stopped','disabled','muted','suspended','port']){
+  f.peer.senders=[];
+  const mic=await f.navigator.mediaDevices.getUserMedia({audio:true}),screen=await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+  const g=await webAudioSenders(f,{mic,screen});
+  const [track]=mic.getAudioTracks();
+  if(change==='stopped')track.readyState='ended';
+  if(change==='disabled')track.enabled=false;
+  if(change==='muted')track.muted=true;
+  if(change==='suspended')g.audio.state='suspended';
+  if(change==='port'){g.sources.mic.disconnect(g.mixer);g.sources.mic.connect(g.mixer,0,1);}
+  const before=f.captures.length;
+  await f.start('mixed-'+change,{captureLocal:true,sourceOutcomes:true});
+  assert.equal(f.captures.length,before,change+': only shared-screen audio still reaches the output, so it is not Me');
+  await f.stop();
+ }
+}));
+test('a stream holding shared-screen audio and a microphone, or screen audio chained past the walk limit, is not Me',()=>fixture(async f=>{
+ const screen=await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true}),mic=await f.navigator.mediaDevices.getUserMedia({audio:true});
+ // A MediaStreamAudioSourceNode renders one track of its stream: the screen track may be the one.
+ const Stream=mic.constructor;
+ await webAudioSenders(f,{both:new Stream([...screen.getAudioTracks(),...mic.getAudioTracks()])});
+ // Ten chained contexts exceed the walk depth: unknown is never Me.
+ let stream=await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+ for(let level=0;level<10;level++){const audio=new f.AudioContext(),output=audio.createMediaStreamDestination();audio.createMediaStreamSource(stream).connect(output);stream=output.stream;}
+ f.peer.senders.push(micSender(stream.getAudioTracks()[0]));
+ await f.start('limits',{captureLocal:true,sourceOutcomes:true});
+ assert.deepEqual(f.captures.map(c=>c.label),[]);
+}));
+test('screen audio split back out of a nested mixed output is not Me; the microphone port of that output is',()=>fixture(async f=>{
+ for(const [port,me] of [[1,false],[0,true]]){
+  f.peer.senders=[];
+  const mic=await f.navigator.mediaDevices.getUserMedia({audio:true}),screen=await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+  // Merge the microphone into channel 0 and the screen into channel 1 of an inner output,
+  // then split one channel of that output into the sent one.
+  const inner=new f.AudioContext(),merger=inner.createGain(),mixed=inner.createMediaStreamDestination();
+  inner.createMediaStreamSource(mic).connect(merger,0,0);inner.createMediaStreamSource(screen).connect(merger,0,1);merger.connect(mixed);
+  const outer=new f.AudioContext(),splitter=outer.createGain(),sent=outer.createMediaStreamDestination();
+  outer.createMediaStreamSource(mixed.stream).connect(splitter);splitter.connect(sent,port);
+  f.peer.senders.push(micSender(sent.stream.getAudioTracks()[0]));
+  const before=f.captures.length;
+  await f.start('nested-'+port,{captureLocal:true,sourceOutcomes:true});
+  assert.equal(f.captures.length-before,me?1:0,'splitter output '+port);
+  await f.stop();
+ }
+}));
+test('shared-screen audio processed through WebAudio, from a stream or a media element, is never recorded as Me',()=>fixture(async f=>{
+ for(const kind of ['screen','element']){
+  const screen=await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+  const g=await webAudioSenders(f,{[kind]:screen});f.render(g.track);
+ }
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ f.peer.senders.push(micSender(mic));
+ await f.start('local-only',{captureLocal:true,sourceOutcomes:true});
+ assert.deepEqual(f.captures.map(c=>c.label),['local: Headset Microphone']);
+}));
+
+test('one microphone track sent on two peers stays audible while either sends, through peer close and null mute',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const first=micSender(mic),later=micSender(mic);
+ f.peer.senders=[first];second.senders=[later];
+ await f.start('mesh',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,1,'one Me source for one microphone');
+ const me=f.captures[0];assert.equal(me.enabled(),true);
+ later.track=null;await f.scan();
+ assert.equal(me.enabled(),true,'the first peer still transmits the microphone');
+ later.track=mic;await f.scan();
+ second.close();await f.scan();
+ assert.equal(f.captures.length,1);assert.equal(me.stopped,false);
+ assert.equal(me.enabled(),true,'closing one peer keeps Me while the other still sends');
+ first.track=null;await f.scan();
+ assert.equal(me.enabled(),false,'muted on every remaining peer is silence');
+ first.track=mic;await f.scan();
+ assert.equal(me.enabled(),true);assert.equal(f.captures.length,1);
+}));
+
+test('microphone clones sent on several peers record one Me source, switching to a clone that still transmits',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const a=micSender(mic.clone()),b=micSender(mic.clone());
+ f.peer.senders=[a];second.senders=[b];
+ await f.start('mesh',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,1,'clones of one microphone are one voice');
+ const sourceTrackId=f.captures[0].sourceTrackId;
+ a.track.enabled=false;await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,1);assert.equal(live[0].sourceTrackId,sourceTrackId,'the same Me source continues');
+ assert.equal(live[0].enabled(),true,'Me follows the clone the other peer still transmits');
+ const announced=f.messages.filter(m=>m.type==='packet'&&m.packet.type==='sources').flatMap(m=>m.packet.discoveredSources);
+ assert.deepEqual([...new Set(announced.filter(s=>s.kind==='local').map(s=>s.sourceTrackId))],[sourceTrackId]);
+}));
+
+test('a restarted capture keeps the same Me source identity with fresh spans',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ f.peer.senders=[micSender(mic)];
+ await f.start('before-loss',{captureLocal:true,sourceOutcomes:true});
+ const first=f.captures[0];await f.stop();
+ await f.start('resumed',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,2);
+ assert.equal(f.captures[1].sourceTrackId,first.sourceTrackId,'resume continues the same Me source');
+ assert.notEqual(f.captures[1].id,first.id);
+}));
+
+test('replacing a sender track with a clone of another sender microphone converges on one Me source',()=>fixture(async f=>{
+ const [headset]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const [desk]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const a=micSender(headset),b=micSender(desk);
+ f.peer.senders=[a];second.senders=[b];
+ await f.start('mesh',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,2,'two microphones are two sources');
+ b.track=headset.clone();await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,1,'the same microphone is never recorded twice');
+ assert.equal(live[0].enabled(),true);
+}));
+
+test('a sender that switches from a shared microphone to another one records the new microphone as its own Me source',()=>fixture(async f=>{
+ const [headset]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const [desk]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const a=micSender(headset),b=micSender(headset.clone());
+ f.peer.senders=[a];second.senders=[b];
+ await f.start('mesh',{captureLocal:true,sourceOutcomes:true});
+ assert.equal(f.captures.length,1,'one shared microphone is one Me source');
+ const shared=f.captures[0];
+ b.track=desk;await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,2,'the switched sender microphone is recorded too');
+ const switched=live.find(c=>c!==shared);
+ assert.ok(switched,'the shared microphone capture continues');
+ assert.equal(shared.stopped,false);
+ assert.notEqual(switched.sourceTrackId,shared.sourceTrackId,'two microphones are two Me sources');
+ assert.equal(shared.enabled(),true);assert.equal(switched.enabled(),true);
+ b.track=headset.clone();await f.scan();
+ const after=f.captures.filter(c=>!c.stopped);
+ assert.deepEqual(after.map(c=>c.sourceTrackId),[shared.sourceTrackId],'switching back converges on the shared Me source');
+}));
+
+test('a sender that switched microphones between captures is its own Me source after resume',()=>fixture(async f=>{
+ const [headset]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const [desk]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const a=micSender(headset),b=micSender(headset);
+ f.peer.senders=[a];second.senders=[b];
+ await f.start('before-loss',{captureLocal:true,sourceOutcomes:true});
+ const shared=f.captures[0].sourceTrackId;await f.stop();
+ b.track=desk;
+ await f.start('resumed',{captureLocal:true,sourceOutcomes:true});
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,2,'both microphones record after resume');
+ assert.ok(live.some(c=>c.sourceTrackId===shared),'the shared microphone keeps its Me source');
+}));
+
+test('whichever sender switches away from a shared microphone, the shared one keeps its Me source',()=>fixture(async f=>{
+ const [headset]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const [desk]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ const a=micSender(headset.clone()),b=micSender(headset);
+ f.peer.senders=[a];second.senders=[b];
+ await f.start('mesh',{captureLocal:true,sourceOutcomes:true});
+ const shared=f.captures[0].sourceTrackId;
+ a.track=desk;await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,2,'both microphones record');
+ assert.equal(new Set(live.map(c=>c.sourceTrackId)).size,2);
+ const headsetCapture=live.find(c=>c.sourceTrackId===shared);
+ assert.ok(headsetCapture,'the headset keeps the shared Me source');
+ assert.equal(headsetCapture.enabled(),true);
+}));
+
+test('a microphone handed to another peer after its first peer closes keeps its Me source and stays audible',()=>fixture(async f=>{
+ const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+ const second=new f.window.RTCPeerConnection();
+ f.peer.senders=[micSender(mic)];
+ await f.start('handoff',{captureLocal:true,sourceOutcomes:true});
+ const me=f.captures[0];
+ f.peer.close();second.senders=[micSender(mic)];await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.equal(live.length,1,'one Me source after the handoff');
+ assert.equal(live[0].sourceTrackId,me.sourceTrackId,'the handed-off microphone keeps its Me identity');
+ assert.equal(live[0].enabled(),true,'Me is audible while the new peer sends it');
+}));
+
+test('page media that the page then sends is recorded as Me, not as page media',()=>fixture(async f=>{
+ // A generated track (say a Web Audio voice changer) plays on the page before it is sent.
+ const mic=new f.Track({id:'generated',label:'Processed voice',kind:'audio',readyState:'live',enabled:true,muted:false});
+ f.render(mic);
+ await f.start('preview-then-send',{captureLocal:true,sourceOutcomes:true});
+ assert.deepEqual(f.captures.map(c=>c.kind),['media']);
+ f.peer.senders=[micSender(mic)];await f.scan();
+ const live=f.captures.filter(c=>!c.stopped);
+ assert.deepEqual(live.map(c=>c.kind),['local'],'the sent microphone is Me under its own source');
+ assert.notEqual(live[0].sourceTrackId,f.captures[0].sourceTrackId);
+ assert.equal(live[0].enabled(),true);
 }));

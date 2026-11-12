@@ -665,10 +665,10 @@ def browser_start(tmp_path, taps, *, microphone=True, others_source="browser", p
         prepare(capture)
     message = dict(type="start", captureId="sides", timelineOriginMs=int(time.time() * 1000), microphone=microphone)
     if others_source == "browser":
-        result = capture.start(message)
+        result = capture.start(message, native_me=True)
     else:
         capture.browser_lost = True
-        result = capture.start(message, others_source="system", reason="missing")
+        result = capture.start(message, others_source="system", reason="missing", native_me=True)
     return capture, result, changes
 
 

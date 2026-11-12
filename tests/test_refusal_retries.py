@@ -71,7 +71,7 @@ def test_the_stand_in_asks_once_on_a_connection_once_the_call_is_heard(policy): 
             mode="tracks",
             tabId=3,
             independent=True,
-            captureLocal=False,
+            captureLocal=True,
             callGeneration="call-A",
             keepOnNavigation=True,
             resumeCapture=dict(
@@ -571,9 +571,9 @@ def browser_capture(tmp_path, refuse, *, others_source="browser"):
     message = dict(type="start", captureId="retry", timelineOriginMs=int(time.time() * 1000), microphone=True)
     if others_source == "system":
         capture.browser_lost = True
-        capture.start(message, others_source="system", reason="missing")
+        capture.start(message, others_source="system", reason="missing", native_me=True)
     else:
-        capture.start(message)
+        capture.start(message, native_me=True)
     return capture, taps
 
 

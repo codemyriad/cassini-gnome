@@ -127,6 +127,13 @@ export class GenericCallEvidenceProducer {
   async read(frame) {
     if (!this.currentSource(frame) || !Number.isInteger(frame.frameId) || frame.frameId<0 || !signalToken(frame.browserDocumentId) || frame.observerDocumentStart!==true) return null;
     const browser=frame.browserDocumentId,epoch=frame.obsoleteEpoch,frameId=frame.frameId;
+    if(frameId!==0){
+      let protocol;try{protocol=new URL(frame.browserUrl).protocol}catch{}
+      if(protocol!=='http:'&&protocol!=='https:'){
+        frame.nativeSourceVerified=false;frame.nativeCollectorUnavailable=false;
+        return null; // Inherited-origin about:blank/srcdoc are not observed HTTP(S) documents.
+      }
+    }
     const results=await this.bounded(()=>this.executeScript({
       target:{tabId:frame.tabId,documentIds:[browser]},world:'MAIN',
       // This identifier is a non-configurable own global installed at

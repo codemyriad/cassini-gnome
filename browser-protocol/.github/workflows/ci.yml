@@ -3,37 +3,42 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    - cron: '58 2 * * *'
+  workflow_dispatch:
 permissions:
   contents: read
-# D66: a PR push runs once, and a newer push to the same PR cancels its superseded run.
-# Pushes to main each get their own group: GitHub would otherwise drop a pending main run.
+# D66: a newer push to a PR cancels its older push run, while labeled runs use their own
+# non-cancelling group so opened/synchronize + labeled on the same head never leave CANCELLED
+# check runs (UNSTABLE). Pushes to main, nightly schedules, and dispatches each get their own group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && (github.event.action == 'labeled' && format('{0}-label-{1}', github.event.pull_request.number, github.run_id) || github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
+env:
+  CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}
 jobs:
   launcher-paths:
-    # Light gate for launcher-macos: did this change touch the launcher, the relay, their
-    # tests, what those tests import or read, the capture graph (D68.1), or this workflow?
-    # Unknown base: run it.
+    # Light gate for launcher-macos on pull requests: did the PR touch the launcher, the relay,
+    # their tests, what those tests import or read, the capture graph or npm install inputs (D68.1),
+    # or this gate/job? Pushes to main, nightly/manual runs, and full-ci PRs always run both steps.
     # A light job: a constant GitHub-hosted label (the CM_RUNNER selector stays the contract job's).
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || github.event.label.name == 'full-ci' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       changed: ${{ steps.paths.outputs.changed }}
+      launcher: ${{ steps.paths.outputs.launcher }}
+      capture: ${{ steps.paths.outputs.capture }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - id: paths
         env:
+          EVENT_NAME: ${{ github.event_name }}
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          paths='^(scenarios/(native-launcher|control-relay|live-folder|folder-clock|product-topologies)\.mjs|tests/(live-folder-driver|control-relay)\.test\.mjs|conformance/multistream/corpus\.json|\.github/workflows/ci\.yml|extension/(capture|pcm-worklet)\.js|tests/capture-real-time\.mjs|package(-lock)?\.json)$|^conformance/live-folder/'
-          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then changed=true
-          elif git diff --name-only "$BASE" HEAD | grep -qE "$paths"; then changed=true
-          else changed=false; fi
-          echo "changed=$changed" >> "$GITHUB_OUTPUT"
-          echo "launcher-macos needed: $changed (base ${BASE:-none})"
+        run: python3 tests/launcher_paths.py --github-output "$GITHUB_OUTPUT"
   launcher-macos:
     # The launcher and relay read process identity differently on macOS (no /proc:
     # KERN_PROCARGS2 through python3), so their tests run there too, when launcher-paths says so.
@@ -49,15 +54,19 @@ jobs:
         with:
           node-version: '22'
       - name: Live-folder driver and control relay unit tests on macOS
+        if: needs.launcher-paths.outputs.launcher == 'true'
         run: node --test tests/live-folder-driver.test.mjs tests/control-relay.test.mjs
       - name: A capture over 30 s keeps real time (D68.1)
+        if: needs.launcher-paths.outputs.capture == 'true'
         run: |
           npm ci
           npx playwright install chromium
           node tests/capture-real-time.mjs
   contract:
-    # CM_RUNNER=hetzner moves the job to the cm-hetzner runners; any other value keeps ubuntu-24.04.
-    runs-on: ${{ vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-24.04' }}
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || github.event.label.name == 'full-ci' }}
+    # CM_RUNNER=hetzner moves trusted runs (push, schedule, workflow_dispatch, or same-repo PR) to
+    # cm-hetzner; any other value, fork PR, or unallowlisted event keeps ubuntu-24.04.
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-24.04' }}
     # p95 3.2 min over 178 green runs (2026-10-29..11-04), slowest 6.1 min: 10 min is about 3x p95.
     timeout-minutes: 10
     steps:
@@ -75,12 +84,9 @@ jobs:
         run: |
           for file in scenarios/*.mjs tests/*.mjs; do node --check "$file"; done
           node --test tests/live-folder-driver.test.mjs tests/control-relay.test.mjs
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
       - name: Isolated output device for generated tab tone
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pulseaudio xvfb xauth
+          sudo bash tests/apt_install_bounded.sh pulseaudio xvfb xauth
           private=$(mktemp -d /tmp/cassini-audio-ci-XXXXXXXX)
           mkdir -m 700 "$private/daemon"
           cat > "$private/server.pa" <<EOF
@@ -94,6 +100,8 @@ jobs:
           test -S "$private/pulse.sock"
           echo "CASSINI_ISOLATED_AUDIO=1" >> "$GITHUB_ENV"
           echo "PULSE_SERVER=unix:$private/pulse.sock" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - run: npm test
       - name: Real toolbar popup keeps its intended width
         run: |
@@ -112,7 +120,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      PROJECT_NAME: cassini-extension-nextcloud
+      PROJECT_NAME: cassini-extension-nextcloud-${{ github.run_id }}-${{ github.run_attempt }}
       CASSINI_COMPAT_FIXTURE: '1'
     steps:
       - uses: actions/checkout@v5
@@ -131,16 +139,51 @@ jobs:
         with:
           go-version-file: talk-harness/cassini-go-recorder/go.mod
           cache-dependency-path: talk-harness/cassini-go-recorder/go.sum
+      - name: Prepare the locked Talk app cache
+        id: talk-apps
+        run: |
+          set -euo pipefail
+          python3 talk-harness/scripts/nextcloud_compatibility.py prepare --baseline nc34 --out "$RUNNER_TEMP/nextcloud-lock"
+          key=$(python3 protocol/tests/locked_app_cache.py key --stack "$RUNNER_TEMP/nextcloud-lock/stack.json")
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      - name: Restore checksum-addressed Talk archives
+        id: talk-app-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/locked-talk-apps
+          key: locked-talk-apps-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.talk-apps.outputs.key }}
+      - name: Verify or fetch the locked archives before starting Docker
+        run: |
+          python3 protocol/tests/locked_app_cache.py populate \
+            --stack "$RUNNER_TEMP/nextcloud-lock/stack.json" --cache "$RUNNER_TEMP/locked-talk-apps" \
+            --report protocol/artifacts/nextcloud-app-cache.json
+          # Record the verified warm-cache cost without making another request.
+          python3 protocol/tests/locked_app_cache.py populate --offline \
+            --stack "$RUNNER_TEMP/nextcloud-lock/stack.json" --cache "$RUNNER_TEMP/locked-talk-apps" \
+            --report protocol/artifacts/nextcloud-app-cache-offline.json
+      - name: Save verified Talk archives
+        if: steps.talk-app-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/locked-talk-apps
+          key: locked-talk-apps-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.talk-apps.outputs.key }}
+      - name: Wire the pinned harness to the verified archive cache
+        run: |
+          git -C talk-harness apply --check "$GITHUB_WORKSPACE/protocol/tests/nextcloud-app-cache.patch"
+          git -C talk-harness apply "$GITHUB_WORKSPACE/protocol/tests/nextcloud-app-cache.patch"
       - name: Install the browser
         working-directory: protocol
         run: |
           npm ci
           npx playwright install --with-deps chromium
       - name: Start a locked Nextcloud 34 and Talk 24 stack
+        id: talk-stack
+        env:
+          CASSINI_COMPAT_APP_CACHE: ${{ runner.temp }}/locked-talk-apps
         run: |
           set -euo pipefail
-          python3 talk-harness/scripts/nextcloud_compatibility.py prepare --baseline nc34 --out "$RUNNER_TEMP/nextcloud-lock"
           source "$RUNNER_TEMP/nextcloud-lock/env.sh"
+          echo "started=true" >> "$GITHUB_OUTPUT"
           timeout 900 talk-harness/bin/cassini dev stack up --services full --recording-backend none --cassini none --debug-skip-storage-scaffold --reset
           # Cassini mode none skips AppAPI setup; verify/enable its locked bundled bytes
           # explicitly so the stack observation validates every locked app.
@@ -172,7 +215,7 @@ jobs:
           name: nextcloud-talk-evidence
           path: protocol/artifacts/
       - name: Stop only this disposable Talk stack
-        if: always()
+        if: always() && steps.talk-stack.outputs.started == 'true'
         run: |
           if [ -f "$RUNNER_TEMP/nextcloud-lock/env.sh" ]; then
             source "$RUNNER_TEMP/nextcloud-lock/env.sh"

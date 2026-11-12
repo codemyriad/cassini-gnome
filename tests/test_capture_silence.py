@@ -17,10 +17,6 @@ run on its own (converted_frames), so they hold on each distribution's
 GStreamer. The broker drops a side's PCM until that side commits (R79 §1), and
 its commit writes durable checkpoints: its stand-in sends its BUFFERS only once
 the side has committed, so no fsync latency decides how much is recorded.
-
-The legacy Recorder (recorder.Recorder, Ogg Opus) is not covered here: no live
-user path reaches it. test_capture_convert still runs its capture_pipeline
-conversion chain.
 """
 
 import array
@@ -354,6 +350,8 @@ def test_broker_native_taps_save_float_silence_as_zeros(tmp_path, monkeypatch, c
             others_route=dict(source="system", reason="mixedSiteSignal", site="Synthetic meeting")
             if signal_owned
             else None,
+            # Native Me: signal-owned captures, and companions before sender-me-v1.
+            native_me=True,
         )
         assert sorted(capture.native_taps) == ["microphone", "system"]
         for tap in taps.values():

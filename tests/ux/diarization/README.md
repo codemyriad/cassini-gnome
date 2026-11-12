@@ -36,8 +36,9 @@ Operations:
   the pinned Go helper's numbering test.
 - `groupTracks`: preserve first group/track occurrence. D11 `me` and `others`
   identities take precedence; browser `sourceTrackId` joins off/on spans and
-  labels never establish identity. Remote participant groups are ineligible;
-  native system/whole-tab/received groups, and a microphone-only room, are eligible.
+  labels never establish identity. Browser `remote`, whole-tab (`tab`/`media`/
+  `application`), native system (`others`) and received groups, and a
+  microphone-only room, are eligible; `me` alongside another group is ineligible.
 - `rejoin`: its tiny already-16kHz PCM inputs exercise leading silence and sum.
   Values are s16 divided by 32768 before summing, without clipping. Inputs
   shorter than 3200 samples never invoke the model. The common FIR has its own

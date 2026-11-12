@@ -9,6 +9,7 @@ pytest.importorskip("gi")
 from test_browser_service import browser, service, wait_for  # noqa: E402, F401
 from test_library import capture  # noqa: E402
 from test_library_monitor import spin_until  # noqa: E402
+from test_voice_application import application_class  # noqa: E402, F401
 
 from cassini_talk.browser_service import send_packet  # noqa: E402
 from cassini_talk.capture_activity import BrowserActivity, read_browser_activity, recorder_activity  # noqa: E402
@@ -436,3 +437,302 @@ def test_an_older_activity_callback_still_advances_a_terminal_capture_fact():
     assert activity.snapshot == {} and activity.paths == {}
     assert activity._browser_capture_phases == {identifier: "finished"}
     assert changes == [{}]
+
+
+@pytest.mark.parametrize("targeted", [True, False])
+def test_browser_stop_projects_saving_on_click_frame_and_retires_stale_poll_on_delivery(
+    application_class,  # noqa: F811
+    tmp_path,
+    monkeypatch,
+    targeted,
+):
+    """While a long browser recording muxes its .opus on a worker thread, Stop must
+    project 'saving' synchronously on the click frame and retire stale 'recording'
+    polls once Stop succeeds, without sticking in 'saving' if the Stop RPC fails."""
+    import threading
+
+    from gi.repository import GLib
+
+    from cassini_talk import capture_guard
+    from cassini_talk.capture_activity import application_activity
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.library_window import LibraryWindow
+
+    session = capture(tmp_path, completed=False)
+    identifier = session.manifest["id"]
+    initial = LibraryScanner(tmp_path).scan(capture_activity={identifier: "recording"})
+    assert initial.meetings[0].lifecycle == "recording"
+
+    source = SimpleNamespace(
+        snapshot={identifier: "recording"},
+        paths={identifier: str(session.directory)},
+        connected=True,
+        answered_at=1.0,
+        _browser_capture_phases={},
+    )
+    app = SimpleNamespace(
+        _browser_snapshot=dict(statuses=[dict(recording=True, stopping=False, path=str(session.directory))]),
+        _browser_answered_at=1.0,
+        _browser_capture_phases={},
+        _browser_stops=set(),
+        _browser_stop_repeats={},
+        _record_start_group=None,
+        native_captures={},
+        library_recovery=None,
+        meeting_trash=SimpleNamespace(project=lambda snap: snap),
+        observe_library=lambda *_args: None,
+        transcription_enabled=False,
+        recording_error=None,
+        build_refresh=None,
+        _notify_shortcut_saved=lambda _path: None,
+    )
+    scans, live_updates, projected = [], [], []
+    window = SimpleNamespace(
+        get_application=lambda: app,
+        _activity_source=source,
+        _fixture_activity={},
+        _activity={identifier: "recording"},
+        _source_snapshot=initial,
+        snapshot=initial,
+        monitor=SimpleNamespace(refresh_now=lambda: scans.append(True)),
+        _update_live=lambda: live_updates.append(window.snapshot.meetings[0].lifecycle),
+    )
+    window._project_activity = LibraryWindow._project_activity.__get__(window)
+    window._updated = lambda snap: (
+        setattr(window, "snapshot", window._project_activity(snap))
+        or projected.append(window.snapshot.meetings[0].lifecycle)
+    )
+    window.capture_changed = LibraryWindow.capture_changed.__get__(window)
+    app.get_windows = lambda: [window]
+    app._native_changed = window.capture_changed
+    app.stop_browser_recordings = application_class.stop_browser_recordings.__get__(app)
+
+    # 1. Failed Stop RPC projects 'saving' while in flight, then rolls back to 'recording'.
+    fail_entered, release_fail = threading.Event(), threading.Event()
+    fail_loop = GLib.MainLoop()
+    fail_timed_out = []
+    fail_timeout = GLib.timeout_add_seconds(5, lambda: fail_timed_out.append(True) or fail_loop.quit() or False)
+
+    def failing_stop(*_args, **_kwargs):
+        fail_entered.set()
+        assert release_fail.wait(5)
+        raise OSError("Broker socket busy")
+
+    app.hold = lambda: None
+    app.release = fail_loop.quit
+    monkeypatch.setattr(capture_guard, "stop_browser_captures", failing_stop)
+    try:
+        app.stop_browser_recordings(session.directory if targeted else None)
+        # Synchronously on the click frame (before worker finishes or main loop runs):
+        assert window._activity == {identifier: "saving"}
+        assert window.snapshot.meetings[0].lifecycle == "saving"
+        assert live_updates[-1] == "saving"
+        assert fail_entered.wait(5)
+        release_fail.set()
+        fail_loop.run()
+        assert not fail_timed_out
+        assert application_activity(app, source) == {identifier: "recording"}
+    finally:
+        release_fail.set()
+        if not fail_timed_out:
+            GLib.source_remove(fail_timeout)
+
+    # 2. Successful Stop RPC submits its worker before UI projection, projects 'saving'
+    # immediately, and keeps 'stopping'/'saving' until the broker confirms completion.
+    import concurrent.futures
+
+    mux_entered, release_mux = threading.Event(), threading.Event()
+    ok_loop = GLib.MainLoop()
+    ok_timed_out = []
+    ok_timeout = GLib.timeout_add_seconds(5, lambda: ok_timed_out.append(True) or ok_loop.quit() or False)
+    order = []
+    real_executor = concurrent.futures.ThreadPoolExecutor
+
+    class OrderedExecutor(real_executor):
+        def submit(self, fn, /, *args, **kwargs):
+            order.append("worker_submitted")
+            return super().submit(fn, *args, **kwargs)
+
+    window._updated = lambda snap: (
+        order.append("ui_projected")
+        or setattr(window, "snapshot", window._project_activity(snap))
+        or projected.append(window.snapshot.meetings[0].lifecycle)
+    )
+
+    def muxing_stop(*_args, **_kwargs):
+        mux_entered.set()
+        assert release_mux.wait(5)
+        return [str(session.directory)]
+
+    app.release = ok_loop.quit
+    monkeypatch.setattr(concurrent.futures, "ThreadPoolExecutor", OrderedExecutor)
+    monkeypatch.setattr(capture_guard, "stop_browser_captures", muxing_stop)
+    try:
+        app.stop_browser_recordings(session.directory if targeted else None)
+        assert order[:2] == ["worker_submitted", "ui_projected"]
+        assert window._activity == {identifier: "saving"}
+        assert window.snapshot.meetings[0].lifecycle == "saving"
+        assert mux_entered.wait(5)
+        release_mux.set()
+        ok_loop.run()
+        assert not ok_timed_out
+        assert app._browser_capture_phases.get(identifier) == "stopping"
+        assert application_activity(app, source) == {identifier: "saving"}
+        assert capture_guard.capture_targets(app)[1] is True
+        # Once the broker confirms publication finished, the session clears cleanly.
+        app._browser_snapshot = dict(statuses=[dict(recording=False, stopping=False, path=str(session.directory))])
+        source.snapshot = {}
+        source._browser_capture_phases[identifier] = "finished"
+        assert application_activity(app, source) == {}
+        assert app._browser_capture_phases.get(identifier) == "finished"
+        assert capture_guard.capture_targets(app) == ([], False)
+    finally:
+        release_mux.set()
+        if not ok_timed_out:
+            GLib.source_remove(ok_timeout)
+
+
+def test_browser_stop_keeps_saving_and_close_guard_while_publication_runs_after_rpc(
+    application_class,  # noqa: F811
+    tmp_path,
+    monkeypatch,
+):
+    """Managed browser captures return stoppedPaths when PCM stops while .opus
+    publication continues in the background. Until the broker confirms completion,
+    the Library must stay 'saving' and capture_targets() must stay active."""
+    import threading
+    import time
+    from concurrent.futures import Future
+
+    from broker_fixture import stop_broker
+    from gi.repository import GLib
+    from test_browser_service import SilentTap
+
+    from cassini_talk import browser_service, capture_guard, library_publication
+    from cassini_talk.browser_capture import BrowserCapture
+    from cassini_talk.browser_service import BrowserService
+    from cassini_talk.capture_activity import advance_capture_snapshot, application_activity
+    from cassini_talk.library import LibraryScanner
+    from cassini_talk.library_publication import capture_parent
+
+    library_root = tmp_path / "Library"
+    sessions_dir = capture_parent(library_root)
+    sock_path = tmp_path / "private/browser.sock"
+    publication_futures = []
+
+    def gated_submit(session_obj, *, cancel=None):
+        assert session_obj.finished and not cancel.is_set()
+        future = Future()
+        publication_futures.append(future)
+        return future
+
+    monkeypatch.setattr(library_publication, "submit_stopped", gated_submit)
+    monkeypatch.setattr(browser_service, "service_path", lambda: sock_path)
+
+    broker = BrowserService(
+        tmp_path / "settings.json",
+        command_timeout=0.3,
+        notifier=lambda *_: lambda: None,
+        capture_parent=sessions_dir,
+        tap_factory=SilentTap,
+    )
+    ready = threading.Event()
+    broker_thread = threading.Thread(target=broker.serve, args=(sock_path, ready), daemon=True)
+    broker_thread.start()
+    assert ready.wait(2)
+
+    watcher = None
+    try:
+        managed = BrowserCapture(broker._capture_changed, parent=sessions_dir, tap_factory=SilentTap)
+        managed.start(dict(type="start", captureId="pub-pending", timelineOriginMs=1_700_000_000_000, microphone=False))
+        managed.handle(dict(type="track", id="remote-1", kind="remote", sampleRate=48000, channels=1))
+        managed.handle(dict(type="audio", id="remote-1", sequence=0, offsetMs=0, pcm="AQACAA=="))
+        with broker.lock:
+            broker.captures[managed.capture_id] = managed
+        identifier = managed.host.session.manifest["id"]
+
+        watcher = BrowserActivity(lambda: None, path=sock_path, interval_ms=10_000)
+        spin_until(lambda: watcher.future is None and watcher.snapshot == {identifier: "recording"})
+
+        app = SimpleNamespace(
+            _browser_snapshot=browser_service.request(),
+            _browser_answered_at=time.monotonic(),
+            _browser_capture_phases={},
+            _browser_stops=set(),
+            _browser_stop_repeats={},
+            _record_start_group=None,
+            _record_start_future=None,
+            native_captures={},
+            library_recovery=None,
+            transcription_enabled=False,
+            recording_error=None,
+            build_refresh=None,
+            _notify_shortcut_saved=lambda _path: None,
+            _native_changed=lambda: None,
+        )
+        window = SimpleNamespace(_activity_source=watcher, _browser_snapshot=app._browser_snapshot)
+        app.get_windows = lambda: [window]
+        app.stop_browser_recordings = application_class.stop_browser_recordings.__get__(app)
+
+        assert (
+            LibraryScanner(library_root).scan(capture_activity=application_activity(app, watcher)).meetings[0].lifecycle
+            == "recording"
+        )
+        assert capture_guard.capture_targets(app)[1] is True
+
+        stop_loop = GLib.MainLoop()
+        timed_out = []
+        stop_timeout = GLib.timeout_add_seconds(5, lambda: timed_out.append(True) or stop_loop.quit() or False)
+        app.hold = lambda: None
+        app.release = stop_loop.quit
+        try:
+            app.stop_browser_recordings(managed.directory)
+            stop_loop.run()
+            assert not timed_out
+        finally:
+            if not timed_out:
+                GLib.source_remove(stop_timeout)
+
+        # Stop RPC has returned stoppedPaths and delivered() has completed on GTK,
+        # while .opus publication is still pending in the background:
+        assert len(publication_futures) == 1 and not publication_futures[0].done()
+        assert managed.stopping and not managed.finished
+        assert list(library_root.glob("*.opus")) == []
+
+        # Fresh broker polls arrive while publication is still pending:
+        app._browser_snapshot = advance_capture_snapshot(app, browser_service.request())
+        app._browser_answered_at = time.monotonic()
+        window._browser_snapshot = app._browser_snapshot
+        watcher.poll()
+        spin_until(lambda: watcher.future is None)
+
+        assert app._browser_capture_phases.get(identifier) == "stopping"
+        assert watcher.snapshot == {identifier: "saving"}
+        assert application_activity(app, watcher) == {identifier: "saving"}
+        scanned_during_pub = LibraryScanner(library_root).scan(capture_activity=application_activity(app, watcher))
+        assert scanned_during_pub.meetings[0].lifecycle == "saving"
+        assert capture_guard.capture_targets(app)[1] is True
+
+        # Now release background publication and confirm broker completion clears both:
+        publication_futures[0].set_result(object())
+        assert managed.stopped.wait(2)
+        assert managed.finished and not managed.stopping
+
+        app._browser_snapshot = advance_capture_snapshot(app, browser_service.request())
+        app._browser_answered_at = time.monotonic()
+        window._browser_snapshot = app._browser_snapshot
+        watcher.poll()
+        spin_until(lambda: watcher.future is None and watcher.snapshot == {})
+
+        assert app._browser_capture_phases.get(identifier) == "finished"
+        assert application_activity(app, watcher) == {}
+        assert capture_guard.capture_targets(app) == ([], False)
+        scanned_after_pub = LibraryScanner(library_root).scan(capture_activity=application_activity(app, watcher))
+        assert scanned_after_pub.meetings[0].lifecycle == "saved"
+    finally:
+        if watcher is not None:
+            watcher.close()
+        for pending in publication_futures:
+            if not pending.done():
+                pending.set_result(object())
+        stop_broker(broker, broker_thread, sock_path)

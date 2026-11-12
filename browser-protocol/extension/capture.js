@@ -426,7 +426,37 @@ function calibrate(context, node, origin, wait) {
   return Promise.resolve(clocks.get(context));
 }
 
-async function captureOnce({ stream, id, label, labelSource, kind, origin, workletURL, send, fail, audible = false, enabled = () => true, channels = 1, sharedContext, getSharedContext, warn = () => {}, sourceTrackId, reportOutcomes = false, onAudio = () => {}, schedule, cancel }) {
+// A sender's mute (replaceTrack(null), inactive encodings or direction) keeps the microphone
+// feeding the worklet, whose chunks reach this thread late. Each observed state is placed on
+// the render clock: an observed mute covers every frame since the last observed unmute, and
+// an observed unmute ends a guard of input latency later, so muted audio never passes.
+export const MUTE_GUARD_MS = 50, MUTE_POLL_MS = 20;
+export function muteGate(context, enabled) {
+  const ranges = [], frameNow = () => Math.floor((context.currentTime || 0) * context.sampleRate);
+  const guard = Math.round(context.sampleRate * MUTE_GUARD_MS / 1000);
+  let open = null, lastOn = frameNow();
+  function observe() {
+    const at = frameNow();
+    if (enabled()) {
+      if (open) { open.end = at + guard; open = null; }
+      lastOn = at;
+    } else if (!open) ranges.push(open = { start: lastOn, end: Infinity });
+  }
+  function apply(frame, pcm, channels) {
+    observe();
+    const samples = new Int16Array(pcm), frames = samples.length / channels;
+    for (const range of ranges) {
+      const from = Math.max(frame, range.start) - frame, to = Math.min(frame + frames, range.end) - frame;
+      if (to > from) samples.fill(0, from * channels, to * channels);
+    }
+    // Chunks arrive in render order: a closed range before this chunk's end never applies again.
+    while (ranges.length && ranges[0] !== open && ranges[0].end <= frame + frames) ranges.shift();
+  }
+  observe();
+  return { observe, apply, get ranges() { return ranges.length; } };
+}
+
+async function captureOnce({ stream, id, label, labelSource, kind, origin, workletURL, send, fail, audible = false, enabled, channels = 1, sharedContext, getSharedContext, warn = () => {}, sourceTrackId, reportOutcomes = false, onAudio = () => {}, schedule, cancel }) {
   sharedContext ||= getSharedContext?.();
   const context = sharedContext || new AudioContext({ sampleRate: 48000 });
   const wait = (promise, message) => bounded(promise, message, schedule, cancel);
@@ -437,7 +467,14 @@ async function captureOnce({ stream, id, label, labelSource, kind, origin, workl
   const waiting = [], inFlight = new Set(), held = [];
   let verified = false, holdSince = null, holds = 0;
   const span = { heldFrom: null, release: (force = false) => release(force) };
-  let stateChanged, announced = false, ended = false, endOffsetMs = null;
+  let stateChanged, announced = false, ended = false, endOffsetMs = null, gate = null, gateTimer = null;
+  const later = schedule || setTimeout, unschedule = cancel || clearTimeout;
+  const pollGate = () => {
+    gateTimer = null;
+    if (stopping || ending || failure) return;
+    gate.observe();
+    gateTimer = later(pollGate, MUTE_POLL_MS);
+  };
   const end = async reason => {
     if (!reportOutcomes || !announced || ended) return;
     ended = true;
@@ -555,20 +592,23 @@ async function captureOnce({ stream, id, label, labelSource, kind, origin, workl
       }
       pendingFrames += frames;
       // For sender tracks, respect track enabled/muted state and sender suspension.
-      if (!enabled()) new Uint8Array(data.pcm).fill(0);
+      gate?.apply(data.frame, data.pcm, channels);
       if (!held.length && settled()) { admit(data.frame, data.pcm, frames); return; }
       held.push({ frame: data.frame, pcm: data.pcm, frames });
       span.heldFrom ??= data.frame;
       holds++;
       release(false);
     };
+    if (enabled) { gate = muteGate(context, enabled); pollGate(); }
     node.port.postMessage("start");
     return {
+      observe() { if (!stopping && !ending && !failure) gate?.observe(); },
       get failed() { return !!failure; },
       get droppedFrames() { return droppedFrames; },
       async stop(reason = "stopped") {
         if (stopping) return;
         stopping = true;
+        if (gateTimer !== null) { unschedule(gateTimer); gateTimer = null; }
         if (context.state === "running") {
           await new Promise((resolve, reject) => {
             const timer = setTimeout(() => reject(new Error("Audio capture did not finish in time.")), 2000);
@@ -598,6 +638,7 @@ async function captureOnce({ stream, id, label, labelSource, kind, origin, workl
     };
   } catch (error) {
     stopping = ending = true;
+    if (gateTimer !== null) { unschedule(gateTimer); gateTimer = null; }
     if (node) { node.port.onmessage = null; node.onprocessorerror = null; }
     waiting.length = 0; held.length = 0;
     clock?.spans.delete(span);
@@ -687,6 +728,7 @@ export async function capture(options) {
     get failed() { return !!terminal; },
     get state() { return ending || retiring ? "stopped" : terminal ? "failed" : recovering ? "retrying" : "recording"; },
     get droppedFrames() { return retiredDrops + (current?.droppedFrames || 0); },
+    observe() { current?.observe?.(); },
     async stop(reason = "stopped") {
       if (ending) return;
       ending = true;

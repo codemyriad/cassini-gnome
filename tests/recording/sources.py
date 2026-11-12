@@ -99,6 +99,7 @@ try:
         ),
         others_source="system",
         reason="missing",
+        native_me=True,  # An older companion: Me is the app's microphone, which this proof fails.
     )
     try:
         original_id, original_tap = capture.native_taps["system"]

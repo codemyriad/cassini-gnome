@@ -70,12 +70,23 @@ try {
  // host or write a user recording. No discovery/graph/RTC behavior is replaced.
  await worker.evaluate(()=>{
   globalThis.fixturePackets=[];globalThis.fixtureNativeConnections=0;
+  const packetObservers=new Set();
+  globalThis.fixturePacketValue=check=>new Promise((resolve,reject)=>{
+   let timeout;
+   const changed=()=>{const value=check();if(value){clearTimeout(timeout);packetObservers.delete(changed);resolve(value)}};
+   // Register before checking the retained snapshot; packet publication and the
+   // check run in this worker's task, so no arrival can be lost between them.
+   packetObservers.add(changed);
+   timeout=setTimeout(()=>{packetObservers.delete(changed);reject(new Error('Native packet event did not arrive'))},15000);
+   changed();
+  });
   chrome.runtime.connectNative=name=>{
    fixtureNativeConnections++;
    const event=()=>{const listeners=[];return {addListener:fn=>listeners.push(fn),emit:m=>listeners.forEach(fn=>fn(m))}};
    const port={onMessage:event(),onDisconnect:event(),closed:false,
     postMessage(packet){
      fixturePackets.push(packet);
+     for(const changed of packetObservers)changed();
      queueMicrotask(()=>port.onMessage.emit(packet.type==='start'?{type:'started',path:'/fixture/Page audio',features:packet.features||[]}:
       packet.type==='stop'?{type:'stopped',path:'/fixture/Page audio'}:{type:'ack'}));
     },disconnect(){if(!port.closed){port.closed=true;port.onDisconnect.emit()}}
@@ -105,11 +116,10 @@ try {
  assert.ok((await page.evaluate(()=>discovery)).every(m=>m.sourceCount===0&&m.heard===false),'media-only audio must never fabricate receiver count or heard evidence');
  const tabId=await worker.evaluate(async url=>(await chrome.tabs.query({})).find(tab=>tab.url===url).id,url);
  popup=await context.newPage();await popup.goto(`chrome-extension://${id}/popup.html`);
- async function observed(check,label){const deadline=Date.now()+15000;while(true){const value=await check();if(value)return value;assert.ok(Date.now()<deadline,'Timed out: '+label);await new Promise(resolve=>setTimeout(resolve,25));}}
  const status=()=>popup.evaluate(tabId=>chrome.runtime.sendMessage({target:'background',type:'status',tabId}),tabId);
  report.before=await status();
  assert.equal(report.before.recording,false);
- await observed(()=>worker.evaluate(()=>fixturePackets.some(p=>p.type==='meetings')&&fixtureControlPort!=null),'real control connection inventory');
+ await worker.evaluate(()=>fixturePacketValue(()=>fixturePackets.some(p=>p.type==='meetings')&&globalThis.fixtureControlPort!=null));
  report.beforePackets=await worker.evaluate(()=>fixturePackets);
  assert.equal(report.beforePackets.some(p=>p.type==='start'),false,'page audio alone must never automatically Start');
  assert.equal(report.beforePackets.some(p=>p.type==='audio'),false,'no PCM from passive media');
@@ -118,13 +128,15 @@ try {
  assert.ok(inventories.every(p=>p.meetings.length===0),'media-only graph must not publish a meeting');
  assert.deepEqual(pageErrors,[]);
  await worker.evaluate(()=>fixtureControlPort.onMessage.emit({type:'configure',capabilities:['call-signals-v1','verified-auto-admission-v1']}));
- const signal=await observed(()=>worker.evaluate(()=>fixturePackets.filter(p=>p.type==='callSignals').at(-1)),'negotiated call-signal snapshot');
+ const signal=await worker.evaluate(()=>fixturePacketValue(()=>fixturePackets.filter(p=>p.type==='callSignals').at(-1)));
  report.callSignals=signal;
  const profileIdentity=await worker.evaluate(async()=> (await chrome.storage.local.get('cassiniBrowserInstance')).cassiniBrowserInstance);
  assert.equal(signal.browserInstance,profileIdentity);assert.equal(typeof profileIdentity,'string');
  const acknowledged=await worker.evaluate(()=>fixturePackets.findIndex(p=>p.type==='configured')<fixturePackets.findIndex(p=>p.type==='callSignals'));
  assert.equal(acknowledged,true,'configure acknowledged before snapshot');
- const row=await observed(()=>worker.evaluate(tabId=>fixturePackets.filter(p=>p.type==='callSignals').at(-1)?.tabs.find(row=>row.tabId===tabId),tabId),'current generic unknown-session row');
+ const configured=await worker.evaluate(()=>fixturePackets.find(p=>p.type==='configured'));
+ assert.ok(configured.capabilities.includes('verified-auto-admission-v1'),'negative runs with verified admission negotiated');
+ const row=await worker.evaluate(tabId=>fixturePacketValue(()=>fixturePackets.filter(p=>p.type==='callSignals').at(-1)?.tabs.find(row=>row.tabId===tabId)),tabId);
  assert.equal(row.remoteAudio,'unknown');assert.equal(row.callEvidence.state,'unknown');assert.equal(row.callEvidence.callGeneration,null);
  const browserDocument=await worker.evaluate(async tabId=>(await chrome.scripting.executeScript({target:{tabId,frameIds:[0]},world:'ISOLATED',func:()=>null}))[0].documentId,tabId);
  assert.equal(row.documentGeneration,browserDocument,'browser-owned document identity');

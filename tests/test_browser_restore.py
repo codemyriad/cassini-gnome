@@ -7,14 +7,16 @@ import pytest
 from test_browser_capture import Tap
 
 from cassini_talk.browser_capture import BrowserCapture
+from cassini_talk.recording_session import ProtocolError
 from cassini_talk.session_events import source_state
 
 
-def recording(tmp_path):
+def recording(tmp_path, *, native_me=False):
     capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Tap)
-    # The microphone's span starts when it opens, on this fixed clock.
     capture.elapsed_ms = lambda: 1000
-    capture.start(dict(type="start", captureId="retained", timelineOriginMs=1, microphone=True))
+    capture.start(dict(type="start", captureId="retained", timelineOriginMs=1, microphone=True), native_me=native_me)
+    capture.handle(dict(type="track", id="me", kind="local", sampleRate=48000, channels=1, sourceTrackId="me"))
+    capture.handle(dict(type="audio", id="me", sequence=0, offsetMs=0, pcm="AQACAA=="))
     capture.handle(dict(type="track", id="original", kind="remote", sampleRate=48000, channels=1))
     capture.handle(dict(type="audio", id="original", sequence=0, offsetMs=0, pcm="AQACAA=="))
     capture.fallback()
@@ -24,26 +26,32 @@ def recording(tmp_path):
 def test_same_wire_source_restores_new_wav_and_keeps_microphone_and_folder(tmp_path):
     capture = recording(tmp_path)
     try:
-        microphone, folder = capture.microphone, capture.directory
-        old = capture.host.session.manifest["tracks"][1]
-        assert old["ended"] and not capture.browser_ready
+        folder = capture.directory
+        assert set(capture.native_taps) == {"system"}
+        old_me, old = capture.host.session.manifest["tracks"][:2]
+        assert old_me["ended"] and old["ended"] and not capture.browser_ready
         system = capture.native_taps["system"][1]
-        # A declaration from an obsolete document is never sufficient.
+        # A declaration from an obsolete document is never sufficient, nor is local-only PCM.
         capture.handle(dict(type="track", id="obsolete", kind="remote", sampleRate=48000, channels=1))
+        capture.handle(dict(type="audio", id="me", sequence=1, offsetMs=1100, pcm="AQACAA=="))
         capture.restore()
         assert capture.browser_lost and not system.stopped
         capture.handle(dict(type="audio", id="original", sequence=1, offsetMs=1100, pcm="AQACAA=="))
         assert capture.browser_ready
         capture.restore()
         assert not capture.browser_lost and system.stopped
-        assert capture.microphone is microphone and capture.directory == folder
+        assert capture.microphone is None and capture.directory == folder
         assert source_state(capture.host.session.manifest["events"]).reason == "restored"
         spans = [t for t in capture.host.session.manifest["tracks"] if t.get("sourceTrackId") == "original"]
+        me_spans = [t for t in capture.host.session.manifest["tracks"] if t.get("sourceTrackId") == "me"]
         assert len(spans) == 2 and spans[0]["file"] != spans[1]["file"]
+        assert len(me_spans) == 2 and me_spans[0]["file"] != me_spans[1]["file"]
         assert spans[1]["startOffsetMs"] >= spans[0]["endOffsetMs"]
+        assert me_spans[1]["startOffsetMs"] >= me_spans[0]["endOffsetMs"]
         assert not any(t.get("sourceTrackId") == "obsolete" for t in capture.host.session.manifest["tracks"])
         capture.handle(dict(type="audio", id="original", sequence=2, offsetMs=1200, pcm="AQACAA=="))
-        assert spans[1]["frames"] > 0
+        capture.handle(dict(type="audio", id="me", sequence=2, offsetMs=1200, pcm="AQACAA=="))
+        assert spans[1]["frames"] > 0 and me_spans[1]["frames"] > 0
         capture.stop(reason="tabClosed")
         saved = json.loads((folder / "session.json").read_text())
         assert saved["events"][-1]["reason"] == "tabClosed"
@@ -85,14 +93,21 @@ def test_failed_restore_keeps_current_selection_system_pcm_and_no_restored_event
         capture.stop()
 
 
-def test_dead_audio_port_and_others_off_never_replace_system_with_empty_browser(tmp_path):
-    capture = recording(tmp_path)
+@pytest.mark.parametrize("native_me", [True, False])
+def test_dead_audio_port_and_others_off_never_replace_system_with_empty_browser(tmp_path, native_me):
+    capture = recording(tmp_path, native_me=native_me)
     try:
         capture.handle(dict(type="audio", id="original", sequence=1, offsetMs=1100, pcm="AQACAA=="))
         capture.audio_connected = False
         capture.restore()
         assert capture.browser_lost
         capture.audio_connected = True
+        if not native_me:
+            # Me from the page alone, with the page gone, would record nothing: refused, unchanged.
+            with pytest.raises(ProtocolError, match="Me is recorded from the meeting page"):
+                capture.select(True, False)
+            assert capture.others and set(capture.native_taps) == {"system"}
+            return
         capture.select(True, False)
         capture.restore()
         assert capture.browser_lost and not capture.others
@@ -106,7 +121,6 @@ def test_closed_tab_cancels_pending_fallback_without_a_system_event_or_span(tmp_
     capture = BrowserCapture(lambda *_: None, parent=tmp_path, tap_factory=Tap)
     capture.start(dict(type="start", captureId="closing", timelineOriginMs=1, microphone=True))
     before = (capture.directory / "session.json").read_bytes()
-    microphone = capture.microphone
 
     class Closing(Tap):
         def start(self):
@@ -121,8 +135,8 @@ def test_closed_tab_cancels_pending_fallback_without_a_system_event_or_span(tmp_
         capture.fallback()
         assert (capture.directory / "session.json").read_bytes() == before
         assert not capture.browser_lost and not capture.finished
-        assert set(capture.native_taps) == {"microphone"}
-        assert capture.microphone is microphone and not microphone.stopped
+        assert set(capture.native_taps) == set()
+        assert capture.microphone is None
         if during_readiness:
             assert Tap.instances[-1].kind == "system" and Tap.instances[-1].stopped
         capture.stop(reason="tabClosed")

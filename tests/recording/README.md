@@ -36,7 +36,7 @@ its bounded queue and loss counters are observed directly, without sleeps.
 |---|---|
 | Python unit/integration tests | Framing and partial reads, size bounds, invalid metadata, path traversal, sequence rejection, gap preservation, interruption recovery, Opus finalization and decoding |
 | AudioWorklet tests | PCM clipping/interleaving, non-finite values, render timestamps, partial-tail flush |
-| Native Linux E2E | Actual PulseAudio capture from distinct virtual microphone/desktop sources; decode saved Opus and check each channel's expected frequency and cross-channel leakage |
+| Native Linux E2E | Actual PulseAudio capture from distinct virtual microphone/desktop sources through `NativeRecorder`; check each track's expected frequency, cross-channel leakage, and published Opus |
 | Chromium E2E | Actual extension invocation, MAIN hook, isolated relay, service worker, Chrome Native Messaging, Python host; real peer connections with different tones; mute, replacement offsets, navigation interruption, and mixed-tab fallback |
 | GTK E2E | Recording controls, validation, quit finalization, opening a session, playing and pausing a source |
 | Nextcloud Talk | Optional two-guest real meeting against the Go Cassini harness, with Chromium-generated fake devices |
@@ -249,8 +249,9 @@ controls still reject silence, another source, a short 20%-duty burst and real
 cross-source bleed. Failure JSON retains RMS, magnitude, power and measured
 frame count alongside the WAVs; this change never touches captured audio.
 
-The native stereo proof (`native.py`: microphone 440 Hz left, desktop 880 Hz
-right) measures its 1 s interval in the same 100 ms windows (`stereo_tones`).
+The native source-isolation proof (`native.py`: microphone 440 Hz, desktop 880 Hz,
+paired across `NativeRecorder`'s separate `microphone` and `system` WAV tracks
+alongside its published Opus) measures its 1 s interval in the same 100 ms windows (`stereo_tones`).
 A hosted run had the desktop tone at full level in the right channel, but its
 producer's pulsesink corrected clock skew by one 20 ms segment at the middle of
 the interval, flipping the 880 Hz phase: one coherent coefficient gave 0.0019,

@@ -48,15 +48,24 @@ jobs:
       - run: python3 browser-protocol/verify.py --pinned browser-extension
       - run: npm ci --prefix tests/recording
       - run: echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"
+      # A self-hosted pool host may hold these already (build-aux/ci/pool-prefetch.sh); elsewhere all false.
+      - name: Use the pool host's browsers and audio-server image
+        id: prefetch
+        run: build-aux/ci/pool-prefetch.sh playwright audio >> "$GITHUB_OUTPUT"
       # The same key as deb.yml's browser startup job, so both share one entry.
       - uses: actions/cache@v6
+        if: steps.prefetch.outputs.playwright != 'true'
         with:
           path: ${{ runner.temp }}/ms-playwright
           key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}
       - run: tests/recording/node_modules/.bin/playwright install --with-deps chromium
       - name: Python tests with private data on the temporary-file filesystem
+        if: ${{ env.CASSINI_PERF_GATE == '1' }}
         run: |
           # GIO's home Trash must share a filesystem with the test Library.
+          # PR and main-push runs delegate the suite to the Ubuntu/Fedora package
+          # jobs (check_pytest_ran.py); nightly, dispatch and full-ci run it here
+          # so CASSINI_PERF_GATE budgets execute on the pinned desktop host.
           pytest_root=$(mktemp -d "$HOME/cassini-pytest.XXXXXX")
           XDG_DATA_HOME="$pytest_root/data" /usr/bin/python3 -m pytest -q --basetemp="$pytest_root/tmp"
       # The canonical test tree includes its adjacent conformance vectors.
@@ -95,7 +104,7 @@ jobs:
       - name: Test recording judges real Pulse streams, then deletes them
         run: tests/recording/run.sh /usr/bin/python3 tests/recording/test-recording.py --build "$CASSINI_RECORDING_BUILD"
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: recording-evidence
           path: tests/recording/artifacts/
@@ -146,9 +155,14 @@ jobs:
       - run: python3 browser-protocol/verify.py --pinned browser-extension
       - run: npm ci --prefix tests/recording
       - run: echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"
+      # A self-hosted pool host may hold these already (build-aux/ci/pool-prefetch.sh); elsewhere all false.
+      - name: Use the pool host's browsers and audio-server image
+        id: prefetch
+        run: build-aux/ci/pool-prefetch.sh playwright audio >> "$GITHUB_OUTPUT"
       # The same key as capture and deb.yml's browser startup job: one shared entry.
       # Restore only (D66): capture keeps the entry, so this job never saves one.
       - uses: actions/cache/restore@v6
+        if: steps.prefetch.outputs.playwright != 'true'
         with:
           path: ${{ runner.temp }}/ms-playwright
           key: browser-startup-linux-x64-${{ hashFiles('tests/recording/package-lock.json') }}
@@ -156,7 +170,7 @@ jobs:
       - name: Live folder through the real app, hosts and extension (shared test 2)
         run: CASSINI_RUN_TIMEOUT=360 CASSINI_TEST_BUILD="$CASSINI_RECORDING_BUILD" tests/recording/run.sh node tests/recording/live-folder.mjs
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: live-folder-evidence
           path: tests/recording/artifacts/

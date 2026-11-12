@@ -551,7 +551,7 @@ def test_a_folder_kept_for_typed_content_stores_each_refusal_once(tmp_path):
     browser = from_result(dict(ok=False, code="pageUnreachable", error="No page yet"))
     message = dict(type="start", captureId="kept", timelineOriginMs=int(time.time() * 1000), microphone=True)
     with pytest.raises(NothingOpened) as raised:
-        capture.start(message, others_source="system", reason="missing", refusals=[browser])
+        capture.start(message, others_source="system", reason="missing", refusals=[browser], native_me=True)
     assert [r["side"] for r in raised.value.refusals] == ["browser", "me", "others"]
     (directory,) = tmp_path.iterdir()
     saved = json.loads((directory / "session.json").read_text())
@@ -626,7 +626,7 @@ def test_only_a_refused_resume_of_a_waiting_recording_is_recorded(broker, name):
     from test_capture_record import declare, pcm
     from test_resume_capture_host import ACK, lose, proxy, restored, resume, started
 
-    client, capture = started(broker)
+    client, capture = started(broker, capture_local=RESUME_REFUSALS.get(name, {}).get("capture_local", True))
     assert client.handle(declare("guest", "doc-1:source:1")) == ACK
     assert client.handle(pcm("guest", 480)) == ACK
     lose(broker, client, capture)
@@ -724,7 +724,9 @@ def test_a_stop_during_fallback_startup_leaves_no_folder_and_no_banner(tmp_path,
     browser = from_result(dict(ok=False, code="pageUnreachable", error="No page yet"))
     message = dict(type="start", captureId="stopped", timelineOriginMs=int(time.time() * 1000), microphone=True)
     with ThreadPoolExecutor(2) as pool:
-        starting = pool.submit(capture.start, message, others_source="system", reason="missing", refusals=[browser])
+        starting = pool.submit(
+            capture.start, message, others_source="system", reason="missing", refusals=[browser], native_me=True
+        )
         assert all(event.wait(5) for event in entered.values())  # Bound only: both sides are opening.
         stopping = pool.submit(capture.stop)
         assert capture.stop_requested.wait(5)  # Bound only: the user's Stop has arrived.

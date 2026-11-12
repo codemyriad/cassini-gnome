@@ -317,7 +317,7 @@ def test_shared_auto_start_vectors_resume_a_lost_recording_once(policy, command_
             mode="tracks",
             tabId=vector["meeting"]["tabId"],
             independent=True,
-            captureLocal=False,
+            captureLocal=True,
             callGeneration=vector["meeting"]["callGeneration"],
             keepOnNavigation=True,
             resumeCapture=dict(

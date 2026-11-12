@@ -21,9 +21,10 @@ async function setup(sourceCount = 3, previous = {}, hostFeatures = [], nativeFa
     runtime: { id: 'extension', getManifest:()=>JSON.parse(fs.readFileSync(path.resolve(__dirname,'../../manifest.json'),'utf8')), onConnect: event(), onMessage: event(), onInstalled: event(), onStartup: event(), getURL: name => 'chrome-extension://extension/' + name,
       getContexts: async () => [], connectNative(name) {
         if (name === 'io.codemyriad.cassini' && nativeFactory) { const port = nativeFactory(); audio.push(port); return port; }
-        const port = { name, sent: [], closed: false, onMessage: event(), onDisconnect: event(),
+        const port = { name, sent: [], closed: false, onMessage: event(), onDisconnect: event(), onPost: event(),
           postMessage(packet) {
             this.sent.push(JSON.parse(JSON.stringify(packet)));
+            this.onPost.emit();
             if (name === 'io.codemyriad.cassini') queueMicrotask(() => this.onMessage.emit(packet.type === 'start' ? { type: 'started', path: '/test/Recording-example', features: hostFeatures.filter(x=>packet.features?.includes(x)) } : packet.type === 'stop' ? { type: 'stopped', path: '/test/Recording-example' } : { type: 'ack' }));
           }, disconnect() { if (!this.closed) { this.closed = true; this.onDisconnect.emit(); } }
         };
@@ -42,7 +43,7 @@ async function setup(sourceCount = 3, previous = {}, hostFeatures = [], nativeFa
   };
   const later = (fn, ms) => { const id = ++timerID; timers.set(id, { fn, ms }); return id; };
   const cancel = id => timers.delete(id);
-  const context = vm.createContext({ chrome, URL, TextEncoder, AbortController, fetch:diagnostics.fetch || (async()=>({ok:true,async text(){return "// English fixture script"}})), crypto: { randomUUID: () => uuidPrefix + (++uuid), subtle: require("node:crypto").webcrypto.subtle }, queueMicrotask, setTimeout, clearTimeout });
+  const context = vm.createContext({ ...(diagnostics.Date ? {Date:diagnostics.Date} : {}), chrome, URL, TextEncoder, AbortController, fetch:diagnostics.fetch || (async()=>({ok:true,async text(){return "// English fixture script"}})), crypto: { randomUUID: () => uuidPrefix + (++uuid), subtle: require("node:crypto").webcrypto.subtle }, queueMicrotask, setTimeout, clearTimeout });
   const extension = path.resolve(__dirname, '../..');
   vm.runInContext(fs.readFileSync(path.join(extension, 'app-control.js'), 'utf8').replace('export class AppControl', 'class AppControl'), context);
   context.controlLater = later; context.controlCancel = cancel;

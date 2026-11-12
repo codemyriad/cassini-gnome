@@ -398,7 +398,7 @@ def confirm_capture_close(app, window, *, quitting=False, force_stop=False):
                     paths.extend(captured)
                     if not exiting and app.transcription_enabled:
                         for path in captured:
-                            app.write_down(path)
+                            app.write_down(path, resume=True)
                     browser_done = True
                     ready()
                     return False

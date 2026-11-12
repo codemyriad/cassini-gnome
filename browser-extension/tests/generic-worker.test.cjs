@@ -3,7 +3,9 @@ const {test}=require('node:test');const assert=require('node:assert/strict');
 const {setup,until,event}=require('./support/app-control-harness.cjs');
 const pair=['call-signals-v1','verified-auto-admission-v1'];
 async function fixture(trusted=true){
-  const app=await setup(0);let clock=0,reads=0;
+  let clock=0,reads=0;
+  const fixtureDate=class extends Date {static now(){return clock}};
+  const app=await setup(0,{},[],null,'token-',null,{Date:fixtureDate});
   app.api.discoveryTimers.now=()=>clock;
   app.pages[0].onDisconnect.emit();
   const port=app.frame(2,1,0,'chrome-A');
@@ -57,6 +59,28 @@ test('only new bidirectional progress renews unchanged active rows; pong never r
     assert.equal(f.last().tabs[0].callEvidence.state,'unknown');assert.equal(f.last().tabs[0].callEvidence.callGeneration,null);
     assert.equal((await f.app.api.meetings()).meetings[0].heard,true);
     const timer=f.app.timers.get(f.control.signalTimer);assert.ok(timer&&timer.ms<=1000);
+  }finally{f.app.close()}
+});
+test('publisher timer withdraws frozen proof within its virtual bound despite healthy pongs', {timeout:10000}, async()=>{
+  const f=await fixture();
+  try{
+    await f.configure();const initial=f.last().sequence,port=f.control.port;
+    const later=f.control.later;let rearmed;
+    f.control.later=(fn,ms)=>{const id=later(fn,ms);rearmed?.();return id};
+    for(const at of [1000,2000,3000]){
+      f.setClock(at);f.raw.ageMs=at;
+      port.onMessage.emit({type:'ping',seq:at});
+      assert.equal(f.wire.at(-1).type,'pong');assert.equal(f.wire.at(-1).seq,at);
+      const id=f.control.signalTimer,timer=f.app.timers.get(id);
+      assert.ok(timer&&timer.ms<=1000,'the actual publisher schedules a refresh within one second');
+      const next=new Promise(resolve=>{rearmed=resolve});
+      f.app.timers.delete(id);timer.fn();await next;
+      assert.equal(f.control.port,port);assert.equal(port.closed,false);
+      if(at===1000){assert.equal(f.last().sequence,initial);assert.equal(f.last().tabs[0].callEvidence.state,'active')}
+    }
+    assert.equal(f.last().tabs[0].callEvidence.state,'unknown');
+    assert.equal(f.last().tabs[0].callEvidence.callGeneration,null);
+    assert.ok(f.last().sequence>initial);
   }finally{f.app.close()}
 });
 test('repaired/old frames and forged discovery facts cannot create verified call evidence',async()=>{

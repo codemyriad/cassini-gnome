@@ -16,14 +16,16 @@ async function twoMeetings() {
 test('independent capability starts two tabs, routes packets and stops only one', async () => {
   const app = await twoMeetings();
   try {
-    assert.deepEqual(Array.from(app.ports[0].sent[0].capabilities), ['independent-sessions-v1', 'call-evidence-v1', 'page-state-v1', 'multi-stream-v1', 'resume-capture-v1', 'heartbeat-v1', 'tab-readiness-v1', 'call-signals-v1', 'verified-auto-admission-v1']);
+    assert.deepEqual(Array.from(app.ports[0].sent[0].capabilities), ['independent-sessions-v1', 'call-evidence-v1', 'page-state-v1', 'multi-stream-v1', 'resume-capture-v1', 'heartbeat-v1', 'tab-readiness-v1', 'sender-me-v1', 'call-signals-v1', 'verified-auto-admission-v1']);
     assert.equal((await app.command(command('one','start',2,{captureLocal:false,microphone:true}))).ok,true);
-    const second = await app.command(command('two','start',3,{captureLocal:false,microphone:false}));
+    const second = await app.command(command('two','start',3,{captureLocal:true,microphone:false}));
     assert.equal(second.ok,true);assert.equal(app.audio.length,2);
     assert.deepEqual(second.status.sessions.map(s=>s.tabId).sort(),[2,3]);
     assert.equal(app.audio[0].sent[0].microphone,true);assert.equal(app.audio[1].sent[0].microphone,false);
     assert.ok(app.audio.every(port=>port.sent[0].independent && Number.isSafeInteger(port.sent[0].timelineOriginMs)));
-    assert.ok(app.pages.every(frame=>frame.sent.find(m=>m.type==='start').captureLocal===false));
+    assert.deepEqual(app.pages.map(frame=>frame.sent.find(m=>m.type==='start').captureLocal),[false,true]);
+    // The native start tells the app whether the page records Me, so it opens its own microphone only when not.
+    assert.deepEqual(app.audio.map(port=>port.sent[0].captureLocal),[false,true]);
     app.pages[1].onMessage.emit({type:'packet',request:0,packet:{type:'track',id:'opaque',kind:'remote',sampleRate:48000,channels:1}});
     await until(()=>app.pages[1].sent.some(m=>m.type==='ack'&&m.request===0));
     const packet={type:'audio',id:'opaque',pcm:'AAA=',sequence:0,offsetMs:0};

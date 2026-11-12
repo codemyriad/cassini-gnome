@@ -713,7 +713,10 @@ def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():
     )
     for step in re.split(r"^      - ", tests, flags=re.M)[1:]:
         if "if:" in step:
-            assert step.startswith("uses: actions/upload-artifact@v7\n") and "if: always()" in step
+            assert (
+                step.startswith("uses: actions/upload-artifact@v7\n")
+                and "if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}" in step
+            )
     # The same minimal environment as the products' build.
     install = re.compile(r"- name: Install build tools \(minimal source-validation environment\)\n(?:        .*\n)+")
     assert install.search(tests)[0] == install.search(products)[0]
@@ -1189,6 +1192,49 @@ def test_nightly_and_full_ci_perf_gates_are_wired_and_forwarded():
     recording = (WORKFLOWS / "recording.yml").read_text()
     assert "--test-skip-pattern" not in recording
     assert "- run: node --test browser-protocol/extension/tests/*.test.cjs" in recording
+    capture_steps = re.split(r"\n(?=      - )", dict(jobs(WORKFLOWS / "recording.yml"))["capture"])[1:]
+    host_pytest_steps = [
+        step
+        for step in capture_steps
+        if "name: Python tests with private data on the temporary-file filesystem" in step
+    ]
+    assert len(host_pytest_steps) == 1
+    host_pytest_if = re.search(r"^        if:\s*(.+)$", host_pytest_steps[0], re.M)
+    assert host_pytest_if is not None
+    rec_perf_expr = re.search(r"^  CASSINI_PERF_GATE:\s*(.+)$", recording, re.M).group(1)
+    for evt, act, lbls, expected_gate in (
+        ("pull_request", "opened", (), False),
+        ("pull_request", "synchronize", ("bug", "ui-shots"), False),
+        ("push", "", (), False),
+        ("schedule", "", (), True),
+        ("workflow_dispatch", "", (), True),
+        ("pull_request", "synchronize", ("full-ci",), True),
+        ("pull_request", "labeled", ("FULL-CI",), True),
+    ):
+        gate_val = str(_eval_actions_expr(rec_perf_expr, event=evt, action=act, labels=lbls))
+        assert gate_val == ("1" if expected_gate else ""), (evt, act, lbls, gate_val)
+        step_runs = bool(
+            _eval_actions_expr(
+                host_pytest_if.group(1),
+                event=evt,
+                action=act,
+                labels=lbls,
+                env={"CASSINI_PERF_GATE": gate_val},
+            )
+        )
+        assert step_runs is expected_gate, (evt, act, lbls, step_runs)
+    # Every capture scenario step in Recording/capture still runs unconditionally on PR and push.
+    unconditional_capture_markers = (
+        "node --test browser-protocol/extension/tests/*.test.cjs",
+        "node --test tests/recording/signal.test.mjs",
+        "tests/recording/native.py",
+        "tests/recording/browser.mjs",
+        "tests/recording/gtk.py",
+        "tests/recording/stall.py",
+    )
+    for marker in unconditional_capture_markers:
+        matching = [step for step in capture_steps if marker in step]
+        assert len(matching) == 1 and not re.search(r"^        if:", matching[0], re.M), marker
 
     exact_ui = (ROOT / "tests/ui/exact-transcript.py").read_text()
     assert "\n        assert not page.list.ready and 0 < first_rows < len(model.turns)" in exact_ui
@@ -1231,25 +1277,36 @@ def _eval_actions_expr(
     event: str = "pull_request",
     action: str = "synchronize",
     label: str = "",
+    labels: tuple[str, ...] = (),
     pr_number: int = 392,
     run_id: int = 100,
     needs_results: dict[str, str] | None = None,
     changes_outputs: dict[str, str] | None = None,
+    env: dict[str, str] | None = None,
     ancestors_ok: bool = True,
+    failed: bool = False,
+    cancelled: bool = False,
 ):
     py = expr.removeprefix("${{").removesuffix("}}").strip()
     for job_id in sorted((needs_results or {}), key=len, reverse=True):
         if "-" in job_id:
             py = py.replace(f"needs.{job_id}.", f"needs.{job_id.replace('-', '_')}.")
-    py = py.replace("always()", "True").replace("cancelled()", "False").replace("failure()", "False")
-    py = py.replace("success()", str(ancestors_ok))
+    py = re.sub(r"([A-Za-z0-9_.]+)\.\*\.([A-Za-z0-9_]+)", r"_star(\1, '\2')", py)
+    py = py.replace("always()", "True")
+    py = py.replace("cancelled()", str(cancelled))
+    py = py.replace("failure()", str(failed))
+    py = py.replace("success()", str(ancestors_ok and not failed and not cancelled))
     py = py.replace("&&", " and ").replace("||", " or ")
     py = re.sub(r"!(?!=)", " not ", py)
+    effective_labels = labels or ((label,) if label else ())
     event_ns = (
         SimpleNamespace(
             action=_CIString(action),
             label=SimpleNamespace(name=_CIString(label)),
-            pull_request=SimpleNamespace(number=pr_number),
+            pull_request=SimpleNamespace(
+                number=pr_number,
+                labels=[SimpleNamespace(name=_CIString(lbl)) for lbl in effective_labels],
+            ),
         )
         if event == "pull_request"
         else _NULL
@@ -1262,12 +1319,27 @@ def _eval_actions_expr(
             else _NULL
         )
         needs_dict[k.replace("-", "_")] = SimpleNamespace(result=_CIString(v), outputs=outputs_ns)
+    env_ns = SimpleNamespace(**{k: _CIString(v) for k, v in (env or {}).items()})
+
+    def _star(seq, attr: str):
+        return [getattr(item, attr) for item in seq] if isinstance(seq, list) else []
+
+    def _contains(search, item) -> bool:
+        if isinstance(search, list):
+            return any(_CIString(str(x)) == str(item) for x in search)
+        if isinstance(search, str):
+            return str(item).casefold() in search.casefold()
+        return False
+
     ctx = {
         "github": SimpleNamespace(event_name=_CIString(event), event=event_ns, run_id=run_id),
         "needs": SimpleNamespace(**needs_dict),
+        "env": env_ns,
         "True": True,
         "False": False,
         "format": lambda template, *args: template.format(*args),
+        "contains": _contains,
+        "_star": _star,
     }
     return eval(py, {"__builtins__": {}}, ctx)
 
@@ -1530,3 +1602,107 @@ def test_prepare_tumbleweed_origin_and_cdn_fallback(tmp_path):
     )
     res = subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True)
     assert res.returncode == 4
+
+
+def test_pr_diagnostic_evidence_artifacts_upload_only_on_failure():
+    pr_failure_if = "${{ failure() || (github.event_name != 'pull_request' && always()) }}"
+    ubuntu_pr_failure_if = (
+        "${{ (failure() || (github.event_name != 'pull_request' && always()))"
+        " && startsWith(matrix.base, 'ubuntu:26.04@sha256:') }}"
+    )
+    expected_diagnostic = {
+        ("recording.yml", "recording-evidence"): pr_failure_if,
+        ("recording.yml", "live-folder-evidence"): pr_failure_if,
+        ("background-apps.yml", "background-apps-desktop"): pr_failure_if,
+        ("whistle.yml", "voices-linux-x86_64"): pr_failure_if,
+        ("whistle.yml", "diarization-linux-x86_64"): pr_failure_if,
+        ("whistle.yml", "parakeet-linux-x86_64"): pr_failure_if,
+        ("whistle.yml", "whistle-linux-x86_64"): pr_failure_if,
+        ("exact-transcript.yml", "exact-transcript-measurements"): pr_failure_if,
+        ("ux-shot.yml", "ux-boards"): pr_failure_if,
+        ("ux-library.yml", "gnome-ux-library-vectors"): pr_failure_if,
+        ("flatpak.yml", "flatpak-bridge-evidence"): pr_failure_if,
+        ("meson-tests.yml", "meson-logs-minimal"): pr_failure_if,
+        ("deb.yml", "meson-logs-deb-${{ strategy.job-index }}"): pr_failure_if,
+        ("deb.yml", "installed-build-refresh"): ubuntu_pr_failure_if,
+        ("deb.yml", "browser-startup-installed"): ubuntu_pr_failure_if,
+        ("packages.yml", "meson-logs-rpm-${{ matrix.name }}"): pr_failure_if,
+        ("packages.yml", "meson-logs-arch"): pr_failure_if,
+        ("source.yml", "meson-logs-distro-${{ strategy.job-index }}"): pr_failure_if,
+    }
+    downstream_unfiltered_by_failure = {
+        ("ci.yml", "changed-areas"),
+        ("build.yml", "ci-core"),
+        ("build.yml", "ci-boards"),
+        ("build.yml", "ci-offline"),
+        ("deb.yml", "pytest-ran-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}"),
+        ("deb.yml", "deb-${{ strategy.job-index }}"),
+        ("packages.yml", "pytest-ran-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}"),
+        ("packages.yml", "rpm-${{ matrix.name }}"),
+        ("packages.yml", "arch"),
+        (
+            "source.yml",
+            "pytest-${{ steps.pytest.outputs.kind }}-${{ steps.pytest.outputs.slug }}-attempt-${{ github.run_attempt }}",
+        ),
+        ("flatpak.yml", "flatpak-stable"),
+        ("ux-shot.yml", "pr-shots"),
+    }
+
+    seen_uploads: dict[tuple[str, str], list[str]] = {}
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        text = workflow.read_text()
+        if "\njobs:\n" not in text:
+            continue
+        for _, block in jobs(workflow):
+            uncommented = "\n".join(line for line in block.splitlines() if not line.lstrip().startswith("#"))
+            for step in re.split(r"\n(?=      - )", uncommented):
+                if "actions/upload-artifact@" not in step:
+                    continue
+                name_match = re.search(r"^          name: *(.+)$", step, re.M)
+                assert name_match, (workflow.name, step)
+                if_match = re.search(r"^        if: *(.+)$", step, re.M)
+                seen_uploads.setdefault((workflow.name, name_match.group(1).strip()), []).append(
+                    if_match.group(1).strip() if if_match else ""
+                )
+
+    for key, expected_if in expected_diagnostic.items():
+        assert seen_uploads.get(key) == [expected_if], (key, seen_uploads.get(key))
+
+    for key in downstream_unfiltered_by_failure:
+        assert key in seen_uploads, key
+        assert all("failure()" not in cond for cond in seen_uploads[key]), (key, seen_uploads[key])
+
+    # Evaluate the GitHub Actions status condition across event/failure/base combinations.
+    def eval_upload_if(cond: str, *, event_name: str, failed: bool, base: str = "ubuntu:26.04@sha256:00") -> bool:
+        expr = cond.removeprefix("${{").removesuffix("}}").strip()
+        py_expr = (
+            expr.replace("&&", " and ")
+            .replace("||", " or ")
+            .replace("!=", " != ")
+            .replace("github.event_name", "event_name")
+            .replace("matrix.base", "base")
+        )
+        ns = {
+            "event_name": event_name,
+            "base": base,
+            "failure": lambda: failed,
+            "always": lambda: True,
+            "startsWith": lambda s, prefix: s.startswith(prefix),
+        }
+        return bool(eval(py_expr, {"__builtins__": {}}, ns))  # noqa: S307
+
+    for cond in (pr_failure_if, ubuntu_pr_failure_if):
+        assert eval_upload_if(cond, event_name="pull_request", failed=False) is False
+        assert eval_upload_if(cond, event_name="pull_request", failed=True) is True
+        for event_name in ("push", "schedule", "workflow_dispatch"):
+            assert eval_upload_if(cond, event_name=event_name, failed=False) is True
+            assert eval_upload_if(cond, event_name=event_name, failed=True) is True
+    assert (
+        eval_upload_if(ubuntu_pr_failure_if, event_name="push", failed=True, base="debian:testing@sha256:00") is False
+    )
+
+    # ux-boards must sit after Compare UI screenshots against main baseline so a
+    # pr-shots.py diff failure on a PR still triggers the ux-boards diagnostic upload.
+    ux_shot = (WORKFLOWS / "ux-shot.yml").read_text()
+    assert ux_shot.index("- name: Compare UI screenshots against main baseline") < ux_shot.index("name: pr-shots")
+    assert ux_shot.index("name: pr-shots") < ux_shot.index("name: ux-boards")

@@ -183,19 +183,6 @@ msgstr "translator-credits"
 msgid "Cassini Portable Meeting Format"
 msgstr "Cassini Portable Meeting Format"
 
-msgid "Could not start audio capture. Check your audio devices and GStreamer plugins."
-msgstr "Could not start audio capture. Check your audio devices and GStreamer plugins."
-
-msgid "Could not finish the recording."
-msgstr "Could not finish the recording."
-
-msgid "Timed out while saving the recording."
-msgstr "Timed out while saving the recording."
-
-#, python-brace-format
-msgid "Incomplete audio was kept at {path}."
-msgstr "Incomplete audio was kept at {path}."
-
 msgid "Recording browser meeting"
 msgstr "Recording browser meeting"
 

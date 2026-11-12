@@ -32,7 +32,7 @@ const profile = await mkdtemp(path.join(os.tmpdir(), 'cassini-live-folder-'));
 const fixture = await readFile(path.join(root, 'tests/recording/fixture.html'));
 const server = createServer((_req, res) => {res.setHeader('Content-Type', 'text/html'); res.end(fixture);});
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const TITLE = 'Shared live folder meeting', MICROPHONE_HZ = 660;
+const TITLE = 'Shared live folder meeting', MICROPHONE_HZ = 660, UNUSED_OS_MIC_HZ = 440;
 const evidence = {console: [], log: []}, pending = [];
 let context, remoteBrowser, ui, microphone, broker, controlHost, registered = {}, cleaning = null;
 const log = line => {evidence.log.push(line); console.log(line);};
@@ -208,10 +208,10 @@ try {
  ui.on('exit', code => {evidence.uiExit = code;});
  await poll(async () => (await call()).status === 'Library', 'GNOME Library window', 30000);
  const virtualMic = path.join(root, 'tests/recording/virtual-microphone.py');
- microphone = spawn('/usr/bin/python3', [virtualMic, 'produce', '--sink', 'cassini_microphone', '--hz', String(MICROPHONE_HZ), '--channels', '1'], {stdio: ['ignore', 'ignore', 'pipe']});
+ microphone = spawn('/usr/bin/python3', [virtualMic, 'produce', '--sink', 'cassini_microphone', '--hz', String(UNUSED_OS_MIC_HZ), '--channels', '1'], {stdio: ['ignore', 'ignore', 'pipe']});
  microphone.stderr.pipe(createWriteStream(path.join(artifacts, 'microphone-producer.log')));
  try {
-  const {stdout} = await promisify(execFile)('/usr/bin/python3', [virtualMic, 'probe', '--sink', 'cassini_microphone', '--hz', String(MICROPHONE_HZ)], {timeout: 18000, killSignal: 'SIGKILL'});
+  const {stdout} = await promisify(execFile)('/usr/bin/python3', [virtualMic, 'probe', '--sink', 'cassini_microphone', '--hz', String(UNUSED_OS_MIC_HZ)], {timeout: 18000, killSignal: 'SIGKILL'});
   evidence.microphoneReady = JSON.parse(stdout);
  } catch (error) {
   throw new Error(`Virtual microphone fixture failed before browser capture: ${error.message}. See microphone-producer.log and pulse-server.log.`, {cause: error});

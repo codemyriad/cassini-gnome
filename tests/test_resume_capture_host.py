@@ -11,7 +11,7 @@ import pytest
 from broker_fixture import stop_broker
 from durable import CaptureChanges, tracks_bound
 from test_browser_capture import Tap, authorize_native_start
-from test_browser_liveness import Clock, Settled, me_frames
+from test_browser_liveness import Clock, Settled
 from test_browser_service import wait_for
 from test_capture_record import declare, pcm
 
@@ -67,7 +67,7 @@ def proxy(broker):
     return Settled(BrowserAudioProxy(path=broker.path), broker.service)
 
 
-def started(broker, identifier="F", *, generation="call-A", document="doc-1"):
+def started(broker, identifier="F", *, generation="call-A", document="doc-1", capture_local=True):
     client = proxy(broker)
     reply = client.handle(
         dict(
@@ -82,6 +82,7 @@ def started(broker, identifier="F", *, generation="call-A", document="doc-1"):
             features=["source-outcomes-v1"],
             callGeneration=generation,
             documentGeneration=document,
+            captureLocal=capture_local,
         )
     )
     assert reply["type"] == "started"
@@ -152,12 +153,14 @@ def restored(broker, client, capture, identifier, root):
 def test_native_resume_attaches_with_exact_proof_and_restores_on_the_same_folder(broker):
     client, capture = started(broker)
     folder, origin = capture.directory, capture.origin_ms
-    microphone = capture.microphone
+    assert capture.microphone is None
+    assert client.handle(dict(declare("me", "doc-1:local:1"), kind="local", label="Me")) == ACK
+    assert client.handle(pcm("me", 480)) == ACK
     assert client.handle(declare("guest", "doc-1:source:1")) == ACK
     assert client.handle(pcm("guest", 480)) == ACK
+    before = sum(t["frames"] for t in capture.host.session.manifest["tracks"] if t["kind"] == "local")
     lose(broker, client, capture)
-    microphone.append(b"\x01\x00" * 480, 200)
-    before = me_frames(capture)
+    assert set(capture.native_taps) == {"system"}
     resumed = proxy(broker)
     try:
         answer = resumed.handle(resume(capture))
@@ -169,15 +172,14 @@ def test_native_resume_attaches_with_exact_proof_and_restores_on_the_same_folder
         # the restore commit change the source.
         assert capture.audio_connected and capture.browser_lost
         assert sources(capture) == [("browser", "start"), ("system", "lost")]
+        assert resumed.handle(dict(declare("me-again", "doc-1:local:1"), kind="local", label="Me")) == ACK
+        assert resumed.handle(pcm("me-again", 480, offset=now_ms(capture))) == ACK
         restored(broker, resumed, capture, "guest-again", "doc-1:source:2")
         assert sources(capture) == [("browser", "start"), ("system", "lost"), ("browser", "restored")]
         assert folders(broker) == [folder] and capture.directory == folder and capture.origin_ms == origin
-        assert capture.microphone is microphone
-        # At the capture's own clock: PCM stamped before the microphone side
-        # committed is readiness PCM and is dropped, and that commit comes
-        # later than 300 ms when the folder's durable writes are slow.
-        microphone.append(b"\x02\x00" * 480, now_ms(capture))
-        assert me_frames(capture) > before
+        assert capture.microphone is None
+        assert resumed.handle(pcm("me-again", 480, sequence=1, offset=now_ms(capture) + 1000)) == ACK
+        assert sum(t["frames"] for t in capture.host.session.manifest["tracks"] if t["kind"] == "local") > before
         assert capture.host.session.manifest["title"] == "F", "a fresh Start's title does not modify the target"
         capture.stop()
     finally:
@@ -245,13 +247,14 @@ REFUSALS = dict(
     long_identity=dict(packet=dict(captureId="é" * 65)),
     stopped=dict(before=stopped),
     stop_requested=dict(before=requested),
-    none_user=dict(before=deselected),
+    # Me alone while lost needs a native Me (an older companion); a page-sender Me refuses it.
+    none_user=dict(before=deselected, capture_local=False),
 )
 
 
 @pytest.mark.parametrize("name", REFUSALS)
 def test_native_resume_refusals_have_no_side_effect(broker, name):
-    client, capture = started(broker)
+    client, capture = started(broker, capture_local=REFUSALS[name].get("capture_local", True))
     assert client.handle(declare("guest", "doc-1:source:1")) == ACK
     assert client.handle(pcm("guest", 480)) == ACK
     lose(broker, client, capture)
@@ -488,11 +491,13 @@ def test_r67_status_and_native_attach_in_either_order(broker, order):
         control.send(dict(type="meetings", meetings=[meeting()]))
         control.send(dict(type="status", recording=True, sessions=[session(capture)]))
         wait_for(lambda: capture.lifecycle_capable)
+        assert client.handle(dict(declare("me", "doc-1:local:1"), kind="local", label="Me")) == ACK
+        assert client.handle(pcm("me", 480)) == ACK
         assert client.handle(declare("guest", "doc-1:source:1")) == ACK
         assert client.handle(pcm("guest", 480)) == ACK
+        before = sum(t["frames"] for t in capture.host.session.manifest["tracks"] if t["kind"] == "local")
         lose(broker, client, capture)
         folder, origin, microphone = capture.directory, capture.origin_ms, capture.microphone
-        before = me_frames(capture)
         resumed = proxy(broker)
         pending = session(capture, path=None, tracks=0)
         try:
@@ -518,7 +523,7 @@ def test_r67_status_and_native_attach_in_either_order(broker, order):
             assert sources(capture) == [("browser", "start"), ("system", "lost"), ("browser", "restored")]
             assert (capture.directory, capture.origin_ms, capture.microphone) == (folder, origin, microphone)
             assert capture.capture_id == "F" and folders(broker) == [folder]
-            assert me_frames(capture) >= before
+            assert sum(t["frames"] for t in capture.host.session.manifest["tracks"] if t["kind"] == "local") >= before
         finally:
             resumed.close()
     finally:
@@ -663,6 +668,7 @@ def test_end_to_end_a_watchdog_close_is_asked_once_and_resumed_on_the_same_folde
                 features=["source-outcomes-v1"],
                 callGeneration="call-A",
                 documentGeneration="doc-1",
+                captureLocal=True,
             )
         )
         assert reply == dict(type="started", path=reply["path"], features=["source-outcomes-v1"])
@@ -691,7 +697,7 @@ def test_end_to_end_a_watchdog_close_is_asked_once_and_resumed_on_the_same_folde
             mode="tracks",
             tabId=3,
             independent=True,
-            captureLocal=False,
+            captureLocal=True,
             callGeneration="call-A",
             keepOnNavigation=True,
             resumeCapture=dict(
@@ -730,23 +736,23 @@ def test_repeated_resumes_never_mark_a_live_source_failed(broker, caplog):
     restoration fails)."""
     import logging
 
-    roots = [f"doc-1:source:{n}" for n in range(4)]
+    roots = [("local", "doc-1:local:0"), *[("remote", f"doc-1:source:{n}") for n in range(4)]]
     client, capture = started(broker)
     ledger = capture.host.session.capture_record
     restored_cycles, blocked_cycles = [], []
     try:
         with caplog.at_level(logging.WARNING, logger="cassini_talk.browser_capture"):
             for cycle in range(20):
-                for n, root in enumerate(roots):
+                for n, (kind, root) in enumerate(roots):
                     span = f"c{cycle}-s{n}"
-                    assert client.handle(declare(span, root)) == ACK, (cycle, root)
+                    assert client.handle(dict(declare(span, root), kind=kind)) == ACK, (cycle, root)
                     assert client.handle(pcm(span, 480, offset=now_ms(capture))) == ACK, (cycle, root)
                 if cycle:
                     capture.restore()
                     capture.restore()  # A repeated attempt in the same loss logs nothing more.
                     (blocked_cycles if capture.browser_lost else restored_cycles).append(cycle)
                     assert capture.restore_blocked is capture.browser_lost
-                assert not any(ledger.seen[root]["failed"] for root in roots), cycle
+                assert not any(ledger.seen[root]["failed"] for _kind, root in roots), cycle
                 lose(broker, client, capture)
                 client = proxy(broker)
                 assert client.handle(resume(capture))["resumed"] is True
@@ -762,6 +768,6 @@ def test_repeated_resumes_never_mark_a_live_source_failed(broker, caplog):
         assert saved["type"] == "stopped"
         manifest = json.loads((capture.directory / "session.json").read_text())
         outcomes = {s["sourceTrackId"]: s["captureOutcome"] for s in manifest["captureOutcome"]["sources"]}
-        assert all(outcomes[root] != "failed" for root in roots)
+        assert all(outcomes[root] != "failed" for _kind, root in roots)
     finally:
         client.close()

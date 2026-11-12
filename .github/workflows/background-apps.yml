@@ -42,8 +42,12 @@ jobs:
           path: _desktop-packages/flatpak
           github-token: ${{ github.token }}
           run-id: ${{ inputs.package_run || github.run_id }}
+      # A self-hosted pool host may hold these already (build-aux/ci/pool-prefetch.sh); elsewhere all false.
+      - name: Use the pool host's GNOME 50 runtime
+        id: prefetch
+        run: build-aux/ci/pool-prefetch.sh flatpak >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
-        if: ${{ inputs.include_flatpak }}
+        if: ${{ inputs.include_flatpak && steps.prefetch.outputs.flatpak != 'true' }}
         with:
           path: .desktop-flatpak-cache
           key: desktop-gnome50-v1
@@ -53,7 +57,11 @@ jobs:
       - name: Harness image cache key
         id: harness
         run: build-aux/ci/harness-cache.sh key desktop >> "$GITHUB_OUTPUT"
+      - name: Use the pool host's harness image
+        id: harness-pool
+        run: build-aux/ci/pool-prefetch.sh harness:desktop >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v6
+        if: steps.harness-pool.outputs.harness-desktop != 'true'
         id: harness-cache
         with:
           path: ${{ steps.harness.outputs.path }}
@@ -70,7 +78,7 @@ jobs:
             tests/desktop/run.sh --deb-only _desktop-packages/deb/cassini-talk_*.deb desktop-evidence
           fi
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: background-apps-desktop
           path: |

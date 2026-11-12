@@ -1,10 +1,12 @@
 // D52: real same-document call switches, late peers and receiver reuse.
 import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
 import {createServer} from 'node:http';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {connectReceiveSlots,switchReceiveSlot} from '../scenarios/product-topologies.mjs';
+import {eventValue} from './support/event-value.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const server=createServer(async(request,response)=>{
@@ -16,12 +18,12 @@ const server=createServer(async(request,response)=>{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const address=`http://127.0.0.1:${server.address().port}/`;
 const packets=[],notices=[];let browser;
-async function until(check,label){
- const deadline=Date.now()+15000;
- while(!await check()){
-  assert.ok(Date.now()<deadline,`Timed out: ${label}; notices=${JSON.stringify(notices)}`);
-  await new Promise(resolve=>setTimeout(resolve,25));
- }
+const updates=new EventEmitter();
+function observe(kind,read,label){
+ return eventValue(changed=>{
+  updates.on(kind,changed);
+  return ()=>updates.off(kind,changed);
+ },read,{label});
 }
 function pcm(id){return Buffer.concat(packets.filter(p=>p.type==='audio'&&p.id===id).map(p=>Buffer.from(p.pcm,'base64')));}
 function power(data,frequency){
@@ -34,8 +36,8 @@ try{
  browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--allow-loopback-in-peer-connection','--disable-features=WebRtcHideLocalIpsWithMdns']});
  const context=await browser.newContext(),page=await context.newPage(),remoteA=await context.newPage(),remoteB=await context.newPage();
  await page.addInitScript({path:path.join(root,'extension/page-hook.js')});
- await page.exposeFunction('acceptPacket',packet=>packets.push(packet));
- await page.exposeFunction('acceptNotice',notice=>notices.push(notice));
+ await page.exposeFunction('acceptPacket',packet=>{packets.push(packet);updates.emit('packet');});
+ await page.exposeFunction('acceptNotice',notice=>{notices.push(notice);updates.emit('notice');});
  await page.goto(address);await remoteA.goto(address);await remoteB.goto(address);
  await page.evaluate(()=>addEventListener('message',async event=>{
   if(event.source!==window||event.data?.channel!=='cassini-page')return;
@@ -47,22 +49,22 @@ try{
  }));
  async function command(type,token){
   await page.evaluate(({type,token})=>postMessage({channel:'cassini-control',type,token,captureLocal:false,sourceOutcomes:true,origin:Date.now(),moduleURL:location.origin+'/capture.js',workletURL:location.origin+'/pcm-worklet.js'},'*'),{type,token});
-  await until(()=>notices.some(n=>n.type===(type==='start'?'ready':'stopped')&&n.token===token),`${type} ${token}`);
+  await observe('notice',()=>notices.some(n=>n.type===(type==='start'?'ready':'stopped')&&n.token===token),`${type} ${token}`);
  }
  async function track(token,frequency,oldFrequency){
-  let item;
-  await until(()=>{
-   item=packets.find(p=>p.type==='track'&&p.token===token);
-   if(!item)return false;
-   const data=pcm(item.id),wanted=power(data,frequency);
-   return data.length>=96000&&wanted>0.001&&(!oldFrequency||power(data,oldFrequency)<wanted*0.01);
+  return observe('packet',()=>{
+   const item=packets.find(p=>p.type==='track'&&p.token===token);
+   if(!item)return null;
+   const data=pcm(item.id);
+   if(data.length<96000)return null;
+   const wanted=power(data,frequency);
+   return wanted>0.001&&(!oldFrequency||power(data,oldFrequency)<wanted*0.01)?item:null;
   },`actual ${frequency} Hz under token ${token}`);
-  return item;
  }
  await connectReceiveSlots(page,remoteA,[[440]]);await command('start','A');const a=await track('A',440);
  await page.evaluate(()=>{window.oldPeer=topologyPeer;history.pushState({},'','/call-B');});
  await connectReceiveSlots(page,remoteB,[[880]]);
- await until(()=>packets.some(p=>p.type==='trackEnd'&&p.id===a.id),'A source closes at generation boundary');
+ await observe('packet',()=>packets.some(p=>p.type==='trackEnd'&&p.id===a.id),'A source closes at generation boundary');
  await command('stop','A');await command('start','B');const b=await track('B',880,440);
  assert.equal(await page.evaluate(()=>oldPeer.signalingState==='closed'),false,'old A deliberately closes late');
  const receiver=await page.evaluate(()=>topologyPeer.getReceivers()[0].track.id);
@@ -73,7 +75,7 @@ try{
  const offer=await page.evaluate(async()=>{await topologyPeer.setLocalDescription(await topologyPeer.createOffer());return topologyPeer.localDescription.toJSON();});
  const answer=await remoteB.evaluate(async offer=>{const p=topologyRemote.peer;await p.setRemoteDescription(offer);await p.setLocalDescription(await p.createAnswer());return p.localDescription.toJSON();},offer);
  await page.evaluate(answer=>topologyPeer.setRemoteDescription(answer),answer);
- await until(()=>packets.some(p=>p.type==='trackEnd'&&p.id===b.id),'B source closes before C');
+ await observe('packet',()=>packets.some(p=>p.type==='trackEnd'&&p.id===b.id),'B source closes before C');
  await command('stop','B');await command('start','C');const c=await track('C',990,880);await command('stop','C');
  assert.equal(await page.evaluate(()=>topologyPeer.getReceivers()[0].track.id),receiver);
  assert.notEqual(a.sourceTrackId,b.sourceTrackId);assert.equal(b.sourceTrackId,c.sourceTrackId);

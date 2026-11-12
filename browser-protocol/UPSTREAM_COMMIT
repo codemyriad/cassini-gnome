@@ -1,26 +1,26 @@
-tree fc3cdca7040a3151ae534b598b779bc820b0a3cb
-parent 1d72416b09b07757fae4ae58d0766f9ef95d0efc
-parent 54a750de5d18b6291d8e077d6431d22cfc4d8c0c
-author Silvio Tomatis <silviot@gmail.com> 1794186639 +0100
-committer GitHub <noreply@github.com> 1794186639 +0100
+tree 3404c6228efc9d351f2df592277221283ac727ee
+parent 156b40c314e7acf4e75d53c2fbc77fdae8deacc4
+parent e3cb34350ed651721a670c6bf075efe043faa880
+author Silvio Tomatis <silviot@gmail.com> 1794501066 +0100
+committer GitHub <noreply@github.com> 1794501066 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq8R2PCRC1aQ7uu5UhlAAAex0QAJVjbYQ2bZGBP/q3N3kvc5FU
- /itcZnNp6IwiRzqY5wWBLz6D/LBuMEyVwNbJTYhs3FL/DvJB7EtAnbDtM/UDI7BI
- DSIXK15YKG0xtyuUFekcXWRqmXctgpZBvuDKkkXHcmp/wrRHkvSvVZaU6ZFoWG8W
- Ilk5ZeJgHIbsGy8K4fVxqrhdjESVQHRk8j3Ut7/MRq2O6TQ/26zCDAO+51rYG7RK
- TBnwdf5FiPaOwYRwTN/hQ5OH3tdfE/tFYdH73nBqmksBH0riyz+Geo14zGoMnIoP
- /ye2614fqmEnhtgSE5p5/HsSOdotIfA//ks/27FqLcIVmLOfZ82BJHH5SzELe8Cg
- oxW2A4rg3r+iIYOUbxTzqkrNYGOEzhI6OiZazBteI8TKUk7GowkQuYM3dOuPVV3u
- GwPMxcvbKx5Ay/7k08WtUUm/NVO6umPxRVXMCU3cFjkxSxYZehecMyeZAlwqsxRM
- LHCWAuWWWQ0KPJFYaljmXGi7WAT91P35us7Y2HeglRiYZAuBzkPt/1J3v5YiIkFD
- YVpNttbuJZS2o2CYaDU4WLvHM/PSzfJa2t2mIRj/G80C+9v4TPuIy/TTZeiRLfSl
- qWjKbRCG7r4jx1LdIl00duXwFH3X5ljYCW4U5GQAsYosRuo/T/u+fnL192/rCUuL
- LLUHbmQGJ59ds5hhj5Wb
- =Tpk7
+ wsFcBAABCAAQBQJq9enKCRC1aQ7uu5UhlAAAgvAQAEcYtFwb0/AMgCBCOuCiD+wu
+ 3hbbFMTEa+myS9ZXHkmteBH9GKmtGn+A8w17atBxfRK09QH7+zL3s2oZkMo3D4Wr
+ zpTNZ0BPtwhLTTPuzmHZpuEBMD+V8yx14YcFedhjvaYz/h0/C+KdUykyIUtKFlmS
+ XRb3IiMg+jNI2BvXQxCrPdB6rkLQ3mWUSICWJFXNUcjbAYPKkgjSkt5ck77FvUYe
+ Ug4By50Iojhfks4hbXKTzw3TT0rV3of9s8qzI2kotBWJ3AUr16CORiH3WCKH4B5q
+ np0Ea18hVtzmOpX8UCmlIT4i1gUgefyEFkcrHOl4CVTXbxtenA+V7x8ywIKiNNvo
+ B82BGzeV546rqIZXBEk7JnjMJzWUa0m6GjP/fn+QgDDpTytGoBcLUtG7thhEq/s4
+ oN05HNEazhTPEwtbR085mnb0IzBE/Z8WUeyUW94E1fpUWpdhbH4ByqLhe1U0T8XZ
+ nwrycVQLi9fnHieZe+1wehpyDDV4ONvcZgEkzIcKkoYPL4npDx0lyKg7SJqQZx6R
+ ql/PDl9bLjrlDR+iDIOGJu8DniN3i54CBnj2vi3a1UvVpAD0YQm5C+D6qNmvhDxV
+ za+leSc8u9fs410JP5+63hEnxDZdTTP1geCO5Wi2ESbOS5VnLwSpnG8oNEbfglqx
+ 4EnS3GR7aorL/ChvVzzu
+ =9GHY
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #79 from codemyriad/feat/generic-call-evidence
+Merge pull request #102 from codemyriad/fix/auto-record-webaudio-lineage
 
-feat: generic verified call evidence and safe diagnostics
+Start automatic recording when the page processes the microphone through WebAudio (Teams)

@@ -72,7 +72,8 @@ SKIPS = {
 }
 # Skips of a test that runs exactly the command of a Meson test registered in
 # the same build (the shard checks that): node id -> that Meson test, which
-# must have passed in the same testlog.json. Recording's host pytest runs them.
+# must have passed in the same testlog.json. Recording's host pytest runs them
+# on nightly, dispatch and full-ci.
 MESON_RUNS = {
     "tests.test_browser_host::test_canonical_conformance": "browser-protocol-conformance",
 }

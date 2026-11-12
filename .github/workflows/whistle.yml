@@ -36,19 +36,27 @@ jobs:
         with:
           path: .sherpa-cache
           key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
+      # A self-hosted pool host may hold these already (build-aux/ci/pool-prefetch.sh); elsewhere all false.
+      - name: Use the pool host's pinned models
+        id: prefetch
+        run: build-aux/ci/pool-prefetch.sh models >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
+        if: steps.prefetch.outputs.models != 'true'
         with:
           path: ${{ runner.temp }}/parakeet-models
           key: parakeet-ultra-v2-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
       - uses: actions/cache@v6
+        if: steps.prefetch.outputs.models != 'true'
         with:
           path: ${{ runner.temp }}/nemotron-models
           key: nemotron-${{ hashFiles('src/cassini_talk/models.json') }}
       - uses: actions/cache@v6
+        if: steps.prefetch.outputs.models != 'true'
         with:
           path: ${{ runner.temp }}/voice-models
           key: campplus-357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b
       - uses: actions/cache@v6
+        if: steps.prefetch.outputs.models != 'true'
         with:
           path: ${{ runner.temp }}/diarization-fixtures
           key: s11-audio-${{ hashFiles('tests/ux/diarization/fetch-pins.json') }}
@@ -85,7 +93,11 @@ jobs:
       - name: Harness image cache key
         id: harness
         run: build-aux/ci/harness-cache.sh key whistle >> "$GITHUB_OUTPUT"
+      - name: Use the pool host's harness image
+        id: harness-pool
+        run: build-aux/ci/pool-prefetch.sh harness:whistle >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v6
+        if: steps.harness-pool.outputs.harness-whistle != 'true'
         id: harness-cache
         with:
           path: ${{ steps.harness.outputs.path }}
@@ -124,25 +136,25 @@ jobs:
           path: ${{ steps.harness.outputs.path }}
           key: ${{ steps.harness.outputs.key }}
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: voices-linux-x86_64
           path: voice-artifacts/
           retention-days: 14
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: diarization-linux-x86_64
           path: diarization-artifacts/
           retention-days: 14
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: parakeet-linux-x86_64
           path: parakeet-artifacts/
           retention-days: 14
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
         with:
           name: whistle-linux-x86_64
           path: whistle-artifacts/
