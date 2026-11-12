@@ -1165,11 +1165,17 @@ class NativeRecorder(GObject.Object):
         self.end_reason = self.end_reason or "user"
         self._mark_stop()
         if self.starting:
+            changed = not self._stop_requested
             self._stop_requested = True
             self._open_wake.set()
+            if changed:
+                self.emit("changed")
             return
         if self._changing_sources:
+            changed = not self._stop_requested
             self._stop_requested = True
+            if changed:
+                self.emit("changed")
             return
         if self.pipeline is None or self.stopping:
             return

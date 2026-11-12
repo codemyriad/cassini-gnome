@@ -320,11 +320,30 @@ def test_native_identity_only_comes_from_controller_owned_session(tmp_path):
     recorder.pipeline = None
     assert recorder_activity([window]) == {session.manifest["id"]: "saving"}
     recorder.stopping = False
+    recorder._stop_requested = True
+    assert recorder_activity([window]) == {session.manifest["id"]: "saving"}
+    recorder._stop_requested = False
     assert recorder_activity([window]) == {}
     standalone = SimpleNamespace(
         recorder=SimpleNamespace(pipeline=object(), path=str(tmp_path / "cassini-2026-10-27.opus"), stopping=False)
     )
     assert not recorder_activity([standalone]), "Standalone audio must never acquire an invented Library UUID"
+
+    from cassini_talk.capture_guard import capture_saving_only
+
+    second = capture(tmp_path)
+    app = SimpleNamespace(
+        native_captures={"one": SimpleNamespace(pipeline=object(), session=session, stopping=False)},
+        _browser_snapshot=dict(statuses=[dict(recording=True, stopping=False, path=str(second.directory))]),
+        _browser_stops=set(),
+        _browser_capture_phases={},
+        get_windows=lambda: [],
+    )
+    assert not capture_saving_only(app)
+    app.native_captures["one"]._stop_requested = True
+    assert not capture_saving_only(app), "Second browser capture still records"
+    app._browser_stops.add(str(second.directory))
+    assert capture_saving_only(app), "All active captures are now saving"
 
 
 @pytest.mark.parametrize("failure", ["timeout", "exit"])

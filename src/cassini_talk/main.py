@@ -1234,6 +1234,8 @@ class CassiniApplication(Adw.Application):
             self.settings_dialog.refresh_test()
         if self.comfort:
             self.comfort.native_level()
+            if self.comfort.notification_visible:
+                self.comfort.refresh_background()
         self.windowless_background.refresh()
         for window in self.get_windows():
             if hasattr(window, "capture_changed"):

@@ -110,6 +110,7 @@
 
 .library-window .live-pill { background: var(--app-record-tint); border-radius: 6px; padding: 4px 4px 4px 12px; min-height: 26px; }
 .library-window .live-dot { background: var(--app-record-dot); border-radius: 100px; }
+.library-window .live-pill.saving .live-dot { opacity: 0.45; }
 .library-window .live-timer { color: var(--app-record-ink); font-weight: 600; font-feature-settings: "tnum"; }
 .library-window .live-levels progressbar trough { min-width: 30px; min-height: 4px; background: var(--app-record-trough); border-radius: 2px; }
 .library-window .live-levels progressbar progress { min-height: 4px; background: var(--app-record-bg); border-radius: 2px; }
@@ -134,7 +135,10 @@
 .recording-page { background: var(--app-window-bg); color: var(--app-window-fg); }
 .recording-timer { font-size: 44px; font-weight: 600; font-feature-settings: "tnum"; letter-spacing: -0.8px; }
 .recording-dot { background: var(--app-record-bg); border-radius: 100px; box-shadow: 0 0 0 8px var(--app-record-halo); }
+.recording-dot.saving { opacity: 0.45; box-shadow: none; }
 .library-window .recording-stop { min-height: 48px; min-width: 110px; padding: 0; border-radius: 100px; font-size: 16px; }
+.library-window .recording-stop:disabled { background: var(--app-record-bg); background-image: none; color: var(--app-record-fg); opacity: 1; padding: 0 18px; }
+.library-window .recording-stop:disabled label, .library-window .recording-stop:disabled spinner { opacity: 1; color: var(--app-record-fg); }
 .recording-title { min-height: 38px; font-size: 16px; padding: 0 12px; background: var(--app-view-bg); }
 .recording-sources { border: 1px solid var(--app-border); border-radius: 12px; }
 .recording-source { padding: 12px 16px; min-height: 38px; }
