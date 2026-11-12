@@ -162,7 +162,11 @@ BUILDS = {
         "build-aux/rpm/build.sh",
         'rpmbuild -ba --define "_topdir $top" --define "dist $dist" "$@" "$spec"',
     ),
-    "arch": ("build-aux/arch/build.sh", "build-aux/arch/build.sh", 'su builder -c "makepkg -s --noconfirm"'),
+    "arch": (
+        f"build-aux/arch/build.sh \"${{{{ github.event_name == 'schedule' && 'archlinux:latest' || '{pinned_image('archlinux:latest')}' }}}}\"",
+        "build-aux/arch/build.sh",
+        'su builder -c "makepkg -s --noconfirm"',
+    ),
 }
 # What the suite needs to run every test, GTK application tests included.
 DEB_DEPS = (
@@ -279,42 +283,69 @@ def arch_array(pkgbuild, name):
     return {re.split(r"[<>=]", word.strip("'\""))[0] for word in words}
 
 
+FIXED_TAGS = {"ubuntu:26.04", "fedora:44"}
+
+
 def parse_tier_json(block, key, input_name):
     match = re.search(
-        rf"^        {key}: \$\{{\{{ inputs\.{input_name} && fromJSON\('([^']+)'\) \|\| fromJSON\('([^']+)'\) \}}\}}$",
+        rf"^        {key}: \$\{{\{{ inputs\.{input_name} && \(github\.event_name == 'schedule' && "
+        r"fromJSON\('([^']+)'\) \|\| fromJSON\('([^']+)'\)\) \|\| fromJSON\('([^']+)'\) \}\}$",
         block,
         re.M,
     )
     if match is None:
-        return None, None
+        return None, None, None
     try:
-        return json.loads(match[1]), json.loads(match[2])
+        return json.loads(match[1]), json.loads(match[2]), json.loads(match[3])
     except ValueError:
-        return None, None
+        return None, None, None
+
+
+def parse_arch_images(block):
+    match = re.search(
+        r'^      - run: build-aux/arch/build\.sh "\$\{\{ github\.event_name == \'schedule\' && \'([^\']+)\' \|\| \'([^\']+)\' \}\}"$',
+        block,
+        re.M,
+    )
+    return match.groups() if match else (None, None)
 
 
 def parse_source_matrix(block):
     match = re.search(
         r"^        include: \$\{\{ fromJSON\(format\('([^']+)', "
-        r"inputs\.extra_distros && '([^']*)' \|\| '([^']*)', "
-        r"inputs\.deb_testing && '([^']*)' \|\| '([^']*)', "
-        r"inputs\.rpm_opensuse && '([^']*)' \|\| '([^']*)', "
-        r"inputs\.arch && '([^']*)' \|\| '([^']*)'\)\) \}\}$",
+        r"inputs\.extra_distros && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)', "
+        r"inputs\.deb_testing && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)', "
+        r"inputs\.rpm_opensuse && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)', "
+        r"inputs\.arch && \(github\.event_name == 'schedule' && '([^']*)' \|\| '([^']*)'\) \|\| '([^']*)'\)\) \}\}$",
         block,
         re.M,
     )
     if match is None:
         return None
-    fmt, extra_t, extra_f, deb_t, deb_f, rpm_t, rpm_f, arch_t, arch_f = match.groups()
+    (
+        fmt,
+        extra_sched,
+        extra_pinned,
+        extra_f,
+        deb_sched,
+        deb_pinned,
+        deb_f,
+        rpm_sched,
+        rpm_pinned,
+        rpm_f,
+        arch_sched,
+        arch_pinned,
+        arch_f,
+    ) = match.groups()
     combos = {}
     try:
-        for deb_testing, rpm_opensuse, arch, extra_distros in itertools.product((False, True), repeat=4):
-            combos[(deb_testing, rpm_opensuse, arch, extra_distros)] = json.loads(
+        for deb_testing, rpm_opensuse, arch, extra_distros, is_schedule in itertools.product((False, True), repeat=5):
+            combos[(deb_testing, rpm_opensuse, arch, extra_distros, is_schedule)] = json.loads(
                 fmt.format(
-                    extra_t if extra_distros else extra_f,
-                    deb_t if deb_testing else deb_f,
-                    rpm_t if rpm_opensuse else rpm_f,
-                    arch_t if arch else arch_f,
+                    (extra_sched if is_schedule else extra_pinned) if extra_distros else extra_f,
+                    (deb_sched if is_schedule else deb_pinned) if deb_testing else deb_f,
+                    (rpm_sched if is_schedule else rpm_pinned) if rpm_opensuse else rpm_f,
+                    (arch_sched if is_schedule else arch_pinned) if arch else arch_f,
                 )
             )
     except ValueError:
@@ -331,12 +362,20 @@ def problems(files):
     if not source_combos:
         found.append("Source matrix does not declare per-leg JSON matrix through inputs")
         source_combos = {}
-    for (_, _, _, extra_distros), entries in source_combos.items():
+    for (_, _, _, extra_distros, is_schedule), entries in source_combos.items():
         if any(not isinstance(e, dict) or not ({"image"} <= set(e) <= {"image", "pytest-in"}) for e in entries):
             found.append("Source matrix has a key this guard cannot read")
             break
-        if any(not isinstance(e.get("image"), str) or not HAS_DIGEST.search(e["image"]) for e in entries):
-            found.append("Source matrix has an unpinned image reference")
+        if any(not isinstance(e.get("image"), str) for e in entries):
+            found.append("Source matrix has a non-string image reference")
+            break
+        if not is_schedule and any(not HAS_DIGEST.search(e["image"]) for e in entries):
+            found.append("Source non-schedule matrix has an unpinned image reference")
+            break
+        if is_schedule and any(
+            (strip_digest(e["image"]) in FIXED_TAGS) != bool(HAS_DIGEST.search(e["image"])) for e in entries
+        ):
+            found.append("Source schedule matrix must pin fixed releases and leave rolling legs unpinned")
             break
         kept = {strip_digest(e["image"]) for e in entries if not e.get("pytest-in")}
         if kept != KEEPS_PYTEST[extra_distros]:
@@ -412,16 +451,19 @@ def problems(files):
         "rpm": jobs(files[".github/workflows/packages.yml"])["rpm"],
         "arch": jobs(files[".github/workflows/packages.yml"])["arch"],
     }
-    deb_full, deb_pr = parse_tier_json(workflows["deb"], "base", "deb_testing")
-    rpm_full, rpm_pr = parse_tier_json(workflows["rpm"], "include", "rpm_opensuse")
+    deb_full_sched, deb_full_pinned, deb_pr = parse_tier_json(workflows["deb"], "base", "deb_testing")
+    rpm_full_sched, rpm_full_pinned, rpm_pr = parse_tier_json(workflows["rpm"], "include", "rpm_opensuse")
+    arch_sched_img, arch_pinned_img = parse_arch_images(workflows["arch"])
     if (
-        not deb_full
+        not deb_full_sched
+        or not deb_full_pinned
         or not deb_pr
-        or any(not isinstance(b, str) or not HAS_DIGEST.search(b) for b in [*deb_full, *deb_pr])
-        or [strip_digest(b) for b in deb_full] != ["ubuntu:26.04", "debian:testing"]
+        or any(not isinstance(b, str) or not HAS_DIGEST.search(b) for b in [*deb_full_pinned, *deb_pr])
+        or deb_full_sched != [pinned_image("ubuntu:26.04"), "debian:testing"]
+        or [strip_digest(b) for b in deb_full_pinned] != ["ubuntu:26.04", "debian:testing"]
         or [strip_digest(b) for b in deb_pr] != ["ubuntu:26.04"]
     ):
-        found.append(f"deb: unexpected tier matrix full={deb_full!r} pr={deb_pr!r}")
+        found.append(f"deb: unexpected tier matrix sched={deb_full_sched!r} full={deb_full_pinned!r} pr={deb_pr!r}")
     if (
         not rpm_pr
         or len(rpm_pr) != 1
@@ -429,19 +471,29 @@ def problems(files):
         or not isinstance(rpm_pr[0].get("base"), str)
         or not HAS_DIGEST.search(rpm_pr[0]["base"])
         or strip_digest(rpm_pr[0]["base"]) != "fedora:44"
-        or not rpm_full
-        or any(not isinstance(r.get("base"), str) or not HAS_DIGEST.search(r["base"]) for r in rpm_full)
-        or {strip_digest(r["base"]) for r in rpm_full}
+        or not rpm_full_pinned
+        or any(not isinstance(r.get("base"), str) or not HAS_DIGEST.search(r["base"]) for r in rpm_full_pinned)
+        or {strip_digest(r["base"]) for r in rpm_full_pinned}
         != {
             "fedora:44",
             "registry.opensuse.org/opensuse/tumbleweed:latest",
         }
+        or rpm_full_sched
+        != [
+            {"base": pinned_image("fedora:44"), "name": "fedora"},
+            {"base": "registry.opensuse.org/opensuse/tumbleweed:latest", "name": "opensuse"},
+        ]
     ):
-        found.append(f"rpm: unexpected tier matrix full={rpm_full!r} pr={rpm_pr!r}")
+        found.append(f"rpm: unexpected tier matrix sched={rpm_full_sched!r} full={rpm_full_pinned!r} pr={rpm_pr!r}")
+    if arch_sched_img != "archlinux:latest" or arch_pinned_img != pinned_image("archlinux:latest"):
+        found.append(f"arch: unexpected schedule/pinned images {arch_sched_img!r} / {arch_pinned_img!r}")
     named = set()
-    for (deb_testing, rpm_opensuse, has_arch, _extra), entries in source_combos.items():
+    for (deb_testing, rpm_opensuse, has_arch, _extra, is_schedule), entries in source_combos.items():
+        deb_full = deb_full_sched if is_schedule else deb_full_pinned
+        rpm_full = rpm_full_sched if is_schedule else rpm_full_pinned
         deb_list = (deb_full or []) if deb_testing else (deb_pr or [])
         rpm_list = [r.get("base") for r in ((rpm_full or []) if rpm_opensuse else (rpm_pr or []))]
+        expected_arch_img = arch_sched_img if is_schedule else arch_pinned_img
         for entry in entries:
             if not isinstance(entry, dict) or not entry.get("pytest-in"):
                 continue
@@ -453,7 +505,12 @@ def problems(files):
                 ok = image in rpm_list
                 named.add("rpm")
             elif job == "RPM and Arch packages / Build Arch package":
-                ok = has_arch and f"BASE=${{1:-{image}}}" in files["build-aux/arch/build.sh"]
+                ok = (
+                    has_arch
+                    and expected_arch_img is not None
+                    and image == expected_arch_img
+                    and f"BASE=${{1:-{pinned_image('archlinux:latest')}}}" in files["build-aux/arch/build.sh"]
+                )
                 named.add("arch")
             else:
                 ok = False
@@ -941,6 +998,16 @@ MUTATIONS = {
         "tests/conftest.py",
         "TESTS = Path(",
         'collect_ignore = ["test_record_toggle.py"]\nTESTS = Path(',
+    ),
+    "source schedule rolling pinned": (
+        "source.yml",
+        ',{"image":"debian:testing","pytest-in":"Debian package / Build .deb (debian:testing)"}',
+        f',{{"image":"{pinned_image("debian:testing")}","pytest-in":"Debian package / Build .deb ({pinned_image("debian:testing")})"}}',
+    ),
+    "packages arch schedule pinned": (
+        "packages.yml",
+        "github.event_name == 'schedule' && 'archlinux:latest'",
+        f"github.event_name == 'schedule' && '{pinned_image('archlinux:latest')}'",
     ),
 }
 

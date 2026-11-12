@@ -410,12 +410,25 @@ def test_green_main_ci_rejects_fork_and_pr_runs_and_paginates():
     )
     assert mod.green_main_ci(api_red, sha) is False
 
-    # Newer failed scheduled CI run on main blocks admission even when earlier push passed.
-    red_schedule = dict(trusted_push_page_2[0], id=600, event="schedule", conclusion="failure")
+    # Newer failed workflow_dispatch CI run on main blocks admission even when earlier push passed.
+    red_dispatch = dict(trusted_push_page_2[0], id=600, event="workflow_dispatch", conclusion="failure")
+    api_dispatch = FakeGitHub(
+        main_sha=sha, ci_pages=[[red_dispatch, trusted_push_page_2[0]]], jobs_by_run={200: green_jobs()}
+    )
+    assert mod.green_main_ci(api_dispatch, sha) is False
+
+    # Scheduled nightly ci.yml runs probe unpinned rolling images outside merge and release gates:
+    # a red schedule run does not block daily test releases when push passed, and a green schedule
+    # run alone cannot authorize admission without a pinned push/workflow_dispatch run.
+    red_schedule = dict(trusted_push_page_2[0], id=700, event="schedule", conclusion="failure")
     api_sched = FakeGitHub(
         main_sha=sha, ci_pages=[[red_schedule, trusted_push_page_2[0]]], jobs_by_run={200: green_jobs()}
     )
-    assert mod.green_main_ci(api_sched, sha) is False
+    assert mod.green_main_ci(api_sched, sha) is True
+
+    only_green_schedule = dict(trusted_push_page_2[0], id=800, event="schedule", conclusion="success")
+    api_only_sched = FakeGitHub(main_sha=sha, ci_pages=[[only_green_schedule]], jobs_by_run={800: green_jobs()})
+    assert mod.green_main_ci(api_only_sched, sha) is False
 
 
 def test_version_bump_advances_past_released_tags_and_reserves_drafts_and_failures():

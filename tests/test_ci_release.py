@@ -53,12 +53,18 @@ def test_release_requires_the_exact_commit_and_every_latest_main_workflow():
     # A later failed run cannot borrow an earlier green run's artifacts.
     with pytest.raises(ValueError, match="not green"):
         policy.select_runs(good + [dict(good[0], id=100, conclusion="failure")], "a" * 40)
-    # When both a fast push run and a full-matrix schedule/workflow_dispatch run are green on main,
-    # select_runs prefers the latest full-matrix run so all native package artifacts are present.
-    for full_event in ("schedule", "workflow_dispatch"):
-        dispatched = dict(good[0], id=50, event=full_event)
-        later_push = dict(good[0], id=60, event="push")
-        assert policy.select_runs([dispatched, later_push], "a" * 40)["ci.yml"]["id"] == 50
+    # When both a fast push run and a full-matrix workflow_dispatch run are green on main,
+    # select_runs prefers the latest full-matrix run so all pinned native package artifacts are present.
+    dispatched = dict(good[0], id=50, event="workflow_dispatch")
+    later_push = dict(good[0], id=60, event="push")
+    assert policy.select_runs([dispatched, later_push], "a" * 40)["ci.yml"]["id"] == 50
+    # Scheduled nightly runs probe unpinned rolling base images outside merge and release gates:
+    # they neither block nor supply release artifacts.
+    red_schedule = dict(good[0], id=70, event="schedule", conclusion="failure")
+    green_schedule = dict(good[0], id=80, event="schedule", conclusion="success")
+    assert policy.select_runs([later_push, red_schedule, green_schedule], "a" * 40)["ci.yml"]["id"] == 60
+    with pytest.raises(ValueError, match="No main run"):
+        policy.select_runs([green_schedule], "a" * 40)
 
 
 def test_release_requires_every_job_green_and_the_build_and_meson_test_jobs_present():

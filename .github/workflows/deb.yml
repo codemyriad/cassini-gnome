@@ -28,12 +28,13 @@ jobs:
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
     timeout-minutes: 30
     # Each active build is required (G11) and runs the pytest suite its Source
-    # distro job leaves to it. PR and main pushes gate on ubuntu:26.04; nightly
-    # and full-ci runs also build and prove debian:testing.
+    # distro job leaves to it. PR and main pushes gate on ubuntu:26.04; full-ci
+    # and dispatch runs build pinned debian:testing, while nightly schedule runs
+    # probe unpinned debian:testing outside merge and release gates.
     strategy:
       fail-fast: false
       matrix:
-        base: ${{ inputs.deb_testing && fromJSON('["ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96", "debian:testing@sha256:2d46f43b677a047cfab870549eea0d83d0a9bea2f55b3f481efc901043916c2a"]') || fromJSON('["ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96"]') }}
+        base: ${{ inputs.deb_testing && (github.event_name == 'schedule' && fromJSON('["ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96", "debian:testing"]') || fromJSON('["ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96", "debian:testing@sha256:2d46f43b677a047cfab870549eea0d83d0a9bea2f55b3f481efc901043916c2a"]')) || fromJSON('["ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96"]') }}
     steps:
       - uses: actions/checkout@v7
         with:

@@ -1012,6 +1012,7 @@ def test_all_ci_container_images_are_digest_pinned_and_bump_script_validates(tmp
         pin_images.PINS_FILE.as_posix(),
         *pin_images.IMAGE_TARGETS,
         *pin_images.HARNESS_WORKFLOWS,
+        *pin_images.RELEASE_GATE_SCRIPTS,
         *[p.relative_to(ROOT).as_posix() for p in (ROOT / ".github/workflows").glob("*.yml")],
         *[
             p.relative_to(ROOT).as_posix()
@@ -1025,7 +1026,8 @@ def test_all_ci_container_images_are_digest_pinned_and_bump_script_validates(tmp
         shutil.copy(ROOT / rel, dst)
     assert pin_images.check_repo(tmp_path) == []
 
-    # Deterministic bump rewrites image-pins.json and all target files cleanly.
+    # Deterministic bump rewrites image-pins.json and all target files cleanly while keeping
+    # scheduled nightly rolling legs unpinned (Codex #389).
     import hashlib
 
     def fake_resolver(tag: str) -> dict[str, str]:
@@ -1035,14 +1037,37 @@ def test_all_ci_container_images_are_digest_pinned_and_bump_script_validates(tmp
 
     pin_images.bump_repo(root=tmp_path, resolver=fake_resolver)
     assert pin_images.check_repo(tmp_path) == []
-    # rpm-canary.yml intentionally stays unpinned fedora:latest.
+    # rpm-canary.yml intentionally stays unpinned fedora:latest, and scheduled nightly rolling
+    # legs in source.yml / deb.yml / packages.yml remain unpinned after --bump.
     assert "build-aux/rpm/build.sh fedora:latest" in (tmp_path / ".github/workflows/rpm-canary.yml").read_text()
+    bumped_source = (tmp_path / ".github/workflows/source.yml").read_text()
+    assert '{"image":"fedora:latest"},{"image":"alpine:edge"}' in bumped_source
+    assert ',{"image":"debian:testing","pytest-in":"Debian package / Build .deb (debian:testing)"}' in bumped_source
+    assert (
+        ',{"image":"registry.opensuse.org/opensuse/tumbleweed:latest",'
+        '"pytest-in":"RPM and Arch packages / Build .rpm (registry.opensuse.org/opensuse/tumbleweed:latest)"}'
+    ) in bumped_source
+    assert ',{"image":"archlinux:latest","pytest-in":"RPM and Arch packages / Build Arch package"}' in bumped_source
+    assert ', "debian:testing"]' in (tmp_path / ".github/workflows/deb.yml").read_text()
+    bumped_packages = (tmp_path / ".github/workflows/packages.yml").read_text()
+    assert '{"base":"registry.opensuse.org/opensuse/tumbleweed:latest","name":"opensuse"}' in bumped_packages
+    assert "github.event_name == 'schedule' && 'archlinux:latest'" in bumped_packages
 
-    # Unpinning a workflow container, Dockerfile FROM, ARG BASE, or drifting CASSINI_HARNESS_BASES fails --check.
+    # Unpinning a PR/main/release image, pinning a nightly schedule rolling leg, or admitting
+    # schedule into release gates fails --check.
+    bumped_pins = pin_images.load_pins(tmp_path)["images"]
     mutations = [
         (
             ".github/workflows/build.yml",
             lambda s: re.sub(r"container: ubuntu:26\.04@sha256:[0-9a-f]{64}", "container: ubuntu:26.04", s),
+        ),
+        (
+            ".github/workflows/daily-test-release.yml",
+            lambda s: re.sub(
+                r"registry\.opensuse\.org/opensuse/tumbleweed:latest@sha256:[0-9a-f]{64}",
+                "registry.opensuse.org/opensuse/tumbleweed:latest",
+                s,
+            ),
         ),
         (
             ".github/workflows/flatpak.yml",
@@ -1059,6 +1084,51 @@ def test_all_ci_container_images_are_digest_pinned_and_bump_script_validates(tmp
         (
             "build-aux/deb/Dockerfile",
             lambda s: re.sub(r"ARG BASE=ubuntu:26\.04@sha256:[0-9a-f]{64}", "ARG BASE=ubuntu:26.04", s),
+        ),
+        (
+            ".github/workflows/source.yml",
+            lambda s: s.replace(
+                '{"image":"fedora:latest"},{"image":"alpine:edge"}',
+                f'{{"image":"fedora:latest@{bumped_pins["fedora:latest"]["digest"]}"}},{{"image":"alpine:edge"}}',
+            ),
+        ),
+        (
+            ".github/workflows/deb.yml",
+            lambda s: s.replace(
+                ', "debian:testing"]',
+                f', "debian:testing@{bumped_pins["debian:testing"]["digest"]}"]',
+            ),
+        ),
+        (
+            ".github/workflows/packages.yml",
+            lambda s: s.replace(
+                '{"base":"registry.opensuse.org/opensuse/tumbleweed:latest","name":"opensuse"}',
+                (
+                    f'{{"base":"registry.opensuse.org/opensuse/tumbleweed:latest@'
+                    f'{bumped_pins["registry.opensuse.org/opensuse/tumbleweed:latest"]["digest"]}","name":"opensuse"}}'
+                ),
+            ),
+        ),
+        (
+            ".github/workflows/packages.yml",
+            lambda s: s.replace(
+                "github.event_name == 'schedule' && 'archlinux:latest'",
+                f"github.event_name == 'schedule' && 'archlinux:latest@{bumped_pins['archlinux:latest']['digest']}'",
+            ),
+        ),
+        (
+            "build-aux/ci/green_main.py",
+            lambda s: s.replace(
+                'MAIN_EVENTS = ("push", "workflow_dispatch")',
+                'MAIN_EVENTS = ("push", "schedule", "workflow_dispatch")',
+            ),
+        ),
+        (
+            "build-aux/ci/daily_test_release.py",
+            lambda s: s.replace(
+                'TRUSTED_CI_EVENTS = {"push", "workflow_dispatch"}',
+                'TRUSTED_CI_EVENTS = {"push", "schedule", "workflow_dispatch"}',
+            ),
         ),
     ]
     for rel, mutate in mutations:

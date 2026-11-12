@@ -9,8 +9,10 @@ import subprocess
 from pathlib import Path
 
 WORKFLOWS = ("ci.yml",)
-MAIN_EVENTS = ("push", "schedule", "workflow_dispatch")
-FULL_MATRIX_EVENTS = ("schedule", "workflow_dispatch")
+# Scheduled nightly ci.yml runs probe unpinned rolling base images outside merge
+# and release gates; releases only accept pinned push / workflow_dispatch runs.
+MAIN_EVENTS = ("push", "workflow_dispatch")
+FULL_MATRIX_EVENTS = ("workflow_dispatch",)
 # flatpak-stable is never shipped (D45.4); it proves main built, validated
 # and smoke-tested the stable Flatpak profile, which CI keeps as a check.
 PACKAGES = {"deb-0", "deb-1", "rpm-fedora", "rpm-opensuse", "arch", "flatpak-stable"}
