@@ -34,15 +34,21 @@ inputs() {
   case $1 in
     deb) echo build-aux/deb/Dockerfile debian/control ;;
     rpm) echo build-aux/rpm/cassini-talk.spec build-aux/ci/prepare_tumbleweed.sh ;;
-    source) echo build-aux/install-deps.sh ;;
+    source) echo build-aux/install-deps.sh build-aux/ci/prepare_tumbleweed.sh ;;
     *) echo "unknown kind: $1" >&2; return 2 ;;
   esac
 }
 
 tag() {  # KIND BASE
   case $2 in *@sha256:*) ;; *) return 1 ;; esac
+  # The spec's Version: line is left out: daily_test_release.py stamps it on every beta build, and the
+  # BuildRequires the image holds do not depend on it.
+  command -v sed >/dev/null && command -v sha256sum >/dev/null || { echo "tag needs sed and sha256sum" >&2; return 1; }
   # shellcheck disable=SC2046 # one file per word
-  hash=$({ cat $(inputs "$1") build-aux/ci/ci-image.sh; printf 'base=%s\n' "$2"; } | sha256sum | cut -c1-16)
+  hash=$({ cat $(inputs "$1") build-aux/ci/ci-image.sh | sed 's/^Version:.*/Version: (not hashed)/'
+           printf 'base=%s\n' "$2"; } | sha256sum | cut -c1-16)
+  # A failed read upstream of the pipe hashes nothing (the empty input's digest): never name an image so.
+  [ "$hash" != e3b0c44298fc1c14 ] || { echo "could not read the image inputs" >&2; return 1; }
   name="$1-$(image_slug "$2")-$hash-$EPOCH"
   [ ${#name} -le 128 ] || { echo "image tag over 128 characters: $name" >&2; return 1; }
   echo "$REPO:$name"
@@ -87,13 +93,15 @@ RUN set -eu; . /tmp/cassini-ci/retry.sh; spec=/tmp/cassini-ci/cassini-talk.spec;
 DOCKERFILE
       ;;
     source)
-      cp build-aux/install-deps.sh build-aux/ci/retry.sh "$2/"
+      cp build-aux/install-deps.sh build-aux/ci/prepare_tumbleweed.sh build-aux/ci/retry.sh "$2/"
       cat > "$2/Dockerfile" <<'DOCKERFILE'
 ARG BASE
 FROM ${BASE}
-COPY install-deps.sh retry.sh /tmp/cassini-ci/
-# The same install as build-aux/check-distros.sh, which skips it when this marker exists.
+COPY install-deps.sh prepare_tumbleweed.sh retry.sh /tmp/cassini-ci/
+# The same steps as build-aux/check-distros.sh: align a Tumbleweed container's snapshot first (a no-op
+# elsewhere), then install-deps.sh, which check-distros.sh skips when this marker exists.
 RUN set -eu; . /tmp/cassini-ci/retry.sh; \
+    retry sh /tmp/cassini-ci/prepare_tumbleweed.sh; \
     if command -v dnf >/dev/null 2>&1; then retry sh /tmp/cassini-ci/install-deps.sh --all --yes --required-only; dnf clean all; \
     else retry sh /tmp/cassini-ci/install-deps.sh --all --yes; fi; \
     rm -rf /tmp/cassini-ci /var/lib/apt/lists/*; touch /etc/cassini-deps-installed

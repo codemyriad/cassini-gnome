@@ -1766,7 +1766,7 @@ def test_ci_image_tag_is_pinned_only_and_input_hashed(tmp_path):
     # No podman or docker on PATH (as inside the package and source containers): naming a tag needs neither.
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for tool in ("sh", "cat", "sha256sum", "cut", "tr", "dirname", "date"):
+    for tool in ("sh", "cat", "sed", "sha256sum", "cut", "tr", "dirname", "date"):
         (bin_dir / tool).symlink_to(shutil.which(tool))
     env = {k: v for k, v in os.environ.items() if k != "CONTAINER_ENGINE"}
     env |= {"CASSINI_HARNESS_EPOCH": "2026-W46", "PATH": str(bin_dir)}
@@ -1778,3 +1778,42 @@ def test_ci_image_tag_is_pinned_only_and_input_hashed(tmp_path):
     ).stdout
     assert other and other != tag
     assert subprocess.run(["sh", script, "tag", "rpm", "fedora:latest"], capture_output=True, env=env).returncode != 0
+
+
+def test_ci_image_rpm_tag_ignores_the_stamped_version_but_not_build_requires(tmp_path):
+    # daily_test_release.py stamps the spec's Version: on every beta build; the prebuilt RPM image must
+    # still match, while a BuildRequires change names a new image.
+    for rel in (
+        "build-aux/ci/ci-image.sh",
+        "build-aux/container.sh",
+        "build-aux/ci/retry.sh",
+        "build-aux/rpm/cassini-talk.spec",
+        "build-aux/ci/prepare_tumbleweed.sh",
+    ):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / rel, tmp_path / rel)
+    spec = tmp_path / "build-aux/rpm/cassini-talk.spec"
+    env = {**os.environ, "CASSINI_HARNESS_EPOCH": "2026-W46", "CONTAINER_ENGINE": "true"}
+    base = "fedora:44@sha256:" + "0" * 64
+
+    def tag():
+        cmd = ["sh", str(tmp_path / "build-aux/ci/ci-image.sh"), "tag", "rpm", base]
+        return subprocess.run(cmd, capture_output=True, text=True, env=env, check=True).stdout
+
+    before = tag()
+    text = spec.read_text()
+    assert re.search(r"^Version:\s*\S+", text, re.M)
+    spec.write_text(re.sub(r"^Version:\s*\S+", "Version:        0.9.9~beta.20261113", text, count=1, flags=re.M))
+    assert tag() == before
+    spec.write_text(spec.read_text() + "BuildRequires:  cassini-test-only-package\n")
+    assert tag() != before
+
+
+def test_ci_image_source_aligns_tumbleweed_before_install_deps():
+    # As check-distros.sh does: prepare_tumbleweed.sh first (a no-op off Tumbleweed), and it is hashed.
+    text = (ROOT / "build-aux/ci/ci-image.sh").read_text()
+    source = text[text.index("    source)\n      cp ") :]
+    assert source.index("prepare_tumbleweed.sh; ") < source.index("install-deps.sh --all")
+    assert re.search(r"source\) echo [^;]*build-aux/ci/prepare_tumbleweed\.sh", text)
+    checks = (ROOT / "build-aux/check-distros.sh").read_text()
+    assert checks.index("prepare_tumbleweed.sh") < checks.index("install-deps.sh --all")
