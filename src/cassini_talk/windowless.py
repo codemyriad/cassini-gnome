@@ -17,20 +17,31 @@ class WindowlessBackground:
     def refresh(self, recording_message="", timer=""):
         app = self.app
         windowless = not any(window.get_visible() for window in app.get_windows())
-        from .capture_guard import capture_targets
+        from .capture_guard import capture_saving_only, capture_targets
 
-        recording = bool(recording_message) or any(capture_targets(app))
+        saving = capture_saving_only(app)
+        recording = bool(recording_message) or saving or any(capture_targets(app))
         indicator = getattr(app, "status_notifier", None)
-        if recording and not recording_message:
+        if saving:
+            recording_message = text("details.end.saving")
+            timer = text("states.badge.saving")
+        elif recording and not recording_message:
             from .ux_formats import live_big
 
             recording_message = (
-                indicator.message if indicator and indicator.recording else text("hidden.status", liveBig=live_big(0))
+                indicator.message
+                if indicator and indicator.recording and not getattr(indicator, "saving", False)
+                else text("hidden.status", liveBig=live_big(0))
             )
-            timer = indicator.label if indicator and indicator.recording else live_big(0)
+            timer = (
+                indicator.label
+                if indicator and indicator.recording and not getattr(indicator, "saving", False)
+                else live_big(0)
+            )
         if indicator:
             indicator.update(
                 recording=recording,
+                saving=saving,
                 message=recording_message,
                 label=timer if recording else "",
                 windowless=windowless,

@@ -9,7 +9,14 @@ from dataclasses import replace
 from gi.repository import Gio, GLib, Gtk
 
 from . import ux_formats as fmt
-from .capture_guard import browser_capture_busy, capture_targets, native_recorders, recorder_busy
+from .capture_guard import (
+    browser_capture_busy,
+    capture_saving_only,
+    capture_targets,
+    native_recorders,
+    recorder_busy,
+    recorder_stopping,
+)
 from .i18n import gettext as _
 from .recording_details import SilenceClock, edit_recording, live_meeting, live_observation
 from .session_events import meeting_sources, read_events, source_state
@@ -18,7 +25,8 @@ from .strings import text
 LOG = logging.getLogger(__name__)
 
 
-def notification_payload(meeting, elapsed, *, native=False, tz=None):
+def notification_payload(meeting, elapsed, *, native=False, saving=False, tz=None):
+    saving = bool(saving or getattr(meeting, "lifecycle", None) == "saving")
     body = meeting.title
     if meeting.started_at_ms is not None:
         body += "\n" + text(
@@ -27,13 +35,18 @@ def notification_payload(meeting, elapsed, *, native=False, tz=None):
                 meeting.started_at_ms, tz=tz or fmt.local_timezone(GLib.TimeZone.new_local().get_identifier())
             ),
         )
-    payload = dict(
-        title=text("recording.background.notification"),
-        body=body,
-        buttons=[
+    buttons = (
+        [dict(label=text("common.show"), action="app.open-recording")]
+        if saving
+        else [
             dict(label=text("common.stop"), action="app.stop-recording"),
             dict(label=text("common.show"), action="app.open-recording"),
-        ],
+        ]
+    )
+    payload = dict(
+        title=text("details.end.saving" if saving else "recording.background.notification"),
+        body=body,
+        buttons=buttons,
         defaultAction="app.open-recording",
     )
     if meeting_sources(meeting).fallback:
@@ -106,7 +119,7 @@ class RecordingComfort:
             if recorder_busy(native) and native.session:
                 directory = native.session.directory
                 native_directories.add(directory)
-                load(directory, "saving" if native.stopping else "recording")
+                load(directory, "saving" if recorder_stopping(native) else "recording")
         snapshots = [getattr(self.app, "_browser_snapshot", {})]
         for window in self.app.get_windows():
             controllers.update(getattr(window, "_activity", {}))
@@ -235,14 +248,31 @@ class RecordingComfort:
             state.update(line=native.line, minutes=native.minutes_left)
             self._disk_notification(None, native.line, native.minutes_left, key=key)
         self._refresh_pages()
-        recording = bool(meetings) or any(capture_targets(self.app))
+        self.refresh_background(meetings)
+        return True
+
+    def refresh_background(self, meetings=None):
+        if meetings is None:
+            meetings = self.active()
+        saving = capture_saving_only(self.app)
+        recording = bool(meetings) or saving or any(capture_targets(self.app))
         meeting = min(
             meetings.values(),
-            key=lambda m: (m.started_at_ms if m.started_at_ms is not None else float("inf"), m.key),
+            key=lambda m: (
+                m.lifecycle == "saving",
+                m.started_at_ms if m.started_at_ms is not None else float("inf"),
+                m.key,
+            ),
             default=None,
         )
-        timer = fmt.live_big(self.elapsed(meeting) if meeting else 0) if recording else ""
-        status = text("hidden.status", liveBig=timer) if recording else ""
+        if saving:
+            timer = text("states.badge.saving")
+            status = text("details.end.saving")
+        elif recording:
+            timer = fmt.live_big(self.elapsed(meeting) if meeting else 0)
+            status = text("hidden.status", liveBig=timer)
+        else:
+            timer = status = ""
         self.app.windowless_background.refresh(status, timer)
         hidden = recording and not any(w.get_visible() for w in self.app.get_windows())
         if hidden:
@@ -251,6 +281,7 @@ class RecordingComfort:
                     meeting,
                     self.elapsed(meeting),
                     native=self.sources(meeting).source != "browser",
+                    saving=saving,
                     tz=next((w.tz for w in self.app.get_windows() if hasattr(w, "tz")), None),
                 )
                 if (
@@ -261,13 +292,19 @@ class RecordingComfort:
             else:
                 # A new capture can precede Library discovery. Its controls
                 # must already be available when the last window is hidden.
-                payload = dict(
-                    title=text("recording.background.notification"),
-                    body=text("recording.background.notification"),
-                    buttons=[
+                title = text("details.end.saving" if saving else "recording.background.notification")
+                buttons = (
+                    [dict(label=text("common.show"), action="app.open-recording")]
+                    if saving
+                    else [
                         dict(label=text("common.stop"), action="app.stop-recording"),
                         dict(label=text("common.show"), action="app.open-recording"),
-                    ],
+                    ]
+                )
+                payload = dict(
+                    title=title,
+                    body=title,
+                    buttons=buttons,
                     defaultAction="app.open-recording",
                 )
             self.last_payload = payload
@@ -284,7 +321,6 @@ class RecordingComfort:
         if not hidden and self.notification_visible:
             self.app.withdraw_notification("recording")
             self.notification_visible = False
-        return True
 
     def _loaded(self, key, future):
         self.loading.pop(key, None)

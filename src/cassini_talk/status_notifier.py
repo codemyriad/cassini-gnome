@@ -66,13 +66,18 @@ MENU_XML = """<node><interface name="com.canonical.dbusmenu">
 </interface></node>"""
 
 
-def menu_rows(message, recording):
+def menu_rows(message, recording, *, saving=False):
     # Stable IDs let the desktop retain selection while the timer changes.
+    active = bool(recording or saving)
     return {
         0: {"children-display": "submenu"},
         1: dict(label=message, enabled=False, visible=True),
         2: dict(label=text("hidden.openCassini"), enabled=True, visible=True),
-        3: dict(label=text("hidden.menu.stopRecording"), enabled=recording, visible=recording),
+        3: dict(
+            label=text("states.badge.saving" if saving else "hidden.menu.stopRecording"),
+            enabled=bool(recording and not saving),
+            visible=active,
+        ),
         4: dict(type="separator", visible=True),
         5: dict(label=text("hidden.menu.quit"), enabled=True, visible=True),
     }
@@ -117,7 +122,7 @@ class StatusNotifier:
         self.generation = self.revision = 0
         self.served_revision = -1
         self.retry_timer = 0
-        self.wanted = self.recording = False
+        self.wanted = self.recording = self.saving = False
         self.message = text("hidden.status.watching")
         self.label = ""  # Ayatana panel text: the live timer, empty when idle.
         self.rows = menu_rows(self.message, False)
@@ -159,16 +164,25 @@ class StatusNotifier:
         )
         return GLib.SOURCE_REMOVE
 
-    def update(self, *, recording, message="", label="", windowless=False, automatic=False):
-        wanted = bool(recording or (windowless and automatic))
-        message = message or text("hidden.status.watching")
-        label = label if recording else ""
-        previous = self.wanted, self.recording, self.message, self.label
-        self.wanted, self.recording, self.message, self.label = wanted, bool(recording), message, label
-        if previous == (self.wanted, self.recording, self.message, self.label) or self.closed:
+    def update(self, *, recording, message="", label="", windowless=False, automatic=False, saving=False):
+        saving = bool(saving)
+        active = bool(recording or saving)
+        wanted = bool(active or (windowless and automatic))
+        message = message or (text("details.end.saving") if saving else text("hidden.status.watching"))
+        label = (label or text("states.badge.saving")) if saving else (label if recording else "")
+        prev_saving = getattr(self, "saving", False)
+        previous = self.wanted, self.recording, prev_saving, self.message, self.label
+        self.wanted, self.recording, self.saving, self.message, self.label = (
+            wanted,
+            active,
+            saving,
+            message,
+            label,
+        )
+        if previous == (self.wanted, self.recording, self.saving, self.message, self.label) or self.closed:
             return
-        rows, self.rows = self.rows, menu_rows(message, self.recording)
-        layout_changed = previous[1] != self.recording
+        rows, self.rows = self.rows, menu_rows(message, active, saving=saving)
+        layout_changed = (previous[1] != self.recording) or (previous[2] != self.saving)
         if layout_changed:
             self.revision = (self.revision + 1) % (2**32)
         self._ensure()
@@ -191,7 +205,7 @@ class StatusNotifier:
             )
         for signal in ("NewTitle", "NewToolTip"):
             self.bus.emit_signal(None, ITEM_PATH, ITEM, signal, None)
-        if previous[3] != self.label:
+        if previous[4] != self.label:
             # Ubuntu's AppIndicator host renders this text beside the icon.
             self.bus.emit_signal(
                 None, ITEM_PATH, ITEM, "XAyatanaNewLabel", GLib.Variant("(ss)", (self.label, self.label_guide))

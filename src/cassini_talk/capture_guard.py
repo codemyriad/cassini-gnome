@@ -18,6 +18,57 @@ def recorder_busy(recorder):
     )
 
 
+def recorder_stopping(recorder):
+    return recorder_busy(recorder) and bool(
+        getattr(recorder, "stopping", False)
+        or getattr(recorder, "_finishing", False)
+        or getattr(recorder, "_stop_requested", False)
+    )
+
+
+def capture_saving_only(app):
+    """True when every active capture is already stopping/saving and none still records."""
+    from pathlib import Path
+
+    from .capture_activity import advance_capture_snapshot, retired_captures, standing_broker_caches
+    from .library import meeting_id
+
+    if getattr(app, "_record_start_future", None):
+        return False
+    recorders = [r for r in native_recorders(app) if recorder_busy(r)]
+    if any(not recorder_stopping(r) for r in recorders):
+        return False
+    browser_stops = getattr(app, "_browser_stops", ())
+    saving = bool(recorders) or bool(browser_stops)
+    stop_all_browser = None in browser_stops
+    stopping_ids = {
+        identifier for entry in browser_stops if isinstance(entry, str) and (identifier := meeting_id(Path(entry)))
+    }
+    app_stands, sources = standing_broker_caches(app)
+    retired = retired_captures(app) | stopping_ids
+    snapshots = [app, *app.get_windows()] if app_stands else []
+    for target in snapshots:
+        for status in advance_capture_snapshot(app, getattr(target, "_browser_snapshot", {})).get("statuses", []):
+            if not browser_capture_busy(status):
+                continue
+            path = status.get("path")
+            identifier = meeting_id(Path(path)) if isinstance(path, str) else None
+            if status.get("stopping") or stop_all_browser or (identifier and identifier in retired):
+                saving = True
+            else:
+                return False
+    phases = getattr(app, "_browser_capture_phases", {})
+    for source in sources:
+        for identifier, state in (getattr(source, "snapshot", None) or {}).items():
+            if phases.get(identifier) == "finished":
+                continue
+            if state == "saving" or phases.get(identifier) == "stopping" or stop_all_browser or identifier in retired:
+                saving = True
+            elif state == "recording":
+                return False
+    return saving
+
+
 def browser_capture_busy(status):
     """PCM Stop still owns capture audio until publication/retirement finishes."""
     return bool(status.get("recording") or status.get("stopping"))

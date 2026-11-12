@@ -152,7 +152,8 @@ class NativeRecorder(GObject.Object):
     def activity(self):
         if self.session is None or not (self.pipeline is not None or self.starting or self.stopping or self._finishing):
             return {}
-        return {self.session.manifest["id"]: "saving" if self.stopping else "recording"}
+        stopping = self.stopping or self._finishing or self._stop_requested
+        return {self.session.manifest["id"]: "saving" if stopping else "recording"}
 
     def start(self, parent=None, *, test=False, observe_output=True):
         """test: tone sources instead of Pulse; observe_output=False: no mute
@@ -242,6 +243,8 @@ class NativeRecorder(GObject.Object):
             if self.session is not None:
                 self._begin_finish(str(error))
             else:
+                self._stop_requested = False
+                self.emit("changed")
                 self.emit("error", str(error))
                 self.emit("finished", "")
         return False
@@ -1165,11 +1168,17 @@ class NativeRecorder(GObject.Object):
         self.end_reason = self.end_reason or "user"
         self._mark_stop()
         if self.starting:
+            changed = not self._stop_requested
             self._stop_requested = True
             self._open_wake.set()
+            if changed:
+                self.emit("changed")
             return
         if self._changing_sources:
+            changed = not self._stop_requested
             self._stop_requested = True
+            if changed:
+                self.emit("changed")
             return
         if self.pipeline is None or self.stopping:
             return
@@ -1338,7 +1347,7 @@ class NativeRecorder(GObject.Object):
                 del self._bus_handler
         self.pipeline = None
         self._retired_branches.clear()
-        self.stopping = self._finishing = False
+        self.stopping = self._finishing = self._stop_requested = False
         self.levels = [0.0, 0.0]
         self.emit("changed")
         if problem:

@@ -486,3 +486,51 @@ def test_refresh_during_old_observation_is_coalesced_and_retirement_cancels_it(
     finally:
         close(comfort)
         capture.stop()
+
+
+def test_saving_state_switches_hidden_notification_and_windowless_status_immediately(tmp_path, monkeypatch):
+    from cassini_talk.capture_guard import capture_saving_only
+    from cassini_talk.windowless import WindowlessBackground
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    capture = session(tmp_path, "31-minute Teams call", "chromium")
+    browser = dict(statuses=[dict(recording=True, stopping=False, path=str(capture.directory))])
+    app = application({}, browser=browser)
+    app._browser_stops = set()
+    app._browser_capture_phases = {}
+    app._auto_recording_held = False
+    app._quitting = False
+    app.in_flatpak = False
+    app.background_recording = SimpleNamespace(granted=True, status=lambda *_: None)
+    indicator_updates = []
+    app.status_notifier = SimpleNamespace(
+        recording=False,
+        saving=False,
+        message="",
+        label="",
+        available=True,
+        registering=False,
+        update=lambda **kw: indicator_updates.append(kw),
+    )
+    app.windowless_background = WindowlessBackground(app)
+    comfort = RecordingComfort(app, automatic=False)
+    comfort.known[capture.directory.name] = live_meeting(capture.directory)
+    try:
+        assert not capture_saving_only(app)
+        comfort.tick()
+        assert comfort.last_payload["title"] == "Cassini is recording"
+        assert [b["label"] for b in comfort.last_payload["buttons"]] == ["Stop", "Show"]
+        assert indicator_updates[-1]["saving"] is False
+
+        # User clicks Stop while muxing is still in flight:
+        app._browser_stops.add(str(capture.directory))
+        assert capture_saving_only(app)
+        comfort.refresh_background()
+        assert comfort.last_payload["title"] == "Saving the recording"
+        assert [b["label"] for b in comfort.last_payload["buttons"]] == ["Show"]
+        assert indicator_updates[-1]["saving"] is True
+        assert indicator_updates[-1]["message"] == "Saving the recording"
+        assert indicator_updates[-1]["label"] == "Saving…"
+    finally:
+        close(comfort)
+        capture.finish()

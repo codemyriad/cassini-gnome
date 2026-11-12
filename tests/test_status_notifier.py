@@ -210,5 +210,27 @@ def test_ayatana_label_shows_the_live_timer_and_clears_when_idle():
     notifier.update(recording=True, message="Recording, 00:00:02", label="00:00:02")
     assert labels() == [("00:00:01", "00:00:00"), ("00:00:02", "00:00:00")]
     assert prop("XAyatanaLabel") == "00:00:02" and prop("XAyatanaLabelGuide") == "00:00:00"
+    notifier.update(recording=True, saving=True)
+    assert labels()[-1] == ("Saving…", "Saving…") and prop("XAyatanaLabel") == "Saving…"
+    assert prop("Title") == "Saving the recording"
+    assert notifier.rows[3] == dict(label="Saving…", enabled=False, visible=True)
+    assert notifier._event(3, "clicked") and notifier.rows[1]["label"] == "Saving the recording"
     notifier.update(recording=False, message="", label="00:00:02", windowless=True, automatic=True)
     assert labels()[-1] == ("", "") and prop("XAyatanaLabel") == "", "an idle panel shows only the icon"
+
+
+def test_saving_state_disables_stop_in_cached_dbusmenu_host():
+    notifier = live_notifier()
+    host = notifier.bus
+    calls = []
+    notifier.app = SimpleNamespace(
+        activate=lambda: calls.append("open"), activate_action=lambda name, _: calls.append(name)
+    )
+    notifier.activation_token = ""
+    notifier.update(recording=True, message="Recording, 00:12")
+    assert host.cache[3] == dict(label="Stop Recording", enabled=True, visible=True)
+    notifier.update(recording=True, saving=True)
+    assert host.cache[1]["label"] == "Saving the recording"
+    assert host.cache[3] == dict(label="Saving…", enabled=False, visible=True)
+    notifier._event(3, "clicked")
+    assert calls == [], "Clicking disabled Saving… menu row must not re-trigger stop-recording"
