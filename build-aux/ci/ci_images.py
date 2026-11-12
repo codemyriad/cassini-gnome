@@ -283,7 +283,8 @@ def _verify_built_image(engine: str, spec: PrebuiltSpec, image_ref: str, *, runn
             "sh",
             "-ec",
             f"test -r /etc/os-release && test -e {spec.marker}",
-        ]
+        ],
+        stdout=sys.stderr,
     )
     if check.returncode != 0:
         raise RuntimeError(f"{image_ref}: offline verification failed for marker {spec.marker}")

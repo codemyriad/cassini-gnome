@@ -194,7 +194,10 @@ def run_with_retry(
     run_env: Mapping[str, str] | None = None,
     runner=subprocess.run,
 ) -> bool:
-    kwargs = {"env": dict(run_env)} if run_env is not None else {}
+    # CLI callers capture stdout for $GITHUB_ENV or $(...); keep engine output on stderr.
+    kwargs: dict[str, object] = {"stdout": sys.stderr}
+    if run_env is not None:
+        kwargs["env"] = dict(run_env)
     for attempt in range(1, attempts + 1):
         res = runner(cmd, **kwargs)
         if res.returncode == 0:

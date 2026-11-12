@@ -230,6 +230,7 @@ def test_pull_and_prepare_isolate_ghcr_auth_and_fall_back_to_local_build(tmp_pat
             (cfg_dir / "config.json").write_text('{"auths":{"ghcr.io":{}}}')
             return SimpleNamespace(returncode=0)
         if cmd[1] == "pull":
+            assert kwargs.get("stdout") is sys.stderr
             assert env_arg is not None and Path(env_arg["DOCKER_CONFIG"]).is_dir()
             return SimpleNamespace(returncode=0)
         raise AssertionError(f"unexpected command: {cmd}")
@@ -254,8 +255,10 @@ def test_pull_and_prepare_isolate_ghcr_auth_and_fall_back_to_local_build(tmp_pat
         if cmd[1:3] == ["image", "inspect"]:
             return SimpleNamespace(returncode=1)
         if cmd[1] == "pull" and cmd[-1] == expected_ghcr:
+            assert kwargs.get("stdout") is sys.stderr
             return SimpleNamespace(returncode=1)
         if cmd[1] == "pull" and cmd[-1] == ubuntu_ref:
+            assert kwargs.get("stdout") is sys.stderr
             return SimpleNamespace(returncode=0)
         if cmd[1] == "build":
             assert kwargs.get("stdout") is sys.stderr
@@ -272,7 +275,48 @@ def test_pull_and_prepare_isolate_ghcr_auth_and_fall_back_to_local_build(tmp_pat
     assert local_tag == "cassini-ci-local:ubuntu-build"
     assert any(c[1] == "build" and f"BASE={ubuntu_ref}" in c for c in fallback_cmds)
 
-    # 3. Unpinned base reference is rejected by prepare_image.
+    # 3. Real CLI subprocesses never leak `docker pull -q` / `docker build` stdout into $GITHUB_ENV or $(...).
+    for script in ("ci_image_core.py", "ci_images.py", "prepare_build_image.py"):
+        shutil.copy(CI_DIR / script, repo / "build-aux/ci" / script)
+    stub_docker = tmp_path / "stub-docker"
+    stub_docker.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then exit 1; fi\n'
+        'if [ "$1" = "pull" ]; then\n'
+        '  shift; [ "${1:-}" = "-q" ] && shift\n'
+        '  [ "${FAIL_GHCR:-0}" = "1" ] && case "$1" in ghcr.io/*) exit 1 ;; esac\n'
+        '  echo "docker.io/library/$1"\n'
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "build" ]; then echo "building noisy stdout"; exit 0; fi\n'
+        "exit 0\n"
+    )
+    stub_docker.chmod(0o755)
+    cli_env = {**os.environ, "CONTAINER_ENGINE": str(stub_docker)}
+    cli_env.pop("GHCR_READ_TOKEN", None)
+    cli_env.pop("GITHUB_TOKEN", None)
+
+    hit_proc = subprocess.run(
+        [sys.executable, str(repo / "build-aux/ci/ci_images.py"), "pull", "ubuntu-build", ubuntu_ref],
+        env=cli_env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert hit_proc.stdout == f"{expected_ghcr}\n"
+    assert "docker.io/library/" in hit_proc.stderr
+
+    fb_proc = subprocess.run(
+        [sys.executable, str(repo / "build-aux/ci/prepare_build_image.py"), ubuntu_ref],
+        env={**cli_env, "FAIL_GHCR": "1"},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert fb_proc.stdout == "cassini-ci-local:ubuntu-build\n"
+    assert "docker.io/library/" in fb_proc.stderr
+
+    # 4. Unpinned base reference is rejected by prepare_image.
     with pytest.raises(ValueError, match="requires a @sha256-pinned base"):
         ci_images.prepare_image("ubuntu-build", "ubuntu:26.04", root=repo, env={"CONTAINER_ENGINE": "docker"})
 
