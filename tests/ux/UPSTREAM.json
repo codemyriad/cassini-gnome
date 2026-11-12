@@ -233,8 +233,8 @@
     "states-vectors.json": "vectors/states/states-vectors.json"
   },
   "fileCommits": {
-    "diarization/README.md": "b23ab79a6d5a70198c8c70e69894e3400f2e077e",
-    "diarization/SHA256SUMS": "b23ab79a6d5a70198c8c70e69894e3400f2e077e",
-    "diarization/assign-vectors.json": "b23ab79a6d5a70198c8c70e69894e3400f2e077e"
+    "diarization/README.md": "b0e469493197bbb7270179153e937dab89e68910",
+    "diarization/SHA256SUMS": "b0e469493197bbb7270179153e937dab89e68910",
+    "diarization/assign-vectors.json": "b0e469493197bbb7270179153e937dab89e68910"
   }
 }
