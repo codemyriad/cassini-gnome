@@ -162,7 +162,18 @@ def check_interactions(window, page, paint, until):
     result["reindexAnchor"] = True
     # Baseline GtkLabels are not selectable; do not promise whole-document copy.
     assert all(not words.get_selectable() for _, words, _ in page.bound.values())
-    assert not hasattr(page, "search_entry"), "Meeting gained an inline search UI; add parity coverage"
+    before_prefix = list(view.prefix)
+    sample_word = next(w.text.strip(".,?!") for w in model.turns[5].words if len(w.text.strip(".,?!")) >= 4)
+    page.find_entry.set_text(sample_word)
+    until(lambda: bool(page._find_matches))
+    paint(window)
+    active_row = page._find_matches[page._find_index].row_index
+    until(lambda: active_row in page.bound and 'underline="single"' in page.bound[active_row][1].get_label())
+    assert list(view.prefix) == before_prefix, "Find highlight changed ExactTranscript metrics"
+    page.clear_find(focus_transcript=False)
+    until(lambda: not page._find_matches)
+    paint(window)
+    result["inlineFindParity"] = True
     nav = view.navigation
     nav.request(5)
     paint(window)
@@ -432,6 +443,10 @@ def check_interactions(window, page, paint, until):
     paint(window)
     assert "chip-only" in page._speaker_rows
     page._speaker_rows["chip-only"][1].emit("clicked")
+    if chip_model.metadata_editable:
+        assert page.speakers_dialog is not None and not page.speakers_dialog.closed
+        page.speakers_dialog.close()
+        page._listen_speaker("chip-only")
     assert window.listen.active and window.listen.speaker == "chip-only"
     window.listen.stop()
     page.player.pause()

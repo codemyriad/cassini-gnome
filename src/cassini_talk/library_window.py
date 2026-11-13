@@ -19,14 +19,12 @@ from .library import LibrarySnapshot, _sort, meeting_id
 from .library_monitor import LibraryMonitor
 from .listen import ListenController
 from .meeting_page import MeetingPage
-from .meeting_text import row_caption
 from .player import Player
 from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
 from .spectrogram_strip import SpectrogramStrip
 from .status_badge import StatusBadge
 from .strings import text
 from .tokens import speaker_slot
-from .transcript import row_text
 
 
 def label(value, *classes, **kwargs):
@@ -43,9 +41,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.add_css_class("library-window")
         self._pending = True
         self.selected = None
-        self.play_button = None
-        self.read_button = None
         self._preview_key = None
+        self._updating_rows_selection = False
         self._loaded_key = None
         self._loaded_directory = None
         self.snapshot = None
@@ -106,7 +103,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             from pathlib import Path
 
             self._fixture_activity = json.loads(Path(os.environ["CASSINI_SCREENSHOT_ACTIVITY"]).read_text())
-        self.root_box = Gtk.Stack()
+        self.root_box = Gtk.Stack(hhomogeneous=False, vhomogeneous=False)
         self.navigation = Adw.NavigationView()
         self.navigation.add(Adw.NavigationPage.new(self.root_box, text("app.name")))
         self.navigation.connect("popped", self._page_popped)
@@ -149,15 +146,17 @@ class LibraryWindow(Adw.ApplicationWindow):
         for name, callback in (
             ("back-library", self.back_to_library),
             ("search", self.toggle_search),
+            ("find-in-meeting", self._find_in_meeting),
             ("export", self.show_export),
             ("export-zip", self.show_zip_export),
             ("rename", self.show_rename),
+            ("name-speakers", lambda *_: self.meeting_page.name_speakers() if self.meeting_page else None),
             ("move-to-trash", self.move_to_trash),
             ("recording-details", self.show_recording_details),
             ("undo-speaker-merge", lambda *_: self.meeting_page.undo_speaker_merge() if self.meeting_page else None),
             ("play-pause", self._play_selected),
-            ("skip-back", lambda *_: self.player.skip(-10000)),
-            ("skip-forward", lambda *_: self.player.skip(10000)),
+            ("skip-back", lambda *_: self._skip_selected(-10000)),
+            ("skip-forward", lambda *_: self._skip_selected(10000)),
             ("rate-up", lambda *_: self._step_rate(1)),
             ("rate-down", lambda *_: self._step_rate(-1)),
         ):
@@ -167,6 +166,17 @@ class LibraryWindow(Adw.ApplicationWindow):
         rate = Gio.SimpleAction.new_stateful("rate", GLib.VariantType.new("s"), GLib.Variant("s", "1"))
         rate.connect("change-state", self._change_rate)
         self.add_action(rate)
+        find_shortcut = Gtk.ShortcutController(
+            scope=Gtk.ShortcutScope.MANAGED,
+            propagation_phase=Gtk.PropagationPhase.CAPTURE,
+        )
+        find_shortcut.add_shortcut(
+            Gtk.Shortcut.new(
+                Gtk.KeyvalTrigger.new(Gdk.KEY_f, Gdk.ModifierType.CONTROL_MASK),
+                Gtk.CallbackAction.new(lambda *_: self._find_in_meeting()),
+            )
+        )
+        self.add_controller(find_shortcut)
         target = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
         target.connect("drop", self._drop_files)
         self.add_controller(target)
@@ -230,9 +240,47 @@ class LibraryWindow(Adw.ApplicationWindow):
         rename = self.lookup_action("rename")
         if rename:
             rename.set_enabled(self.rename_allowed(meeting))
+        name_speakers = self.lookup_action("name-speakers")
+        if name_speakers:
+            name_speakers.set_enabled(
+                bool(
+                    self.meeting_page
+                    and meeting
+                    and meeting.speakers
+                    and meeting.metadata_editable
+                    and not self.recording_page
+                    and not self.search_page
+                )
+            )
         trash = self.lookup_action("move-to-trash")
         if trash:
             trash.set_enabled(self.get_application().meeting_trash.allowed(meeting, self) and not self._focused_editors)
+
+    @property
+    def play_button(self):
+        return self.meeting_page.play if self.meeting_page is not None else None
+
+    @property
+    def stop_transcription_button(self):
+        return self.meeting_page.stop_transcription_button if self.meeting_page is not None else None
+
+    def is_playable(self, meeting):
+        return bool(
+            meeting
+            and meeting.has_audio
+            and not self._playback_failed
+            and (meeting.audio_file is not None or FolderPlayer.can_play(meeting))
+        )
+
+    def _find_in_meeting(self):
+        if (
+            self.meeting_page is not None
+            and self.meeting_page.find_row.get_visible()
+            and not self.search_page
+            and not self.recording_page
+        ):
+            return self.meeting_page.focus_find()
+        return False
 
     def rename_allowed(self, meeting):
         app = self.get_application()
@@ -474,6 +522,25 @@ class LibraryWindow(Adw.ApplicationWindow):
         button.set_child(Adw.ButtonContent(icon_name="media-record-symbolic", label=text("common.record")))
         return button
 
+    def _primary_menu_button(self, *, flat=False):
+        menu = Gio.Menu()
+        # Existing, undrawn GNOME primary-menu copy is retained (HARMONY 11).
+        menu.append(_("Open…"), "app.open")
+        menu.append(text("common.exportEllipsis"), "win.export")
+        menu.append(text("export.zip.all"), "win.export-zip")
+        menu.append(text("settings.title"), "app.preferences")
+        menu.append(_("_Keyboard Shortcuts"), "app.shortcuts")
+        menu.append(_("_About Cassini").replace("Cassini", text("app.name")), "app.about")
+        button = Gtk.MenuButton(
+            icon_name="open-menu-symbolic",
+            menu_model=menu,
+            tooltip_text=text("common.mainMenu"),
+            primary=True,
+            css_classes=["flat"] if flat else [],
+        )
+        button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.mainMenu")])
+        return button
+
     def _header(self, *, record=False, close=True):
         header = Adw.HeaderBar(
             show_start_title_buttons=False,
@@ -485,19 +552,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         if record:
             header.pack_start(self.capture_controls())
         if close:
-            menu = Gio.Menu()
-            # Existing, undrawn GNOME primary-menu copy is retained (HARMONY 11).
-            menu.append(_("Open…"), "app.open")
-            menu.append(text("common.exportEllipsis"), "win.export")
-            menu.append(text("export.zip.all"), "win.export-zip")
-            menu.append(text("settings.title"), "app.preferences")
-            menu.append(_("_Keyboard Shortcuts"), "app.shortcuts")
-            menu.append(_("_About Cassini").replace("Cassini", text("app.name")), "app.about")
-            button = Gtk.MenuButton(
-                icon_name="open-menu-symbolic", menu_model=menu, tooltip_text=text("common.mainMenu"), primary=True
-            )
-            button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.mainMenu")])
-            header.pack_end(button)
+            header.pack_end(self._primary_menu_button())
             if not record:
                 header.pack_end(Gtk.Button(label=text("common.exportEllipsis"), action_name="win.export"))
         return header
@@ -645,8 +700,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         return stack
 
     def _build_library(self):
-        self.split = Adw.NavigationSplitView(min_sidebar_width=400, max_sidebar_width=400, sidebar_width_fraction=0.36)
-        self.split.set_min_sidebar_width(400)
+        self.split = Adw.NavigationSplitView(min_sidebar_width=320, max_sidebar_width=400, sidebar_width_fraction=0.53)
+        self.split.set_min_sidebar_width(320)
         self.split.set_max_sidebar_width(400)
         self.split.set_sidebar_width_unit(Adw.LengthUnit.PX)
         sidebar = Adw.ToolbarView(css_classes=["library-sidebar"])
@@ -654,20 +709,26 @@ class LibraryWindow(Adw.ApplicationWindow):
             show_start_title_buttons=False, show_end_title_buttons=False, css_classes=["library-header"]
         )
         header.set_title_widget(Gtk.Box())
+        header.pack_start(self._primary_menu_button(flat=True))
         self.capture_header = self.capture_controls()
         controls = self.capture_header._controls
         self.live_timer, self.live_stop = controls["timer"], controls["stop"]
-        header.pack_start(self.capture_header)
-        header.pack_end(self.search_button())
+        header_actions = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
+        header_actions.append(self.capture_header)
+        header_actions.append(self.search_button())
+        header.pack_end(header_actions)
         sidebar.add_top_bar(header)
         self.rows = Gtk.ListBox(
-            selection_mode=Gtk.SelectionMode.BROWSE, activate_on_single_click=False, css_classes=["library-rows"]
+            selection_mode=Gtk.SelectionMode.SINGLE, activate_on_single_click=False, css_classes=["library-rows"]
         )
         self.rows.connect(
             "row-activated", lambda _rows, row: self.open_meeting(row.meeting) if hasattr(row, "meeting") else None
         )
         self._selection_handler = self.rows.connect("row-selected", self._selected)
         list_content = vertical()
+        self.recording_lines = vertical(margin_start=14, margin_end=14, margin_top=8, visible=False)
+        self._recording_line_signature = None
+        list_content.append(self.recording_lines)
         list_content.append(self.rows)
         self.received_hint = label(
             text("received.libraryHint"),
@@ -690,12 +751,38 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.browser_status = BrowserStatus(self.get_application(), self)
         sidebar.add_bottom_bar(self.browser_status)
         self.split.set_sidebar(Adw.NavigationPage.new(sidebar, text("library.listPane.a11y")))
-        content = Adw.ToolbarView()
-        content.add_top_bar(self._header())
-        self.preview = vertical(22, margin_top=36, margin_start=44, margin_end=44, margin_bottom=30)
-        content.set_content(Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, child=self.preview))
-        self.split.set_content(Adw.NavigationPage.new(content, text("library.previewPane.a11y")))
-        self.root_box.add_named(self.split, "library")
+
+        self.detail_stack = Gtk.Stack(vexpand=True, hexpand=True, hhomogeneous=False, vhomogeneous=False)
+        empty_pane = vertical(vexpand=True, hexpand=True, css_classes=["meeting-empty-pane"])
+        empty_bar = Adw.HeaderBar(
+            show_start_title_buttons=False,
+            show_back_button=False,
+            show_end_title_buttons=True,
+            decoration_layout=":close",
+            show_title=False,
+            css_classes=["meeting-topbar"],
+        )
+        empty_pane.append(empty_bar)
+        self.empty_selection_label = label(
+            text("meeting.emptySelection"),
+            "meeting-empty-selection",
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+            vexpand=True,
+            hexpand=True,
+        )
+        empty_pane.append(self.empty_selection_label)
+        self.detail_stack.add_named(empty_pane, "empty")
+        self.meeting_slot = Adw.Bin(vexpand=True, hexpand=True)
+        self.detail_stack.add_named(self.meeting_slot, "meeting")
+        self.detail_stack.set_visible_child_name("empty")
+
+        self.split.set_content(Adw.NavigationPage.new(self.detail_stack, text("library.previewPane.a11y")))
+        responsive = self.breakpoint_bin = Adw.BreakpointBin(child=self.split, width_request=360, height_request=100)
+        narrow = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 760sp"))
+        narrow.add_setter(self.split, "collapsed", True)
+        responsive.add_breakpoint(narrow)
+        self.root_box.add_named(responsive, "library")
 
     def open_pending_recording(self):
         """Open the recording the application just started, once this Library has it live.
@@ -1019,53 +1106,6 @@ class LibraryWindow(Adw.ApplicationWindow):
 
         return retry
 
-    def _preview_signature(self, meeting):
-        speakers = meeting.preview_speakers
-        return (
-            meeting.key,
-            meeting.title,
-            fmt.preview_subtitle(
-                meeting.display_start,
-                meeting.duration_ms,
-                now_ms=self.now_ms,
-                tz=self.tz,
-                received=meeting.origin == "received",
-            ),
-            speakers,
-            tuple(meeting.speaker_for(turn.speaker) for turn in meeting.preview_turns),
-            tuple(self.get_application().voice_store.has_match(meeting.directory, s.id) for s in speakers)
-            if meeting.metadata_editable
-            else (),
-            meeting.preview_turns,
-            tuple(
-                (
-                    turn.row.continuation if turn.row is not None else False,
-                    row_caption(turn.row, lambda identifier: meeting.speaker_for(identifier).name)
-                    if turn.row is not None
-                    else "",
-                    row_text(turn.row, lambda identifier: meeting.speaker_for(identifier).name)[0]
-                    if turn.row is not None
-                    else turn.text,
-                )
-                for turn in meeting.preview_turns[:3]
-            ),
-            meeting.has_audio,
-            meeting.legacy_transcript_file,
-            meeting.lifecycle,
-            meeting.interrupted_at_ms,
-            meeting.transcript,
-            (
-                self.get_application().transcription_stopping(meeting)
-                if self.get_application() and hasattr(self.get_application(), "transcription_stopping")
-                else False
-            ),
-            meeting.eta_minutes,
-            meeting.error,
-            meeting.publication_notice,
-            tuple(t.start_offset_ms for t in meeting.tracks),
-            (meeting.metadata.get("received") or {}).get("originalFolderName"),
-        )
-
     def _row_signature(self, meeting):
         badge = meeting.badge()
         return (
@@ -1077,21 +1117,36 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.row_texts(),
         )
 
-    def _signature(self, snapshot):
-        selected = self.selected.key if self.selected else None
-        return (
-            snapshot.unavailable,
-            tuple(
-                (
-                    group.title,
-                    tuple(
-                        (*self._row_signature(m), self._preview_signature(m) if m.key == selected else None)
-                        for m in group.meetings
-                    ),
-                )
-                for group in snapshot.groups(now_ms=self.now_ms, tz=self.tz)
-            ),
-        )
+    def _is_saved_detail_ready(self, meeting):
+        if meeting is None or meeting.lifecycle != "saved":
+            return False
+        app = self.get_application()
+        if app is not None and str(meeting.directory) == getattr(app, "_pending_recording", None):
+            return False
+        return not (self.recording_page or self.search_page or self._external_meeting)
+
+    def _show_right_meeting(self, meeting, *, rebind_player=False, reset_scroll=False):
+        if self.meeting_page is None or self.meeting_page.get_parent() is not self.meeting_slot:
+            if self.meeting_page is not None and not self._external_meeting:
+                self.meeting_page.close()
+            self.meeting_page = MeetingPage(self, meeting)
+            self.meeting_slot.set_child(self.meeting_page)
+        else:
+            if rebind_player and self.meeting_page.player is not self.player:
+                self.meeting_page.rebind_player(self.player)
+            self.meeting_page.select_meeting(meeting, reset_scroll=reset_scroll)
+        self.detail_stack.set_visible_child_name("meeting")
+
+    def _close_right_meeting(self):
+        if self.meeting_page is not None and not self._external_meeting:
+            self.meeting_page.close()
+            self.meeting_page = None
+        if hasattr(self, "meeting_slot"):
+            self.meeting_slot.set_child(None)
+        if hasattr(self, "detail_stack"):
+            self.detail_stack.set_visible_child_name("empty")
+        if hasattr(self, "split"):
+            self.split.set_show_content(False)
 
     def _project_activity(self, snapshot):
         meetings = tuple(
@@ -1145,7 +1200,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.meeting_page and not self._external_meeting:
             current = next((m for m in snapshot.meetings if m.key == self.meeting_page.meeting.key), None)
             if current is None:
-                self.back_to_library()
+                LibraryWindow._close_right_meeting(self)
                 self._stop_playback(clear_selection=True)
             else:
                 if not current.has_audio:
@@ -1209,11 +1264,16 @@ class LibraryWindow(Adw.ApplicationWindow):
                             row.meeting = meeting
                 self._rows_tz = self.tz
                 self._group_layout_key = group_layout_key
-                self._selected(self.rows, self.rows.get_selected_row())
+                self._updating_rows_selection = True
+                try:
+                    self._selected(self.rows, self.rows.get_selected_row())
+                finally:
+                    self._updating_rows_selection = False
                 self._pending = False
                 return
             if groups is None:
                 groups = snapshot.groups(now_ms=self.now_ms, tz=self.tz)
+        was_library = bool(self._list_signature and self._list_signature[0] == "library")
         old = self._pending_selection or (self.selected.key if self.selected else None)
         self.rows.handler_block(self._selection_handler)
         self.rows.remove_all()
@@ -1224,12 +1284,14 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._live_badges = {}
         self.selected = None
         if snapshot.unavailable:
-            if not self.meeting_page and not self.search_page:
+            if not self._external_meeting and not self.search_page:
+                LibraryWindow._close_right_meeting(self)
                 self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("offline")
             self._list_signature = ("offline",)
         elif not snapshot.meetings:
-            if not self.meeting_page and not self.search_page:
+            if not self._external_meeting and not self.search_page:
+                LibraryWindow._close_right_meeting(self)
                 self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("empty")
             self._list_signature = ("empty",)
@@ -1245,16 +1307,28 @@ class LibraryWindow(Adw.ApplicationWindow):
                     if (
                         meeting.key == old
                         or old is None
+                        and not was_library
                         and meeting.title == "Budget review"
                         and self._fixed_now is not None
                     ):
                         selected = row
-            self.rows.select_row(selected or self.rows.get_row_at_index(1))
+            if selected is not None or old is not None or not was_library:
+                default_row = next(
+                    (r for r in self._row_by_key.values() if LibraryWindow._is_saved_detail_ready(self, r.meeting)),
+                    None,
+                ) or self.rows.get_row_at_index(1)
+                self.rows.select_row(selected or default_row)
+            else:
+                self.rows.select_row(None)
             if selected:
                 self._pending_selection = None
             self._list_signature = ("library", layout)
         self.rows.handler_unblock(self._selection_handler)
-        self._selected(self.rows, self.rows.get_selected_row())
+        self._updating_rows_selection = True
+        try:
+            self._selected(self.rows, self.rows.get_selected_row())
+        finally:
+            self._updating_rows_selection = False
         self.loading.set_spinning(False)
         self._pending = False
 
@@ -1325,177 +1399,43 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _selected(self, _rows, row):
         if row is None or not hasattr(row, "meeting"):
+            self.selected = None
+            if not self._external_meeting and not self.search_page and not self.recording_page:
+                self._close_right_meeting()
+                self._stop_playback(clear_selection=True)
+            self._recording_line(getattr(self.get_application(), "recorder", None))
+            self._refresh_export()
             return
-        if not self.meeting_page and not self.search_page:
-            if self._preview_key != row.meeting.key:
+        meeting = row.meeting
+        if not self._external_meeting and not self.search_page and not self.recording_page:
+            if self._preview_key != meeting.key:
                 self._stop_playback()
-            elif not row.meeting.has_audio:
+            elif not meeting.has_audio:
                 self.player.stop()
                 self.listen.stop()
                 self._loaded_key = None
-        self._preview_key = row.meeting.key
-        self.selected = meeting = row.meeting
-        self._refresh_export()
-        signature = self._preview_signature(meeting)
-        if signature == self._preview_signature_value:
-            return
-        self._preview_signature_value = signature
-        child = self.preview.get_first_child()
-        while child:
-            following = child.get_next_sibling()
-            self.preview.remove(child)
-            child = following
-        headline = vertical(8)
-        headline.append(label(meeting.title, "library-title", xalign=0, wrap=True))
-        headline.append(
-            label(
-                fmt.preview_subtitle(
-                    meeting.display_start,
-                    meeting.duration_ms,
-                    now_ms=self.now_ms,
-                    tz=self.tz,
-                    received=meeting.origin == "received",
-                ),
-                "dim-label",
-                xalign=0,
-                wrap=True,
-            )
-        )
-        self.preview.append(headline)
-        folder = (meeting.metadata.get("received") or {}).get("originalFolderName")
-        if meeting.origin == "received" and isinstance(folder, str) and folder:
-            card = Gtk.Box(spacing=12, css_classes=["received-folder"], valign=Gtk.Align.START)
-            card.append(
-                Gtk.Image(
-                    icon_name="folder-symbolic", valign=Gtk.Align.START, accessible_role=Gtk.AccessibleRole.PRESENTATION
-                )
-            )
-            body = label("", wrap=True, xalign=0, hexpand=True)
-            body.set_markup(text("received.folderCard", folder="<b>" + GLib.markup_escape_text(folder) + "</b>"))
-            card.append(body)
-            self.preview.append(card)
-        self.recording_lines = vertical(visible=False)
-        self._recording_line_signature = None
-        self.preview.append(self.recording_lines)
+        self._preview_key = meeting.key
+        self.selected = meeting
+        if LibraryWindow._is_saved_detail_ready(self, meeting):
+            self._show_right_meeting(meeting)
+            if not self._updating_rows_selection:
+                self.split.set_show_content(True)
+        elif not self._external_meeting:
+            self._close_right_meeting()
         self._recording_line(getattr(self.get_application(), "recorder", None))
-        from .inline_line import InlineLine
-
-        writing = getattr(self.get_application(), "writing_available", True)
-        publication = self.publication_line(meeting)
-        if publication:
-            self.preview.append(publication)
-        if meeting.lifecycle == "saved" and (interrupted_line := meeting.interrupted_text()):
-            self.preview.append(label(interrupted_line, "dim-label", wrap=True, xalign=0))
-        trash_error = self.trash_error_line(meeting)
-        if trash_error:
-            self.preview.append(trash_error)
-        elif meeting.lifecycle == "saving" or meeting.transcript in ("queued", "running"):
-            self.preview.append(label(meeting.badge().text, "dim-label", wrap=True, xalign=0))
-        elif meeting.transcript == "failed":
-            self.preview.append(
-                InlineLine(
-                    "errors.transcribeFailed.line",
-                    action="common.tryAgain" if writing else None,
-                    callback=lambda: self.get_application().write_down(meeting),
-                )
-            )
-        elif meeting.transcript == "damaged":
-            self.preview.append(InlineLine("errors.transcriptDamaged.line"))
-        chips = Adw.WrapBox(child_spacing=8, line_spacing=8)
-        for speaker in meeting.preview_speakers:
-            chips.append(self._speaker(speaker, chip=True, meeting=meeting))
-        self.preview.append(chips)
-        actions = Gtk.Box(spacing=10)
-        self.play_button = Gtk.Button(
-            label=text("player.pause" if self.player.playing else "common.play"),
-            css_classes=["suggested-action"],
-            sensitive=meeting.has_audio
-            and not self._playback_failed
-            and (meeting.audio_file is not None or FolderPlayer.can_play(meeting)),
-        )
-        self.play_button.connect("clicked", lambda *_: self._play_selected())
-        actions.append(self.play_button)
-        self.read_button = Gtk.Button(
-            label=text("library.preview.readTranscript"),
-            sensitive=bool(meeting.words)
-            or meeting.no_speech
-            or meeting.transcript in ("queued", "running", "failed", "damaged"),
-        )
-        self.read_button.connect("clicked", lambda *_: self._open_selected())
-        actions.append(self.read_button)
-        stopping = (
-            self.get_application().transcription_stopping(meeting)
-            if self.get_application() and hasattr(self.get_application(), "transcription_stopping")
-            else False
-        )
-        self.stop_transcription_button = None
-        if writing and meeting.can_write_down and meeting.transcript == "none" and not stopping:
-            write = Gtk.Button(label=text("common.writeDown"))
-            write.connect("clicked", lambda *_: self.get_application().write_down(meeting))
-            actions.insert_child_after(write, self.play_button)
-        elif meeting.lifecycle == "saved" and meeting.metadata_editable and meeting.transcript in ("queued", "running"):
-            stop = self.stop_transcription_button = Gtk.Button(
-                label=text("common.stop"),
-                sensitive=not stopping,
-            )
-            stop.connect("clicked", lambda *_: self.get_application().stop_transcription(meeting))
-            actions.insert_child_after(stop, self.play_button)
-        self.preview.append(actions)
-        self.preview.append(Gtk.Separator(margin_top=4))
-        self.preview.append(label(text("library.preview.transcriptHeading"), "small", "heading", "dim-label", xalign=0))
-        if meeting.no_speech:
-            self.preview.append(
-                InlineLine(
-                    "transcript.noSpeech",
-                    info=True,
-                    action="transcript.writeDownAgain" if writing and meeting.can_write_down else None,
-                    callback=lambda: self.get_application().write_down(meeting),
-                )
-            )
-        for turn in meeting.preview_turns[:3]:
-            line = Gtk.Box(spacing=16)
-            name = vertical(3, width_request=110, valign=Gtk.Align.START)
-            if turn.row is None or not turn.row.continuation:
-                name.append(self._speaker(meeting.speaker_for(turn.speaker), meeting=meeting))
-            if turn.row is not None:
-                caption = row_caption(turn.row, lambda identifier: meeting.speaker_for(identifier).name)
-                if caption:
-                    name.append(label(caption, "small", "dim-label", xalign=0, wrap=True))
-            name.append(label(fmt.position(turn.start_ms), "small", "dim-label", xalign=0))
-            line.append(name)
-            line.append(
-                label(
-                    row_text(turn.row, lambda identifier: meeting.speaker_for(identifier).name)[0]
-                    if turn.row is not None
-                    else turn.text,
-                    "excerpt",
-                    xalign=0,
-                    yalign=0,
-                    wrap=True,
-                    hexpand=True,
-                    lines=3,
-                    ellipsize=Pango.EllipsizeMode.END,
-                )
-            )
-            self.preview.append(line)
+        self._refresh_export()
 
     def _connect_player(self):
         self.get_application().watch_player(self.player)
         self.player.connect("error", self._playback_error)
-        self.player.connect(
-            "notify::playing",
-            lambda *_: (
-                self.play_button.set_label(text("player.pause" if self.player.playing else "common.play"))
-                if self.play_button is not None
-                else None
-            ),
-        )
+        if self.meeting_page is not None:
+            self.meeting_page.rebind_player(self.player)
 
     def _playback_error(self, _player, _message):
         self._playback_failed = True
         self._loaded_key = None
-        if self.play_button is not None:
-            self.play_button.set_sensitive(False)
+        if self.meeting_page is not None:
+            self.meeting_page._error()
 
     def _play_selected(self):
         if self.recording_page:
@@ -1511,6 +1451,19 @@ class LibraryWindow(Adw.ApplicationWindow):
             return
         if self._ensure_player(meeting):
             self.player.toggle()
+
+    def _skip_selected(self, delta_ms):
+        if self.recording_page:
+            return
+        if self.search_page:
+            if self.search_page.hit and self._loaded_key == self.search_page.hit.key:
+                self.player.skip(delta_ms)
+            return
+        meeting = self.meeting_page.meeting if self.meeting_page else self.selected
+        if meeting is None or not meeting.has_audio:
+            return
+        if self._ensure_player(meeting):
+            self.player.skip(delta_ms)
 
     RATES = ("0.75", "1", "1.25", "1.5", "1.75", "2")
 
@@ -1570,6 +1523,26 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.selected:
             self.open_meeting(self.selected)
 
+    def _pop_pushed_pages(self):
+        self.set_title(text("app.name"))
+        was_external = self._external_meeting
+        if self.search_page:
+            self.search_page.close()
+            self.search_page = None
+            self._stop_playback()
+        if self.recording_page:
+            self.recording_page.close()
+            self.recording_page = None
+        if self.meeting_page and self._external_meeting:
+            self.meeting_page.close()
+            self.meeting_page = None
+            self._external_meeting = False
+            self._stop_playback()
+        if self.navigation.get_navigation_stack().get_n_items() > 1:
+            self.navigation.pop()
+        if was_external:
+            self.monitor.refresh()
+
     def open_meeting(self, meeting, *, external=False):
         if (
             self.recording_page
@@ -1577,11 +1550,12 @@ class LibraryWindow(Adw.ApplicationWindow):
             and meeting.lifecycle in ("recording", "saving")
         ):
             return
-        if self.meeting_page or self.recording_page or self.search_page:
-            self.back_to_library()
-        self._stop_playback()
-        self._external_meeting = external
+        if self._external_meeting or self.recording_page or self.search_page:
+            self._pop_pushed_pages()
         if meeting.lifecycle in ("recording", "saving"):
+            self._close_right_meeting()
+            self._stop_playback()
+            self._external_meeting = external
             from .recording_page import RecordingPage
 
             self.recording_page = RecordingPage(self, meeting)
@@ -1589,6 +1563,34 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._update_live()
             self._refresh_export()
             return
+        if external:
+            self._close_right_meeting()
+            self._stop_playback()
+            self._external_meeting = True
+            if not self._ensure_player(meeting):
+                desired = Player if meeting.audio_file is not None else FolderPlayer
+                self.listen.stop()
+                self.player.shutdown()
+                self.player = desired()
+                self.player.set_rate(self._rate)
+                self._connect_player()
+            self.meeting_page = MeetingPage(self, meeting)
+            self.navigation.push(self.meeting_page)
+            self._update_live()
+            self._refresh_export()
+            return
+        if self._preview_key != meeting.key or self._loaded_key != meeting.key:
+            self._stop_playback()
+        self._external_meeting = False
+        self._preview_key = meeting.key
+        self.selected = meeting
+        row = self._row_by_key.get(meeting.key)
+        if row is not None and self.rows.get_selected_row() is not row:
+            self.rows.handler_block(self._selection_handler)
+            self.rows.select_row(row)
+            self.rows.handler_unblock(self._selection_handler)
+        if self.root_box.get_visible_child_name() != "library":
+            self.root_box.set_visible_child_name("library")
         if not self._ensure_player(meeting):
             desired = Player if meeting.audio_file is not None else FolderPlayer
             self.listen.stop()
@@ -1596,8 +1598,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.player = desired()
             self.player.set_rate(self._rate)
             self._connect_player()
-        self.meeting_page = MeetingPage(self, meeting)
-        self.navigation.push(self.meeting_page)
+        self._show_right_meeting(meeting, rebind_player=True, reset_scroll=True)
+        self.split.set_show_content(True)
         self._update_live()
         self._refresh_export()
 
@@ -1615,8 +1617,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.search_page:
             self.back_to_library()
             return
-        if self.meeting_page or self.recording_page:
-            self.back_to_library()
+        if self._external_meeting or self.recording_page:
+            self._pop_pushed_pages()
+        elif self.meeting_page:
+            self._close_right_meeting()
         self._stop_playback()
         self.search_page = SearchPage(self)
         self.navigation.push(self.search_page)
@@ -1625,21 +1629,26 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._refresh_export()
 
     def back_to_library(self, *_):
+        had_pushed = bool(self.search_page or self.recording_page or self._external_meeting)
+        if had_pushed:
+            self._pop_pushed_pages()
+            if self.root_box.get_visible_child_name() == "library":
+                self._updating_rows_selection = True
+                try:
+                    self._selected(self.rows, self.rows.get_selected_row())
+                finally:
+                    self._updating_rows_selection = False
+            self._refresh_export()
+            return
         self.set_title(text("app.name"))
-        if self.search_page:
-            self.search_page.close()
-            self.search_page = None
-            self._stop_playback()
-        if self.recording_page:
-            self.recording_page.close()
-            self.recording_page = None
-        if self.meeting_page:
-            self.meeting_page.close()
-            self.meeting_page = None
-            self._external_meeting = False
-            self._stop_playback()
-            self.monitor.refresh()
-        self.navigation.pop()
+        self.rows.handler_block(self._selection_handler)
+        self.rows.select_row(None)
+        self.rows.handler_unblock(self._selection_handler)
+        self.selected = None
+        self._close_right_meeting()
+        self._stop_playback(clear_selection=True)
+        self.split.set_show_content(False)
+        self.monitor.refresh()
         self._refresh_export()
 
     def _page_popped(self, _navigation, page):
@@ -1647,19 +1656,24 @@ class LibraryWindow(Adw.ApplicationWindow):
             page.close()
             self.search_page = None
             self._stop_playback()
-            self._refresh_export()
         if page is self.recording_page:
             page.close()
             self.recording_page = None
-            self._refresh_export()
-        if page is self.meeting_page:
+        if page is self.meeting_page and self._external_meeting:
             page.close()
             self.meeting_page = None
             self._external_meeting = False
             self._stop_playback()
             self.monitor.refresh()
-
-        self.set_title(self.meeting_page.meeting.title if self.meeting_page else text("app.name"))
+        if not self.search_page and not self.recording_page and not self._external_meeting:
+            self.set_title(text("app.name"))
+            if self.root_box.get_visible_child_name() == "library":
+                self._updating_rows_selection = True
+                try:
+                    self._selected(self.rows, self.rows.get_selected_row())
+                finally:
+                    self._updating_rows_selection = False
+        self._refresh_export()
 
     @staticmethod
     def _is_folder_open_path(path):

@@ -196,15 +196,57 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
 .library-window .live-levels progressbar progress { min-height: 4px; background: var(--app-record-bg); border-radius: 2px; }
 .library-window .static-stop:disabled { background: var(--app-record-bg); color: var(--app-record-fg); opacity: 1; min-height: 26px; padding: 0 9px; }
 
-/* UX3: speaker colours in transcript, speaker list, chips, and avatars. */
+/* UX3 / WP3 (L-22, L-24, L-43, L-44): right-pane Meeting view, inline speakers, Find bar, and floating player. */
+.meeting-pane { background: var(--cx-surface); color: var(--cx-ink); }
+.meeting-topbar { min-height: 47px; padding: 0 8px 0 14px; background: var(--cx-surface); color: var(--cx-ink); box-shadow: none; border-bottom: 1px solid transparent; }
+.meeting-topbar.scrolled { border-bottom-color: var(--cx-line-soft); }
+.meeting-compact-title { font-size: 15px; font-weight: 700; color: var(--cx-ink); }
+.meeting-compact-subtitle { font-size: 13.5px; font-weight: 400; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; }
+.meeting-export-btn { min-height: 34px; padding: 0 8px 0 10px; font-size: 14px; font-weight: 600; color: var(--cx-ink); }
+.meeting-icon-btn { min-width: 34px; min-height: 34px; padding: 0; color: var(--cx-ink); }
+.meeting-empty-pane { background: var(--cx-surface); color: var(--cx-ink-3); }
+.meeting-empty-selection { font-size: 15px; color: var(--cx-ink-2); }
+.meeting-full-header { background: var(--cx-surface); color: var(--cx-ink); padding: 8px 48px 18px; border-bottom: 1px solid var(--cx-line-soft); }
+.meeting-title { font-size: 24px; font-weight: 700; color: var(--cx-ink); }
+.meeting-rename-btn { min-width: 26px; min-height: 26px; padding: 0; color: var(--cx-ink-2); }
+.meeting-subtitle { color: var(--cx-ink-2); font-variant-numeric: tabular-nums; }
+.inline-speaker-button { min-height: 24px; min-width: 0; padding: 2px 4px; border-radius: 6px; font-weight: 400; }
+.inline-speaker-item { min-height: 24px; padding: 2px 4px; border-radius: 6px; }
+.inline-speaker-button.listening, .inline-speaker-item.listening { background: var(--app-accent-wash); }
+.inline-speaker-name { font-size: 14px; font-weight: 400; color: var(--cx-ink); }
+.inline-speaker-name.speaker-unnamed { text-decoration-line: underline; text-decoration-color: color-mix(in srgb, var(--cx-ink-2) 55%, transparent); }
+.speaker-dot { min-width: 7px; min-height: 7px; border-radius: 999px; }
+.speaker-dot-0 { background: var(--cx-speaker-0); }
+.speaker-dot-1 { background: var(--cx-speaker-1); }
+.speaker-dot-2 { background: var(--cx-speaker-2); }
+.speaker-dot-3 { background: var(--cx-speaker-3); }
+.speaker-dot-4 { background: var(--cx-speaker-4); }
+.speaker-dot-5 { background: var(--cx-speaker-5); }
+.speaker-dot-6 { background: var(--cx-speaker-6); }
+.meeting-reading-surface { background: var(--cx-surface); color: var(--cx-ink); }
+.meeting-find-row { padding: 16px 48px 8px; background: var(--cx-surface); }
+.meeting-find-bar { min-height: 32px; border-radius: 6px; background: var(--cx-neutral-tint); padding: 0 6px 0 9px; color: var(--cx-ink-2); font-size: 14px; }
+.meeting-find-bar.focused { box-shadow: 0 0 0 2px var(--cx-accent); }
+.meeting-find-icon { color: var(--cx-ink-3); }
+.meeting-find-bar.focused .meeting-find-icon { color: var(--cx-ink-2); }
+.meeting-find-input { color: var(--cx-ink); font-size: 14px; }
+.meeting-find-shortcut { font-size: 12.5px; font-weight: 600; color: var(--cx-ink-2); border: 1px solid var(--cx-line); border-radius: 5px; padding: 1px 5px; }
+.meeting-find-count { font-size: 13px; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; }
+.meeting-find-step { min-width: 22px; min-height: 22px; padding: 0; color: var(--cx-ink); }
+.meeting-scroll-fade { min-height: 40px; }
 .meeting-transcript { background: var(--app-view-bg); color: var(--app-view-fg); padding: 22px 48px; }
 .transcript-word-action { min-width: 0; min-height: 0; padding: 0; border: 0; }
 .meeting-transcript row { padding: 0; background: transparent; }
-.companion-card { background: var(--app-accent-tint); border-radius: 10px; padding: 16px; margin-bottom: 22px; }
+.companion-card { background: var(--app-accent-tint); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
 .companion-card > box > label, .companion-card > image, .companion-card button.flat { color: var(--app-accent-ink); }
-.meeting-player { border-top: 1px solid var(--app-hairline); min-height: 64px; padding: 0 20px; background: var(--app-headerbar-bg); }
-.meeting-player button.suggested-action { border-radius: 50%; min-width: 40px; min-height: 40px; padding: 0; }
+.meeting-player { min-height: 44px; padding: 0 14px 0 6px; border-radius: 12px; border: 1px solid var(--cx-line-soft); background: var(--cx-raised); box-shadow: 0 10px 30px -12px var(--cx-shadow), 0 2px 6px -2px var(--cx-shadow); }
+.meeting-player button.suggested-action { border-radius: 50%; min-width: 32px; min-height: 32px; padding: 0; background: var(--cx-accent-strong); color: var(--cx-on-accent); }
 .meeting-player scale { padding: 0; }
+.meeting-player scale trough { min-height: 4px; border-radius: 2px; background: var(--cx-line); }
+.meeting-player scale trough highlight { min-height: 4px; border-radius: 2px; background: var(--cx-accent); }
+.meeting-player scale trough slider { min-width: 12px; min-height: 12px; margin: -4px; border-radius: 50%; background: var(--cx-accent); border: 0; box-shadow: 0 1px 3px var(--cx-shadow); }
+.meeting-player .player-time { font-size: 13px; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.meeting-player .player-rate-badge > button { min-height: 22px; min-width: 0; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--cx-line); background: transparent; font-size: 13px; font-weight: 600; color: var(--cx-ink); }
 .inline-line { border-radius: 10px; padding: 12px; margin-bottom: 8px; }
 .error-line { background-color: var(--app-error-line-bg); color: var(--app-error-line-fg); border-radius: 10px; padding: 10px 12px; }
 .cassini-preferences label.error-line { margin-top: 8px; }

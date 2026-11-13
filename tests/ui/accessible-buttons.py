@@ -203,7 +203,7 @@ def child():
         published_opus(published_root)
         (published,) = LibraryScanner(published_root).scan().meetings
         assert published.published_file and published.listening_turns
-        window.open_meeting(published, external=True)
+        window.open_meeting(replace(published, metadata_editable=False), external=True)
         page = window.meeting_page
         rebuilt = []
         page.connect("rows-rebuilt", lambda *_: rebuilt.append(True))
@@ -368,10 +368,9 @@ def parent():
             wait_event("activation-refreshed")
             wait_event("published-ready")
             # Recognised-but-unmatched has no provenance: exact row naming
-            # omits the empty item, and cannot accidentally match its Play.
+            # omits the empty item, and activates speaker listening on a read-only file.
             when = text("speakers.when.once", position="00:00:09")
-            find_button("Dario, " + when)
-            activate(text("speakers.listen.a11y", name="Dario", when=when), "published-play")
+            activate("Dario, " + when, "published-play")
             assert process.wait() == 0
             assert not any(value in log_path.read_text() for value in ("Gtk-WARNING", "Gtk-CRITICAL"))
         finally:

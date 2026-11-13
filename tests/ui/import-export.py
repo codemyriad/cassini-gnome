@@ -187,9 +187,13 @@ with tempfile.TemporaryDirectory() as temporary:
         )
     )
     received = window.selected
-    assert not window.meeting_page and received.directory.parent == Path(os.environ["CASSINI_LIBRARY_DIR"])
+    assert (
+        window.meeting_page is not None
+        and window.meeting_page.meeting.key == received.key
+        and received.directory.parent == Path(os.environ["CASSINI_LIBRARY_DIR"])
+    )
     assert received.audio_file.read_bytes() == incoming.read_bytes()
-    assert any("Opened from your Downloads folder." in value for value in labels(window.preview))
+    assert any("Opened from your Downloads folder." in value for value in labels(window.meeting_page.lines))
     assert not window.received_hint.get_visible()
     until(lambda: not window._pending_selection)
     drop = Gdk.FileList.new_from_array([Gio.File.new_for_path(str(incoming))])
@@ -210,7 +214,7 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: not window._opening_files)
     assert failures and app.get_windows() == [window], "A failed import opened the legacy app"
     assert not list(Path(os.environ["CASSINI_LIBRARY_DIR"]).glob(".received-*"))
-    window.read_button.emit("clicked")
+    window.open_meeting(received)
     until(lambda: window.meeting_page is not None and window.player._prerolled)
     window.meeting_page.play.emit("clicked")
     until(lambda: window.player.playing and window.player.position > 0)

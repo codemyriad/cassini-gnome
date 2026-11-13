@@ -86,8 +86,8 @@ with tempfile.TemporaryDirectory() as tmp:
     assert window.get_title() == text("app.name") == "Cassini talk"
     assert len(window.snapshot.meetings) == 9
     assert window.selected.title == "Budget review"
-    assert window.selected.words and window.read_button.get_sensitive()
-    assert window.read_button.get_sensitive(), "Folders have a real Meeting page"
+    assert window.selected.words and window.meeting_page is not None
+    assert window.meeting_page.meeting.key == window.selected.key, "Folders mount the Meeting view in the right pane"
     assert window.root_box.get_visible_child_name() == "library"
     assert window.capture_header.get_visible_child_name() == "live"
     assert window.live_timer.get_label() == "12:48" and not window.live_stop.get_sensitive()
@@ -95,7 +95,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "Listening inside your browser" in labels
     assert "47 min · the audio is ready to play" in labels
     assert not any(value.startswith("47 min · Marta") for value in labels)
-    assert not any(value.startswith("colour-") for w in walk(window.preview) for value in w.get_css_classes())
+    assert not any(value.startswith("colour-") for w in walk(window.meeting_page) for value in w.get_css_classes())
     assert window.play_button.get_sensitive(), "Saved folders with known offsets can play"
     window.player.shutdown()
     sink = Gst.ElementFactory.make("fakesink", None)
@@ -109,8 +109,8 @@ with tempfile.TemporaryDirectory() as tmp:
     assert not window.player.playing
     window.play_button.emit("clicked")
     until(lambda: window.player.playing)
-    assert "Marta" in [w.get_label() for w in walk(window.preview) if isinstance(w, Gtk.Label)]
-    auto = [w for w in walk(window.preview) if isinstance(w, Gtk.Label) and w.get_label() == "auto"]
+    assert "Marta" in [w.get_label() for w in walk(window.meeting_page.speakers) if isinstance(w, Gtk.Label)]
+    auto = [w for w in walk(window.meeting_page.speakers) if isinstance(w, Gtk.Label) and w.get_label() == "auto"]
     assert not auto  # an imported recognised name has no saved local voice
     app.activate()
     assert sum(isinstance(w, LibraryWindow) for w in app.get_windows()) == 1
@@ -149,14 +149,14 @@ with tempfile.TemporaryDirectory() as tmp:
     # Idle/live-clock ticks and equivalent snapshots retain widget identity,
     # selection, focus and scroll rather than tearing down the Library.
     first_row = window.rows.get_selected_row()
-    preview = window.preview.get_first_child()
+    detail = window.meeting_page
     first_row.grab_focus()
     focus = window.get_focus()
     for _ in range(3):
         window._updated(window.snapshot)
         window._update_live()
     assert window.rows.get_selected_row() is first_row
-    assert window.preview.get_first_child() is preview
+    assert window.meeting_page is detail
     assert window.get_focus() is focus
     selected_dir = window.selected.directory
     metadata = selected_dir / "meeting.json"
@@ -193,11 +193,12 @@ with tempfile.TemporaryDirectory() as tmp:
     until(lambda: window.player.playing and not other.player.playing)
     other.player.shutdown()
     other.close()
-    assert window.read_button.get_sensitive()
-    window.read_button.emit("clicked")
-    assert window.meeting_page and not window.player.playing
-    window.back_to_library()
-    until(lambda: window.meeting_page is None)
+    window.rows.select_row(None)
+    assert window.meeting_page is None and not window.player.playing
+    assert window.detail_stack.get_visible_child_name() == "empty"
+    assert window.empty_selection_label.get_label() == text("meeting.emptySelection")
+    window.rows.select_row(received)
+    assert window.meeting_page is not None and not window.player.playing
     window.play_button.emit("clicked")
     until(lambda: window.player.playing)
     # #8's load() can reject synchronously; the Library must honour that error.

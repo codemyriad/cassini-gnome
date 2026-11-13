@@ -119,101 +119,38 @@ def meeting_bindings():
 
 
 def library_bindings():
-    meeting, turn = fixture()
+    meeting, _turn = fixture()
     app = SimpleNamespace(writing_available=False, voice_store=SimpleNamespace(has_match=lambda *_: True))
+    shown, closed = [], []
     window = SimpleNamespace(
         now_ms=1793107080000,
         tz=UTC,
         get_application=lambda: app,
         meeting_page=None,
         search_page=None,
+        recording_page=None,
+        _external_meeting=False,
+        _updating_rows_selection=False,
+        split=SimpleNamespace(get_collapsed=lambda: False, set_show_content=Mock()),
         _preview_key=None,
-        _preview_signature_value=None,
+        _loaded_key=None,
         _stop_playback=Mock(),
         player=SimpleNamespace(stop=Mock(), playing=False),
         listen=SimpleNamespace(stop=Mock()),
         _refresh_export=Mock(),
-        _signature=lambda _snapshot: (),
-        snapshot=object(),
-        preview=Gtk.Box(orientation=Gtk.Orientation.VERTICAL),
         _recording_line=lambda *_: None,
-        publication_line=lambda _meeting: None,
-        trash_error_line=lambda _meeting: None,
-        _playback_failed=False,
+        _show_right_meeting=lambda value: shown.append(value.key),
+        _close_right_meeting=lambda: closed.append(True),
     )
-    for name in ("_preview_signature", "_speaker"):
-        setattr(window, name, MethodType(getattr(LibraryWindow, name), window))
 
-    def select(value):
-        LibraryWindow._selected(window, None, SimpleNamespace(meeting=value))
-        return [
-            child
-            for child in children(window.preview)
-            if child.get_last_child() is not None and child.get_last_child().has_css_class("excerpt")
-        ]
-
-    def name_labels(line):
-        return [label.get_text() for label in labels(line.get_first_child())]
-
-    lines = select(meeting)
-    assert "Ada" in name_labels(lines[0])
-    unchanged = window.preview.get_first_child()
-    select(meeting)
-    assert window.preview.get_first_child() is unchanged  # Preserve cached widgets.
-    continued = replace(turn, continuation=True)
-    next_meeting = replace(meeting, preview_turns=(replace(meeting.preview_turns[0], row=continued),))
-    assert next_meeting.preview_turns == meeting.preview_turns
-    lines = select(next_meeting)
-    assert window.preview.get_first_child() is not unchanged and "Ada" not in name_labels(lines[0])
-
-    uncertain = replace(turn, words=[replace(word, low_confidence=True) for word in turn.words])
-    next_meeting = replace(meeting, preview_turns=(replace(meeting.preview_turns[0], row=uncertain),))
-    lines = select(next_meeting)
-    assert "Probably crosstalk" in name_labels(lines[0])
-    overlapping = replace(turn, over=["b", "c"])
-    next_meeting = replace(meeting, preview_turns=(replace(meeting.preview_turns[0], row=overlapping),))
-    lines = select(next_meeting)
-    assert "(over Ben and Cara)" in name_labels(lines[0])
-    renamed = replace(
-        next_meeting, speakers=tuple(replace(s, name="Benny") if s.id == "b" else s for s in meeting.speakers)
-    )
-    assert "(over Benny and Cara)" in name_labels(select(renamed)[0])
-
-    # Only timing attestation changes in the stored words; the repaired row
-    # changes continuation while the old PreviewTurn key still compares equal.
-    attested = replace(meeting.words[0], ends_bounded_by_audio=True)
-    repaired = replace(meeting, words=(attested,), preview_turns=(replace(meeting.preview_turns[0], row=continued),))
-    select(meeting)
-    assert "Ada" not in name_labels(select(repaired)[0])
-
-    aside = Turn(1, "unlisted", [Word("unlisted", 200, 300, "Yes")], 1, 200, 300)
-    merged_row = replace(turn, over=["unlisted"], asides=[(0, aside)])
-    merged = replace(
-        meeting,
-        preview_turns=(replace(meeting.preview_turns[0], row=merged_row),),
-        metadata={"speakerMerges": [{"from": "unlisted", "into": "b"}]},
-    )
-    lines = select(merged)
-    assert "(over Ben)" in name_labels(lines[0]) and "Ben:" in lines[0].get_last_child().get_text()
-    remapped = replace(merged, metadata={"speakerMerges": [{"from": "unlisted", "into": "c"}]})
-    assert merged.preview_speakers == remapped.preview_speakers and merged.preview_turns == remapped.preview_turns
-    lines = select(remapped)
-    assert "(over Cara)" in name_labels(lines[0]) and "Cara:" in lines[0].get_last_child().get_text()
-
-    # A merge can change only a chip's prose, with no caption or visible
-    # roster change. That must invalidate the cache independently too.
-    chip_only = replace(merged, preview_turns=(replace(merged.preview_turns[0], row=replace(merged_row, over=[])),))
-    lines = select(chip_only)
-    assert "Ben:" in lines[0].get_last_child().get_text()
-    chip_remapped = replace(chip_only, metadata=remapped.metadata)
-    lines = select(chip_remapped)
-    assert "Cara:" in lines[0].get_last_child().get_text()
-
-    previews = meeting.preview_turns * 4
-    assert len(select(replace(meeting, preview_turns=previews))) == 3
-    print(
-        "PASS synchronous Library GTK bindings: cache, continuation, provenance, captions, names and prose", flush=True
-    )
+    LibraryWindow._selected(window, None, SimpleNamespace(meeting=meeting))
+    assert window.selected is meeting and shown == [meeting.key] and not closed
+    LibraryWindow._selected(window, None, None)
+    assert window.selected is None and closed == [True]
+    live = replace(meeting, lifecycle="recording")
+    LibraryWindow._selected(window, None, SimpleNamespace(meeting=live))
+    assert window.selected is live and len(closed) == 2 and shown == [meeting.key]
+    print("PASS synchronous Library GTK bindings: saved detail mount, empty deselection, and live guard", flush=True)
 
 
 def check_transcript_bindings():

@@ -122,13 +122,19 @@ with tempfile.TemporaryDirectory() as temporary:
     assert "Giulia" in labels(page.speakers)
     assert window.lookup_action("play-pause").get_enabled()
     # Name the speakers uses the last chosen voice; clearing is a real save.
-    page.name_speakers_button.emit("clicked")
+    window.activate_action("win.name-speakers", None)
     dialog = page.speakers_dialog
     assert dialog.identifier == "guest" and dialog.entry.get_text() == "Giulia"
     dialog.entry.set_text("")
     until(lambda: dialog.save.get_sensitive())
     dialog.save.emit("clicked")
     until(lambda: dialog.closed and next(s for s in page.meeting.speakers if s.id == "guest").name == "Speaker 3")
+    # Tapping an inline speaker item opens Name the speakers for that speaker.
+    page._speaker_rows["guest"][0].emit("clicked")
+    dialog = page.speakers_dialog
+    assert dialog.identifier == "guest"
+    dialog.cancel.emit("clicked")
+    until(lambda: dialog.closed)
     # Merge menu invokes an action rather than changing the source transcript.
     page.name_speakers("guest")
     dialog = page.speakers_dialog
@@ -165,21 +171,19 @@ with tempfile.TemporaryDirectory() as temporary:
     # the scroller. Updating only the page races this refresh back to 3 voices.
     window._activity_tick()
     assert len(page.meeting.speakers) == 20
-    # Outside folders are readable, but offer no name/edit controls.
-    adjustment = page.speakers_scroller.get_vadjustment()
-    until(lambda: adjustment.get_page_size() > 0 and adjustment.get_upper() > adjustment.get_page_size())
-    adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size())
 
     def last_speaker_action_reachable():
-        visible, bounds = page.name_speakers_button.compute_bounds(window)
+        last_btn = page._speaker_rows["voice-19"][0]
+        visible, bounds = last_btn.compute_bounds(window)
         return visible and bounds.get_y() + bounds.get_height() <= window.get_height()
 
     until(last_speaker_action_reachable)
     assert window.get_height() == height, (height, window.get_height())
+    # Outside folders are readable, but offer no name/edit controls.
     page.update(replace(page.meeting, metadata_editable=False))
     page.name_speakers("guest")
     assert page.speakers_dialog.closed
-    assert "Name the speakers" not in labels(page.speakers)
+    assert not window.lookup_action("name-speakers").get_enabled()
     app.begin_exit()
     window.close()
     app.do_shutdown()

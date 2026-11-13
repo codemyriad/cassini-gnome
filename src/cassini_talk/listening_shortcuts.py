@@ -7,12 +7,14 @@ from gi.repository import Gdk, Gio, Gtk
 class ListeningShortcuts:
     def __init__(self, page):
         self.page = page
+        split = getattr(page.window, "split", None)
+        self.split = None if page.window._external_meeting else split
         self.actions = Gio.SimpleActionGroup()
         self._key_claimed = False
+        self._pending_page_focus = False
         capture = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
         capture.connect("key-pressed", self._key_pressed)
         capture.connect("key-released", self._key_released)
-        page.add_controller(capture)
         controller = Gtk.ShortcutController(
             scope=Gtk.ShortcutScope.LOCAL, propagation_phase=Gtk.PropagationPhase.BUBBLE
         )
@@ -29,16 +31,89 @@ class ListeningShortcuts:
             callback = Gtk.CallbackAction.new(lambda *_args, name=name: self.perform(name))
             controller.add_shortcut(Gtk.Shortcut.new(Gtk.KeyvalTrigger.new(key, modifiers), callback))
         page.insert_action_group("listen", self.actions)
-        page.add_controller(controller)
-        sidebar = Gtk.ShortcutController(scope=Gtk.ShortcutScope.LOCAL, propagation_phase=Gtk.PropagationPhase.CAPTURE)
-        sidebar.add_shortcut(
-            Gtk.Shortcut.new(
-                Gtk.KeyvalTrigger.new(Gdk.KEY_F9, Gdk.ModifierType(0)),
-                Gtk.CallbackAction.new(lambda *_: self.toggle_sidebar()),
+        self._page_controllers = [capture, controller]
+        if self.split is None:
+            sidebar = Gtk.ShortcutController(
+                scope=Gtk.ShortcutScope.LOCAL, propagation_phase=Gtk.PropagationPhase.CAPTURE
             )
-        )
-        page.add_controller(sidebar)
+            sidebar.add_shortcut(
+                Gtk.Shortcut.new(
+                    Gtk.KeyvalTrigger.new(Gdk.KEY_F9, Gdk.ModifierType(0)),
+                    Gtk.CallbackAction.new(lambda *_: self.toggle_sidebar()),
+                )
+            )
+            self._page_controllers.append(sidebar)
+        for item in self._page_controllers:
+            page.add_controller(item)
+        self._map_handler = page.connect("map", self._on_page_map)
+        self._split_host = None if self.split is None else (getattr(page.window, "breakpoint_bin", None) or self.split)
+        self._split_controllers = []
+        if self._split_host is not None:
+            split_capture = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+            split_capture.connect("key-pressed", self._key_pressed)
+            split_capture.connect("key-released", self._key_released)
+            split_f9 = Gtk.ShortcutController(
+                scope=Gtk.ShortcutScope.MANAGED, propagation_phase=Gtk.PropagationPhase.CAPTURE
+            )
+            split_f9.add_shortcut(
+                Gtk.Shortcut.new(
+                    Gtk.KeyvalTrigger.new(Gdk.KEY_F9, Gdk.ModifierType(0)),
+                    Gtk.CallbackAction.new(lambda *_: self.toggle_sidebar()),
+                )
+            )
+            split_escape = Gtk.ShortcutController(
+                scope=Gtk.ShortcutScope.MANAGED, propagation_phase=Gtk.PropagationPhase.CAPTURE
+            )
+            split_escape.add_shortcut(
+                Gtk.Shortcut.new(
+                    Gtk.KeyvalTrigger.new(Gdk.KEY_Escape, Gdk.ModifierType(0)),
+                    Gtk.CallbackAction.new(lambda *_: self._sidebar_escape()),
+                )
+            )
+            self._split_controllers = [split_capture, split_f9, split_escape]
+            for item in self._split_controllers:
+                self._split_host.add_controller(item)
         self.refresh()
+
+    def close(self):
+        if self._map_handler:
+            self.page.disconnect(self._map_handler)
+            self._map_handler = 0
+        for item in self._page_controllers:
+            self.page.remove_controller(item)
+        self._page_controllers.clear()
+        if self._split_host is not None:
+            for item in self._split_controllers:
+                self._split_host.remove_controller(item)
+            self._split_controllers.clear()
+
+    def _focus_into_page(self):
+        target = self.page.listening_bar.stop if self.page.window.listen.active else self.page.play
+        if target.get_mapped() and target.is_sensitive() and target.grab_focus():
+            self._pending_page_focus = False
+            return
+        self._pending_page_focus = True
+
+    def _on_page_map(self, *_):
+        if self._pending_page_focus:
+            self._pending_page_focus = False
+            target = self.page.listening_bar.stop if self.page.window.listen.active else self.page.play
+            if target.get_mapped() and target.is_sensitive():
+                target.grab_focus()
+
+    def _sidebar_escape(self):
+        if (
+            self.split is None
+            or not self.split.get_mapped()
+            or not self.split.get_collapsed()
+            or self.split.get_show_content()
+        ):
+            return False
+        if self.page.window.get_visible_dialog() or self._key_claimed or self._claimed():
+            return False
+        self.split.set_show_content(True)
+        self._focus_into_page()
+        return True
 
     def _key_pressed(self, *_):
         # GtkEntry can move focus while handling Escape/Alt+Down. Preserve who
@@ -76,8 +151,9 @@ class ListeningShortcuts:
         if self._claimed():
             return False
         page, listen = self.page, self.page.window.listen
-        if name == "stop" and page.split.get_collapsed() and not page.split.get_show_content():
-            page.split.set_show_content(True)
+        split = getattr(page.window, "split", None)
+        if name == "stop" and split is not None and split.get_collapsed() and not split.get_show_content():
+            split.set_show_content(True)
             return True
         if not listen.active:
             return False
@@ -99,7 +175,23 @@ class ListeningShortcuts:
         return True
 
     def toggle_sidebar(self):
-        if self._claimed() or not self.page.split.get_collapsed():
+        split = self.split
+        if (
+            self.page.window.get_visible_dialog()
+            or self._claimed()
+            or split is None
+            or not split.get_mapped()
+            or not split.get_collapsed()
+        ):
             return False
-        self.page.split.set_show_content(not self.page.split.get_show_content())
+        show_content = not split.get_show_content()
+        split.set_show_content(show_content)
+        if show_content:
+            self._focus_into_page()
+        else:
+            rows = getattr(self.page.window, "rows", None)
+            if rows is not None:
+                row = rows.get_selected_row() or rows.get_first_child()
+                if row is not None and row.get_mapped():
+                    row.grab_focus()
         return True

@@ -268,3 +268,52 @@ def test_reading_split_places_aside_once_and_preserves_original_indices():
     indexed = sorted((i, word) for owner in owners for i, word in zip(owner.word_indices, owner.words, strict=True))
     assert [i for i, _ in indexed] == list(range(len(words)))
     assert all(word is words[i] for i, word in indexed)
+
+
+def test_find_in_meeting_matches_turns_asides_and_renders_active_underline():
+    from cassini_talk.meeting_text import (
+        build_find_row_highlights,
+        find_transcript_matches,
+        reading_markup,
+        reading_markup_signature,
+        reading_turns,
+    )
+    from cassini_talk.tokens import search_hit_colours, token
+
+    words = [
+        Word("a", 0, 1000, "Plan"),
+        Word("a", 1000, 2000, "migration & rollout"),
+        Word("b", 1200, 1500, "Migration?"),
+        Word("a", 2000, 3000, "migration."),
+    ]
+    rows = reading_turns(words)
+    assert len(rows) == 1 and len(rows[0].asides) == 1
+    assert find_transcript_matches(rows, "   ") == ()
+    matches = find_transcript_matches(rows, "MIGRATION")
+    assert [(m.row_index, m.start_ms, m.spans) for m in matches] == [
+        (0, 1000, (((0, -1), 1, 0, 9),)),
+        (0, 1200, (((0, 0), 0, 0, 9),)),
+        (0, 2000, (((0, -1), 2, 0, 9),)),
+    ]
+    phrase = find_transcript_matches(rows, "plan migration")
+    assert len(phrase) == 1 and len(phrase[0].spans) == 2
+    highlights_0 = build_find_row_highlights(matches, 0)
+    highlights_1 = build_find_row_highlights(matches, 1)
+    assert reading_markup_signature(
+        rows[0], -1, str.upper, row_highlights=highlights_0.get(0)
+    ) != reading_markup_signature(rows[0], -1, str.upper, row_highlights=highlights_1.get(0))
+    markup_0 = reading_markup(rows[0], -1, str.upper, row_highlights=highlights_0.get(0))
+    active_bg, hit_fg = search_hit_colours(dark=False, selected=True)
+    passive_bg, _ = search_hit_colours(dark=False, selected=False)
+    accent = token("accent", dark=False)
+    assert (
+        f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">migration</span> &amp; rollout'
+        in markup_0
+    )
+    assert f'<span background="{passive_bg}" foreground="{hit_fg}">Migration</span>?' in markup_0
+    assert f'<span background="{passive_bg}" foreground="{hit_fg}">migration</span>.' in markup_0
+    markup_1 = reading_markup(rows[0], -1, str.upper, row_highlights=highlights_1.get(0))
+    assert (
+        f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">Migration</span>?'
+        in markup_1
+    )

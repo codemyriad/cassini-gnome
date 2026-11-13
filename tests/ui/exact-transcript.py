@@ -404,7 +404,7 @@ with tempfile.TemporaryDirectory() as temporary:
         report["resizeAboveCapWorstFrameCpuMs"] = max(frames.cpu)
         # Uncached narrow width, then return to the previous cached width.
         frames = Frames(window)
-        window.set_default_size(860, original_size[1])
+        window.set_default_size(680, original_size[1])
         until(lambda page=page, widths=widths: page.list._requested_width < widths[0])
         # Cancel an in-flight rebuild, return to the still-active cached
         # width, then resume the partial narrow index without repeating rows.
@@ -416,7 +416,7 @@ with tempfile.TemporaryDirectory() as temporary:
         cancelled_rows = page.list.measured_rows
         paint(window)
         assert page.list.measured_rows == cancelled_rows
-        window.set_default_size(860, original_size[1])
+        window.set_default_size(680, original_size[1])
         until(lambda page=page, widths=widths: page.list._requested_width < widths[0])
         until(lambda page=page: page.list.ready)
         paint(window)

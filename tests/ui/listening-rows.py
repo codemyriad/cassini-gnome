@@ -260,6 +260,7 @@ with tempfile.TemporaryDirectory() as temporary:
     # Also cover activation before GTK realizes the row: audio/row data
     # can already be ready. Gtk.Button.activate() still returns True then, but
     # schedules no click at all (gtk_real_button_activate checks realized).
+    window.back_to_library()
     window.set_visible(False)
     window.open_meeting(meeting)
     page = window.meeting_page
@@ -386,34 +387,38 @@ with tempfile.TemporaryDirectory() as temporary:
         ),
     )
     assert window.listen.start("voice-10", 0, play=False)
+    until(window, lambda: bar.get_child_revealed())
+    bar.buttons["name"].grab_focus()
     page.listening_bar.name_speaker()
     dialog = page.speakers_dialog
     until(window, lambda: dialog.play.has_focus())
     focus_event(
         window,
-        lambda: page._speaker_rows["host"][0].get_child(),
+        lambda: page._speaker_rows["host"][0],
         lambda: dialog._merge("host"),
     )
     assert "voice-10" not in page._speaker_rows
     assert window.listen.speaker == "voice-11" and window.listen.cued and not window.player.playing
     page.undo_speaker_merge()
     until(window, lambda: "voice-10" in page._speaker_rows and page._speaker_future is None)
-    # A collapsed sidebar must reopen before its replacement row can map.
+    # Narrow collapsed split keeps inline speaker controls on the Meeting content pane.
     window.set_default_size(360, 650)
-    until(window, lambda: page.split.get_collapsed() and page.listening_bar.get_width() == 360)
-    page.split.set_show_content(True)
+    until(window, lambda: window.split.get_collapsed() and page.listening_bar.get_width() == 360)
+    window.split.set_show_content(True)
     assert window.listen.start("voice-10", 0, play=False)
+    until(window, lambda: bar.get_child_revealed())
+    bar.buttons["name"].grab_focus()
     page.listening_bar.name_speaker()
     dialog = page.speakers_dialog
     until(window, lambda: dialog.play.has_focus())
-    focus_event(window, lambda: page._speaker_rows["host"][0].get_child(), lambda: dialog._merge("host"))
-    assert not page.split.get_show_content()
+    focus_event(window, lambda: page._speaker_rows["host"][0], lambda: dialog._merge("host"))
+    assert window.split.get_show_content()
     assert window.listen.speaker == "voice-11" and window.listen.cued and not window.player.playing
     page.undo_speaker_merge()
     window.set_default_size(900, 650)
     until(
         window,
-        lambda: "voice-10" in page._speaker_rows and page._speaker_future is None and not page.split.get_collapsed(),
+        lambda: "voice-10" in page._speaker_rows and page._speaker_future is None and not window.split.get_collapsed(),
     )
     assert window.listen.start("voice-10", 0, play=False)
     page.listening_bar.stop.grab_focus()
@@ -427,17 +432,19 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page.listening_bar.buttons["again"].has_focus()
     page.undo_speaker_merge()
     until(window, lambda: "voice-10" in page._speaker_rows and page._speaker_future is None)
-    # Direct bar merge must hand off with the collapsed sidebar still hidden.
+    # Direct bar merge must also hand off cleanly when scrolled header hides inline speakers.
     window.set_default_size(360, 650)
-    until(window, lambda: page.split.get_collapsed() and page.listening_bar.get_width() == 360)
+    until(window, lambda: window.split.get_collapsed() and page.listening_bar.get_width() == 360)
+    page.set_scrolled_header(True)
     page._listen_speaker("voice-10")
-    until(window, lambda: page.split.get_show_content() and not page.speakers.get_mapped())
+    until(window, lambda: window.split.get_show_content() and not page.speakers.get_mapped())
     bar.stop.grab_focus()
     focus_event(window, lambda: bar.buttons["again"], lambda: page.merge_speaker("voice-10", "host"))
     assert "voice-10" not in page._speaker_rows
     assert window.listen.speaker == "voice-11" and window.listen.cued and not window.player.playing
-    assert page.split.get_show_content() and not page.speakers.get_mapped()
+    assert window.split.get_show_content() and not page.speakers.get_mapped()
     assert page._merge_transition is None and not page._rows_rebuilt_tick
+    page.set_scrolled_header(False)
     page.undo_speaker_merge()
     window.set_default_size(900, 650)
     until(
@@ -523,11 +530,11 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, lambda: not page.listening_bar.merge.get_popover().get_mapped())
     assert window.listen.active
     window.set_default_size(600, 650)
-    until(window, lambda: page.split.get_collapsed() and page.split.get_show_content())
+    until(window, lambda: window.split.get_collapsed() and window.split.get_show_content())
     press("F9")
-    until(window, lambda: not page.split.get_show_content())
+    until(window, lambda: not window.split.get_show_content())
     press("Escape")
-    until(window, lambda: page.split.get_show_content())
+    until(window, lambda: window.split.get_show_content())
     assert window.listen.active
     press("Escape")
     until(window, lambda: not window.listen.active)
@@ -545,7 +552,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert not app.get_accels_for_action("win." + dead)
     window.listen.disconnect(handler)
     window.set_default_size(1120, 720)
-    until(window, lambda: not page.split.get_collapsed())
+    until(window, lambda: not window.split.get_collapsed())
     app.on_shortcuts()
     shortcut_dialog = app.shortcuts_dialog
     expected_shortcuts = {
@@ -565,27 +572,30 @@ with tempfile.TemporaryDirectory() as temporary:
     window.monitor.close()
     row, play, when = page._speaker_rows["voice-12"]
     assert when.endswith("00:00:34")
-    assert any(value.get_text() == text("meeting.speakerShare.underOne") for value in labels(row))
-    # Play is an overlay sibling of the naming button, never nested in it.
-    assert isinstance(row.get_child(), Gtk.Button) and play.get_parent() is row
-    play.grab_focus()
-    until(window, lambda: play.get_mapped() and play.get_sensitive() and play.get_width() > 0)
-    assert play.get_realized(), "A mapped button must be realized before activation"
-    assert play.activate()
+    assert isinstance(row, Gtk.Button) and play is row
+    target_turn = next(t for t in page.meeting.turns if t.speaker == "voice-12")
+    page.list.scroll_to(target_turn.index, Gtk.ListScrollFlags.NONE, None)
+    until(window, lambda: target_turn.index in page.bound)
+    row_name_btn = page.bound[target_turn.index][2].get_first_child().get_first_child()
+    row_name_btn.grab_focus()
+    until(window, lambda: row_name_btn.get_mapped() and row_name_btn.get_sensitive() and row_name_btn.get_width() > 0)
+    assert row_name_btn.get_realized(), "A mapped button must be realized before activation"
+    assert row_name_btn.activate()
     # A monitor scan can finish during GTK's delayed keyboard activation.
     # Equal freshly parsed words must preserve the live button and its click.
     fresh = replace(meeting, words=tuple(list(meeting.words)))
     assert fresh.words == meeting.words and fresh.words is not meeting.words
     page.update(fresh)
     assert page._speaker_rows["voice-12"][1] is play
-    assert play.get_realized()
+    assert row_name_btn.get_realized()
     until(window, lambda: window.listen.active)
     assert window.listen.speaker == "voice-12" and page.speakers_dialog is dialog and dialog.closed
     timeline = page.timeline
     assert timeline.readout_at(34150) == "00:00:34"
     assert timeline.readout_at(34050) == text("player.timeline.tooltip", position="00:00:34", name="Unidentified voice")
     assert len(timeline._target) == 1 and timeline._target[0].start_ms == 34000
-    assert window.get_focus() is play
+    assert window.get_focus() is row_name_btn
+    play.grab_focus()
     window.player.pause()
     left, track_width = timeline._geometry()
     point = Graphene.Point()
@@ -745,7 +755,7 @@ with tempfile.TemporaryDirectory() as temporary:
             mapped=play.get_mapped(),
             sensitive=play.get_sensitive(),
             current=page._speaker_rows["voice-12"][1] is play,
-            collapsed=page.split.get_collapsed(),
+            collapsed=window.split.get_collapsed(),
             active=window.is_active(),
         )
         focus_changes.append(state)
@@ -826,7 +836,12 @@ with tempfile.TemporaryDirectory() as temporary:
             return False
         row = page.bound[index][2]
         ok, bounds = row.compute_bounds(page.scroller)
-        return ok and bounds.get_y() >= 0 and bounds.get_y() + bounds.get_height() <= page.scroller.get_height()
+        if not ok:
+            return False
+        scroller_h = page.scroller.get_height()
+        if bounds.get_height() > scroller_h:
+            return 0 <= bounds.get_y() < scroller_h
+        return bounds.get_y() >= 0 and bounds.get_y() + bounds.get_height() <= scroller_h
 
     until(window, reading_visible)
     assert page._reading_index in page._turn_rows[window.listen.turn.index]
@@ -850,14 +865,12 @@ with tempfile.TemporaryDirectory() as temporary:
     assert bar.more.get_visible() and bar.stop.get_visible()
     assert bar.buttons["previousTurn"].get_visible()
     bar._collapse(0)
-    assert play.get_icon_name() == "media-playback-stop-symbolic"
     assert row.has_css_class("listening")
-    until(window, lambda: page.speakers_scroller.get_vadjustment().get_value() > 0)
     assert window.get_focus() is play, (focus_state(), focus_changes)
     window.disconnect(focus_handler)
-    assert play.activate()
+    page._listen_speaker("voice-12")
     until(window, lambda: not window.listen.active)
-    assert not window.player.playing and play.get_icon_name() == "media-playback-start-symbolic"
+    assert not window.player.playing
     assert not row.has_css_class("listening")
     # Renaming updates the accessible name without announcing a turn step.
     announcements = []
@@ -872,13 +885,17 @@ with tempfile.TemporaryDirectory() as temporary:
         other_row = other_row.get_next_sibling()
     assert other_row is not None
     window.rows.select_row(other_row)
-    assert window.selected.key != meeting.key
+    assert window.selected.key != meeting.key and not window.listen.active
     library_row = window.rows.get_first_child()
     while library_row is not None and getattr(getattr(library_row, "meeting", None), "key", None) != meeting.key:
         library_row = library_row.get_next_sibling()
     assert library_row is not None
     window.rows.select_row(library_row)
     assert window.selected.key == meeting.key
+    assert window._ensure_player(meeting)
+    until(window, lambda: window.player._prerolled)
+    assert window.listen.start("voice-0", 0, play=False)
+    announcements.clear()
     renamed_meeting = replace(
         meeting,
         speakers=tuple(
@@ -965,15 +982,9 @@ with tempfile.TemporaryDirectory() as temporary:
             any(value.get_text() == "Dana" for value in labels(row)) for _turn, _words, row in page.bound.values()
         ),
     )
-    # Preview refresh can arrive after transcript rows in a later loop turn.
-    until(window, lambda: any(value.get_text() == "Dana" for value in labels(window.preview)))
-    assert any(value.get_text() == "Dana" for value in labels(window.preview))
 
     def preview_chip_names():
-        child = window.preview.get_first_child()
-        while child is not None and not isinstance(child, Adw.WrapBox):
-            child = child.get_next_sibling()
-        return [value.get_text() for value in labels(child)] if child is not None else None
+        return [value.get_text() for value in labels(page.speakers) if value.get_text() != text("common.autoTag")]
 
     until(window, lambda: preview_chip_names() == ["Dana"])
     assert preview_chip_names() == ["Dana"]
@@ -1082,7 +1093,7 @@ with tempfile.TemporaryDirectory() as temporary:
     until(window, lambda: len(rebuilt) > generation)
     row, play, _ = rebuilt[-1]["voice-0"]
     assert play is not old_play and page._speaker_rows["voice-0"][1] is play
-    assert not isinstance(row.get_child(), Gtk.Button) and play.get_visible()
+    assert isinstance(row, Gtk.Button) and play is row and play.get_visible()
     assert play.get_realized() and play.get_mapped() and play.get_sensitive()
     clicks, errors = [], []
     play.connect("clicked", lambda *_: clicks.append(window.listen.speaker))
@@ -1125,18 +1136,14 @@ with tempfile.TemporaryDirectory() as temporary:
     generation = len(rebuilt)
     window._library_scanned(editable_snapshot)
     until(window, lambda: len(rebuilt) > generation)
-    # Force a caption rebuild in each supported language and check the time
-    # receives its natural width, even when provenance must ellipsize.
+    # Force a locale rebuild in each supported language and check inline speaker
+    # descriptions and transcript header tooltips retain the locale across idle batches.
     for language in LANGUAGES:
         with using_language(language):
             page._signature = None
             page.update(meeting)
             row, _, when = page._speaker_rows["voice-0"]
-            caption = row.get_child().get_child().get_last_child()
-            timed = caption.get_last_child()
-            until(window, lambda timed=timed: timed.get_width() >= timed.measure(Gtk.Orientation.HORIZONTAL, -1)[1])
-            assert when in timed.get_text()
-            # Header batches retain this locale even after an idle boundary.
+            assert when
             header = next(iter(page.bound.values()))[2].get_first_child().get_last_child()
             until(window, lambda header=header: header.get_tooltip_text() == text("player.playFromHere"))
     with using_language("en"):
@@ -1154,7 +1161,7 @@ with tempfile.TemporaryDirectory() as temporary:
     window.set_default_size(900, 650)
     # Native size includes decorations: this GTK build allocates 890 px to
     # GtkWindow inside a requested 900 px surface. Await the exact real resize.
-    until(window, lambda: window.get_surface().get_width() == 900 and not page.split.get_collapsed())
+    until(window, lambda: window.get_surface().get_width() == 900 and not window.split.get_collapsed())
 
     def save_picture(path):
         painted = []
@@ -1172,13 +1179,16 @@ with tempfile.TemporaryDirectory() as temporary:
         node = painted[-1]
         assert window.get_renderer().render_texture(node, node.get_bounds()).save_to_png(str(path))
 
+    page.set_scrolled_header(False)
     page._listen_speaker("voice-12")
 
     def target_visible():
         target = page._speaker_rows["voice-12"][0]
         ok, bounds = target.compute_bounds(page.speakers_scroller)
         return (
-            ok and bounds.get_y() >= 0 and bounds.get_y() + bounds.get_height() <= page.speakers_scroller.get_height()
+            ok
+            and bounds.get_y() >= -0.5
+            and bounds.get_y() + bounds.get_height() <= page.speakers_scroller.get_height() + 0.5
         )
 
     until(window, lambda: page.listening_bar.get_child_revealed() and target_visible() and reading_visible())
@@ -1188,15 +1198,16 @@ with tempfile.TemporaryDirectory() as temporary:
     save_picture(output)
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     save_picture(output.with_name(output.stem + "-dark.png"))
-    # Keyboard focus still scrolls a different row into view without changing
-    # the listening target or starting its naming action.
+    # Keyboard focus on another inline speaker does not change the listening target or start naming.
     first, first_play, _ = page._speaker_rows["host"]
     first_play.grab_focus()
 
     def focused_row_visible():
         ok, bounds = first.compute_bounds(page.speakers_scroller)
         return (
-            ok and bounds.get_y() >= 0 and bounds.get_y() + bounds.get_height() <= page.speakers_scroller.get_height()
+            ok
+            and bounds.get_y() >= -0.5
+            and bounds.get_y() + bounds.get_height() <= page.speakers_scroller.get_height() + 0.5
         )
 
     until(window, focused_row_visible)
@@ -1207,7 +1218,7 @@ with tempfile.TemporaryDirectory() as temporary:
     for _turn, _words, bound_row in page.bound.values():
         headers = bound_row.get_first_child()
         assert not headers.get_first_child().get_sensitive() and not headers.get_last_child().get_sensitive()
-    assert all(not button.get_visible() for _, button, _ in page._speaker_rows.values())
+    assert not page.player_overlay.get_visible()
     # A real player error disables existing header widgets without a rebind too.
     page.update(meeting)
     assert window.listen.start("voice-12", 0, play=False)

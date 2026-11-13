@@ -242,7 +242,10 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda dialog=dialog, name=name: dialog.closed and any(m.title == name for m in window.snapshot.meetings))
         assert read_metadata(folder)["titleSource"] == "user"
         if surface == "meeting":
-            assert window.meeting_page.headline.get_title() == name and window.get_title() == name
+            assert window.meeting_page.rename_button.get_visible()
+            assert (
+                window.meeting_page.headline.get_title() == name and window.meeting_page.title_label.get_text() == name
+            )
             window.back_to_library()
             assert window.get_title() == text("app.name")
     chosen = next(m for m in window.snapshot.meetings if m.directory == folder)

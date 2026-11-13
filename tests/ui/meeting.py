@@ -127,9 +127,30 @@ with tempfile.TemporaryDirectory() as temporary:
     page = window.meeting_page
     assert page._exact
     until(lambda: page.list.ready and len(page.bound) == 5 and window.player._prerolled)
-    assert all(v in labels(page.speakers) for v in ["43%", "36%", "21%", "Named by you", "Not named yet"])
+    assert all(v in labels(page.speakers) for v in ["Marta", "Giulia Rossi", "Speaker 3"])
     # Imported recognition metadata has no corresponding local saved voice.
-    assert "Recognised from saved voices" not in labels(page.speakers)
+    assert "auto" not in labels(page.speakers)
+    assert page._speaker_rows["marta"][0].get_child().get_first_child().has_css_class("speaker-dot-1")
+    guest_dot = page._speaker_rows["guest"][0].get_child().get_first_child()
+    assert guest_dot.has_css_class("speaker-dot-0") and guest_dot.get_next_sibling().has_css_class("speaker-unnamed")
+    # WP3 Find in this meeting: Ctrl+F focuses, highlights active + passive hits, steps and clears.
+    assert page.find_row.get_visible() and page.find_shortcut_badge.get_visible()
+    assert page.find_shortcut_badge.get_label() == "Ctrl+F"
+    window.activate_action("win.find-in-meeting", None)
+    until(lambda: page.find_bar.has_css_class("focused") and not page.find_shortcut_badge.get_visible())
+    page.find_entry.set_text("migration")
+    until(lambda: page.find_count_label.get_visible() and page.find_count_label.get_label() == "1 of 2")
+    assert 'underline="single"' in page.bound[1][1].get_label()
+    assert "background=" in page.bound[3][1].get_label() and 'underline="single"' not in page.bound[3][1].get_label()
+    shot(window, "-find")
+    page.find_next_button.emit("clicked")
+    until(lambda: page.find_count_label.get_label() == "2 of 2")
+    assert 'underline="single"' in page.bound[3][1].get_label()
+    page.find_prev_button.emit("clicked")
+    until(lambda: page.find_count_label.get_label() == "1 of 2")
+    page.clear_find()
+    until(lambda: page.find_entry.get_text() == "" and not page.find_count_label.get_visible())
+    assert 'underline="single"' not in page.bound[1][1].get_label()
     menu_changes = []
     handler = page.more_menu.connect("items-changed", lambda *_: menu_changes.append(1))
     page.update(meeting)
@@ -240,6 +261,11 @@ with tempfile.TemporaryDirectory() as temporary:
             sync_snapshot(running)
             window.back_to_library()
             until(lambda: window.meeting_page is None and window.navigation.get_visible_page() is not None)
+            assert (
+                window.detail_stack.get_visible_child_name() == "empty"
+                and window.empty_selection_label.get_label() == "No meeting selected"
+            )
+            shot(window, "-empty-selection")
             window.rows.select_row(window._row_by_key[running.key])
             until(lambda: window.selected is not None and window.selected.key == running.key)
             assert (
@@ -252,7 +278,10 @@ with tempfile.TemporaryDirectory() as temporary:
                 stop_call.assert_called_once_with(running)
             window._selected(None, SimpleNamespace(meeting=stopped_partial))
             assert window.stop_transcription_button is None
-            assert "Write it down" in labels(window.preview)
+            assert (
+                window.meeting_page.write_button.get_visible()
+                and window.meeting_page.write_button.get_label() == "Write it down"
+            )
             window._source_snapshot = base_snapshot
             window._updated(base_snapshot)
             window.open_meeting(meeting)
@@ -280,10 +309,10 @@ with tempfile.TemporaryDirectory() as temporary:
             retry.assert_called_once_with(empty)
             retry.reset_mock()
             window._selected(None, SimpleNamespace(meeting=empty))
-            assert "No speech was found in this meeting." in labels(window.preview)
+            assert "No speech was found in this meeting." in labels(window.meeting_page.lines)
             again = next(
                 w
-                for w in widgets(window.preview)
+                for w in widgets(window.meeting_page.lines)
                 if isinstance(w, Gtk.Button) and w.get_label() == "Write it down again"
             )
             again.emit("clicked")
@@ -310,7 +339,7 @@ with tempfile.TemporaryDirectory() as temporary:
         )
 
         def show_synthetic(words):
-            current = replace(meeting, words=words, turns=reading_turns(words))
+            current = replace(meeting, words=words, turns=reading_turns(words), transcript="done", eta_minutes=None)
             snapshot = replace(
                 window._source_snapshot,
                 meetings=tuple(current if m.key == current.key else m for m in window._source_snapshot.meetings),
@@ -343,7 +372,14 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda: page.scroller.get_vadjustment().get_upper() > 5000)
         adjustment = page.scroller.get_vadjustment()
         adjustment.set_value(1500)
-        until(lambda: adjustment.get_value() > 1000)
+        until(lambda: adjustment.get_value() > 1000 and page._header_scrolled)
+        assert not page.full_header.get_visible() and page.compact_header_box.get_visible()
+        assert page.scroll_fade.get_visible() and page.top_bar.has_css_class("scrolled")
+        page.settings.set_boolean("companion-card-dismissed", True)
+        page.set_connected(False)
+        shot(window, "-scrolled")
+        page.settings.set_boolean("companion-card-dismissed", False)
+        page.set_connected(False)
         frames = []
         page.list.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
         until(lambda: len(frames) >= 2)
@@ -380,6 +416,9 @@ with tempfile.TemporaryDirectory() as temporary:
 
         until(lambda: window.player.playing and active_visible())
         page.play.emit("clicked")
+        adjustment.set_value(0)
+        until(lambda: not page._header_scrolled and page.full_header.get_visible())
+        assert not page.compact_header_box.get_visible() and not page.scroll_fade.get_visible()
         style = Adw.StyleManager.get_default()
         style.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
 
@@ -397,7 +436,7 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda: style.get_dark() and transcript_colours(True))
         dark_first = speaker_colour(meeting.speakers[0], dark=True)
         assert page._colour(meeting.speakers[0]) == dark_first
-        assert any(dark_first in value for value in labels(page.speakers))
+        assert page._speaker_rows[meeting.speakers[0].id][0].get_mapped()
         style.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
         until(lambda: not style.get_dark() and transcript_colours(False))
     page.update(meeting)
@@ -428,8 +467,8 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: window.search_page is None)
     received = next(m for m in window.snapshot.meetings if m.origin == "received")
     app.open_in_new_window(Gio.File.new_for_path(str(received.audio_file)))
-    until(lambda: not window.meeting_page and window.selected and window.selected.key == received.key)
-    window.read_button.emit("clicked")
+    until(lambda: window.meeting_page is not None and window.selected and window.selected.key == received.key)
+    window.open_meeting(received)
     until(lambda: window.meeting_page is not None)
     assert window.meeting_page.meeting.words
     assert not isinstance(window.player, FolderPlayer), "Received meeting must exercise player replacement"

@@ -1,14 +1,148 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """R12: shares from timed items, and timing-preserving transcript markup."""
 
+import re
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from html import escape
 
 from .portable import Word
 from .speaker_merges import resolve_merges
-from .tokens import aside_chip_wash, played_word_colours
+from .tokens import aside_chip_wash, played_word_colours, search_hit_colours, token
 from .transcript import Turn, build_turns, display_items, join_items, visible_turns
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptMatch:
+    """Case-insensitive substring match inside displayed transcript rows."""
+
+    row_index: int
+    start_ms: int
+    spans: tuple[tuple[tuple[int, int], int, int, int], ...]
+
+
+def find_transcript_matches(turns, query: str) -> tuple[TranscriptMatch, ...]:
+    """Return ordered matches across *turns* (including folded asides) for *query*."""
+    needle = query.strip()
+    if not needle:
+        return ()
+    pattern = re.compile(re.escape(needle), re.IGNORECASE)
+    matches: list[TranscriptMatch] = []
+    for turn in turns:
+        asides_by_after: dict[int, list[tuple[int, Turn]]] = {}
+        for aside_slot, (after, aside) in enumerate(turn.asides):
+            asides_by_after.setdefault(after, []).append((aside_slot, aside))
+
+        # Order owners in visual reading flow: leading (-1) asides, then host fragments/asides.
+        ordered_segments: list[tuple[tuple[int, int], Turn, list[tuple[int, str]]]] = []
+        for aside_slot, aside in asides_by_after.get(-1, ()):
+            pieces = [(idx, val) for idx, val in enumerate(aside.items) if val]
+            if pieces:
+                ordered_segments.append(((turn.index, aside_slot), aside, pieces))
+
+        host_items = turn.items
+        for first, last in turn.fragments or [(0, len(turn.words))]:
+            # Split host segments around inline asides so reading order is preserved.
+            seg_pieces: list[tuple[int, str]] = []
+            for word_idx in range(first, last):
+                val = host_items[word_idx]
+                if val:
+                    seg_pieces.append((word_idx, val))
+                if word_idx in asides_by_after:
+                    if seg_pieces:
+                        ordered_segments.append(((turn.index, -1), turn, seg_pieces))
+                        seg_pieces = []
+                    for aside_slot, aside in asides_by_after[word_idx]:
+                        aside_pieces = [(idx, aval) for idx, aval in enumerate(aside.items) if aval]
+                        if aside_pieces:
+                            ordered_segments.append(((turn.index, aside_slot), aside, aside_pieces))
+            if seg_pieces:
+                ordered_segments.append(((turn.index, -1), turn, seg_pieces))
+
+        for owner_key, owner, pieces in ordered_segments:
+            offsets: list[tuple[int, int, int]] = []
+            cursor = 0
+            texts: list[str] = []
+            for idx, val in pieces:
+                if texts:
+                    cursor += 1
+                offsets.append((idx, cursor, cursor + len(val)))
+                texts.append(val)
+                cursor += len(val)
+            joined = " ".join(texts)
+            for hit in pattern.finditer(joined):
+                h_start, h_end = hit.start(), hit.end()
+                spans: list[tuple[tuple[int, int], int, int, int]] = []
+                first_ms: int | None = None
+                for word_idx, w_start, w_end in offsets:
+                    if w_end <= h_start:
+                        continue
+                    if w_start >= h_end:
+                        break
+                    sub_start = max(0, h_start - w_start)
+                    sub_end = min(w_end - w_start, h_end - w_start)
+                    if sub_end > sub_start:
+                        spans.append((owner_key, word_idx, sub_start, sub_end))
+                        if first_ms is None:
+                            first_ms = owner.words[word_idx].start_ms
+                if spans:
+                    matches.append(
+                        TranscriptMatch(
+                            row_index=turn.index,
+                            start_ms=turn.start_ms if first_ms is None else first_ms,
+                            spans=tuple(spans),
+                        )
+                    )
+    return tuple(matches)
+
+
+def build_find_row_highlights(
+    matches: tuple[TranscriptMatch, ...],
+    active_index: int,
+) -> dict[int, dict[tuple[int, int], dict[int, tuple[tuple[int, int, bool], ...]]]]:
+    """Index match spans by row_index -> owner_key -> word_idx -> ((start, end, is_active), ...)."""
+    by_row: dict[int, dict[tuple[int, int], dict[int, list[tuple[int, int, bool]]]]] = {}
+    for match_idx, match in enumerate(matches):
+        is_active = match_idx == active_index
+        row_map = by_row.setdefault(match.row_index, {})
+        for owner_key, word_idx, sub_start, sub_end in match.spans:
+            owner_map = row_map.setdefault(owner_key, {})
+            owner_map.setdefault(word_idx, []).append((sub_start, sub_end, is_active))
+    return {
+        row_idx: {
+            owner_key: {word_idx: tuple(sorted(spans)) for word_idx, spans in owner_map.items()}
+            for owner_key, owner_map in row_map.items()
+        }
+        for row_idx, row_map in by_row.items()
+    }
+
+
+def _escape_with_highlights(
+    value: str,
+    spans: tuple[tuple[int, int, bool], ...] | None,
+    *,
+    dark: bool,
+) -> str:
+    if not spans:
+        return escape(value)
+    bg, fg = search_hit_colours(dark=dark)
+    accent = token("accent", dark=dark)
+    parts: list[str] = []
+    cursor = 0
+    for start, end, is_active in spans:
+        if start > cursor:
+            parts.append(escape(value[cursor:start]))
+        chunk = escape(value[start:end])
+        if is_active:
+            parts.append(
+                f'<span background="{bg}" foreground="{fg}" underline="single" underline_color="{accent}">{chunk}</span>'
+            )
+        else:
+            parts.append(f'<span background="{bg}" foreground="{fg}">{chunk}</span>')
+        cursor = end
+    if cursor < len(value):
+        parts.append(escape(value[cursor:]))
+    return "".join(parts)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,8 +203,8 @@ def speaking_shares(words, speaker_ids):
     return result
 
 
-def _item_link(word, value, position, uri, *, dark=False):
-    value = escape(value)
+def _item_link(word, value, position, uri, *, dark=False, highlights=None):
+    value = _escape_with_highlights(value, highlights, dark=dark)
     if word.low_confidence:
         value = f"<i>{value}</i>"
     if word.start_ms <= position < word.end_ms:
@@ -92,16 +226,28 @@ def item_markup(words, position, *, dark=False, values=None):
     )
 
 
-def reading_markup(turn, position, speaker_name, *, dark=False, chip_links=False):
+def reading_markup(turn, position, speaker_name, *, dark=False, chip_links=False, row_highlights=None):
     """A bounded paragraph with named, individually seekable interjections."""
 
     prefixes = {id(turn): "item"}
     prefixes.update((id(aside), f"aside:{i}") for i, (_, aside) in enumerate(turn.asides))
+    owner_keys = {id(turn): (turn.index, -1)}
+    owner_keys.update((id(aside), (turn.index, i)) for i, (_, aside) in enumerate(turn.asides))
     values = {id(owner): owner.items for owner in [turn] + [aside for _, aside in turn.asides]}
 
     def link(owner, index):
+        spans = None
+        if row_highlights is not None:
+            owner_map = row_highlights.get(owner_keys[id(owner)])
+            if owner_map is not None:
+                spans = owner_map.get(index)
         return _item_link(
-            owner.words[index], values[id(owner)][index], position, f"{prefixes[id(owner)]}:{index}", dark=dark
+            owner.words[index],
+            values[id(owner)][index],
+            position,
+            f"{prefixes[id(owner)]}:{index}",
+            dark=dark,
+            highlights=spans,
         )
 
     def chip(aside):
@@ -278,7 +424,7 @@ def changed_header_rows(turns, before, after):
     )
 
 
-def reading_markup_signature(turn, position, speaker_name, *, dark=False):
+def reading_markup_signature(turn, position, speaker_name, *, dark=False, row_highlights=None):
     """Only changes that affect rendered word/chip markup, not elapsed ticks."""
     owners = [turn, *(aside for _after, aside in turn.asides)]
     states = tuple(
@@ -288,7 +434,12 @@ def reading_markup_signature(turn, position, speaker_name, *, dark=False):
         if value
     )
     names = tuple(speaker_name(aside.speaker) for _after, aside in turn.asides)
-    return dark, names, states
+    find_sig = (
+        tuple((ok, tuple(sorted(omap.items()))) for ok, omap in sorted(row_highlights.items()))
+        if row_highlights
+        else None
+    )
+    return dark, names, states, find_sig
 
 
 class FollowRows:

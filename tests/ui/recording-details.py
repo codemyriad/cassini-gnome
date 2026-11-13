@@ -400,7 +400,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert len(terminal) == 1 and terminal[0]["reason"] == "user" and terminal[0]["atMs"] > 0
     saved = next(m for m in LibraryScanner(directory.parent).scan().meetings if m.directory == directory)
     assert read_details(saved).ended.startswith("Stopped by you · ")
-    window.back_to_library()
+    window.open_meeting(saved)
 
     # Closing during a slow read must not retain a timer, touch closed widgets,
     # block GTK or take an application hold.
