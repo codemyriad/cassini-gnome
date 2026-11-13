@@ -311,3 +311,108 @@ def test_wp6_speaker_quote_duplicate_notice_markup_and_voice_initial(meeting):
     )
     with i18n.using_language("fr"):
         assert duplicate_notice_markup("Lea") == '<span weight="600">Lea</span> fait déjà partie des voix mémorisées.'
+
+
+def _quote_meeting(words, *, listening=True, rows=True, resolve=None):
+    from types import SimpleNamespace
+
+    from cassini_talk.meeting_text import reading_turns, speaker_turns
+
+    words = tuple(words)
+    meeting = SimpleNamespace(
+        words=words,
+        listening_turns=speaker_turns(words) if listening else (),
+        turns=tuple(reading_turns(words)) if rows else (),
+    )
+    if resolve is not None:
+        meeting.speaker_for = resolve
+    return meeting
+
+
+def test_wp6_speaker_quote_fallback_chain_chips_and_legacy_quotes():
+    from types import SimpleNamespace
+
+    from cassini_talk.portable import Word
+    from cassini_talk.speaker_edits import speaker_quote
+
+    words = [
+        Word("a", 0, 400, "one"),
+        Word("b", 500, 900, "first"),
+        Word("a", 1000, 1400, "two"),
+        Word("b", 1500, 1900, "second"),
+    ]
+    full = _quote_meeting(words)
+    # The sample picks the overlapping later turn; a sample miss falls back to the first turn.
+    assert speaker_quote(full, "b", (1500, 1900)) == "second"
+    assert speaker_quote(full, "b", (5000, 6000)) == "first"
+    assert speaker_quote(full, "b") == "first"
+    # No listening turns: reading rows. No rows either: consecutive word runs.
+    assert speaker_quote(_quote_meeting(words, listening=False), "b", (1500, 1900)) == "second"
+    assert speaker_quote(_quote_meeting(words, listening=False), "b") == "first"
+    assert speaker_quote(_quote_meeting(words, listening=False, rows=False), "b") == "first"
+    assert speaker_quote(_quote_meeting(words, listening=False, rows=False), "b", (1500, 1900)) == "second"
+
+    # A chip-only speaker lives in row.asides: quote that chip, not every interjection joined.
+    chips = [
+        Word("a", 0, 400, "one"),
+        Word("a", 500, 900, "two"),
+        Word("b", 950, 1100, "Yes."),
+        Word("a", 1000, 1400, "three"),
+        Word("a", 1500, 1900, "four."),
+        Word("b", 1950, 2100, "Agreed."),
+        Word("a", 2000, 2400, "five"),
+        Word("a", 2500, 2900, "six."),
+    ]
+    rows = _quote_meeting(chips, listening=False)
+    assert rows.turns and all(row.speaker == "a" for row in rows.turns)
+    assert speaker_quote(rows, "b") == "Yes."
+
+    # D38.5: a lone legacy orphan " displays as nothing in every fallback, so no quote.
+    orphan = [Word("a", 0, 400, "hello"), Word("b", 500, 900, '"')]
+    for meeting in (
+        _quote_meeting(orphan),
+        _quote_meeting(orphan, listening=False),
+        _quote_meeting(orphan, listening=False, rows=False),
+    ):
+        assert speaker_quote(meeting, "b") == ""
+    paired = [Word("b", 0, 400, '"Hi'), Word("b", 500, 900, 'there"')]
+    assert speaker_quote(_quote_meeting(paired, listening=False, rows=False), "b") == "“Hi there”"
+
+    # Merged raw ids resolve once each through speaker_for.
+    calls = []
+
+    def resolve(raw):
+        calls.append(raw)
+        return SimpleNamespace(id="a" if raw in ("a", "b") else raw)
+
+    assert speaker_quote(_quote_meeting(words, resolve=resolve), "a") == "one"
+    assert sorted(set(calls)) == sorted(calls)
+
+
+def test_wp6_speaker_quote_is_bounded_and_linear_on_long_recordings():
+    import time
+
+    from cassini_talk.portable import Word
+    from cassini_talk.speaker_edits import QUOTE_CHARS, speaker_quote
+
+    def build(count):
+        # One long monologue by "a", with many short alternating turns for "b".
+        words = [Word("a", i * 300, i * 300 + 250, f"word{i}") for i in range(count)]
+        words += [Word("b" if i % 2 else "c", (count + i) * 300, (count + i) * 300 + 250, "ok") for i in range(count)]
+        return _quote_meeting(words, rows=False)
+
+    def cpu(meeting):
+        started = time.thread_time()
+        for identifier in ("a", "b", "missing"):
+            speaker_quote(meeting, identifier, (10**9, 10**9 + 1))
+        return time.thread_time() - started
+
+    small, large = build(25_000), build(50_000)
+    line = speaker_quote(large, "a")
+    assert line.startswith("word0 word1") and len(line) <= QUOTE_CHARS
+    cpu(small)
+    # Scaling, not wall clock (D88): doubling the input stays near-linear, and
+    # 100k words cost well under a UI-frame budget per speaker (generous for CI).
+    small_cpu, large_cpu = cpu(small), cpu(large)
+    assert large_cpu < max(small_cpu, 0.01) * 4
+    assert large_cpu < 1.5

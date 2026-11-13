@@ -170,7 +170,7 @@ class SpeakersDialog(Adw.Dialog):
             valign=Gtk.Align.START,
             css_classes=["speaker-remember-switch"],
         )
-        self.remember.update_property([Gtk.AccessibleProperty.LABEL], [text("speakers.rememberVoice")])
+        self.remember.update_property([Gtk.AccessibleProperty.LABEL], [text("speakers.rememberVoice.title")])
         self.remember.connect("notify::active", self._remember_changed)
         self.remember_card.append(remember_copy)
         self.remember_card.append(self.remember)
@@ -247,18 +247,32 @@ class SpeakersDialog(Adw.Dialog):
         if speaker is None or not meeting.metadata_editable:
             self.close()
             return
-        self.heading.set_label(speaker.name)
-        self.talk.set_label(text("speakers.talkTime", talkTime=ux_formats.talk_time(speaker.talk_ms)))
-        self.sample = speaker.sample_span
-        line = speaker_edits.speaker_quote(meeting, self.identifier, self.sample)
-        self.quote.set_label(text("common.quote", quote=line) if line else "")
-        self.quote.set_visible(bool(line))
-        self.merge_menu.remove_all()
-        for target in meeting.speakers:
-            if target.id != self.identifier:
-                item = Gio.MenuItem.new(target.name, None)
-                item.set_action_and_target_value("speaker.merge", GLib.Variant("s", target.id))
-                self.merge_menu.append_item(item)
+        # The Library republishes the meeting every activity tick; only rebuild
+        # the quote and merge menu when speakers, merges or transcript changed.
+        key = (
+            meeting.speakers,
+            meeting.metadata.get("speakerMerges"),
+            meeting.listening_turns,
+            meeting.turns,
+            meeting.words,
+        )
+        previous = getattr(self, "_content_key", None)
+        if previous is None or not (
+            key[:2] == previous[:2] and all(a is b for a, b in zip(key[2:], previous[2:], strict=True))
+        ):
+            self._content_key = key
+            self.heading.set_label(speaker.name)
+            self.talk.set_label(text("speakers.talkTime", talkTime=ux_formats.talk_time(speaker.talk_ms)))
+            self.sample = speaker.sample_span
+            line = speaker_edits.speaker_quote(meeting, self.identifier, self.sample)
+            self.quote.set_label(text("common.quote", quote=line) if line else "")
+            self.quote.set_visible(bool(line))
+            self.merge_menu.remove_all()
+            for target in meeting.speakers:
+                if target.id != self.identifier:
+                    item = Gio.MenuItem.new(target.name, None)
+                    item.set_action_and_target_value("speaker.merge", GLib.Variant("s", target.id))
+                    self.merge_menu.append_item(item)
         self.merge.set_sensitive(not self.busy and len(meeting.speakers) > 1)
 
     def _load_voices(self):
