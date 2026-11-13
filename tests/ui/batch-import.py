@@ -179,7 +179,8 @@ with tempfile.TemporaryDirectory() as temporary:
     live_session = RecordingSession(root, title="Live Active Call")
     live_session.add_track("mic", "Me", "microphone", 48000, 1)
     live_session.append("mic", bytes(4800 * 2), 0)
-    window._activity = {live_session.manifest["id"]: "recording"}
+    window._fixture_activity = window._activity = {live_session.manifest["id"]: "recording"}
+    window._activity_tick()
     window.monitor.refresh_now()
     until(lambda: len(window.snapshot.meetings) == 5)
     assert window.lookup_action("export-zip").get_enabled()
@@ -281,7 +282,7 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: not window._opening_files and not window._pending_selection)
     assert messages[-1] == plural("import.summary.duplicates", 3)
 
-    window._activity = {}
+    window._fixture_activity = window._activity = {}
     live_session.finish()
     window.monitor.refresh_now()
     until(lambda: len(window.snapshot.meetings) == 5 and all(m.lifecycle == "saved" for m in window.snapshot.meetings))
