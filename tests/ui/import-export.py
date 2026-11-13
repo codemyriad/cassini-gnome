@@ -224,13 +224,14 @@ with tempfile.TemporaryDirectory() as temporary:
     page.play.set_sensitive(False)
     show_focused_notice()
     page.imported_toast_close.emit("clicked")
-    assert in_transcript(), window.get_focus()
+    # ExactTranscript focuses an unallocated row on its next allocation.
+    until(in_transcript)
     # A state change that hides the focused notice uses the same handoff.
     show_focused_notice()
     page._imported_toast_key = "another-meeting"
     page._sync_imported_toast(received)
     assert not page.imported_toast.get_visible()
-    assert in_transcript(), window.get_focus()
+    until(in_transcript)
     page.update(received)
     # A collapsed window keeps the notice for when the meeting is actually opened.
     window.split.set_collapsed(True)
