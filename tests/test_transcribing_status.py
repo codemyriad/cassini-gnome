@@ -80,7 +80,8 @@ def test_resolve_transcribing_state_and_popover_stats_match_wp5_board():
     except locale.Error:
         pass
     else:
-        assert popover_stat_values(resolved)["words_so_far"] == "4,812"
+        expected_grouped = "4,812" if locale.localeconv().get("thousands_sep") == "," else fmt.number(4812)
+        assert popover_stat_values(resolved)["words_so_far"] == expected_grouped
     finally:
         locale.setlocale(locale.LC_NUMERIC, prev_numeric)
 

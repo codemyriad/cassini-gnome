@@ -1,15 +1,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """WP5 Transcribing header status line and details popover (L-45, L-48)."""
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
 from functools import cache
 
-import gi
+try:
+    import gi
 
-gi.require_version("Gtk", "4.0")
-gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, Graphene, Gsk, Gtk  # noqa: E402
+    for _ns, _ver in (("Gtk", "4.0"), ("Gdk", "4.0"), ("Gsk", "4.0"), ("Adw", "1"), ("Graphene", "1.0")):
+        gi.require_version(_ns, _ver)
+    from gi.repository import Adw, Gdk, GLib, Graphene, Gsk, Gtk
+except (ImportError, ValueError):
+    Adw = Gdk = GLib = Graphene = Gsk = Gtk = None  # type: ignore[assignment]
+
+_GtkWidgetBase = Gtk.Widget if Gtk is not None else object
+_GtkBoxBase = Gtk.Box if Gtk is not None else object
 
 from . import ux_formats as fmt  # noqa: E402
 from .strings import plural, text  # noqa: E402
@@ -253,7 +261,7 @@ class _AnimatedSpinnerMixin:
         return GLib.SOURCE_CONTINUE
 
 
-class AccentSpinner(_AnimatedSpinnerMixin, Gtk.Widget):
+class AccentSpinner(_AnimatedSpinnerMixin, _GtkWidgetBase):
     """Accent arc spinner matching Transcribing-GNOME.dc.html."""
 
     def __init__(self, size_px: int = 14):
@@ -281,7 +289,7 @@ class AccentSpinner(_AnimatedSpinnerMixin, Gtk.Widget):
         snapshot.restore()
 
 
-class StepIndicator(_AnimatedSpinnerMixin, Gtk.Widget):
+class StepIndicator(_AnimatedSpinnerMixin, _GtkWidgetBase):
     """16×16 done / active / upcoming step indicator in the details popover."""
 
     def __init__(self, state: str = "upcoming"):
@@ -318,7 +326,7 @@ class StepIndicator(_AnimatedSpinnerMixin, Gtk.Widget):
         snapshot.restore()
 
 
-class ChevronGlyph(Gtk.Widget):
+class ChevronGlyph(_GtkWidgetBase):
     """7×11 right chevron matching Transcribing-GNOME.dc.html."""
 
     def __init__(self):
@@ -345,7 +353,7 @@ class ChevronGlyph(Gtk.Widget):
         snapshot.restore()
 
 
-class ThinProgressBar(Gtk.Widget):
+class ThinProgressBar(_GtkWidgetBase):
     """Thin rounded progress bar painted in 10%-alpha ink track and --cx-accent fill."""
 
     def __init__(self, *, width_px: int = -1, height_px: int = 4, radius_px: float = 2.0, hexpand: bool = False):
@@ -384,7 +392,7 @@ class ThinProgressBar(Gtk.Widget):
         snapshot_progress_bar(snapshot, float(w), float(h), self.fraction, radius_px=self.radius_px, dark=dark)
 
 
-class TranscribingStatusRow(Gtk.Box):
+class TranscribingStatusRow(_GtkBoxBase):
     """Header status line + chevron details popover for a transcribing meeting."""
 
     def __init__(self, *, on_stop):
