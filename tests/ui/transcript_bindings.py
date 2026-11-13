@@ -20,6 +20,7 @@ from cassini_talk.library_window import LibraryWindow
 from cassini_talk.meeting_page import MeetingPage
 from cassini_talk.portable import Word
 from cassini_talk.strings import text
+from cassini_talk.tokens import speaker_colour
 from cassini_talk.transcript import Turn
 
 
@@ -75,7 +76,7 @@ def meeting_bindings():
         _highlighted_rows=frozenset(),
         _header_signature=None,
         bound={},
-        _colour=lambda _speaker: "#1c71d8",
+        _colour=lambda _speaker: speaker_colour(0),
     )
     for name in ("_build_row", "_turn_markup", "_render_words", "_refresh_header", "_render_header"):
         setattr(page, name, MethodType(getattr(MeetingPage, name), page))

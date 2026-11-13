@@ -17,7 +17,9 @@ def test_r12_shares_use_item_durations_and_first_speaking_ties():
 def test_r12_current_item_boundaries_future_dimming_and_escaping():
     words = [Word("a", 0, 10, "Past <item>"), Word("a", 10, 20, "Entire current sentence"), Word("a", 20, 30, "Future")]
     value = item_markup(words, 10)
-    assert '<span background="#fbe7a1" foreground="#202024">Entire current sentence</span>' in value
+    assert '<span background="#BDDCE4" foreground="#191B1F">Entire current sentence</span>' in value
+    dark_value = item_markup(words, 10, dark=True)
+    assert '<span background="#24708A" foreground="#E8E9EC">Entire current sentence</span>' in dark_value
     assert '<span alpha="60%">Future</span>' in value
     assert "Past &lt;item&gt;" in value
     assert item_markup(words, 20).count("background=") == 1
@@ -65,7 +67,7 @@ def test_d38_quote_markup_keeps_original_item_links_and_timings():
     words = [Word("a", 0, 10, '"'), Word("a", 10, 20, "<Hello>")]
     value = item_markup(words, 10)
     assert "item:0" not in value
-    assert value == '<a href="item:1"><span background="#fbe7a1" foreground="#202024">&lt;Hello&gt;</span></a>'
+    assert value == '<a href="item:1"><span background="#BDDCE4" foreground="#191B1F">&lt;Hello&gt;</span></a>'
     paired = [Word("a", 0, 10, '"Hello'), Word("a", 10, 20, 'world"')]
     assert "“Hello" in item_markup(paired, 0) and "world”" in item_markup(paired, 10)
     assert paired[0].text == '"Hello' and paired[1].text == 'world"'
@@ -221,7 +223,9 @@ def test_reading_rejoins_interrupted_sentence_and_keeps_named_seekable_reply():
     markup = reading_markup(host, 950, lambda speaker: "Ben <&>")
     assert markup.index("We should") < markup.index("Ben &lt;&amp;&gt;") < markup.index("ship it.")
     assert 'href="aside:0:0"' in markup and 'href="item:1"' in markup
-    assert 'foreground="#202024">Yes &lt;&amp;&gt;.' in markup
+    assert 'background="#BDDCE4" foreground="#191B1F">Yes &lt;&amp;&gt;.' in markup
+    dark_markup = reading_markup(host, 950, lambda speaker: "Ben <&>", dark=True)
+    assert 'background="#24708A" foreground="#E8E9EC">Yes &lt;&amp;&gt;.' in dark_markup
     assert reading_word(host, "aside:0:0") is words[1]
     assert reading_word(host, "item:1") is words[2]
     for uri in ("item:-1", "aside:-1:0", "aside:1:0", "aside:0:-1", "other:0"):

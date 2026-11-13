@@ -377,11 +377,11 @@ with tempfile.TemporaryDirectory() as temporary:
         page._follow_until = GLib.get_monotonic_time() + 3600_000_000
         page.player.seek(word.start_ms)
         paint(window)
-        assert outside not in page.list.visible_rows and 'background="#fbe7a1"' not in overscan_words.get_label()
+        assert outside not in page.list.visible_rows and 'background="#BDDCE4"' not in overscan_words.get_label()
         page.list.scroll_to(outside)
         paint(window)
         assert page.bound[outside][1] is overscan_words
-        assert 'background="#fbe7a1"' in overscan_words.get_label()
+        assert 'background="#BDDCE4"' in overscan_words.get_label()
         report["overscanHighlightOnEntry"] = True
         # Above the cap: real resize, same layout width and zero measurement.
         frames = Frames(window)
@@ -462,7 +462,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page._follow_until,
         )
         words = page.bound[target.index][1]
-        assert 'background="#fbe7a1"' in words.get_label(), "Current word has no highlight"
+        assert 'background="#BDDCE4"' in words.get_label(), "Current word has no highlight"
         word = target.words[min(2, len(target.words) - 1)]
         words.emit("activate-link", f"item:{min(2, len(target.words) - 1)}")
         until(lambda page=page, word=word: page.player.position == word.start_ms)

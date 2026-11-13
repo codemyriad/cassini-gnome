@@ -102,7 +102,7 @@ def check_long_turn(window, model, frames_type, paint, until, flicks):
     label = page.bound[target.index][1]
     assert label.emit("activate-link", "aside:0:0")
     until(lambda: page.player.position == word.start_ms)
-    assert 'background="#fbe7a1"' in label.get_label()
+    assert 'background="#BDDCE4"' in label.get_label()
     report["deepChipSeek"] = True
     window.back_to_library()
     paint(window)

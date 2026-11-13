@@ -298,7 +298,7 @@ class SearchIndex:
                     names.setdefault(speaker.name.casefold(), speaker.name)
         return tuple(names[key] for key in sorted(names))
 
-    def query(self, query, *, speaker=None, date="any", own=False, now_ms, tz):
+    def query(self, query, *, speaker=None, date="any", own=False, dark=False, now_ms, tz):
         query = query.strip()
         if not query or not any(char.isalnum() for char in query):
             return ()
@@ -343,9 +343,9 @@ class SearchIndex:
                     turn_index,
                     marked,
                     position,
-                    excerpt_markup(marked),
-                    excerpt_markup(marked, selected=True),
-                    excerpt_markup(marked, limit=800),
+                    excerpt_markup(marked, dark=dark),
+                    excerpt_markup(marked, selected=True, dark=dark),
+                    excerpt_markup(marked, limit=800, dark=dark),
                     matched_speaker,
                 )
             )
@@ -356,7 +356,7 @@ class SearchIndex:
         if title_expression := title_match_query(query):
             for key, marked in self.db.execute(title_sql, [title_expression, *filter_params]):
                 self._check_cancelled()
-                titles[key] = marked_markup(marked)
+                titles[key] = marked_markup(marked, dark=dark)
         spoken_keys = {hit.key for hit in result}
         result = [replace(hit, title_markup=titles.get(hit.key, "")) for hit in result]
         for key in titles.keys() - spoken_keys:
@@ -374,8 +374,8 @@ class SearchIndex:
                     -1,
                     "",
                     0,
-                    excerpt_markup(preview),
-                    excerpt_markup(preview, selected=True),
+                    excerpt_markup(preview, dark=dark),
+                    excerpt_markup(preview, selected=True, dark=dark),
                     "",
                     title_markup=titles[key],
                 )

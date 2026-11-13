@@ -33,9 +33,10 @@ def seed(app, meeting):
                 meetings=keys,
                 createdAt=1793100000000,
                 updatedAt=1793107080000,
+                saveOrder=index,
             )
         )
-    atomic_json(root / "people.json", dict(version=1, generation=0, voices=people))
+    atomic_json(root / "people.json", dict(version=1, generation=0, nextSaveOrder=len(people), voices=people))
     prints = {
         "guest": dict(embedding=people[2]["mean"], seconds=8, windows=[dict(startMs=192000, endMs=200000)]),
         "marta": dict(embedding=people[0]["mean"], seconds=8, windows=[dict(startMs=0, endMs=8000)]),

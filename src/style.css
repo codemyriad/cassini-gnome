@@ -1,77 +1,126 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 @import url("tokens.css");
 
-/* BEGIN PRE-W1 LEGACY FALLBACKS */
 :root {
-  /* App semantic colour roles (mapped to --cx-* in tokens.CSS_ROLE_TOKENS; W1.1 keeps pre-switch values). */
-  --app-window-bg: @window_bg_color;
-  --app-window-fg: @window_fg_color;
-  --app-view-bg: @view_bg_color;
-  --app-view-fg: @view_fg_color;
-  --app-dim-fg: inherit;
-  --app-placeholder-fg: inherit;
-  --app-sidebar-bg: @sidebar_bg_color;
-  --app-sidebar-fg: @sidebar_fg_color;
-  --app-headerbar-bg: @headerbar_bg_color;
-  --app-hairline: alpha(@view_fg_color, 0.12);
-  --app-border: alpha(@view_fg_color, 0.18);
-  --app-export-border: alpha(@view_fg_color, 0.16);
-  --app-details-border: alpha(currentColor, 0.15);
-  --app-auto-tag-border: alpha(@view_fg_color, 0.3);
+  /* Libadwaita 1.8 palette overrides for decided brand roles (HARMONY §10.1–10.15). */
+  --window-bg-color: var(--cx-ground);
+  --window-fg-color: var(--cx-ink);
+  --view-bg-color: var(--cx-surface);
+  --view-fg-color: var(--cx-ink);
+  --headerbar-bg-color: var(--cx-ground);
+  --headerbar-fg-color: var(--cx-ink);
+  --headerbar-backdrop-color: var(--cx-ground);
+  --sidebar-bg-color: var(--cx-sidebar);
+  --sidebar-fg-color: var(--cx-ink);
+  --sidebar-backdrop-color: var(--cx-sidebar);
+  --sidebar-border-color: var(--cx-line);
+  --sidebar-shade-color: var(--cx-shadow);
+  --secondary-sidebar-bg-color: var(--cx-sidebar);
+  --secondary-sidebar-fg-color: var(--cx-ink);
+  --secondary-sidebar-backdrop-color: var(--cx-sidebar);
+  --secondary-sidebar-border-color: var(--cx-line);
+  --secondary-sidebar-shade-color: var(--cx-shadow);
+  --card-bg-color: var(--cx-surface);
+  --card-fg-color: var(--cx-ink);
+  --dialog-bg-color: var(--cx-raised);
+  --dialog-fg-color: var(--cx-ink);
+  --popover-bg-color: var(--cx-raised);
+  --popover-fg-color: var(--cx-ink);
+  --shade-color: var(--cx-shadow);
+  --card-shade-color: var(--cx-shadow);
+  --popover-shade-color: var(--cx-shadow);
+  --accent-bg-color: var(--cx-accent-strong);
+  --accent-fg-color: var(--cx-on-accent);
+  --accent-color: var(--cx-accent-ink);
+  --destructive-bg-color: var(--cx-error-fill);
+  --destructive-fg-color: var(--cx-on-record);
+  --destructive-color: var(--cx-error);
+  --error-bg-color: var(--cx-error-fill);
+  --error-fg-color: var(--cx-on-record);
+  --error-color: var(--cx-error);
+  --success-bg-color: var(--cx-success-fill);
+  --success-fg-color: var(--cx-on-record);
+  --success-color: var(--cx-success);
+  --warning-bg-color: var(--cx-warn-tint);
+  --warning-fg-color: var(--cx-warn-ink);
+  --warning-color: var(--cx-warn-ink);
+
+  /* App semantic colour roles (row selection & subtle card washes remain on alpha until Wave 2). */
+  --app-window-bg: var(--cx-ground);
+  --app-window-fg: var(--cx-ink);
+  --app-view-bg: var(--cx-surface);
+  --app-view-fg: var(--cx-ink);
+  --app-dim-fg: var(--cx-ink-2);
+  --app-placeholder-fg: var(--cx-ink-3);
+  --app-sidebar-bg: var(--cx-sidebar);
+  --app-sidebar-fg: var(--cx-ink);
+  --app-field-bg: var(--cx-field);
+  --app-field-border: var(--cx-field-line);
+  --app-headerbar-bg: var(--cx-ground);
+  --app-hairline: var(--cx-line-soft);
+  --app-border: var(--cx-line);
+  --app-export-border: var(--cx-line);
+  --app-details-border: var(--cx-line);
+  --app-auto-tag-border: var(--cx-line);
   --app-wash-subtle: alpha(@view_fg_color, 0.06);
   --app-wash-chip: alpha(@view_fg_color, 0.08);
   --app-wash-trough: alpha(@view_fg_color, 0.12);
   --app-row-selected-bg: alpha(@sidebar_fg_color, 0.10);
   --app-search-selected-bg: alpha(currentColor, 0.12);
-  --app-primary-bg: #1c71d8;
-  --app-primary-fg: white;
-  --app-accent-bg: @accent_bg_color;
-  --app-accent-ink: @accent_color;
-  --app-accent-tint: alpha(@accent_bg_color, 0.13);
-  --app-accent-wash: alpha(@accent_color, 0.08);
-  --app-avatar-wash: alpha(@accent_color, 0.12);
-  --app-model-selected-bg: alpha(@accent_bg_color, 0.07);
-  --app-record-bg: #c01c28;
-  --app-record-fg: white;
-  --app-record-ink: #c01c28;
-  --app-record-dot: #c01c28;
-  --app-record-tint: #fbe4e6;
-  --app-record-halo: #fbe4e6;
-  --app-record-trough: #eab8bd;
-  --app-badge-red-bg: #fbe4e6;
-  --app-badge-red-fg: #c01c28;
-  --app-badge-transcribing-bg: #e1edfb;
-  --app-badge-transcribing-fg: #1c71d8;
-  --app-badge-amber-bg: #fcefc9;
-  --app-badge-amber-fg: #7a4d00;
-  --app-badge-grey-bg: alpha(@sidebar_fg_color, 0.08);
-  --app-badge-grey-fg: inherit;
-  --app-warn-line-bg: alpha(#e5a50a, 0.18);
-  --app-warn-line-fg: inherit;
-  --app-mic-silent-bg: #fcefc9;
-  --app-mic-silent-fg: #7a4d00;
-  --app-mic-silent-btn-bg: white;
-  --app-mic-silent-btn-fg: #7a4d00;
-  --app-mic-silent-trough: #ead9ad;
-  --app-live-silent-trough: #f1d9a6;
-  --app-dup-warn-bg: alpha(@warning_bg_color, 0.12);
-  --app-dup-warn-border: alpha(@warning_color, 0.35);
-  --app-success-bg: @success_bg_color;
-  --app-success-fg: @success_fg_color;
+  --app-primary-bg: var(--cx-accent-strong);
+  --app-primary-fg: var(--cx-on-accent);
+  --app-accent-bg: var(--cx-accent);
+  --app-accent-ink: var(--cx-accent-ink);
+  --app-accent-tint: var(--cx-accent-tint);
+  --app-accent-wash: var(--cx-accent-tint);
+  --app-avatar-wash: var(--cx-avatar-0);
+  --app-model-selected-bg: var(--cx-accent-tint);
+  --app-record-bg: var(--cx-record);
+  --app-record-fg: var(--cx-on-record);
+  --app-record-ink: var(--cx-record-ink);
+  --app-record-dot: var(--cx-record-ink);
+  --app-record-tint: var(--cx-record-tint);
+  --app-record-halo: var(--cx-record-tint);
+  --app-record-trough: color-mix(in srgb, var(--cx-record-ink) 22%, var(--cx-record-tint));
+  --app-badge-red-bg: var(--cx-record-tint);
+  --app-badge-red-fg: var(--cx-record-ink);
+  --app-badge-transcribing-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
+  --app-badge-transcribing-fg: var(--cx-neutral-ink);
+  --app-badge-amber-bg: var(--cx-warn-tint);
+  --app-badge-amber-fg: var(--cx-warn-ink);
+  --app-badge-grey-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
+  --app-badge-grey-fg: var(--cx-neutral-ink);
+  --app-error-line-bg: var(--cx-error-tint);
+  --app-error-line-fg: var(--cx-error);
+  --app-warn-line-bg: var(--cx-warn-tint);
+  --app-warn-line-fg: var(--cx-warn-ink);
+  --app-mic-silent-bg: var(--cx-warn-tint);
+  --app-mic-silent-fg: var(--cx-warn-ink);
+  --app-mic-silent-btn-bg: var(--cx-surface);
+  --app-mic-silent-btn-fg: var(--cx-warn-ink);
+  --app-mic-silent-trough: color-mix(in srgb, var(--cx-warn-ink) 22%, var(--cx-warn-tint));
+  --app-live-silent-trough: color-mix(in srgb, var(--cx-warn-ink) 22%, var(--cx-warn-tint));
+  --app-dup-warn-bg: var(--cx-warn-tint);
+  --app-dup-warn-border: var(--cx-warn-ink);
+  --app-success-bg: var(--cx-success-fill);
+  --app-success-fg: var(--cx-on-record);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --app-record-ink: #ff7b7f;
-    --app-record-dot: #ff8a8e;
-    --app-record-tint: #4a2a2d;
-    --app-mic-silent-bg: alpha(#f8e45c, 0.18);
-    --app-mic-silent-fg: #f8e45c;
-    --app-mic-silent-btn-bg: alpha(#f8e45c, 0.12);
-    --app-mic-silent-btn-fg: #f8e45c;
-  }
+floating-sheet > dimming,
+bottom-sheet > dimming {
+  background-color: var(--cx-scrim);
 }
-/* END PRE-W1 LEGACY FALLBACKS */
+
+toast {
+  background: var(--cx-inverse);
+  color: var(--cx-on-inverse);
+  --accent-color: var(--cx-inverse-accent);
+}
+
+text > placeholder {
+  color: var(--app-placeholder-fg);
+  opacity: 1;
+}
 
 .words link,
 .words link:visited {
@@ -85,18 +134,33 @@
 .library-window .library-title { font-size: 24px; font-weight: 700; }
 .library-window .library-header { min-height: 47px; padding: 0 6px; box-shadow: none; border-bottom: 1px solid var(--app-hairline); }
 .library-window .library-sidebar { background: var(--app-sidebar-bg); color: var(--app-sidebar-fg); }
+.library-sidebar entry { background-color: var(--app-field-bg); color: var(--app-window-fg); border: 1px solid var(--app-field-border); }
 .library-window .library-rows { background: transparent; padding: 0 8px; }
 .library-window .day-heading { padding: 12px 12px 6px; background: transparent; }
 .library-window .meeting-row { padding: 0; border-radius: 10px; margin: 2px 0; color: inherit; }
 .library-window .meeting-row:selected { background: var(--app-row-selected-bg); color: inherit; }
-.library-window .dim-label { color: inherit; opacity: 0.72; }
-.library-window .meeting-row:selected .dim-label { color: inherit; }
+.dim-label, .library-window .dim-label { color: var(--app-dim-fg); opacity: 1; }
+.library-window .meeting-row:selected .dim-label { color: var(--app-dim-fg); }
 .library-window .badge { border-radius: 100px; padding: 1px 8px; font-size: 13px; font-weight: 600; }
 .library-window .badge-red { background: var(--app-badge-red-bg); color: var(--app-badge-red-fg); }
 .library-window .badge-accent { background: var(--app-badge-transcribing-bg); color: var(--app-badge-transcribing-fg); }
 .library-window .badge-amber { background: var(--app-badge-amber-bg); color: var(--app-badge-amber-fg); }
-.library-window .badge-grey { background: var(--app-badge-grey-bg); color: inherit; }
+.library-window .badge-grey { background: var(--app-badge-grey-bg); color: var(--app-badge-grey-fg); }
 .library-window .speaker-chip { border-radius: 100px; background: var(--app-wash-chip); padding: 5px 12px; }
+.library-window .speaker-chip-0 { background: var(--cx-avatar-0); color: var(--cx-speaker-0); }
+.library-window .speaker-chip-1 { background: var(--cx-avatar-1); color: var(--cx-speaker-1); }
+.library-window .speaker-chip-2 { background: var(--cx-avatar-2); color: var(--cx-speaker-2); }
+.library-window .speaker-chip-3 { background: var(--cx-avatar-3); color: var(--cx-speaker-3); }
+.library-window .speaker-chip-4 { background: var(--cx-avatar-4); color: var(--cx-speaker-4); }
+.library-window .speaker-chip-5 { background: var(--cx-avatar-5); color: var(--cx-speaker-5); }
+.library-window .speaker-chip-6 { background: var(--cx-avatar-6); color: var(--cx-speaker-6); }
+.library-window .speaker-ink-0 { color: var(--cx-speaker-0); }
+.library-window .speaker-ink-1 { color: var(--cx-speaker-1); }
+.library-window .speaker-ink-2 { color: var(--cx-speaker-2); }
+.library-window .speaker-ink-3 { color: var(--cx-speaker-3); }
+.library-window .speaker-ink-4 { color: var(--cx-speaker-4); }
+.library-window .speaker-ink-5 { color: var(--cx-speaker-5); }
+.library-window .speaker-ink-6 { color: var(--cx-speaker-6); }
 .library-window .speaker-name { font-weight: 600; }
 .library-window .speaker-chip .speaker-name { color: inherit; font-weight: 400; }
 .library-window .auto-tag { font-size: 11px; font-weight: 500; color: inherit; opacity: 0.72; border: 1px solid var(--app-auto-tag-border); border-radius: 5px; padding: 0 3px; }
@@ -116,18 +180,24 @@
 .library-window .live-levels progressbar progress { min-height: 4px; background: var(--app-record-bg); border-radius: 2px; }
 .library-window .static-stop:disabled { background: var(--app-record-bg); color: var(--app-record-fg); opacity: 1; min-height: 26px; padding: 0 9px; }
 
-/* UX3: native colours, with speaker colours confined to the reading page. */
+/* UX3: speaker colours in transcript, speaker list, chips, and avatars. */
 .meeting-transcript { background: var(--app-view-bg); color: var(--app-view-fg); padding: 22px 48px; }
 .transcript-word-action { min-width: 0; min-height: 0; padding: 0; border: 0; }
 .meeting-transcript row { padding: 0; background: transparent; }
 .companion-card { background: var(--app-accent-tint); border-radius: 10px; padding: 16px; margin-bottom: 22px; }
-.companion-card image { color: var(--app-accent-bg); }
+.companion-card > box > label, .companion-card > image, .companion-card button.flat { color: var(--app-accent-ink); }
 .meeting-player { border-top: 1px solid var(--app-hairline); min-height: 64px; padding: 0 20px; background: var(--app-headerbar-bg); }
 .meeting-player button.suggested-action { border-radius: 50%; min-width: 40px; min-height: 40px; padding: 0; }
 .meeting-player scale { padding: 0; }
 .inline-line { border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+.error-line { background-color: var(--app-error-line-bg); color: var(--app-error-line-fg); border-radius: 10px; padding: 10px 12px; }
+.cassini-preferences label.error-line { margin-top: 8px; }
+row.error-line { background-color: var(--app-error-line-bg); color: var(--app-error-line-fg); }
+row.error-line .title { color: var(--app-error-line-fg); }
 .warn-line { background: var(--app-warn-line-bg); }
+label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-line-fg); }
 .info-line { background: var(--app-accent-tint); }
+.info-line > label, .info-line > image, .info-line > spinner { color: var(--app-accent-ink); }
 .meeting-transcript .words { font-size: 15px; line-height: 1.5; }
 .responsibility-card { background: var(--app-wash-subtle); border-radius: 12px; padding: 16px; }
 
@@ -173,7 +243,7 @@
 .export-dialog .small { font-size: 13px; }
 .export-choice:last-child { min-height: 32px; }
 
-/* Search shares native sidebar colours with the Library in either scheme. */
+/* Search shares sidebar colours with the Library in either scheme. */
 .search-results { background: transparent; padding: 0 8px; }
 .search-results > row { border-radius: 10px; padding: 0; margin: 3px 0; }
 .search-results > row:selected { background: var(--app-search-selected-bg); color: var(--app-window-fg); }
@@ -186,16 +256,23 @@
 
 .cassini-preferences .speech-model-selected { background: var(--app-model-selected-bg); }
 
-/* UX10: native dialog colours also keep pending/connected steps clear in dark mode. */
+/* UX10: pending/connected companion steps. */
 .companion-setup { font-size: 15px; }
 .companion-step-badge { min-width: 24px; min-height: 24px; border: 2px solid var(--app-accent-ink); border-radius: 50%; color: var(--app-accent-ink); font-weight: 700; }
 .companion-step-badge.done { border-color: var(--app-success-bg); background: var(--app-success-bg); color: var(--app-success-fg); }
 
-/* UX16: native surfaces; the avatar uses the same first-speaking colour. */
+/* UX16/UX17: speaker and saved-voice avatars pair avatar-0..6 washes with speaker-0..6 ink. */
 .speaker-edit { padding: 0; }
 .speakers-dialog { font-size: 15px; }
 .speakers-dialog .small { font-size: 13px; }
 .speaker-avatar { min-width: 40px; min-height: 40px; border-radius: 50%; background: var(--app-avatar-wash); font-weight: 700; }
+.speaker-avatar-0 { background: var(--cx-avatar-0); color: var(--cx-speaker-0); }
+.speaker-avatar-1 { background: var(--cx-avatar-1); color: var(--cx-speaker-1); }
+.speaker-avatar-2 { background: var(--cx-avatar-2); color: var(--cx-speaker-2); }
+.speaker-avatar-3 { background: var(--cx-avatar-3); color: var(--cx-speaker-3); }
+.speaker-avatar-4 { background: var(--cx-avatar-4); color: var(--cx-speaker-4); }
+.speaker-avatar-5 { background: var(--cx-avatar-5); color: var(--cx-speaker-5); }
+.speaker-avatar-6 { background: var(--cx-avatar-6); color: var(--cx-speaker-6); }
 
 .speaker-duplicate {
   padding: 12px;

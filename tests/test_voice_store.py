@@ -574,3 +574,40 @@ def test_trash_cache_transaction_recovers_deletion_if_people_write_fails(store, 
         store.remove_meeting(RECORDING)
     assert all(p.read_bytes() == value for p, value in before.items())
     assert not (store.root / ".transaction.json").exists()
+
+
+def test_saved_voice_slot_order_persists_across_reordering_and_forget(store):
+    from cassini_talk.tokens import saved_voice_slot
+
+    store.refresh()
+    store.commit_job(
+        RECORDING,
+        {
+            "a": dict(embedding=embedding(0), seconds=8),
+            "b": dict(embedding=embedding(1), seconds=20),
+            "c": dict(embedding=embedding(2), seconds=30),
+        },
+        0,
+    )
+    store.remember(RECORDING, "a", "Alice")
+    store.remember(RECORDING, "b", "Bob")
+    store.remember(RECORDING, "c", "Carol")
+
+    # Sorted by meeting count then confirmed seconds (Carol, Bob, Alice), yet saveOrder stays 0, 1, 2 -> slots 1, 2, 3.
+    voices = store.snapshot()["voices"]
+    assert [v["name"] for v in voices] == ["Carol", "Bob", "Alice"]
+    by_name = {v["name"]: v for v in voices}
+    assert (by_name["Alice"]["saveOrder"], saved_voice_slot(by_name["Alice"])) == (0, 1)
+    assert (by_name["Bob"]["saveOrder"], saved_voice_slot(by_name["Bob"])) == (1, 2)
+    assert (by_name["Carol"]["saveOrder"], saved_voice_slot(by_name["Carol"])) == (2, 3)
+
+    # Forgetting Alice never renumbers Bob or Carol, and the next saved voice advances to slot 4.
+    store.forget(by_name["Alice"]["id"])
+    after_forget = {v["name"]: v for v in store.snapshot()["voices"]}
+    assert (after_forget["Bob"]["saveOrder"], saved_voice_slot(after_forget["Bob"])) == (1, 2)
+    assert (after_forget["Carol"]["saveOrder"], saved_voice_slot(after_forget["Carol"])) == (2, 3)
+
+    store.commit_job(RECEIVED, {"d": dict(embedding=embedding(3), seconds=12)}, store.snapshot()["generation"])
+    store.remember(RECEIVED, "d", "Diego")
+    with_diego = {v["name"]: v for v in store.snapshot()["voices"]}
+    assert (with_diego["Diego"]["saveOrder"], saved_voice_slot(with_diego["Diego"])) == (3, 4)

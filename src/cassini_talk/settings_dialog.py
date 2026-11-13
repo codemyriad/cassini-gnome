@@ -379,6 +379,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.voice_progress.set_fraction(state["percent"] / 100)
         self.voice_remove.set_visible(state["downloaded"] and state["error"])
         self.voice_remove.set_sensitive(not state["busy"])
+        self.voice_line.set_css_classes(["error", "error-line"] if state["error"] else ["dim-label"])
         self.voice_line.set_visible(state["error"] and not state.get("runtime_error"))
         self.voice_line.set_label(
             text("errors.modelDownloadFailed.line", model=text("models.recogniseVoices.name")) if state["error"] else ""
@@ -429,6 +430,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.nemotron_progress.set_fraction(state["percent"] / 100)
         self.nemotron_remove.set_visible(state["downloaded"] and state["error"])
         self.nemotron_remove.set_sensitive(not state["busy"])
+        self.nemotron_line.set_css_classes(["error", "error-line"] if state["error"] else ["dim-label"])
         self.nemotron_line.set_visible(state["error"] and not state.get("runtime_error"))
         self.nemotron_line.set_label(
             text("errors.modelDownloadFailed.line", model=text("models.nemotron.name")) if state["error"] else ""
@@ -492,6 +494,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         line = text(state["notice"]) if state["notice"] and state["notice"] != "models.parakeetUltra.nowDefault" else ""
         if state["error"]:
             line = text("errors.modelDownloadFailed.line", model=text("models.parakeetUltra.name"))
+        self.model_line.set_css_classes(["error", "error-line"] if state["error"] else ["dim-label"])
         self.model_line.set_label(line)
         self.model_line.set_visible(bool(line))
 

@@ -98,6 +98,8 @@ class SearchPage(Adw.NavigationPage):
         self._context_signature = None
         self.hits = ()
         self.names = ()
+        self._style_manager = Adw.StyleManager.get_default()
+        self._style_handler = self._style_manager.connect("notify::dark", lambda *_: self.request())
         split = Adw.NavigationSplitView(min_sidebar_width=460, max_sidebar_width=460, sidebar_width_fraction=0.41)
         split.set_sidebar_width_unit(Adw.LengthUnit.PX)
         self.set_child(split)
@@ -270,6 +272,7 @@ class SearchPage(Adw.NavigationPage):
             own=self.own.get_active(),
             now_ms=self.window.now_ms,
             tz=self.window.tz,
+            dark=self._style_manager.get_dark(),
         )
         root = self.window.monitor.scanner.root
 
@@ -524,6 +527,9 @@ class SearchPage(Adw.NavigationPage):
     def close(self):
         self.closed = True
         self._cancelled.set()
+        if self._style_handler:
+            self._style_manager.disconnect(self._style_handler)
+            self._style_handler = 0
         if self._timer:
             GLib.source_remove(self._timer)
             self._timer = 0
