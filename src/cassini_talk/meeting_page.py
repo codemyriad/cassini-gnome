@@ -857,7 +857,7 @@ class MeetingPage(Adw.NavigationPage):
         caption = label("", "heading", xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=16)
         name = Gtk.Button(
             child=caption,
-            css_classes=["flat", "link", "transcript-name"],
+            css_classes=["flat", "transcript-name"],
             sensitive=self._can_listen,
         )
         name.connect("clicked", lambda button: self.listen_from_row(turn, button))
@@ -867,7 +867,7 @@ class MeetingPage(Adw.NavigationPage):
         row._auto_tag = None
         time = Gtk.Button(
             label=fmt.position(turn.start_ms),
-            css_classes=["flat", "link", "small", "transcript-time"],
+            css_classes=["flat", "small", "transcript-time"],
             halign=Gtk.Align.START,
             tooltip_text=text("player.playFromHere"),
             sensitive=self._can_listen,
@@ -948,6 +948,9 @@ class MeetingPage(Adw.NavigationPage):
         if self._exact:
             row.update_property([Gtk.AccessibleProperty.LABEL], [speaker.name + ", " + fmt.position(turn.start_ms)])
         caption = name.get_child() if interactive else name
+        slot = speaker_slot(speaker)
+        for idx in range(7):
+            (caption.add_css_class if idx == slot else caption.remove_css_class)(f"speaker-ink-{idx}")
         caption.set_markup(f'<span foreground="{state[1]}">{GLib.markup_escape_text(speaker.name)}</span>')
         name.set_visible(not turn.continuation)
         row._over_label.set_label(caption_text)

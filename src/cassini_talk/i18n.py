@@ -117,3 +117,25 @@ def plural_category(value, *, lang=None):
     if lang != "en" and integer != 0 and integer % 1_000_000 == 0 and decimals == 0:
         return "many"
     return "other"
+
+
+def join_list(items, *, lang=None):
+    """CLDR standard list conjunction for our six UI languages, without Oxford comma."""
+    values = list(items)
+    if not values:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    lang = language() if lang is None else lang
+    if lang == "en":
+        conj = " and "
+    elif lang == "fr":
+        conj = " et "
+    elif lang == "es":
+        import re
+
+        plain = re.sub(r"<[^>]+>", "", values[-1]).lstrip()
+        conj = " e " if re.match(r"(?i)(?:[ií]|hi(?![aeoáéó]))", plain) else " y "
+    else:
+        conj = " e "
+    return ", ".join(values[:-1]) + conj + values[-1]

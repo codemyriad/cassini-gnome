@@ -316,3 +316,58 @@ def test_crosstalk_caption_is_translated_in_the_actual_po_catalog(lang, expected
         row.over = ["b", "c"]
         names = "B and C" if lang == "en" else "B, C"
         assert row_caption(row, str.upper) == strings.text("meeting.turn.over", names=names) + " · " + expected
+
+
+@pytest.mark.parametrize(
+    ("lang", "items", "expected"),
+    [
+        ("en", [], ""),
+        ("en", ["Marta"], "Marta"),
+        ("en", ["Marta", "Dario"], "Marta and Dario"),
+        ("en", ["Marta", "Dario", "Luca"], "Marta, Dario and Luca"),
+        ("it", ["Marta", "Dario", "Luca"], "Marta, Dario e Luca"),
+        ("fr", ["Marta", "Dario", "Luca"], "Marta, Dario et Luca"),
+        ("es", ["Marta", "Dario", "Luca"], "Marta, Dario y Luca"),
+        ("es", ["Marta", "Dario", "Isabel"], "Marta, Dario e Isabel"),
+        ("es", ["Marta", "<b>Hidalgo</b>"], "Marta e <b>Hidalgo</b>"),
+        ("es", ["Marta", "<b>Hierro</b>"], "Marta y <b>Hierro</b>"),
+        ("pt-BR", ["Marta", "Dario", "Luca"], "Marta, Dario e Luca"),
+        ("pt-PT", ["Marta", "Dario", "Luca"], "Marta, Dario e Luca"),
+    ],
+)
+def test_join_list_localizes_conjunctions_across_all_ui_languages(lang, items, expected):
+    assert i18n.join_list(items, lang=lang) == expected
+
+
+@pytest.mark.parametrize(
+    ("lang", "expected_list"),
+    [
+        ("en", "<b>Marta</b>, <b>Rossi &amp; Co</b> and <b>Isabel</b>"),
+        ("it", "<b>Marta</b>, <b>Rossi &amp; Co</b> e <b>Isabel</b>"),
+        ("fr", "<b>Marta</b>, <b>Rossi &amp; Co</b> et <b>Isabel</b>"),
+        ("es", "<b>Marta</b>, <b>Rossi &amp; Co</b> e <b>Isabel</b>"),
+        ("pt-BR", "<b>Marta</b>, <b>Rossi &amp; Co</b> e <b>Isabel</b>"),
+        ("pt-PT", "<b>Marta</b>, <b>Rossi &amp; Co</b> e <b>Isabel</b>"),
+    ],
+)
+def test_export_speaker_names_markup_uses_localized_list_conjunctions(lang, expected_list):
+    from types import SimpleNamespace
+
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Adw", "1")
+    from cassini_talk.export_dialog import speaker_names_markup
+
+    meeting = SimpleNamespace(
+        speakers=[
+            SimpleNamespace(name="Marta", provenance="recognised"),
+            SimpleNamespace(name="Rossi & Co", provenance="recognised"),
+            SimpleNamespace(name="Speaker 3", provenance="typed"),
+            SimpleNamespace(name="Isabel", provenance="recognised"),
+        ]
+    )
+    with i18n.using_language(lang):
+        markup = speaker_names_markup(meeting)
+        assert expected_list in markup
+        if lang != "en":
+            assert " and " not in markup

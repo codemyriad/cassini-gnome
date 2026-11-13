@@ -13,6 +13,7 @@ from . import ux_formats as fmt
 from .export_model import encode_choice
 from .exporting import export_meeting
 from .i18n import gettext as _
+from .i18n import join_list
 from .library_window import label, vertical
 from .strings import text
 
@@ -24,7 +25,7 @@ def speaker_names_markup(meeting):
     names = [f"<b>{name}</b>" for name in names]
     if len(names) == 1:
         return text("export.speakerNames.body", name=names[0])
-    return text("export.speakerNames.body.several", names=", ".join(names[:-1]) + " and " + names[-1])
+    return text("export.speakerNames.body.several", names=join_list(names))
 
 
 class ExportDialog(Adw.Dialog):

@@ -31,11 +31,12 @@ class SettingsDialog(Adw.PreferencesDialog):
         super().__init__(
             title=text("settings.title"),
             search_enabled=False,
-            content_width=700,
+            content_width=820,
             content_height=680,
             css_classes=["cassini-preferences"],
         )
         self._cairo_shadows = CairoShadows()
+        self.connect("map", self._fit_switcher_tabs)
         self.connect("unmap", lambda *_: GLib.idle_add(self._cairo_shadows.clear))
         self.saved_voices_page = None
         self.app = app
@@ -63,9 +64,24 @@ class SettingsDialog(Adw.PreferencesDialog):
         self._library()
         self._browser()
         self.set_visible_page_name("recording")
+        self._fit_switcher_tabs()
         self.connect("closed", self._closed)
         self.timer = GLib.timeout_add_seconds(1, self.refresh)
         self.refresh()
+
+    def _fit_switcher_tabs(self, *_args):
+        stack = [self]
+        while stack:
+            widget = stack.pop()
+            if isinstance(widget, Adw.ViewSwitcher) and widget.get_ancestor(Adw.HeaderBar) is not None:
+                layout = widget.get_layout_manager()
+                if isinstance(layout, Gtk.BoxLayout):
+                    layout.set_homogeneous(False)
+                    layout.set_spacing(4)
+            child = widget.get_first_child()
+            while child is not None:
+                stack.append(child)
+                child = child.get_next_sibling()
 
     def _recording(self):
         group = Adw.PreferencesGroup()

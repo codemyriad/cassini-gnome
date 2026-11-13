@@ -99,8 +99,48 @@ with tempfile.TemporaryDirectory() as temporary:
 
     dialog = SettingsDialog(app, service_path=path)
     dialog.present(window)
-    until(lambda: dialog._future is None)
+    until(lambda: dialog._future is None and window.get_width() >= 1000)
     assert len(dialog.pages) == 4
+    from gi.repository import Adw
+
+    from cassini_talk import i18n
+    from cassini_talk.strings import text as ux_text
+
+    def switcher_tab_labels(root):
+        found = []
+        stack = [root]
+        while stack:
+            widget = stack.pop()
+            if (
+                isinstance(widget, Gtk.Label)
+                and widget.get_width() > 0
+                and widget.get_ancestor(Adw.ViewSwitcher) is not None
+                and widget.get_ancestor(Adw.HeaderBar) is not None
+            ):
+                found.append(widget)
+            child = widget.get_first_child()
+            while child is not None:
+                stack.append(child)
+                child = child.get_next_sibling()
+        return found
+
+    until(lambda: len(switcher_tab_labels(dialog)) == 4)
+    for lang in i18n.LANGUAGES:
+        with i18n.using_language(lang):
+            for page_name, page in dialog.pages.items():
+                page.set_title(ux_text("settings.tab." + page_name))
+        frames = []
+        window.add_tick_callback(lambda *_, seen=frames: (seen.append(1), len(seen) < 3)[1])
+        window.queue_draw()
+        until(lambda seen=frames: len(seen) >= 2)
+        tab_labels = switcher_tab_labels(dialog)
+        assert len(tab_labels) == 4
+        assert not any(lbl.get_layout().is_ellipsized() for lbl in tab_labels), (
+            f"Preferences tab truncated in {lang}: {[(lbl.get_text(), lbl.get_width()) for lbl in tab_labels]}"
+        )
+    for page_name, page in dialog.pages.items():
+        page.set_title(ux_text("settings.tab." + page_name))
+    until(lambda: dialog.pages["browserCompanion"].get_title() == "Browser companion")
     assert dialog.get_title() == "Preferences" and not dialog.get_search_enabled()
     assert dialog.explain.get_active()
     dialog.explain.set_active(False)

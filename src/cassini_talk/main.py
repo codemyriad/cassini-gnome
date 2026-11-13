@@ -1885,7 +1885,9 @@ class CassiniApplication(Adw.Application):
             if isinstance(item, Adw.ShortcutsItem):
                 identifier = {
                     "app.open": "import.action",
+                    "app.preferences": "settings.title",
                     "app.record": "common.record",
+                    "win.back-library": "common.backToLibrary",
                     "win.export": "common.exportEllipsis",
                     "win.rename": "meeting.renameEllipsis",
                     "win.skip-back": "player.back10",
