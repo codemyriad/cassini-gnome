@@ -19,8 +19,8 @@ import pytest
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "build-aux/ci/pr-shots.py"
-CANONICAL_COMMIT = "592f9cc6bd1cd1d3aac1beb63cb69ff199bd1d25"
-CANONICAL_SHA256 = "63cc9e25f2583895b1f0d1a5befa2611e4271bf2cfa3b06b8c09bf95561afa65"
+CANONICAL_COMMIT = "5fc25fa49b86e38d3876a0a26fcb77506bd23305"
+CANONICAL_SHA256 = "d4898061024ba464e88c66dc12563d1a61aaa5d6675ccc22e3af62aa2314c994"
 HAS_REAL_PIL = importlib.util.find_spec("PIL") is not None
 
 
@@ -372,9 +372,126 @@ def test_full_gnome_gallery_diff_artifact_validates_for_publication(tmp_path, mo
     all_data = json.loads(all_files["changes.json"])
     assert len(pr_shots.validated(all_data, all_files, "codemyriad/cassini-gnome", 386, head_sha)) == 456
 
+    # 76 changed pairs (> 40,000 B with <details>) automatically compact <details> in block(),
+    # while 44 changed pairs (< 40,000 B alone) also compact when combined with a large PR body,
+    # and unbalanced markers or > 65,000 B prose fail in dry-run and before checkout_host/push_host.
+    all_rendered = pr_shots.block(all_data)
+    assert "<details>" not in all_rendered
+    assert "Showing the first 12 of 76 changed screens." in all_rendered
+
+    capsys.readouterr()
+    monkeypatch.setattr(
+        pr_shots, "github", lambda _route: {"head": {"sha": head_sha, "ref": "feat/w08"}, "body": "p" * 45_000}
+    )
+    pr_shots.publish(pub_args)
+    compacted = capsys.readouterr().out
+    assert "<details>" not in compacted
+    assert "Showing the first 12 of 44 changed screens." in compacted
+
+    real_args = pr_shots.parser().parse_args(
+        ["publish", "--repo", "codemyriad/cassini-gnome", "--pr", "386", "--dir", str(out_dir)]
+    )
+    calls = []
+    monkeypatch.setattr(pr_shots, "checkout_host", lambda *_a, **_k: calls.append("checkout"))
+    monkeypatch.setattr(pr_shots, "push_host", lambda *_a, **_k: calls.append("push"))
+    monkeypatch.setattr(pr_shots, "command", lambda *_a, **_k: calls.append("command"))
+    for bad_body, pattern in (
+        (pr_shots.START + " broken", "Unbalanced screenshot markers"),
+        ("x" * 64_500, "PR body exceeds GitHub limit"),
+    ):
+        monkeypatch.setattr(pr_shots, "github", lambda _route, b=bad_body: {"head": {"sha": head_sha}, "body": b})
+        for cli_args in (pub_args, real_args):
+            with pytest.raises(ValueError, match=pattern):
+                pr_shots.publish(cli_args)
+            assert calls == []
+
     monkeypatch.setattr(pr_shots, "MAX_PUBLICATION_PNGS", 455)
     with pytest.raises(ValueError, match="Publisher limit: 455 PNG files"):
         pr_shots.validated(all_data, all_files, "codemyriad/cassini-gnome", 386, head_sha)
+
+
+def test_inline_slot_priority_and_variant_qualifiers():
+    pr_shots, _ = _load_modules()
+    base_sha, head_sha = "a" * 40, "b" * 40
+    rows = []
+
+    def add_pair(screen, *, status="changed", lang="en", device="desktop"):
+        for scheme in ("light", "dark"):
+            row = {
+                "screen": screen,
+                "label": screen.replace("-", " ").capitalize(),
+                "scheme": scheme,
+                "lang": lang,
+                "device": device,
+                "status": status,
+                "changed_pct": None if status == "added" else 1.5,
+            }
+            k = pr_shots.key(row)
+            row["key"] = k
+            row["before"] = None if status == "added" else f"before/{k}.png"
+            row["after"] = f"after/{k}.png"
+            row["diff"] = None if status == "added" else f"diff/{k}.png"
+            rows.append(row)
+
+    for flow in (
+        "background",
+        "batch-import-gui",
+        "companion-setup-connected",
+        "companion-setup-failed",
+        "companion-setup-local",
+        "companion-setup-open-failed",
+    ):
+        add_pair(flow)
+    add_pair("first-run", lang="fr")
+    add_pair("first-run", lang="pt-br")
+    add_pair("split-landscape", device="ipad")
+    for core_screen in (
+        "library",
+        "recording",
+        "meeting",
+        "search",
+        "first-run",
+        "received",
+        "export",
+        "settings-recording",
+        "settings-transcription",
+        "speakers",
+        "saved-voices",
+    ):
+        add_pair(core_screen)
+    add_pair("w2-badges", status="added")
+
+    data = {
+        "version": 1,
+        "app": "gnome",
+        "repo": "codemyriad/cassini-gnome",
+        "pr": 403,
+        "base": {"sha": base_sha, "run_id": "1", "runner": "self-hosted", "image": "codemyriad"},
+        "head": {"sha": head_sha, "run_id": "2", "runner": "self-hosted", "image": "codemyriad"},
+        "rows": rows,
+    }
+    rendered = pr_shots.block(data)
+    inline, details = rendered.split("<details>", 1)
+    inline_labels = [line.split("|")[1].strip() for line in inline.splitlines() if line.startswith("| ")][1:]
+    expected_screens = [
+        "Library",
+        "Recording",
+        "Meeting",
+        "Search",
+        "W2 badges",
+        "First run",
+        "Received",
+        "Speakers",
+        "Export",
+        "Settings recording",
+        "Settings transcription",
+        "Saved voices",
+    ]
+    assert inline_labels == [f"{name} · {scheme}" for name in expected_screens for scheme in ("light", "dark")]
+    assert "- First run · light (fr):" in details
+    assert "- First run · dark (pt-br):" in details
+    assert "- Split landscape · light (ipad):" in details
+    assert "- First run · light:" not in details
 
 
 def test_baseline_lookup_resolves_merge_parent_and_handles_missing_baseline(tmp_path, monkeypatch):
