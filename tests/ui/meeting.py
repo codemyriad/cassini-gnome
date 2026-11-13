@@ -266,6 +266,16 @@ with tempfile.TemporaryDirectory() as temporary:
 
             page.transcribing_row.details_button.popup()
             until(lambda: page.transcribing_row.popover.get_mapped())
+            popover = page.transcribing_row.popover
+            if not popover.get_display().is_composited():
+                # An opaque surface must hug the card: a shadow margin here
+                # paints as a square frame round the popover (WP5 board).
+                until(
+                    lambda: popover.get_child().get_width() > 0 and popover.get_native().get_surface().get_width() > 0
+                )
+                surface = popover.get_native().get_surface()
+                extra = surface.get_width() - popover.get_child().get_width()
+                assert extra <= 48, f"popover surface carries a {extra}px shadow margin without a compositor"
             pop_labels = labels(page.transcribing_row.popover)
             for expected in (
                 "Transcribing",

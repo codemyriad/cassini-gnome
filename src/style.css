@@ -298,6 +298,16 @@ popover.transcribing-popover > arrow {
   background: var(--cx-raised);
   border: 1px solid var(--cx-line);
 }
+/* Without a compositor the popover surface is opaque, so the shadow margin
+   above would paint as a square frame round the card. Libadwaita flattens
+   popovers under .solid-csd; keep doing that for this one. */
+.solid-csd popover.transcribing-popover > contents,
+.solid-csd popover.transcribing-popover > arrow {
+  box-shadow: none;
+  border-radius: 0;
+  border: none;
+  background-clip: border-box;
+}
 .transcribing-popover-title { font-size: 16px; font-weight: 700; color: var(--cx-ink); }
 .transcribing-popover-pct { font-size: 14px; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .transcribing-step-done { font-size: 14px; font-weight: 400; color: var(--cx-ink); }
