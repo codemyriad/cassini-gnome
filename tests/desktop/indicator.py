@@ -7,8 +7,10 @@ import base64
 import json
 import math
 import os
+import pty
 import struct
 import subprocess
+import threading
 import time
 import uuid
 import wave
@@ -40,17 +42,61 @@ from windowless import (
     windows,
 )
 
+MENU_ROW_IDS = {"Open Cassini": 2, "Stop Recording": 3, "Quit Cassini": 5}
+MENU_WIRE_CLICKS = []
+
 
 def record_menu_bus_events():
     # The Shell's UI activation signal precedes the separate D-Bus click.
-    # Keep a wire receipt on this private test bus so a timeout can distinguish
-    # a dropped host activation from a Quit that reached the app's menu.
+    # Stream a line-buffered wire receipt on this private test bus so
+    # menu_click waits on actual dbusmenu delivery, not Shell UI activation alone.
     rules = [
         f"type='method_call',path='/StatusNotifierItem/Menu',interface='com.canonical.dbusmenu',member='{member}'"
         for member in ("Event", "EventGroup")
     ]
-    with (OUT / "dbus-menu-events.log").open("wb") as log:
-        monitor = subprocess.Popen(["dbus-monitor", "--session", "--monitor", *rules], stdout=log, stderr=log)
+    master, slave = pty.openpty()
+    try:
+        monitor = subprocess.Popen(
+            ["dbus-monitor", "--session", "--monitor", *rules],
+            stdin=subprocess.DEVNULL,
+            stdout=slave,
+            stderr=slave,
+        )
+    finally:
+        os.close(slave)
+    log = (OUT / "dbus-menu-events.log").open("wb")
+
+    def reader():
+        pending = b""
+        pending_id = None
+        try:
+            while True:
+                try:
+                    chunk = os.read(master, 4096)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                log.write(chunk)
+                log.flush()
+                pending += chunk
+                while b"\n" in pending:
+                    raw, pending = pending.split(b"\n", 1)
+                    line = raw.decode("utf-8", errors="replace").strip()
+                    if line.startswith("int32 "):
+                        parts = line.split()
+                        pending_id = int(parts[1]) if len(parts) == 2 and parts[1].lstrip("-").isdigit() else None
+                    elif line == 'string "clicked"' and pending_id is not None:
+                        MENU_WIRE_CLICKS.append(pending_id)
+                        pending_id = None
+                    else:
+                        pending_id = None
+        finally:
+            os.close(master)
+            log.close()
+
+    thread = threading.Thread(target=reader, name="qa-dbus-menu-monitor", daemon=True)
+    thread.start()
 
     def stop():
         if monitor.poll() is None:
@@ -60,6 +106,7 @@ def record_menu_bus_events():
             except subprocess.TimeoutExpired:
                 monitor.kill()
                 monitor.wait(timeout=5)
+        thread.join(timeout=2)
 
     atexit.register(stop)
 
@@ -74,6 +121,20 @@ def indicator(appid):
         "title:a._indicator.title,status:a._indicator.status,icon:!!a._icon,label:a._label?.text??'',"
         "menu:a.menu._getMenuItems().filter(i=>i.visible).map(i=>i.label?.text??'')};})()"
     )
+
+
+def recording_indicator(appid):
+    item = indicator(appid)
+    if item and item.get("visible") and item.get("mapped") and item.get("title", "").startswith("Recording,"):
+        return item
+    return None
+
+
+def passive_indicator(appid):
+    item = indicator(appid)
+    if item and not item.get("visible") and item.get("title") == "Ready to record browser meetings":
+        return item
+    return None
 
 
 def assert_one_indicator(appid):
@@ -200,7 +261,7 @@ def wait_for_recording(root, appid, description):
         raise
 
 
-def menu_diagnostic(appid, label):
+def menu_diagnostic(appid, label, wire_clicks=()):
     """What the app publishes over dbusmenu versus what the host shows."""
     try:
         revision, layout = call(
@@ -225,11 +286,15 @@ def menu_diagnostic(appid, label):
         "(() => {const a=" + actor(appid) + ";if(!a)return null;return {open:a.menu.isOpen,"
         "items:a.menu._getMenuItems().map(i=>({label:i.label?.text??'',visible:i.visible,mapped:i.mapped}))};})()"
     )
-    print("SNI menu diagnostic", label, dict(published=published, shown=shown), flush=True)
+    print(
+        "SNI menu diagnostic", label, dict(published=published, shown=shown, wireClicks=list(wire_clicks)), flush=True
+    )
     screenshot("indicator-menu-failed.png")
 
 
 def menu_click(appid, label):
+    expected_row = MENU_ROW_IDS[label]
+    wire_before = len(MENU_WIRE_CLICKS)
     expression = f"{actor(appid)}?.menu._getMenuItems().find(i=>i.label?.text==={json.dumps(label)} && i.visible)"
 
     def row_shown():
@@ -244,12 +309,14 @@ def menu_click(appid, label):
     # extension receives a real Clutter event and forwards its dbusmenu Event
     # to Cassini. (Virtual Return on a focused row was not delivered once the
     # pointer had clicked inside a client window.)
-    previous = shell("global._cassiniQaActivations?.length??0")
     for attempt in range(3):
+        if expected_row in MENU_WIRE_CLICKS[wire_before:]:
+            break
+        activations_before = shell("global._cassiniQaActivations?.length??0")
         try:
             until(row_shown, "SNI menu row " + label)
         except AssertionError:
-            menu_diagnostic(appid, label)
+            menu_diagnostic(appid, label, MENU_WIRE_CLICKS[wire_before:])
             raise
         # The menu slides open; aim only once the compositor's own pick at the
         # row's centre is that row, so the click cannot land beside the menu.
@@ -270,30 +337,36 @@ def menu_click(appid, label):
         # activates the replacement. A handler on the original row never fired,
         # and the retry below aimed at a Stop Recording row that the real Stop
         # had already removed. PopupMenuBase emits "activate" for every row,
-        # including replacements.
+        # including replacements. Also require the D-Bus Event/EventGroup wire
+        # click, because row replacement can emit PopupMenuBase::activate
+        # locally while dropping the outbound dbusmenu call.
         assert shell(
             "(() => {const a=" + actor(appid) + ";if(!a)return false;global._cassiniQaActivations??=[];"
             "if(!a.menu._cassiniQaWatched){a.menu._cassiniQaWatched=true;"
             "a.menu.connect('activate',(_m,i)=>global._cassiniQaActivations.push(i.label?.text??''));}return true;})()"
         )
         pointer_click(centre[0], centre[1], "SNI menu row " + label)
-        # The hosted runner occasionally drops a click on a freshly opened
-        # menu. Click again only when the row did not activate, so no action
-        # can run twice.
+        # Retry only when the click did not reach Cassini's dbusmenu over the
+        # bus, so no action can run twice.
         try:
             until(
-                lambda: shell("global._cassiniQaActivations?.length??0") > previous,
-                "real menu activation " + label,
+                lambda activations_before=activations_before: (
+                    shell("global._cassiniQaActivations?.length??0") > activations_before
+                    and expected_row in MENU_WIRE_CLICKS[wire_before:]
+                ),
+                "real menu activation and D-Bus click " + label,
                 timeout=5,
             )
             break
         except AssertionError:
+            if expected_row in MENU_WIRE_CLICKS[wire_before:]:
+                break
             if attempt == 2:
                 print("SNI click", label, shell("global.get_pointer()"), flush=True)
-                menu_diagnostic(appid, label)
+                menu_diagnostic(appid, label, MENU_WIRE_CLICKS[wire_before:])
                 raise
-    assert shell("global._cassiniQaActivations.length") == previous + 1
-    assert shell("global._cassiniQaActivations.at(-1)") == label
+    assert MENU_WIRE_CLICKS[wire_before:] == [expected_row], (label, MENU_WIRE_CLICKS[wire_before:])
+    assert shell("global._cassiniQaActivations?.at(-1)") == label
 
 
 def kept(manifest):
@@ -454,10 +527,27 @@ def browser_only(appid, microphone):
                     pcm=base64.b64encode(tone).decode(),
                 )
             )
-        live = until(
-            lambda: indicator(appid) if (indicator(appid) or {}).get("title", "").startswith("Recording,") else None,
-            "browser-only recording in the SNI",
-        )
+        try:
+            live = until(lambda: recording_indicator(appid), "browser-only recording in the SNI")
+        except AssertionError:
+            try:
+                published = call(
+                    appid,
+                    "/StatusNotifierItem",
+                    "org.freedesktop.DBus.Properties",
+                    "GetAll",
+                    GLib.Variant("(s)", ("org.kde.StatusNotifierItem",)),
+                )[0]
+                published = {key: published[key] for key in ("Id", "Status", "Title")}
+            except GLib.Error as error:
+                published = str(error)
+            print(
+                "SNI browser-only diagnostic",
+                dict(app=appid, microphone=microphone, indicator=indicator(appid), published=published),
+                flush=True,
+            )
+            screenshot("indicator-browser-only-failed-" + appid + ".png")
+            raise
         expected = []
         measured = measured_privacy(expected)
         name = "browser-mic" if microphone else "browser-others"
@@ -547,23 +637,13 @@ for appid in appids:
     menu_click(appid, "Open Cassini")
     until(lambda appid=appid: windows(appid), "SNI Open reopens Library")
     assert pid(appid) == initial_pid
-    until(lambda appid=appid: not (indicator(appid) or {}).get("visible"), "idle SNI hidden with Library visible")
+    until(lambda appid=appid: passive_indicator(appid), "idle SNI hidden with Library visible")
     action(appid, "record")
     manifest = wait_for_recording(root, appid, "recorded microphone frames")
     # NewStatus("Active") and XAyatanaNewLabel carry inline values and flip visible
     # before NewTitle()'s asynchronous Properties.Get("Title") round-trip returns;
-    # wait for the refreshed recording title just as browser_only() does at :435.
-    live = until(
-        lambda appid=appid: (
-            item
-            if (item := indicator(appid))
-            and item.get("visible")
-            and item.get("mapped")
-            and item.get("title", "").startswith("Recording,")
-            else None
-        ),
-        "recording SNI",
-    )
+    # wait for the refreshed recording title just as browser_only() does.
+    live = until(lambda appid=appid: recording_indicator(appid), "recording SNI")
     # The text GNOME actually renders beside the icon (XAyatanaLabel), not
     # only the item's Title: it must show the timer and keep advancing.
     first = until(lambda appid=appid: (indicator(appid) or {}).get("label"), "rendered panel timer")
@@ -595,10 +675,14 @@ for appid in appids:
     menu_click(appid, "Stop Recording")
     until(lambda manifest=manifest: kept(manifest), "SNI Stop keeps WAVs")
     assert owner(appid)
-    until(lambda appid=appid: not (indicator(appid) or {}).get("visible"), "SNI passive after stop")
+    until(lambda: capture_inputs() == [], "native capture streams released")
+    # NewStatus("Passive") hides the item inline before Stop's NewTitle() round-trip
+    # finishes; let Title settle so an in-flight idle Get("Title") cannot overwrite
+    # the next browser-only recording's single NewTitle().
+    until(lambda appid=appid: passive_indicator(appid), "SNI passive after stop")
     for microphone in (False, True):
         privacy.append(browser_only(appid, microphone))
-        until(lambda appid=appid: not (indicator(appid) or {}).get("visible"), "SNI passive after browser-only Stop")
+        until(lambda appid=appid: passive_indicator(appid), "SNI passive after browser-only Stop")
     # The windowless Quit route must stop and keep without an invisible prompt.
     action(appid, "record")
     second = wait_for_recording(root, appid, "second recording")
@@ -606,6 +690,7 @@ for appid in appids:
     close_window(appid)
     click("Keep Recording in Background")
     until(lambda appid=appid: not windows(appid), "second recording hidden")
+    until(lambda appid=appid: recording_indicator(appid), "windowless recording SNI")
     menu_click(appid, "Quit Cassini")
     try:
         until(lambda appid=appid: not owner(appid), "SNI Quit stops and exits")
@@ -614,6 +699,8 @@ for appid in appids:
             "SNI quit diagnostic",
             indicator(appid),
             shell("global._cassiniQaActivations"),
+            "wireClicks",
+            MENU_WIRE_CLICKS,
             "windows",
             windows(appid),
             "manifest",
@@ -629,7 +716,7 @@ for appid in appids:
     action(appid, "record")
     third = wait_for_recording(root, appid, "recording with the Library open")
     assert third not in (manifest, second) and windows(appid)
-    until(lambda appid=appid: (indicator(appid) or {}).get("visible"), "recording SNI with the Library open")
+    until(lambda appid=appid: recording_indicator(appid), "recording SNI with the Library open")
     [(menu_owner, _path)] = assert_one_indicator(appid)
     menu_click(appid, "Quit Cassini")
     try:
@@ -643,6 +730,7 @@ for appid in appids:
                 state=json.loads(third.read_text())["state"],
                 windows=windows(appid),
                 activations=shell("global._cassiniQaActivations"),
+                wireClicks=MENU_WIRE_CLICKS,
             ),
             flush=True,
         )
