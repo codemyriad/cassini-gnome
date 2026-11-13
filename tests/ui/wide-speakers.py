@@ -134,16 +134,16 @@ with tempfile.TemporaryDirectory() as temporary:
     chips = []
 
     def collect(widget):
-        if widget.has_css_class("speaker-chip"):
+        if widget.has_css_class("inline-speaker-button"):
             chips.append(widget)
         child = widget.get_first_child()
         while child:
             collect(child)
             child = child.get_next_sibling()
 
-    collect(window.preview)
+    collect(window.meeting_page.speakers)
     assert len(chips) == 14
-    until(window, lambda: len({chip.get_allocation().y for chip in chips}) > 1, "Speaker chips wrap onto rows")
+    until(window, lambda: len({chip.get_allocation().y for chip in chips}) > 1, "Inline speakers wrap onto rows")
     paintable = Gtk.WidgetPaintable.new(window)
     painted = []
 

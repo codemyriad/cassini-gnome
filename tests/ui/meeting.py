@@ -127,9 +127,30 @@ with tempfile.TemporaryDirectory() as temporary:
     page = window.meeting_page
     assert page._exact
     until(lambda: page.list.ready and len(page.bound) == 5 and window.player._prerolled)
-    assert all(v in labels(page.speakers) for v in ["43%", "36%", "21%", "Named by you", "Not named yet"])
+    assert all(v in labels(page.speakers) for v in ["Marta", "Giulia Rossi", "Speaker 3"])
     # Imported recognition metadata has no corresponding local saved voice.
-    assert "Recognised from saved voices" not in labels(page.speakers)
+    assert "auto" not in labels(page.speakers)
+    assert page._speaker_rows["marta"][0].get_child().get_first_child().has_css_class("speaker-dot-1")
+    guest_dot = page._speaker_rows["guest"][0].get_child().get_first_child()
+    assert guest_dot.has_css_class("speaker-dot-0") and guest_dot.get_next_sibling().has_css_class("speaker-unnamed")
+    # WP3 Find in this meeting: Ctrl+F focuses, highlights active + passive hits, steps and clears.
+    assert page.find_row.get_visible() and page.find_shortcut_badge.get_visible()
+    assert page.find_shortcut_badge.get_label() == "Ctrl+F"
+    window.activate_action("win.find-in-meeting", None)
+    until(lambda: page.find_bar.has_css_class("focused") and not page.find_shortcut_badge.get_visible())
+    page.find_entry.set_text("migration")
+    until(lambda: page.find_count_label.get_visible() and page.find_count_label.get_label() == "1 of 2")
+    assert 'underline="single"' in page.bound[1][1].get_label()
+    assert "background=" in page.bound[3][1].get_label() and 'underline="single"' not in page.bound[3][1].get_label()
+    shot(window, "-find")
+    page.find_next_button.emit("clicked")
+    until(lambda: page.find_count_label.get_label() == "2 of 2")
+    assert 'underline="single"' in page.bound[3][1].get_label()
+    page.find_prev_button.emit("clicked")
+    until(lambda: page.find_count_label.get_label() == "1 of 2")
+    page.clear_find()
+    until(lambda: page.find_entry.get_text() == "" and not page.find_count_label.get_visible())
+    assert 'underline="single"' not in page.bound[1][1].get_label()
     menu_changes = []
     handler = page.more_menu.connect("items-changed", lambda *_: menu_changes.append(1))
     page.update(meeting)
@@ -240,6 +261,11 @@ with tempfile.TemporaryDirectory() as temporary:
             sync_snapshot(running)
             window.back_to_library()
             until(lambda: window.meeting_page is None and window.navigation.get_visible_page() is not None)
+            assert (
+                window.detail_stack.get_visible_child_name() == "empty"
+                and window.empty_selection_label.get_label() == "No meeting selected"
+            )
+            shot(window, "-empty-selection")
             window.rows.select_row(window._row_by_key[running.key])
             until(lambda: window.selected is not None and window.selected.key == running.key)
             assert (
@@ -252,7 +278,10 @@ with tempfile.TemporaryDirectory() as temporary:
                 stop_call.assert_called_once_with(running)
             window._selected(None, SimpleNamespace(meeting=stopped_partial))
             assert window.stop_transcription_button is None
-            assert "Write it down" in labels(window.preview)
+            assert (
+                window.meeting_page.write_button.get_visible()
+                and window.meeting_page.write_button.get_label() == "Write it down"
+            )
             window._source_snapshot = base_snapshot
             window._updated(base_snapshot)
             window.open_meeting(meeting)
@@ -280,10 +309,10 @@ with tempfile.TemporaryDirectory() as temporary:
             retry.assert_called_once_with(empty)
             retry.reset_mock()
             window._selected(None, SimpleNamespace(meeting=empty))
-            assert "No speech was found in this meeting." in labels(window.preview)
+            assert "No speech was found in this meeting." in labels(window.meeting_page.lines)
             again = next(
                 w
-                for w in widgets(window.preview)
+                for w in widgets(window.meeting_page.lines)
                 if isinstance(w, Gtk.Button) and w.get_label() == "Write it down again"
             )
             again.emit("clicked")
@@ -310,7 +339,7 @@ with tempfile.TemporaryDirectory() as temporary:
         )
 
         def show_synthetic(words):
-            current = replace(meeting, words=words, turns=reading_turns(words))
+            current = replace(meeting, words=words, turns=reading_turns(words), transcript="done", eta_minutes=None)
             snapshot = replace(
                 window._source_snapshot,
                 meetings=tuple(current if m.key == current.key else m for m in window._source_snapshot.meetings),
@@ -339,11 +368,62 @@ with tempfile.TemporaryDirectory() as temporary:
         inline.emit("activate-link", "aside:0:0")
         until(lambda: window.player.position == 900)
         assert 'background="#BDDCE4" foreground="#191B1F">Yes &lt;&amp;&gt;.' in inline.get_label()
+        from cassini_talk.meeting_text import LayoutRow
+
+        chunk_list = [
+            Word(
+                first,
+                i * 100,
+                i * 100 + 100,
+                "chunk" if i == 126 else ("bridge" if i == 127 else f"tok{i}"),
+            )
+            for i in range(200)
+        ]
+        chunk_list.insert(100, Word(second, 9950, 10250, "Right."))
+        show_synthetic(tuple(chunk_list))
+        until(
+            lambda: (
+                len(page.meeting.turns) == 1
+                and len(page._turns) == 2
+                and isinstance(page._turns[0], LayoutRow)
+                and 0 in page.bound
+                and 1 in page.bound
+            )
+        )
+        page.find_entry.set_text("chunk bridge")
+        assert len(page._find_matches) == 1 and page.find_count_label.get_label() == "1 of 1"
+        assert 'underline="single"' in page.bound[0][1].get_label()
+        assert 'underline="single"' in page.bound[1][1].get_label()
+        page.clear_find(focus_transcript=False)
+        # Equal-content refresh (reparsed Word objects with unchanged signature) must
+        # still map Find matches beyond chunk 0 onto row 1, word 53.
+        retained_layout = page._turns
+        reparsed_chunk_words = tuple(Word(w.speaker, w.start_ms, w.end_ms, w.text) for w in chunk_list)
+        reparsed_meeting = replace(
+            page.meeting,
+            title="Renamed after merge",
+            words=reparsed_chunk_words,
+            turns=reading_turns(reparsed_chunk_words),
+        )
+        sync_snapshot(reparsed_meeting)
+        assert page._turns is retained_layout and page.meeting.turns is reparsed_meeting.turns
+        page.find_entry.set_text("tok180")
+        assert len(page._find_matches) == 1 and page.find_count_label.get_label() == "1 of 1"
+        assert page._find_matches[0].row_index == 1 and page._find_matches[0].spans == (((1, -1), 53, 0, 6),)
+        until(lambda: 1 in page.bound and 'underline="single"' in page.bound[1][1].get_label())
+        page.clear_find(focus_transcript=False)
         show_synthetic(timed)
         until(lambda: page.scroller.get_vadjustment().get_upper() > 5000)
         adjustment = page.scroller.get_vadjustment()
         adjustment.set_value(1500)
-        until(lambda: adjustment.get_value() > 1000)
+        until(lambda: adjustment.get_value() > 1000 and page._header_scrolled)
+        assert not page.full_header.get_visible() and page.compact_header_box.get_visible()
+        assert page.scroll_fade.get_visible() and page.top_bar.has_css_class("scrolled")
+        page.settings.set_boolean("companion-card-dismissed", True)
+        page.set_connected(False)
+        shot(window, "-scrolled")
+        page.settings.set_boolean("companion-card-dismissed", False)
+        page.set_connected(False)
         frames = []
         page.list.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
         until(lambda: len(frames) >= 2)
@@ -380,6 +460,9 @@ with tempfile.TemporaryDirectory() as temporary:
 
         until(lambda: window.player.playing and active_visible())
         page.play.emit("clicked")
+        adjustment.set_value(0)
+        until(lambda: not page._header_scrolled and page.full_header.get_visible())
+        assert not page.compact_header_box.get_visible() and not page.scroll_fade.get_visible()
         style = Adw.StyleManager.get_default()
         style.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
 
@@ -397,7 +480,7 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda: style.get_dark() and transcript_colours(True))
         dark_first = speaker_colour(meeting.speakers[0], dark=True)
         assert page._colour(meeting.speakers[0]) == dark_first
-        assert any(dark_first in value for value in labels(page.speakers))
+        assert page._speaker_rows[meeting.speakers[0].id][0].get_mapped()
         style.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
         until(lambda: not style.get_dark() and transcript_colours(False))
     page.update(meeting)
@@ -428,8 +511,8 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: window.search_page is None)
     received = next(m for m in window.snapshot.meetings if m.origin == "received")
     app.open_in_new_window(Gio.File.new_for_path(str(received.audio_file)))
-    until(lambda: not window.meeting_page and window.selected and window.selected.key == received.key)
-    window.read_button.emit("clicked")
+    until(lambda: window.meeting_page is not None and window.selected and window.selected.key == received.key)
+    window.open_meeting(received)
     until(lambda: window.meeting_page is not None)
     assert window.meeting_page.meeting.words
     assert not isinstance(window.player, FolderPlayer), "Received meeting must exercise player replacement"
@@ -477,6 +560,115 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.meeting_page.meeting.directory == session.directory
     window.back_to_library()
     assert any(m.title == changed["title"] for m in window.snapshot.meetings)
+
+    # Single-click row selection must initialize the selected meeting's player for
+    # both timeline pointer seeking (before Play) and immediate speaker sampling.
+    single_click_target = next(
+        m
+        for m in window.snapshot.meetings
+        if m.origin == "own"
+        and m.metadata_editable
+        and m.has_audio
+        and len(m.speakers) >= 2
+        and any(s.sample_span for s in m.speakers)
+    )
+    other_playable = next(
+        m
+        for m in window.snapshot.meetings
+        if m.key != single_click_target.key and m.has_audio and m.lifecycle == "saved"
+    )
+    window.rows.select_row(window._row_by_key[other_playable.key])
+    until(lambda: window._loaded_key == other_playable.key and window.player.loaded and window.player._prerolled)
+    window.rows.select_row(window._row_by_key[single_click_target.key])
+    until(
+        lambda: (
+            window.meeting_page is not None
+            and window.meeting_page.meeting.key == single_click_target.key
+            and window._loaded_key == single_click_target.key
+            and window.player.loaded
+            and window.player._prerolled
+            and window.meeting_page.timeline.scale.get_width() > 40
+        )
+    )
+    sc_page = window.meeting_page
+    assert not window.player.playing and window.player.position == 0
+    tl_left, tl_width = sc_page.timeline._geometry()
+    sc_page.timeline._begin(sc_page.timeline.gesture, tl_left + max(12.0, tl_width * 0.5), 4.0)
+    sc_page.timeline._end(sc_page.timeline.gesture, 0.0, 0.0)
+    until(lambda: window.player.position > 0 and window._loaded_key == single_click_target.key)
+    sample_speaker = next(s for s in single_click_target.speakers if s.sample_span)
+    sc_page.name_speakers(sample_speaker.id)
+    until(
+        lambda: (
+            sc_page.speakers_dialog is not None
+            and sc_page.speakers_dialog.get_mapped()
+            and sc_page.speakers_dialog.play.get_sensitive()
+        )
+    )
+    assert sc_page.speakers_dialog._can_play()
+    sc_page.speakers_dialog.play.emit("clicked")
+    until(lambda: sc_page.speakers_dialog.sample_active and window.player.playing)
+    sc_page.speakers_dialog.close()
+    until(lambda: sc_page.speakers_dialog.closed and not window.player.playing)
+
+    # Switching meetings while a listening-bar speaker merge is in flight must
+    # recompute the originating meeting's directory and suppress A's UI completion on B.
+    import threading
+    from unittest.mock import patch
+
+    from cassini_talk import speaker_edits
+
+    entered_merge = threading.Event()
+    release_merge = threading.Event()
+    real_merge_into = speaker_edits.merge_into
+    recomputed_calls = []
+    switched_toasts = []
+    real_recompute = app.recompute_voices
+    real_add_toast = window.toasts.add_toast
+
+    def gated_merge(directory, src_id, dst_id, *, scanner=None):
+        entered_merge.set()
+        assert release_merge.wait(10), "Timed out waiting to release gated merge"
+        return real_merge_into(directory, src_id, dst_id, scanner=scanner)
+
+    merge_src = single_click_target.speakers[-1].id
+    merge_dst = single_click_target.speakers[0].id
+    with (
+        patch.object(speaker_edits, "merge_into", side_effect=gated_merge),
+        patch.object(
+            app,
+            "recompute_voices",
+            side_effect=lambda directory, pair: (
+                recomputed_calls.append((directory, pair)),
+                real_recompute(directory, pair),
+            )[1],
+        ),
+        patch.object(
+            window.toasts,
+            "add_toast",
+            side_effect=lambda toast: (switched_toasts.append(toast.get_title()), real_add_toast(toast))[1],
+        ),
+    ):
+        sc_page.merge_speaker(merge_src, merge_dst)
+        until(lambda: entered_merge.is_set())
+        window.rows.select_row(window._row_by_key[other_playable.key])
+        until(lambda: sc_page.meeting.key == other_playable.key)
+        assert sc_page._speaker_future is None
+        switched_toasts.clear()
+        release_merge.set()
+        until(
+            lambda: (
+                len(recomputed_calls) == 1
+                and any(
+                    m.key == single_click_target.key and m.metadata.get("speakerMerges")
+                    for m in window.snapshot.meetings
+                )
+                and not window._pending
+            )
+        )
+        assert recomputed_calls == [(single_click_target.directory, (merge_src, merge_dst))]
+        assert not switched_toasts
+        assert sc_page._merge_transition is None
 
     # Real confirmation widgets, deterministic controller double; no device access.
     class Controller(GObject.Object):

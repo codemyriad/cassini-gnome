@@ -56,11 +56,7 @@ def labels(widget):
 
 
 def speaker_labels(page, identifier):
-    index = next(i for i, s in enumerate(page.meeting.speakers) if s.id == identifier)
-    child = page.speakers.get_first_child().get_next_sibling()
-    for _ in range(index):
-        child = child.get_next_sibling()
-    return labels(child)
+    return labels(page._speaker_rows[identifier][0])
 
 
 with tempfile.TemporaryDirectory() as temporary:
@@ -228,7 +224,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not created[0]._pipeline.get_bus().handler_is_connected(created[0]._bus_handler)
     assert voices.player is None and voices._sample_pending is None
     del voices.samples["broken"]
-    assert "Recognised from saved voices" in speaker_labels(page, "marta")
+    assert "auto" in speaker_labels(page, "marta")
     # Failed Forget retains the previous store, supports Retry, and keeps names.
     before = (app.voice_store.root / "people.json").read_bytes()
     with patch.object(app.voice_store, "forget", side_effect=OSError("unplugged")):
@@ -239,7 +235,7 @@ with tempfile.TemporaryDirectory() as temporary:
     voices.again.emit("clicked")
     until(lambda: not voices.busy and len(voices.rows) == 4)
     assert first not in voices.rows
-    until(lambda: "Recognised from saved voices" not in speaker_labels(page, "marta"))
+    until(lambda: "auto" not in speaker_labels(page, "marta"))
     assert next(s for s in page.meeting.speakers if s.id == "marta").name == "Marta"
     saved_names = (meeting.directory / "meeting.json").read_bytes()
     voices.confirm(None)

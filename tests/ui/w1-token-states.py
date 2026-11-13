@@ -116,7 +116,9 @@ with tempfile.TemporaryDirectory() as temporary:
         for idx, (spk, sentence) in enumerate(lines)
         for w_i, tok in enumerate(sentence.split())
     )
-    seven_meeting = replace(base_meeting, speakers=seven_speakers, words=words, turns=reading_turns(words))
+    seven_meeting = replace(
+        base_meeting, speakers=seven_speakers, words=words, turns=reading_turns(words), preview_turns=()
+    )
     snap = window._source_snapshot or window.snapshot
     window._library_scanned(
         replace(snap, meetings=tuple(seven_meeting if m.key == seven_meeting.key else m for m in snap.meetings))
@@ -124,7 +126,7 @@ with tempfile.TemporaryDirectory() as temporary:
     window._activity_tick()
     window.open_meeting(seven_meeting)
     page = window.meeting_page
-    until(lambda: page.list.ready and len(page.bound) == 7)
+    until(lambda: page.list.ready and len(page._turns) == 7 and len(page._speaker_rows) == 7 and len(page.bound) >= 4)
     for spk in seven_speakers:
         expected = speaker_colour(spk, dark=dark)
         if spk.provenance == "unnamed":

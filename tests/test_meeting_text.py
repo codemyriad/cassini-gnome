@@ -268,3 +268,184 @@ def test_reading_split_places_aside_once_and_preserves_original_indices():
     indexed = sorted((i, word) for owner in owners for i, word in zip(owner.word_indices, owner.words, strict=True))
     assert [i for i, _ in indexed] == list(range(len(words)))
     assert all(word is words[i] for i, word in indexed)
+
+
+def test_find_in_meeting_matches_turns_asides_and_renders_active_underline():
+    from cassini_talk.meeting_text import (
+        build_find_row_highlights,
+        find_transcript_matches,
+        reading_markup,
+        reading_markup_signature,
+        reading_turns,
+    )
+    from cassini_talk.tokens import search_hit_colours, token
+
+    words = [
+        Word("a", 0, 1000, "Plan"),
+        Word("a", 1000, 2000, "migration & rollout"),
+        Word("b", 1200, 1500, "Migration?"),
+        Word("a", 2000, 3000, "migration."),
+    ]
+    rows = reading_turns(words)
+    assert len(rows) == 1 and len(rows[0].asides) == 1
+    assert find_transcript_matches(rows, "   ") == ()
+    matches = find_transcript_matches(rows, "MIGRATION")
+    assert [(m.row_index, m.start_ms, m.spans) for m in matches] == [
+        (0, 1000, (((0, -1), 1, 0, 9),)),
+        (0, 1200, (((0, 0), 0, 0, 9),)),
+        (0, 2000, (((0, -1), 2, 0, 9),)),
+    ]
+    phrase = find_transcript_matches(rows, "plan migration")
+    assert len(phrase) == 1 and len(phrase[0].spans) == 2
+    highlights_0 = build_find_row_highlights(matches, 0)
+    highlights_1 = build_find_row_highlights(matches, 1)
+    assert reading_markup_signature(
+        rows[0], -1, str.upper, row_highlights=highlights_0.get(0)
+    ) != reading_markup_signature(rows[0], -1, str.upper, row_highlights=highlights_1.get(0))
+    markup_0 = reading_markup(rows[0], -1, str.upper, row_highlights=highlights_0.get(0))
+    active_bg, hit_fg = search_hit_colours(dark=False, selected=True)
+    passive_bg, _ = search_hit_colours(dark=False, selected=False)
+    accent = token("accent", dark=False)
+    assert (
+        f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">migration</span> &amp; rollout'
+        in markup_0
+    )
+    assert f'<span background="{passive_bg}" foreground="{hit_fg}">Migration</span>?' in markup_0
+    assert f'<span background="{passive_bg}" foreground="{hit_fg}">migration</span>.' in markup_0
+    markup_1 = reading_markup(rows[0], -1, str.upper, row_highlights=highlights_1.get(0))
+    assert (
+        f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">Migration</span>?'
+        in markup_1
+    )
+
+
+def test_find_in_meeting_matches_phrases_crossing_layout_chunk_boundaries():
+    from cassini_talk.meeting_text import (
+        LAYOUT_WORD_LIMIT,
+        LayoutRow,
+        ReadingRows,
+        build_find_row_highlights,
+        find_transcript_matches,
+        reading_markup,
+        reading_turns,
+    )
+    from cassini_talk.tokens import search_hit_colours, token
+    from cassini_talk.transcript import Turn
+
+    assert LAYOUT_WORD_LIMIT == 128
+    # 1. Direct 200-word logical Turn split at words 127-128 into two LayoutRows.
+    direct_words = [
+        Word(
+            "a",
+            i * 100,
+            i * 100 + 80,
+            "boundary" if i == 127 else ("crossing" if i == 128 else f"w{i}"),
+        )
+        for i in range(200)
+    ]
+    direct_rows = ReadingRows([Turn(0, "a", direct_words, 0, 0, 20000)])
+    assert len(direct_rows) == 1 and len(direct_rows.layout) == 2
+    assert isinstance(direct_rows.layout[0], LayoutRow)
+    for direct_matches in (
+        find_transcript_matches(direct_rows, "boundary crossing", layout_turns=direct_rows.layout),
+        find_transcript_matches(direct_rows.layout, "boundary crossing"),
+    ):
+        assert len(direct_matches) == 1
+        assert direct_matches[0].spans == (((0, -1), 127, 0, 8), ((1, -1), 0, 0, 8))
+
+    # 2. Full reading_turns rejoined paragraph (>128 words across a backchannel chip).
+    words = [
+        Word(
+            "a",
+            i * 100,
+            i * 100 + 100,
+            "boundary" if i == 126 else ("crossing" if i == 127 else f"w{i}"),
+        )
+        for i in range(200)
+    ]
+    words.insert(100, Word("b", 9950, 10250, "Right."))
+    rows = reading_turns(words)
+    assert len(rows) == 1 and len(rows.layout) == 2
+    assert isinstance(rows.layout[0], LayoutRow) and isinstance(rows.layout[1], LayoutRow)
+    assert len(rows.layout[0].words) == 127 and len(rows.layout[1].words) == 73
+
+    for matches in (
+        find_transcript_matches(rows, "boundary crossing", layout_turns=rows.layout),
+        find_transcript_matches(rows.layout, "boundary crossing"),
+    ):
+        assert len(matches) == 1
+        assert matches[0].row_index == 0
+        assert matches[0].start_ms == 126 * 100
+        assert matches[0].spans == (((0, -1), 126, 0, 8), ((1, -1), 0, 0, 8))
+
+    highlights = build_find_row_highlights(matches, 0)
+    assert set(highlights) == {0, 1}
+    active_bg, hit_fg = search_hit_colours(dark=False, selected=True)
+    accent = token("accent", dark=False)
+    markup_row0 = reading_markup(rows.layout[0], -1, str.upper, row_highlights=highlights.get(0))
+    markup_row1 = reading_markup(rows.layout[1], -1, str.upper, row_highlights=highlights.get(1))
+    assert (
+        f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">boundary</span>'
+        in markup_row0
+    )
+    assert (
+        f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">crossing</span>'
+        in markup_row1
+    )
+
+    # 3. >128-word folded aside (LayoutChip) crossing LAYOUT_WORD_LIMIT.
+    from cassini_talk.meeting_text import LayoutChip
+
+    aside_words = [
+        Word("b", 100 + i * 10, 108 + i * 10, "aside" if i == 127 else ("seam" if i == 128 else f"c{i}"))
+        for i in range(160)
+    ]
+    aside_turn = Turn(1, "b", aside_words, 1, 100, 1700)
+    host_turn = Turn(
+        0,
+        "a",
+        [Word("a", 0, 500, "Start"), Word("a", 500, 3000, "finish.")],
+        0,
+        0,
+        3000,
+        asides=[(0, aside_turn)],
+    )
+    aside_rows = ReadingRows([host_turn])
+    assert len(aside_rows) == 1 and len(aside_rows.layout) >= 3
+    assert isinstance(aside_rows.layout[1].asides[0][1], LayoutChip)
+    aside_matches = find_transcript_matches(aside_rows, "aside seam", layout_turns=aside_rows.layout)
+    assert len(aside_matches) == 1
+    first_span_row = aside_matches[0].spans[0][0][0]
+    second_span_row = aside_matches[0].spans[1][0][0]
+    assert second_span_row == first_span_row + 1
+    aside_hl = build_find_row_highlights(aside_matches, 0)
+    assert first_span_row in aside_hl and second_span_row in aside_hl
+
+    # 4. Equal-content refresh reparses logical words into distinct Word objects while
+    # the displayed layout retains the original chunks: matches beyond chunk 0 must still
+    # map to the right layout row and local word index (row 1, word 53 for tok180).
+    def make_rejoined_words():
+        seq = [Word("a", i * 100, i * 100 + 100, f"tok{i}") for i in range(200)]
+        seq.insert(100, Word("b", 9950, 10250, "Right."))
+        return seq
+
+    initial_rows = reading_turns(make_rejoined_words())
+    reparsed_rows = reading_turns(make_rejoined_words())
+    assert initial_rows == reparsed_rows
+    assert initial_rows[0].words[180] is not reparsed_rows[0].words[180]
+    assert initial_rows.layout[1].words[53].text == "tok180"
+
+    for refreshed_matches in (
+        find_transcript_matches(initial_rows.layout, "tok180"),
+        find_transcript_matches(reparsed_rows, "tok180", layout_turns=initial_rows.layout),
+    ):
+        assert len(refreshed_matches) == 1
+        assert refreshed_matches[0].row_index == 1
+        assert refreshed_matches[0].spans == (((1, -1), 53, 0, 6),)
+        refreshed_hl = build_find_row_highlights(refreshed_matches, 0)
+        assert set(refreshed_hl) == {1}
+        markup_chunk1 = reading_markup(initial_rows.layout[1], -1, str.upper, row_highlights=refreshed_hl.get(1))
+        assert (
+            f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">tok180</span>'
+            in markup_chunk1
+        )

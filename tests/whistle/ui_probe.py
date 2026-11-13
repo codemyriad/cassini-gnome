@@ -160,7 +160,7 @@ try:
         window.player = FolderPlayer(audio_sink=sink)
         window._connect_player()
         window._loaded_key = None
-        window.read_button.emit("clicked")
+        window.open_meeting(window.selected)
         assert window.meeting_page and window.meeting_page.meeting.words
         partial_count = len(window.meeting_page.meeting.words)
         until(
@@ -176,8 +176,9 @@ try:
         )
         model = window.meeting_page.meeting
         assert len(model.words) == 136 and {s.name for s in model.speakers} == {"Me", "The others"}
+        assert all(s.provenance == "source" for s in model.speakers)
         captions = [w.get_label() for w in walk(window.meeting_page.speakers) if isinstance(w, Gtk.Label)]
-        assert "Your microphone" in captions and "This computer’s sound" in captions, captions
+        assert "Me" in captions and "The others" in captions, captions
         first_word_ms = json.loads((root / "tests/whistle/pipeline/pipeline-golden.json").read_text())["words"][0][
             "startMs"
         ]
@@ -233,7 +234,9 @@ try:
         )
         row = next(w for w in walk(window.rows) if getattr(w, "meeting", None) and w.meeting.key == received_model.key)
         window.rows.select_row(row)
-        write = next(w for w in walk(window.preview) if isinstance(w, Gtk.Button) and w.get_label() == "Write it down")
+        write = next(
+            w for w in walk(window.meeting_page) if isinstance(w, Gtk.Button) and w.get_label() == "Write it down"
+        )
         write.emit("clicked")
         received_model = until(
             lambda: next(
@@ -260,7 +263,7 @@ try:
         row = next(w for w in walk(window.rows) if getattr(w, "meeting", None) and w.meeting.key == failed.key)
         window.rows.select_row(row)
         retry_button = next(
-            w for w in walk(window.preview) if isinstance(w, Gtk.Button) and w.get_label() == "Try again"
+            w for w in walk(window.meeting_page) if isinstance(w, Gtk.Button) and w.get_label() == "Try again"
         )
         retry_button.emit("clicked")
         recovered = until(

@@ -50,11 +50,7 @@ def labels(widget):
 
 
 def speaker_labels(page, identifier):
-    index = next(i for i, s in enumerate(page.meeting.speakers) if s.id == identifier)
-    child = page.speakers.get_first_child().get_next_sibling()
-    for _ in range(index):
-        child = child.get_next_sibling()
-    return labels(child)
+    return labels(page._speaker_rows[identifier][0])
 
 
 with tempfile.TemporaryDirectory() as temporary:

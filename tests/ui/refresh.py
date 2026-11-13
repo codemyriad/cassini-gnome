@@ -22,6 +22,7 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib, Gst  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.folder_player import FolderPlayer  # noqa: E402
 from cassini_talk.library_window import LibraryWindow  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 from cassini_talk.open_meeting import load_open_meeting  # noqa: E402
@@ -65,9 +66,11 @@ with tempfile.TemporaryDirectory() as temporary:
     connect = LibraryWindow._connect_player
 
     def private_connect(window):
-        if isinstance(window.player, Player):
-            sink = Gst.ElementFactory.make("fakesink", None)
-            sink.set_property("sync", True)
+        sink = Gst.ElementFactory.make("fakesink", None)
+        sink.set_property("sync", True)
+        if isinstance(window.player, FolderPlayer):
+            window.player.audio_sink = sink
+        elif isinstance(window.player, Player):
             window.player._pipeline.set_property("audio-sink", sink)
         connect(window)
 

@@ -127,7 +127,7 @@ with tempfile.TemporaryDirectory() as temporary:
                 until(lambda page=page: page.list.viewport_ready and page.get_mapped())
             else:
                 until(lambda page=page: len(page.bound) >= min(6, len(page.meeting.turns)) and page.get_mapped())
-            until(lambda page=page: page.get_width() == window.get_width())
+            until(lambda page=page: page.get_width() == window.detail_stack.get_width() and page.get_width() > 0)
             # Binding can precede the frame that paints all row headers.
             # Wait for two frames so the captured node contains the full page.
             frames = []

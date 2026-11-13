@@ -219,14 +219,16 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: not popup.get_parent())
 
     # Delete belongs to list/Meeting only, never text input or Search.
+    window.open_meeting(budget)
     entry = Gtk.Entry(text="keep this text")
-    window.preview.append(entry)
+    window.meeting_page.lines.append(entry)
+    window.meeting_page.lines.set_visible(True)
     entry.grab_focus()
     until(window._text_focused)
     assert not window._trash_key(None, Gdk.KEY_Delete, 0, Gdk.ModifierType(0))
     assert budget.directory.exists() and not controller.operations
-    window.preview.remove(entry)
-    window.open_meeting(budget)
+    window.meeting_page.lines.remove(entry)
+    window.meeting_page.lines.set_visible(window.meeting_page.lines.get_first_child() is not None)
     assert controller.allowed(budget, window)
     menu = window.meeting_page.more_menu
     section = menu.get_item_link(menu.get_n_items() - 1, Gio.MENU_LINK_SECTION)
@@ -337,7 +339,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert client.directory.exists() and window.selected.key == client.key
         assert (
             "This meeting’s drive has no Trash, so Cassini can’t move it there. It is still in your Library."
-            in labels(window.preview)
+            in labels(window.meeting_page.lines)
         )
         capture(window, "-unsupported")
         fail.clear()

@@ -31,11 +31,12 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
     hscroll_policy = GObject.Property(type=Gtk.ScrollablePolicy, default=Gtk.ScrollablePolicy.MINIMUM)
     vscroll_policy = GObject.Property(type=Gtk.ScrollablePolicy, default=Gtk.ScrollablePolicy.MINIMUM)
 
-    def __init__(self, page, *, column_cap=COLUMN_CAP, css_class="meeting-transcript"):
+    def __init__(self, page, *, column_cap=COLUMN_CAP, css_class="meeting-transcript", bottom_inset=0):
         super().__init__(css_classes=[css_class], hexpand=True, vexpand=True, accessible_role=Gtk.AccessibleRole.LIST)
 
         self.page = page
         self.column_cap = column_cap
+        self.bottom_inset = bottom_inset
         self._closed = False
         self.navigation = TranscriptNavigation(self)
         self.word_actions = WordActions(self)
@@ -370,7 +371,8 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         if self._active is not target and self._covers_anchor(target, height):
             self._activate(target)
         value = self._value()
-        upper = max(height, self.prefix[-1])
+        inset = self.bottom_inset if self.items else 0
+        upper = max(height, self.prefix[-1] + inset)
         if self._pending_anchor is not None:
             row, offset = self._pending_anchor
             if row + 1 < len(self.prefix):
@@ -466,7 +468,8 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             self._pending_scroll = index
             return
         if 0 <= index < len(self.items) and self.props.vadjustment:
-            self.props.vadjustment.clamp_page(self.prefix[index], self.prefix[index + 1])
+            bottom = self.prefix[index + 1] + (self.bottom_inset if self.bottom_inset else 0)
+            self.props.vadjustment.clamp_page(self.prefix[index], min(self.props.vadjustment.get_upper(), bottom))
 
     def do_snapshot(self, snapshot):
         for row in self.rows.values():

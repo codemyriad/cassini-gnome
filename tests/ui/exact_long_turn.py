@@ -77,7 +77,7 @@ def check_long_turn(window, model, frames_type, paint, until, flicks):
     frames = frames_type(window)
     original = window.get_default_size()
     width = page.list.layout_width
-    window.set_default_size(860, original[1])
+    window.set_default_size(680, original[1])
     until(lambda: page.list.layout_width < width and page.list.ready)
     paint(window)
     window.set_default_size(*original)

@@ -18,7 +18,7 @@ class ListeningBar(Gtk.Revealer):
         self._layout = None
         self._menu_key = None
         self.body = Gtk.Box(spacing=4, css_classes=["listening-bar"], accessible_role=Gtk.AccessibleRole.GROUP)
-        self.responsive = Adw.BreakpointBin(child=self.body, width_request=360, height_request=44)
+        self.responsive = Adw.BreakpointBin(child=self.body, width_request=360, height_request=54)
         self.set_child(self.responsive)
         for width, layout in BREAKPOINTS:
             breakpoint = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(f"max-width: {width}sp"))
@@ -92,7 +92,11 @@ class ListeningBar(Gtk.Revealer):
 
     def _revealed(self, *_):
         self._focus_merge()
-        if self.get_child_revealed() and self.listen.speaker in self.page._speaker_rows:
+        if (
+            self.get_child_revealed()
+            and self.listen.speaker in self.page._speaker_rows
+            and hasattr(self.page, "_scroll_speaker")
+        ):
             self.page._scroll_speaker(self.page._speaker_rows[self.listen.speaker][0])
 
     def focus_merge(self, speaker):
@@ -131,6 +135,16 @@ class ListeningBar(Gtk.Revealer):
 
     def _collapse(self, layout):
         layout = bar_layout(layout, editable=self.page.meeting.metadata_editable)
+        root = self.get_root()
+        focused = root.get_focus() if root is not None else None
+        collapsing_focus = False
+        if focused is not None:
+            hidden = []
+            if not layout.edit_buttons:
+                hidden.extend((self.buttons["name"], self.merge))
+            if not layout.speaker_buttons:
+                hidden.extend((self.buttons["previousSpeaker"], self.buttons["nextSpeaker"]))
+            collapsing_focus = any(focused is w or focused.is_ancestor(w) for w in hidden if w.get_visible())
         self.excerpt.set_visible(layout.excerpt)
         self.buttons["name"].set_visible(layout.edit_buttons)
         self.merge.set_visible(layout.edit_buttons)
@@ -148,6 +162,10 @@ class ListeningBar(Gtk.Revealer):
                 }[action]
                 self.more_model.append(text(caption), "listening." + action)
         self.more.set_visible(bool(layout.menu_actions))
+        if collapsing_focus:
+            fallback = self.more.get_first_child() if self.more.get_visible() else self.stop
+            if fallback is not None and fallback.get_mapped():
+                fallback.grab_focus()
 
     def _state(self):
         return bar_state(

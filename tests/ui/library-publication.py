@@ -103,10 +103,10 @@ with tempfile.TemporaryDirectory() as temporary:
             "warning in Library",
         )
         assert text("library.publishDiskLow") in [
-            w.get_label() for w in walk(window.preview) if isinstance(w, Gtk.Label)
+            w.get_label() for w in walk(window.meeting_page.lines) if isinstance(w, Gtk.Label)
         ]
         assert directory.is_dir() and not list(root.glob("*.opus"))
-    button(window.preview, text("common.tryAgain")).emit("clicked")
+    button(window.meeting_page.lines, text("common.tryAgain")).emit("clicked")
     until(lambda: window.selected and window.selected.published_file is not None, "Retry publishes retained audio")
     assert window.selected.publication_notice is None and not app.library_recovery.failures
     with transaction(directory):
@@ -127,7 +127,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.selected.publication_notice == "library.publishedMissing"
     launched = []
     with patch.object(Gtk.FileLauncher, "launch", lambda launcher, *_: launched.append(launcher.get_file().get_path())):
-        button(window.preview, text("meeting.showInFiles")).emit("clicked")
+        button(window.meeting_page.lines, text("meeting.showInFiles")).emit("clicked")
     assert launched == [str(root)] and not window.play_button.get_sensitive()
     # Restore a real file, remove only our x, then exercise its real window.
     path.write_bytes(saved_bytes)
@@ -159,6 +159,6 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: window.meeting_page is not None, "read-only Meeting page")
     assert not window.lookup_action("rename").get_enabled()
     assert not window.lookup_action("move-to-trash").get_enabled()
-    assert not button(window.meeting_page, text("meeting.nameSpeakers")).get_sensitive()
+    assert not window.lookup_action("name-speakers").get_enabled()
     window.close()
 print("D48 GTK passed: disk warning, Retry, missing file, read-only root playback and edit controls")

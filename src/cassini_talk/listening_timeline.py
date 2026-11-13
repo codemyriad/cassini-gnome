@@ -95,6 +95,12 @@ class ListeningTimeline(Gtk.Overlay):
         self.drag_popup.set_pointing_to(rect)
         self.drag_popup.popup()
 
+    def _seek_player(self, position):
+        if hasattr(self.page, "seek_to"):
+            self.page.seek_to(position)
+        else:
+            self.page.player.seek(position)
+
     def _begin(self, gesture, x, y):
         if self._closed:
             return
@@ -109,7 +115,7 @@ class ListeningTimeline(Gtk.Overlay):
         start = snap_start(self._target, x, left, width, self.scale.get_adjustment().get_upper())
         self._snapped = start is not None
         self._snap_position = start
-        self.page.player.seek(start if self._snapped else self.position_at(x))
+        self._seek_player(start if self._snapped else self.position_at(x))
         self._show_drag(x)
 
     def _drag(self, _gesture, dx, dy):
@@ -120,7 +126,7 @@ class ListeningTimeline(Gtk.Overlay):
             round(self._press_x), round(self._press_y), round(self._x), round(self._press_y + dy)
         )
         if not self._snapped or self._dragged:
-            self.page.player.seek(self.position_at(self._x))
+            self._seek_player(self.position_at(self._x))
         self._show_drag(self._x)
 
     def _end(self, gesture, dx, dy):

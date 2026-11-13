@@ -295,7 +295,7 @@ with tempfile.TemporaryDirectory() as temporary:
                 walk(child)
                 child = child.get_next_sibling()
 
-        walk(window.preview)
+        walk(window.meeting_page.lines)
         return out
 
     def find_row_by_key(target_key):

@@ -83,3 +83,116 @@ def test_dark_headers_update_synchronously_but_word_colours_wait_for_css(monkeyp
     callbacks[0]()
     page.update.assert_called_once_with(page.meeting)
     page._render_words.assert_called_once_with("turn", "words")
+
+
+def test_switching_meetings_keeps_inflight_merge_bound_to_origin_directory(monkeypatch, tmp_path):
+    from concurrent.futures import Future
+    from pathlib import Path
+
+    page_class = page_type()
+    from gi.repository import GLib
+
+    from cassini_talk import speaker_edits
+
+    idle_Queue = []
+    monkeypatch.setattr(GLib, "idle_add", lambda cb, *args: idle_Queue.append((cb, args)) or 1)
+
+    dir_a = tmp_path / "meeting-a"
+    dir_b = tmp_path / "meeting-b"
+    submitted = []
+
+    class FakeExecutor:
+        def submit(self, fn, *args, **kwargs):
+            fut = Future()
+            submitted.append((fut, fn, args, kwargs))
+            return fut
+
+    app = SimpleNamespace(recompute_voices=Mock())
+    window = SimpleNamespace(
+        listen=SimpleNamespace(active=True, speaker="s2", turns_of=lambda _s: [1]),
+        monitor=SimpleNamespace(_closed=False, _executor=FakeExecutor(), scanner=object(), refresh_now=Mock()),
+        get_application=lambda: app,
+        toast=Mock(),
+        toasts=SimpleNamespace(add_toast=Mock()),
+    )
+    meeting_a = SimpleNamespace(
+        key="key-a",
+        directory=Path(dir_a),
+        metadata_editable=True,
+        speakers=[
+            SimpleNamespace(id="s1", name="Marta", provenance="user"),
+            SimpleNamespace(id="s2", name="Speaker 2", provenance="unnamed"),
+        ],
+    )
+    meeting_b = SimpleNamespace(
+        key="key-b",
+        directory=Path(dir_b),
+        metadata_editable=True,
+        speakers=[SimpleNamespace(id="b1", name="Luca", provenance="user")],
+    )
+    page = SimpleNamespace(
+        _closed=False,
+        meeting=meeting_a,
+        window=window,
+        player=SimpleNamespace(pause=Mock()),
+        listening_bar=SimpleNamespace(update=Mock()),
+        _speaker_future=None,
+        _merge_transition=None,
+    )
+    page.prepare_speaker_merge = lambda s, t: page_class.prepare_speaker_merge(page, s, t)
+    page._speaker_merged = lambda *a: page_class._speaker_merged(page, *a)
+    page.speaker_merged = Mock()
+    monkeypatch.setattr(speaker_edits, "merge_into", Mock())
+
+    page_class.merge_speaker(page, "s2", "s1")
+    assert len(submitted) == 1 and submitted[0][2][:3] == (dir_a, "s2", "s1")
+    # User switches the reused right-pane page from A to B before A's merge finishes.
+    page.meeting = meeting_b
+    page._speaker_future = None
+    fut = submitted[0][0]
+    fut.set_result(None)
+    assert len(idle_Queue) == 1
+    cb, args = idle_Queue.pop(0)
+    cb(*args)
+    app.recompute_voices.assert_called_once_with(dir_a, ("s2", "s1"))
+    page.speaker_merged.assert_not_called()
+    window.monitor.refresh_now.assert_called_once_with()
+
+
+def test_find_after_equal_content_refresh_targets_displayed_layout_chunk():
+    from cassini_talk.meeting_text import reading_turns
+    from cassini_talk.transcript import Word
+
+    page_class = page_type()
+
+    def build_turns_copy():
+        seq = [Word("a", i * 100, i * 100 + 100, f"tok{i}") for i in range(200)]
+        seq.insert(100, Word("b", 9950, 10250, "Right."))
+        return reading_turns(seq)
+
+    initial_turns = build_turns_copy()
+    reparsed_turns = build_turns_copy()
+    assert initial_turns == reparsed_turns
+    assert initial_turns[0].words[180] is not reparsed_turns[0].words[180]
+
+    # Simulate MeetingPage after an equal-content refresh (e.g. title or merged-speaker
+    # rescan) where page.meeting holds newly reparsed turns while page._turns retains
+    # the displayed layout chunks.
+    scrolled = []
+    page = SimpleNamespace(
+        meeting=SimpleNamespace(turns=reparsed_turns),
+        _turns=initial_turns.layout,
+        _find_query="tok180",
+        _find_matches=(),
+        _find_index=-1,
+        _find_row_highlights={},
+        _sync_find_chrome=Mock(),
+        _refresh_find_highlights=Mock(),
+        _scroll_to_find_match=lambda: scrolled.append(page._find_matches[page._find_index].row_index),
+    )
+    page_class._recompute_find_matches(page, scroll=True)
+    assert len(page._find_matches) == 1
+    assert page._find_matches[0].row_index == 1
+    assert page._find_matches[0].spans == (((1, -1), 53, 0, 6),)
+    assert set(page._find_row_highlights) == {1}
+    assert scrolled == [1]

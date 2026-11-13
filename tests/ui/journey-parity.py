@@ -242,8 +242,8 @@ with tempfile.TemporaryDirectory() as temporary:
     meeting = next(m for m in window.snapshot.meetings if m.directory == received.directory)
     row = next(w for w in widgets(window.rows) if getattr(w, "meeting", None) == meeting)
     click(row)
-    until(lambda: window.selected.directory == received.directory)
-    assert window.meeting_page is None, "A single click should select the preview"
+    until(lambda: window.selected is not None and window.selected.directory == received.directory)
+    assert window.meeting_page is not None and window.meeting_page.meeting.directory == received.directory
     click(row, count=2)
     until(lambda: window.meeting_page is not None)
     assert window.meeting_page.meeting.directory == received.directory
@@ -257,10 +257,10 @@ with tempfile.TemporaryDirectory() as temporary:
         w for w in widgets(window.rows) if getattr(w, "meeting", None) and w.meeting.directory == queued.directory
     )
     window.rows.select_row(row)
-    until(lambda: fmt.eta(3) in labels(window.preview))
+    until(lambda: window.meeting_page is not None and fmt.eta(3) in labels(window.meeting_page.lines))
     update_metadata(queued.directory, etaMinutes=2)
     window.monitor.refresh_now()
-    until(lambda: fmt.eta(2) in labels(window.preview))
+    until(lambda: window.meeting_page is not None and fmt.eta(2) in labels(window.meeting_page.lines))
 
     # Only explicit Don't show again suppresses the repeated consent sheet.
     app.on_record()

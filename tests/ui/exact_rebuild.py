@@ -74,7 +74,7 @@ def check_rebuild(window, page, paint, until, native_scroll):
         # Abandon this still-partial active index with another uncached width.
         # Every frame must retain the viewport while its successor catches up.
         previous = view._active
-        window.set_default_size(860, window.get_default_size()[1])
+        window.set_default_size(680, window.get_default_size()[1])
         until(lambda: view._building is not None and view._building is not previous)
         assert view._active is previous
         until(lambda: view._active is not previous)
