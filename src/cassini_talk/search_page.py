@@ -5,7 +5,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
-from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
 
 from . import ux_formats as fmt
 from .folder_player import FolderPlayer
@@ -96,6 +96,7 @@ class SearchPage(Adw.Bin):
         self._turns = {}
         self.hit = None
         self._context_signature = None
+        self._updating_selection = False
         self.hits = ()
         self.names = ()
         self._style_manager = Adw.StyleManager.get_default()
@@ -138,6 +139,17 @@ class SearchPage(Adw.Bin):
         factory.connect("unbind", self._unbind)
         self.list = Gtk.ListView(model=self.selection, factory=factory, css_classes=["search-results"])
         self.list.connect("activate", lambda *_: self.open_meeting())
+        row_click = Gtk.GestureClick(button=1)
+        row_click.connect("released", self._on_result_row_released)
+        self.list.add_controller(row_click)
+        list_shortcuts = Gtk.ShortcutController(scope=Gtk.ShortcutScope.LOCAL)
+        list_shortcuts.add_shortcut(
+            Gtk.Shortcut.new(
+                Gtk.KeyvalTrigger.new(Gdk.KEY_Right, 0),
+                Gtk.CallbackAction.new(self._on_context_shortcut),
+            )
+        )
+        self.list.add_controller(list_shortcuts)
         self.list.update_property([Gtk.AccessibleProperty.LABEL], [text("search.results.a11y")])
         self.scroller = Gtk.ScrolledWindow(child=self.list, hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
         self._vadj = self.scroller.get_vadjustment()
@@ -154,6 +166,19 @@ class SearchPage(Adw.Bin):
             show_title=False,
             css_classes=["meeting-topbar"],
         )
+        self.back_button = Gtk.Button(
+            icon_name="go-previous-symbolic",
+            tooltip_text=text("search.results.a11y"),
+            css_classes=["flat", "meeting-icon-btn"],
+            visible=False,
+        )
+        self.back_button.update_property([Gtk.AccessibleProperty.LABEL], [text("search.results.a11y")])
+        self.back_button.connect("clicked", lambda *_: self.show_results())
+        self.content_header.pack_start(self.back_button)
+        self._split_collapsed_handler = 0
+        if hasattr(window, "split") and window.split is not None:
+            self._split_collapsed_handler = window.split.connect("notify::collapsed", self._sync_back_button)
+        self._sync_back_button()
         self.content_pane.add_top_bar(self.content_header)
         self.context = box(24, margin_start=48, margin_end=48, margin_top=24, margin_bottom=30)
         self.context.update_property([Gtk.AccessibleProperty.LABEL], [text("search.context.a11y")])
@@ -167,6 +192,43 @@ class SearchPage(Adw.Bin):
         self._speaker_menu()
         self._date_menu()
         self.request()
+
+    def _is_split_collapsed(self):
+        return bool(
+            hasattr(self.window, "split") and self.window.split is not None and self.window.split.get_collapsed()
+        )
+
+    def _sync_back_button(self, *_):
+        self.back_button.set_visible(self._is_split_collapsed())
+
+    def show_context(self):
+        if not self.hit:
+            return
+        if hasattr(self.window, "split") and self.window.split is not None:
+            self.window.split.set_show_content(True)
+            if self.window.split.get_collapsed():
+                target = getattr(self, "play", None)
+                if target is None or not target.get_sensitive():
+                    target = getattr(self, "open", None)
+                if target is not None:
+                    target.grab_focus()
+
+    def show_results(self):
+        if hasattr(self.window, "split") and self.window.split is not None:
+            self.window.split.set_show_content(False)
+        self.list.grab_focus()
+
+    def _on_result_row_released(self, _gesture, n_press, x, y):
+        if n_press == 1 and self._is_split_collapsed() and self.hit is not None:
+            picked = self.list.pick(x, y, Gtk.PickFlags.DEFAULT)
+            if picked is not None and picked is not self.list:
+                self.show_context()
+
+    def _on_context_shortcut(self, *_):
+        if self._is_split_collapsed() and self.hit is not None:
+            self.show_context()
+            return True
+        return False
 
     def _queue_context_scrolled(self, *_args):
         if not self._context_scroll_source and not self.closed:
@@ -361,12 +423,18 @@ class SearchPage(Adw.Bin):
         old = (self.hit.key, self.hit.turn) if self.hit else None
         self.hits = hits
         self.count.set_label(fmt.search_count(len(hits), len({h.key for h in hits})))
-        self.selection.handler_block(self._selection_handler)
-        self.store.replace(hits, self._meetings)
-        selected = next((i for i, h in enumerate(hits) if (h.key, h.turn) == old), 0)
-        self.selection.set_selected(selected if hits else Gtk.INVALID_LIST_POSITION)
-        self.selection.handler_unblock(self._selection_handler)
-        self._selected()
+        self._updating_selection = True
+        try:
+            self.selection.handler_block(self._selection_handler)
+            self.store.replace(hits, self._meetings)
+            selected = next((i for i, h in enumerate(hits) if (h.key, h.turn) == old), 0)
+            self.selection.set_selected(selected if hits else Gtk.INVALID_LIST_POSITION)
+            self.selection.handler_unblock(self._selection_handler)
+            self._selected()
+        finally:
+            self._updating_selection = False
+        if not hits and self._is_split_collapsed() and self.window.split.get_show_content():
+            self.window.split.set_show_content(False)
         self.pending = False
         self.emit("results-updated")
         return GLib.SOURCE_REMOVE
@@ -479,6 +547,12 @@ class SearchPage(Adw.Bin):
         # Preserve focused/AT-SPI controls when a refresh leaves the displayed
         # result unchanged. Removing an activating button can cancel its click.
         if signature == self._context_signature:
+            if (
+                not getattr(self, "_updating_selection", False)
+                and hit is not None
+                and SearchPage._is_split_collapsed(self)
+            ):
+                SearchPage.show_context(self)
             return
         self._context_signature = signature
         child = self.context.get_first_child()
@@ -556,6 +630,8 @@ class SearchPage(Adw.Bin):
         actions.append(self.play)
         actions.append(self.open)
         self.context.append(actions)
+        if not getattr(self, "_updating_selection", False) and SearchPage._is_split_collapsed(self):
+            SearchPage.show_context(self)
 
     def play_from(self):
         if self.hit:
@@ -594,6 +670,9 @@ class SearchPage(Adw.Bin):
         if self._style_handler:
             self._style_manager.disconnect(self._style_handler)
             self._style_handler = 0
+        if self._split_collapsed_handler and hasattr(self.window, "split") and self.window.split is not None:
+            self.window.split.disconnect(self._split_collapsed_handler)
+            self._split_collapsed_handler = 0
         if self._timer:
             GLib.source_remove(self._timer)
             self._timer = 0

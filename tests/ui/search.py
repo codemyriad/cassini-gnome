@@ -261,6 +261,50 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.meeting_page.meeting.title == "Supplier <meeting> & team"
     assert seeks[-1] == 0
     window.back_to_library()
+
+    # Narrow collapsed split (<760sp, e.g. 690px): results stay visible on entry,
+    # selecting a result or activating context shows mapped context/Play/Open controls,
+    # and back navigation returns to results before exiting Search.
+    window.set_default_size(690, 720)
+    until(lambda: window.split.get_collapsed())
+    assert window.breakpoint_bin.get_width() <= 690, window.breakpoint_bin.get_width()
+    window.toggle_search()
+    narrow = window.search_page
+    narrow.entry.set_text("the")
+    until(lambda: not narrow.pending and len(narrow.hits) >= 2)
+    assert not window.split.get_show_content()
+    assert narrow.list.get_mapped() and not narrow.back_button.get_mapped()
+    narrow.selection.set_selected(1)
+    until(
+        lambda: (
+            window.split.get_show_content()
+            and narrow.context.get_mapped()
+            and narrow.play.get_mapped()
+            and narrow.open.get_mapped()
+            and narrow.back_button.get_mapped()
+        )
+    )
+    target_pos = narrow.hit.position_ms
+    narrow.play.emit("clicked")
+    until(lambda: window.player.playing and seeks[-1] == target_pos)
+    window.player.pause()
+    narrow.back_button.emit("clicked")
+    until(lambda: not window.split.get_show_content() and narrow.list.get_mapped())
+    assert window.search_page is narrow
+    # Navigating back into the already-selected hit also maps context & controls:
+    assert narrow._on_context_shortcut()
+    until(lambda: window.split.get_show_content() and narrow.open.get_mapped())
+    window.activate_action("win.back-library", None)
+    until(lambda: not window.split.get_show_content() and narrow.list.get_mapped())
+    assert window.search_page is narrow
+    narrow.show_context()
+    until(lambda: window.split.get_show_content() and narrow.open.get_mapped())
+    expected_key = narrow.hit.key
+    narrow.open.emit("clicked")
+    until(lambda: window.meeting_page is not None and window.search_page is None and window.split.get_show_content())
+    assert window.meeting_page.meeting.key == expected_key
+    window.back_to_library()
+
     window.close()
     app.do_shutdown()
     print("PASS: Search phrase/menus/AND/date/order/reset/seek/refresh/navigation in private Xvfb")

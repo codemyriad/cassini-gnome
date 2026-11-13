@@ -63,8 +63,18 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._import_dialogs = set()
         self._import_executor = None
         self._active_imports = {}
+        self._import_row_widgets = []
+        self._rendered_imports = ()
         self._drop_state = ("rest", None)
         self._drop_error_timer = 0
+        self._drag_active = False
+        self._drag_generation = 0
+        self._drag_cancellable = None
+        self._drag_dir_cache = {}
+        self._drag_inflight = set()
+        self._active_drag_files = ()
+        self._drop_validation_gen = 0
+        self._drop_validation_cancellable = None
         self._closing_search = False
         self._sidebar_scroll_source = 0
         self._list_signature = None
@@ -150,7 +160,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             ),
         )
         for name, callback in (
-            ("back-library", self.back_to_library),
+            ("back-library", self._back_action),
             ("search", self.toggle_search),
             ("find-in-meeting", self._find_in_meeting),
             ("export", self.show_export),
@@ -185,7 +195,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.add_controller(find_shortcut)
         target = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
         target.set_preload(True)
-        target.connect("enter", self._drag_motion)
+        target.connect("enter", self._drag_enter)
         target.connect("motion", self._drag_motion)
         target.connect("leave", self._drag_leave)
         target.connect("notify::value", self._drag_value_changed)
@@ -210,27 +220,74 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.recording_details_dialog.present(self)
 
     @staticmethod
-    def _unsupported_drop_file(files):
-        for file in files or ():
-            raw = file.get_path()
-            if raw:
-                path = Path(raw)
-                name = path.name
-                suffix = path.suffix.lower()
-                if suffix in (".opus", ".ogg", ".zip") or LibraryWindow._is_folder_open_path(path):
-                    continue
-                if not suffix:
-                    with contextlib.suppress(OSError):
-                        if path.is_dir():
-                            continue
-                return name or raw
-            basename = file.get_basename()
-            if basename:
-                suffix = Path(basename).suffix.lower()
-                if suffix in (".opus", ".ogg", ".zip") or basename == "session.json":
-                    continue
-                return basename
-        return None
+    def _classify_drop_file_sync(file, dir_cache=None):
+        """Classify a dropped Gio.File without touching the filesystem on the GTK main thread."""
+        raw = file.get_path()
+        if raw:
+            path = Path(raw)
+            name = path.name
+            suffix = path.suffix.lower()
+            if suffix in (".opus", ".ogg", ".zip") or LibraryWindow._is_folder_open_path(path):
+                return ("valid", None)
+            if suffix:
+                return ("invalid", name or raw)
+            if dir_cache is not None and raw in dir_cache:
+                return ("valid", None) if dir_cache[raw] else ("invalid", name or raw)
+            return ("unknown", raw, name or raw, file)
+        basename = file.get_basename()
+        if basename:
+            suffix = Path(basename).suffix.lower()
+            if suffix in (".opus", ".ogg", ".zip") or basename == "session.json":
+                return ("valid", None)
+            if suffix:
+                return ("invalid", basename)
+            uri = file.get_uri()
+            if dir_cache is not None and uri in dir_cache:
+                return ("valid", None) if dir_cache[uri] else ("invalid", basename)
+            return ("unknown", uri, basename, file)
+        return ("valid", None)
+
+    def _probe_is_dir_async(self, gfile, cancellable, callback):
+        def on_info(source, result):
+            try:
+                info = source.query_info_finish(result)
+            except GLib.Error as error:
+                if error.matches(Gio.io_error_quark(), Gio.IOErrorEnum.CANCELLED):
+                    return
+                callback(False)
+                return
+            callback(info.get_file_type() == Gio.FileType.DIRECTORY)
+
+        gfile.query_info_async(
+            "standard::type",
+            Gio.FileQueryInfoFlags.NONE,
+            GLib.PRIORITY_DEFAULT,
+            cancellable,
+            on_info,
+        )
+
+    def _reset_drag_session(self):
+        self._drag_generation = getattr(self, "_drag_generation", 0) + 1
+        cancellable = getattr(self, "_drag_cancellable", None)
+        if cancellable is not None:
+            cancellable.cancel()
+            self._drag_cancellable = None
+        if hasattr(self, "_drag_dir_cache"):
+            self._drag_dir_cache.clear()
+        else:
+            self._drag_dir_cache = {}
+        if hasattr(self, "_drag_inflight"):
+            self._drag_inflight.clear()
+        else:
+            self._drag_inflight = set()
+        self._active_drag_files = ()
+
+    def _cancel_drop_validation(self):
+        self._drop_validation_gen = getattr(self, "_drop_validation_gen", 0) + 1
+        cancellable = getattr(self, "_drop_validation_cancellable", None)
+        if cancellable is not None:
+            cancellable.cancel()
+            self._drop_validation_cancellable = None
 
     def _clear_sticky_drop_error(self):
         self._drop_error_timer = 0
@@ -277,18 +334,65 @@ class LibraryWindow(Adw.ApplicationWindow):
         lx, ly = coords
         return 0 <= lx <= self.drop_frame.get_width() and 0 <= ly <= self.drop_frame.get_height()
 
+    def _evaluate_drag_files(self, files):
+        files = tuple(files or ())
+        self._active_drag_files = files
+        unknowns = []
+        for file in files:
+            verdict = self._classify_drop_file_sync(file, self._drag_dir_cache)
+            if verdict[0] == "invalid":
+                return verdict[1]
+            if verdict[0] == "unknown":
+                unknowns.append(verdict[1:])
+        if unknowns:
+            if self._drag_cancellable is None:
+                self._drag_cancellable = Gio.Cancellable()
+            gen = self._drag_generation
+            cancellable = self._drag_cancellable
+            for key, _display, gfile in unknowns:
+                if key in self._drag_inflight:
+                    continue
+                self._drag_inflight.add(key)
+
+                def on_probed(is_dir, item_key=key, expected_gen=gen):
+                    if expected_gen != self._drag_generation or getattr(
+                        getattr(self, "monitor", None), "_closed", False
+                    ):
+                        return
+                    self._drag_inflight.discard(item_key)
+                    self._drag_dir_cache[item_key] = bool(is_dir)
+                    if (
+                        self._drag_active
+                        and self._drop_state[0] in ("enter", "over")
+                        and hasattr(self, "_last_drag_xy")
+                        and self._point_in_drop_list(*self._last_drag_xy)
+                    ):
+                        bad_now = self._evaluate_drag_files(self._active_drag_files)
+                        if bad_now is not None:
+                            self._set_drop_state("error", bad_now)
+
+                self._probe_is_dir_async(gfile, cancellable, on_probed)
+        return None
+
     def _drag_bad_file(self, target):
         if target is None:
             return None
         value = target.get_value()
         if isinstance(value, Gdk.FileList):
-            return self._unsupported_drop_file(value.get_files())
+            return self._evaluate_drag_files(value.get_files())
         return None
 
+    def _drag_enter(self, target, x, y):
+        if self._drag_active:
+            self._reset_drag_session()
+        self._drag_active = True
+        return self._drag_motion(target, x, y)
+
     def _drag_motion(self, target, x, y):
+        self._drag_active = True
         self._last_drag_xy = (x, y)
+        bad = self._drag_bad_file(target)
         if self._point_in_drop_list(x, y):
-            bad = self._drag_bad_file(target)
             if bad is not None:
                 self._set_drop_state("error", bad)
             else:
@@ -298,36 +402,93 @@ class LibraryWindow(Adw.ApplicationWindow):
         return Gdk.DragAction.COPY
 
     def _drag_value_changed(self, target, *_args):
+        if not self._drag_active:
+            return
+        bad = self._drag_bad_file(target)
         if self._drop_state[0] in ("enter", "over") and hasattr(self, "_last_drag_xy"):
             x, y = self._last_drag_xy
-            if self._point_in_drop_list(x, y):
-                bad = self._drag_bad_file(target)
-                if bad is not None:
-                    self._set_drop_state("error", bad)
+            if self._point_in_drop_list(x, y) and bad is not None:
+                self._set_drop_state("error", bad)
 
     def _drag_leave(self, *_args):
+        self._drag_active = False
+        self._reset_drag_session()
         if not self._drop_error_timer:
             self._set_drop_state("rest")
 
+    def _show_rejected_drop(self, bad):
+        if hasattr(self, "drop_frame") and self.root_box.get_visible_child_name() == "library":
+            if self.search_page:
+                self.back_to_library()
+            self._set_drop_state("error", bad, sticky_error=True)
+        else:
+            self._set_drop_state("rest")
+            self.toast(
+                f"{text('import.drop.cantImport', file=bad)} "
+                f"{text('import.drop.cantImport.detail', formats=text('import.drop.formats.current'))}"
+            )
+
+    def _validate_dropped_files_async(self, chosen, cached):
+        self._cancel_drop_validation()
+        drop_gen = self._drop_validation_gen
+        cancellable = Gio.Cancellable()
+        self._drop_validation_cancellable = cancellable
+        local_cache = dict(cached)
+        pending = {}
+        for file in chosen:
+            verdict = self._classify_drop_file_sync(file, local_cache)
+            if verdict[0] == "unknown":
+                _, key, _display, gfile = verdict
+                if key not in pending:
+                    pending[key] = gfile
+        remaining = set(pending)
+
+        def finish_if_done():
+            if drop_gen != self._drop_validation_gen or getattr(getattr(self, "monitor", None), "_closed", False):
+                return
+            for item in chosen:
+                res = self._classify_drop_file_sync(item, local_cache)
+                if res[0] == "invalid":
+                    self._cancel_drop_validation()
+                    self._show_rejected_drop(res[1])
+                    return
+            if not remaining:
+                self._cancel_drop_validation()
+                self.open_files(chosen)
+
+        for key, gfile in pending.items():
+
+            def on_probed(is_dir, item_key=key):
+                if drop_gen != self._drop_validation_gen or getattr(getattr(self, "monitor", None), "_closed", False):
+                    return
+                local_cache[item_key] = bool(is_dir)
+                remaining.discard(item_key)
+                finish_if_done()
+
+            self._probe_is_dir_async(gfile, cancellable, on_probed)
+
     def _drop_files(self, _target, files, _x, _y):
-        chosen = files.get_files() if files else ()
+        cached = dict(self._drag_dir_cache)
+        self._drag_active = False
+        self._reset_drag_session()
+        chosen = tuple(files.get_files()) if files else ()
         if not chosen:
             self._set_drop_state("rest")
             return False
-        bad = self._unsupported_drop_file(chosen)
-        if bad is not None:
-            if hasattr(self, "drop_frame") and self.root_box.get_visible_child_name() == "library":
-                if self.search_page:
-                    self.back_to_library()
-                self._set_drop_state("error", bad, sticky_error=True)
-            else:
-                self._set_drop_state("rest")
-                self.toast(
-                    f"{text('import.drop.cantImport', file=bad)} "
-                    f"{text('import.drop.cantImport.detail', formats=text('import.drop.formats.current'))}"
-                )
-            return False
+        has_unknown = False
+        for file in chosen:
+            verdict = self._classify_drop_file_sync(file, cached)
+            if verdict[0] == "invalid":
+                self._cancel_drop_validation()
+                self._show_rejected_drop(verdict[1])
+                return False
+            if verdict[0] == "unknown":
+                has_unknown = True
         self._set_drop_state("rest")
+        if has_unknown:
+            self._validate_dropped_files_async(chosen, cached)
+            return True
+        self._cancel_drop_validation()
         self.open_files(chosen)
         return True
 
@@ -1388,6 +1549,39 @@ class LibraryWindow(Adw.ApplicationWindow):
         active = getattr(self, "_active_imports", None) or {}
         return tuple(entry for entries in active.values() for entry in entries)
 
+    def _clear_import_rows(self):
+        widgets = getattr(self, "_import_row_widgets", None)
+        if widgets:
+            for widget in widgets:
+                get_parent = getattr(widget, "get_parent", None)
+                if get_parent is None or get_parent() is self.rows:
+                    self.rows.remove(widget)
+            widgets.clear()
+        self._rendered_imports = ()
+
+    def _sync_import_rows(self, active_imports):
+        today_title = fmt.day_group(self.now_ms, now_ms=self.now_ms, tz=self.tz)
+        has_today_group = bool(self._rows_layout and self._rows_layout[0][0] == today_title)
+        target = (has_today_group, today_title, active_imports)
+        if getattr(self, "_rendered_imports", ()) == target:
+            return
+        LibraryWindow._clear_import_rows(self)
+        if not active_imports:
+            return
+        widgets = []
+        insert_at = 1 if has_today_group else 0
+        if not has_today_group:
+            heading = self._day_heading(today_title)
+            self.rows.insert(heading, 0)
+            widgets.append(heading)
+            insert_at = 1
+        for offset, (stem, filename, started_ms) in enumerate(active_imports):
+            row = self._importing_row(stem, filename, started_ms)
+            self.rows.insert(row, insert_at + offset)
+            widgets.append(row)
+        self._import_row_widgets = widgets
+        self._rendered_imports = target
+
     def _begin_import_entries(self, token, paths):
         entries = []
         now = self.now_ms
@@ -1395,16 +1589,26 @@ class LibraryWindow(Adw.ApplicationWindow):
             if not raw:
                 continue
             path = Path(raw)
-            if not self._is_folder_open_path(path):
+            if not LibraryWindow._is_folder_open_path(path):
                 entries.append((path.stem or path.name, path.name, now))
         if entries:
             self._active_imports[token] = tuple(entries)
-            if self.snapshot is not None:
+            if self._list_signature and self._list_signature[0] == "library":
+                LibraryWindow._sync_import_rows(self, LibraryWindow._active_import_list(self))
+                if hasattr(self, "sidebar_header"):
+                    self._queue_sidebar_scrolled()
+            elif self.snapshot is not None:
                 self._updated(self._source_snapshot or self.snapshot)
 
     def _finish_import_entries(self, token):
-        if self._active_imports.pop(token, None) is not None and self.snapshot is not None and not self.monitor._closed:
-            self._updated(self._source_snapshot or self.snapshot)
+        closed = getattr(getattr(self, "monitor", None), "_closed", False)
+        if self._active_imports.pop(token, None) is not None and not closed:
+            if self._list_signature and self._list_signature[0] == "library":
+                LibraryWindow._sync_import_rows(self, LibraryWindow._active_import_list(self))
+                if hasattr(self, "sidebar_header"):
+                    self._queue_sidebar_scrolled()
+            elif self.snapshot is not None:
+                self._updated(self._source_snapshot or self.snapshot)
 
     def _is_saved_detail_ready(self, meeting):
         if meeting is None or meeting.lifecycle != "saved":
@@ -1531,6 +1735,14 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self._pending = False
                 return
             groups, layout, group_layout_key = (), None, None
+        elif not snapshot.meetings:
+            if self._list_signature == ("empty_importing",):
+                LibraryWindow._sync_import_rows(self, active_imports)
+                self._pending = False
+                if hasattr(self, "sidebar_header"):
+                    self._queue_sidebar_scrolled()
+                return
+            groups, layout, group_layout_key = (), (), None
         else:
             group_layout_key = (
                 fmt._local(self.now_ms, self.tz).date(),
@@ -1543,7 +1755,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             else:
                 groups = snapshot.groups(now_ms=self.now_ms, tz=self.tz)
                 layout = tuple((group.title, tuple(m.key for m in group.meetings)) for group in groups)
-            if not pending_row and self._list_signature == ("library", layout, active_imports):
+            if self._list_signature == ("library", layout):
                 for meeting in snapshot.meetings:
                     row = self._row_by_key[meeting.key]
                     if row.meeting is not meeting or self.tz != self._rows_tz:
@@ -1554,19 +1766,35 @@ class LibraryWindow(Adw.ApplicationWindow):
                             row.meeting = meeting
                 self._rows_tz = self.tz
                 self._group_layout_key = group_layout_key
+                LibraryWindow._sync_import_rows(self, active_imports)
+                if pending_row:
+                    target_row = self._row_by_key.get(self._pending_selection)
+                    if target_row is not None:
+                        self._pending_selection = None
+                        self.rows.handler_block(self._selection_handler)
+                        self.rows.select_row(target_row)
+                        self.rows.handler_unblock(self._selection_handler)
                 self._updating_rows_selection = True
                 try:
                     self._selected(self.rows, self.rows.get_selected_row())
                 finally:
                     self._updating_rows_selection = False
                 self._pending = False
+                if hasattr(self, "sidebar_header"):
+                    self._queue_sidebar_scrolled()
                 return
             if groups is None:
                 groups = snapshot.groups(now_ms=self.now_ms, tz=self.tz)
         was_library = bool(self._list_signature and self._list_signature[0] == "library")
         old = self._pending_selection or (self.selected.key if self.selected else None)
+        old_rows = self._row_by_key
+        old_tz = self._rows_tz
+        old_live_badges = getattr(self, "_live_badges", {})
         self.rows.handler_block(self._selection_handler)
+        self.rows.select_row(None)
         self.rows.remove_all()
+        self._import_row_widgets = []
+        self._rendered_imports = ()
         self._row_by_key = {}
         self._rows_layout = layout
         self._group_layout_key = group_layout_key
@@ -1588,21 +1816,23 @@ class LibraryWindow(Adw.ApplicationWindow):
         else:
             self.root_box.set_visible_child_name("library")
             selected = None
-            today_title = fmt.day_group(self.now_ms, now_ms=self.now_ms, tz=self.tz)
-            prepended_imports = False
-            if active_imports and (not groups or groups[0].title != today_title):
-                self.rows.append(self._day_heading(today_title))
-                for stem, filename, started_ms in active_imports:
-                    self.rows.append(self._importing_row(stem, filename, started_ms))
-                prepended_imports = True
             for group in groups:
                 self.rows.append(self._day_heading(group.title))
-                if active_imports and not prepended_imports and group.title == today_title:
-                    for stem, filename, started_ms in active_imports:
-                        self.rows.append(self._importing_row(stem, filename, started_ms))
-                    prepended_imports = True
                 for meeting in group.meetings:
-                    row = self._row(meeting)
+                    row = old_rows.get(meeting.key)
+                    if row is None:
+                        row = self._row(meeting)
+                    else:
+                        if row.meeting is not meeting or self.tz != old_tz:
+                            sig = self._row_signature(meeting)
+                            if sig != row._row_signature:
+                                self._fill_row(row, meeting, sig)
+                            else:
+                                row.meeting = meeting
+                        if meeting.lifecycle == "recording" and meeting.key not in self._live_badges:
+                            badge_widget = old_live_badges.get(meeting.key)
+                            if badge_widget is not None:
+                                self._live_badges[meeting.key] = badge_widget
                     self._row_by_key[meeting.key] = row
                     self.rows.append(row)
                     if (
@@ -1613,6 +1843,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                         and self._fixed_now is not None
                     ):
                         selected = row
+            LibraryWindow._sync_import_rows(self, active_imports)
             default_row = None
             if (selected is not None or old is not None or not was_library) and self._row_by_key:
                 default_row = next(
@@ -1632,7 +1863,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                     self.set_focus(selected or default_row)
             if selected:
                 self._pending_selection = None
-            self._list_signature = ("library", layout, active_imports)
+            self._list_signature = ("library", layout) if snapshot.meetings else ("empty_importing",)
         self.rows.handler_unblock(self._selection_handler)
         self._updating_rows_selection = True
         try:
@@ -1900,6 +2131,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         from .search_page import SearchPage
 
         if self.search_page:
+            if hasattr(self, "split") and self.split is not None and self.split.get_collapsed():
+                self.split.set_show_content(False)
             if focus:
                 self.search_entry.grab_focus()
             return
@@ -1910,6 +2143,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._stop_playback()
         if self.root_box.get_visible_child_name() != "library":
             self.root_box.set_visible_child_name("library")
+        if hasattr(self, "split") and self.split is not None:
+            self.split.set_show_content(False)
         self.search_page = SearchPage(self)
         self.search_sidebar_slot.set_child(self.search_page)
         self.search_detail_slot.set_child(self.search_page.content_pane)
@@ -2004,6 +2239,18 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.back_to_library()
             return
         self._enter_search(focus=True)
+
+    def _back_action(self, *_):
+        if (
+            self.search_page is not None
+            and hasattr(self, "split")
+            and self.split is not None
+            and self.split.get_collapsed()
+            and self.split.get_show_content()
+        ):
+            self.search_page.show_results()
+            return
+        self.back_to_library()
 
     def back_to_library(self, *_):
         had_pushed = bool(self.search_page or self.recording_page or self._external_meeting)
@@ -2217,6 +2464,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self._sidebar_scroll_source:
             GLib.source_remove(self._sidebar_scroll_source)
             self._sidebar_scroll_source = 0
+        self._drag_active = False
+        self._reset_drag_session()
+        self._cancel_drop_validation()
         if self._activity_source is not None:
             self._activity_source.close()
         if self.search_page:
