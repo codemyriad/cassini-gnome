@@ -49,7 +49,10 @@ class BrandMark(Gtk.Widget):
         self.height_px = resolved_h
         self.width_px = width_px
         self.resource_path = mark_resource_for_height(resolved_h)
-        self.texture = Gdk.Texture.new_from_resource(self.resource_path)
+        if hasattr(Gtk, "Svg"):
+            self.paintable = Gtk.Svg.new_from_resource(self.resource_path)
+        else:
+            self.paintable = Gdk.Texture.new_from_resource(self.resource_path)
         self.set_size_request(width_px, resolved_h)
 
     def do_measure(self, orientation: Gtk.Orientation, _for_size: int) -> tuple[int, int, int, int]:
@@ -60,7 +63,7 @@ class BrandMark(Gtk.Widget):
         w = self.get_width() or self.width_px
         h = self.get_height() or self.height_px
         if w > 0 and h > 0:
-            self.texture.snapshot(snapshot, float(w), float(h))
+            self.paintable.snapshot(snapshot, float(w), float(h))
 
 
 class BrandLockup(Gtk.Box):
