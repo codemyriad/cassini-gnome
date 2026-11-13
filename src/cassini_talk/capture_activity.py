@@ -196,11 +196,12 @@ def read_browser_activity(path=None, with_connection=False, with_paths=False, *,
 
 def recorder_activity(windows):
     result = {}
-    from .capture_guard import native_recorders
+    from .capture_guard import native_recorders, recorder_stopping
 
     recorders = {id(recorder): recorder for target in windows for recorder in native_recorders(target)}
     for recorder in recorders.values():
-        if recorder.pipeline is None and not getattr(recorder, "stopping", False):
+        stopping = recorder_stopping(recorder)
+        if recorder.pipeline is None and not stopping:
             continue
         # The current standalone Opus recorder has no Library UUID. Do not
         # invent one from its timestamp or title. Recognise controller-owned
@@ -211,7 +212,7 @@ def recorder_activity(windows):
             directory = Path(recorder.path).parent
         identifier = meeting_id(Path(directory)) if directory else None
         if identifier:
-            result[identifier] = "saving" if recorder.stopping else "recording"
+            result[identifier] = "saving" if stopping else "recording"
     return result
 
 

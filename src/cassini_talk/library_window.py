@@ -12,6 +12,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
 from .capture_activity import BrowserActivity, application_activity
+from .capture_guard import recorder_stopping
 from .folder_player import FolderPlayer
 from .i18n import gettext as _
 from .library import LibrarySnapshot, _sort, meeting_id
@@ -574,7 +575,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             dark=dark, reduced_motion=not self._spectro_settings.get_property("gtk-enable-animations")
         )
 
-    def bind_spectrogram(self, widget, meeting, *, silent=False):
+    def bind_spectrogram(self, widget, meeting, *, silent=False, stopping=False):
         if meeting is None:
             self.spectrograms.remove(widget)
             return
@@ -596,7 +597,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             events=events,
             silent=silent,
             active=meeting.lifecycle in ("recording", "saving"),
-            stopping=meeting.lifecycle != "recording",
+            stopping=stopping or meeting.lifecycle != "recording",
         )
 
     def capture_controls(self, meeting=None):
@@ -631,7 +632,13 @@ class LibraryWindow(Adw.ApplicationWindow):
         live.append(stop)
         stack.add_named(live, "live")
         stack._controls = dict(
-            stack=stack, timer=timer, picture=picture, stop=stop, muted=muted, meeting=meeting.key if meeting else None
+            stack=stack,
+            live=live,
+            timer=timer,
+            picture=picture,
+            stop=stop,
+            muted=muted,
+            meeting=meeting.key if meeting else None,
         )
         self._capture_headers.append(stack._controls)
         return stack
@@ -753,21 +760,28 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _update_live(self):
         if self.snapshot is None:
             return
+        app = self.get_application()
         live = self.live_meeting()
-        native = getattr(self.get_application(), "recorder", None)
+        native = getattr(app, "recorder", None)
         real_native = native is not None and native.pipeline is not None
         if real_native:
             elapsed = max(0, (GLib.get_monotonic_time() - native._start_us) // 1000)
         else:
             elapsed = max(0, self.now_ms - live.started_at_ms) if live and live.started_at_ms else 0
+        browser_stops = getattr(app, "_browser_stops", ())
+        stop_all_browser = None in browser_stops
+        stopping_ids = {
+            identifier for entry in browser_stops if isinstance(entry, str) and (identifier := meeting_id(Path(entry)))
+        }
         for controls in self._capture_headers:
             target = (
                 next((m for m in self.snapshot.meetings if m.key == controls["meeting"]), None)
                 if controls["meeting"]
                 else live
             )
-            local_native = self.get_application().comfort._native_for(target) if target else native
-            own_native = local_native is not None and local_native.pipeline is not None
+            local_native = app.comfort._native_for(target) if target else native
+            local_stopping = recorder_stopping(local_native)
+            own_native = local_native is not None and (local_native.pipeline is not None or local_stopping)
             browser = bool(
                 target
                 and target.lifecycle == "recording"
@@ -775,17 +789,28 @@ class LibraryWindow(Adw.ApplicationWindow):
                 and self._activity.get(target.id, self._activity_source.snapshot.get(target.id)) == "recording"
             )
             stopping = bool(
-                (local_native is not None and local_native.stopping)
-                or (target and (target.lifecycle == "saving" or self._activity.get(target.id) == "saving"))
+                local_stopping
+                or (
+                    target
+                    and (
+                        target.lifecycle == "saving"
+                        or self._activity.get(target.id) == "saving"
+                        or stop_all_browser
+                        or str(target.directory) in browser_stops
+                        or target.id in stopping_ids
+                    )
+                )
+                or (controls["meeting"] is None and target is None and bool(browser_stops))
             )
-            ms = self.get_application().comfort.elapsed(target) if target else elapsed
+            ms = app.comfort.elapsed(target) if target else elapsed
             controls["stack"].set_visible_child_name("live" if target or own_native or stopping else "record")
             controls["timer"].set_label(fmt.live_badge(ms))
             controls["stop"].set_label(text("states.badge.saving" if stopping else "common.stop"))
-            controls["stop"].set_sensitive(not stopping and ((own_native and not local_native.stopping) or browser))
-            state = self.get_application().comfort.status(target) if target else {}
+            controls["stop"].set_sensitive(not stopping and (own_native or browser))
+            (controls["live"].add_css_class if stopping else controls["live"].remove_css_class)("saving")
+            state = app.comfort.status(target) if target else {}
             controls["muted"].set_visible(bool(state.get("output_muted")))
-            self.bind_spectrogram(controls["picture"], target, silent=bool(state.get("silent")))
+            self.bind_spectrogram(controls["picture"], target, silent=bool(state.get("silent")), stopping=stopping)
         self._recording_line(native)
         if self.recording_page:
             self.recording_page.update_status()

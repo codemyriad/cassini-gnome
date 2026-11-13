@@ -54,8 +54,8 @@ class RecordingPage(Adw.NavigationPage):
         clamp = Adw.Clamp(maximum_size=680, tightening_threshold=680, child=column)
         view.set_content(Gtk.ScrolledWindow(child=clamp, hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True))
         live = Gtk.Box(spacing=22)
-        dot = Gtk.Box(width_request=22, height_request=22, valign=Gtk.Align.CENTER, css_classes=["recording-dot"])
-        live.append(dot)
+        self.dot = Gtk.Box(width_request=22, height_request=22, valign=Gtk.Align.CENTER, css_classes=["recording-dot"])
+        live.append(self.dot)
         timer_box = vertical(0, hexpand=True)
         self.timer = label("", "recording-timer", xalign=0)
         timer_box.append(self.timer)
@@ -63,9 +63,15 @@ class RecordingPage(Adw.NavigationPage):
         timer_box.append(label(text("recording.since", time=started), "dim-label", xalign=0))
         live.append(timer_box)
         self.stop_content = Adw.ButtonContent(icon_name="media-playback-stop-symbolic", label=text("common.stop"))
+        self.saving_spinner = Gtk.Spinner(spinning=False, accessible_role=Gtk.AccessibleRole.PRESENTATION)
+        self.saving_label = Gtk.Label(label=text("states.badge.saving"))
+        self.saving_content = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.saving_content.append(self.saving_spinner)
+        self.saving_content.append(self.saving_label)
         self.stop = Gtk.Button(
             child=self.stop_content, css_classes=["cassini-record", "recording-stop"], valign=Gtk.Align.CENTER
         )
+        self.stop.update_property([Gtk.AccessibleProperty.LABEL], [text("common.stop")])
         self.stop.connect("clicked", lambda *_: window.stop_meeting(self.meeting))
         live.append(self.stop)
         column.append(live)
@@ -239,6 +245,7 @@ class RecordingPage(Adw.NavigationPage):
         self.timer.set_label(fmt.live_big(self.elapsed()))
         from pathlib import Path
 
+        from .capture_guard import recorder_stopping
         from .library import meeting_id
 
         stopping = self.app._browser_stops
@@ -248,12 +255,20 @@ class RecordingPage(Adw.NavigationPage):
         local_native = self.app.comfort._native_for(self.meeting)
         is_stopping = (
             self.meeting.lifecycle == "saving"
-            or (local_native is not None and local_native.stopping)
+            or recorder_stopping(local_native)
             or None in stopping
             or str(self.meeting.directory) in stopping
             or self.meeting.id in stopping_ids
         )
-        self.stop_content.set_label(text("states.badge.saving" if is_stopping else "common.stop"))
+        stop_label = text("states.badge.saving" if is_stopping else "common.stop")
+        self.stop_content.set_label(stop_label)
+        self.saving_label.set_label(stop_label)
+        self.saving_spinner.set_spinning(is_stopping)
+        target_child = self.saving_content if is_stopping else self.stop_content
+        if self.stop.get_child() is not target_child:
+            self.stop.set_child(target_child)
+        self.stop.update_property([Gtk.AccessibleProperty.LABEL], [stop_label])
+        (self.dot.add_css_class if is_stopping else self.dot.remove_css_class)("saving")
         self.stop.set_sensitive(self.meeting.lifecycle == "recording" and not is_stopping)
         self.change_sources.set_sensitive(
             self.stop.get_sensitive() and str(self.meeting.directory) not in self.app._source_changes
@@ -268,7 +283,7 @@ class RecordingPage(Adw.NavigationPage):
         (self.mic_row.add_css_class if silent else self.mic_row.remove_css_class)("mic-silent")
         for bar, level in zip((self.mic_level, self.others_level), status["levels"], strict=True):
             bar.set_fraction(level)
-            self.window.bind_spectrogram(bar, self.meeting, silent=silent)
+            self.window.bind_spectrogram(bar, self.meeting, silent=silent, stopping=is_stopping)
         browser = sources.source == "browser"
         self.others_caption.set_label(
             text("recording.others.browserVoices", n=status["voices"]) if browser else text("recordFirst.sound.title")

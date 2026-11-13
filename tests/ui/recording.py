@@ -455,7 +455,8 @@ with tempfile.TemporaryDirectory() as tmp:
     until(
         lambda: dialog.report and expected in dialog.report.notes and dialog.get_mapped() and expected in texts(dialog)
     )
-    if output := os.environ.get("CASSINI_SCREENSHOT_OUT"):
+
+    def save_window_shot(path):
         painted = []
         frame_clock = window.get_frame_clock()
         handler = frame_clock.connect("after-paint", lambda *_: painted.append(True))
@@ -477,7 +478,10 @@ with tempfile.TemporaryDirectory() as tmp:
 
         until(snapshot)
         node = pictures[-1]
-        assert window.get_renderer().render_texture(node, node.get_bounds()).save_to_png(output)
+        assert window.get_renderer().render_texture(node, node.get_bounds()).save_to_png(str(path))
+
+    if output := os.environ.get("CASSINI_SCREENSHOT_OUT"):
+        save_window_shot(output)
     dialog.close()
     signal.stop(at_ms=2500)
     window._library_loaded(live_meeting(signal.directory, "saved"))
@@ -489,14 +493,26 @@ with tempfile.TemporaryDirectory() as tmp:
 
     from cassini_talk import capture_guard
 
+    previous_animations = Gtk.Settings.get_default().props.gtk_enable_animations
+    Gtk.Settings.get_default().props.gtk_enable_animations = False
+    app.recording_error = None
     mux_capture = BrowserCapture(
         lambda *_: None, parent=Path(os.environ["CASSINI_LIBRARY_DIR"]), tap_factory=ReadyNativeTap
     )
-    mux_capture.elapsed_ms = lambda: 5000
-    mux_capture.start(dict(type="start", captureId="mux-saving-feedback", timelineOriginMs=1, microphone=True))
+    mux_capture.elapsed_ms = lambda: 768_000
+    mux_capture.start(
+        dict(
+            type="start",
+            captureId="mux-saving-feedback",
+            title="Weekly sync, product & engineering",
+            timelineOriginMs=1_793_106_312_000,
+            microphone=True,
+        )
+    )
     mux_capture.handle(dict(type="track", id="voice", kind="remote", sampleRate=48000, channels=1))
     mux_capture.handle(dict(type="audio", id="voice", sequence=0, offsetMs=0, pcm="AQACAA=="))
-    mux_meeting = live_meeting(mux_capture.directory)
+    mux_meeting = replace(live_meeting(mux_capture.directory), started_at_ms=1_793_106_312_000)
+    app.comfort.states[mux_meeting.key] = dict(levels=[0.35, 0.55], voices=3, silent=False, line=None, minutes=50)
     app._browser_snapshot = dict(statuses=[dict(recording=True, stopping=False, path=str(mux_capture.directory))])
     window._activity_source = SimpleNamespace(
         path=None,
@@ -587,8 +603,12 @@ with tempfile.TemporaryDirectory() as tmp:
         assert [r.get_child() for r in unrelated_rows_before] == unrelated_children_before
         assert not mux_page.stop.get_sensitive()
         assert mux_page.stop_content.get_label() == text("states.badge.saving")
+        assert mux_page.stop.get_child() is mux_page.saving_content
+        assert mux_page.saving_spinner.get_spinning()
+        assert mux_page.dot.has_css_class("saving")
         assert not mux_page.capture._controls["stop"].get_sensitive()
         assert mux_page.capture._controls["stop"].get_label() == text("states.badge.saving")
+        assert mux_page.capture._controls["live"].has_css_class("saving")
         assert not window.live_stop.get_sensitive()
         assert window.live_stop.get_label() == text("states.badge.saving")
         assert mux_page.meeting.lifecycle == "saving"
@@ -596,13 +616,85 @@ with tempfile.TemporaryDirectory() as tmp:
         assert mux_row_meeting.lifecycle == "saving"
         assert text("states.badge.saving") in texts(mux_row_before)
         assert mux_entered.wait(10)
+        until(lambda: window.navigation.get_visible_page() is mux_page)
+        if output := os.environ.get("CASSINI_SCREENSHOT_OUT"):
+            save_window_shot(Path(output).with_name("recording-saving.png"))
         release_mux.set()
         until(lambda: not app._browser_stops)
         # Delivery while broker has not confirmed publication finished keeps 'saving' and retains all cached rows:
         assert row_builds == []
         assert window.snapshot.meetings[0].lifecycle == "saving"
         assert [window._row_by_key[m.key] for m in synthetic_saved] == unrelated_rows_before
+        window._row = original_row
+        window._fill_row = original_fill_row
+        saved_fixtures = tuple(m for m in pre_mux_snapshot.meetings if m.lifecycle == "saved")
+        window._source_snapshot = LibrarySnapshot(
+            meetings=(mux_meeting, *saved_fixtures),
+            directories=(mux_meeting.directory, *(m.directory for m in saved_fixtures)),
+        )
+        window._updated(window._source_snapshot)
+        window.back_to_library()
+        window.capture_changed()
+        until(lambda: window.navigation.get_visible_page() is not mux_page and window.recording_page is None)
+        assert not window.live_stop.get_sensitive()
+        assert window.live_stop.get_label() == text("states.badge.saving")
+        if output := os.environ.get("CASSINI_SCREENSHOT_OUT"):
+            save_window_shot(Path(output).with_name("library-saving.png"))
+        # Pre-scan browser Stop (before LibraryScanner discovers the folder) still shows disabled Saving…:
+        window._source_snapshot = LibrarySnapshot(
+            meetings=saved_fixtures, directories=tuple(m.directory for m in saved_fixtures)
+        )
+        window._updated(window._source_snapshot)
+        app._browser_stops.add(None)
+        try:
+            window._update_live()
+            assert window.capture_header.get_visible_child_name() == "live"
+            assert not window.live_stop.get_sensitive()
+            assert window.live_stop.get_label() == text("states.badge.saving")
+        finally:
+            app._browser_stops.discard(None)
+        window._update_live()
+        assert window.capture_header.get_visible_child_name() == "record"
+
+        # Deferred native Stop during startup retains _last_native on app; once
+        # finalization completes, _stop_requested clears before 'changed' so the
+        # Library header restores the Record control instead of staying on Saving…
+        from cassini_talk.native_recorder import NativeRecorder
+
+        prepare_entered = threading.Event()
+        release_prepare = threading.Event()
+        original_prepare = NativeRecorder._prepare
+
+        def gated_prepare(parent):
+            prepare_entered.set()
+            assert release_prepare.wait(10)
+            return original_prepare(parent or Path(os.environ["CASSINI_LIBRARY_DIR"]))
+
+        with patch.object(NativeRecorder, "_prepare", staticmethod(gated_prepare)):
+            try:
+                app.start_native(test=True)
+                assert prepare_entered.wait(10)
+                deferred = app.recorder
+                assert deferred is not None and deferred.starting
+                deferred.stop()
+                window._update_live()
+                assert window.capture_header.get_visible_child_name() == "live"
+                assert not window.live_stop.get_sensitive()
+                assert window.live_stop.get_label() == text("states.badge.saving")
+                release_prepare.set()
+                until(lambda: not app.native_captures and deferred.pipeline is None and not deferred._finishing)
+                assert app._last_native is deferred
+                assert not deferred._stop_requested and not capture_guard.recorder_stopping(deferred)
+                assert window.capture_header.get_visible_child_name() == "record"
+                record_button = window.capture_header.get_child_by_name("record")
+                assert record_button is not None and record_button.get_visible() and record_button.get_sensitive()
+                assert app.lookup_action("record").get_enabled()
+            finally:
+                release_prepare.set()
+        app._last_native = None
     finally:
+        Gtk.Settings.get_default().props.gtk_enable_animations = previous_animations
+        app.comfort.states.pop(mux_meeting.key, None)
         release_mux.set()
         concurrent.futures.ThreadPoolExecutor = original_executor
         window._row = original_row
