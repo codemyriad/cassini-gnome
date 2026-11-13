@@ -317,3 +317,106 @@ def test_find_in_meeting_matches_turns_asides_and_renders_active_underline():
         f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">Migration</span>?'
         in markup_1
     )
+
+
+def test_find_in_meeting_matches_phrases_crossing_layout_chunk_boundaries():
+    from cassini_talk.meeting_text import (
+        LAYOUT_WORD_LIMIT,
+        LayoutRow,
+        ReadingRows,
+        build_find_row_highlights,
+        find_transcript_matches,
+        reading_markup,
+        reading_turns,
+    )
+    from cassini_talk.tokens import search_hit_colours, token
+    from cassini_talk.transcript import Turn
+
+    assert LAYOUT_WORD_LIMIT == 128
+    # 1. Direct 200-word logical Turn split at words 127-128 into two LayoutRows.
+    direct_words = [
+        Word(
+            "a",
+            i * 100,
+            i * 100 + 80,
+            "boundary" if i == 127 else ("crossing" if i == 128 else f"w{i}"),
+        )
+        for i in range(200)
+    ]
+    direct_rows = ReadingRows([Turn(0, "a", direct_words, 0, 0, 20000)])
+    assert len(direct_rows) == 1 and len(direct_rows.layout) == 2
+    assert isinstance(direct_rows.layout[0], LayoutRow)
+    for direct_matches in (
+        find_transcript_matches(direct_rows, "boundary crossing", layout_turns=direct_rows.layout),
+        find_transcript_matches(direct_rows.layout, "boundary crossing"),
+    ):
+        assert len(direct_matches) == 1
+        assert direct_matches[0].spans == (((0, -1), 127, 0, 8), ((1, -1), 0, 0, 8))
+
+    # 2. Full reading_turns rejoined paragraph (>128 words across a backchannel chip).
+    words = [
+        Word(
+            "a",
+            i * 100,
+            i * 100 + 100,
+            "boundary" if i == 126 else ("crossing" if i == 127 else f"w{i}"),
+        )
+        for i in range(200)
+    ]
+    words.insert(100, Word("b", 9950, 10250, "Right."))
+    rows = reading_turns(words)
+    assert len(rows) == 1 and len(rows.layout) == 2
+    assert isinstance(rows.layout[0], LayoutRow) and isinstance(rows.layout[1], LayoutRow)
+    assert len(rows.layout[0].words) == 127 and len(rows.layout[1].words) == 73
+
+    for matches in (
+        find_transcript_matches(rows, "boundary crossing", layout_turns=rows.layout),
+        find_transcript_matches(rows.layout, "boundary crossing"),
+    ):
+        assert len(matches) == 1
+        assert matches[0].row_index == 0
+        assert matches[0].start_ms == 126 * 100
+        assert matches[0].spans == (((0, -1), 126, 0, 8), ((1, -1), 0, 0, 8))
+
+    highlights = build_find_row_highlights(matches, 0)
+    assert set(highlights) == {0, 1}
+    active_bg, hit_fg = search_hit_colours(dark=False, selected=True)
+    accent = token("accent", dark=False)
+    markup_row0 = reading_markup(rows.layout[0], -1, str.upper, row_highlights=highlights.get(0))
+    markup_row1 = reading_markup(rows.layout[1], -1, str.upper, row_highlights=highlights.get(1))
+    assert (
+        f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">boundary</span>'
+        in markup_row0
+    )
+    assert (
+        f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">crossing</span>'
+        in markup_row1
+    )
+
+    # 3. >128-word folded aside (LayoutChip) crossing LAYOUT_WORD_LIMIT.
+    from cassini_talk.meeting_text import LayoutChip
+
+    aside_words = [
+        Word("b", 100 + i * 10, 108 + i * 10, "aside" if i == 127 else ("seam" if i == 128 else f"c{i}"))
+        for i in range(160)
+    ]
+    aside_turn = Turn(1, "b", aside_words, 1, 100, 1700)
+    host_turn = Turn(
+        0,
+        "a",
+        [Word("a", 0, 500, "Start"), Word("a", 500, 3000, "finish.")],
+        0,
+        0,
+        3000,
+        asides=[(0, aside_turn)],
+    )
+    aside_rows = ReadingRows([host_turn])
+    assert len(aside_rows) == 1 and len(aside_rows.layout) >= 3
+    assert isinstance(aside_rows.layout[1].asides[0][1], LayoutChip)
+    aside_matches = find_transcript_matches(aside_rows, "aside seam", layout_turns=aside_rows.layout)
+    assert len(aside_matches) == 1
+    first_span_row = aside_matches[0].spans[0][0][0]
+    second_span_row = aside_matches[0].spans[1][0][0]
+    assert second_span_row == first_span_row + 1
+    aside_hl = build_find_row_highlights(aside_matches, 0)
+    assert first_span_row in aside_hl and second_span_row in aside_hl

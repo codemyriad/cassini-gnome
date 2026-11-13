@@ -364,15 +364,15 @@ class SpeakersDialog(Adw.Dialog):
             value = self.entry.get_text()
             remember = self.remember.get_sensitive() and self.remember.get_active()
             voice_id = self.chosen_voice
+            directory = self.meeting.directory
+            app = self.window.get_application()
 
             def operation():
-                result = speaker_edits.save_name(
-                    self.meeting.directory, self.identifier, value, scanner=self.window.monitor.scanner
-                )
+                result = speaker_edits.save_name(directory, self.identifier, value, scanner=self.window.monitor.scanner)
                 if self.voice_data is not None and not self.voice_state["readOnly"]:
                     try:
-                        self.window.get_application().voice_store.remember(
-                            self.meeting.directory, self.identifier, value, voice_id=voice_id, remember=remember
+                        app.voice_store.remember(
+                            directory, self.identifier, value, voice_id=voice_id, remember=remember
                         )
                     except (OSError, ValueError) as error:
                         raise VoiceWriteError(str(error)) from error
@@ -382,11 +382,10 @@ class SpeakersDialog(Adw.Dialog):
 
     def _merge(self, target):
         self._listening_merge = self.page.prepare_speaker_merge(self.identifier, target)
+        directory = self.meeting.directory
 
         def operation():
-            result = speaker_edits.merge_into(
-                self.meeting.directory, self.identifier, target, scanner=self.window.monitor.scanner
-            )
+            result = speaker_edits.merge_into(directory, self.identifier, target, scanner=self.window.monitor.scanner)
             self._recompute = (self.identifier, target)
             return result
 
@@ -402,6 +401,9 @@ class SpeakersDialog(Adw.Dialog):
         self.merge.set_sensitive(False)
         self.entry.set_sensitive(False)
         self._validate()
+        directory = self.meeting.directory
+        meeting_key = self.meeting.key
+        app = self.window.get_application()
 
         def write():
             if self.closed:
@@ -409,9 +411,11 @@ class SpeakersDialog(Adw.Dialog):
             return operation()
 
         self.future = self.window.monitor._executor.submit(write)
-        self.future.add_done_callback(lambda future: GLib.idle_add(self._finished, future, operation))
+        self.future.add_done_callback(
+            lambda future: GLib.idle_add(self._finished, future, operation, directory, meeting_key, app)
+        )
 
-    def _finished(self, future, operation):
+    def _finished(self, future, operation, directory, meeting_key, app):
         self.busy = False
         try:
             future.result()
@@ -433,8 +437,14 @@ class SpeakersDialog(Adw.Dialog):
                 self._validate()
         else:
             if getattr(self, "_recompute", None):
-                self.page.speaker_merged(*self._recompute, transition=self._listening_merge)
-                self.window.get_application().recompute_voices(self.meeting.directory, self._recompute)
+                if (
+                    not self.closed
+                    and not self.page._closed
+                    and self.page.meeting.key == meeting_key
+                    and self.page.meeting.directory == directory
+                ):
+                    self.page.speaker_merged(*self._recompute, transition=self._listening_merge)
+                app.recompute_voices(directory, self._recompute)
             if not self.window.monitor._closed:
                 self.window.monitor.refresh_now()
             self.close()

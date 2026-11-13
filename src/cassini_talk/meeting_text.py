@@ -21,14 +21,25 @@ class TranscriptMatch:
     spans: tuple[tuple[tuple[int, int], int, int, int], ...]
 
 
-def find_transcript_matches(turns, query: str) -> tuple[TranscriptMatch, ...]:
-    """Return ordered matches across *turns* (including folded asides) for *query*."""
+def find_transcript_matches(turns, query: str, *, layout_turns=None) -> tuple[TranscriptMatch, ...]:
+    """Return ordered matches across logical *turns* mapped onto *layout_turns*."""
     needle = query.strip()
     if not needle:
         return ()
+    logical_turns = getattr(turns, "logical", turns)
+    target_layout = turns if layout_turns is None else layout_turns
+    word_loc: dict[int, tuple[tuple[int, int], int]] = {}
+    if target_layout is not logical_turns:
+        for l_row in target_layout:
+            for w_i, word in enumerate(l_row.words):
+                word_loc[id(word)] = ((l_row.index, -1), w_i)
+            for aside_slot, (_after, l_aside) in enumerate(l_row.asides):
+                for w_i, word in enumerate(l_aside.words):
+                    word_loc[id(word)] = ((l_row.index, aside_slot), w_i)
+
     pattern = re.compile(re.escape(needle), re.IGNORECASE)
     matches: list[TranscriptMatch] = []
-    for turn in turns:
+    for turn in logical_turns:
         asides_by_after: dict[int, list[tuple[int, Turn]]] = {}
         for aside_slot, (after, aside) in enumerate(turn.asides):
             asides_by_after.setdefault(after, []).append((aside_slot, aside))
@@ -82,13 +93,15 @@ def find_transcript_matches(turns, query: str) -> tuple[TranscriptMatch, ...]:
                     sub_start = max(0, h_start - w_start)
                     sub_end = min(w_end - w_start, h_end - w_start)
                     if sub_end > sub_start:
-                        spans.append((owner_key, word_idx, sub_start, sub_end))
+                        word = owner.words[word_idx]
+                        mapped_owner_key, mapped_word_idx = word_loc.get(id(word), (owner_key, word_idx))
+                        spans.append((mapped_owner_key, mapped_word_idx, sub_start, sub_end))
                         if first_ms is None:
-                            first_ms = owner.words[word_idx].start_ms
+                            first_ms = word.start_ms
                 if spans:
                     matches.append(
                         TranscriptMatch(
-                            row_index=turn.index,
+                            row_index=spans[0][0][0],
                             start_ms=turn.start_ms if first_ms is None else first_ms,
                             spans=tuple(spans),
                         )
@@ -104,8 +117,8 @@ def build_find_row_highlights(
     by_row: dict[int, dict[tuple[int, int], dict[int, list[tuple[int, int, bool]]]]] = {}
     for match_idx, match in enumerate(matches):
         is_active = match_idx == active_index
-        row_map = by_row.setdefault(match.row_index, {})
         for owner_key, word_idx, sub_start, sub_end in match.spans:
+            row_map = by_row.setdefault(owner_key[0], {})
             owner_map = row_map.setdefault(owner_key, {})
             owner_map.setdefault(word_idx, []).append((sub_start, sub_end, is_active))
     return {
@@ -628,4 +641,5 @@ class ReadingRows(tuple):
             len(row.words) + sum(len(aside.words) for _, aside in row.asides) > LAYOUT_WORD_LIMIT for row in result
         ):
             result.layout = ReadingRows(_layout_rows(result), build_layout=False)
+            result.layout.logical = result
         return result

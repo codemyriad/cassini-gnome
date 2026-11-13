@@ -79,6 +79,7 @@ class MeetingPage(Adw.NavigationPage):
         self.window, self.meeting = window, meeting
         self.speakers_dialog = None
         self._speaker_future = None
+        self._merge_toast = None
         self._selected_speaker = None
         self._closed = False
         self.player = window.player
@@ -371,6 +372,11 @@ class MeetingPage(Adw.NavigationPage):
             self._vadj.set_value(0)
         if changed_key:
             self.clear_find(focus_transcript=False)
+            self._clear_dialog_focus()
+            self._speaker_future = None
+            if getattr(self, "_merge_toast", None) is not None:
+                self._merge_toast.dismiss()
+                self._merge_toast = None
             self._reading_index = -1
             self._follow_until = 0
             self._selected_speaker = None
@@ -541,7 +547,7 @@ class MeetingPage(Adw.NavigationPage):
             if changed:
                 self._refresh_find_highlights()
             return
-        self._find_matches = find_transcript_matches(self._turns, self._find_query)
+        self._find_matches = find_transcript_matches(self.meeting.turns, self._find_query, layout_turns=self._turns)
         if not self._find_matches:
             self._find_index = -1
             self._find_row_highlights = {}
@@ -754,11 +760,15 @@ class MeetingPage(Adw.NavigationPage):
         self.rate_button.update_property([Gtk.AccessibleProperty.LABEL], [name])
         self.rate_button.get_first_child().update_property([Gtk.AccessibleProperty.LABEL], [name])
 
+    def seek_to(self, position):
+        if not self._can_listen or not self.window._ensure_player(self.meeting):
+            return False
+        self.player.seek(int(position))
+        return True
+
     def _seek(self, _scale, _scroll, value):
         if not self._updating:
-            if not self.window._ensure_player(self.meeting):
-                return True
-            self.player.seek(int(value))
+            self.seek_to(value)
         return True
 
     def _colour(self, speaker):
@@ -1476,6 +1486,8 @@ class MeetingPage(Adw.NavigationPage):
             return
         from .speakers_dialog import SpeakersDialog
 
+        if self.meeting.has_audio:
+            self.window._ensure_player(self.meeting)
         self._clear_dialog_focus()
         if self.speakers_dialog and not self.speakers_dialog.closed:
             self.speakers_dialog.close()
@@ -1572,13 +1584,15 @@ class MeetingPage(Adw.NavigationPage):
         self._merge_transition = transition
         self._finish_merge_transition()
         name = next((s.name for s in self.meeting.speakers if s.id == target), target)
-        self.window.toasts.add_toast(
-            Adw.Toast(
-                title=GLib.markup_escape_text(text("speakers.mergedToast", name=name)),
-                button_label=text("common.undo"),
-                action_name="win.undo-speaker-merge",
-            )
+        if getattr(self, "_merge_toast", None) is not None:
+            self._merge_toast.dismiss()
+        toast = Adw.Toast(
+            title=GLib.markup_escape_text(text("speakers.mergedToast", name=name)),
+            button_label=text("common.undo"),
+            action_name="win.undo-speaker-merge",
         )
+        self._merge_toast = toast
+        self.window.toasts.add_toast(toast)
 
     def merge_speaker(self, source, target):
         if not self.meeting.metadata_editable or self._speaker_future is not None or self.window.monitor._closed:
@@ -1587,32 +1601,36 @@ class MeetingPage(Adw.NavigationPage):
 
         transition = self.prepare_speaker_merge(source, target)
         directory = self.meeting.directory
+        meeting_key = self.meeting.key
+        app = self.window.get_application()
         self._speaker_future = self.window.monitor._executor.submit(
             merge_into, directory, source, target, scanner=self.window.monitor.scanner
         )
         self.listening_bar.update()
         self._speaker_future.add_done_callback(
-            lambda f: GLib.idle_add(self._speaker_merged, f, source, target, transition)
+            lambda f: GLib.idle_add(self._speaker_merged, f, directory, meeting_key, app, source, target, transition)
         )
 
-    def _speaker_merged(self, future, source, target, transition):
+    def _speaker_merged(self, future, directory, meeting_key, app, source, target, transition):
         from concurrent.futures import CancelledError
 
-        self._speaker_future = None
+        if self._speaker_future is future:
+            self._speaker_future = None
+        same_meeting = not self._closed and self.meeting.key == meeting_key and self.meeting.directory == directory
         try:
             future.result()
         except CancelledError:
             return False
         except (OSError, ValueError):
-            if not self._closed:
+            if same_meeting:
                 self.window.toast(text("speakers.changeFailed"))
         else:
-            self.window.get_application().recompute_voices(self.meeting.directory, (source, target))
-            if not self._closed:
+            app.recompute_voices(directory, (source, target))
+            if same_meeting:
                 self.speaker_merged(source, target, transition)
             if not self.window.monitor._closed:
                 self.window.monitor.refresh_now()
-        if not self._closed:
+        if same_meeting:
             self.listening_bar.update()
         return False
 
@@ -1624,8 +1642,9 @@ class MeetingPage(Adw.NavigationPage):
         from .speaker_edits import undo_merge
 
         directory = self.meeting.directory
+        meeting_key = self.meeting.key
+        app = self.window.get_application()
         self.window.lookup_action("undo-speaker-merge").set_enabled(False)
-        self._undo_voice_app = self.window.get_application()
 
         def undo():
             with transaction(directory):
@@ -1635,29 +1654,35 @@ class MeetingPage(Adw.NavigationPage):
                 return directory, affected
 
         self._speaker_future = self.window.monitor._executor.submit(undo)
-        self._speaker_future.add_done_callback(lambda f: GLib.idle_add(self._merge_undone, f))
+        self._speaker_future.add_done_callback(
+            lambda f: GLib.idle_add(self._merge_undone, f, directory, meeting_key, app)
+        )
 
-    def _merge_undone(self, future):
+    def _merge_undone(self, future, orig_directory, meeting_key, app):
         from concurrent.futures import CancelledError
 
-        self._speaker_future = None
+        if self._speaker_future is future:
+            self._speaker_future = None
+        same_meeting = not self._closed and self.meeting.key == meeting_key and self.meeting.directory == orig_directory
         try:
             directory, affected = future.result()
         except CancelledError:
             pass
         except (OSError, ValueError):
-            if not self._closed:
-                self.window.toasts.add_toast(
-                    Adw.Toast(
-                        title=GLib.markup_escape_text(text("speakers.changeFailed")),
-                        button_label=text("common.tryAgain"),
-                        action_name="win.undo-speaker-merge",
-                    )
+            if same_meeting:
+                if getattr(self, "_merge_toast", None) is not None:
+                    self._merge_toast.dismiss()
+                toast = Adw.Toast(
+                    title=GLib.markup_escape_text(text("speakers.changeFailed")),
+                    button_label=text("common.tryAgain"),
+                    action_name="win.undo-speaker-merge",
                 )
+                self._merge_toast = toast
+                self.window.toasts.add_toast(toast)
                 self.window.lookup_action("undo-speaker-merge").set_enabled(True)
         else:
             if affected:
-                self._undo_voice_app.recompute_voices(directory, affected)
+                app.recompute_voices(directory, affected)
             if not self.window.monitor._closed:
                 self.window.monitor.refresh_now()
         return False
@@ -1737,6 +1762,9 @@ class MeetingPage(Adw.NavigationPage):
             self.speakers_dialog.close()
         if self._speaker_future is not None:
             self._speaker_future.cancel()
+        if getattr(self, "_merge_toast", None) is not None:
+            self._merge_toast.dismiss()
+            self._merge_toast = None
         self._clear_style_refresh()
         if self._vadj_handler:
             self._vadj.disconnect(self._vadj_handler)

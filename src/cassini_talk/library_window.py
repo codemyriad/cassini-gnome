@@ -1414,18 +1414,34 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self.player.stop()
                 self.listen.stop()
                 self._loaded_key = None
-        self._preview_key = meeting.key
-        self.selected = meeting
-        if LibraryWindow._is_saved_detail_ready(self, meeting):
-            self._show_right_meeting(meeting)
-            if not self._updating_rows_selection:
-                self.split.set_show_content(True)
-        elif not self._external_meeting:
-            self._close_right_meeting()
+            self._preview_key = meeting.key
+            self.selected = meeting
+            if LibraryWindow._is_saved_detail_ready(self, meeting):
+                ensure_player = getattr(self, "_ensure_player", None)
+                if ensure_player is not None:
+                    if not self._playback_failed and not ensure_player(meeting):
+                        desired = Player if meeting.audio_file is not None else FolderPlayer
+                        self.listen.stop()
+                        self.player.shutdown()
+                        self.player = desired()
+                        self.player.set_rate(self._rate)
+                        self._connect_player()
+                    self._show_right_meeting(meeting, rebind_player=True)
+                else:
+                    self._show_right_meeting(meeting)
+                if not self._updating_rows_selection:
+                    self.split.set_show_content(True)
+            else:
+                self._close_right_meeting()
+        else:
+            self._preview_key = meeting.key
+            self.selected = meeting
         self._recording_line(getattr(self.get_application(), "recorder", None))
         self._refresh_export()
 
     def _connect_player(self):
+        if not self.player.loaded:
+            self._loaded_key = None
         self.get_application().watch_player(self.player)
         self.player.connect("error", self._playback_error)
         if self.meeting_page is not None:
@@ -1483,7 +1499,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         action.change_state(GLib.Variant("s", self.RATES[index]))
 
     def _ensure_player(self, meeting):
-        if self._loaded_key == meeting.key and self._loaded_directory == meeting.directory:
+        if self.player.loaded and self._loaded_key == meeting.key and self._loaded_directory == meeting.directory:
             return not self._playback_failed
         use_file = meeting.audio_file is not None
         if not meeting.has_audio or (not use_file and not FolderPlayer.can_play(meeting)):
