@@ -615,6 +615,7 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: app.shortcuts_dialog and app.shortcuts_dialog.get_mapped())
     shortcut_labels = labels(app.shortcuts_dialog)
     assert "Increase playback speed" in shortcut_labels and "Decrease playback speed" in shortcut_labels
+    assert "Preferences" in shortcut_labels and "Back to Library" in shortcut_labels
     app.shortcuts_dialog.close()
     until(lambda: app.shortcuts_dialog is None)
 
@@ -760,6 +761,51 @@ with tempfile.TemporaryDirectory() as temporary:
         assert recomputed_calls == [(single_click_target.directory, (merge_src, merge_dst))]
         assert not switched_toasts
         assert sc_page._merge_transition is None
+
+    # Transcript turn headers must use speaker slot inks and secondary timestamp ink
+    # without Libadwaita's permanent link underline class (HARMONY 10.10 / WP3 L-43).
+    from cassini_talk.tokens import token
+
+    transcript_meeting = next(m for m in window.snapshot.meetings if m.words)
+    window.rows.select_row(window._row_by_key[transcript_meeting.key])
+    until(
+        lambda: (
+            window.meeting_page is not None
+            and window.meeting_page.meeting.key == transcript_meeting.key
+            and bool(window.meeting_page.bound)
+        )
+    )
+    tr_page = window.meeting_page
+
+    def _walk_widgets(root):
+        yield root
+        child = root.get_first_child()
+        while child is not None:
+            yield from _walk_widgets(child)
+            child = child.get_next_sibling()
+
+    bound_widgets = [w for _turn, _words, row in tr_page.bound.values() for w in _walk_widgets(row)]
+    name_buttons = [w for w in bound_widgets if "transcript-name" in w.get_css_classes()]
+    time_buttons = [w for w in bound_widgets if "transcript-time" in w.get_css_classes()]
+    assert name_buttons and time_buttons
+    for btn in name_buttons:
+        assert "link" not in btn.get_css_classes()
+        lbl = btn.get_child()
+        assert isinstance(lbl, Gtk.Label) and any(c.startswith("speaker-ink-") for c in lbl.get_css_classes())
+    for scheme, is_dark in ((Adw.ColorScheme.FORCE_LIGHT, False), (Adw.ColorScheme.FORCE_DARK, True)):
+        Adw.StyleManager.get_default().set_color_scheme(scheme)
+        until(lambda expected=is_dark: Adw.StyleManager.get_default().get_dark() == expected)
+        ink2_hex = token("ink-2", dark=is_dark).lstrip("#")
+        expected_ink2 = tuple(int(ink2_hex[i : i + 2], 16) for i in (0, 2, 4))
+        for btn in time_buttons:
+            assert "link" not in btn.get_css_classes()
+            rgba = btn.get_color()
+            actual_rgb = (round(rgba.red * 255), round(rgba.green * 255), round(rgba.blue * 255))
+            assert all(abs(a - b) <= 2 for a, b in zip(actual_rgb, expected_ink2, strict=True)), (
+                f"Transcript time colour mismatch (dark={is_dark}): got {actual_rgb}, expected {expected_ink2}"
+            )
+    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+    until(lambda: not Adw.StyleManager.get_default().get_dark())
 
     # Real confirmation widgets, deterministic controller double; no device access.
     class Controller(GObject.Object):

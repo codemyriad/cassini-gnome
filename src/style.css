@@ -237,7 +237,7 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
 .library-window .live-timer { color: var(--app-record-ink); font-weight: 600; font-feature-settings: "tnum"; }
 .library-window .live-levels progressbar trough { min-width: 30px; min-height: 4px; background: var(--app-record-trough); border-radius: 2px; }
 .library-window .live-levels progressbar progress { min-height: 4px; background: var(--app-record-bg); border-radius: 2px; }
-.library-window .static-stop:disabled { background: var(--app-record-bg); color: var(--app-record-fg); opacity: 1; min-width: 56px; min-height: 26px; padding: 0 10px; border-radius: 999px; }
+.library-window .static-stop:disabled { background: var(--app-record-bg); background-image: none; color: var(--app-record-fg); filter: none; opacity: 1; min-width: 56px; min-height: 26px; padding: 0 10px; border-radius: 999px; }
 
 /* UX3 / WP3 (L-22, L-24, L-43, L-44): right-pane Meeting view, inline speakers, Find bar, and floating player. */
 .meeting-pane { background: var(--cx-surface); color: var(--cx-ink); }
@@ -379,7 +379,7 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .recording-dot.saving { opacity: 0.45; box-shadow: none; }
 .library-window .recording-stop { min-height: 32px; min-width: 0; padding: 0 14px 0 12px; border-radius: 999px; font-size: 14px; font-weight: 600; }
 .recording-stop-glyph { background: var(--app-record-fg); border-radius: 2px; }
-.library-window .recording-stop:disabled { background: var(--app-record-bg); background-image: none; color: var(--app-record-fg); opacity: 1; padding: 0 14px; }
+.library-window .recording-stop:disabled { background: var(--app-record-bg); background-image: none; color: var(--app-record-fg); filter: none; opacity: 1; padding: 0 14px; }
 .library-window .recording-stop:disabled label, .library-window .recording-stop:disabled spinner { opacity: 1; color: var(--app-record-fg); }
 .recording-title { min-height: 38px; font-size: 18px; font-weight: 600; padding: 0 12px; background: var(--cx-field); color: var(--cx-ink); border: 1px solid var(--cx-field-line); border-radius: 6px; }
 .recording-sources { background: var(--cx-surface); border: 1px solid var(--cx-line); border-radius: 12px; }
@@ -688,4 +688,9 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .meeting-player > label { font-feature-settings: "tnum"; }
 .meeting-transcript .words { border-left: 3px solid transparent; padding-left: 8px; }
 .meeting-transcript .words.listen-current { border-left-color: var(--app-accent-ink); background: var(--app-accent-wash); }
-.transcript-name, .transcript-time { padding: 0; min-height: 0; }
+.transcript-name, .transcript-time { padding: 0; min-height: 0; min-width: 0; background: transparent; box-shadow: none; }
+.transcript-name:not(:disabled):hover, .transcript-time:not(:disabled):hover,
+.transcript-name:not(:disabled):active, .transcript-time:not(:disabled):active { background: transparent; }
+.transcript-name:not(:disabled):hover label, .transcript-time:not(:disabled):hover label { text-decoration-line: underline; }
+.transcript-time { color: var(--cx-ink-2); font-weight: 400; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.transcript-name:disabled, .transcript-time:disabled { filter: none; opacity: 1; }

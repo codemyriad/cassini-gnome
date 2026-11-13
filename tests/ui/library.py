@@ -91,6 +91,28 @@ with tempfile.TemporaryDirectory() as tmp:
     assert window.root_box.get_visible_child_name() == "library"
     assert window.capture_header.get_visible_child_name() == "live"
     assert window.live_timer.get_label() == "12:48" and not window.live_stop.get_sensitive()
+    from painted import painted_node
+    from PIL import Image
+
+    from cassini_talk.tokens import token
+
+    until(lambda: window.live_stop.get_width() > 20)
+    node = painted_node(window)
+    texture = window.get_renderer().render_texture(node, node.get_bounds())
+    shot_path = Path(tmp) / "library-live-stop.png"
+    assert texture.save_to_png(str(shot_path))
+    ok, stop_bounds = window.live_stop.compute_bounds(window)
+    assert ok
+    stop_rgb = (
+        Image.open(shot_path)
+        .convert("RGB")
+        .getpixel((int(stop_bounds.get_x() + 10), int(stop_bounds.get_y() + stop_bounds.get_height() / 2)))
+    )
+    record_hex = token("record", dark=False).lstrip("#")
+    expected_rgb = tuple(int(record_hex[i : i + 2], 16) for i in (0, 2, 4))
+    assert all(abs(a - b) <= 6 for a, b in zip(stop_rgb, expected_rgb, strict=True)), (
+        f"Static live Stop pill washed out: got {stop_rgb}, expected {expected_rgb}"
+    )
     labels = [w.get_label() for w in walk(window.rows) if isinstance(w, Gtk.Label)]
     assert "Listening inside your browser" in labels
     assert "47 min" in labels

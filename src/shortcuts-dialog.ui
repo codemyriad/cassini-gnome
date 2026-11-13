@@ -39,6 +39,16 @@
         </child>
         <child>
           <object class="AdwShortcutsItem">
+            <property name="action-name">app.preferences</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="action-name">win.back-library</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
             <property name="title" translatable="yes">Show Shortcuts</property>
             <property name="action-name">app.shortcuts</property>
           </object>
