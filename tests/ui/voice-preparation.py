@@ -147,7 +147,16 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.remember.get_sensitive()
     assert page.speakers_dialog is dialog and dialog.entry.get_text() == entered
     assert not dialog.voice_settings.get_visible()
-    assert "Future meetings" in dialog.remember_description.get_label()
+    assert (
+        dialog.remember_description.get_label()
+        == f"{entered} is named automatically next time.\nThe voiceprint stays on this computer."
+    )
+    dialog.entry.set_text("")
+    assert (
+        dialog.remember_description.get_label()
+        == "This person is named automatically next time.\nThe voiceprint stays on this computer."
+    )
+    dialog.entry.set_text(entered)
     dialog.save.emit("clicked")
     until(lambda: dialog.closed and app.voice_store.snapshot()["voices"])
     assert app.voice_store.snapshot()["voices"][0]["name"] == entered

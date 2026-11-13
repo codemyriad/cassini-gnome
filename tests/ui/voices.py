@@ -136,8 +136,30 @@ with tempfile.TemporaryDirectory() as temporary:
         return shown and bounds.get_y() >= 0 and bounds.get_y() + bounds.get_height() <= window.get_height()
 
     until(footer_visible)
+    first_voice_row = dialog.voices_list.get_row_at_index(0)
+    first_voice_box = first_voice_row.get_child()
+    first_avatar = first_voice_box.get_first_child()
+    likely_badge = first_voice_box.get_last_child()
+    assert first_avatar.get_label() == "G" and first_avatar.has_css_class("speaker-avatar-3")
+    assert likely_badge.get_label() == "Likely" and likely_badge.has_css_class("speaker-likely-tag")
+    assert not likely_badge.has_css_class("success")
+    second_voice_row = dialog.voices_list.get_row_at_index(1)
+    dialog.voices_list.emit("row-activated", second_voice_row)
+    assert dialog.entry.get_text() == "Luca" and not dialog.duplicate.get_visible() and dialog.save.get_sensitive()
     dialog.entry.set_text("giulia")
     assert dialog.duplicate.get_visible() and not dialog.save.get_sensitive()
+    until(
+        lambda: (
+            footer_visible()
+            and (save_in_dialog := dialog.save.compute_bounds(dialog))[0]
+            and save_in_dialog[1].get_y() + save_in_dialog[1].get_height() <= dialog.get_height()
+            and dialog.body_scroll.get_vadjustment().get_upper()
+            <= dialog.body_scroll.get_vadjustment().get_page_size() + 1
+        )
+    )
+    assert dialog.duplicate_title.get_text() == "Giulia is already a saved voice."
+    assert '<span weight="600">Giulia</span>' in dialog.duplicate_title.get_label()
+    assert "Is this the same person?" not in labels(dialog.duplicate)
     assert dialog.candidate["name"] == "Giulia"
     dialog.same_person.emit("clicked")
     assert not dialog.duplicate.get_visible() and dialog.save.get_sensitive()
@@ -171,6 +193,31 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: dialog.voice_data is not None)
     dialog.entry.set_text("Marta")
     assert dialog.duplicate.get_visible()
+    with patch("cassini_talk.speaker_edits.merge_into", side_effect=OSError("disk full")):
+        dialog._merge("marta")
+        until(lambda: not dialog.busy and dialog.error.get_visible())
+    assert dialog.duplicate.get_visible() and dialog.error.get_visible()
+    original_size = window.get_default_size()
+    original_height = window.get_height()
+    window.set_default_size(1110, 550)
+    until(
+        lambda: (
+            window.get_height() <= 550
+            and footer_visible()
+            and (merge_bounds := dialog.merge.compute_bounds(window))[0]
+            and merge_bounds[1].get_y() >= 0
+            and merge_bounds[1].get_y() + merge_bounds[1].get_height() <= window.get_height()
+            and (cancel_bounds := dialog.cancel.compute_bounds(window))[0]
+            and cancel_bounds[1].get_y() >= 0
+            and cancel_bounds[1].get_y() + cancel_bounds[1].get_height() <= window.get_height()
+            and dialog.body_scroll.get_vadjustment().get_upper() > dialog.body_scroll.get_vadjustment().get_page_size()
+        )
+    )
+    window.set_default_size(*original_size)
+    until(lambda: window.get_height() == original_height and footer_visible())
+    dialog.entry.set_text("Marta ")
+    dialog.entry.set_text("Marta")
+    assert dialog.duplicate.get_visible() and not dialog.error.get_visible()
     dialog.someone_else.emit("clicked")
     assert dialog.save.get_sensitive()
     dialog.save.emit("clicked")

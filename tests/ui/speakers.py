@@ -91,8 +91,14 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog = page.speakers_dialog
     until(lambda: not window.lookup_action("play-pause").get_enabled())
     until(lambda: dialog.voices_loaded and dialog.save.get_sensitive())
+    assert dialog.get_title() == "Name a speaker" and not hasattr(dialog, "avatar")
     assert dialog.heading.get_label() == "Speaker 3" and dialog.entry.get_text() == ""
     assert dialog.talk.get_label() == "Speaks for 11 s in this meeting"
+    assert dialog.quote.get_visible() and (
+        dialog.quote.get_label()
+        == "“And we have only two people who can sign off on it, so any slip there moves everything.”"
+    )
+    assert isinstance(dialog.remember, Gtk.Switch)
     assert any("Remember this voice" in value for value in labels(dialog.get_child()))
     assert not dialog.remember.get_sensitive()  # no private print in this fixture
 

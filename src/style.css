@@ -104,8 +104,8 @@
   --app-mic-silent-btn-fg: var(--cx-warn-ink);
   --app-mic-silent-trough: color-mix(in srgb, var(--cx-warn-ink) 22%, var(--cx-warn-tint));
   --app-live-silent-trough: color-mix(in srgb, var(--cx-warn-ink) 22%, var(--cx-warn-tint));
-  --app-dup-warn-bg: var(--cx-warn-tint);
-  --app-dup-warn-border: var(--cx-warn-ink);
+  --app-dup-notice-bg: var(--cx-sunken);
+  --app-likely-tag-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
   --app-success-bg: var(--cx-success-fill);
   --app-success-fg: var(--cx-on-record);
 }
@@ -482,11 +482,60 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .companion-step-badge { min-width: 24px; min-height: 24px; border: 2px solid var(--app-accent-ink); border-radius: 50%; color: var(--app-accent-ink); font-weight: 700; }
 .companion-step-badge.done { border-color: var(--app-success-bg); background: var(--app-success-bg); color: var(--app-success-fg); }
 
-/* UX16/UX17: speaker and saved-voice avatars pair avatar-0..6 washes with speaker-0..6 ink. */
+/* UX16/UX17 & WP6 (L-14, L-41, L-46): Name a speaker dialog and saved-voice avatars. */
 .speaker-edit { padding: 0; }
-.speakers-dialog { font-size: 15px; }
+.speakers-dialog,
+.speakers-dialog sheet {
+  font-size: 15px;
+  border-radius: 14px;
+}
 .speakers-dialog .small { font-size: 13px; }
+.speakers-dialog .speaker-dialog-heading {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--cx-ink);
+}
+.speakers-dialog .speaker-dialog-meta {
+  font-size: 13px;
+  color: var(--cx-ink-2);
+}
+.speakers-dialog .speaker-dialog-quote {
+  padding-left: 12px;
+  border-left: 3px solid var(--cx-line);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--cx-ink-2);
+}
+.speakers-dialog .speaker-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cx-ink-2);
+}
+.speakers-dialog entry.speaker-name-entry {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--cx-surface);
+  color: var(--cx-ink);
+  border: 1px solid var(--cx-line);
+  box-shadow: none;
+  outline: none;
+}
+.speakers-dialog entry.speaker-name-entry:focus-within {
+  border-color: var(--cx-accent);
+  box-shadow: inset 0 0 0 1px var(--cx-accent);
+  outline: none;
+}
 .speaker-avatar { min-width: 40px; min-height: 40px; border-radius: 50%; background: var(--app-avatar-wash); font-weight: 700; }
+.speaker-voice-avatar {
+  min-width: 26px;
+  min-height: 26px;
+  border-radius: 50%;
+  background: var(--app-avatar-wash);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
 .speaker-avatar-0 { background: var(--cx-avatar-0); color: var(--cx-speaker-0); }
 .speaker-avatar-1 { background: var(--cx-avatar-1); color: var(--cx-speaker-1); }
 .speaker-avatar-2 { background: var(--cx-avatar-2); color: var(--cx-speaker-2); }
@@ -496,10 +545,127 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .speaker-avatar-6 { background: var(--cx-avatar-6); color: var(--cx-speaker-6); }
 
 .speaker-duplicate {
-  padding: 12px;
-  border-radius: 10px;
-  background-color: var(--app-dup-warn-bg);
-  border: 1px solid var(--app-dup-warn-border);
+  padding: 8px 8px 8px 12px;
+  border-radius: 12px;
+  background-color: var(--app-dup-notice-bg);
+  border: 0;
+}
+.speaker-duplicate-text {
+  font-size: 14px;
+  color: var(--cx-ink);
+}
+.speakers-dialog .speaker-voices-scroll {
+  border: 1px solid var(--cx-line-soft);
+  border-radius: 12px;
+  background: var(--cx-surface);
+}
+.speakers-dialog list.speaker-voices-list {
+  background: transparent;
+  border-radius: 12px;
+}
+.speakers-dialog list.speaker-voices-list > row.speaker-voice-row {
+  min-height: 46px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--cx-ink);
+  border-bottom: 1px solid var(--cx-line-soft);
+  border-radius: 0;
+}
+.speakers-dialog list.speaker-voices-list > row.speaker-voice-row:last-child {
+  border-bottom: 0;
+}
+.speakers-dialog list.speaker-voices-list > row.speaker-voice-row:hover {
+  background: color-mix(in srgb, var(--cx-ink) 4%, transparent);
+}
+.speakers-dialog list.speaker-voices-list > row.speaker-voice-row:active {
+  background: color-mix(in srgb, var(--cx-ink) 8%, transparent);
+}
+.speakers-dialog .speaker-voice-name {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--cx-ink);
+}
+.speakers-dialog .speaker-voice-stale {
+  font-size: 12px;
+  color: var(--cx-ink-2);
+}
+.speakers-dialog .speaker-likely-tag {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: var(--app-likely-tag-bg);
+  color: var(--cx-ink);
+}
+.speakers-dialog .speaker-remember-card {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--cx-line-soft);
+  background: var(--cx-surface);
+}
+.speakers-dialog .speaker-remember-title {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--cx-ink);
+}
+.speakers-dialog .speaker-remember-body {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--cx-ink-2);
+}
+.speakers-dialog switch.speaker-remember-switch:checked {
+  background: var(--app-primary-bg);
+}
+.speakers-dialog switch.speaker-remember-switch:checked > slider {
+  background: var(--app-primary-fg);
+}
+.speakers-dialog button.speaker-btn-secondary,
+.speakers-dialog menubutton.speaker-btn-secondary > button {
+  min-height: 34px;
+  padding: 0 16px;
+  border-radius: 6px;
+  border: 0;
+  box-shadow: none;
+  background: var(--app-secondary-btn-bg);
+  color: var(--cx-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+.speakers-dialog button.speaker-btn-secondary:not(:disabled):hover,
+.speakers-dialog menubutton.speaker-btn-secondary > button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--cx-ink) 15%, transparent);
+}
+.speakers-dialog button.speaker-btn-secondary:not(:disabled):active,
+.speakers-dialog menubutton.speaker-btn-secondary > button:not(:disabled):active {
+  background: color-mix(in srgb, var(--cx-ink) 20%, transparent);
+}
+.speakers-dialog button.speaker-btn-primary {
+  min-height: 34px;
+  padding: 0 16px;
+  border-radius: 6px;
+  border: 0;
+  box-shadow: none;
+  background: var(--app-primary-bg);
+  color: var(--app-primary-fg);
+  font-size: 15px;
+  font-weight: 600;
+}
+.speakers-dialog button.speaker-btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--app-primary-fg) 10%, var(--app-primary-bg));
+}
+.speakers-dialog button.speaker-btn-primary:not(:disabled):active {
+  background: color-mix(in srgb, var(--cx-ink) 16%, var(--app-primary-bg));
+}
+.speakers-dialog button.speaker-btn-secondary:disabled,
+.speakers-dialog menubutton.speaker-btn-secondary > button:disabled,
+.speakers-dialog button.speaker-btn-primary:disabled {
+  opacity: 0.45;
+}
+.speakers-dialog button.speaker-btn-small {
+  min-height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
 }
 .details-side { padding: 12px; border: 1px solid var(--app-details-border); border-radius: 12px; }
 .details-span { padding: 6px 0; }

@@ -285,3 +285,29 @@ def test_speaker_colour_slot_stays_fixed_across_merge_and_rename(meeting):
     assert named_c.stored_colour_index == 2 and speaker_slot(named_c) == 3
     stored_entry = next(s for s in read_metadata(meeting.directory)["speakers"] if s["id"] == "c")
     assert stored_entry["colourIndex"] == 2
+
+
+def test_wp6_speaker_quote_duplicate_notice_markup_and_voice_initial(meeting):
+    from cassini_talk import i18n
+    from cassini_talk.speaker_edits import duplicate_notice_markup, speaker_quote, voice_initial
+
+    scanned = current_meeting(meeting.directory)
+    assert speaker_quote(scanned, "b", (500, 900)) == "bravo"
+    assert speaker_quote(scanned, "a") == "alpha"
+    assert speaker_quote(scanned, "missing") == ""
+
+    merge_into(meeting.directory, "b", "a")
+    merged = current_meeting(meeting.directory)
+    assert speaker_quote(merged, "a", (500, 900)) == "alpha bravo"
+
+    assert voice_initial("Giulia Rossi") == "G"
+    assert voice_initial("  lea ") == "L"
+    assert voice_initial("   ") == "?"
+
+    assert duplicate_notice_markup("Lea") == '<span weight="600">Lea</span> is already a saved voice.'
+    assert (
+        duplicate_notice_markup("A & B <2>")
+        == '<span weight="600">A &amp; B &lt;2&gt;</span> is already a saved voice.'
+    )
+    with i18n.using_language("fr"):
+        assert duplicate_notice_markup("Lea") == '<span weight="600">Lea</span> fait déjà partie des voix mémorisées.'

@@ -318,7 +318,8 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog = page.speakers_dialog
     until(window, lambda: dialog.play.has_focus())
     assert not window.player.playing
-    assert dialog.sample_from.get_text() == text("speakers.sampleFrom", position="00:00:32")
+    assert dialog.identifier == "voice-10" and dialog.sample == (32000, 32100)
+    assert dialog.quote.get_text() == text("common.quote", quote="Yes.")
     focus_event(window, lambda: page.listening_bar.buttons["name"], dialog.close)
     window.listen.stop()
 
