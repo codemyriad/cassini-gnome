@@ -50,7 +50,15 @@ class SpeakersDialog(Adw.Dialog):
             margin_start=24,
             margin_end=24,
         )
-        self.set_child(content)
+        # Natural height propagates so the dialog grows when saved voices or the
+        # duplicate notice arrive; a short window scrolls instead of clipping.
+        self.set_child(
+            Gtk.ScrolledWindow(
+                child=content,
+                hscrollbar_policy=Gtk.PolicyType.NEVER,
+                propagate_natural_height=True,
+            )
+        )
         header = Gtk.Box(spacing=12)
         details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
         self.heading = Gtk.Label(xalign=0, wrap=True, css_classes=["speaker-dialog-heading"])
@@ -160,7 +168,7 @@ class SpeakersDialog(Adw.Dialog):
             valign=Gtk.Align.START,
             css_classes=["speaker-remember-switch"],
         )
-        self.remember.update_property([Gtk.AccessibleProperty.LABEL], [text("speakers.rememberVoice")])
+        self.remember.update_property([Gtk.AccessibleProperty.LABEL], [text("speakers.rememberVoice.title")])
         self.remember.connect("notify::active", self._remember_changed)
         self.remember_card.append(remember_copy)
         self.remember_card.append(self.remember)
