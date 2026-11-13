@@ -255,8 +255,8 @@ def changed_header_rows(turns, before, after):
     turns = tuple(turns)
     if before is None or before[0] != after[0] or before[3:] != after[3:]:
         return turns
-    old = {s.id: (s.name, s.colour_index, s.provenance) for s in before[2]}
-    new = {s.id: (s.name, s.colour_index, s.provenance) for s in after[2]}
+    old = {s.id: (s.name, s.colour_index, s.provenance, s.stored_colour_index) for s in before[2]}
+    new = {s.id: (s.name, s.colour_index, s.provenance, s.stored_colour_index) for s in after[2]}
     if old.keys() != new.keys():
         return turns
     changed = set(before[1]) ^ set(after[1])

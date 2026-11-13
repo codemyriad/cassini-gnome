@@ -1,11 +1,19 @@
 {
   "repository": "codemyriad/cassini-ux",
-  "branch": "brand/tokens-json",
-  "commit": "b4dec4160a04a5e9995ce0a74d0215aa24a3da9c",
+  "branch": "main",
+  "commit": "5e0c34e0f1bb390298dabdf4eedc494e933fd329",
   "files": [
-    "brand/tokens.json"
+    "brand/tokens.json",
+    "brand/mark/saturn-nav.svg",
+    "brand/mark/saturn-mid.svg",
+    "brand/mark/saturn-full.svg",
+    "brand/mark/mark-flat.svg"
   ],
   "sha256": {
-    "tokens.json": "9d3d10d88db5d86d18a1cd099df36ca1c00234344fa383d28283992b734c6358"
+    "tokens.json": "9d3d10d88db5d86d18a1cd099df36ca1c00234344fa383d28283992b734c6358",
+    "mark/saturn-nav.svg": "38b639fe49123ee236239a523183815505c33b826b135f63b65d691df7caf61e",
+    "mark/saturn-mid.svg": "2ed4f1ad9769916fcb0e65ffd51ee755202c8fab4f28e1101b5e02022c4ca5aa",
+    "mark/saturn-full.svg": "3a20f4e52b97bddd15a8ad60343c627a8d3d03e5ecf2b40bfd47a29f51d3c7d7",
+    "mark/mark-flat.svg": "31db652d74efb9a1fcc8ddce7069c21dcd95ca8b5e72aa9e6cc4e933d82e9862"
   }
 }

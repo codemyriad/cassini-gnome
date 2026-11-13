@@ -4,5 +4,9 @@
     <file preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
     <file>tokens.css</file>
     <file>style.css</file>
+    <file>brand/mark/saturn-nav.svg</file>
+    <file>brand/mark/saturn-mid.svg</file>
+    <file>brand/mark/saturn-full.svg</file>
+    <file>brand/mark/mark-flat.svg</file>
   </gresource>
 </gresources>

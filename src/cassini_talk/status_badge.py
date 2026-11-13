@@ -5,12 +5,12 @@ from functools import cache
 
 from gi.repository import Gdk, Graphene, Gsk, Gtk
 
-# Proposed drawn metrics kept as named constants (W0.6 rule, Badge-GNOME.dc.html).
+# Shared status badge metrics (L-54, Badge-GNOME.dc.html).
 BADGE_HEIGHT_PX = 22
 BADGE_PAD_X_PX = 8
 BADGE_GAP_PX = 4
 BADGE_RADIUS_PX = 999
-BADGE_FONT_PX = 13
+BADGE_FONT_PX = 12
 BADGE_FONT_WEIGHT = 600
 
 BADGE_DOT_PX = 6

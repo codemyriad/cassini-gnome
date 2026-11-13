@@ -134,17 +134,22 @@ Tested by `library-vectors` `t8-failed-referenced-words` and `t8-none-referenced
 ## R7. Speakers, names, numbering
 
 1. **Speaking speakers** are the speaker ids that have at least one transcript item. They are ordered by the
-   `startMs` of their first item (ties: file order). Their 0-based position is `colourIndex`.
+   `startMs` of their first item (ties: file order). When a speaker first speaks, writers store that 0-based slot as
+   `speakers[id].colourIndex` in `meeting.json` so the speaker's colour slot never shifts later (L-41, HARMONY 10.11).
+   For colour selection (`HARMONY 10.11`), readers use the stored `speakers[id].colourIndex` when present and fall back
+   to this 0-based speaking-order position for files without a stored `colourIndex`.
 2. **Name** of a speaking speaker, using the first that applies:
    - meeting.json `speakers[id].name`, if non-null
    - for received meetings, the embedded speaker label, if it is not of the form `Speaker <n>`
    - otherwise **"Speaker {position+1}"**, where the position is in the speaking order of rule 1
 
-   The stored `colourIndex` is ignored for numbering.
+   The stored `colourIndex` is used for colour (`HARMONY 10.11`) and ignored for fallback `"Speaker {position+1}"` numbering.
 3. **Row meta names** list only speaking speakers, in speaking order, with at most 3 names and then `+{k}`
    (format-vectors `rowMeta`). Speakers stored in meeting.json who never speak are not listed.
 
-## R8. Quote
+## R8. Quote (data derivation; hidden on Library rows per L-53)
+
+> **Phase 1 UI rule (L-53):** Library lists on all four apps drop the transcript quote/preview line under each row (search results keep their match snippet). Rules R8.1–R8.5 remain the binding derivation for `vectors/library-vectors/` fixtures so existing scanner tests stay deterministic.
 
 1. **A turn** is a maximal run of **consecutive** transcript items, in `startMs` order (ties: file order), with the
    same speaker. There is no seam-joining across interjections, and there are no aside rules.

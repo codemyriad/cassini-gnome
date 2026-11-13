@@ -248,7 +248,7 @@ with tempfile.TemporaryDirectory() as temporary:
             "Importing…",
         ]
 
-    expected_fg = {
+    expected_label_fg = {
         "recording": tokens.token("record-ink", dark=is_dark),
         "saving": tokens.token("ink-2", dark=is_dark),
         "transcribing": tokens.token("ink-2", dark=is_dark),
@@ -256,6 +256,10 @@ with tempfile.TemporaryDirectory() as temporary:
         "interrupted": tokens.token("warn-ink", dark=is_dark),
         "received": tokens.token("ink-2", dark=is_dark),
         "importing": tokens.token("ink-2", dark=is_dark),
+    }
+    expected_glyph_fg = {
+        **expected_label_fg,
+        "transcribing": tokens.token("accent", dark=is_dark),
     }
     for badge_widget in badges:
         assert badge_widget.glyph_widget.get_accessible_role() == Gtk.AccessibleRole.PRESENTATION
@@ -269,8 +273,8 @@ with tempfile.TemporaryDirectory() as temporary:
         _, label_bounds = badge_widget.label_widget.compute_bounds(badge_widget)
         gap = round(label_bounds.origin.x - (glyph_bounds.origin.x + glyph_bounds.size.width))
         assert gap == BADGE_GAP_PX, (badge_widget.kind, gap)
-        assert rgba_hex(badge_widget.glyph_widget.get_color()) == expected_fg[badge_widget.kind]
-        assert rgba_hex(badge_widget.label_widget.get_color()) == expected_fg[badge_widget.kind]
+        assert rgba_hex(badge_widget.glyph_widget.get_color()) == expected_glyph_fg[badge_widget.kind]
+        assert rgba_hex(badge_widget.label_widget.get_color()) == expected_label_fg[badge_widget.kind]
 
     # Verify alias normalization and live label mutation API on StatusBadge.
     alias_badge = StatusBadge("attention", "Initial")
@@ -311,7 +315,7 @@ with tempfile.TemporaryDirectory() as temporary:
     selected_row = window.rows.get_selected_row()
     assert selected_row is not None and selected_row.meeting.key == attention.key
     selected_badge = find_badges(selected_row)[0]
-    assert rgba_hex(selected_badge.glyph_widget.get_color()) == expected_fg["needsAttention"]
+    assert rgba_hex(selected_badge.glyph_widget.get_color()) == expected_glyph_fg["needsAttention"]
 
     node = painted_node(window)
     texture = window.get_renderer().render_texture(node, node.get_bounds())

@@ -90,7 +90,17 @@ def test_vendored_tokens_sha256_generated_files_and_literal_scan_pass():
     upstream = json.loads(UPSTREAM.read_text(encoding="utf-8"))
     commit = upstream["commit"]
     assert re.fullmatch(r"[0-9a-f]{40}", commit)
-    assert hashlib.sha256(VENDORED.read_bytes()).hexdigest() == upstream["sha256"]["tokens.json"]
+    for rel_key, expected_sha in upstream["sha256"].items():
+        assert hashlib.sha256((ROOT / "ux/brand" / rel_key).read_bytes()).hexdigest() == expected_sha
+    assert {
+        "tokens.json",
+        "mark/saturn-nav.svg",
+        "mark/saturn-mid.svg",
+        "mark/saturn-full.svg",
+        "mark/mark-flat.svg",
+    }.issubset(upstream["sha256"])
+    ux_upstream = json.loads((ROOT / "tests/ux/UPSTREAM.json").read_text(encoding="utf-8"))
+    assert commit == ux_upstream["commit"]
     assert commit == tokens.UPSTREAM_COMMIT
 
     for path in (TOKENS_CSS, BRAND_TOKENS_PY):
@@ -127,6 +137,14 @@ def test_generator_check_fails_on_sha256_drift_generated_drift_or_source_literal
     for rel in (
         "ux/brand/UPSTREAM.json",
         "ux/brand/tokens.json",
+        "ux/brand/mark/saturn-nav.svg",
+        "ux/brand/mark/saturn-mid.svg",
+        "ux/brand/mark/saturn-full.svg",
+        "ux/brand/mark/mark-flat.svg",
+        "src/brand/mark/saturn-nav.svg",
+        "src/brand/mark/saturn-mid.svg",
+        "src/brand/mark/saturn-full.svg",
+        "src/brand/mark/mark-flat.svg",
         "src/tokens.css",
         "src/style.css",
         "src/cassini_talk/_brand_tokens.py",
@@ -248,3 +266,22 @@ def test_every_applied_w1_role_resolves_to_its_token_and_unapplied_set_is_exact(
     assert tokens.speaker_slot(SimpleNamespace(colour_index=1, stored_colour_index=2, provenance="user")) == 3
     assert tokens.speaker_slot(SimpleNamespace(colour_index=4, stored_colour_index=2, provenance="unnamed")) == 0
     assert [tokens.saved_voice_slot({"saveOrder": i}) for i in range(7)] == [1, 2, 3, 4, 5, 6, 1]
+
+
+def test_brand_mark_dimensions_resource_thresholds_and_wordmark():
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gtk", "4.0")
+    except ValueError:
+        pytest.skip("GTK 4 introspection is unavailable")
+    from cassini_talk import brand_mark
+
+    assert brand_mark.WORDMARK_TEXT == "cassini.talk"
+    assert brand_mark.WORDMARK_FONT_PX == 18
+    assert brand_mark.WORDMARK_FONT_WEIGHT == 500
+    assert brand_mark.mark_dimensions(26) == (40, 26)
+    assert brand_mark.mark_dimensions(28) == (43, 28)
+    assert brand_mark.mark_dimensions(56) == (86, 56)
+    assert brand_mark.mark_resource_for_height(26) == brand_mark.NAV_MARK_RESOURCE
+    assert brand_mark.mark_resource_for_height(40) == brand_mark.NAV_MARK_RESOURCE
+    assert brand_mark.mark_resource_for_height(41) == brand_mark.MID_MARK_RESOURCE

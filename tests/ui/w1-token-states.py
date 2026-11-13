@@ -28,6 +28,7 @@ from gi.repository import Adw, Gio, Gtk  # noqa: E402
 from painted import painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
+from cassini_talk.brand_mark import MID_MARK_RESOURCE, NAV_MARK_RESOURCE, BrandLockup, BrandMark  # noqa: E402
 from cassini_talk.companion_setup import CompanionSetup  # noqa: E402
 from cassini_talk.library import LibrarySpeaker  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
@@ -204,11 +205,56 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: not search_page.entry.has_focus() and not search_page.pending)
     save_shot(window, out_dir, "sidebar-search")
 
+    # 6. Saturn mark + lowercase cassini.talk wordmark (L-04, L-15) and button roles on raised dialog (L-37, L-46).
+    brand_dialog = Adw.Dialog(title="Foundations", content_width=460)
+    card_box = Gtk.Box(
+        orientation=Gtk.Orientation.VERTICAL,
+        spacing=18,
+        margin_top=24,
+        margin_bottom=24,
+        margin_start=24,
+        margin_end=24,
+    )
+    lockup = BrandLockup(26)
+    hero_mark = BrandMark(56)
+    assert lockup.mark.resource_path == NAV_MARK_RESOURCE
+    assert hero_mark.resource_path == MID_MARK_RESOURCE
+    assert lockup.wordmark.get_label() == "cassini.talk"
+    marks_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20, valign=Gtk.Align.CENTER)
+    marks_row.append(lockup)
+    marks_row.append(hero_mark)
+    card_box.append(marks_row)
+
+    btn_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10, valign=Gtk.Align.CENTER)
+    btn_primary = Gtk.Button(label="Save name")
+    btn_primary.add_css_class("suggested-action")
+    btn_secondary = Gtk.Button(label="Cancel")
+    btn_secondary.add_css_class("secondary-button")
+    btn_destructive = Gtk.Button(label="Delete now")
+    btn_destructive.add_css_class("destructive-fill")
+    btn_plain = Gtk.Button(label="Not now")
+    btn_plain.add_css_class("flat")
+    btn_plain.add_css_class("plain-action")
+    for btn in (btn_primary, btn_secondary, btn_destructive, btn_plain):
+        btn_row.append(btn)
+    card_box.append(btn_row)
+    brand_dialog.set_child(card_box)
+    brand_dialog.present(window)
+    until(
+        lambda: (
+            brand_dialog.get_mapped()
+            and (lockup.mark.get_width(), lockup.mark.get_height()) == (40, 26)
+            and (hero_mark.get_width(), hero_mark.get_height()) == (86, 56)
+        )
+    )
+    save_shot(window, out_dir, "brand-and-buttons")
+    brand_dialog.force_close()
+
     drain_app_workers(app)
     app.begin_exit()
     window.close()
     app.do_shutdown()
     print(
         f"PASS W1 token states ({'dark' if dark else 'light'}): "
-        "seven-speakers, error-line, delete-dialog, success-badge, sidebar-search"
+        "seven-speakers, error-line, delete-dialog, success-badge, sidebar-search, brand-and-buttons"
     )

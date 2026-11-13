@@ -171,7 +171,17 @@ text > placeholder {
 .library-window .speaker-chip .speaker-name { color: inherit; font-weight: 400; }
 .library-window .auto-tag { font-size: 11px; font-weight: 500; color: inherit; opacity: 0.72; border: 1px solid var(--app-auto-tag-border); border-radius: 5px; padding: 0 3px; }
 .library-window button { border-radius: 6px; }
-.library-window button.suggested-action { background: var(--app-primary-bg); color: var(--app-primary-fg); }
+.library-window button.suggested-action,
+button.primary-action { background: var(--app-primary-bg); color: var(--app-primary-fg); }
+.library-window button.destructive-action:not(.flat),
+button.destructive-fill { background: var(--destructive-bg-color); color: var(--destructive-fg-color); }
+button.plain-action { background: transparent; color: var(--app-accent-ink); }
+.secondary-button,
+.response-area > button:not(.suggested-action):not(.destructive-action):not(.flat) {
+  background: var(--app-secondary-btn-bg);
+  color: var(--app-window-fg);
+}
+.brand-wordmark { font-size: 18px; font-weight: 500; color: var(--app-window-fg); }
 .library-window .cassini-record { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; min-height: 30px; padding: 0 12px; }
 .library-window .big-record { min-width: 74px; border-radius: 100px; min-height: 44px; padding: 0 22px; }
 .library-window .record-dot { font-size: 12px; }

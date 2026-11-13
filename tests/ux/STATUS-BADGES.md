@@ -1,9 +1,9 @@
-# Status badges — W0.4 / L-25, L-26, L-46
+# Status badges — W0.4 / L-25, L-26, L-45, L-46, L-52, L-54
 
 This amends HARMONY sections 2–3. The source is the alignment canvas
-`ui/Spec-Badge.dc.html`, `ui/Badge-*.dc.html` and decisions L-25/L-26,
-summarised in `vision-canvas/spec/components-a.md` section 2. Section 10's
-colour rules are a separate change; this document does not replace them.
+`ui/Spec-Badge.dc.html`, `ui/Badge-*.dc.html` and decisions L-25, L-26, L-45,
+L-46, L-52 and L-54. Section 10's colour rules live in HARMONY.md; this document
+complements them.
 
 ## Decided
 
@@ -23,9 +23,51 @@ meeting, outside the badge.
 | received | received | Received | outline | incoming |
 
 Tone roles: red uses `record-tint` / `record-ink`; neutral uses `ink` at 10%
-opacity for its fill and opaque `ink-2` for text/glyphs; amber uses `warn-tint`
-/ `warn-ink`; outline is transparent, with `line` outline and `ink-2` text.
-These are token references, not another palette.
+opacity for its fill and opaque `ink-2` for text/glyphs (**exception, L-45:**
+on all four apps, the `transcribing` badge's spinner glyph uses `accent` so it
+matches the open meeting's status line); amber uses `warn-tint` / `warn-ink`;
+error (phones, L-52/L-54) uses `error-tint` / `error`; outline is transparent,
+with `1px` `line` outline and `ink-2` text. These are token references, not
+another palette.
+
+**Exact metrics (decided, L-54):** badges are built the same on every platform —
+`22px` tall, `12px` weight 600 text (`line-height: 1`, tabular digits), `8px`
+horizontal padding (`0 8px`), `4px` gap between glyph and text, `6px` dot,
+`10px` spinner / pause, `11px` alert / incoming / clock / wave, `1px` `line`
+outline. This replaces the earlier per-platform sizes (Mac `18/11.5`, GNOME
+`22/13`).
+
+### Phone badge and row-pill set (decided, L-52, L-54)
+
+Row badges follow each app's own states: the look and `22/12/8` metrics are
+shared, the set is not. Desktop keeps the six persisted kinds above plus
+transient `importing`. Phones (`cassini-ios`, `cassini-android`) carry no
+status chip on a finished meeting (`Transcribed` is dropped visually; screen
+readers still hear `transcribed`, catalog `phone.row.transcribed.a11y`). Instead
+finished phone rows show the speaker count as a neutral pill (`ink` at 10%,
+people icon + `phone.row.speakerCount` from `1 speaker` upward) or `No speech`
+(`phone.row.noSpeech`), plus on iOS the bookmark count as a neutral pill
+(bookmark icon + number only), with no middle dots on the line.
+
+Every unfinished or problem phone row state keeps its `22/12/8` badge:
+
+| Phone state | Catalog id | English | Tone | Glyph | Row action |
+|---|---|---|---|---|---|
+| recording | `states.badge.recording` | `Recording 12:48` | red | dot | — |
+| importing | `states.badge.importing` | `Importing…` | neutral | spinner | — |
+| transcribing | `states.badge.transcribing` | `Transcribing · 4 min` | neutral | spinner (`accent`) | — |
+| queued | `states.phone.queued` | `Queued` | neutral | clock | — |
+| paused | `states.phone.pausedAt` | `Paused at {position}` | amber | pause | `Resume` (`phone.row.resume`, `ink` semibold) |
+| failed | `states.phone.couldntTranscribe` | `Couldn’t transcribe` | error (`error-tint` / `error`) | alert | `Try again` (`common.tryAgain`, `ink` semibold) |
+| audioOnly | `states.phone.audioOnly` | `Audio only` | neutral | wave | — |
+| unplayable | `states.phone.cantPlay` | `Can’t play` | error (`error-tint` / `error`) | alert | — |
+| unreadable | `states.phone.cantReadTranscript` | `Can’t read transcript` | error (`error-tint` / `error`) | alert | — |
+| newerFormat | `states.phone.newerFormat` | `Newer format` | outline | alert | — |
+
+> **WP7 note (L-57):** user-facing `Received` (`states.badge.received`) renames
+> to `Imported` on desktop in `WP7` (`contract/phase1-wp7-imported`), while
+> phones wait on open `L-10`. `WP1`–`WP6` keep `states-vectors.json` v3 as-is so
+> packages stay cleanly separated.
 
 L-46 supersedes the earlier neutral-tint fill: composite the neutral wash over
 whatever is behind the pill, including selected surfaces, in both light and
@@ -55,11 +97,10 @@ until the canvas resolves them:
 | Persisted state and priority | lifecycle remains recording/saving/saved; existing meeting precedence remains recording → saving → transcribing → needsAttention → interrupted → received → none |
 | Importing against an existing meeting | No shared cross-domain priority or persisted importing lifecycle currently exists; none is invented here |
 | Import cancellation/failure | No additional badge label or new transition rule specified here; existing app behavior remains |
-| Phone-specific states / Received eligibility (L-10) | Existing per-app applicability retained. Current iOS labels include Queued, Paused at {clock}, Transcribed, Audio only, Newer format, Can’t play, Can’t read transcript; none is newly mapped here (IOS-COM-04) |
+| Phone Imported eligibility (L-10) | Phones keep their existing import flow until L-10 is decided; desktop `Received` → `Imported` lands in WP7 (L-57) |
 | Search-result placement | Existing placement retained; the Badge purpose mentions search, but result-card drawings omit it |
-| Position/detail placement | Existing meeting/detail placement retained; exact placement is not drawn |
-| Selected-row override | No new override rule. Current Mac app uses selected-white badge ink; identical selected/rest badge styling is drawn but marked proposed in Spec-Badge. Existing per-app behavior is retained until adoption |
-| Exact metrics | Current drawn padding 0/8, gap4, dot6, spinner10, alert/incoming11, outline1; Mac height18/type11.5, GNOME22/13, phones22/12; native font families as drawn. Use named constants, not a new universal platform size |
+| Position/detail placement | Transcribing status line + sheet/popover are decided by L-45; interrupted stopping position stays in `meeting.interruptedAt` outside the badge |
+| Selected-row override | No new override rule. Existing per-app behavior is retained until Alex resolves selected-row badge styling |
 
 Importing is decided for an active import-entry card (L-25/L-26). It is tested
 in `entryVectors` separately from persisted meeting `vectors`: the fixture

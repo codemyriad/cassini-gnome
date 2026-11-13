@@ -231,7 +231,6 @@ def timeline_tick_colour(*, dark: bool = False) -> str | None:
 
 __all__ = [
     "ADW_ROLE_TOKENS",
-    "APPLIED_W2_BADGE_ROLES",
     "CSS_ROLE_TOKENS",
     "DEFERRED_W2_ROLES",
     "DERIVED_TOKENS",

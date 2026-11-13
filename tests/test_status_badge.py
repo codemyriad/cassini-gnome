@@ -30,7 +30,7 @@ def test_badge_constants_kind_mapping_and_applied_token_roles():
     assert status_badge.BADGE_PAD_X_PX == 8
     assert status_badge.BADGE_GAP_PX == 4
     assert status_badge.BADGE_RADIUS_PX == 999
-    assert status_badge.BADGE_FONT_PX == 13
+    assert status_badge.BADGE_FONT_PX == 12
     assert status_badge.BADGE_FONT_WEIGHT == 600
     assert status_badge.GLYPH_SIZE_PX == {
         "dot": 6,
@@ -57,8 +57,22 @@ def test_badge_constants_kind_mapping_and_applied_token_roles():
     with pytest.raises(ValueError, match="Unknown badge glyph kind"):
         status_badge.normalize_glyph_kind("unknown")
 
-    assert tokens.APPLIED_W2_BADGE_ROLES.issubset(tokens.CSS_ROLE_TOKENS)
-    assert tokens.UNAPPLIED_W1_ROLES.isdisjoint(tokens.APPLIED_W2_BADGE_ROLES)
+    badge_roles = {
+        "badge-red-bg",
+        "badge-red-fg",
+        "badge-transcribing-bg",
+        "badge-transcribing-fg",
+        "badge-transcribing-spinner",
+        "badge-amber-bg",
+        "badge-amber-fg",
+        "badge-grey-bg",
+        "badge-grey-fg",
+        "badge-received-fg",
+        "badge-received-ring",
+    }
+    assert badge_roles.issubset(tokens.CSS_ROLE_TOKENS)
+    assert tokens.CSS_ROLE_TOKENS["badge-transcribing-spinner"] == "accent"
+    assert not tokens.UNAPPLIED_W1_ROLES
 
 
 @pytest.mark.parametrize("glyph_kind", ("dot", "spinner", "alert", "incoming", "arrow"))
