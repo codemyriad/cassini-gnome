@@ -476,3 +476,19 @@ def test_virtual_microphone_cli_and_tone_power_contracts(monkeypatch):
     assert vm.tone_power(pcm_660, hz=440) < vm.MIN_POWER / 10
     assert vm.tone_power(pcm_440, hz=440) > vm.MIN_POWER * 5
     assert vm.tone_power(pcm_440, hz=660) < vm.MIN_POWER / 10
+
+    # Both producer and readiness probe must disable Pulse ringbuffer clock provision so a
+    # corked PAUSED->PLAYING preroll race on pulsesink sync=false never freezes audiotestsrc.
+    prod_desktop = vm.produce_pipeline(sink="cassini_desktop", hz=1210, channels=2)
+    assert "pulsesink device=cassini_desktop sync=false provide-clock=false" in prod_desktop
+    assert "rate=48000,channels=2" in prod_desktop
+    probe_desktop = vm.probe_pipeline(sink="cassini_desktop")
+    assert "pulsesrc device=cassini_desktop.monitor provide-clock=false" in probe_desktop
+
+
+def test_every_js_recording_suite_probes_virtual_tones_instead_of_inline_audiotestsrc():
+    for name in ("app-control.mjs", "call-signals.mjs", "live-folder.mjs", "source-changes.mjs"):
+        source = (ROOT / "tests/recording" / name).read_text()
+        assert "audiotestsrc" not in source, f"{name} must use virtual-microphone.py instead of inline audiotestsrc"
+        assert "virtual-microphone.py" in source
+        assert "'probe'" in source

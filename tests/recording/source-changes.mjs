@@ -1,9 +1,10 @@
 // UX11 through the actual loaded extension, Library dialog and private Pulse.
 import assert from 'node:assert/strict';
-import {spawn, execFileSync} from 'node:child_process';
+import {execFile, execFileSync, spawn} from 'node:child_process';
 import {createWriteStream} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
+import {promisify} from 'node:util';
 
 export function savedCapture(current, reason) {
  if (current.manifest.state === 'recording') return false;
@@ -99,8 +100,16 @@ export async function run({context, call, join, record, recording, samples, powe
   await automatic(true);
   await call({action: 'close-window'});
   execFileSync('pactl', ['--server', process.env.PULSE_SERVER, 'set-sink-mute', 'cassini_desktop', '0']);
-  producer = spawn('/usr/bin/python3', ['-c', `import gi,signal\ngi.require_version('Gst','1.0')\nfrom gi.repository import Gst,GLib\nGst.init(None)\np=Gst.parse_launch('audiotestsrc is-live=true freq=1210 volume=0.25 ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=1 ! pulsesink device=cassini_desktop sync=false')\nloop=GLib.MainLoop()\nsignal.signal(signal.SIGTERM,lambda *_:loop.quit())\np.set_state(Gst.State.PLAYING)\ntry:loop.run()\nfinally:p.set_state(Gst.State.NULL)\n`], {stdio: ['ignore', 'ignore', 'pipe']});
+  const virtualMic = path.resolve(import.meta.dirname, 'virtual-microphone.py');
+  producer = spawn('/usr/bin/python3', [virtualMic, 'produce', '--sink', 'cassini_desktop', '--hz', '1210', '--channels', '2'], {stdio: ['ignore', 'ignore', 'pipe']});
   producer.stderr.pipe(createWriteStream(path.join(artifacts, 'system-fallback-producer.log')));
+  // Observe real 1210 Hz PCM on cassini_desktop.monitor before triggering tab-loss fallback.
+  try {
+   const {stdout} = await promisify(execFile)('/usr/bin/python3', [virtualMic, 'probe', '--sink', 'cassini_desktop', '--hz', '1210'], {timeout: 18000, killSignal: 'SIGKILL'});
+   evidence.systemFallbackReady = JSON.parse(stdout);
+  } catch (error) {
+   throw new Error(`Virtual desktop fixture failed before fallback capture: ${error.message}. See system-fallback-producer.log and pulse-server.log.`, {cause: error});
+  }
   const beforeLoss = await samples(directory);
   const mic = beforeLoss.tracks.findLast(t => t.kind === me && !t.ended);
   const independentBefore = (await samples(otherDirectory)).tracks.find(t => t.kind === 'remote').frames;
@@ -202,5 +211,10 @@ export async function run({context, call, join, record, recording, samples, powe
  } catch (error) {
   evidence.sourceFailure = await call().catch(failure => ({error: failure.message}));
   throw error;
- } finally {producer?.kill();}
+ } finally {
+  if (producer) {
+   producer.kill();
+   await new Promise(resolve => {if (producer.exitCode !== null || producer.signalCode !== null) resolve(); else producer.once('exit', resolve);});
+  }
+ }
 }
