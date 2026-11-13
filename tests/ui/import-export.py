@@ -193,7 +193,16 @@ with tempfile.TemporaryDirectory() as temporary:
         and received.directory.parent == Path(os.environ["CASSINI_LIBRARY_DIR"])
     )
     assert received.audio_file.read_bytes() == incoming.read_bytes()
-    assert any("Opened from your Downloads folder." in value for value in labels(window.meeting_page.lines))
+    # L-57: the persistent folder card is gone; a one-time notice sits above the player instead.
+    page = window.meeting_page
+    assert not any("Opened from" in value for value in labels(page.lines))
+    assert page.imported_toast.get_visible()
+    assert page.imported_toast_label.get_label() == "Imported from Downloads. A copy is kept in your Meeting Library."
+    assert received.key not in window._fresh_imports, "the notice is one-time: shown, then consumed"
+    page.imported_toast_close.emit("clicked")
+    assert not page.imported_toast.get_visible()
+    page.update(received)
+    assert not page.imported_toast.get_visible(), "a dismissed notice never returns for the same meeting"
     assert not window.received_hint.get_visible()
     until(lambda: not window._pending_selection)
     # L-25 DropImport states: rest, enter, over, unsupported error, and transient Importing… card.

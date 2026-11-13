@@ -137,13 +137,23 @@ def row_time(at_ms, *, tz):
     return f"{at.hour:02d}:{at.minute:02d}"
 
 
-def preview_subtitle(at_ms, duration_ms, *, now_ms, tz, received=False):
+_DURATION_MARK = "\x00"
+
+
+def _imported_suffix(transcribed_elsewhere):
+    """The catalog's words after {duration}, so a missing date or length keeps them verbatim (L-57)."""
+    key = "format.previewSubtitle.importedOtherDevice" if transcribed_elsewhere else "format.previewSubtitle.received"
+    rendered = text(key, day="", time="", duration=_DURATION_MARK)
+    return rendered.rsplit(_DURATION_MARK, 1)[1]
+
+
+def preview_subtitle(at_ms, duration_ms, *, now_ms, tz, received=False, transcribed_elsewhere=False):
     value = day_group(at_ms, now_ms=now_ms, tz=tz)
     if at_ms is not None:
         value += f", {row_time(at_ms, tz=tz)}"
     if duration_ms is not None:
         value += f" · {meeting_duration(duration_ms)}"
-    return value + (" · " + text("states.badge.received") if received else "")
+    return value + (_imported_suffix(transcribed_elsewhere) if received else "")
 
 
 def search_date(at_ms, *, now_ms, tz):

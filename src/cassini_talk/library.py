@@ -288,6 +288,15 @@ class Meeting(MeetingState):
         return ux_formats.row_meta(self.duration_ms, self.speaker_names), self.quote_line
 
     @property
+    def transcribed_elsewhere(self):
+        """L-57: an imported file arrived with its own validated, completed transcript.
+
+        Only the trusted embedded reference counts; a transcript this computer wrote
+        into the sidecar keeps the Imported provenance without the attribution.
+        """
+        return self.origin == "received" and self.transcript == "done" and self.legacy_transcript_file is not None
+
+    @property
     def no_speech(self):
         return self.transcript == "done" and not self.words and self.has_audio and (self.duration_ms or 0) > 0
 

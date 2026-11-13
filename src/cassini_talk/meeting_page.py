@@ -305,6 +305,7 @@ class MeetingPage(Adw.NavigationPage):
         self.transcript_overlay.add_overlay(self.scroll_fade)
         self.transcript_overlay.set_measure_overlay(self.scroll_fade, False)
         self._build_player(self.transcript_overlay)
+        self._build_imported_toast(self.transcript_overlay)
         self.reading_surface.append(self.transcript_overlay)
         outer.append(self.reading_surface)
 
@@ -775,6 +776,89 @@ class MeetingPage(Adw.NavigationPage):
         overlay.add_overlay(transport)
         overlay.set_measure_overlay(transport, False)
 
+    # L-57: the one-time notice sits just above the floating player (its 70 px
+    # bin) and drops to the page edge when the meeting has no audio to play.
+    IMPORTED_TOAST_ABOVE_PLAYER = 78
+    IMPORTED_TOAST_NO_PLAYER = 16
+
+    def _build_imported_toast(self, overlay):
+        """L-57: replaces the persistent folder card with a dismissible notice on first import."""
+        self._imported_toast_key = None
+        toast = Gtk.Box(
+            spacing=12,
+            css_classes=["imported-toast"],
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.END,
+            margin_start=24,
+            margin_end=24,
+            margin_bottom=self.IMPORTED_TOAST_ABOVE_PLAYER,
+            visible=False,
+        )
+        toast.append(
+            Gtk.Image(
+                icon_name="folder-symbolic",
+                valign=Gtk.Align.CENTER,
+                accessible_role=Gtk.AccessibleRole.PRESENTATION,
+            )
+        )
+        self.imported_toast_label = Gtk.Label(
+            wrap=True,
+            xalign=0,
+            valign=Gtk.Align.CENTER,
+            max_width_chars=60,
+            accessible_role=Gtk.AccessibleRole.STATUS,
+        )
+        toast.append(self.imported_toast_label)
+        close = Gtk.Button(
+            icon_name="window-close-symbolic",
+            tooltip_text=text("common.close"),
+            css_classes=["flat", "circular"],
+            valign=Gtk.Align.CENTER,
+        )
+        close.update_property([Gtk.AccessibleProperty.LABEL], [text("common.close")])
+        close.connect("clicked", self._dismiss_imported_toast)
+        toast.append(close)
+        self.imported_toast_close = close
+        self.imported_toast = toast
+        overlay.add_overlay(toast)
+        overlay.set_measure_overlay(toast, False)
+
+    def _sync_imported_toast(self, meeting):
+        """Show the notice once, the first time a meeting imported in this session is shown."""
+        fresh = getattr(self.window, "_fresh_imports", None)
+        if (
+            fresh is not None
+            and meeting.key in fresh
+            and meeting.origin == "received"
+            and not self.window._external_meeting
+        ):
+            fresh.discard(meeting.key)
+            self._imported_toast_key = meeting.key
+        if self._imported_toast_key is not None and self._imported_toast_key != meeting.key:
+            self._imported_toast_key = None
+        visible = self._imported_toast_key is not None
+        if visible:
+            folder = (meeting.metadata.get("received") or {}).get("originalFolderName")
+            if isinstance(folder, str) and folder.strip():
+                message = text("received.importedToast", folder=folder)
+            else:
+                message = text("received.importedToast.noFolder")
+            if self.imported_toast_label.get_label() != message:
+                self.imported_toast_label.set_label(message)
+            self.imported_toast.set_margin_bottom(
+                self.IMPORTED_TOAST_ABOVE_PLAYER if meeting.has_audio else self.IMPORTED_TOAST_NO_PLAYER
+            )
+        elif self.imported_toast.get_visible() and self.imported_toast.get_focus_child() is not None:
+            self.scroller.grab_focus()
+        self.imported_toast.set_visible(visible)
+
+    def _dismiss_imported_toast(self, *_):
+        had_focus = self.imported_toast.get_focus_child() is not None
+        self._imported_toast_key = None
+        self.imported_toast.set_visible(False)
+        if had_focus and not (self.play.get_sensitive() and self.play.grab_focus()):
+            self.scroller.grab_focus()
+
     def _name_rate_items(self, widget, *_args):
         # GTK's model buttons do not consistently derive an AT-SPI name from
         # their text. Use the displayed label from our fixed menu model.
@@ -1158,6 +1242,7 @@ class MeetingPage(Adw.NavigationPage):
             now_ms=self.window.now_ms,
             tz=self.window.tz,
             received=meeting.origin == "received",
+            transcribed_elsewhere=meeting.transcribed_elsewhere,
         )
         self.headline.set_title(meeting.title)
         self.headline.set_subtitle(subtitle)
@@ -1228,7 +1313,7 @@ class MeetingPage(Adw.NavigationPage):
         self.trash_button.set_visible(
             trash_allowed or (meeting.published_file is not None and not meeting.metadata_editable)
         )
-        folder_name = (meeting.metadata.get("received") or {}).get("originalFolderName")
+        self._sync_imported_toast(meeting)
         signature = (
             meeting.key,
             undo,
@@ -1251,7 +1336,6 @@ class MeetingPage(Adw.NavigationPage):
             meeting.publication_notice,
             meeting.metadata_editable,
             meeting.has_audio,
-            folder_name,
             dark,
         )
         if signature == self._signature:
@@ -1293,19 +1377,6 @@ class MeetingPage(Adw.NavigationPage):
 
         while child := self.lines.get_first_child():
             self.lines.remove(child)
-        if not is_transcribing and meeting.origin == "received" and isinstance(folder_name, str) and folder_name:
-            card = Gtk.Box(spacing=12, css_classes=["received-folder"], valign=Gtk.Align.START, margin_bottom=8)
-            card.append(
-                Gtk.Image(
-                    icon_name="folder-symbolic",
-                    valign=Gtk.Align.START,
-                    accessible_role=Gtk.AccessibleRole.PRESENTATION,
-                )
-            )
-            body = label("", wrap=True, xalign=0, hexpand=True)
-            body.set_markup(text("received.folderCard", folder="<b>" + GLib.markup_escape_text(folder_name) + "</b>"))
-            card.append(body)
-            self.lines.append(card)
         publication = self.window.publication_line(meeting)
         if publication:
             self.lines.append(publication)

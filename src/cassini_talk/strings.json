@@ -3422,41 +3422,39 @@
   },
   {
    "id": "format.previewSubtitle.received",
-   "en": "{day}, {time} · {duration} · Received",
+   "en": "{day}, {time} · {duration} · Imported",
    "platforms": [
     "gnome",
     "mac"
    ],
    "role": "caption",
    "boards": [
-    "LibraryReceived",
-    "LibraryReceived-mac",
-    "Meeting",
-    "Meeting-mac"
+    "Received-Mac",
+    "Received-GNOME"
    ],
-   "milestone": "UX1a",
+   "milestone": "WP7 (L-57)",
    "placeholders": {
     "day": "day label as in format.previewSubtitle",
     "time": "24 h HH:MM",
     "duration": "format.meetingDuration output"
    },
-   "note": "REFERENCE ONLY (HARMONY 6). Sample: 'Friday 23 October, 15:00 · 34 min · Received'. The trailing word must equal states.badge.received.",
+   "note": "L-57: Sample 'Friday 23 October, 15:00 · 34 min · Imported'. Trailing word equals states.badge.received.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "{day}, {time} · {duration} · Ricevuta"
+     "text": "{day}, {time} · {duration} · Importata"
     },
     "fr": {
-     "text": "{day}, {time} · {duration} · Reçue"
+     "text": "{day}, {time} · {duration} · Importée"
     },
     "es": {
-     "text": "{day}, {time} · {duration} · Recibida"
+     "text": "{day}, {time} · {duration} · Importada"
     },
     "pt-BR": {
-     "text": "{day}, {time} · {duration} · Recebida"
+     "text": "{day}, {time} · {duration} · Importada"
     },
     "pt-PT": {
-     "text": "{day}, {time} · {duration} · Recebida"
+     "text": "{day}, {time} · {duration} · Importada"
     }
    }
   },
@@ -5953,7 +5951,7 @@
    "placeholders": {
     "folder": "display name of the folder the file was opened from, meeting.json received.originalFolderName (sample: Downloads)"
    },
-   "note": "Neutral info card under the preview subtitle of a received meeting. It has a chip background, a folder icon (aria-hidden) and card radius. Not drawn: the variant with no originalFolderName (optional in HARMONY 4) and whether the card stays for ever. Ask; the coordinator adds the copy to strings.json.",
+   "note": "RETIRED in WP7 (L-57): the persistent folder banner card under the header is replaced by a dismissible one-time toast on first import (received.importedToast / received.importedToast.noFolder).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -9217,7 +9215,7 @@
   },
   {
    "id": "states.badge.received",
-   "en": "Received",
+   "en": "Imported",
    "platforms": [
     "gnome",
     "mac",
@@ -9226,31 +9224,29 @@
    ],
    "role": "badge",
    "boards": [
-    "Main",
-    "Library-mac",
-    "LibraryReceived",
-    "LibraryReceived-mac",
-    "States",
-    "States-mac"
+    "Received-Mac",
+    "Received-GNOME",
+    "Badge-Mac",
+    "Badge-GNOME"
    ],
-   "milestone": "W0.4 (L-26)",
-   "note": "L-26: transparent fill, line-token outline, ink-2 text, incoming glyph. Same word as format.previewSubtitle.received. Phone eligibility remains PROVISIONAL pending Alex/L-10; current per-app applicability is unchanged.",
+   "milestone": "WP7 (L-57)",
+   "note": "L-57: renamed from 'Received' to 'Imported' across Library row badge and Meeting header subtitle (transparent fill, line-token outline, ink-2 text, incoming glyph). Desktop (macOS & GNOME) in Phase 1; phone applicability waits on open L-10.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Ricevuta"
+     "text": "Importata"
     },
     "fr": {
-     "text": "Reçue"
+     "text": "Importée"
     },
     "es": {
-     "text": "Recibida"
+     "text": "Importada"
     },
     "pt-BR": {
-     "text": "Recebida"
+     "text": "Importada"
     },
     "pt-PT": {
-     "text": "Recebida"
+     "text": "Importada"
     }
    }
   },
@@ -24412,6 +24408,113 @@
     },
     "pt-PT": {
      "text": "As mais parecidas primeiro"
+    }
+   }
+  },
+  {
+   "id": "format.previewSubtitle.importedOtherDevice",
+   "en": "{day}, {time} · {duration} · Imported · Transcribed on another device",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Received-Mac",
+    "Received-GNOME"
+   ],
+   "milestone": "WP7 (L-57)",
+   "placeholders": {
+    "day": "day label as in format.previewSubtitle",
+    "time": "24 h HH:MM",
+    "duration": "format.meetingDuration output"
+   },
+   "note": "L-57: Meeting header subtitle when an imported Cassini file already arrived with a completed transcript from another device.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{day}, {time} · {duration} · Importata · Trascritta su un altro dispositivo"
+    },
+    "fr": {
+     "text": "{day}, {time} · {duration} · Importée · Transcrite sur un autre appareil"
+    },
+    "es": {
+     "text": "{day}, {time} · {duration} · Importada · Transcrita en otro dispositivo"
+    },
+    "pt-BR": {
+     "text": "{day}, {time} · {duration} · Importada · Transcrita em outro dispositivo"
+    },
+    "pt-PT": {
+     "text": "{day}, {time} · {duration} · Importada · Transcrita noutro dispositivo"
+    }
+   }
+  },
+  {
+   "id": "received.importedToast",
+   "en": "Imported from {folder}. A copy is kept in your Meeting Library.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Received-Mac",
+    "Received-GNOME"
+   ],
+   "milestone": "WP7 (L-57)",
+   "placeholders": {
+    "folder": "display name of the source folder (e.g. Downloads)"
+   },
+   "note": "L-57: one-time dismissible toast shown above the player on first import when the source folder name is known.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Importata da {folder}. Una copia resta nella tua Libreria."
+    },
+    "fr": {
+     "text": "Importée depuis {folder}. Une copie est conservée dans votre bibliothèque."
+    },
+    "es": {
+     "text": "Importada desde {folder}. Se guarda una copia en tu biblioteca."
+    },
+    "pt-BR": {
+     "text": "Importada de {folder}. Uma cópia é mantida na sua biblioteca."
+    },
+    "pt-PT": {
+     "text": "Importada de {folder}. É mantida uma cópia na sua Biblioteca."
+    }
+   }
+  },
+  {
+   "id": "received.importedToast.noFolder",
+   "en": "Imported. A copy is kept in your Meeting Library.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "Received-Mac",
+    "Received-GNOME"
+   ],
+   "milestone": "WP7 (L-57)",
+   "note": "L-57: fallback one-time dismissible toast on first import when originalFolderName is unavailable (e.g. sandboxed file portal).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Importata. Una copia resta nella tua Libreria."
+    },
+    "fr": {
+     "text": "Importée. Une copie est conservée dans votre bibliothèque."
+    },
+    "es": {
+     "text": "Importada. Se guarda una copia en tu biblioteca."
+    },
+    "pt-BR": {
+     "text": "Importada. Uma cópia é mantida na sua biblioteca."
+    },
+    "pt-PT": {
+     "text": "Importada. É mantida uma cópia na sua Biblioteca."
     }
    }
   }

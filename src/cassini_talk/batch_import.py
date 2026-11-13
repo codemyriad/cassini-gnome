@@ -44,6 +44,8 @@ class Result:
     failed: int = 0
     cancelled: bool = False
     last_key: str | None = None
+    # Keys newly published by this batch (never duplicates), bounded by entries.
+    added_keys: list[str] = field(default_factory=list)
     # Bounded by entries; codes/filenames only, never transcript/model objects.
     errors: list[tuple[str, str]] = field(default_factory=list)
 
@@ -61,7 +63,7 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
 
     def report():
         if progress is not None:
-            progress(replace(result, errors=list(result.errors)))
+            progress(replace(result, errors=list(result.errors), added_keys=list(result.added_keys)))
 
     def failed(name, reason):
         result.failed += 1
@@ -79,6 +81,7 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
         )
         if added:
             result.imported += 1
+            result.added_keys.append(meeting.key)
         else:
             result.duplicates += 1
         result.last_key = meeting.key
@@ -131,6 +134,8 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                             if not added:
                                 result.imported -= 1
                                 result.duplicates += 1
+                            else:
+                                result.added_keys.append(meeting.key)
                             if result.last_key == item.expected_key or result.last_key is None:
                                 result.last_key = meeting.key
 
