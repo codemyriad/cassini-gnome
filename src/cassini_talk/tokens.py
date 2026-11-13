@@ -145,16 +145,8 @@ ROLE_TOKENS: dict[str, str] = (
     | SPEAKER_ROLE_TOKENS
 )
 
-# Roles intentionally deferred beyond Wave 1 (W2.3 row lift & subtle neutral surface washes).
-DEFERRED_W2_ROLES: frozenset[str] = frozenset(
-    {
-        "wash-subtle",
-        "wash-chip",
-        "wash-trough",
-        "row-selected-bg",
-        "search-selected-bg",
-    }
-)
+# All Wave 2 card selection & neutral surface wash roles are resolved onto --cx-* tokens.
+DEFERRED_W2_ROLES: frozenset[str] = frozenset()
 
 # All WP1 foundation roles are active.
 UNAPPLIED_W1_ROLES: frozenset[str] = frozenset()

@@ -41,6 +41,8 @@ class ImportDialog(Adw.Dialog):
         self.set_child(body)
         window._opening_files += 1
         window._import_dialogs.add(self)
+        if hasattr(window, "_begin_import_entries"):
+            window._begin_import_entries(self, paths)
         self.future = window._import_executor.submit(self._run, paths)
         self.future.add_done_callback(lambda future: GLib.idle_add(self._done, future))
 
@@ -66,6 +68,8 @@ class ImportDialog(Adw.Dialog):
 
     def cancel(self):
         self.cancelled.set()
+        if hasattr(self.window, "_finish_import_entries"):
+            self.window._finish_import_entries(self)
         if not self.closed:
             self.closed = True
             self.force_close()
@@ -73,6 +77,8 @@ class ImportDialog(Adw.Dialog):
     def _done(self, future):
         self.window._opening_files -= 1
         self.window._import_dialogs.discard(self)
+        if hasattr(self.window, "_finish_import_entries"):
+            self.window._finish_import_entries(self)
         self.closed = True
         self.force_close()
         if self.window.monitor._closed:

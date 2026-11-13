@@ -81,9 +81,20 @@ with tempfile.TemporaryDirectory() as temporary:
     check_playability_bindings()
     window = app.get_active_window()
     until(lambda: not window._pending)
+    assert window.search_entry.get_mapped() and window.sidebar_stack.get_visible_child_name() == "library"
+    # L-21: typing directly into the always-visible sidebar search field transitions in-place,
+    # and L-33 clearing the field returns to the meeting list.
+    window.search_entry.set_text("budget")
+    until(lambda: window.search_page is not None and not window.search_page.pending)
+    assert window.sidebar_stack.get_visible_child_name() == "search"
+    assert window.navigation.get_navigation_stack().get_n_items() == 1
+    assert len(window.search_page.hits) >= 4
+    window.search_entry.set_text("")
+    until(lambda: window.search_page is None and window.sidebar_stack.get_visible_child_name() == "library")
     window.activate_action("win.search", None)
     page = window.search_page
     until(lambda: not page.pending)
+    assert page.entry is window.search_entry
     assert page.entry.has_focus() or window._focused_editors
     assert page.speaker_button.get_label() == "Speaker"
     assert page.date_button.get_label() == "Any date"

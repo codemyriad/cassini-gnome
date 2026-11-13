@@ -467,9 +467,10 @@ class CassiniApplication(Adw.Application):
             callback()
 
     def on_open(self, *_args):
-        dialog = Gtk.FileDialog(title=_("Open Meeting"))
-        meetings = Gtk.FileFilter()
         from .strings import text
+
+        dialog = Gtk.FileDialog(title=text("import.action"))
+        meetings = Gtk.FileFilter()
 
         meetings.set_name(text("import.filter.cassiniAndZip"))
         for mime in ("audio/ogg", "audio/x-opus+ogg", "audio/opus", "application/zip"):
@@ -1846,6 +1847,7 @@ class CassiniApplication(Adw.Application):
         for item in builder.get_objects():
             if isinstance(item, Adw.ShortcutsItem):
                 identifier = {
+                    "app.open": "import.action",
                     "app.record": "common.record",
                     "win.export": "common.exportEllipsis",
                     "win.rename": "meeting.renameEllipsis",

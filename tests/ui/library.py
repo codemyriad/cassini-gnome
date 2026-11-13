@@ -93,8 +93,22 @@ with tempfile.TemporaryDirectory() as tmp:
     assert window.live_timer.get_label() == "12:48" and not window.live_stop.get_sensitive()
     labels = [w.get_label() for w in walk(window.rows) if isinstance(w, Gtk.Label)]
     assert "Listening inside your browser" in labels
-    assert "47 min · the audio is ready to play" in labels
+    assert "47 min" in labels
+    assert "47 min · the audio is ready to play" not in labels
+    assert not any(value.startswith("“") and value.endswith("”") for value in labels), "L-53 removes row quote lines"
     assert not any(value.startswith("47 min · Marta") for value in labels)
+    assert "·" in labels
+    assert "Marta, Dario, Speaker 3" in labels
+    assert window.search_entry.get_mapped() and window.search_entry.get_placeholder_text() == text(
+        "search.field.placeholder"
+    )
+    assert window.import_audio_button.get_mapped() and window.import_audio_button.get_tooltip_text() == text(
+        "import.action"
+    )
+    assert window.drop_footer.get_mapped() and window.drop_footer_label.get_label() == text("import.drop.rest")
+    assert not any(
+        isinstance(w, Gtk.Button) and w.get_action_name() == "win.search" for w in walk(window.sidebar_header)
+    ), "L-21 removes sidebar search toggle button"
     assert not any(value.startswith("colour-") for w in walk(window.meeting_page) for value in w.get_css_classes())
     assert window.play_button.get_sensitive(), "Saved folders with known offsets can play"
     window.player.shutdown()
@@ -126,6 +140,10 @@ with tempfile.TemporaryDirectory() as tmp:
         and w.get_mapped()
         and w.get_menu_model()
         and "app.shortcuts" in set(menu_actions(w.get_menu_model()))
+    )
+    primary_actions = set(menu_actions(primary.get_menu_model()))
+    assert "app.open" in primary_actions and "win.export" not in primary_actions, (
+        "L-23/L-25: Import audio… stays in ☰ while per-meeting Export… moves to the meeting header bar"
     )
     primary.popup()
     until(primary.get_popover().get_mapped)

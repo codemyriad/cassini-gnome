@@ -19,10 +19,11 @@ from .library import LibrarySnapshot, _sort, meeting_id
 from .library_monitor import LibraryMonitor
 from .listen import ListenController
 from .meeting_page import MeetingPage
+from .meeting_state import import_entry_badge
 from .player import Player
 from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
 from .spectrogram_strip import SpectrogramStrip
-from .status_badge import StatusBadge
+from .status_badge import BadgeGlyph, StatusBadge
 from .strings import text
 from .tokens import speaker_slot
 
@@ -61,6 +62,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._import_cancels = set()
         self._import_dialogs = set()
         self._import_executor = None
+        self._active_imports = {}
+        self._drop_state = ("rest", None)
+        self._drop_error_timer = 0
+        self._closing_search = False
+        self._sidebar_scroll_source = 0
         self._list_signature = None
         self._row_by_key = {}
         self._rows_layout = None
@@ -178,6 +184,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         self.add_controller(find_shortcut)
         target = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+        target.set_preload(True)
+        target.connect("enter", self._drag_motion)
+        target.connect("motion", self._drag_motion)
+        target.connect("leave", self._drag_leave)
+        target.connect("notify::value", self._drag_value_changed)
         target.connect("drop", self._drop_files)
         self.add_controller(target)
         keys = Gtk.EventControllerKey()
@@ -198,11 +209,127 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self.recording_details_dialog = RecordingDetailsDialog(self, meeting)
             self.recording_details_dialog.present(self)
 
+    @staticmethod
+    def _unsupported_drop_file(files):
+        for file in files or ():
+            raw = file.get_path()
+            if raw:
+                path = Path(raw)
+                name = path.name
+                suffix = path.suffix.lower()
+                if suffix in (".opus", ".ogg", ".zip") or LibraryWindow._is_folder_open_path(path):
+                    continue
+                if not suffix:
+                    with contextlib.suppress(OSError):
+                        if path.is_dir():
+                            continue
+                return name or raw
+            basename = file.get_basename()
+            if basename:
+                suffix = Path(basename).suffix.lower()
+                if suffix in (".opus", ".ogg", ".zip") or basename == "session.json":
+                    continue
+                return basename
+        return None
+
+    def _clear_sticky_drop_error(self):
+        self._drop_error_timer = 0
+        if self._drop_state[0] == "error":
+            self._set_drop_state("rest")
+        return GLib.SOURCE_REMOVE
+
+    def _set_drop_state(self, state, bad_file=None, *, sticky_error=False):
+        if self._drop_error_timer:
+            GLib.source_remove(self._drop_error_timer)
+            self._drop_error_timer = 0
+        self._drop_state = (state, bad_file)
+        if not hasattr(self, "drop_frame"):
+            return
+        (self.drop_frame.add_css_class if state == "enter" else self.drop_frame.remove_css_class)("drag-enter")
+        (self.drop_frame.add_css_class if state in ("over", "error") else self.drop_frame.remove_css_class)("drag-over")
+        (self.drop_footer.add_css_class if state == "enter" else self.drop_footer.remove_css_class)("drag-enter")
+        self.drop_footer_label.set_label(text("import.drop.enter" if state == "enter" else "import.drop.rest"))
+        if state == "over":
+            self.drop_overlay.remove_css_class("error")
+            self.drop_overlay_glyph.set_glyph_kind("incoming", size_px=28)
+            self.drop_overlay_title.set_label(text("import.drop.over"))
+            self.drop_overlay_detail.set_label(text("import.drop.formats.current"))
+            self.drop_overlay.set_visible(True)
+        elif state == "error":
+            self.drop_overlay.add_css_class("error")
+            self.drop_overlay_glyph.set_glyph_kind("alert", size_px=28)
+            self.drop_overlay_title.set_label(text("import.drop.cantImport", file=bad_file or ""))
+            self.drop_overlay_detail.set_label(
+                text("import.drop.cantImport.detail", formats=text("import.drop.formats.current"))
+            )
+            self.drop_overlay.set_visible(True)
+            if sticky_error:
+                self._drop_error_timer = GLib.timeout_add(4000, self._clear_sticky_drop_error)
+        else:
+            self.drop_overlay.set_visible(False)
+
+    def _point_in_drop_list(self, x, y):
+        if not hasattr(self, "drop_frame") or not self.drop_frame.get_mapped():
+            return False
+        coords = self.translate_coordinates(self.drop_frame, x, y)
+        if coords is None:
+            return False
+        lx, ly = coords
+        return 0 <= lx <= self.drop_frame.get_width() and 0 <= ly <= self.drop_frame.get_height()
+
+    def _drag_bad_file(self, target):
+        if target is None:
+            return None
+        value = target.get_value()
+        if isinstance(value, Gdk.FileList):
+            return self._unsupported_drop_file(value.get_files())
+        return None
+
+    def _drag_motion(self, target, x, y):
+        self._last_drag_xy = (x, y)
+        if self._point_in_drop_list(x, y):
+            bad = self._drag_bad_file(target)
+            if bad is not None:
+                self._set_drop_state("error", bad)
+            else:
+                self._set_drop_state("over")
+        else:
+            self._set_drop_state("enter")
+        return Gdk.DragAction.COPY
+
+    def _drag_value_changed(self, target, *_args):
+        if self._drop_state[0] in ("enter", "over") and hasattr(self, "_last_drag_xy"):
+            x, y = self._last_drag_xy
+            if self._point_in_drop_list(x, y):
+                bad = self._drag_bad_file(target)
+                if bad is not None:
+                    self._set_drop_state("error", bad)
+
+    def _drag_leave(self, *_args):
+        if not self._drop_error_timer:
+            self._set_drop_state("rest")
+
     def _drop_files(self, _target, files, _x, _y):
-        chosen = files.get_files()
-        if chosen:
-            self.open_files(chosen)
-        return bool(chosen)
+        chosen = files.get_files() if files else ()
+        if not chosen:
+            self._set_drop_state("rest")
+            return False
+        bad = self._unsupported_drop_file(chosen)
+        if bad is not None:
+            if hasattr(self, "drop_frame") and self.root_box.get_visible_child_name() == "library":
+                if self.search_page:
+                    self.back_to_library()
+                self._set_drop_state("error", bad, sticky_error=True)
+            else:
+                self._set_drop_state("rest")
+                self.toast(
+                    f"{text('import.drop.cantImport', file=bad)} "
+                    f"{text('import.drop.cantImport.detail', formats=text('import.drop.formats.current'))}"
+                )
+            return False
+        self._set_drop_state("rest")
+        self.open_files(chosen)
+        return True
 
     def _refresh_export(self):
         from .zip_export import is_exportable
@@ -280,6 +407,13 @@ class LibraryWindow(Adw.ApplicationWindow):
             and not self.recording_page
         ):
             return self.meeting_page.focus_find()
+        if (
+            not self.recording_page
+            and not self._external_meeting
+            and self.root_box.get_visible_child_name() == "library"
+        ):
+            self._enter_search(focus=True)
+            return True
         return False
 
     def rename_allowed(self, meeting):
@@ -522,15 +656,28 @@ class LibraryWindow(Adw.ApplicationWindow):
         button.set_child(Adw.ButtonContent(icon_name="media-record-symbolic", label=text("common.record")))
         return button
 
+    def import_button(self):
+        button = Gtk.Button(
+            action_name="app.open",
+            tooltip_text=text("import.action"),
+            valign=Gtk.Align.CENTER,
+            css_classes=["flat", "import-audio-btn"],
+        )
+        button.set_child(BadgeGlyph("incoming", size_px=16))
+        button.update_property([Gtk.AccessibleProperty.LABEL], [text("import.action")])
+        return button
+
     def _primary_menu_button(self, *, flat=False):
         menu = Gio.Menu()
-        # Existing, undrawn GNOME primary-menu copy is retained (HARMONY 11).
-        menu.append(_("Open…"), "app.open")
-        menu.append(text("common.exportEllipsis"), "win.export")
-        menu.append(text("export.zip.all"), "win.export-zip")
-        menu.append(text("settings.title"), "app.preferences")
-        menu.append(_("_Keyboard Shortcuts"), "app.shortcuts")
-        menu.append(_("_About Cassini").replace("Cassini", text("app.name")), "app.about")
+        top = Gio.Menu()
+        top.append(text("import.action"), "app.open")
+        top.append(text("export.zip.all"), "win.export-zip")
+        menu.append_section(None, top)
+        bottom = Gio.Menu()
+        bottom.append(text("settings.title"), "app.preferences")
+        bottom.append(_("_Keyboard Shortcuts"), "app.shortcuts")
+        bottom.append(_("_About Cassini").replace("Cassini", text("app.name")), "app.about")
+        menu.append_section(None, bottom)
         button = Gtk.MenuButton(
             icon_name="open-menu-symbolic",
             menu_model=menu,
@@ -699,13 +846,37 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._capture_headers.append(stack._controls)
         return stack
 
+    def _queue_sidebar_scrolled(self, *_args):
+        if not self._sidebar_scroll_source:
+            self._sidebar_scroll_source = GLib.idle_add(self._apply_sidebar_scrolled)
+
+    def _apply_sidebar_scrolled(self):
+        self._sidebar_scroll_source = 0
+        if hasattr(self, "sidebar_header"):
+            vadj = (
+                self.search_page._vadj
+                if self.search_page is not None and hasattr(self.search_page, "_vadj")
+                else getattr(self, "_library_vadj", None)
+            )
+            scrolled = bool(vadj and vadj.get_value() > 0.5)
+            (self.sidebar_header.add_css_class if scrolled else self.sidebar_header.remove_css_class)("scrolled")
+        return GLib.SOURCE_REMOVE
+
+    def _on_sidebar_search_changed(self, *_args):
+        if not self._closing_search and self.search_page is None and self.search_entry.get_text():
+            self._enter_search(focus=False)
+
+    def _on_sidebar_search_clicked(self, *_args):
+        if not self._closing_search and self.search_page is None:
+            self._enter_search(focus=True)
+
     def _build_library(self):
         self.split = Adw.NavigationSplitView(min_sidebar_width=320, max_sidebar_width=400, sidebar_width_fraction=0.53)
         self.split.set_min_sidebar_width(320)
         self.split.set_max_sidebar_width(400)
         self.split.set_sidebar_width_unit(Adw.LengthUnit.PX)
         sidebar = Adw.ToolbarView(css_classes=["library-sidebar"])
-        header = Adw.HeaderBar(
+        header = self.sidebar_header = Adw.HeaderBar(
             show_start_title_buttons=False, show_end_title_buttons=False, css_classes=["library-header"]
         )
         header.set_title_widget(Gtk.Box())
@@ -713,11 +884,30 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.capture_header = self.capture_controls()
         controls = self.capture_header._controls
         self.live_timer, self.live_stop = controls["timer"], controls["stop"]
+        self.import_audio_button = self.import_button()
         header_actions = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
+        header_actions.append(self.import_audio_button)
         header_actions.append(self.capture_header)
-        header_actions.append(self.search_button())
         header.pack_end(header_actions)
         sidebar.add_top_bar(header)
+
+        sidebar_content = vertical(vexpand=True, hexpand=True)
+        search_box = Gtk.Box(css_classes=["sidebar-search-box"])
+        self.search_entry = Gtk.SearchEntry(
+            placeholder_text=text("search.field.placeholder"),
+            hexpand=True,
+            css_classes=["sidebar-search-entry"],
+        )
+        self.search_entry.update_property([Gtk.AccessibleProperty.LABEL], [text("search.field.a11y")])
+        self.protect_text_input(self.search_entry)
+        self.search_entry.connect("search-changed", self._on_sidebar_search_changed)
+        search_click = Gtk.GestureClick()
+        search_click.connect("pressed", self._on_sidebar_search_clicked)
+        self.search_entry.add_controller(search_click)
+        search_box.append(self.search_entry)
+        sidebar_content.append(search_box)
+
+        self.sidebar_stack = Gtk.Stack(vexpand=True, hexpand=True, hhomogeneous=False, vhomogeneous=False)
         self.rows = Gtk.ListBox(
             selection_mode=Gtk.SelectionMode.SINGLE, activate_on_single_click=False, css_classes=["library-rows"]
         )
@@ -743,9 +933,67 @@ class LibraryWindow(Adw.ApplicationWindow):
             visible=False,
         )
         list_content.append(self.received_hint)
-        sidebar.set_content(
-            Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, child=list_content, vexpand=True)
+
+        self.library_scroller = Gtk.ScrolledWindow(
+            hscrollbar_policy=Gtk.PolicyType.NEVER, child=list_content, vexpand=True
         )
+        self._library_vadj = self.library_scroller.get_vadjustment()
+        self._library_vadj.connect("value-changed", self._queue_sidebar_scrolled)
+
+        self.drop_frame = Gtk.Overlay(
+            child=self.library_scroller, vexpand=True, hexpand=True, css_classes=["drop-list-frame"]
+        )
+        self.drop_overlay = vertical(
+            8,
+            halign=Gtk.Align.FILL,
+            valign=Gtk.Align.FILL,
+            can_target=False,
+            visible=False,
+            css_classes=["drop-overlay"],
+        )
+        drop_center = vertical(6, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, vexpand=True, hexpand=True)
+        self.drop_overlay_glyph = BadgeGlyph("incoming", size_px=28)
+        self.drop_overlay_glyph.add_css_class("drop-overlay-glyph")
+        self.drop_overlay_title = label(
+            text("import.drop.over"),
+            "drop-overlay-title",
+            justify=Gtk.Justification.CENTER,
+            wrap=True,
+        )
+        self.drop_overlay_detail = label(
+            text("import.drop.formats.current"),
+            "small",
+            "dim-label",
+            justify=Gtk.Justification.CENTER,
+            wrap=True,
+        )
+        drop_center.append(self.drop_overlay_glyph)
+        drop_center.append(self.drop_overlay_title)
+        drop_center.append(self.drop_overlay_detail)
+        self.drop_overlay.append(drop_center)
+        self.drop_frame.add_overlay(self.drop_overlay)
+
+        self.drop_footer = Gtk.Box(
+            spacing=6,
+            halign=Gtk.Align.FILL,
+            valign=Gtk.Align.CENTER,
+            css_classes=["drop-footer"],
+        )
+        footer_inner = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER, hexpand=True, valign=Gtk.Align.CENTER)
+        footer_inner.append(BadgeGlyph("incoming", size_px=14))
+        self.drop_footer_label = label(text("import.drop.rest"), "small", ellipsize=Pango.EllipsizeMode.END)
+        footer_inner.append(self.drop_footer_label)
+        self.drop_footer.append(footer_inner)
+
+        library_pane = vertical(vexpand=True, hexpand=True)
+        library_pane.append(self.drop_frame)
+        library_pane.append(self.drop_footer)
+        self.sidebar_stack.add_named(library_pane, "library")
+        self.search_sidebar_slot = Adw.Bin(vexpand=True, hexpand=True)
+        self.sidebar_stack.add_named(self.search_sidebar_slot, "search")
+        self.sidebar_stack.set_visible_child_name("library")
+        sidebar_content.append(self.sidebar_stack)
+        sidebar.set_content(sidebar_content)
         from .browser_status import BrowserStatus
 
         self.browser_status = BrowserStatus(self.get_application(), self)
@@ -775,6 +1023,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.detail_stack.add_named(empty_pane, "empty")
         self.meeting_slot = Adw.Bin(vexpand=True, hexpand=True)
         self.detail_stack.add_named(self.meeting_slot, "meeting")
+        self.search_detail_slot = Adw.Bin(vexpand=True, hexpand=True)
+        self.detail_stack.add_named(self.search_detail_slot, "search")
         self.detail_stack.set_visible_child_name("empty")
 
         self.split.set_content(Adw.NavigationPage.new(self.detail_stack, text("library.previewPane.a11y")))
@@ -1106,6 +1356,23 @@ class LibraryWindow(Adw.ApplicationWindow):
 
         return retry
 
+    def _row_display_fields(self, meeting):
+        duration = (
+            fmt.meeting_duration(meeting.duration_ms)
+            if meeting.lifecycle == "saved" and meeting.duration_ms is not None
+            else None
+        )
+        if meeting.lifecycle == "recording":
+            secondary = meeting.row_texts()[0] or ""
+        elif meeting.lifecycle != "saved" or meeting.transcript in ("queued", "running"):
+            secondary = ""
+        elif meeting.speaker_names:
+            names = meeting.speaker_names
+            secondary = ", ".join(names[:3]) + (f" +{len(names) - 3}" if len(names) > 3 else "")
+        else:
+            secondary = ""
+        return duration, secondary
+
     def _row_signature(self, meeting):
         badge = meeting.badge()
         return (
@@ -1114,8 +1381,30 @@ class LibraryWindow(Adw.ApplicationWindow):
             fmt.row_time(meeting.display_start, tz=self.tz),
             badge.kind if badge else None,
             badge.text if badge and meeting.lifecycle != "recording" else None,
-            meeting.row_texts(),
+            LibraryWindow._row_display_fields(self, meeting),
         )
+
+    def _active_import_list(self):
+        active = getattr(self, "_active_imports", None) or {}
+        return tuple(entry for entries in active.values() for entry in entries)
+
+    def _begin_import_entries(self, token, paths):
+        entries = []
+        now = self.now_ms
+        for raw in paths or ():
+            if not raw:
+                continue
+            path = Path(raw)
+            if not self._is_folder_open_path(path):
+                entries.append((path.stem or path.name, path.name, now))
+        if entries:
+            self._active_imports[token] = tuple(entries)
+            if self.snapshot is not None:
+                self._updated(self._source_snapshot or self.snapshot)
+
+    def _finish_import_entries(self, token):
+        if self._active_imports.pop(token, None) is not None and self.snapshot is not None and not self.monitor._closed:
+            self._updated(self._source_snapshot or self.snapshot)
 
     def _is_saved_detail_ready(self, meeting):
         if meeting is None or meeting.lifecycle != "saved":
@@ -1230,14 +1519,15 @@ class LibraryWindow(Adw.ApplicationWindow):
             and not any(m.key == self._pending_selection for m in snapshot.meetings)
         ):
             self._pending_selection = None
+        active_imports = LibraryWindow._active_import_list(self)
         pending_row = any(m.key == self._pending_selection for m in snapshot.meetings)
         if snapshot.unavailable:
             if not pending_row and self._list_signature == ("offline",):
                 self._pending = False
                 return
             groups, layout, group_layout_key = (), None, None
-        elif not snapshot.meetings:
-            if not pending_row and self._list_signature == ("empty",):
+        elif not snapshot.meetings and not active_imports:
+            if not pending_row and self._list_signature == ("empty",) and not self.search_page:
                 self._pending = False
                 return
             groups, layout, group_layout_key = (), None, None
@@ -1253,7 +1543,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             else:
                 groups = snapshot.groups(now_ms=self.now_ms, tz=self.tz)
                 layout = tuple((group.title, tuple(m.key for m in group.meetings)) for group in groups)
-            if not pending_row and self._list_signature == ("library", layout):
+            if not pending_row and self._list_signature == ("library", layout, active_imports):
                 for meeting in snapshot.meetings:
                     row = self._row_by_key[meeting.key]
                     if row.meeting is not meeting or self.tz != self._rows_tz:
@@ -1287,19 +1577,30 @@ class LibraryWindow(Adw.ApplicationWindow):
             if not self._external_meeting and not self.search_page:
                 LibraryWindow._close_right_meeting(self)
                 self._stop_playback(clear_selection=True)
-            self.root_box.set_visible_child_name("offline")
+            self.root_box.set_visible_child_name("library" if self.search_page else "offline")
             self._list_signature = ("offline",)
-        elif not snapshot.meetings:
+        elif not snapshot.meetings and not active_imports:
             if not self._external_meeting and not self.search_page:
                 LibraryWindow._close_right_meeting(self)
                 self._stop_playback(clear_selection=True)
-            self.root_box.set_visible_child_name("empty")
+            self.root_box.set_visible_child_name("library" if self.search_page else "empty")
             self._list_signature = ("empty",)
         else:
             self.root_box.set_visible_child_name("library")
             selected = None
+            today_title = fmt.day_group(self.now_ms, now_ms=self.now_ms, tz=self.tz)
+            prepended_imports = False
+            if active_imports and (not groups or groups[0].title != today_title):
+                self.rows.append(self._day_heading(today_title))
+                for stem, filename, started_ms in active_imports:
+                    self.rows.append(self._importing_row(stem, filename, started_ms))
+                prepended_imports = True
             for group in groups:
                 self.rows.append(self._day_heading(group.title))
+                if active_imports and not prepended_imports and group.title == today_title:
+                    for stem, filename, started_ms in active_imports:
+                        self.rows.append(self._importing_row(stem, filename, started_ms))
+                    prepended_imports = True
                 for meeting in group.meetings:
                     row = self._row(meeting)
                     self._row_by_key[meeting.key] = row
@@ -1312,17 +1613,26 @@ class LibraryWindow(Adw.ApplicationWindow):
                         and self._fixed_now is not None
                     ):
                         selected = row
-            if selected is not None or old is not None or not was_library:
+            default_row = None
+            if (selected is not None or old is not None or not was_library) and self._row_by_key:
                 default_row = next(
                     (r for r in self._row_by_key.values() if LibraryWindow._is_saved_detail_ready(self, r.meeting)),
                     None,
-                ) or self.rows.get_row_at_index(1)
+                ) or next(iter(self._row_by_key.values()), None)
                 self.rows.select_row(selected or default_row)
             else:
                 self.rows.select_row(None)
+            if not was_library and not self.search_page and (selected or default_row) and hasattr(self, "search_entry"):
+                current_focus = self.get_focus()
+                if (
+                    current_focus is None
+                    or current_focus is self.search_entry
+                    or current_focus.is_ancestor(self.search_entry)
+                ):
+                    self.set_focus(selected or default_row)
             if selected:
                 self._pending_selection = None
-            self._list_signature = ("library", layout)
+            self._list_signature = ("library", layout, active_imports)
         self.rows.handler_unblock(self._selection_handler)
         self._updating_rows_selection = True
         try:
@@ -1331,22 +1641,47 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._updating_rows_selection = False
         self.loading.set_spinning(False)
         self._pending = False
+        if hasattr(self, "sidebar_header"):
+            self._queue_sidebar_scrolled()
 
     def _day_heading(self, title):
         heading = Gtk.ListBoxRow(selectable=False, activatable=False, css_classes=["day-heading"])
-        heading.set_child(label(title, "small", "heading", "dim-label", xalign=0))
+        heading.set_child(label(title, "small", "day-heading-label", xalign=0))
         return heading
+
+    def _importing_row(self, stem, filename, started_ms):
+        row = Gtk.ListBoxRow(selectable=False, activatable=False, css_classes=["meeting-row", "importing-row"])
+        box = vertical(6, margin_start=12, margin_end=12, margin_top=9, margin_bottom=9)
+        top = Gtk.Box(spacing=8)
+        top.append(label(stem, "row-title", xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
+        box.append(top)
+        meta = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+        meta.append(label(fmt.row_time(started_ms, tz=self.tz), "small", "dim-label", "row-num"))
+        badge = import_entry_badge({"importing": True})
+        meta.append(StatusBadge(badge.kind, badge.text))
+        if filename:
+            meta.append(
+                label(filename, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True)
+            )
+        box.append(meta)
+        row.set_child(box)
+        return row
 
     def _fill_row(self, row, meeting, signature=None):
         row.meeting = meeting
         row._row_signature = self._row_signature(meeting) if signature is None else signature
         self._live_badges.pop(meeting.key, None)
-        box = vertical(4, margin_start=11, margin_end=11, margin_top=9, margin_bottom=9)
+        box = vertical(6, margin_start=12, margin_end=12, margin_top=9, margin_bottom=9)
         top = Gtk.Box(spacing=8)
-        top.append(label(meeting.title, "heading", xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
-        top.append(label(fmt.row_time(meeting.display_start, tz=self.tz), "small", "dim-label"))
+        top.append(label(meeting.title, "row-title", xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
+        duration, secondary = self._row_display_fields(meeting)
+        if duration:
+            top.append(label(duration, "small", "dim-label", "row-num"))
         box.append(top)
-        meta = Gtk.Box(spacing=6)
+        meta = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+        row_time_text = fmt.row_time(meeting.display_start, tz=self.tz)
+        if row_time_text:
+            meta.append(label(row_time_text, "small", "dim-label", "row-num"))
         elapsed = self.get_application().comfort.elapsed(meeting)
         badge = meeting.badge(live_ms=elapsed)
         if badge:
@@ -1354,12 +1689,13 @@ class LibraryWindow(Adw.ApplicationWindow):
             meta.append(badge_widget)
             if meeting.lifecycle == "recording":
                 self._live_badges[meeting.key] = badge_widget
-        value, line = meeting.row_texts()
-        if value:
-            meta.append(label(value, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True))
+        elif row_time_text and secondary:
+            meta.append(label("·", "small", "dim-label", accessible_role=Gtk.AccessibleRole.PRESENTATION))
+        if secondary:
+            meta.append(
+                label(secondary, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True)
+            )
         box.append(meta)
-        if line:
-            box.append(label(line, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END))
         row.set_child(box)
 
     def _row(self, meeting):
@@ -1539,13 +1875,57 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.selected:
             self.open_meeting(self.selected)
 
+    def _close_search(self):
+        if not self.search_page:
+            return
+        page = self.search_page
+        self.search_page = None
+        self._closing_search = True
+        try:
+            page.close()
+            self.search_sidebar_slot.set_child(None)
+            self.search_detail_slot.set_child(None)
+            if self.search_entry.get_text():
+                self.search_entry.set_text("")
+            if id(self.search_entry) in self._focused_editors:
+                self._editor_focus(self.search_entry, False)
+        finally:
+            self._closing_search = False
+        self.sidebar_stack.set_visible_child_name("library")
+        self.detail_stack.set_visible_child_name("meeting" if self.meeting_page else "empty")
+        self._stop_playback()
+        self._queue_sidebar_scrolled()
+
+    def _enter_search(self, *, focus=True):
+        from .search_page import SearchPage
+
+        if self.search_page:
+            if focus:
+                self.search_entry.grab_focus()
+            return
+        if self._external_meeting or self.recording_page:
+            self._pop_pushed_pages()
+        elif self.meeting_page:
+            self._close_right_meeting()
+        self._stop_playback()
+        if self.root_box.get_visible_child_name() != "library":
+            self.root_box.set_visible_child_name("library")
+        self.search_page = SearchPage(self)
+        self.search_sidebar_slot.set_child(self.search_page)
+        self.search_detail_slot.set_child(self.search_page.content_pane)
+        self.sidebar_stack.set_visible_child_name("search")
+        self.detail_stack.set_visible_child_name("search")
+        self._queue_sidebar_scrolled()
+        if focus:
+            self.search_entry.grab_focus()
+        self._update_live()
+        self._refresh_export()
+
     def _pop_pushed_pages(self):
         self.set_title(text("app.name"))
         was_external = self._external_meeting
         if self.search_page:
-            self.search_page.close()
-            self.search_page = None
-            self._stop_playback()
+            self._close_search()
         if self.recording_page:
             self.recording_page.close()
             self.recording_page = None
@@ -1619,39 +1999,25 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._update_live()
         self._refresh_export()
 
-    def search_button(self):
-        return Gtk.Button(
-            icon_name="system-search-symbolic",
-            action_name="win.search",
-            tooltip_text=text("common.search"),
-            css_classes=["flat"],
-        )
-
     def toggle_search(self, *_):
-        from .search_page import SearchPage
-
         if self.search_page:
             self.back_to_library()
             return
-        if self._external_meeting or self.recording_page:
-            self._pop_pushed_pages()
-        elif self.meeting_page:
-            self._close_right_meeting()
-        self._stop_playback()
-        self.search_page = SearchPage(self)
-        self.navigation.push(self.search_page)
-        self.search_page.entry.grab_focus()
-        self._update_live()
-        self._refresh_export()
+        self._enter_search(focus=True)
 
     def back_to_library(self, *_):
         had_pushed = bool(self.search_page or self.recording_page or self._external_meeting)
         if had_pushed:
             self._pop_pushed_pages()
-            if self.root_box.get_visible_child_name() == "library":
+            if self.snapshot is not None and not self.snapshot.meetings and not self._active_import_list():
+                self.root_box.set_visible_child_name("offline" if self.snapshot.unavailable else "empty")
+            elif self.root_box.get_visible_child_name() == "library":
+                target_row = self.rows.get_selected_row()
+                if target_row is not None:
+                    self.set_focus(target_row)
                 self._updating_rows_selection = True
                 try:
-                    self._selected(self.rows, self.rows.get_selected_row())
+                    self._selected(self.rows, target_row)
                 finally:
                     self._updating_rows_selection = False
             self._refresh_export()
@@ -1765,6 +2131,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             return import_received(path, cancel=cancel), True
 
         self._opening_files += 1
+        if path_hint is not None:
+            self._begin_import_entries(cancel, (raw_path,))
         future = self._ensure_import_executor().submit(opened_import)
         future.add_done_callback(lambda f: GLib.idle_add(self._opened_file, f, file, cancel))
 
@@ -1772,6 +2140,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         from concurrent.futures import CancelledError
 
         self._opening_files -= 1
+        if cancel is not None:
+            self._finish_import_entries(cancel)
         cancels = getattr(self, "_import_cancels", None)
         if cancels is not None and cancel is not None:
             cancels.discard(cancel)
@@ -1841,11 +2211,16 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self._activity_timer:
             GLib.source_remove(self._activity_timer)
             self._activity_timer = 0
+        if self._drop_error_timer:
+            GLib.source_remove(self._drop_error_timer)
+            self._drop_error_timer = 0
+        if self._sidebar_scroll_source:
+            GLib.source_remove(self._sidebar_scroll_source)
+            self._sidebar_scroll_source = 0
         if self._activity_source is not None:
             self._activity_source.close()
         if self.search_page:
-            self.search_page.close()
-            self.search_page = None
+            self._close_search()
         self.spectrograms.close()
         for owner, handler in self._spectro_handlers:
             owner.disconnect(handler)

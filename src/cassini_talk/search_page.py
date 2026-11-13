@@ -5,7 +5,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
-from gi.repository import Adw, Gio, GLib, GObject, Gtk
+from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 
 from . import ux_formats as fmt
 from .folder_player import FolderPlayer
@@ -74,11 +74,11 @@ class HitModel(GObject.Object, Gio.ListModel):
         self.items_changed(0, old, len(hits))
 
 
-class SearchPage(Adw.NavigationPage):
+class SearchPage(Adw.Bin):
     __gsignals__ = {"results-updated": (GObject.SignalFlags.RUN_LAST, None, ())}
 
     def __init__(self, window):
-        super().__init__(title=text("search.title"))
+        super().__init__(vexpand=True, hexpand=True)
         self.window = window
         self.speaker = None
         self.date = "any"
@@ -100,45 +100,34 @@ class SearchPage(Adw.NavigationPage):
         self.names = ()
         self._style_manager = Adw.StyleManager.get_default()
         self._style_handler = self._style_manager.connect("notify::dark", lambda *_: self.request())
-        split = Adw.NavigationSplitView(min_sidebar_width=460, max_sidebar_width=460, sidebar_width_fraction=0.41)
-        split.set_sidebar_width_unit(Adw.LengthUnit.PX)
-        self.set_child(split)
-        sidebar = Adw.ToolbarView(css_classes=["library-sidebar"])
-        header = Adw.HeaderBar(
-            show_start_title_buttons=False,
-            show_end_title_buttons=False,
-            show_back_button=False,
-            css_classes=["library-header"],
+        self.entry = window.search_entry
+        self._had_nonempty_query = bool(self.entry.get_text())
+        self._empty_close_source = 0
+        self._entry_changed_handler = self.entry.connect("search-changed", self._on_entry_changed)
+        self._entry_stop_handler = self.entry.connect("stop-search", lambda *_: window.back_to_library())
+
+        left = box(6, vexpand=True, hexpand=True)
+        filters = box(8, css_classes=["search-sidebar-filters"])
+        chips = Gtk.FlowBox(
+            selection_mode=Gtk.SelectionMode.NONE,
+            column_spacing=6,
+            row_spacing=6,
+            homogeneous=False,
+            max_children_per_line=3,
+            css_classes=["search-filters"],
         )
-        header.set_title_widget(Gtk.Box())
-        self.capture = window.capture_controls()
-        header.pack_start(self.capture)
-        toggle = Gtk.ToggleButton(
-            icon_name="system-search-symbolic",
-            active=True,
-            action_name="win.search",
-            tooltip_text=text("common.search"),
-        )
-        header.pack_end(toggle)
-        sidebar.add_top_bar(header)
-        left = box(12)
-        filters = box(12, margin_start=20, margin_end=20, margin_top=14)
-        self.entry = Gtk.SearchEntry(placeholder_text=text("search.field.placeholder"), height_request=36)
-        self.entry.update_property([Gtk.AccessibleProperty.LABEL], [text("search.field.a11y")])
-        window.protect_text_input(self.entry)
-        self.entry.connect("search-changed", lambda *_: self.request())
-        self.entry.connect("stop-search", lambda *_: window.back_to_library())
-        filters.append(self.entry)
-        chips = Gtk.Grid(row_spacing=8, column_spacing=8)
         self.speaker_button = Gtk.MenuButton(label=text("search.filter.speakerNone"), css_classes=["search-chip"])
         self.date_button = Gtk.MenuButton(label=text("search.filter.anyDate"), css_classes=["search-chip"])
         self.own = Gtk.ToggleButton(label=text("search.filter.recordedByMe"), css_classes=["search-chip"])
         self.own.connect("toggled", lambda *_: self.request())
-        for i, widget in enumerate((self.speaker_button, self.date_button, self.own)):
-            chips.attach(widget, i % 2, i // 2, 1, 1)
+        for widget in (self.speaker_button, self.date_button, self.own):
             widget.set_halign(Gtk.Align.START)
+            chips.append(widget)
+            parent = widget.get_parent()
+            if isinstance(parent, Gtk.FlowBoxChild):
+                parent.set_can_focus(False)
         filters.append(chips)
-        self.count = label(fmt.search_count(0, 0), "small", "dim-label", xalign=0)
+        self.count = label(fmt.search_count(0, 0), "search-count-heading", xalign=0)
         filters.append(self.count)
         left.append(filters)
         self.store = HitModel()
@@ -150,24 +139,76 @@ class SearchPage(Adw.NavigationPage):
         self.list = Gtk.ListView(model=self.selection, factory=factory, css_classes=["search-results"])
         self.list.connect("activate", lambda *_: self.open_meeting())
         self.list.update_property([Gtk.AccessibleProperty.LABEL], [text("search.results.a11y")])
-        left.append(Gtk.ScrolledWindow(child=self.list, hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True))
-        sidebar.set_content(left)
-        split.set_sidebar(Adw.NavigationPage.new(sidebar, text("search.results.a11y")))
-        content = Adw.ToolbarView()
-        header = Adw.HeaderBar(
+        self.scroller = Gtk.ScrolledWindow(child=self.list, hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        self._vadj = self.scroller.get_vadjustment()
+        self._scroll_handler = self._vadj.connect("value-changed", lambda *_: window._queue_sidebar_scrolled())
+        left.append(self.scroller)
+        self.set_child(left)
+
+        self.content_pane = Adw.ToolbarView(css_classes=["meeting-pane"])
+        self.content_header = Adw.HeaderBar(
             show_start_title_buttons=False,
             show_back_button=False,
+            show_end_title_buttons=True,
             decoration_layout=":close",
-            css_classes=["library-header"],
+            show_title=False,
+            css_classes=["meeting-topbar"],
         )
-        header.set_title_widget(label(text("search.title"), "heading"))
-        content.add_top_bar(header)
-        self.context = box(24, margin_start=36, margin_end=36, margin_top=34, margin_bottom=30)
+        self.content_pane.add_top_bar(self.content_header)
+        self.context = box(24, margin_start=48, margin_end=48, margin_top=24, margin_bottom=30)
         self.context.update_property([Gtk.AccessibleProperty.LABEL], [text("search.context.a11y")])
-        content.set_content(Gtk.ScrolledWindow(child=self.context, hscrollbar_policy=Gtk.PolicyType.NEVER))
-        split.set_content(Adw.NavigationPage.new(content, text("search.context.a11y")))
+        self.context_scroller = Gtk.ScrolledWindow(
+            child=self.context, hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True
+        )
+        self._context_scroll_source = 0
+        self._context_vadj = self.context_scroller.get_vadjustment()
+        self._context_scroll_handler = self._context_vadj.connect("value-changed", self._queue_context_scrolled)
+        self.content_pane.set_content(self.context_scroller)
         self._speaker_menu()
         self._date_menu()
+        self.request()
+
+    def _queue_context_scrolled(self, *_args):
+        if not self._context_scroll_source and not self.closed:
+            self._context_scroll_source = GLib.idle_add(self._apply_context_scrolled)
+
+    def _apply_context_scrolled(self):
+        self._context_scroll_source = 0
+        if not self.closed:
+            scrolled = self._context_vadj.get_value() > 0.5
+            (self.content_header.add_css_class if scrolled else self.content_header.remove_css_class)("scrolled")
+        return GLib.SOURCE_REMOVE
+
+    def _check_empty_close(self):
+        self._empty_close_source = 0
+        if (
+            not self.closed
+            and not getattr(self.window, "_closing_search", False)
+            and not self.entry.get_text()
+            and self._had_nonempty_query
+            and self.speaker is None
+            and self.date == "any"
+            and not self.own.get_active()
+        ):
+            self._had_nonempty_query = False
+            self.window.back_to_library()
+        return GLib.SOURCE_REMOVE
+
+    def _on_entry_changed(self, *_args):
+        if self.closed or getattr(self.window, "_closing_search", False):
+            return
+        value = self.entry.get_text()
+        if value:
+            if self._empty_close_source:
+                GLib.source_remove(self._empty_close_source)
+                self._empty_close_source = 0
+            self._had_nonempty_query = True
+        elif self._had_nonempty_query and self.speaker is None and self.date == "any" and not self.own.get_active():
+            # GtkEditable.set_text("new") deletes to "" before inserting "new" in the
+            # same C call; check on idle so replacing text never closes Search mid-call.
+            if not self._empty_close_source:
+                self._empty_close_source = GLib.idle_add(self._check_empty_close)
+            return
         self.request()
 
     def _menu(self, button, choices, selected, callback):
@@ -333,12 +374,12 @@ class SearchPage(Adw.NavigationPage):
     def _bind(self, _factory, item):
         result = item.get_item()
         hit, meeting = result.hit, result.meeting
-        row = box(8, css_classes=["search-result"], margin_start=12, margin_end=12, margin_top=4, margin_bottom=4)
+        row = box(4, css_classes=["search-result"])
         heading = Gtk.Box(spacing=8)
         heading.append(
             label(
                 hit.title_markup or meeting.title,
-                "heading",
+                "row-title",
                 use_markup=bool(hit.title_markup),
                 xalign=0,
                 hexpand=True,
@@ -350,6 +391,7 @@ class SearchPage(Adw.NavigationPage):
                 fmt.search_date(meeting.display_start, now_ms=self.window.now_ms, tz=self.window.tz),
                 "small",
                 "dim-label",
+                "row-num",
                 valign=Gtk.Align.START,
             )
         )
@@ -360,6 +402,8 @@ class SearchPage(Adw.NavigationPage):
             use_markup=True,
             xalign=0,
             wrap=True,
+            lines=2,
+            ellipsize=Pango.EllipsizeMode.END,
         )
         quote.set_visible(bool(hit.quote_markup))
         row.append(quote)
@@ -373,7 +417,9 @@ class SearchPage(Adw.NavigationPage):
                 ),
                 "small",
                 "dim-label",
+                "row-num",
                 xalign=0,
+                ellipsize=Pango.EllipsizeMode.END,
             )
         )
         item.set_child(row)
@@ -527,14 +573,29 @@ class SearchPage(Adw.NavigationPage):
     def close(self):
         self.closed = True
         self._cancelled.set()
+        if self._entry_changed_handler:
+            self.entry.disconnect(self._entry_changed_handler)
+            self._entry_changed_handler = 0
+        if self._entry_stop_handler:
+            self.entry.disconnect(self._entry_stop_handler)
+            self._entry_stop_handler = 0
+        if self._scroll_handler:
+            self._vadj.disconnect(self._scroll_handler)
+            self._scroll_handler = 0
+        if self._context_scroll_handler:
+            self._context_vadj.disconnect(self._context_scroll_handler)
+            self._context_scroll_handler = 0
+        if self._context_scroll_source:
+            GLib.source_remove(self._context_scroll_source)
+            self._context_scroll_source = 0
+        if self._empty_close_source:
+            GLib.source_remove(self._empty_close_source)
+            self._empty_close_source = 0
         if self._style_handler:
             self._style_manager.disconnect(self._style_handler)
             self._style_handler = 0
         if self._timer:
             GLib.source_remove(self._timer)
             self._timer = 0
-        self.window._capture_headers.remove(self.capture._controls)
-        self.window._focused_editors.discard(id(self.entry))
-        self.window._editor_focus(self.entry, False)
         self._executor.submit(lambda: self._index.close() if self._index else None)
         self._executor.shutdown(wait=False)

@@ -203,15 +203,21 @@ def capture(application_id, version, profile):
 
     labels, menu_labels = [], []
 
+    def collect_menu_labels(model):
+        for index in range(model.get_n_items()):
+            if value := model.get_item_attribute_value(index, "label", None):
+                menu_labels.append(value.unpack())
+            for link in ("section", "submenu"):
+                if child_model := model.get_item_link(index, link):
+                    collect_menu_labels(child_model)
+
     def visible_copy(widget):
         if not widget.get_mapped():
             return
         if isinstance(widget, Gtk.Label):
             labels.append(widget.get_text())
         if isinstance(widget, Gtk.MenuButton) and (model := widget.get_menu_model()):
-            for index in range(model.get_n_items()):
-                if value := model.get_item_attribute_value(index, "label", None):
-                    menu_labels.append(value.unpack())
+            collect_menu_labels(model)
         child = widget.get_first_child()
         while child:
             visible_copy(child)
