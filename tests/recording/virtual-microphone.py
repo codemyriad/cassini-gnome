@@ -30,12 +30,25 @@ def _gst():
     return GLib, GLibUnix, Gst
 
 
+def produce_pipeline(*, sink=SINK, hz=TONE, channels=1):
+    return (
+        f"audiotestsrc is-live=true freq={hz} volume=0.2 ! audioconvert ! audioresample ! "
+        f"audio/x-raw,rate={RATE},channels={channels} ! pulsesink device={sink} sync=false provide-clock=false"
+    )
+
+
+def probe_pipeline(*, sink=SINK):
+    monitor = f"{sink}.monitor"
+    return (
+        f"pulsesrc device={monitor} provide-clock=false client-name=cassini-mic-readiness "
+        f"buffer-time=100000 latency-time=10000 ! audioconvert ! audioresample ! "
+        f"audio/x-raw,format=S16LE,rate={RATE},channels=1 ! appsink name=pcm sync=false"
+    )
+
+
 def produce(*, sink=SINK, hz=TONE, channels=1):
     GLib, GLibUnix, Gst = _gst()
-    pipeline = Gst.parse_launch(
-        f"audiotestsrc is-live=true freq={hz} volume=0.2 ! audioconvert ! audioresample ! "
-        f"audio/x-raw,rate={RATE},channels={channels} ! pulsesink device={sink} sync=false"
-    )
+    pipeline = Gst.parse_launch(produce_pipeline(sink=sink, hz=hz, channels=channels))
     loop = GLib.MainLoop()
     errors = []
 
@@ -85,10 +98,7 @@ def tone_power(pcm, *, hz=TONE):
 def probe(*, sink=SINK, hz=TONE):
     _GLib, _GLibUnix, Gst = _gst()
     monitor = f"{sink}.monitor"
-    pipeline = Gst.parse_launch(
-        f"pulsesrc device={monitor} client-name=cassini-mic-readiness buffer-time=100000 latency-time=10000 ! "
-        f"audioconvert ! audioresample ! audio/x-raw,format=S16LE,rate={RATE},channels=1 ! appsink name=pcm sync=false"
-    )
+    pipeline = Gst.parse_launch(probe_pipeline(sink=sink))
     pcm_sink = pipeline.get_by_name("pcm")
     bus = pipeline.get_bus()
     deadline = time.monotonic_ns() + 10 * Gst.SECOND
