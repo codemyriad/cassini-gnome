@@ -1390,16 +1390,33 @@ class CassiniApplication(Adw.Application):
         return self.writing_unavailable is None
 
     def _ensure_transcriber(self):
+        import threading
+
         from .transcription import TranscriptionQueue
 
         if self.transcriber is None:
             generation = self._transcription_generation
+            progress_lock = threading.Lock()
+            progress_queued = [False]
 
             def changed(_directory):
                 GLib.idle_add(self._transcription_changed)
 
             def finished(_directory):
                 GLib.idle_add(self._transcription_finished, generation)
+
+            def progress_changed(_directory):
+                with progress_lock:
+                    if progress_queued[0]:
+                        return
+                    progress_queued[0] = True
+
+                def deliver():
+                    with progress_lock:
+                        progress_queued[0] = False
+                    return self._transcription_progress_changed(generation)
+
+                GLib.idle_add(deliver)
 
             self.transcriber = TranscriptionQueue(
                 changed,
@@ -1410,8 +1427,28 @@ class CassiniApplication(Adw.Application):
                 voice_store=self.voice_store,
                 recordings=self.live_recording_directories,
                 completed=lambda model: GLib.idle_add(self._model_completed, model),
+                progress_changed=progress_changed,
             )
         return self.transcriber
+
+    def transcription_progress(self, meeting):
+        transcriber = getattr(self, "transcriber", None)
+        if transcriber is None or not hasattr(transcriber, "progress_for"):
+            return None
+        return transcriber.progress_for(getattr(meeting, "directory", meeting))
+
+    def _transcription_progress_changed(self, generation):
+        if self._quitting or generation != self._transcription_generation:
+            return False
+        for window in self.get_windows():
+            page = getattr(window, "meeting_page", None)
+            if (
+                page is not None
+                and not getattr(page, "_closed", False)
+                and hasattr(page, "refresh_transcription_progress")
+            ):
+                page.refresh_transcription_progress()
+        return False
 
     def live_recording_directories(self):
         """Library folders of native and browser captures running now (G14 disk budget).

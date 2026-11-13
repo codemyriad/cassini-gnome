@@ -92,9 +92,15 @@ with tempfile.TemporaryDirectory() as temporary:
 
     def seed_recognised_case():
         seed(app, meeting)
-        speakers = read_metadata(meeting.directory)["speakers"]
+        meta = read_metadata(meeting.directory)
+        speakers = meta["speakers"]
         next(s for s in speakers if s["id"] == "marta")["provenance"] = "recognised"
-        update_metadata(meeting.directory, speakers=speakers)
+        update_metadata(
+            meeting.directory,
+            speakers=speakers,
+            transcript=dict(meta["transcript"], status="done"),
+            etaMinutes=None,
+        )
 
     future = window.monitor._executor.submit(seed_recognised_case)
     until(future.done)

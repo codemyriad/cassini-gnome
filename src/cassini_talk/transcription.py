@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 from .library import LibraryScanner, library_root, meeting_id, track_identity, track_rows
@@ -420,6 +421,25 @@ def update_progress_metadata(
         return True
 
 
+@dataclass(frozen=True)
+class TranscriptionProgress:
+    step: str = "reading"
+    fraction: float = 0.0
+    audio_done_ms: int = 0
+    words_so_far: int = 0
+    eta_minutes: int | None = None
+
+
+_STEP_RANK: dict[str, int] = {
+    "reading": 0,
+    "preparing": 1,
+    "words": 2,
+    "speakers": 3,
+    "saving": 4,
+}
+_KEEP_ETA = object()
+
+
 class TranscriptionQueue:
     def __init__(
         self,
@@ -436,9 +456,11 @@ class TranscriptionQueue:
         clock=time.monotonic,
         recordings=tuple,
         completed=lambda _model: None,
+        progress_changed=lambda _directory: None,
     ):
         self.changed, self.finished = changed, finished
         self.completed = completed
+        self.progress_changed = progress_changed
         # Folders of captures running now. G14 keeps the recorder's reserve
         # free on their volume when the job starts.
         self.recordings = recordings
@@ -464,10 +486,68 @@ class TranscriptionQueue:
         self._idle = threading.Condition(self.lock)
         self._cancelled_meetings = set()
         self._stopping_meetings = set()
+        self._progress: dict[Path, TranscriptionProgress] = {}
         self._context = threading.local()
         self._active_directory = None
         self._prepare_futures, self._job_futures, self._voice_futures = {}, {}, {}
         self.closed = False
+
+    @staticmethod
+    def _progress_key(directory) -> Path:
+        path = Path(directory)
+        try:
+            return path.resolve()
+        except OSError:
+            return path.absolute()
+
+    def progress_for(self, directory) -> TranscriptionProgress | None:
+        if not self._progress:
+            return None
+        path = Path(directory)
+        if (found := self._progress.get(path)) is not None:
+            return found
+        abs_path = path.absolute()
+        if (found := self._progress.get(abs_path)) is not None:
+            return found
+        return self._progress.get(self._progress_key(path))
+
+    def _set_progress(
+        self,
+        directory,
+        value: TranscriptionProgress,
+        *,
+        key: Path | None = None,
+        notify: bool = True,
+        reset: bool = False,
+    ) -> None:
+        abs_path = Path(directory).absolute()
+        resolved = key if key is not None else self._progress_key(directory)
+        if self.closed or directory in self._cancelled_meetings or directory in self._stopping_meetings:
+            return
+        if (
+            not reset
+            and (existing := self._progress.get(resolved)) is not None
+            and _STEP_RANK.get(value.step, -1) < _STEP_RANK.get(existing.step, -1)
+        ):
+            value = TranscriptionProgress(
+                step=existing.step,
+                fraction=max(existing.fraction, value.fraction),
+                audio_done_ms=max(existing.audio_done_ms, value.audio_done_ms),
+                words_so_far=max(existing.words_so_far, value.words_so_far),
+                eta_minutes=value.eta_minutes,
+            )
+        if self._progress.get(resolved) == value and self._progress.get(abs_path) == value:
+            return
+        self._progress[resolved] = value
+        self._progress[abs_path] = value
+        if notify:
+            self.progress_changed(directory)
+
+    def _clear_progress_locked(self, directory) -> None:
+        path = Path(directory)
+        self._progress.pop(path, None)
+        self._progress.pop(path.absolute(), None)
+        self._progress.pop(self._progress_key(path), None)
 
     def transcribing(self, directory):
         """Whether a job for this meeting is queued or running (it may re-diarize)."""
@@ -484,6 +564,7 @@ class TranscriptionQueue:
                     self._resume_pending.add(directory)
                 return False
             self.pending.add(directory)
+            self._set_progress(directory, TranscriptionProgress(step="reading"), notify=False, reset=True)
             if self._active_directory in self._background_voices and self.client:
                 self.client.cancel()
             future = self.preparer.submit(self._mark_queued, directory, resume)
@@ -638,6 +719,7 @@ class TranscriptionQueue:
         self._resume_pending.discard(directory)
         self._prepare_futures.pop(directory, None)
         self._job_futures.pop(directory, None)
+        self._clear_progress_locked(directory)
         self._idle.notify_all()
         return True
 
@@ -713,6 +795,18 @@ class TranscriptionQueue:
         started = self.clock()
         self._check_open()
         directory = meeting.directory
+        progress_key = self._progress_key(directory)
+        duration_ms = max(0, int(meeting.duration_ms or 0))
+        single_track_done_ms = max((w.end_ms for w in meeting.words), default=0)
+        initial_done_ms = single_track_done_ms if len(getattr(meeting, "tracks", ()) or ()) <= 1 else 0
+        run_progress = TranscriptionProgress(
+            step="reading",
+            fraction=0.02,
+            audio_done_ms=min(duration_ms, initial_done_ms) if duration_ms > 0 else initial_done_ms,
+            words_so_far=len(meeting.words),
+            eta_minutes=None,
+        )
+        self._set_progress(directory, run_progress, key=progress_key, notify=False, reset=True)
         # Select on this owner thread when the job starts, never at enqueue.
         from .parakeet_model import MODEL_ID, MODEL_TAG
 
@@ -775,9 +869,26 @@ class TranscriptionQueue:
         if not tracks:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
-        publisher = TranscriptPublisher(
-            directory, existing_count=_retained_count(directory), check_active=self._check_not_trashed
-        )
+        retained_words = _retained_count(directory)
+        publisher = TranscriptPublisher(directory, existing_count=retained_words, check_active=self._check_not_trashed)
+        audible_samples = {
+            track["id"]: max(
+                0, int((track.get("frames") or 0) * 16000 // max(1, int(track.get("sampleRate") or 16000)))
+            )
+            for track in tracks
+            if track.get("silent") is not True
+        }
+        total_16k = sum(audible_samples.values())
+        done_by_track = dict.fromkeys(audible_samples, 0)
+        retained_done_ms = single_track_done_ms if len(audible_samples) <= 1 else 0
+        if duration_ms <= 0 and total_16k > 0:
+            duration_ms = max(
+                (
+                    int((track.get("offsetMs") or 0) + (audible_samples.get(track["id"], 0) * 1000 // 16000))
+                    for track in tracks
+                ),
+                default=0,
+            )
         cache_entries = _read_recognition_cache_entries(directory, tag)
         cache_dirty = False
 
@@ -836,17 +947,83 @@ class TranscriptionQueue:
         reused_groups = set()
         recognised_summary = None
 
+        def advance_progress(
+            *,
+            step: str | None = None,
+            fraction: float | None = None,
+            audio_done_ms: int | None = None,
+            words_so_far: int | None = None,
+            eta_minutes: object = _KEEP_ETA,
+        ) -> None:
+            nonlocal run_progress
+            next_step = run_progress.step
+            if step is not None and _STEP_RANK.get(step, -1) > _STEP_RANK.get(next_step, -1):
+                next_step = step
+            next_fraction = run_progress.fraction if fraction is None else max(run_progress.fraction, float(fraction))
+            raw_done = (
+                run_progress.audio_done_ms
+                if audio_done_ms is None
+                else max(run_progress.audio_done_ms, int(audio_done_ms))
+            )
+            next_done = min(duration_ms, raw_done) if duration_ms > 0 else raw_done
+            next_words = (
+                run_progress.words_so_far
+                if words_so_far is None
+                else max(run_progress.words_so_far, retained_words, int(words_so_far))
+            )
+            next_eta = run_progress.eta_minutes if eta_minutes is _KEEP_ETA else eta_minutes
+            updated = TranscriptionProgress(
+                step=next_step,
+                fraction=next_fraction,
+                audio_done_ms=next_done,
+                words_so_far=next_words,
+                eta_minutes=next_eta,
+            )
+            if updated == run_progress:
+                return
+            run_progress = updated
+            self._set_progress(directory, updated, key=progress_key)
+
         def progress(value):
             nonlocal recognised_summary
             if self.closed or directory in self._cancelled_meetings or directory in self._stopping_meetings:
                 raise CancelledError()
             if "cacheEntry" in value:
                 record_cache(value["cacheEntry"])
-            if value["type"] == "planning":
+            msg_type = value["type"]
+            if msg_type == "planning":
+                advance_progress(
+                    step="preparing",
+                    fraction=0.04,
+                    words_so_far=retained_words,
+                )
                 return
-            if value["type"] == "recognised":
+            if msg_type == "planned":
+                advance_progress(
+                    step="words",
+                    fraction=0.08,
+                    words_so_far=retained_words,
+                    eta_minutes=value.get("etaMinutes"),
+                )
+            elif msg_type == "recognised":
                 recognised_summary = value["summary"]
-            if value["type"] == "diarized":
+                has_speaker_stage = diarization is not None or voices_options is not None
+                advance_progress(
+                    step="speakers" if has_speaker_stage else "saving",
+                    fraction=0.90 if has_speaker_stage else 0.96,
+                    audio_done_ms=duration_ms if duration_ms > 0 else None,
+                    words_so_far=len(publisher.words),
+                    eta_minutes=value.get("etaMinutes", _KEEP_ETA),
+                )
+            elif msg_type == "diarizing":
+                advance_progress(
+                    step="speakers",
+                    fraction=0.92,
+                    audio_done_ms=duration_ms if duration_ms > 0 else None,
+                    words_so_far=len(publisher.words),
+                    eta_minutes=value.get("etaMinutes", _KEEP_ETA),
+                )
+            if msg_type == "diarized":
                 from .worker_diarization import valid_group
 
                 group_id = value["groupId"]
@@ -867,9 +1044,16 @@ class TranscriptionQueue:
                 group["final"] = value["final"]
                 if group["final"] and not valid_group(group):
                     raise ValueError("Invalid diarization result")
+                advance_progress(
+                    step="speakers",
+                    fraction=0.94,
+                    audio_done_ms=duration_ms if duration_ms > 0 else None,
+                    words_so_far=len(publisher.words),
+                )
                 return
-            if value["type"] == "progress":
-                track = by_track[value["trackId"]]
+            if msg_type == "progress":
+                track_id = value["trackId"]
+                track = by_track[track_id]
                 for word in value["words"]:
                     if (
                         type(word["startMs"]) is not int
@@ -882,6 +1066,45 @@ class TranscriptionQueue:
                 published = publisher.flush()
                 if published:
                     flush_cache()
+                seg = value.get("segment")
+                if isinstance(seg, dict) and isinstance(seg.get("endSample"), int):
+                    end_sample = max(0, seg["endSample"])
+                    if track_id in done_by_track:
+                        cap = audible_samples[track_id]
+                        done_by_track[track_id] = max(
+                            done_by_track[track_id], min(cap, end_sample) if cap > 0 else end_sample
+                        )
+                    seg_end_ms = int((track.get("offsetMs") or 0) + (end_sample * 1000 // 16000))
+                else:
+                    seg_end_ms = max((w["endMs"] for w in value["words"]), default=0)
+                    if track_id in done_by_track and seg_end_ms > 0:
+                        rel_ms = max(0, seg_end_ms - int(track.get("offsetMs") or 0))
+                        cap = audible_samples[track_id]
+                        est_samples = rel_ms * 16
+                        done_by_track[track_id] = max(
+                            done_by_track[track_id], min(cap, est_samples) if cap > 0 else est_samples
+                        )
+                if total_16k > 0:
+                    work_ratio = min(1.0, sum(done_by_track.values()) / total_16k)
+                elif duration_ms > 0 and len(audible_samples) <= 1:
+                    work_ratio = min(1.0, max(retained_done_ms, seg_end_ms) / duration_ms)
+                else:
+                    work_ratio = 0.5
+                if len(audible_samples) == 1:
+                    est_done_ms = max(retained_done_ms, seg_end_ms)
+                elif duration_ms > 0:
+                    est_done_ms = max(retained_done_ms, round(duration_ms * work_ratio))
+                else:
+                    est_done_ms = retained_done_ms
+                words_span = 0.80 if (diarization is not None or voices_options is not None) else 0.86
+                frac = min(0.95, 0.08 + words_span * work_ratio)
+                advance_progress(
+                    step="words",
+                    fraction=frac,
+                    audio_done_ms=est_done_ms,
+                    words_so_far=len(publisher.words),
+                    eta_minutes=value["etaMinutes"],
+                )
             else:
                 published = False
             updated = update_progress_metadata(
@@ -953,6 +1176,13 @@ class TranscriptionQueue:
             # Until this succeeds the running job remains resumable after restart.
             publisher.flush(force=True, complete=True)
             if voices_options and self.client is not None:
+                advance_progress(
+                    step="speakers",
+                    fraction=0.95,
+                    audio_done_ms=duration_ms if duration_ms > 0 else None,
+                    words_so_far=len(publisher.words),
+                    eta_minutes=0,
+                )
                 try:
                     with transaction(directory):
                         history = read_metadata(directory).get("speakerMerges", [])
@@ -1041,6 +1271,13 @@ class TranscriptionQueue:
                 facts["offsetsAssumedZero"] = True
             if left_out := silent_tracks(tracks):
                 facts["silentTracks"] = left_out
+            advance_progress(
+                step="saving",
+                fraction=0.98,
+                audio_done_ms=duration_ms if duration_ms > 0 else None,
+                words_so_far=len(publisher.words),
+                eta_minutes=0,
+            )
             with mutation(directory):
                 self._check_open()
                 # End facts or other metadata may have arrived while this job ran.
@@ -1267,6 +1504,7 @@ class TranscriptionQueue:
         with self.lock:
             self._cancelled_meetings.add(directory)
             self._resume_pending.discard(directory)
+            self._clear_progress_locked(directory)
             futures = [
                 mapping.get(directory) for mapping in (self._prepare_futures, self._job_futures, self._voice_futures)
             ]
@@ -1359,6 +1597,7 @@ class TranscriptionQueue:
         finally:
             with self.lock:
                 self._stopping_meetings.discard(directory)
+                self._clear_progress_locked(directory)
                 self._idle.notify_all()
             if changed and target is not None:
                 self.changed(target)
@@ -1390,6 +1629,7 @@ class TranscriptionQueue:
                 return
             self.closed = True
             self._resume_pending.clear()
+            self._progress.clear()
             client = self.client
             self._idle.notify_all()
         if client and hasattr(client, "cancel"):

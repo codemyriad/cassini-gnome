@@ -71,6 +71,13 @@ with tempfile.TemporaryDirectory() as temporary:
     capture = {
         p.name: p.read_bytes() for p in meeting.directory.iterdir() if p.name in ("session.json", "transcript.json")
     }
+    from cassini_talk.meeting_store import read_metadata, update_metadata
+
+    meta = read_metadata(meeting.directory)
+    update_metadata(meeting.directory, transcript=dict(meta["transcript"], status="done"), etaMinutes=None)
+    window.monitor.refresh_now()
+    until(lambda: any(m.key == meeting.key and m.transcript == "done" for m in window.snapshot.meetings))
+    meeting = next(m for m in window.snapshot.meetings if m.key == meeting.key)
     window.player.shutdown()
     sink = Gst.ElementFactory.make("fakesink", None)
     sink.set_property("sync", True)

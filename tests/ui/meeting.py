@@ -118,6 +118,13 @@ with tempfile.TemporaryDirectory() as temporary:
     window = next(w for w in app.get_windows() if isinstance(w, LibraryWindow))
     until(lambda: not window._pending)
     meeting = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")
+    from cassini_talk.meeting_store import read_metadata, update_metadata
+
+    meta = read_metadata(meeting.directory)
+    update_metadata(meeting.directory, transcript=dict(meta["transcript"], status="done"), etaMinutes=None)
+    window.monitor.refresh_now()
+    until(lambda: any(m.key == meeting.key and m.transcript == "done" for m in window.snapshot.meetings))
+    meeting = next(m for m in window.snapshot.meetings if m.key == meeting.key)
     window.player.shutdown()
     sink = Gst.ElementFactory.make("fakesink", None)
     sink.set_property("sync", True)
@@ -214,19 +221,98 @@ with tempfile.TemporaryDirectory() as temporary:
             window._source_snapshot = updated
             window._updated(updated)
 
-        # Queued/running meetings must explain the wait even before the first
-        # words arrive, and keep showing it alongside a growing transcript.
+        # WP5 (L-45): queued/running meetings show the header transcribing status row,
+        # keep the desktop transcript area empty while transcribing, and open the chevron
+        # details popover with 5 steps, 3 stats, and Stop and keep progress.
+        from cassini_talk import i18n as fmt
+        from cassini_talk.transcription import TranscriptionProgress
+
         queued = replace(meeting, words=(), turns=(), preview_turns=(), transcript="queued", eta_minutes=None)
         sync_snapshot(queued)
-        assert "Transcribing…" in labels(page.lines), "Queued without words must show progress immediately"
+        assert page.transcribing_row.get_visible()
+        assert "Transcribing…" in labels(page.transcribing_row), "Queued without ETA must show Transcribing…"
+        assert not page.transcribing_row.eta_label.get_visible()
+        assert page.transcribing_blank.get_visible() and page.scroller.get_opacity() == 0.0
+        assert not page.find_row.get_visible()
+        assert not page.speakers_scroller.get_visible()
+        assert not page.lines.get_visible()
         assert not page.write_button.get_visible()
+
         running = replace(meeting, transcript="running", eta_minutes=3)
-        sync_snapshot(running)
-        assert "Transcribing · 3 min" in labels(page.lines)
-        assert page._turns == running.turns, "Progress must not hide already written words"
-        assert page.stop_transcription_button is not None and page.stop_transcription_button.get_label() == "Stop"
-        assert page.stop_transcription_button.get_sensitive()
-        shot(window, "-transcribing")
+        live_prog = TranscriptionProgress(
+            step="words",
+            fraction=0.62,
+            audio_done_ms=min(running.duration_ms or 180000, 90000),
+            words_so_far=4812,
+            eta_minutes=3,
+        )
+        transcriber = app._ensure_transcriber()
+        transcriber._set_progress(running.directory, live_prog, notify=False, reset=True)
+        try:
+            sync_snapshot(running)
+            assert page.transcribing_row.get_visible()
+            assert "Transcribing" in labels(page.transcribing_row)
+            assert "· about 3 min left" in labels(page.transcribing_row)
+            assert page.transcribing_blank.get_visible() and page.scroller.get_opacity() == 0.0, (
+                "L-45: desktop transcript area stays empty while transcribing"
+            )
+            assert not page.find_row.get_visible()
+            assert not page.speakers_scroller.get_visible()
+            assert page.player_overlay.get_visible()
+            assert page.stop_transcription_button is page.transcribing_row.stop_button
+            assert page.stop_transcription_button.get_label() == "Stop"
+            assert page.stop_transcription_button.get_sensitive()
+            shot(window, "-transcribing")
+
+            page.transcribing_row.details_button.popup()
+            until(lambda: page.transcribing_row.popover.get_mapped())
+            pop_labels = labels(page.transcribing_row.popover)
+            for expected in (
+                "Transcribing",
+                "62%",
+                "Reading",
+                "Preparing",
+                "Words",
+                "Speakers & matching",
+                "Saving",
+                "Time left",
+                "About 3 min",
+                "Audio done",
+                "Words so far",
+                fmt.number(4812),
+                "Stop and keep progress",
+                "Keeps going in the background while Cassini is open.",
+            ):
+                assert expected in pop_labels, f"Missing {expected!r} in popover labels {pop_labels!r}"
+
+            # Exercise the live progress notification path without a snapshot update.
+            transcriber._set_progress(
+                running.directory,
+                TranscriptionProgress(
+                    step="speakers",
+                    fraction=0.84,
+                    audio_done_ms=running.duration_ms or 180000,
+                    words_so_far=6120,
+                    eta_minutes=1,
+                ),
+            )
+            until(
+                lambda: (
+                    "· about 1 min left" in labels(page.transcribing_row)
+                    and "84%" in labels(page.transcribing_row.popover)
+                )
+            )
+            live_pop_labels = labels(page.transcribing_row.popover)
+            assert "About 1 min" in live_pop_labels
+            assert fmt.number(6120) in live_pop_labels
+
+            with patch.object(app, "stop_transcription") as pop_stop_call:
+                page.transcribing_row.popover_stop_button.emit("clicked")
+                pop_stop_call.assert_called_once_with(running)
+            until(lambda: not page.transcribing_row.popover.get_mapped())
+        finally:
+            transcriber._clear_progress_locked(running.directory)
+
         with patch.object(app, "stop_transcription") as stop_call:
             page.stop_transcription_button.emit("clicked")
             stop_call.assert_called_once_with(running)
@@ -238,18 +324,23 @@ with tempfile.TemporaryDirectory() as temporary:
             app._transcription_stops.clear()
         stopped_partial = replace(meeting, transcript="none", eta_minutes=None)
         sync_snapshot(stopped_partial)
+        assert not page.transcribing_row.get_visible()
         assert page.stop_transcription_button is None
         assert page.write_button.get_visible() and page.write_button.get_label() == "Write it down"
+        assert not page.transcribing_blank.get_visible() and page.scroller.get_opacity() == 1.0
         assert page._turns == stopped_partial.turns, "Stopping transcription must keep partial words visible"
         shot(window, "-stopped")
         sync_snapshot(replace(running, eta_minutes=0))
-        assert "Transcribing, less than a minute left" in labels(page.lines), "ETA-only refresh must update"
+        assert "Transcribing, less than a minute left" in labels(page.transcribing_row), "ETA-only refresh must update"
         stopped_early = replace(
             meeting, lifecycle="saved", transcript="done", eta_minutes=None, interrupted_at_ms=2472000
         )
         sync_snapshot(stopped_early)
+        assert not page.transcribing_row.get_visible()
+        assert not page.transcribing_blank.get_visible() and page.scroller.get_opacity() == 1.0
         assert "Interrupted at 00:41:12" in labels(page.lines)
         sync_snapshot(replace(meeting, transcript="done", eta_minutes=None))
+        assert not page.transcribing_row.get_visible()
         assert not any(value.startswith("Transcribing") for value in labels(page.lines))
         assert "Interrupted at 00:41:12" not in labels(page.lines)
 

@@ -318,7 +318,7 @@ with tempfile.TemporaryDirectory() as temporary, ExitStack() as guards:
         meeting = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")
         words = tuple(Word(meeting.speakers[0].id, i * 100, i * 100 + 90, f"word{i}") for i in range(3600))
         window.monitor.callback = lambda _snapshot: None
-        meeting = replace(meeting, words=words, turns=reading_turns(words))
+        meeting = replace(meeting, words=words, turns=reading_turns(words), transcript="done", eta_minutes=None)
         window.snapshot = window._source_snapshot = replace(
             window.snapshot, meetings=tuple(meeting if m.key == meeting.key else m for m in window.snapshot.meetings)
         )

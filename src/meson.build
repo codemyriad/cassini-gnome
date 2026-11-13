@@ -84,6 +84,7 @@ talk_sources = files(
   'cassini_talk/brand_mark.py',
   'cassini_talk/tokens.py',
   'cassini_talk/status_badge.py',
+  'cassini_talk/transcribing_status.py',
   'cassini_talk/meeting_text.py',
   'cassini_talk/markup_runs.py',
   'cassini_talk/listen.py',
