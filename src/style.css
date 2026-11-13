@@ -241,6 +241,7 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
 
 /* UX3 / WP3 (L-22, L-24, L-43, L-44): right-pane Meeting view, inline speakers, Find bar, and floating player. */
 .meeting-pane { background: var(--cx-surface); color: var(--cx-ink); }
+/* L-32: GNOME draws the header line only once content is scrolled under the bar; no permanent hairline. */
 .meeting-topbar { min-height: 47px; padding: 0 8px 0 14px; background: var(--cx-surface); color: var(--cx-ink); box-shadow: none; border-bottom: 1px solid transparent; }
 .meeting-topbar.scrolled { border-bottom-color: var(--cx-line-soft); }
 .meeting-compact-title { font-size: 15px; font-weight: 700; color: var(--cx-ink); }
@@ -249,7 +250,9 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
 .meeting-icon-btn { min-width: 34px; min-height: 34px; padding: 0; color: var(--cx-ink); }
 .meeting-empty-pane { background: var(--cx-surface); color: var(--cx-ink-3); }
 .meeting-empty-selection { font-size: 15px; color: var(--cx-ink-2); }
-.meeting-full-header { background: var(--cx-surface); color: var(--cx-ink); padding: 8px 48px 18px; border-bottom: 1px solid var(--cx-line-soft); }
+.meeting-full-header { background: var(--cx-surface); color: var(--cx-ink); padding: 8px 48px 18px; }
+.recording-page .meeting-full-header { border-bottom: 1px solid transparent; }
+.recording-page .meeting-full-header.scrolled { border-bottom-color: var(--cx-line-soft); }
 .meeting-title { font-size: 24px; font-weight: 700; color: var(--cx-ink); }
 .meeting-rename-btn { min-width: 26px; min-height: 26px; padding: 0; color: var(--cx-ink-2); }
 .meeting-subtitle { color: var(--cx-ink-2); font-variant-numeric: tabular-nums; }
