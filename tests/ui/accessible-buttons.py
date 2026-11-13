@@ -279,8 +279,15 @@ def parent():
             )
             atspi_dirty = False
             try:
-                target = next((button for button in buttons() if button.get_name() == name), None)
-                if target and target.get_state_set().contains(Atspi.StateType.SENSITIVE):
+                target = next(
+                    (
+                        button
+                        for button in buttons()
+                        if button.get_name() == name and button.get_state_set().contains(Atspi.StateType.SENSITIVE)
+                    ),
+                    None,
+                )
+                if target:
                     action = target.get_action_iface()
                     assert action and action.get_n_actions() > 0, f"No AT-SPI action for {name}"
                     return target, action

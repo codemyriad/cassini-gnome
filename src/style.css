@@ -219,19 +219,25 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
   color: var(--app-window-fg);
 }
 .brand-wordmark { font-size: 18px; font-weight: 500; color: var(--app-window-fg); }
-.library-window .cassini-record { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; min-height: 30px; padding: 0 12px; }
-.library-window .big-record { min-width: 74px; border-radius: 100px; min-height: 44px; padding: 0 22px; }
+.library-window .cassini-record { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; font-size: 15px; min-width: 98px; min-height: 34px; padding: 0 14px; border-radius: 999px; }
+.library-window .cassini-record:not(:disabled):hover,
+.library-window .static-stop:not(:disabled):hover { filter: brightness(0.92); }
+.library-window .cassini-record:not(:disabled):active,
+.library-window .static-stop:not(:disabled):active { filter: brightness(0.84); }
+.library-window .record-button-dot { background: var(--app-record-fg); border-radius: 999px; }
+.library-window .cassini-record:disabled .record-button-dot { background: currentColor; }
+.library-window .big-record { min-width: 74px; border-radius: 999px; min-height: 44px; padding: 0 22px; font-size: 15px; }
 .library-window .record-dot { font-size: 12px; }
 .library-window .first-run-icon { background: var(--app-wash-chip); border-radius: 24px; padding: 24px; margin-bottom: 0; }
 .library-window .excerpt { line-height: 1.5; }
 
-.library-window .live-pill { background: var(--app-record-tint); border-radius: 6px; padding: 4px 4px 4px 12px; min-height: 26px; }
-.library-window .live-dot { background: var(--app-record-dot); border-radius: 100px; }
+.library-window .live-pill { background: var(--app-record-tint); border-radius: 999px; padding: 4px 4px 4px 13px; min-height: 26px; }
+.library-window .live-dot { background: var(--app-record-dot); border-radius: 999px; }
 .library-window .live-pill.saving .live-dot { opacity: 0.45; }
 .library-window .live-timer { color: var(--app-record-ink); font-weight: 600; font-feature-settings: "tnum"; }
 .library-window .live-levels progressbar trough { min-width: 30px; min-height: 4px; background: var(--app-record-trough); border-radius: 2px; }
 .library-window .live-levels progressbar progress { min-height: 4px; background: var(--app-record-bg); border-radius: 2px; }
-.library-window .static-stop:disabled { background: var(--app-record-bg); color: var(--app-record-fg); opacity: 1; min-height: 26px; padding: 0 9px; }
+.library-window .static-stop:disabled { background: var(--app-record-bg); color: var(--app-record-fg); opacity: 1; min-width: 56px; min-height: 26px; padding: 0 10px; border-radius: 999px; }
 
 /* UX3 / WP3 (L-22, L-24, L-43, L-44): right-pane Meeting view, inline speakers, Find bar, and floating player. */
 .meeting-pane { background: var(--cx-surface); color: var(--cx-ink); }
@@ -296,30 +302,41 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .meeting-transcript .words { font-size: 15px; line-height: 1.5; }
 .responsibility-card { background: var(--app-wash-subtle); border-radius: 12px; padding: 16px; }
 
-/* UX6 recording comfort. */
-.recording-page { background: var(--app-window-bg); color: var(--app-window-fg); }
-.recording-timer { font-size: 44px; font-weight: 600; font-feature-settings: "tnum"; letter-spacing: -0.8px; }
-.recording-dot { background: var(--app-record-bg); border-radius: 100px; box-shadow: 0 0 0 8px var(--app-record-halo); }
+/* UX6 & WP4 (L-12, L-20, L-47, L-48): right-pane live Recording view. */
+.recording-page { background: var(--cx-surface); color: var(--cx-ink); }
+.recording-body { padding: 24px 48px; }
+.recording-page.narrow .meeting-full-header,
+.recording-page.narrow .recording-body { padding-left: 20px; padding-right: 20px; }
+.recording-timer { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; letter-spacing: -0.8px; line-height: 1.1; color: var(--cx-ink); }
+.recording-dot { background: var(--app-record-dot); border-radius: 999px; box-shadow: 0 0 0 6px var(--app-record-halo); }
 .recording-dot.saving { opacity: 0.45; box-shadow: none; }
-.library-window .recording-stop { min-height: 48px; min-width: 110px; padding: 0; border-radius: 100px; font-size: 16px; }
-.library-window .recording-stop:disabled { background: var(--app-record-bg); background-image: none; color: var(--app-record-fg); opacity: 1; padding: 0 18px; }
+.library-window .recording-stop { min-height: 32px; min-width: 0; padding: 0 14px 0 12px; border-radius: 999px; font-size: 14px; font-weight: 600; }
+.recording-stop-glyph { background: var(--app-record-fg); border-radius: 2px; }
+.library-window .recording-stop:disabled { background: var(--app-record-bg); background-image: none; color: var(--app-record-fg); opacity: 1; padding: 0 14px; }
 .library-window .recording-stop:disabled label, .library-window .recording-stop:disabled spinner { opacity: 1; color: var(--app-record-fg); }
-.recording-title { min-height: 38px; font-size: 16px; padding: 0 12px; background: var(--app-view-bg); }
-.recording-sources { border: 1px solid var(--app-border); border-radius: 12px; }
-.recording-source { padding: 12px 16px; min-height: 38px; }
+.recording-title { min-height: 38px; font-size: 18px; font-weight: 600; padding: 0 12px; background: var(--cx-field); color: var(--cx-ink); border: 1px solid var(--cx-field-line); border-radius: 6px; }
+.recording-sources { background: var(--cx-surface); border: 1px solid var(--cx-line); border-radius: 12px; }
+.recording-source { padding: 12px 14px; min-height: 34px; }
+.recording-source-title { font-size: 15px; font-weight: 600; color: var(--cx-ink); }
+.recording-source-warning { font-size: 13px; color: var(--cx-warn-ink); }
 .recording-sources progressbar trough { min-width: 96px; min-height: 6px; border-radius: 2px; background: var(--app-wash-trough); }
 .recording-sources progressbar progress { min-height: 6px; background: var(--app-view-fg); }
 .mic-silent { background: var(--app-mic-silent-bg); color: var(--app-mic-silent-fg); border-radius: 11px 11px 0 0; }
-.mic-silent button { background: var(--app-mic-silent-btn-bg); color: var(--app-mic-silent-btn-fg); }
+.mic-silent .recording-source-title { color: var(--app-mic-silent-fg); }
+.mic-silent button { background: var(--app-mic-silent-btn-bg); color: var(--app-mic-silent-btn-fg); border: 1px solid var(--cx-line); border-radius: 6px; font-size: 13px; font-weight: 700; min-height: 28px; padding: 0 12px; }
 .mic-silent progressbar trough { background: var(--app-mic-silent-trough); }
-.recording-change { color: var(--app-accent-ink); font-size: 13px; font-weight: 600; margin: 0 8px; }
+.recording-source-sep { background: var(--cx-line-soft); min-height: 1px; }
+.recording-change-row { padding: 12px 14px; min-height: 20px; border-radius: 0 0 11px 11px; }
+.recording-change-icon { color: var(--cx-ink-2); }
+.recording-change-label { font-size: 15px; font-weight: 500; color: var(--cx-ink); }
+.recording-change-chevron { color: var(--cx-ink-3); }
 .recording-path-card { background: var(--app-wash-subtle); border-radius: 12px; padding: 12px 14px; }
 .what-is-recorded { font-size: 15px; }
 .what-is-recorded .small, .what-is-recorded .subtitle { font-size: 13px; }
 .what-is-recorded .title-2 { font-size: 20px; }
 .what-is-recorded row { min-height: 60px; }
 .what-is-recorded row .title { font-weight: 600; }
-.library-window .static-stop { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; min-height: 26px; padding: 0 9px; }
+.library-window .static-stop { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; font-size: 13px; min-width: 56px; min-height: 26px; padding: 0 10px; border-radius: 999px; }
 .library-window .live-pill button.flat { min-height: 0; min-width: 0; padding: 0; }
 
 .live-levels progressbar.mic-silent-meter trough { background: var(--app-live-silent-trough); }

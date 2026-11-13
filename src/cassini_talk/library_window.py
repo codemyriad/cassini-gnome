@@ -569,7 +569,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         ):
             return self.meeting_page.focus_find()
         if (
-            not self.recording_page
+            not (self.recording_page and (self._external_meeting or self._text_focused()))
             and not self._external_meeting
             and self.root_box.get_visible_child_name() == "library"
         ):
@@ -814,7 +814,19 @@ class LibraryWindow(Adw.ApplicationWindow):
             css_classes=["cassini-record"] + (["big-record"] if big else []),
             action_name="app.record",
         )
-        button.set_child(Adw.ButtonContent(icon_name="media-record-symbolic", label=text("common.record")))
+        content = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        content.append(
+            Gtk.Box(
+                width_request=9,
+                height_request=9,
+                valign=Gtk.Align.CENTER,
+                css_classes=["record-button-dot"],
+                accessible_role=Gtk.AccessibleRole.PRESENTATION,
+            )
+        )
+        content.append(Gtk.Label(label=text("common.record")))
+        button.set_child(content)
+        button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.record")])
         return button
 
     def import_button(self):
@@ -968,12 +980,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         stack = Gtk.Stack(hhomogeneous=False, vhomogeneous=False)
         stack.add_named(self._record(), "record")
         live = Gtk.Box(
-            spacing=10, css_classes=["live-pill"], valign=Gtk.Align.CENTER, tooltip_text=text("recording.pill.noSleep")
+            spacing=8, css_classes=["live-pill"], valign=Gtk.Align.CENTER, tooltip_text=text("recording.pill.noSleep")
         )
         live.append(
             Gtk.Box(
-                width_request=10,
-                height_request=10,
+                width_request=8,
+                height_request=8,
                 valign=Gtk.Align.CENTER,
                 css_classes=["live-dot"],
                 accessible_role=Gtk.AccessibleRole.PRESENTATION,
@@ -1184,6 +1196,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.detail_stack.add_named(empty_pane, "empty")
         self.meeting_slot = Adw.Bin(vexpand=True, hexpand=True)
         self.detail_stack.add_named(self.meeting_slot, "meeting")
+        self.recording_slot = Adw.Bin(vexpand=True, hexpand=True)
+        self.detail_stack.add_named(self.recording_slot, "recording")
         self.search_detail_slot = Adw.Bin(vexpand=True, hexpand=True)
         self.detail_stack.add_named(self.search_detail_slot, "search")
         self.detail_stack.set_visible_child_name("empty")
@@ -1276,7 +1290,14 @@ class LibraryWindow(Adw.ApplicationWindow):
             target = (
                 next((m for m in self.snapshot.meetings if m.key == controls["meeting"]), None)
                 if controls["meeting"]
-                else live
+                else (
+                    next(
+                        (m for m in self.snapshot.meetings if m.key == self.recording_page.meeting.key),
+                        self.recording_page.meeting,
+                    )
+                    if self.recording_page is not None and not self._external_meeting
+                    else live
+                )
             )
             local_native = app.comfort._native_for(target) if target else native
             local_stopping = recorder_stopping(local_native)
@@ -1361,8 +1382,22 @@ class LibraryWindow(Adw.ApplicationWindow):
             (entry["id"], entry.get("callGeneration"), entry.get("title"), entry.get("caption"), pending)
             for entry in getattr(app, "recording_failures", ())
         )
-        selected = app.comfort.status(self.selected) if self.selected else {}
-        live = bool(self.selected and self.selected.lifecycle in ("recording", "saving"))
+        shown_in_right_recording = bool(
+            self.recording_page is not None
+            and not self._external_meeting
+            and self.selected is not None
+            and self.recording_page.meeting.key == self.selected.key
+            and not (
+                hasattr(self, "split")
+                and self.split is not None
+                and self.split.get_collapsed()
+                and not self.split.get_show_content()
+            )
+        )
+        selected = app.comfort.status(self.selected) if self.selected and not shown_in_right_recording else {}
+        live = bool(
+            self.selected and not shown_in_right_recording and self.selected.lifecycle in ("recording", "saving")
+        )
         fallback = bool(live and app.comfort.sources(self.selected).fallback)
         refused = tuple(tuple(sorted(line.items())) for line in self._refusal_lines(self.selected)) if live else ()
         signature = selected.get("line"), selected.get("minutes", 0), message, fallback, banner, refused, meetings
@@ -1616,9 +1651,52 @@ class LibraryWindow(Adw.ApplicationWindow):
         app = self.get_application()
         if app is not None and str(meeting.directory) == getattr(app, "_pending_recording", None):
             return False
-        return not (self.recording_page or self.search_page or self._external_meeting)
+        return not (self.search_page or self._external_meeting)
+
+    def _is_live_detail_ready(self, meeting):
+        if meeting is None or meeting.lifecycle not in ("recording", "saving"):
+            return False
+        app = self.get_application()
+        if app is not None:
+            if str(meeting.directory) == getattr(app, "_pending_recording", None):
+                return False
+            comfort = getattr(app, "comfort", None)
+            native = comfort._native_for(meeting) if comfort is not None and hasattr(comfort, "_native_for") else None
+            if native is not None and getattr(native, "starting", False):
+                return False
+        return not (self.search_page or self._external_meeting)
+
+    def _show_right_recording(self, meeting):
+        from .recording_page import RecordingPage
+
+        LibraryWindow._close_right_meeting(self, keep_content=True)
+        if (
+            self.recording_page is None
+            or self.recording_page.get_parent() is not self.recording_slot
+            or self.recording_page.meeting.key != meeting.key
+        ):
+            if self.recording_page is not None and not self._external_meeting:
+                self.recording_page.close()
+            self.recording_page = RecordingPage(self, meeting)
+            self.recording_slot.set_child(self.recording_page)
+        else:
+            self.recording_page.update(meeting)
+        self.detail_stack.set_visible_child_name("recording")
+
+    def _close_right_recording(self, *, keep_content=False):
+        if self.recording_page is not None and not self._external_meeting:
+            self.recording_page.close()
+            self.recording_page = None
+        if hasattr(self, "recording_slot"):
+            self.recording_slot.set_child(None)
+        if not keep_content and not self.meeting_page and not self.search_page:
+            if hasattr(self, "detail_stack"):
+                self.detail_stack.set_visible_child_name("empty")
+            if hasattr(self, "split"):
+                self.split.set_show_content(False)
 
     def _show_right_meeting(self, meeting, *, rebind_player=False, reset_scroll=False):
+        LibraryWindow._close_right_recording(self, keep_content=True)
         if self.meeting_page is None or self.meeting_page.get_parent() is not self.meeting_slot:
             if self.meeting_page is not None and not self._external_meeting:
                 self.meeting_page.close()
@@ -1630,16 +1708,17 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.meeting_page.select_meeting(meeting, reset_scroll=reset_scroll)
         self.detail_stack.set_visible_child_name("meeting")
 
-    def _close_right_meeting(self):
+    def _close_right_meeting(self, *, keep_content=False):
         if self.meeting_page is not None and not self._external_meeting:
             self.meeting_page.close()
             self.meeting_page = None
         if hasattr(self, "meeting_slot"):
             self.meeting_slot.set_child(None)
-        if hasattr(self, "detail_stack"):
-            self.detail_stack.set_visible_child_name("empty")
-        if hasattr(self, "split"):
-            self.split.set_show_content(False)
+        if not keep_content and not self.recording_page and not self.search_page:
+            if hasattr(self, "detail_stack"):
+                self.detail_stack.set_visible_child_name("empty")
+            if hasattr(self, "split"):
+                self.split.set_show_content(False)
 
     def _project_activity(self, snapshot):
         meetings = tuple(
@@ -1685,10 +1764,17 @@ class LibraryWindow(Adw.ApplicationWindow):
             if current and (current.lifecycle in ("recording", "saving") or self.get_application()._quitting):
                 self.recording_page.update(current)
             elif current:
-                self.back_to_library()
+                if self._external_meeting:
+                    self.back_to_library()
+                else:
+                    LibraryWindow._close_right_recording(self, keep_content=True)
                 self.open_meeting(current)
             else:
-                self.back_to_library()
+                if self._external_meeting:
+                    self.back_to_library()
+                else:
+                    LibraryWindow._close_right_recording(self)
+                    self._stop_playback(clear_selection=True)
         self.open_pending_recording()
         if self.meeting_page and not self._external_meeting:
             current = next((m for m in snapshot.meetings if m.key == self.meeting_page.meeting.key), None)
@@ -1803,12 +1889,14 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.selected = None
         if snapshot.unavailable:
             if not self._external_meeting and not self.search_page:
+                LibraryWindow._close_right_recording(self)
                 LibraryWindow._close_right_meeting(self)
                 self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("library" if self.search_page else "offline")
             self._list_signature = ("offline",)
         elif not snapshot.meetings and not active_imports:
             if not self._external_meeting and not self.search_page:
+                LibraryWindow._close_right_recording(self)
                 LibraryWindow._close_right_meeting(self)
                 self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("library" if self.search_page else "empty")
@@ -1849,18 +1937,21 @@ class LibraryWindow(Adw.ApplicationWindow):
                 default_row = next(
                     (r for r in self._row_by_key.values() if LibraryWindow._is_saved_detail_ready(self, r.meeting)),
                     None,
-                ) or next(iter(self._row_by_key.values()), None)
+                )
                 self.rows.select_row(selected or default_row)
             else:
                 self.rows.select_row(None)
-            if not was_library and not self.search_page and (selected or default_row) and hasattr(self, "search_entry"):
+            focus_row = (
+                selected or default_row or (next(iter(self._row_by_key.values()), None) if not was_library else None)
+            )
+            if not was_library and not self.search_page and focus_row and hasattr(self, "search_entry"):
                 current_focus = self.get_focus()
                 if (
                     current_focus is None
                     or current_focus is self.search_entry
                     or current_focus.is_ancestor(self.search_entry)
                 ):
-                    self.set_focus(selected or default_row)
+                    self.set_focus(focus_row)
             if selected:
                 self._pending_selection = None
             self._list_signature = ("library", layout) if snapshot.meetings else ("empty_importing",)
@@ -1967,14 +2058,23 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _selected(self, _rows, row):
         if row is None or not hasattr(row, "meeting"):
             self.selected = None
-            if not self._external_meeting and not self.search_page and not self.recording_page:
+            if not self._external_meeting and not self.search_page:
+                was_recording = bool(self.recording_page)
+                close_rec = getattr(self, "_close_right_recording", None)
+                if close_rec is not None:
+                    close_rec()
                 self._close_right_meeting()
                 self._stop_playback(clear_selection=True)
+                if was_recording and not self._updating_rows_selection:
+                    update_live = getattr(self, "_update_live", None)
+                    if update_live is not None:
+                        update_live()
             self._recording_line(getattr(self.get_application(), "recorder", None))
             self._refresh_export()
             return
         meeting = row.meeting
-        if not self._external_meeting and not self.search_page and not self.recording_page:
+        if not self._external_meeting and not self.search_page:
+            was_recording = bool(self.recording_page)
             if self._preview_key != meeting.key:
                 self._stop_playback()
             elif not meeting.has_audio:
@@ -1984,6 +2084,9 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._preview_key = meeting.key
             self.selected = meeting
             if LibraryWindow._is_saved_detail_ready(self, meeting):
+                close_rec = getattr(self, "_close_right_recording", None)
+                if close_rec is not None:
+                    close_rec(keep_content=True)
                 ensure_player = getattr(self, "_ensure_player", None)
                 if ensure_player is not None:
                     if not self._playback_failed and not ensure_player(meeting):
@@ -1998,7 +2101,35 @@ class LibraryWindow(Adw.ApplicationWindow):
                     self._show_right_meeting(meeting)
                 if not self._updating_rows_selection:
                     self.split.set_show_content(True)
+                if was_recording and not self._updating_rows_selection:
+                    update_live = getattr(self, "_update_live", None)
+                    if update_live is not None:
+                        update_live()
+            elif (
+                self.recording_page is not None
+                and not self._external_meeting
+                and self.recording_page.meeting.key == meeting.key
+                and meeting.lifecycle in ("recording", "saving")
+            ):
+                show_rec = getattr(self, "_show_right_recording", None)
+                if show_rec is not None:
+                    show_rec(meeting)
+                if not self._updating_rows_selection:
+                    self.split.set_show_content(True)
+            elif (
+                not self._updating_rows_selection
+                and getattr(self, "_show_right_recording", None) is not None
+                and LibraryWindow._is_live_detail_ready(self, meeting)
+            ):
+                self._show_right_recording(meeting)
+                self.split.set_show_content(True)
+                update_live = getattr(self, "_update_live", None)
+                if update_live is not None:
+                    update_live()
             else:
+                close_rec = getattr(self, "_close_right_recording", None)
+                if close_rec is not None:
+                    close_rec()
                 self._close_right_meeting()
         else:
             self._preview_key = meeting.key
@@ -2123,7 +2254,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         finally:
             self._closing_search = False
         self.sidebar_stack.set_visible_child_name("library")
-        self.detail_stack.set_visible_child_name("meeting" if self.meeting_page else "empty")
+        self.detail_stack.set_visible_child_name(
+            "recording"
+            if self.recording_page and not self._external_meeting
+            else ("meeting" if self.meeting_page else "empty")
+        )
         self._stop_playback()
         self._queue_sidebar_scrolled()
 
@@ -2136,10 +2271,13 @@ class LibraryWindow(Adw.ApplicationWindow):
             if focus:
                 self.search_entry.grab_focus()
             return
-        if self._external_meeting or self.recording_page:
+        if self._external_meeting:
             self._pop_pushed_pages()
-        elif self.meeting_page:
-            self._close_right_meeting()
+        else:
+            if self.recording_page:
+                self._close_right_recording()
+            if self.meeting_page:
+                self._close_right_meeting()
         self._stop_playback()
         if self.root_box.get_visible_child_name() != "library":
             self.root_box.set_visible_child_name("library")
@@ -2161,9 +2299,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         was_external = self._external_meeting
         if self.search_page:
             self._close_search()
-        if self.recording_page:
+        if self.recording_page and self._external_meeting:
             self.recording_page.close()
             self.recording_page = None
+            self._external_meeting = False
         if self.meeting_page and self._external_meeting:
             self.meeting_page.close()
             self.meeting_page = None
@@ -2178,23 +2317,46 @@ class LibraryWindow(Adw.ApplicationWindow):
         if (
             self.recording_page
             and self.recording_page.meeting.key == meeting.key
+            and self._external_meeting == external
             and meeting.lifecycle in ("recording", "saving")
         ):
+            if not external:
+                self.split.set_show_content(True)
             return
-        if self._external_meeting or self.recording_page or self.search_page:
+        if self._external_meeting or self.search_page:
             self._pop_pushed_pages()
         if meeting.lifecycle in ("recording", "saving"):
-            self._close_right_meeting()
-            self._stop_playback()
-            self._external_meeting = external
-            from .recording_page import RecordingPage
+            if external:
+                self._close_right_recording()
+                self._close_right_meeting()
+                self._stop_playback()
+                self._external_meeting = True
+                from .recording_page import RecordingPage
 
-            self.recording_page = RecordingPage(self, meeting)
-            self.navigation.push(self.recording_page)
+                self.recording_page = RecordingPage(self, meeting)
+                self.navigation.push(self.recording_page)
+                self._update_live()
+                self._refresh_export()
+                return
+            self._stop_playback()
+            self._external_meeting = False
+            self._preview_key = meeting.key
+            self.selected = meeting
+            row = self._row_by_key.get(meeting.key)
+            if row is not None and self.rows.get_selected_row() is not row:
+                self.rows.handler_block(self._selection_handler)
+                self.rows.select_row(row)
+                self.rows.handler_unblock(self._selection_handler)
+            if self.root_box.get_visible_child_name() != "library":
+                self.root_box.set_visible_child_name("library")
+            self._show_right_recording(meeting)
+            self.split.set_show_content(True)
+            self._recording_line(getattr(self.get_application(), "recorder", None))
             self._update_live()
             self._refresh_export()
             return
         if external:
+            self._close_right_recording()
             self._close_right_meeting()
             self._stop_playback()
             self._external_meeting = True
@@ -2253,7 +2415,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.back_to_library()
 
     def back_to_library(self, *_):
-        had_pushed = bool(self.search_page or self.recording_page or self._external_meeting)
+        had_pushed = bool(self.search_page or self._external_meeting)
         if had_pushed:
             self._pop_pushed_pages()
             if self.snapshot is not None and not self.snapshot.meetings and not self._active_import_list():
@@ -2267,6 +2429,20 @@ class LibraryWindow(Adw.ApplicationWindow):
                     self._selected(self.rows, target_row)
                 finally:
                     self._updating_rows_selection = False
+            self._refresh_export()
+            return
+        if self.recording_page and not self._external_meeting:
+            self.set_title(text("app.name"))
+            self.rows.handler_block(self._selection_handler)
+            self.rows.select_row(None)
+            self.rows.handler_unblock(self._selection_handler)
+            self.selected = None
+            self._close_right_recording()
+            self._stop_playback(clear_selection=True)
+            self.split.set_show_content(False)
+            if self.snapshot is not None and not self.snapshot.meetings and not self._active_import_list():
+                self.root_box.set_visible_child_name("offline" if self.snapshot.unavailable else "empty")
+            self._recording_line(getattr(self.get_application(), "recorder", None))
             self._refresh_export()
             return
         self.set_title(text("app.name"))
