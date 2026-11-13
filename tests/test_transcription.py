@@ -1023,7 +1023,141 @@ def test_stop_queued_and_published_library_v2_transcription(tmp_path, monkeypatc
         finished.wait(3, exactly=True)
         stopped_running = next(m for m in LibraryScanner(tmp_path).scan().meetings if m.directory == published_session)
         assert stopped_running.transcript == "none" and stopped_running.can_write_down and stopped_running.error is None
+        assert [w.text for w in stopped_running.words] == ["Published"]
+        assert stopped_running.published_file is not None and stopped_running.published_file.is_file()
+        embedded = portable.read_meeting(str(stopped_running.published_file))
+        assert embedded.is_readable
+        assert [w.text for w in portable.load_words(embedded, embedded.default_transcript_id)] == ["Published"]
         assert (published_session / ".recognition-cache.json").is_file()
     finally:
         release_blocker.set()
+        queue.close()
+
+
+def test_stop_during_voice_extraction_preserves_dirty_recognition_cache_and_words(tmp_path):
+    from cassini_talk.voice_store import VoiceStore
+    from cassini_talk.voices_logic import DIMENSION
+
+    session = capture(tmp_path)
+    store = VoiceStore(tmp_path / "private")
+    store.refresh()
+    finished = Finished()
+    voice_entered = threading.Event()
+    stop_completed = threading.Event()
+    voice_calls = []
+
+    class ReadyModels:
+        def request(self, _directory, *, origin="own"):
+            return dict(modelPath=str(tmp_path / "model.onnx"), runtimePath=str(tmp_path), origin=origin)
+
+        def measured(self, _rtf):
+            pass
+
+        def snapshot(self):
+            return dict(ready=True)
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            self.cancelled = threading.Event()
+            self.recognition_cache = None
+
+        def start(self):
+            return self
+
+        def cancel(self):
+            self.cancelled.set()
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            if self.recognition_cache and Path(self.recognition_cache["path"]).is_file():
+                cached = json.loads(Path(self.recognition_cache["path"]).read_text())["segments"]
+                assert set(cached) == {"1" * 64, "2" * 64}
+            else:
+                for key, start_ms, end_ms, word in (
+                    ("1" * 64, 0, 250, "First"),
+                    ("2" * 64, 300, 550, "Second"),
+                ):
+                    notify(
+                        dict(
+                            type="planning",
+                            trackId=tracks[0]["id"],
+                            cacheEntry=dict(
+                                key=key,
+                                text=word,
+                                words=[dict(startMs=start_ms, endMs=end_ms, text=word)],
+                                language="en",
+                            ),
+                        )
+                    )
+                    notify(
+                        dict(
+                            type="progress",
+                            trackId=tracks[0]["id"],
+                            trackOrder=0,
+                            language="en",
+                            etaMinutes=1,
+                            words=[dict(startMs=start_ms, endMs=end_ms, text=word)],
+                        )
+                    )
+                return dict(diagnostics=[], segments=2)
+            for start_ms, end_ms, word in ((0, 250, "First"), (300, 550, "Second")):
+                notify(
+                    dict(
+                        type="progress",
+                        trackId=tracks[0]["id"],
+                        trackOrder=0,
+                        language="en",
+                        etaMinutes=0,
+                        words=[dict(startMs=start_ms, endMs=end_ms, text=word)],
+                    )
+                )
+            return dict(diagnostics=[], segments=2)
+
+        def voiceprints(self, _tracks, _options, heartbeat):
+            voice_calls.append(len(voice_calls) + 1)
+            if len(voice_calls) == 1:
+                voice_entered.set()
+                durable(self.cancelled, "stop() did not cancel voice extraction")
+                heartbeat()
+                raise AssertionError("cancelled voice extraction continued past heartbeat")
+            vec = [0.0] * DIMENSION
+            vec[0] = 1.0
+            return {"others": dict(embedding=vec, seconds=8)}
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        client_factory=Client,
+        root=tmp_path,
+        bundle=tmp_path,
+        diarization_models=ReadyModels(),
+        voice_models=ReadyModels(),
+        voice_store=store,
+    )
+    try:
+        assert queue.enqueue(session.directory)
+        durable(voice_entered, "job never entered saved-voice extraction")
+        assert queue.stop(session.directory, done=stop_completed.set)
+        durable(stop_completed, "stop() during voice extraction did not complete")
+        finished.wait(1, exactly=True)
+
+        cache_path = session.directory / ".recognition-cache.json"
+        assert cache_path.is_file()
+        assert set(json.loads(cache_path.read_text())["segments"]) == {"1" * 64, "2" * 64}
+        assert not (store.root / "meetings" / (session.directory.name + ".json")).exists()
+
+        stopped = LibraryScanner(tmp_path).scan().meetings[0]
+        assert stopped.transcript == "none" and stopped.can_write_down and stopped.error is None
+        assert [w.text for w in stopped.words] == ["First", "Second"]
+
+        assert queue.enqueue(session.directory)
+        finished.wait(2, exactly=True)
+        resumed = LibraryScanner(tmp_path).scan().meetings[0]
+        assert resumed.transcript == "done"
+        assert [w.text for w in resumed.words] == ["First", "Second"]
+        assert not cache_path.exists()
+        assert (store.root / "meetings" / (session.directory.name + ".json")).is_file()
+    finally:
         queue.close()

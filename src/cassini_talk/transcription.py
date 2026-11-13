@@ -315,6 +315,14 @@ def unassigned_voice(identifier, colour_index, source):
     return dict(id=identifier, name=None, provenance="unnamed", colourIndex=colour_index, voiceSource=dict(source))
 
 
+def _retained_snapshot(directory):
+    try:
+        snapshot = transcript_snapshot(directory)
+    except (OSError, ValueError):
+        return None
+    return snapshot if snapshot is not None and len(snapshot["items"]) > 0 else None
+
+
 def _retained_count(directory):
     """How many words the working snapshot holds, which a new attempt keeps until it catches up.
 
@@ -324,10 +332,7 @@ def _retained_count(directory):
     a failure leaves as they were, so they would let a shorter retry overwrite the
     longer snapshot. A missing or unreadable sidecar retains nothing.
     """
-    try:
-        snapshot = transcript_snapshot(directory)
-    except (OSError, ValueError):
-        return 0
+    snapshot = _retained_snapshot(directory)
     return len(snapshot["items"]) if snapshot is not None else 0
 
 
@@ -897,160 +902,176 @@ class TranscriptionQueue:
                 complete = recognised_summary
                 self.client.close()
                 self.client = self.client_model = None
+            if not self.closed and directory not in self._cancelled_meetings:
+                flush_cache()
+            self._check_open()
+            if diarization is not None and complete.get("diarization"):
+                from .diarization import apply_transcript, voice_source
+                from .worker_diarization import FORMAT, valid_group
+
+                result = complete["diarization"]
+                self.diarization_models.measured(result.get("realtimeFactor"))
+                groups = [
+                    {key: value for key, value in g.items() if key != "final"}
+                    for identifier, g in turn_groups.items()
+                    if identifier in result["groupIds"] and g["final"] and valid_group(g)
+                ]
+                if groups:
+                    # D64: every listed track's id and lane is taken, readable or not.
+                    words, voices = apply_transcript(publisher.words, groups, reserved=reserved)
+                    with transaction(directory):
+                        if self.closed:
+                            raise CancelledError()
+                        self._owned(directory)
+                        atomic_json(
+                            directory / "speaker-turns.json",
+                            dict(format=FORMAT, model=result["model"], params=result["params"], groups=groups),
+                            before_commit=self._check_open,
+                        )
+                        # G12: every re-diarized group, conclusive or not, rebinds its old voice names.
+                        sources = {g["id"]: voice_source(g["inputSHA256"], g["turns"]) for g in groups}
+                        speakers.update(voices)
+                        update_progress_metadata(
+                            directory,
+                            speakers,
+                            check_active=self._check_open,
+                            transient=True,
+                            voice_sources=sources,
+                            reserved=reserved,
+                        )
+                        if voices:
+                            publisher.reassign(words)
+                if separation["reason"] != "notApplicable":
+                    separation = separation_result(result, groups, reused_groups)
+                complete.setdefault("diagnostics", []).extend(result.get("diagnostics", []))
+            elif diarization is not None and separation["reason"] != "notApplicable":
+                separation = dict(status="failed", reason="processingFailed")
+            for diagnostic in complete.get("diagnostics", []):
+                LOG.warning("Transcription diagnostic: %s", diagnostic)
+            self._check_open()
+            # A completed transcript is published once, after optional attribution.
+            # Until this succeeds the running job remains resumable after restart.
+            publisher.flush(force=True, complete=True)
+            if voices_options and self.client is not None:
+                try:
+                    with transaction(directory):
+                        history = read_metadata(directory).get("speakerMerges", [])
+                    prints = self.client.voiceprints(
+                        tracks,
+                        # G14: recordings live now, not at job start: one may have begun while writing down.
+                        dict(
+                            voices_options,
+                            directory=str(directory),
+                            speakerMerges=history,
+                            recordingDirectories=self._live_recordings(),
+                            reservedSpeakers=sorted(reserved),
+                        ),
+                        self._check_open,
+                    )
+                    self._check_open()
+
+                    def apply_names(names):
+                        with mutation(directory):
+                            self._check_open()
+                            self._owned(directory)
+                            current = read_metadata(directory)
+                            if current.get("speakerMerges", []) != history:
+                                raise ValueError("Speaker merges changed during voice extraction")
+                            entries = {s["id"]: dict(s) for s in current["speakers"]}
+                            for identifier, name in names.items():
+                                previous = entries.get(identifier, {})
+                                if (
+                                    previous.get("provenance") != "user"
+                                    and not previous.get("nameCleared")
+                                    and identifier in speakers
+                                ):
+                                    speakers[identifier] = dict(
+                                        speakers[identifier], name=name, provenance="recognised"
+                                    )
+                                    entries[identifier] = speakers[identifier]
+                            if list(entries.values()) != current["speakers"]:
+                                update_metadata(
+                                    directory, speakers=list(entries.values()), before_commit=self._check_open
+                                )
+
+                    def voice_active():
+                        self._check_open()
+                        if read_metadata(directory).get("speakerMerges", []) != history:
+                            raise ValueError("Speaker merges changed during voice extraction")
+
+                    def auto_eligible():
+                        # commit_job evaluates this under the same metadata lock
+                        # held through naming, so a concurrent Clear cannot race it.
+                        protected = {
+                            s["id"]
+                            for s in read_metadata(directory)["speakers"]
+                            if s.get("provenance") == "user" or s.get("nameCleared")
+                        }
+                        return prints.keys() - protected
+
+                    self.voice_store.commit_job(
+                        directory,
+                        prints,
+                        voice_generation,
+                        check_active=voice_active,
+                        apply_names=apply_names,
+                        auto_eligible=auto_eligible,
+                        voice_sources={s: e["voiceSource"] for s, e in speakers.items() if "voiceSource" in e},
+                    )
+                except CancelledError:
+                    raise
+                except Exception:
+                    self._check_open()
+                    LOG.exception("Saved voice extraction failed; keeping the completed transcript")
+                    self.client.close()
+                    self.client = self.client_model = None
+            facts = dict(
+                wallDurationMs=max(0, min(9007199254740991, int((self.clock() - started) * 1000))),
+                resumed=(metadata.get("transcript") or {}).get("status") in ("queued", "running"),
+                speakerSeparation=separation,
+            )
+            segments = complete.get("segments")
+            if type(segments) is int and 0 <= segments <= 9007199254740991:
+                facts["speechSegments"] = segments
+            if source_diagnostics:
+                facts["sourceSpansSeparated"] = True
+            if (fallback := recognition_fallback(complete.get("fallback"))) is not None:
+                facts["recognitionFallback"] = fallback
+            if offsets_assumed_zero(tracks):
+                facts["offsetsAssumedZero"] = True
+            if left_out := silent_tracks(tracks):
+                facts["silentTracks"] = left_out
+            with mutation(directory):
+                self._check_open()
+                # End facts or other metadata may have arrived while this job ran.
+                details = writing_details(read_metadata(directory).get("recordingDetails", {}), facts)
+                update_progress_metadata(
+                    directory,
+                    speakers,
+                    transcript=dict(status="done", reference=REFERENCE, model=tag),
+                    transcript_body=transcript_snapshot(directory),
+                    recordingDetails=details,
+                    etaMinutes=None,
+                    error=None,
+                    check_active=self._check_open,
+                )
         except BaseException:
             # Keep the useful partial snapshot on real errors or explicit Stop.
             # App shutdown and Trash retain the last published one without starting a write.
             if not self.closed and directory not in self._cancelled_meetings:
                 flush_cache()
-                if publisher.flush(force=True):
-                    self.changed(directory)
-            raise
-        self._check_open()
-        if diarization is not None and complete.get("diarization"):
-            from .diarization import apply_transcript, voice_source
-            from .worker_diarization import FORMAT, valid_group
-
-            result = complete["diarization"]
-            self.diarization_models.measured(result.get("realtimeFactor"))
-            groups = [
-                {key: value for key, value in g.items() if key != "final"}
-                for identifier, g in turn_groups.items()
-                if identifier in result["groupIds"] and g["final"] and valid_group(g)
-            ]
-            if groups:
-                # D64: every listed track's id and lane is taken, readable or not.
-                words, voices = apply_transcript(publisher.words, groups, reserved=reserved)
-                with transaction(directory):
-                    if self.closed:
-                        raise CancelledError()
-                    self._owned(directory)
-                    atomic_json(
-                        directory / "speaker-turns.json",
-                        dict(format=FORMAT, model=result["model"], params=result["params"], groups=groups),
-                        before_commit=self._check_open,
-                    )
-                    # G12: every re-diarized group, conclusive or not, rebinds its old voice names.
-                    sources = {g["id"]: voice_source(g["inputSHA256"], g["turns"]) for g in groups}
-                    speakers.update(voices)
+                flushed = publisher.flush(force=True)
+                if publisher.published > 0:
                     update_progress_metadata(
                         directory,
                         speakers,
-                        check_active=self._check_open,
+                        check_active=self._check_not_trashed,
                         transient=True,
-                        voice_sources=sources,
                         reserved=reserved,
                     )
-                    if voices:
-                        publisher.reassign(words)
-            if separation["reason"] != "notApplicable":
-                separation = separation_result(result, groups, reused_groups)
-            complete.setdefault("diagnostics", []).extend(result.get("diagnostics", []))
-        elif diarization is not None and separation["reason"] != "notApplicable":
-            separation = dict(status="failed", reason="processingFailed")
-        for diagnostic in complete.get("diagnostics", []):
-            LOG.warning("Transcription diagnostic: %s", diagnostic)
-        self._check_open()
-        # A completed transcript is published once, after optional attribution.
-        # Until this succeeds the running job remains resumable after restart.
-        publisher.flush(force=True, complete=True)
-        if voices_options and self.client is not None:
-            try:
-                with transaction(directory):
-                    history = read_metadata(directory).get("speakerMerges", [])
-                prints = self.client.voiceprints(
-                    tracks,
-                    # G14: recordings live now, not at job start: one may have begun while writing down.
-                    dict(
-                        voices_options,
-                        directory=str(directory),
-                        speakerMerges=history,
-                        recordingDirectories=self._live_recordings(),
-                        reservedSpeakers=sorted(reserved),
-                    ),
-                    self._check_open,
-                )
-                self._check_open()
-
-                def apply_names(names):
-                    with mutation(directory):
-                        self._check_open()
-                        self._owned(directory)
-                        current = read_metadata(directory)
-                        if current.get("speakerMerges", []) != history:
-                            raise ValueError("Speaker merges changed during voice extraction")
-                        entries = {s["id"]: dict(s) for s in current["speakers"]}
-                        for identifier, name in names.items():
-                            previous = entries.get(identifier, {})
-                            if (
-                                previous.get("provenance") != "user"
-                                and not previous.get("nameCleared")
-                                and identifier in speakers
-                            ):
-                                speakers[identifier] = dict(speakers[identifier], name=name, provenance="recognised")
-                                entries[identifier] = speakers[identifier]
-                        if list(entries.values()) != current["speakers"]:
-                            update_metadata(directory, speakers=list(entries.values()), before_commit=self._check_open)
-
-                def voice_active():
-                    self._check_open()
-                    if read_metadata(directory).get("speakerMerges", []) != history:
-                        raise ValueError("Speaker merges changed during voice extraction")
-
-                def auto_eligible():
-                    # commit_job evaluates this under the same metadata lock
-                    # held through naming, so a concurrent Clear cannot race it.
-                    protected = {
-                        s["id"]
-                        for s in read_metadata(directory)["speakers"]
-                        if s.get("provenance") == "user" or s.get("nameCleared")
-                    }
-                    return prints.keys() - protected
-
-                self.voice_store.commit_job(
-                    directory,
-                    prints,
-                    voice_generation,
-                    check_active=voice_active,
-                    apply_names=apply_names,
-                    auto_eligible=auto_eligible,
-                    voice_sources={s: e["voiceSource"] for s, e in speakers.items() if "voiceSource" in e},
-                )
-            except CancelledError:
-                raise
-            except Exception:
-                LOG.exception("Saved voice extraction failed; keeping the completed transcript")
-                self.client.close()
-                self.client = self.client_model = None
-        facts = dict(
-            wallDurationMs=max(0, min(9007199254740991, int((self.clock() - started) * 1000))),
-            resumed=(metadata.get("transcript") or {}).get("status") in ("queued", "running"),
-            speakerSeparation=separation,
-        )
-        segments = complete.get("segments")
-        if type(segments) is int and 0 <= segments <= 9007199254740991:
-            facts["speechSegments"] = segments
-        if source_diagnostics:
-            facts["sourceSpansSeparated"] = True
-        if (fallback := recognition_fallback(complete.get("fallback"))) is not None:
-            facts["recognitionFallback"] = fallback
-        if offsets_assumed_zero(tracks):
-            facts["offsetsAssumedZero"] = True
-        if left_out := silent_tracks(tracks):
-            facts["silentTracks"] = left_out
-        with mutation(directory):
-            self._check_open()
-            # End facts or other metadata may have arrived while this job ran.
-            details = writing_details(read_metadata(directory).get("recordingDetails", {}), facts)
-            update_progress_metadata(
-                directory,
-                speakers,
-                transcript=dict(status="done", reference=REFERENCE, model=tag),
-                transcript_body=transcript_snapshot(directory),
-                recordingDetails=details,
-                etaMinutes=None,
-                error=None,
-                check_active=self._check_open,
-            )
+                if flushed:
+                    self.changed(directory)
+            raise
         with contextlib.suppress(OSError):
             (directory / RECOGNITION_CACHE_FILE).unlink()
         self.changed(directory)
@@ -1313,7 +1334,8 @@ class TranscriptionQueue:
                 tx = dict(current.get("transcript") or {})
                 if tx.get("status") in ("queued", "running"):
                     prev_ref = tx.get("reference")
-                    if _retained_count(target) > 0:
+                    snapshot = _retained_snapshot(target)
+                    if snapshot is not None:
                         ref = REFERENCE
                     elif isinstance(prev_ref, dict) and prev_ref.get("kind") == "embedded":
                         ref = prev_ref
@@ -1324,6 +1346,7 @@ class TranscriptionQueue:
                     update_metadata(
                         target,
                         transcript=tx,
+                        transcript_body=snapshot,
                         etaMinutes=None,
                         error=None,
                         before_commit=lambda: self._abort_if_trashed(directory),
