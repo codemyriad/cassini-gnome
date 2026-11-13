@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 from .library import LibraryScanner, library_root, meeting_id, track_identity, track_rows
@@ -24,6 +25,18 @@ LOG = logging.getLogger(__name__)
 REFERENCE = dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
 RECOGNITION_CACHE_FILE = ".recognition-cache.json"
 RECOGNITION_CACHE_FORMAT = "cassini.recognition-cache.v1"
+TRANSCRIBING_STEPS = ("reading", "preparing", "words", "speakers", "saving")
+
+
+@dataclass(frozen=True)
+class TranscriptionProgress:
+    """Immutable snapshot of an active transcription job for UI status & popover."""
+
+    step: str
+    audio_done_ms: int | None = None
+    audio_total_ms: int | None = None
+    words_so_far: int = 0
+    eta_minutes: int | None = None
 
 
 def _read_recognition_cache_entries(directory, model):
@@ -467,7 +480,28 @@ class TranscriptionQueue:
         self._context = threading.local()
         self._active_directory = None
         self._prepare_futures, self._job_futures, self._voice_futures = {}, {}, {}
+        self._progress_details = {}
         self.closed = False
+
+    def progress_for(self, directory):
+        """Return the latest immutable TranscriptionProgress for directory, if active."""
+        key = Path(directory).absolute()
+        with self.lock:
+            return self._progress_details.get(key)
+
+    def _set_progress(self, directory, **updates):
+        key = Path(directory).absolute()
+        with self.lock:
+            current = self._progress_details.get(key) or TranscriptionProgress(step="reading")
+            values = {
+                "step": current.step,
+                "audio_done_ms": current.audio_done_ms,
+                "audio_total_ms": current.audio_total_ms,
+                "words_so_far": current.words_so_far,
+                "eta_minutes": current.eta_minutes,
+            }
+            values.update(updates)
+            self._progress_details[key] = TranscriptionProgress(**values)
 
     def transcribing(self, directory):
         """Whether a job for this meeting is queued or running (it may re-diarize)."""
@@ -643,6 +677,7 @@ class TranscriptionQueue:
 
     def _completed(self, directory, *, job_future=None):
         with self.lock:
+            self._progress_details.pop(Path(directory).absolute(), None)
             retired = self._retire_locked(directory, job_future=job_future)
         if retired:
             self.finished(directory)
@@ -713,6 +748,14 @@ class TranscriptionQueue:
         started = self.clock()
         self._check_open()
         directory = meeting.directory
+        self._set_progress(
+            directory,
+            step="reading",
+            audio_done_ms=0,
+            audio_total_ms=meeting.duration_ms,
+            words_so_far=len(meeting.words),
+            eta_minutes=None,
+        )
         # Select on this owner thread when the job starts, never at enqueue.
         from .parakeet_model import MODEL_ID, MODEL_TAG
 
@@ -727,6 +770,7 @@ class TranscriptionQueue:
             before_commit=self._check_open,
         )
         self.changed(directory)
+        self._set_progress(directory, step="preparing")
         if self.client and (self.client_model != selected or selected == MODEL_ID):
             self.client.close()
             self.client = None
@@ -843,12 +887,17 @@ class TranscriptionQueue:
             if "cacheEntry" in value:
                 record_cache(value["cacheEntry"])
             if value["type"] == "planning":
+                self._set_progress(directory, step="preparing")
                 return
             if value["type"] == "recognised":
                 recognised_summary = value["summary"]
             if value["type"] == "diarized":
                 from .worker_diarization import valid_group
 
+                current = self.progress_for(directory)
+                if current is None or current.step != "speakers":
+                    self._set_progress(directory, step="speakers", words_so_far=len(publisher.words))
+                    self.changed(directory)
                 group_id = value["groupId"]
                 if value["first"]:
                     if value.get("reused") is True:
@@ -882,8 +931,28 @@ class TranscriptionQueue:
                 published = publisher.flush()
                 if published:
                     flush_cache()
+                done_s = value.get("doneSeconds")
+                total_s = value.get("totalSeconds")
+                self._set_progress(
+                    directory,
+                    step="words",
+                    audio_done_ms=round(done_s * 1000) if isinstance(done_s, (int, float)) else None,
+                    audio_total_ms=round(total_s * 1000) if isinstance(total_s, (int, float)) else meeting.duration_ms,
+                    words_so_far=len(publisher.words),
+                    eta_minutes=value.get("etaMinutes"),
+                )
             else:
                 published = False
+                if value["type"] == "planned":
+                    total_s = value.get("totalSeconds")
+                    self._set_progress(
+                        directory,
+                        step="words",
+                        audio_total_ms=round(total_s * 1000)
+                        if isinstance(total_s, (int, float))
+                        else meeting.duration_ms,
+                        eta_minutes=value.get("etaMinutes"),
+                    )
             updated = update_progress_metadata(
                 directory, speakers, etaMinutes=value["etaMinutes"], check_active=self._check_open, transient=True
             )
@@ -1041,6 +1110,8 @@ class TranscriptionQueue:
                 facts["offsetsAssumedZero"] = True
             if left_out := silent_tracks(tracks):
                 facts["silentTracks"] = left_out
+            self._set_progress(directory, step="saving", words_so_far=len(publisher.words), eta_minutes=0)
+            self.changed(directory)
             with mutation(directory):
                 self._check_open()
                 # End facts or other metadata may have arrived while this job ran.

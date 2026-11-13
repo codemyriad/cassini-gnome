@@ -1161,3 +1161,69 @@ def test_stop_during_voice_extraction_preserves_dirty_recognition_cache_and_word
         assert (store.root / "meetings" / (session.directory.name + ".json")).is_file()
     finally:
         queue.close()
+
+
+def test_progress_for_tracks_steps_and_clears_on_completion(tmp_path):
+    session = capture(tmp_path)
+    gate = threading.Event()
+    entered_words = threading.Event()
+    finished = Finished()
+    seen_progress = []
+
+    class ProgressClient:
+        def __init__(self, *_args, **_kwargs):
+            self.recognition_cache = None
+
+        def start(self):
+            return self
+
+        def cancel(self):
+            pass
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            notify(dict(type="planning", trackId=tracks[0]["id"]))
+            notify(dict(type="planned", etaMinutes=4, segments=1, totalSeconds=12.0))
+            notify(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=2,
+                    doneSeconds=6.0,
+                    totalSeconds=12.0,
+                    words=[dict(startMs=0, endMs=500, text="Hello"), dict(startMs=600, endMs=1000, text="world")],
+                )
+            )
+            entered_words.set()
+            assert gate.wait(timeout=5)
+            return dict(language="en", segments=1)
+
+    queue = TranscriptionQueue(
+        lambda _directory: seen_progress.append(queue.progress_for(session.directory)),
+        finished,
+        client_factory=ProgressClient,
+        root=tmp_path,
+        bundle=tmp_path,
+    )
+    try:
+        assert queue.progress_for(session.directory) is None
+        assert queue.enqueue(session.directory)
+        assert entered_words.wait(timeout=5)
+        mid = queue.progress_for(session.directory)
+        assert mid is not None
+        assert mid.step == "words"
+        assert mid.audio_done_ms == 6000
+        assert mid.audio_total_ms == 12000
+        assert mid.words_so_far == 2
+        assert mid.eta_minutes == 2
+        gate.set()
+        finished.wait(1, exactly=True)
+        assert queue.progress_for(session.directory) is None
+        assert any(p is not None and p.step == "saving" for p in seen_progress)
+    finally:
+        gate.set()
+        queue.close()

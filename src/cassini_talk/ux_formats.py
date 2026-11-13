@@ -192,6 +192,29 @@ def eta(minutes):
     return plural("states.badge.transcribing", minutes)
 
 
+def transcribing_status(minutes):
+    """Return (status_text, bold_prefix_utf8_bytes) for the Meeting view L-45 line."""
+    if minutes is None:
+        return text("states.badge.transcribing.noEta"), 0
+    if type(minutes) is not int or minutes < 0:
+        raise ValueError("Expected nonnegative integer minutes")
+    if minutes == 0:
+        return text("states.badge.transcribing.underMinute"), 0
+    heading = text("transcribing.heading")
+    return f"{heading} · {plural('transcribing.eta.minutes', minutes)}", len(heading.encode("utf-8"))
+
+
+def transcribing_time_left(minutes):
+    """Return formatted Time left stat value for the L-45 transcribing popover."""
+    if minutes is None:
+        return "—"
+    if type(minutes) is not int or minutes < 0:
+        raise ValueError("Expected nonnegative integer minutes")
+    if minutes == 0:
+        return text("states.badge.transcribing.underMinute")
+    return plural("transcribing.stat.timeLeftValue", minutes)
+
+
 def search_count(places, meetings):
     return text(
         "format.searchCount.join",

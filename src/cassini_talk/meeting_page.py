@@ -240,6 +240,7 @@ class MeetingPage(Adw.NavigationPage):
         outer.append(self.full_header)
 
         self.stop_transcription_button = None
+        self._build_transcribing_bar()
         self.reading_surface = box(vexpand=True, hexpand=True, css_classes=["meeting-reading-surface"])
         self.recording_notice = box(margin_start=48, margin_end=48, margin_top=8, visible=False)
         self._notice_signature = None
@@ -1181,6 +1182,7 @@ class MeetingPage(Adw.NavigationPage):
             trash_allowed or (meeting.published_file is not None and not meeting.metadata_editable)
         )
         folder_name = (meeting.metadata.get("received") or {}).get("originalFolderName")
+        tx_state = self._transcribing_state(meeting) if meeting.transcript in ("queued", "running") else None
         signature = (
             meeting.key,
             undo,
@@ -1199,6 +1201,7 @@ class MeetingPage(Adw.NavigationPage):
             meeting.transcript,
             stopping,
             meeting.eta_minutes,
+            tx_state,
             meeting.error,
             meeting.publication_notice,
             meeting.metadata_editable,
@@ -1242,8 +1245,14 @@ class MeetingPage(Adw.NavigationPage):
         self._finish_merge_transition()
         self._listening_changed()
 
-        while child := self.lines.get_first_child():
-            self.lines.remove(child)
+        trash_error = self.window.trash_error_line(meeting)
+        transcribing_active = not trash_error and meeting.transcript in ("queued", "running")
+        child = self.lines.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            if not (transcribing_active and child is self._transcribing_bar):
+                self.lines.remove(child)
+            child = nxt
         self.stop_transcription_button = None
         if meeting.origin == "received" and isinstance(folder_name, str) and folder_name:
             card = Gtk.Box(spacing=12, css_classes=["received-folder"], valign=Gtk.Align.START, margin_bottom=8)
@@ -1263,48 +1272,45 @@ class MeetingPage(Adw.NavigationPage):
             self.lines.append(
                 InlineLine("meeting.interruptedAt", info=True, position=fmt.position(meeting.interrupted_at_ms))
             )
-        trash_error = self.window.trash_error_line(meeting)
         if trash_error:
+            self._transcribing_popover.popdown()
             self.lines.append(trash_error)
-        elif meeting.transcript in ("queued", "running"):
-            progress = Gtk.Box(spacing=12, css_classes=["inline-line", "info-line"])
-            progress.append(Gtk.Spinner(spinning=True, accessible_role=Gtk.AccessibleRole.PRESENTATION))
-            progress.append(label(fmt.eta(meeting.eta_minutes), xalign=0, wrap=True, hexpand=True))
-            if meeting.lifecycle == "saved" and meeting.metadata_editable:
-                stop = self.stop_transcription_button = Gtk.Button(
-                    label=text("common.stop"),
-                    valign=Gtk.Align.CENTER,
-                    sensitive=not stopping,
+        elif transcribing_active:
+            can_stop = meeting.lifecycle == "saved" and meeting.metadata_editable
+            self._update_transcribing_bar(tx_state, can_stop=can_stop, stopping=stopping)
+            if can_stop:
+                self.stop_transcription_button = self._transcribing_stop
+            if self._transcribing_bar.get_parent() is not self.lines:
+                self.lines.append(self._transcribing_bar)
+        else:
+            self._transcribing_popover.popdown()
+        if not trash_error and not transcribing_active:
+            if meeting.transcript == "damaged":
+                self.lines.append(InlineLine("errors.transcriptDamaged.line"))
+            elif meeting.transcript == "failed":
+                app = self.window.get_application()
+                retry = getattr(app, "write_down", None)
+                self.lines.append(
+                    InlineLine(
+                        "errors.transcribeFailed.line",
+                        action="common.tryAgain"
+                        if meeting.metadata_editable and getattr(app, "writing_available", True)
+                        else None,
+                        callback=(lambda: retry(meeting)) if retry and meeting.metadata_editable else None,
+                    )
                 )
-                stop.connect("clicked", lambda *_: self.window.get_application().stop_transcription(meeting))
-                progress.append(stop)
-            self.lines.append(progress)
-        elif meeting.transcript == "damaged":
-            self.lines.append(InlineLine("errors.transcriptDamaged.line"))
-        elif meeting.transcript == "failed":
-            app = self.window.get_application()
-            retry = getattr(app, "write_down", None)
-            self.lines.append(
-                InlineLine(
-                    "errors.transcribeFailed.line",
-                    action="common.tryAgain"
-                    if meeting.metadata_editable and getattr(app, "writing_available", True)
-                    else None,
-                    callback=(lambda: retry(meeting)) if retry and meeting.metadata_editable else None,
+            elif meeting.no_speech:
+                app = self.window.get_application()
+                self.lines.append(
+                    InlineLine(
+                        "transcript.noSpeech",
+                        info=True,
+                        action="transcript.writeDownAgain"
+                        if meeting.can_write_down and getattr(app, "writing_available", True)
+                        else None,
+                        callback=lambda: app.write_down(meeting),
+                    )
                 )
-            )
-        elif meeting.no_speech:
-            app = self.window.get_application()
-            self.lines.append(
-                InlineLine(
-                    "transcript.noSpeech",
-                    info=True,
-                    action="transcript.writeDownAgain"
-                    if meeting.can_write_down and getattr(app, "writing_available", True)
-                    else None,
-                    callback=lambda: app.write_down(meeting),
-                )
-            )
         self.lines.set_visible(self.lines.get_first_child() is not None)
 
         # Only changed timed text replaces transcript items. Metadata/theme
@@ -1776,8 +1782,223 @@ class MeetingPage(Adw.NavigationPage):
         self.window.listen.stop()
         self._listening_changed()
 
+    def _build_transcribing_bar(self):
+        self._transcribing_bar = Gtk.Box(
+            spacing=12,
+            css_classes=["transcribing-bar"],
+            valign=Gtk.Align.START,
+        )
+        spinner = Gtk.Spinner(
+            spinning=True,
+            valign=Gtk.Align.CENTER,
+            css_classes=["transcribing-spinner"],
+            accessible_role=Gtk.AccessibleRole.PRESENTATION,
+        )
+        self._transcribing_bar.append(spinner)
+
+        center = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, hexpand=True, valign=Gtk.Align.CENTER)
+        self._transcribing_status_label = label("", "transcribing-status", xalign=0, wrap=True)
+        center.append(self._transcribing_status_label)
+        self._transcribing_progress = Gtk.ProgressBar(css_classes=["transcribing-progress"], hexpand=True)
+        center.append(self._transcribing_progress)
+        self._transcribing_bar.append(center)
+
+        actions = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+        self._transcribing_stop = Gtk.Button(
+            label=text("common.stop"),
+            valign=Gtk.Align.CENTER,
+            css_classes=["transcribing-stop"],
+        )
+        self._transcribing_stop.connect(
+            "clicked", lambda *_: self.window.get_application().stop_transcription(self.meeting)
+        )
+        actions.append(self._transcribing_stop)
+
+        self._transcribing_popover = self._build_transcribing_popover()
+        self._transcribing_details_btn = Gtk.MenuButton(
+            icon_name="pan-down-symbolic",
+            tooltip_text=text("transcribing.details.a11y"),
+            popover=self._transcribing_popover,
+            css_classes=["flat", "circular", "transcribing-details-btn"],
+            valign=Gtk.Align.CENTER,
+        )
+        self._transcribing_details_btn.update_property(
+            [Gtk.AccessibleProperty.LABEL], [text("transcribing.details.a11y")]
+        )
+        actions.append(self._transcribing_details_btn)
+        self._transcribing_bar.append(actions)
+
+    def _build_transcribing_popover(self):
+        pop_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["transcribing-popover"])
+        pop_box.set_size_request(260, -1)
+        pop_box.append(label(text("transcribing.heading"), "transcribing-popover-title", xalign=0))
+
+        steps_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self._transcribing_step_rows = []
+        for step_id, key in (
+            ("reading", "transcribing.step.reading"),
+            ("preparing", "transcribing.step.preparing"),
+            ("words", "transcribing.step.words"),
+            ("speakers", "transcribing.step.speakers"),
+            ("saving", "transcribing.step.saving"),
+        ):
+            row = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER, css_classes=["transcribing-step-row", "pending"])
+            stack = Gtk.Stack(hhomogeneous=True, vhomogeneous=True, valign=Gtk.Align.CENTER)
+            stack.set_size_request(16, 16)
+            stack.add_named(
+                Gtk.Image(
+                    icon_name="object-select-symbolic",
+                    pixel_size=14,
+                    css_classes=["transcribing-step-done-icon"],
+                    accessible_role=Gtk.AccessibleRole.PRESENTATION,
+                ),
+                "done",
+            )
+            stack.add_named(
+                Gtk.Spinner(
+                    spinning=True,
+                    css_classes=["transcribing-spinner"],
+                    accessible_role=Gtk.AccessibleRole.PRESENTATION,
+                ),
+                "active",
+            )
+            dot = Gtk.Box(
+                width_request=6,
+                height_request=6,
+                halign=Gtk.Align.CENTER,
+                valign=Gtk.Align.CENTER,
+                css_classes=["transcribing-step-dot"],
+            )
+            stack.add_named(dot, "pending")
+            stack.set_visible_child_name("pending")
+            row.append(stack)
+            row.append(label(text(key), "transcribing-step-label", xalign=0, hexpand=True))
+            steps_box.append(row)
+            self._transcribing_step_rows.append((step_id, row, stack))
+        pop_box.append(steps_box)
+
+        pop_box.append(Gtk.Separator())
+
+        stats = Gtk.Grid(column_spacing=16, row_spacing=6)
+        self._transcribing_audio_val = label("—", "transcribing-stat-value", xalign=1, hexpand=True)
+        self._transcribing_time_val = label("—", "transcribing-stat-value", xalign=1, hexpand=True)
+        self._transcribing_words_val = label("0", "transcribing-stat-value", xalign=1, hexpand=True)
+        for row_idx, (stat_key, val_widget) in enumerate(
+            (
+                ("transcribing.stat.audioDone", self._transcribing_audio_val),
+                ("transcribing.stat.timeLeft", self._transcribing_time_val),
+                ("transcribing.stat.wordsSoFar", self._transcribing_words_val),
+            )
+        ):
+            stats.attach(label(text(stat_key), "transcribing-stat-label", xalign=0), 0, row_idx, 1, 1)
+            stats.attach(val_widget, 1, row_idx, 1, 1)
+        pop_box.append(stats)
+
+        self._transcribing_stop_keep = Gtk.Button(
+            label=text("transcribing.stopAndKeepProgress"),
+            css_classes=["transcribing-stop-keep"],
+            hexpand=True,
+        )
+        self._transcribing_stop_keep.connect("clicked", self._on_transcribing_stop_keep)
+        pop_box.append(self._transcribing_stop_keep)
+
+        pop_box.append(
+            label(
+                text("transcribing.backgroundNote"),
+                "transcribing-popover-note",
+                xalign=0,
+                wrap=True,
+                max_width_chars=32,
+            )
+        )
+        popover = Gtk.Popover(child=pop_box)
+        popover.set_halign(Gtk.Align.END)
+        return popover
+
+    def _on_transcribing_stop_keep(self, *_args):
+        self._transcribing_popover.popdown()
+        self.window.get_application().stop_transcription(self.meeting)
+
+    def _transcribing_state(self, meeting):
+        app = self.window.get_application()
+        transcriber = getattr(app, "transcriber", None)
+        live = transcriber.progress_for(meeting.directory) if transcriber is not None else None
+        if live is None:
+            step = (
+                "words"
+                if (meeting.transcript == "running" and (meeting.words or meeting.eta_minutes is not None))
+                else "preparing"
+            )
+            done_ms = (
+                max((w.end_ms for w in meeting.words), default=0)
+                if meeting.words
+                else (0 if meeting.duration_ms else None)
+            )
+            total_ms = meeting.duration_ms
+            words_count = len(meeting.words)
+            eta_minutes = meeting.eta_minutes
+        else:
+            step = live.step
+            done_ms = live.audio_done_ms
+            total_ms = live.audio_total_ms if live.audio_total_ms is not None else meeting.duration_ms
+            words_count = max(live.words_so_far, len(meeting.words))
+            eta_minutes = meeting.eta_minutes if meeting.eta_minutes is not None else live.eta_minutes
+        return (step, done_ms, total_ms, words_count, eta_minutes)
+
+    def _update_transcribing_bar(self, tx_state, *, can_stop, stopping):
+        step, done_ms, total_ms, words_count, eta_minutes = tx_state
+        status_text, bold_bytes = fmt.transcribing_status(eta_minutes)
+        self._transcribing_status_label.set_label(status_text)
+        attrs = Pango.AttrList()
+        if bold_bytes:
+            attr = Pango.attr_weight_new(Pango.Weight.BOLD)
+            attr.start_index = 0
+            attr.end_index = bold_bytes
+            attrs.insert(attr)
+        self._transcribing_status_label.set_attributes(attrs)
+
+        if total_ms and done_ms is not None:
+            fraction = min(1.0, max(0.0, done_ms / total_ms))
+        elif step in ("speakers", "saving"):
+            fraction = 1.0
+        else:
+            fraction = 0.0
+        self._transcribing_progress.set_fraction(fraction)
+
+        self._transcribing_stop.set_visible(can_stop)
+        self._transcribing_stop.set_sensitive(can_stop and not stopping)
+        self._transcribing_stop_keep.set_visible(can_stop)
+        self._transcribing_stop_keep.set_sensitive(can_stop and not stopping)
+
+        step_order = ("reading", "preparing", "words", "speakers", "saving")
+        active_idx = step_order.index(step) if step in step_order else 1
+        for idx, (_sid, row, stack) in enumerate(self._transcribing_step_rows):
+            for cls in ("done", "active", "pending"):
+                row.remove_css_class(cls)
+            if idx < active_idx:
+                state_name = "done"
+            elif idx == active_idx:
+                state_name = "active"
+            else:
+                state_name = "pending"
+            row.add_css_class(state_name)
+            stack.set_visible_child_name(state_name)
+
+        if total_ms and done_ms is not None:
+            audio_text = text(
+                "transcribing.stat.audioDoneValue",
+                done=fmt.position(min(done_ms, total_ms)),
+                total=fmt.position(total_ms),
+            )
+        else:
+            audio_text = "—"
+        self._transcribing_audio_val.set_label(audio_text)
+        self._transcribing_time_val.set_label(fmt.transcribing_time_left(eta_minutes))
+        self._transcribing_words_val.set_label(fmt.number(words_count))
+
     def close(self):
         self._closed = True
+        self._transcribing_popover.popdown()
         if hasattr(self, "listening_keys"):
             self.listening_keys.close()
         if self._header_source:

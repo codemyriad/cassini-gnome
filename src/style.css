@@ -299,6 +299,30 @@ row.error-line .title { color: var(--app-error-line-fg); }
 label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-line-fg); }
 .info-line { background: var(--app-accent-tint); }
 .info-line > label, .info-line > image, .info-line > spinner { color: var(--app-accent-ink); }
+/* WP5 (L-45, L-48): transcribing status bar, thin progress bar, Stop pill, and details popover. */
+.transcribing-bar { background: color-mix(in srgb, var(--cx-ink) 4%, var(--cx-surface)); border: 1px solid var(--cx-line-soft); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+.transcribing-spinner { color: var(--cx-accent); }
+.transcribing-status { font-size: 14px; color: var(--cx-ink); font-variant-numeric: tabular-nums; }
+.transcribing-progress trough { min-height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--cx-ink) 10%, transparent); }
+.transcribing-progress progress { min-height: 4px; border-radius: 2px; background: var(--cx-accent); }
+.transcribing-stop { min-height: 30px; padding: 0 12px; border-radius: 999px; background: color-mix(in srgb, var(--cx-ink) 10%, transparent); color: var(--cx-ink); font-size: 13px; font-weight: 600; }
+.transcribing-stop:hover { background: color-mix(in srgb, var(--cx-ink) 15%, transparent); }
+.transcribing-stop:disabled { opacity: 0.45; }
+.transcribing-details-btn { min-width: 28px; min-height: 28px; padding: 0; color: var(--cx-ink-2); }
+.transcribing-popover { padding: 6px; }
+.transcribing-popover-title { font-size: 14px; font-weight: 700; color: var(--cx-ink); }
+.transcribing-step-done-icon { color: var(--cx-accent); }
+.transcribing-step-dot { border-radius: 999px; background: var(--cx-ink-3); }
+.transcribing-step-label { font-size: 13.5px; }
+.transcribing-step-row.pending .transcribing-step-label { color: var(--cx-ink-3); }
+.transcribing-step-row.done .transcribing-step-label { color: var(--cx-ink-2); }
+.transcribing-step-row.active .transcribing-step-label { color: var(--cx-ink); font-weight: 600; }
+.transcribing-stat-label { font-size: 13px; color: var(--cx-ink-2); }
+.transcribing-stat-value { font-size: 13px; font-weight: 600; color: var(--cx-ink); font-variant-numeric: tabular-nums; }
+.transcribing-stop-keep { min-height: 32px; padding: 0 12px; border-radius: 6px; background: color-mix(in srgb, var(--cx-ink) 10%, transparent); color: var(--cx-ink); font-size: 13px; font-weight: 600; }
+.transcribing-stop-keep:hover { background: color-mix(in srgb, var(--cx-ink) 15%, transparent); }
+.transcribing-stop-keep:disabled { opacity: 0.45; }
+.transcribing-popover-note { font-size: 12px; color: var(--cx-ink-2); }
 .meeting-transcript .words { font-size: 15px; line-height: 1.5; }
 .responsibility-card { background: var(--app-wash-subtle); border-radius: 12px; padding: 16px; }
 

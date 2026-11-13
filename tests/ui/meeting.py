@@ -222,10 +222,27 @@ with tempfile.TemporaryDirectory() as temporary:
         assert not page.write_button.get_visible()
         running = replace(meeting, transcript="running", eta_minutes=3)
         sync_snapshot(running)
-        assert "Transcribing · 3 min" in labels(page.lines)
+        assert "Transcribing · about 3 min left" in labels(page.lines)
         assert page._turns == running.turns, "Progress must not hide already written words"
         assert page.stop_transcription_button is not None and page.stop_transcription_button.get_label() == "Stop"
         assert page.stop_transcription_button.get_sensitive()
+        pop_labels = labels(page._transcribing_popover.get_child())
+        for expected in (
+            "Transcribing",
+            "Reading",
+            "Preparing",
+            "Words",
+            "Speakers & matching",
+            "Saving",
+            "Audio done",
+            "Time left",
+            "About 3 min",
+            "Words so far",
+            "Stop and keep progress",
+            "Keeps going in the background while Cassini is open.",
+        ):
+            assert expected in pop_labels, f"Missing {expected!r} in transcribing popover: {pop_labels}"
+        assert "Battery at finish" not in pop_labels
         shot(window, "-transcribing")
         with patch.object(app, "stop_transcription") as stop_call:
             page.stop_transcription_button.emit("clicked")

@@ -553,12 +553,13 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recogni
             chunks=meter.wrap(audio_chunks(track)),
         ):
             plan.append((order, track, segment, offset))
-    remaining = sum((s["endSample"] - s["startSample"]) / RATE for _, _, s, _ in plan)
+    total_seconds = remaining = sum((s["endSample"] - s["startSample"]) / RATE for _, _, s, _ in plan)
     initial_factor = getattr(model, "initial_realtime_factor", 0.15)
     notify(
         "planned",
         etaMinutes=math.ceil((remaining * initial_factor + extra_seconds) / 60),
         segments=len(plan),
+        totalSeconds=total_seconds,
         diagnostics=diagnostics,
     )
     elapsed = processed = 0.0
@@ -574,7 +575,15 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recogni
         nonlocal language
         language = event["language"]
         # A held event goes out after later tracks: its ETA is the one when sent.
-        notify("progress", **dict(event, etaMinutes=eta()))
+        notify(
+            "progress",
+            **dict(
+                event,
+                etaMinutes=eta(),
+                doneSeconds=max(0.0, total_seconds - remaining),
+                totalSeconds=total_seconds,
+            ),
+        )
 
     def recognise(order, track, segment, offset, samples, audio_end):
         nonlocal elapsed, processed, remaining
