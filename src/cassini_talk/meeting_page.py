@@ -152,6 +152,7 @@ class MeetingPage(Adw.NavigationPage):
         header.pack_end(self.export_button)
         self.write_button = Gtk.Button(label=text("common.writeDown"), visible=False)
         self.write_button.connect("clicked", lambda *_: window.get_application().write_down(self.meeting))
+        self.stop_transcription_button = None
         header.pack_end(self.write_button)
         content.add_top_bar(header)
         center = box()
@@ -708,8 +709,12 @@ class MeetingPage(Adw.NavigationPage):
             )
         )
         self.total.set_label(fmt.position(meeting.duration_ms or 0))
-        writing = getattr(self.window.get_application(), "writing_available", True)
-        self.write_button.set_visible(writing and meeting.can_write_down and meeting.transcript == "none")
+        app = self.window.get_application()
+        writing = getattr(app, "writing_available", True)
+        stopping = app.transcription_stopping(meeting) if hasattr(app, "transcription_stopping") else False
+        self.write_button.set_visible(
+            writing and meeting.can_write_down and meeting.transcript == "none" and not stopping
+        )
         self.seek.set_range(0, max(1, meeting.duration_ms or 1))
         if not self.window._playback_failed and self.window._loaded_key != meeting.key:
             self.window._ensure_player(meeting)
@@ -761,6 +766,7 @@ class MeetingPage(Adw.NavigationPage):
             meeting.speakers,
             meeting.interrupted_at_ms,
             meeting.transcript,
+            stopping,
             meeting.eta_minutes,
             meeting.error,
             meeting.publication_notice,
@@ -806,6 +812,7 @@ class MeetingPage(Adw.NavigationPage):
             self.speakers.append(self.name_speakers_button)
         while child := self.lines.get_first_child():
             self.lines.remove(child)
+        self.stop_transcription_button = None
         publication = self.window.publication_line(meeting)
         if publication:
             self.lines.append(publication)
@@ -820,6 +827,14 @@ class MeetingPage(Adw.NavigationPage):
             progress = Gtk.Box(spacing=12, css_classes=["inline-line", "info-line"])
             progress.append(Gtk.Spinner(spinning=True, accessible_role=Gtk.AccessibleRole.PRESENTATION))
             progress.append(label(fmt.eta(meeting.eta_minutes), xalign=0, wrap=True, hexpand=True))
+            if meeting.lifecycle == "saved" and meeting.metadata_editable:
+                stop = self.stop_transcription_button = Gtk.Button(
+                    label=text("common.stop"),
+                    valign=Gtk.Align.CENTER,
+                    sensitive=not stopping,
+                )
+                stop.connect("clicked", lambda *_: self.window.get_application().stop_transcription(meeting))
+                progress.append(stop)
             self.lines.append(progress)
         elif meeting.transcript == "damaged":
             self.lines.append(InlineLine("errors.transcriptDamaged.line"))

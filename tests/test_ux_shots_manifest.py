@@ -42,6 +42,7 @@ def test_write_manifest_normalizes_pairs_locales_and_scales(tmp_path):
         ("first-run-pt-BR.png", "light", (8, 8)), ("dark/first-run-pt-BR.png", "dark", (8, 8)),
         ("w2-badges-it.png", "light", (8, 8)), ("dark/w2-badges-it.png", "dark", (8, 8)),
         ("what-is-recorded-browser.png", "light", (8, 8)), ("what-is-recorded-browser-dark.png", "dark", (8, 8)),
+        ("meeting-gui-transcribing.png", "light", (8, 8)), ("meeting-gui-transcribing-dark.png", "dark", (8, 8)),
         ("companion-health-light.png", "light", (8, 8)), ("companion-health-dark.png", "dark", (8, 8)),
         ("library-saving.png", "light", (8, 8)), ("dark/library-saving.png", "dark", (8, 8)),
         ("recording-saving.png", "light", (8, 8)), ("dark/recording-saving.png", "dark", (8, 8)),
@@ -58,6 +59,7 @@ def test_write_manifest_normalizes_pairs_locales_and_scales(tmp_path):
     by_key = {row["key"]: row for row in rows}
     assert by_key["library.light"]["board"] == "Main"
     assert by_key["what-is-recorded-browser.dark"]["source"] == "tests/ui/what-is-recorded.py"
+    assert by_key["meeting-gui-transcribing.light"]["source"] == "tests/ui/meeting.py"
     assert by_key["recording-saving.light"]["source"] == "tests/ui/recording.py"
     assert by_key["library-saving.dark"]["source"] == "tests/ui/recording.py"
     assert by_key["first-run.dark.pt-br"]["lang"] == "pt-br"
