@@ -217,15 +217,15 @@ with tempfile.TemporaryDirectory() as temporary:
         begin_details()
         if key == "fallback":
             assert window.recording_page
-            window.recording_page.details_button.emit("clicked")
+            menu = window.recording_page.more_menu
         else:
             assert window.meeting_page
             menu = window.meeting_page.more_menu
-            assert any(
-                menu.get_item_attribute_value(i, "label", None).unpack() == "Recording details…"
-                for i in range(menu.get_n_items())
-            )
-            window.lookup_action("recording-details").activate(None)
+        assert any(
+            menu.get_item_attribute_value(i, "label", None).unpack() == "Recording details…"
+            for i in range(menu.get_n_items())
+        )
+        window.lookup_action("recording-details").activate(None)
         dialog = window.recording_details_dialog
         until(lambda dialog=dialog: dialog.report is not None)
         assert dialog.report.folder == str(paths[key])

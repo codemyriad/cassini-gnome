@@ -122,6 +122,50 @@ with tempfile.TemporaryDirectory() as tmp:
     window.open_meeting(live)
     page = window.recording_page
     assert page and not window.meeting_page and page.timer.get_label() == "00:12:48"
+    assert window.detail_stack.get_visible_child_name() == "recording"
+    assert page.get_parent() is window.recording_slot
+    assert window.navigation.get_navigation_stack().get_n_items() == 1
+    until(lambda: not window.split.get_collapsed() and window.sidebar_header.get_mapped() and page.get_mapped())
+    assert page.capture is window.capture_header
+    assert not page.back_button.get_visible()
+    assert not hasattr(page, "details_button")
+    assert any(
+        page.more_menu.get_item_attribute_value(i, "label", None).unpack() == "Recording details…"
+        for i in range(page.more_menu.get_n_items())
+    )
+    assert page.subtitle_label.get_label().startswith("Today, ")
+    assert not isinstance(page.mic_row.get_first_child(), Gtk.Image)
+    assert not isinstance(page.others_row.get_first_child(), Gtk.Image)
+    change_box = page.change_sources.get_child()
+    assert isinstance(change_box.get_first_child(), Gtk.Image)
+    assert isinstance(change_box.get_last_child(), Gtk.Image)
+    assert page.title_stack.get_visible_child_name() == "view"
+    page.rename_button.emit("clicked")
+    assert page.title_stack.get_visible_child_name() == "edit"
+    page.finish_rename()
+    assert page.title_stack.get_visible_child_name() == "view"
+
+    # Single-clicking a saved row vs live row swaps the right pane inside the split view.
+    saved_row = next(r for r in window._row_by_key.values() if r.meeting.lifecycle == "saved")
+    live_row = window._row_by_key[live.key]
+    window.rows.select_row(saved_row)
+    assert window.recording_page is None and window.meeting_page is not None
+    assert window.detail_stack.get_visible_child_name() == "meeting"
+    window.rows.select_row(live_row)
+    page = window.recording_page
+    assert page is not None and window.meeting_page is None
+    assert window.detail_stack.get_visible_child_name() == "recording"
+
+    # Narrow collapsed split-view shows the back button and returns to the list on win.back-library.
+    window.set_default_size(690, 720)
+    until(lambda: window.split.get_collapsed() and page.back_button.get_visible())
+    window.activate_action("win.back-library", None)
+    assert window.recording_page is None and not window.split.get_show_content()
+    window.set_default_size(1120, 720)
+    until(lambda: not window.split.get_collapsed())
+    window.open_meeting(live)
+    page = window.recording_page
+    assert page and not page.back_button.get_visible()
     from unittest.mock import patch
 
     with patch.object(Gio.AppInfo, "create_from_commandline", side_effect=GLib.Error("No control centre")):
@@ -197,6 +241,9 @@ with tempfile.TemporaryDirectory() as tmp:
         return result
 
     assert text("errors.othersFallback.line") in texts(page.lines), "Persistent fallback info missing"
+    assert not window.recording_lines.get_visible(), "Sidebar must not duplicate right-pane Recording info lines"
+    assert not any("Recording since" in t for t in texts(page) if t)
+    assert "Named from the meeting window. Rename it any time." not in texts(page)
     fallback_line = next(
         child
         for child in (page.lines.get_first_child(), page.lines.get_last_child())
@@ -616,7 +663,7 @@ with tempfile.TemporaryDirectory() as tmp:
         assert mux_row_meeting.lifecycle == "saving"
         assert text("states.badge.saving") in texts(mux_row_before)
         assert mux_entered.wait(10)
-        until(lambda: window.navigation.get_visible_page() is mux_page)
+        until(lambda: window.recording_page is mux_page and window.detail_stack.get_visible_child_name() == "recording")
         if output := os.environ.get("CASSINI_SCREENSHOT_OUT"):
             save_window_shot(Path(output).with_name("recording-saving.png"))
         release_mux.set()
@@ -635,7 +682,7 @@ with tempfile.TemporaryDirectory() as tmp:
         window._updated(window._source_snapshot)
         window.back_to_library()
         window.capture_changed()
-        until(lambda: window.navigation.get_visible_page() is not mux_page and window.recording_page is None)
+        until(lambda: window.recording_page is None and window.detail_stack.get_visible_child_name() != "recording")
         assert not window.live_stop.get_sensitive()
         assert window.live_stop.get_label() == text("states.badge.saving")
         if output := os.environ.get("CASSINI_SCREENSHOT_OUT"):
