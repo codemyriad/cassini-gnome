@@ -5,11 +5,11 @@ import logging
 import re
 from concurrent.futures import CancelledError
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from . import speaker_edits, ux_formats
 from .strings import text
-from .tokens import speaker_slot
+from .tokens import saved_voice_slot
 from .voices_logic import name_key, pick_name, ranked
 
 LOG = logging.getLogger(__name__)
@@ -21,7 +21,12 @@ class VoiceWriteError(OSError):
 
 class SpeakersDialog(Adw.Dialog):
     def __init__(self, page, identifier):
-        super().__init__(title=text("common.speakers"), content_width=520, css_classes=["speakers-dialog"])
+        super().__init__(
+            title=text("speakers.dialog.a11y"),
+            content_width=540,
+            css_classes=["speakers-dialog"],
+        )
+        self.update_property([Gtk.AccessibleProperty.LABEL], [text("speakers.dialog.a11y")])
         self.page, self.window = page, page.window
         self.meeting, self.identifier = page.meeting, identifier
         self.closed = self.busy = self.sample_active = False
@@ -39,30 +44,19 @@ class SpeakersDialog(Adw.Dialog):
         self.connect("closed", self._closed)
         content = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=8,
+            spacing=14,
             margin_top=20,
-            margin_bottom=16,
+            margin_bottom=20,
             margin_start=24,
             margin_end=24,
         )
-        self.set_child(
-            Gtk.ScrolledWindow(
-                child=content,
-                hscrollbar_policy=Gtk.PolicyType.NEVER,
-                propagate_natural_height=True,
-                max_content_height=660,
-            )
-        )
+        self.set_child(content)
         header = Gtk.Box(spacing=12)
-        self.avatar = Gtk.Label(css_classes=["speaker-avatar"])
-        header.append(self.avatar)
-        details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
-        self.heading = Gtk.Label(xalign=0, wrap=True, css_classes=["title-2"])
-        self.talk = Gtk.Label(xalign=0, wrap=True, css_classes=["small", "dim-label"])
+        details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
+        self.heading = Gtk.Label(xalign=0, wrap=True, css_classes=["speaker-dialog-heading"])
+        self.talk = Gtk.Label(xalign=0, wrap=True, css_classes=["speaker-dialog-meta"])
         details.append(self.heading)
         details.append(self.talk)
-        self.sample_from = Gtk.Label(xalign=0, css_classes=["small", "dim-label"])
-        details.append(self.sample_from)
         header.append(details)
         self.play = Gtk.Button(
             icon_name="media-playback-start-symbolic",
@@ -74,48 +68,82 @@ class SpeakersDialog(Adw.Dialog):
         self.play.connect("clicked", self._play)
         header.append(self.play)
         content.append(header)
+        self.quote = Gtk.Label(
+            xalign=0,
+            wrap=True,
+            lines=3,
+            ellipsize=Pango.EllipsizeMode.END,
+            visible=False,
+            css_classes=["speaker-dialog-quote"],
+        )
+        content.append(self.quote)
         field = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        name = Gtk.Label(label=text("speakers.nameLabel"), xalign=0, css_classes=["small", "heading"])
-        self.entry = Gtk.Entry(hexpand=True, activates_default=True)
+        name = Gtk.Label(label=text("speakers.nameLabel"), xalign=0, css_classes=["speaker-section-label"])
+        self.entry = Gtk.Entry(hexpand=True, activates_default=True, css_classes=["speaker-name-entry"])
         self.window.protect_text_input(self.entry)
         name.set_mnemonic_widget(self.entry)
         self.entry.update_property([Gtk.AccessibleProperty.LABEL], [text("speakers.nameLabel")])
         field.append(name)
         field.append(self.entry)
         content.append(field)
-        self.voices_heading = Gtk.Label(
-            label=text("speakers.savedVoices.heading"), xalign=0, css_classes=["small", "heading"], visible=False
+        self.duplicate = Gtk.Box(spacing=8, visible=False, css_classes=["speaker-duplicate"])
+        self.duplicate_title = Gtk.Label(
+            xalign=0,
+            wrap=True,
+            hexpand=True,
+            valign=Gtk.Align.CENTER,
+            css_classes=["speaker-duplicate-text"],
         )
-        content.append(self.voices_heading)
-        self.voices_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"], visible=False)
+        self.someone_else = Gtk.Button(
+            label=text("speakers.duplicate.someoneElse"),
+            valign=Gtk.Align.CENTER,
+            css_classes=["speaker-btn-secondary", "speaker-btn-small"],
+        )
+        self.same_person = Gtk.Button(
+            label=text("speakers.duplicate.samePerson"),
+            valign=Gtk.Align.CENTER,
+            css_classes=["suggested-action", "speaker-btn-primary", "speaker-btn-small"],
+        )
+        self.someone_else.connect("clicked", lambda *_: self._answer_duplicate(False))
+        self.same_person.connect("clicked", lambda *_: self._answer_duplicate(True))
+        self.duplicate.append(self.duplicate_title)
+        self.duplicate.append(self.someone_else)
+        self.duplicate.append(self.same_person)
+        content.append(self.duplicate)
+        self.voices_section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, visible=False)
+        self.voices_heading = Gtk.Label(
+            label=text("speakers.savedVoices.heading"),
+            xalign=0,
+            css_classes=["speaker-section-label"],
+            visible=False,
+        )
+        self.voices_section.append(self.voices_heading)
+        self.voices_list = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.NONE,
+            activate_on_single_click=True,
+            css_classes=["speaker-voices-list"],
+            visible=False,
+        )
+        self.voices_list.connect("row-activated", self._voice_row_activated)
         self.voices_scroll = Gtk.ScrolledWindow(
             child=self.voices_list,
             hscrollbar_policy=Gtk.PolicyType.NEVER,
             propagate_natural_height=True,
-            max_content_height=160,
+            max_content_height=138,
+            css_classes=["speaker-voices-scroll"],
             visible=False,
         )
-        content.append(self.voices_scroll)
-        self.duplicate = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL, spacing=8, visible=False, css_classes=["speaker-duplicate"]
+        self.voices_section.append(self.voices_scroll)
+        content.append(self.voices_section)
+        self.remember_card = Gtk.Box(spacing=16, css_classes=["speaker-remember-card"])
+        remember_copy = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
+        self.remember_title = Gtk.Label(
+            label=text("speakers.rememberVoice.title"),
+            xalign=0,
+            wrap=True,
+            css_classes=["speaker-remember-title"],
         )
-        self.duplicate_title = Gtk.Label(xalign=0, wrap=True, css_classes=["heading"])
-        self.duplicate.append(self.duplicate_title)
-        self.duplicate.append(Gtk.Label(label=text("speakers.duplicate.question"), xalign=0))
-        answers = Gtk.Box(spacing=8)
-        self.same_person = Gtk.Button(label=text("speakers.duplicate.samePerson"))
-        self.someone_else = Gtk.Button(label=text("speakers.duplicate.someoneElse"))
-        self.same_person.connect("clicked", lambda *_: self._answer_duplicate(True))
-        self.someone_else.connect("clicked", lambda *_: self._answer_duplicate(False))
-        answers.append(self.same_person)
-        answers.append(self.someone_else)
-        self.duplicate.append(answers)
-        content.append(self.duplicate)
-        self.remember = Gtk.CheckButton(label=text("speakers.rememberVoice"), active=True, sensitive=False)
-        self.remember.connect("toggled", self._remember_changed)
-        content.append(self.remember)
-        self.remember_description = Gtk.Label(xalign=0, wrap=True, css_classes=["caption", "dim-label"])
-        content.append(self.remember_description)
+        self.remember_description = Gtk.Label(xalign=0, wrap=True, css_classes=["speaker-remember-body"])
         self.voice_settings = Gtk.Button(
             label=text("speakers.rememberVoice.settings"),
             halign=Gtk.Align.START,
@@ -123,7 +151,20 @@ class SpeakersDialog(Adw.Dialog):
             visible=False,
         )
         self.voice_settings.connect("clicked", self._open_voice_settings)
-        content.append(self.voice_settings)
+        remember_copy.append(self.remember_title)
+        remember_copy.append(self.remember_description)
+        remember_copy.append(self.voice_settings)
+        self.remember = Gtk.Switch(
+            active=True,
+            sensitive=False,
+            valign=Gtk.Align.START,
+            css_classes=["speaker-remember-switch"],
+        )
+        self.remember.update_property([Gtk.AccessibleProperty.LABEL], [text("speakers.rememberVoice")])
+        self.remember.connect("notify::active", self._remember_changed)
+        self.remember_card.append(remember_copy)
+        self.remember_card.append(self.remember)
+        content.append(self.remember_card)
         self.error = Gtk.Label(
             label=text("speakers.changeFailed"),
             xalign=0,
@@ -132,16 +173,21 @@ class SpeakersDialog(Adw.Dialog):
             css_classes=["error", "error-line"],
         )
         content.append(self.error)
-        footer = Gtk.Box(spacing=8)
+        footer = Gtk.Box(spacing=8, margin_top=2)
         self.merge_menu = Gio.Menu()
         self.merge = Gtk.MenuButton(
-            label=text("speakers.mergeInto"), menu_model=self.merge_menu, css_classes=["flat", "accent"]
+            label=text("speakers.mergeInto"),
+            menu_model=self.merge_menu,
+            css_classes=["speaker-btn-secondary"],
         )
         footer.append(self.merge)
         footer.append(Gtk.Box(hexpand=True))
-        self.cancel = Gtk.Button(label=text("common.cancel"))
+        self.cancel = Gtk.Button(label=text("common.cancel"), css_classes=["speaker-btn-secondary"])
         self.cancel.connect("clicked", lambda *_: self.close())
-        self.save = Gtk.Button(label=text("speakers.saveName"), css_classes=["suggested-action"])
+        self.save = Gtk.Button(
+            label=text("speakers.saveName"),
+            css_classes=["suggested-action", "speaker-btn-primary"],
+        )
         self.save.connect("clicked", self._save)
         footer.append(self.cancel)
         footer.append(self.save)
@@ -161,10 +207,16 @@ class SpeakersDialog(Adw.Dialog):
         self.initial_name = value or ""
         self.entry.set_text(self.initial_name)
         self.entry.connect("changed", self._changed)
+        self.entry.connect("map", lambda *_: GLib.idle_add(self._place_caret))
         self._validate()
         self.set_default_widget(self.save)
         self.timer = GLib.timeout_add(50, self._tick)
         self._load_voices()
+
+    def _place_caret(self):
+        if not self.closed:
+            self.entry.set_position(-1)
+        return GLib.SOURCE_REMOVE
 
     def update(self, meeting):
         self.meeting = meeting
@@ -174,12 +226,10 @@ class SpeakersDialog(Adw.Dialog):
             return
         self.heading.set_label(speaker.name)
         self.talk.set_label(text("speakers.talkTime", talkTime=ux_formats.talk_time(speaker.talk_ms)))
-        self.avatar.set_css_classes(["speaker-avatar", f"speaker-avatar-{speaker_slot(speaker)}"])
-        self.avatar.set_label(str(speaker.colour_index + 1))
         self.sample = speaker.sample_span
-        self.sample_from.set_label(
-            text("speakers.sampleFrom", position=ux_formats.position(self.sample[0])) if self.sample else ""
-        )
+        line = speaker_edits.speaker_quote(meeting, self.identifier, self.sample)
+        self.quote.set_label(text("common.quote", quote=line) if line else "")
+        self.quote.set_visible(bool(line))
         self.merge_menu.remove_all()
         for target in meeting.speakers:
             if target.id != self.identifier:
@@ -226,8 +276,6 @@ class SpeakersDialog(Adw.Dialog):
         if voice and name_key(voice["name"]) == name_key(self.initial_name) == name_key(self.entry.get_text()):
             self.chosen_voice = voice["id"]
         self._voice_rows()
-        if state["voices"]:
-            self.set_content_height(660)
         self._validate()
         if self._voices_again:
             self._voices_again = False
@@ -251,21 +299,67 @@ class SpeakersDialog(Adw.Dialog):
             self.voice_data["embedding"] if self.voice_data else None,
             [v for v in self.voice_state["voices"] if v["id"] not in rejected],
         )
+        shown = 0
         for value in rows:
             voice = value["voice"]
             if voice["id"] in rejected:
                 continue
-            row = Adw.ActionRow(title=voice["name"], use_markup=False, activatable=True)
+            row = Gtk.ListBoxRow(activatable=True, css_classes=["speaker-voice-row"])
+            row._voice = voice
+            box = Gtk.Box(spacing=10, valign=Gtk.Align.CENTER)
+            slot = saved_voice_slot(voice)
+            avatar = Gtk.Label(
+                label=speaker_edits.voice_initial(voice["name"]),
+                valign=Gtk.Align.CENTER,
+                css_classes=["speaker-voice-avatar", f"speaker-avatar-{slot}"],
+            )
+            avatar.set_accessible_role(Gtk.AccessibleRole.PRESENTATION)
+            box.append(avatar)
+            labels_box = Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=1,
+                hexpand=True,
+                valign=Gtk.Align.CENTER,
+            )
+            labels_box.append(
+                Gtk.Label(
+                    label=voice["name"],
+                    xalign=0,
+                    ellipsize=Pango.EllipsizeMode.END,
+                    css_classes=["speaker-voice-name"],
+                )
+            )
+            a11y_parts = [voice["name"]]
             if value["stale"]:
-                row.set_subtitle(text("savedVoices.row.stale"))
+                stale_text = text("savedVoices.row.stale")
+                labels_box.append(Gtk.Label(label=stale_text, xalign=0, wrap=True, css_classes=["speaker-voice-stale"]))
+                a11y_parts.append(stale_text)
+            box.append(labels_box)
             if value["likely"]:
-                row.add_suffix(Gtk.Label(label=text("speakers.savedVoices.likely"), css_classes=["success", "caption"]))
-            row.connect("activated", lambda _row, v=voice: self._pick_voice(v))
+                likely_text = text("speakers.savedVoices.likely")
+                box.append(
+                    Gtk.Label(
+                        label=likely_text,
+                        valign=Gtk.Align.CENTER,
+                        css_classes=["speaker-likely-tag"],
+                    )
+                )
+                a11y_parts.append(likely_text)
+            row.set_child(box)
+            row.update_property([Gtk.AccessibleProperty.LABEL], [", ".join(a11y_parts)])
             self.voices_list.append(row)
-        visible = bool(rows)
+            shown += 1
+        visible = shown > 0
+        self.voices_scroll.set_min_content_height(min(138, shown * 46) if visible else -1)
+        self.voices_section.set_visible(visible)
         self.voices_heading.set_visible(visible)
         self.voices_list.set_visible(visible)
         self.voices_scroll.set_visible(visible)
+
+    def _voice_row_activated(self, _listbox, row):
+        voice = getattr(row, "_voice", None)
+        if voice is not None:
+            self._pick_voice(voice)
 
     def _pick_voice(self, voice):
         if self.busy:
@@ -319,10 +413,16 @@ class SpeakersDialog(Adw.Dialog):
         self.remember.set_sensitive(enough and writable and not self.busy)
         self.voices_list.set_sensitive(not self.busy)
         self.duplicate.set_sensitive(not self.busy)
+        typed = self.entry.get_text().strip()
+        remember_body = (
+            text("speakers.rememberVoice.cardBody.computer", name=typed)
+            if typed
+            else text("speakers.rememberVoice.cardBody.computer.unnamed")
+        )
         self.remember_description.set_label(
             text("savedVoices.newerVersion")
             if not writable
-            else text("speakers.rememberVoice.description", name=self.entry.get_text().strip())
+            else remember_body
             if enough
             else text("speakers.rememberVoice.modelsNeeded")
             if not ready
@@ -330,10 +430,11 @@ class SpeakersDialog(Adw.Dialog):
             if not self.voice_prepared or pending
             else text("speakers.rememberVoice.tooShort")
         )
-        self.voice_settings.set_visible(writable and not enough and not ready)
-        self.remember.set_visible(self.identifier != "me")
-        self.remember_description.set_visible(self.identifier != "me")
-        self.voice_settings.set_visible(self.voice_settings.get_visible() and self.identifier != "me")
+        show_remember = self.identifier != "me"
+        self.remember_card.set_visible(show_remember)
+        self.remember.set_visible(show_remember)
+        self.remember_description.set_visible(show_remember)
+        self.voice_settings.set_visible(show_remember and writable and not enough and not ready)
         self.candidate = None
         if (
             enough
@@ -350,7 +451,7 @@ class SpeakersDialog(Adw.Dialog):
             self.candidate = pick_name(self.entry.get_text(), self.voice_state["voices"], scores)
         self.duplicate.set_visible(self.candidate is not None)
         if self.candidate:
-            self.duplicate_title.set_label(text("speakers.duplicate.title", name=self.candidate["name"]))
+            self.duplicate_title.set_markup(speaker_edits.duplicate_notice_markup(self.candidate["name"]))
         self.save.set_sensitive(
             self.voices_loaded and not self.busy and (valid and self.candidate is None or self.retry is not None)
         )

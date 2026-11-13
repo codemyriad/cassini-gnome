@@ -111,8 +111,8 @@ CSS_ROLE_TOKENS: dict[str, str] = {
     "mic-silent-btn-fg": "warn-ink",
     "mic-silent-trough": "warn-tint",
     "live-silent-trough": "warn-tint",
-    "dup-warn-bg": "warn-tint",
-    "dup-warn-border": "warn-ink",
+    "dup-notice-bg": "sunken",
+    "likely-tag-bg": "ink",
     "success-bg": "success-fill",
     "success-fg": "on-record",
 }

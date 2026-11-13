@@ -136,8 +136,28 @@ with tempfile.TemporaryDirectory() as temporary:
         return shown and bounds.get_y() >= 0 and bounds.get_y() + bounds.get_height() <= window.get_height()
 
     until(footer_visible)
+    first_voice_row = dialog.voices_list.get_row_at_index(0)
+    first_voice_box = first_voice_row.get_child()
+    first_avatar = first_voice_box.get_first_child()
+    likely_badge = first_voice_box.get_last_child()
+    assert first_avatar.get_label() == "G" and first_avatar.has_css_class("speaker-avatar-3")
+    assert likely_badge.get_label() == "Likely" and likely_badge.has_css_class("speaker-likely-tag")
+    assert not likely_badge.has_css_class("success")
+    second_voice_row = dialog.voices_list.get_row_at_index(1)
+    dialog.voices_list.emit("row-activated", second_voice_row)
+    assert dialog.entry.get_text() == "Luca" and not dialog.duplicate.get_visible() and dialog.save.get_sensitive()
     dialog.entry.set_text("giulia")
     assert dialog.duplicate.get_visible() and not dialog.save.get_sensitive()
+    until(
+        lambda: (
+            footer_visible()
+            and (save_in_dialog := dialog.save.compute_bounds(dialog))[0]
+            and save_in_dialog[1].get_y() + save_in_dialog[1].get_height() <= dialog.get_height()
+        )
+    )
+    assert dialog.duplicate_title.get_text() == "Giulia is already a saved voice."
+    assert '<span weight="600">Giulia</span>' in dialog.duplicate_title.get_label()
+    assert "Is this the same person?" not in labels(dialog.duplicate)
     assert dialog.candidate["name"] == "Giulia"
     dialog.same_person.emit("clicked")
     assert not dialog.duplicate.get_visible() and dialog.save.get_sensitive()

@@ -2,11 +2,55 @@
 """Owned-Library speaker edits. Call on a worker; publish one metadata revision."""
 
 import unicodedata
+from html import escape
 from pathlib import Path
 
 from .library_edits import mutation as transaction
 from .library_location import owned_directory
 from .meeting_store import read_metadata, update_metadata
+from .strings import text
+
+
+def voice_initial(name):
+    stripped = name.strip()
+    return stripped[0].upper() if stripped else "?"
+
+
+def duplicate_notice_markup(candidate_name):
+    before, _, after = text("speakers.duplicate.notice", name="\x00").partition("\x00")
+    return (
+        f"{escape(before, quote=False)}"
+        f'<span weight="600">{escape(candidate_name, quote=False)}</span>'
+        f"{escape(after, quote=False)}"
+    )
+
+
+def speaker_quote(meeting, identifier, sample=None):
+    resolve = getattr(meeting, "speaker_for", None)
+    turns = [
+        turn
+        for turn in getattr(meeting, "listening_turns", ())
+        if (resolve(turn.speaker).id if resolve else turn.speaker) == identifier and turn.text.strip()
+    ]
+    if sample is not None:
+        start, end = sample
+        for turn in turns:
+            if turn.end_ms > start and turn.start_ms < end:
+                return turn.text.strip()
+    if turns:
+        return turns[0].text.strip()
+    for row in getattr(meeting, "turns", ()):
+        row_speaker = resolve(row.speaker).id if resolve and hasattr(row, "speaker") else getattr(row, "speaker", None)
+        if row_speaker == identifier:
+            line = " ".join(w.text.strip() for w in getattr(row, "words", ()) if w.text.strip())
+            if line:
+                return line
+    words = [
+        w.text.strip()
+        for w in getattr(meeting, "words", ())
+        if (resolve(w.speaker).id if resolve else w.speaker) == identifier and w.text.strip()
+    ]
+    return " ".join(words)
 
 
 def name_value(value):
