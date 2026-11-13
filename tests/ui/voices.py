@@ -153,6 +153,8 @@ with tempfile.TemporaryDirectory() as temporary:
             footer_visible()
             and (save_in_dialog := dialog.save.compute_bounds(dialog))[0]
             and save_in_dialog[1].get_y() + save_in_dialog[1].get_height() <= dialog.get_height()
+            and dialog.body_scroll.get_vadjustment().get_upper()
+            <= dialog.body_scroll.get_vadjustment().get_page_size() + 1
         )
     )
     assert dialog.duplicate_title.get_text() == "Giulia is already a saved voice."
@@ -191,6 +193,31 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: dialog.voice_data is not None)
     dialog.entry.set_text("Marta")
     assert dialog.duplicate.get_visible()
+    with patch("cassini_talk.speaker_edits.merge_into", side_effect=OSError("disk full")):
+        dialog._merge("marta")
+        until(lambda: not dialog.busy and dialog.error.get_visible())
+    assert dialog.duplicate.get_visible() and dialog.error.get_visible()
+    original_size = window.get_default_size()
+    original_height = window.get_height()
+    window.set_default_size(1110, 550)
+    until(
+        lambda: (
+            window.get_height() <= 550
+            and footer_visible()
+            and (merge_bounds := dialog.merge.compute_bounds(window))[0]
+            and merge_bounds[1].get_y() >= 0
+            and merge_bounds[1].get_y() + merge_bounds[1].get_height() <= window.get_height()
+            and (cancel_bounds := dialog.cancel.compute_bounds(window))[0]
+            and cancel_bounds[1].get_y() >= 0
+            and cancel_bounds[1].get_y() + cancel_bounds[1].get_height() <= window.get_height()
+            and dialog.body_scroll.get_vadjustment().get_upper() > dialog.body_scroll.get_vadjustment().get_page_size()
+        )
+    )
+    window.set_default_size(*original_size)
+    until(lambda: window.get_height() == original_height and footer_visible())
+    dialog.entry.set_text("Marta ")
+    dialog.entry.set_text("Marta")
+    assert dialog.duplicate.get_visible() and not dialog.error.get_visible()
     dialog.someone_else.emit("clicked")
     assert dialog.save.get_sensitive()
     dialog.save.emit("clicked")
