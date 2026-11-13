@@ -19,7 +19,9 @@ assert struct.unpack(">II", shot.read_bytes()[16:24]) == (1120, 720)
 for identifier in ("firstRun.title", "firstRun.body", "common.record"):
     expected = catalog[identifier]["l10n"][lang]["text"]
     assert expected in state["visibleLabels"], (identifier, expected, state["visibleLabels"])
-assert {"fr": "Ouvrir…", "pt-BR": "Abrir…"}[lang] in state["menuLabels"], state["menuLabels"]
+expected_import = catalog["import.action"]["l10n"][lang]["text"]
+assert expected_import in state["menuLabels"], ("import.action", expected_import, state["menuLabels"])
+assert {"fr": "_Raccourcis clavier", "pt-BR": "_Atalhos de teclado"}[lang] in state["menuLabels"], state["menuLabels"]
 log = shot.with_suffix(".log").read_text()
 assert not re.search(r"(?:Gtk|Adw|GLib-GObject)-(?:WARNING|CRITICAL)|Traceback \(most recent call last\)", log), log
 print(f"PASS real {lang} launch: mapped catalog copy, gettext menu, unchanged formatting locale, no GTK diagnostics")

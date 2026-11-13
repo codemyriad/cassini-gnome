@@ -175,6 +175,12 @@ def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(t
         def append(self, item):
             self.children.append(item)
 
+        def insert(self, item, index):
+            self.children.insert(index, item)
+
+        def remove(self, item):
+            self.children.remove(item)
+
         def select_row(self, row):
             self.selected_row = row
 
@@ -246,6 +252,9 @@ def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(t
         _pending_recording=None,
         _pending_selection=None,
         _opening_files=0,
+        _active_imports={},
+        _import_row_widgets=[],
+        _rendered_imports=(),
         _list_signature=None,
         _row_by_key={},
         _rows_layout=None,
@@ -265,7 +274,14 @@ def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(t
         _update_live=lambda: None,
         _selected=lambda _rows, row: setattr(window, "selected", getattr(row, "meeting", None)),
     )
-    for name in ("_project_activity", "_refresh_export", "_row_signature", "_updated"):
+    for name in (
+        "_project_activity",
+        "_refresh_export",
+        "_row_signature",
+        "_updated",
+        "_begin_import_entries",
+        "_finish_import_entries",
+    ):
         setattr(window, name, getattr(LibraryWindow, name).__get__(window))
 
     def fake_fill(row, m, sig=None):
@@ -280,7 +296,16 @@ def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(t
         fake_fill(r, m)
         return r
 
+    import_row_builds = []
+
+    def fake_importing_row(stem, filename, started_ms):
+        import_row_builds.append((stem, filename, started_ms))
+        r = FakeWidget()
+        r.set_child(("importing", stem, filename))
+        return r
+
     window._day_heading = lambda _title: FakeWidget()
+    window._importing_row = fake_importing_row
     window._fill_row = fake_fill
     window._row = fake_row
 
@@ -307,8 +332,208 @@ def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(t
     # Subsequent fresh scan with identical 5,000 unrelated rows also retains every cached row:
     row_fills.clear()
     fresh_saved = tuple(replace(m) for m in saved)
-    window._updated(LibrarySnapshot(meetings=(replace(live, lifecycle="saved"), *fresh_saved)))
+    saved_live = replace(live, lifecycle="saved")
+    steady_snapshot = LibrarySnapshot(meetings=(saved_live, *fresh_saved))
+    window._updated(steady_snapshot)
     assert row_builds == []
     assert row_fills == [live.key]
     assert [window._row_by_key[m.key] for m in saved] == unrelated_rows
     assert [r.get_child() for r in unrelated_rows] == unrelated_children
+
+    # Import start, mid-import refresh, and cancellation preserve all 5,001 meeting row widgets:
+    row_fills.clear()
+    window._source_snapshot = steady_snapshot
+    cancelled_token = object()
+    window._begin_import_entries(cancelled_token, (str(tmp_path / "cancelled-note.opus"),))
+    assert len(import_row_builds) == 1
+    assert window.rows.children[1].get_child() == ("importing", "cancelled-note", "cancelled-note.opus")
+    assert row_builds == [] and row_fills == []
+    assert window._row_by_key[live.key] is live_row
+    assert [window._row_by_key[m.key] for m in saved] == unrelated_rows
+
+    window._updated(steady_snapshot)
+    assert row_builds == [] and row_fills == []
+    assert len(import_row_builds) == 1
+
+    window._finish_import_entries(cancelled_token)
+    assert all(not (isinstance(w.get_child(), tuple) and w.get_child()[0] == "importing") for w in window.rows.children)
+    assert row_builds == [] and row_fills == []
+    assert window._row_by_key[live.key] is live_row
+    assert [window._row_by_key[m.key] for m in saved] == unrelated_rows
+
+    # Import start + completion selecting an existing meeting (dedupe) rebuilds 0 rows:
+    dedupe_token = object()
+    window._begin_import_entries(dedupe_token, (str(tmp_path / "dedupe.opus"),))
+    assert row_builds == [] and row_fills == []
+    window._finish_import_entries(dedupe_token)
+    window._pending_selection = saved[10].key
+    window._updated(steady_snapshot)
+    assert row_builds == [] and row_fills == []
+    assert window.rows.get_selected_row() is unrelated_rows[10]
+    assert [window._row_by_key[m.key] for m in saved] == unrelated_rows
+
+    # Import start + completion adding a brand-new 5,002nd meeting builds ONLY the 1 new row
+    # and preserves widget identity of all 5,001 existing meeting rows:
+    complete_token = object()
+    window._begin_import_entries(complete_token, (str(tmp_path / "fresh-import.opus"),))
+    assert row_builds == [] and row_fills == []
+    imported = Meeting(
+        id="00000000-0000-4000-8000-000000009999",
+        directory=tmp_path / "Received-00000000-0000-4000-8000-000000009999",
+        title="fresh-import",
+        started_at_ms=1_793_107_050_000,
+        duration_ms=120_000,
+        lifecycle="saved",
+        origin="received",
+        has_audio=True,
+    )
+    window._finish_import_entries(complete_token)
+    window._pending_selection = imported.key
+    window._updated(LibrarySnapshot(meetings=(imported, saved_live, *fresh_saved)))
+    assert row_builds == [imported.key], "Import completion must build only the newly imported meeting row"
+    assert row_fills == [imported.key], "Existing 5,001 rows must not be refilled on import completion"
+    assert window._row_by_key[live.key] is live_row
+    assert [window._row_by_key[m.key] for m in saved] == unrelated_rows
+    assert [r.get_child() for r in unrelated_rows] == unrelated_children
+    assert window.rows.get_selected_row() is window._row_by_key[imported.key]
+
+
+def test_drag_and_drop_extensionless_validation_is_async_cached_and_discards_stale_completions(tmp_path, monkeypatch):
+    """Extensionless drag/drop validation must never call Path.is_dir() synchronously on
+    GTK's main thread, must keep the main loop responsive while pending, cache per drag,
+    and discard stale completions."""
+    from pathlib import Path
+
+    from gi.repository import Gdk, Gio, GLib
+
+    def forbid_sync_is_dir(_self):
+        raise AssertionError("Path.is_dir() must never run synchronously on GTK main thread")
+
+    monkeypatch.setattr(Path, "is_dir", forbid_sync_is_dir)
+
+    pending_probes = []
+    opened_batches = []
+    states = []
+
+    def fake_probe(gfile, cancellable, callback):
+        pending_probes.append((gfile.get_path(), cancellable, callback))
+
+    def fake_set_drop_state(state, bad_file=None, *, sticky_error=False):
+        window._drop_state = (state, bad_file)
+        states.append((state, bad_file, sticky_error))
+
+    class FakeTarget:
+        def __init__(self, paths):
+            self._value = Gdk.FileList.new_from_array([Gio.File.new_for_path(p) for p in paths])
+
+        def get_value(self):
+            return self._value
+
+    window = SimpleNamespace(
+        _drag_active=False,
+        _drag_generation=0,
+        _drag_cancellable=None,
+        _drag_dir_cache={},
+        _drag_inflight=set(),
+        _active_drag_files=(),
+        _drop_validation_gen=0,
+        _drop_validation_cancellable=None,
+        _drop_state=("rest", None),
+        _drop_error_timer=0,
+        search_page=None,
+        monitor=SimpleNamespace(_closed=False),
+        drop_frame=object(),
+        root_box=SimpleNamespace(get_visible_child_name=lambda: "library"),
+        _point_in_drop_list=lambda x, y: x >= 10,
+        _probe_is_dir_async=fake_probe,
+        _set_drop_state=fake_set_drop_state,
+        open_files=lambda files: opened_batches.append(tuple(f.get_path() for f in files)),
+        toast=lambda _msg: None,
+    )
+    for name in (
+        "_reset_drag_session",
+        "_cancel_drop_validation",
+        "_evaluate_drag_files",
+        "_drag_bad_file",
+        "_drag_enter",
+        "_drag_motion",
+        "_drag_value_changed",
+        "_drag_leave",
+        "_show_rejected_drop",
+        "_validate_dropped_files_async",
+        "_drop_files",
+    ):
+        setattr(window, name, getattr(LibraryWindow, name).__get__(window))
+    window._classify_drop_file_sync = LibraryWindow._classify_drop_file_sync
+
+    # 1. Drag an extensionless item over the list; validation stays pending without blocking GLib:
+    stalled_path = str(tmp_path / "stalled-mount-item")
+    drag1 = FakeTarget([stalled_path])
+    assert window._drag_enter(drag1, 20, 20) == Gdk.DragAction.COPY
+    assert window._drop_state == ("over", None)
+    assert len(pending_probes) == 1
+
+    # Main loop dispatches events responsively while probe #1 is blocked, and repeated
+    # pointer motions do not spawn duplicate probes:
+    heartbeat = []
+    GLib.idle_add(lambda: (heartbeat.append("responsive"), GLib.SOURCE_REMOVE)[1])
+    ctx = GLib.MainContext.default()
+    while ctx.pending():
+        ctx.iteration(False)
+    assert heartbeat == ["responsive"]
+
+    for dx in (22, 25, 30):
+        window._drag_motion(drag1, dx, 20)
+    assert len(pending_probes) == 1, "In-flight extensionless validation must not repeat per motion event"
+
+    # 2. Leaving the drag cancels & invalidates the pending probe; late completion is discarded:
+    _path1, cancel1, cb1 = pending_probes.pop()
+    window._drag_leave()
+    assert cancel1.is_cancelled()
+    assert window._drop_state == ("rest", None)
+    cb1(False)
+    assert window._drop_state == ("rest", None)
+    assert window._drag_dir_cache == {}
+
+    # 3. New drag resolves as non-directory -> flips to error and caches result across motions:
+    bad_extless = str(tmp_path / "plain-binary-blob")
+    drag2 = FakeTarget([bad_extless])
+    window._drag_enter(drag2, 20, 20)
+    assert len(pending_probes) == 1
+    assert window._drop_state == ("over", None)
+    _path2, _cancel2, cb2 = pending_probes.pop()
+    cb2(False)
+    assert window._drop_state == ("error", "plain-binary-blob")
+    window._drag_motion(drag2, 24, 24)
+    window._drag_motion(drag2, 28, 28)
+    assert pending_probes == [], "Resolved per-drag file-type result must be cached"
+    assert window._drop_state == ("error", "plain-binary-blob")
+
+    # Dropping while already cached as non-directory rejects immediately with sticky_error=True:
+    assert not window._drop_files(None, drag2.get_value(), 28, 28)
+    assert states[-1] == ("error", "plain-binary-blob", True)
+    assert opened_batches == []
+
+    # 4. Direct drop of an uncached extensionless item stays non-blocking while pending:
+    uncached_bad = str(tmp_path / "dropped-blob")
+    drop_list = Gdk.FileList.new_from_array([Gio.File.new_for_path(uncached_bad)])
+    assert window._drop_files(None, drop_list, 20, 20)
+    assert len(pending_probes) == 1
+    heartbeat.clear()
+    GLib.idle_add(lambda: (heartbeat.append("still-responsive"), GLib.SOURCE_REMOVE)[1])
+    while ctx.pending():
+        ctx.iteration(False)
+    assert heartbeat == ["still-responsive"]
+    _path3, _cancel3, cb3 = pending_probes.pop()
+    cb3(False)
+    assert states[-1] == ("error", "dropped-blob", True)
+    assert opened_batches == []
+
+    # And an uncached extensionless directory opens once resolved as is_dir=True:
+    uncached_dir = str(tmp_path / "external-meeting-folder")
+    dir_list = Gdk.FileList.new_from_array([Gio.File.new_for_path(uncached_dir)])
+    assert window._drop_files(None, dir_list, 20, 20)
+    assert len(pending_probes) == 1
+    _path4, _cancel4, cb4 = pending_probes.pop()
+    cb4(True)
+    assert opened_batches == [(uncached_dir,)]

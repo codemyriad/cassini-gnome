@@ -153,7 +153,7 @@ def snapshot_badge_glyph(
 class BadgeGlyph(Gtk.Widget):
     """GSK vector glyph painted in currentColor with no Cairo runtime dependency."""
 
-    def __init__(self, glyph_kind: str):
+    def __init__(self, glyph_kind: str, *, size_px: int | None = None):
         canonical = normalize_glyph_kind(glyph_kind)
         super().__init__(
             can_target=False,
@@ -163,7 +163,19 @@ class BadgeGlyph(Gtk.Widget):
             css_classes=["badge-glyph", f"badge-glyph-{canonical}"],
         )
         self.glyph_kind = canonical
-        self.size_px = GLYPH_SIZE_PX[canonical]
+        self.size_px = GLYPH_SIZE_PX[canonical] if size_px is None else int(size_px)
+
+    def set_glyph_kind(self, glyph_kind: str, *, size_px: int | None = None) -> None:
+        canonical = normalize_glyph_kind(glyph_kind)
+        if canonical != self.glyph_kind:
+            self.remove_css_class(f"badge-glyph-{self.glyph_kind}")
+            self.add_css_class(f"badge-glyph-{canonical}")
+            self.glyph_kind = canonical
+        new_size = GLYPH_SIZE_PX[canonical] if size_px is None else int(size_px)
+        if new_size != self.size_px:
+            self.size_px = new_size
+            self.queue_resize()
+        self.queue_draw()
 
     def do_measure(self, _orientation, _for_size):
         return (self.size_px, self.size_px, -1, -1)

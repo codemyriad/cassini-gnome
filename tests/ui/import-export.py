@@ -196,9 +196,54 @@ with tempfile.TemporaryDirectory() as temporary:
     assert any("Opened from your Downloads folder." in value for value in labels(window.meeting_page.lines))
     assert not window.received_hint.get_visible()
     until(lambda: not window._pending_selection)
+    # L-25 DropImport states: rest, enter, over, unsupported error, and transient Importing… card.
+    from cassini_talk.strings import text
+
+    assert window.drop_footer_label.get_label() == text("import.drop.rest")
+    window._set_drop_state("enter")
+    assert "drag-enter" in window.drop_frame.get_css_classes()
+    assert window.drop_footer_label.get_label() == text("import.drop.enter")
+    window._set_drop_state("over")
+    assert "drag-over" in window.drop_frame.get_css_classes() and window.drop_overlay.get_visible()
+    assert window.drop_overlay_title.get_label() == text("import.drop.over")
+    assert window.drop_overlay_detail.get_label() == text("import.drop.formats.current")
+    bad_file = tmp / "voice-note.m4a"
+    bad_file.write_bytes(b"unsupported")
+    bad_drop = Gdk.FileList.new_from_array([Gio.File.new_for_path(str(bad_file))])
+    assert not window._drop_files(None, bad_drop, 0, 0)
+    assert window.drop_overlay.get_visible() and "error" in window.drop_overlay.get_css_classes()
+    assert window.drop_overlay_title.get_label() == text("import.drop.cantImport", file="voice-note.m4a")
+    assert window.drop_overlay_detail.get_label() == text(
+        "import.drop.cantImport.detail", formats=text("import.drop.formats.current")
+    )
+    window._set_drop_state("rest")
+    assert not window.drop_overlay.get_visible()
+    # Extensionless file validation runs asynchronously via GIO without blocking GTK:
+    extless_bad = tmp / "extensionless-blob"
+    extless_bad.write_bytes(b"not-a-directory")
+    extless_drop = Gdk.FileList.new_from_array([Gio.File.new_for_path(str(extless_bad))])
+    assert window._drop_files(None, extless_drop, 0, 0)
+    until(
+        lambda: (
+            window.drop_overlay.get_visible()
+            and "error" in window.drop_overlay.get_css_classes()
+            and window.drop_overlay_title.get_label() == text("import.drop.cantImport", file="extensionless-blob")
+        )
+    )
+    window._set_drop_state("rest")
+    assert not window.drop_overlay.get_visible()
+    cached_before_import = dict(window._row_by_key)
+    token_obj = object()
+    window._begin_import_entries(token_obj, (str(incoming),))
+    assert text("states.badge.importing") in labels(window.rows)
+    assert all(window._row_by_key[k] is row for k, row in cached_before_import.items())
+    window._finish_import_entries(token_obj)
+    assert text("states.badge.importing") not in labels(window.rows)
+    assert all(window._row_by_key[k] is row for k, row in cached_before_import.items())
     drop = Gdk.FileList.new_from_array([Gio.File.new_for_path(str(incoming))])
     assert window._drop_files(None, drop, 0, 0)
     until(lambda: not window._opening_files and not window._pending_selection)
+    assert all(window._row_by_key[k] is row for k, row in cached_before_import.items())
     assert sum(m.origin == "received" for m in window.snapshot.meetings) == initial_received + 1
     uppercase = incoming.with_suffix(".OPUS")
     shutil.copyfile(incoming, uppercase)
