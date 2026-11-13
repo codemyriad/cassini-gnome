@@ -40,6 +40,7 @@ def test_write_manifest_normalizes_pairs_locales_and_scales(tmp_path):
         ("search.png", "light", (8, 8)), ("dark/search.png", "dark", (8, 8)),
         ("first-run-fr.png", "light", (8, 8)), ("dark/first-run-fr.png", "dark", (8, 8)),
         ("first-run-pt-BR.png", "light", (8, 8)), ("dark/first-run-pt-BR.png", "dark", (8, 8)),
+        ("w2-badges-it.png", "light", (8, 8)), ("dark/w2-badges-it.png", "dark", (8, 8)),
         ("what-is-recorded-browser.png", "light", (8, 8)), ("what-is-recorded-browser-dark.png", "dark", (8, 8)),
         ("companion-health-light.png", "light", (8, 8)), ("companion-health-dark.png", "dark", (8, 8)),
         ("library-saving.png", "light", (8, 8)), ("dark/library-saving.png", "dark", (8, 8)),
@@ -60,6 +61,8 @@ def test_write_manifest_normalizes_pairs_locales_and_scales(tmp_path):
     assert by_key["recording-saving.light"]["source"] == "tests/ui/recording.py"
     assert by_key["library-saving.dark"]["source"] == "tests/ui/recording.py"
     assert by_key["first-run.dark.pt-br"]["lang"] == "pt-br"
+    assert by_key["w2-badges.light.it"]["lang"] == "it"
+    assert by_key["w2-badges.light.it"]["source"] == "tests/ui/w2-badges.py"
     assert by_key["spectrogram-dropout-2x.dark"]["scale"] == 2
 
 

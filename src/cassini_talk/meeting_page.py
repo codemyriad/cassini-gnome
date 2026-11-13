@@ -759,6 +759,7 @@ class MeetingPage(Adw.NavigationPage):
             meeting.words,
             meeting.turns,
             meeting.speakers,
+            meeting.interrupted_at_ms,
             meeting.transcript,
             meeting.eta_minutes,
             meeting.error,
@@ -808,6 +809,10 @@ class MeetingPage(Adw.NavigationPage):
         publication = self.window.publication_line(meeting)
         if publication:
             self.lines.append(publication)
+        if meeting.lifecycle == "saved" and meeting.interrupted_at_ms is not None:
+            self.lines.append(
+                InlineLine("meeting.interruptedAt", info=True, position=fmt.position(meeting.interrupted_at_ms))
+            )
         trash_error = self.window.trash_error_line(meeting)
         if trash_error:
             self.lines.append(trash_error)

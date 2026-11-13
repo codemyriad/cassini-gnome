@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 
 from cassini_talk import ux_formats as fmt
-from cassini_talk.meeting_state import MeetingState
+from cassini_talk.i18n import LANGUAGES, using_language
+from cassini_talk.meeting_state import MeetingError, MeetingState, import_entry_badge
 
 ROOT = Path(__file__).resolve().parents[1]
 FORMATS = json.loads((ROOT / "tests/ux/format-vectors.json").read_bytes())
@@ -57,11 +58,92 @@ def test_format_vector(kind, case):
 
 @pytest.mark.parametrize("case", STATES["vectors"], ids=lambda c: c["id"])
 def test_state_vector(case):
+    assert STATES["version"] == 3
     state = MeetingState.from_fields(case["fields"])
     badge = state.badge(live_ms=case["fields"].get("liveMs", 0))
     assert (badge.as_dict() if badge else None) == case["badge"]
     if "canWriteDown" in case:
         assert state.can_write_down is case["canWriteDown"]
+
+
+@pytest.mark.parametrize("case", STATES["entryVectors"], ids=lambda c: c["id"])
+def test_entry_state_vector(case):
+    assert case["scope"] == "import-entry"
+    badge = import_entry_badge(case["fields"])
+    assert (badge.as_dict() if badge else None) == case["badge"]
+    assert import_entry_badge({}) is None
+    assert import_entry_badge({"importing": False}) is None
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_badge_labels_and_interrupted_position_follow_catalog_in_all_languages(lang):
+    catalog = {e["id"]: e for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_bytes())["entries"]}
+
+    def expected_entry(entry_id, **kwargs):
+        entry = catalog[entry_id]
+        template = entry["en"] if lang == "en" else entry["l10n"][lang]["text"]
+        return template.format(**kwargs)
+
+    def expected_plural_one_or_other(entry_id, n):
+        entry = catalog[entry_id]
+        forms = entry["plural"] if lang == "en" else entry["l10n"][lang]["plural"]
+        template = forms["one"] if n == 1 else forms["other"]
+        return template.format(n=n)
+
+    with using_language(lang):
+        assert MeetingState(lifecycle="recording").badge(live_ms=768000).as_dict() == {
+            "kind": "recording",
+            "text": expected_entry("states.badge.recording", liveBadge="12:48"),
+            "tint": "red",
+            "glyph": "dot",
+        }
+        assert import_entry_badge({"importing": True}).as_dict() == {
+            "kind": "importing",
+            "text": expected_entry("states.badge.importing"),
+            "tint": "neutral",
+            "glyph": "spinner",
+        }
+        assert MeetingState(lifecycle="saving").badge().as_dict() == {
+            "kind": "saving",
+            "text": expected_entry("states.badge.saving"),
+            "tint": "neutral",
+            "glyph": "spinner",
+        }
+        assert MeetingState(transcript="running", eta_minutes=4).badge().as_dict() == {
+            "kind": "transcribing",
+            "text": expected_plural_one_or_other("states.badge.transcribing", 4),
+            "tint": "neutral",
+            "glyph": "spinner",
+        }
+        assert MeetingState(transcript="running", eta_minutes=0).badge().text == expected_entry(
+            "states.badge.transcribing.underMinute"
+        )
+        assert MeetingState(transcript="queued", eta_minutes=None).badge().text == expected_entry(
+            "states.badge.transcribing.noEta"
+        )
+        assert MeetingState(
+            transcript="failed", error=MeetingError("transcribe-failed", "retry")
+        ).badge().as_dict() == {
+            "kind": "needsAttention",
+            "text": expected_entry("states.badge.needsAttention"),
+            "tint": "amber",
+            "glyph": "alert",
+        }
+        interrupted = MeetingState(interrupted_at_ms=2472000)
+        assert interrupted.badge().as_dict() == {
+            "kind": "interrupted",
+            "text": expected_entry("states.badge.interrupted"),
+            "tint": "amber",
+            "glyph": "alert",
+        }
+        assert interrupted.interrupted_text() == expected_entry("meeting.interruptedAt", position="00:41:12")
+        assert MeetingState().interrupted_text() is None
+        assert MeetingState(origin="received").badge().as_dict() == {
+            "kind": "received",
+            "text": expected_entry("states.badge.received"),
+            "tint": "outline",
+            "glyph": "incoming",
+        }
 
 
 def test_golden_bytes():

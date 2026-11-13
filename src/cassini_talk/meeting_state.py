@@ -4,6 +4,7 @@
 from dataclasses import dataclass
 
 from . import ux_formats
+from .strings import text
 
 
 @dataclass(frozen=True)
@@ -17,13 +18,17 @@ class Badge:
     kind: str
     text: str
     tint: str
-    dot: bool = False
+    glyph: str
 
     def as_dict(self):
-        value = dict(kind=self.kind, text=self.text, tint=self.tint)
-        if self.dot:
-            value["dot"] = True
-        return value
+        return dict(kind=self.kind, text=self.text, tint=self.tint, glyph=self.glyph)
+
+
+def import_entry_badge(fields) -> Badge | None:
+    """Transient import-entry card badge (W0.4 entryVectors, separate from persisted lifecycle)."""
+    if fields.get("importing") is True:
+        return Badge("importing", text("states.badge.importing"), "neutral", "spinner")
+    return None
 
 
 @dataclass(frozen=True)
@@ -67,17 +72,27 @@ class MeetingState:
     def can_write_down(self):
         return self.lifecycle == "saved" and self.transcript in ("none", "failed")
 
+    def interrupted_text(self) -> str | None:
+        if self.interrupted_at_ms is None:
+            return None
+        return text("meeting.interruptedAt", position=ux_formats.position(self.interrupted_at_ms))
+
     def badge(self, *, live_ms=0):
         if self.lifecycle == "recording":
-            return Badge("recording", f"Recording {ux_formats.live_badge(live_ms)}", "red", dot=True)
+            return Badge(
+                "recording",
+                text("states.badge.recording", liveBadge=ux_formats.live_badge(live_ms)),
+                "red",
+                "dot",
+            )
         if self.lifecycle == "saving":
-            return Badge("saving", "Saving…", "grey")
+            return Badge("saving", text("states.badge.saving"), "neutral", "spinner")
         if self.transcript in ("queued", "running"):
-            return Badge("transcribing", ux_formats.eta(self.eta_minutes), "accent")
+            return Badge("transcribing", ux_formats.eta(self.eta_minutes), "neutral", "spinner")
         if self.error is not None and self.error.action is not None:
-            return Badge("needsAttention", "Needs attention", "amber")
+            return Badge("needsAttention", text("states.badge.needsAttention"), "amber", "alert")
         if self.interrupted_at_ms is not None:
-            return Badge("interrupted", f"Interrupted at {ux_formats.position(self.interrupted_at_ms)}", "amber")
+            return Badge("interrupted", text("states.badge.interrupted"), "amber", "alert")
         if self.origin == "received":
-            return Badge("received", "Received", "grey")
+            return Badge("received", text("states.badge.received"), "outline", "incoming")
         return None

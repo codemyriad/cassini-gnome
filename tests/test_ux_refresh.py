@@ -63,3 +63,37 @@ def test_refresh_requires_an_explicit_source_and_revision(tmp_path):
     assert result.returncode == 2
     assert b"requires --source and --commit" in result.stderr
     assert (target / "UPSTREAM.json").read_bytes() == before
+
+
+def test_refresh_and_check_resolve_source_paths_mapping(tmp_path):
+    script, target, _ = fixture(tmp_path)
+    upstream_repo = tmp_path / "cassini-ux"
+    (upstream_repo / "contract").mkdir(parents=True)
+    (upstream_repo / "vectors/states").mkdir(parents=True)
+    (upstream_repo / "contract/STATUS-BADGES.md").write_bytes(b"# Status badges\n")
+    (upstream_repo / "vectors/states/states-vectors.json").write_bytes(b'{"version": 3}\n')
+    provenance = {
+        "source": "https://github.com/codemyriad/cassini-ux",
+        "commit": "old",
+        "paths": {
+            "STATUS-BADGES.md": "tests/ux/STATUS-BADGES.md",
+            "states-vectors.json": "tests/ux/states-vectors.json",
+        },
+        "sha256": {
+            "STATUS-BADGES.md": "",
+            "states-vectors.json": "",
+        },
+        "sourcePaths": {
+            "STATUS-BADGES.md": "contract/STATUS-BADGES.md",
+            "states-vectors.json": "vectors/states/states-vectors.json",
+        },
+    }
+    (target / "UPSTREAM.json").write_text(json.dumps(provenance))
+    subprocess.run(
+        [sys.executable, str(script), "--refresh", "--source", str(upstream_repo), "--commit", "793209cb"],
+        check=True,
+        capture_output=True,
+    )
+    assert (target / "STATUS-BADGES.md").read_bytes() == b"# Status badges\n"
+    assert (target / "states-vectors.json").read_bytes() == b'{"version": 3}\n'
+    subprocess.run([sys.executable, str(script), "--source", str(upstream_repo)], check=True, capture_output=True)

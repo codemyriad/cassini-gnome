@@ -35,7 +35,8 @@ FLOW_SOURCES = (
     ("spectrogram-components", "tests/ui/spectrogram.py"), ("spectrogram-", "tests/ui/spectrogram-live.py"),
     ("speech-models-", "tests/ui/speech-models.py"), ("test-recording-", "tests/ui/test-recording.py"),
     ("trash-", "tests/ui/trash.py"), ("w1-", "tests/ui/w1-token-states.py"),
-    ("what-is-recorded-", "tests/ui/what-is-recorded.py"), ("wide-speakers", "tests/ui/wide-speakers.py"),
+    ("w2-badges", "tests/ui/w2-badges.py"), ("what-is-recorded-", "tests/ui/what-is-recorded.py"),
+    ("wide-speakers", "tests/ui/wide-speakers.py"),
 )  # fmt: skip
 
 
@@ -125,7 +126,7 @@ def build_manifest(out_dir: Path) -> dict:
         elif "-2x-" in stem:
             scale, stem = 2, stem.replace("-2x-", "-", 1)
         lang = "en"
-        for suffix, code in (("-pt-BR", "pt-br"), ("-fr", "fr")):
+        for suffix, code in (("-pt-BR", "pt-br"), ("-fr", "fr"), ("-it", "it")):
             if stem.endswith(suffix):
                 lang, stem = code, stem[: -len(suffix)]
                 break

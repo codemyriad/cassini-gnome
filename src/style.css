@@ -85,11 +85,15 @@
   --app-badge-red-bg: var(--cx-record-tint);
   --app-badge-red-fg: var(--cx-record-ink);
   --app-badge-transcribing-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
-  --app-badge-transcribing-fg: var(--cx-neutral-ink);
+  --app-badge-transcribing-fg: var(--cx-ink-2);
+  --app-badge-transcribing-spinner: var(--cx-accent);
   --app-badge-amber-bg: var(--cx-warn-tint);
   --app-badge-amber-fg: var(--cx-warn-ink);
   --app-badge-grey-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
-  --app-badge-grey-fg: var(--cx-neutral-ink);
+  --app-badge-grey-fg: var(--cx-ink-2);
+  --app-badge-received-fg: var(--cx-ink-2);
+  --app-badge-received-ring: var(--cx-line);
+  --app-secondary-btn-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
   --app-error-line-bg: var(--cx-error-tint);
   --app-error-line-fg: var(--cx-error);
   --app-warn-line-bg: var(--cx-warn-tint);
@@ -141,11 +145,13 @@ text > placeholder {
 .library-window .meeting-row:selected { background: var(--app-row-selected-bg); color: inherit; }
 .dim-label, .library-window .dim-label { color: var(--app-dim-fg); opacity: 1; }
 .library-window .meeting-row:selected .dim-label { color: var(--app-dim-fg); }
-.library-window .badge { border-radius: 100px; padding: 1px 8px; font-size: 13px; font-weight: 600; }
-.library-window .badge-red { background: var(--app-badge-red-bg); color: var(--app-badge-red-fg); }
-.library-window .badge-accent { background: var(--app-badge-transcribing-bg); color: var(--app-badge-transcribing-fg); }
-.library-window .badge-amber { background: var(--app-badge-amber-bg); color: var(--app-badge-amber-fg); }
-.library-window .badge-grey { background: var(--app-badge-grey-bg); color: var(--app-badge-grey-fg); }
+.badge { min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1; font-feature-settings: "tnum"; }
+.badge .badge-label { font-size: 12px; font-weight: 600; line-height: 1; font-feature-settings: "tnum"; }
+.badge-kind-recording, .library-window .badge-red { background: var(--app-badge-red-bg); color: var(--app-badge-red-fg); }
+.badge-kind-importing, .badge-kind-saving, .badge-kind-transcribing, .library-window .badge-accent, .library-window .badge-grey { background: var(--app-badge-grey-bg); color: var(--app-badge-grey-fg); }
+.badge-kind-transcribing .badge-glyph { color: var(--app-badge-transcribing-spinner); }
+.badge-kind-needsAttention, .badge-kind-interrupted, .library-window .badge-amber { background: var(--app-badge-amber-bg); color: var(--app-badge-amber-fg); }
+.badge-kind-received { background: transparent; color: var(--app-badge-received-fg); box-shadow: inset 0 0 0 1px var(--app-badge-received-ring); }
 .library-window .speaker-chip { border-radius: 100px; background: var(--app-wash-chip); padding: 5px 12px; }
 .library-window .speaker-chip-0 { background: var(--cx-avatar-0); color: var(--cx-speaker-0); }
 .library-window .speaker-chip-1 { background: var(--cx-avatar-1); color: var(--cx-speaker-1); }

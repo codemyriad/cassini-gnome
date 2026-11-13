@@ -23,6 +23,7 @@ from .meeting_text import row_caption
 from .player import Player
 from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
 from .spectrogram_strip import SpectrogramStrip
+from .status_badge import StatusBadge
 from .strings import text
 from .tokens import speaker_slot
 from .transcript import row_text
@@ -1051,6 +1052,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             meeting.has_audio,
             meeting.legacy_transcript_file,
             meeting.lifecycle,
+            meeting.interrupted_at_ms,
             meeting.transcript,
             meeting.eta_minutes,
             meeting.error,
@@ -1269,10 +1271,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         elapsed = self.get_application().comfort.elapsed(meeting)
         badge = meeting.badge(live_ms=elapsed)
         if badge:
-            badge_label = label(badge.text, "badge", "badge-" + badge.tint)
-            meta.append(badge_label)
+            badge_widget = StatusBadge(badge.kind, badge.text)
+            meta.append(badge_widget)
             if meeting.lifecycle == "recording":
-                self._live_badges[meeting.key] = badge_label
+                self._live_badges[meeting.key] = badge_widget
         value, line = meeting.row_texts()
         if value:
             meta.append(label(value, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True))
@@ -1377,6 +1379,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         publication = self.publication_line(meeting)
         if publication:
             self.preview.append(publication)
+        if meeting.lifecycle == "saved" and (interrupted_line := meeting.interrupted_text()):
+            self.preview.append(label(interrupted_line, "dim-label", wrap=True, xalign=0))
         trash_error = self.trash_error_line(meeting)
         if trash_error:
             self.preview.append(trash_error)

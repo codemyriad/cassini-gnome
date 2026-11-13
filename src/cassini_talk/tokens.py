@@ -92,11 +92,15 @@ CSS_ROLE_TOKENS: dict[str, str] = {
     "badge-red-bg": "record-tint",
     "badge-red-fg": "record-ink",
     "badge-transcribing-bg": "ink",
-    "badge-transcribing-fg": "neutral-ink",
+    "badge-transcribing-fg": "ink-2",
+    "badge-transcribing-spinner": "accent",
     "badge-amber-bg": "warn-tint",
     "badge-amber-fg": "warn-ink",
     "badge-grey-bg": "ink",
-    "badge-grey-fg": "neutral-ink",
+    "badge-grey-fg": "ink-2",
+    "badge-received-fg": "ink-2",
+    "badge-received-ring": "line",
+    "secondary-btn-bg": "ink",
     "error-line-bg": "error-tint",
     "error-line-fg": "error",
     "warn-line-bg": "warn-tint",
@@ -152,7 +156,7 @@ DEFERRED_W2_ROLES: frozenset[str] = frozenset(
     }
 )
 
-# All decided Wave 1 roles are active in the Wave 1 look preview.
+# All WP1 foundation roles are active.
 UNAPPLIED_W1_ROLES: frozenset[str] = frozenset()
 
 
@@ -227,6 +231,7 @@ def timeline_tick_colour(*, dark: bool = False) -> str | None:
 
 __all__ = [
     "ADW_ROLE_TOKENS",
+    "APPLIED_W2_BADGE_ROLES",
     "CSS_ROLE_TOKENS",
     "DEFERRED_W2_ROLES",
     "DERIVED_TOKENS",

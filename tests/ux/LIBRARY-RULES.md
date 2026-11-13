@@ -108,7 +108,7 @@ Tested by `library-vectors` `t8-failed-referenced-words` and `t8-none-referenced
 5. **Display of an unknown duration:**
    - Row meta: drop the duration and show only the names. If there are no names either, the meta line is not shown.
    - Preview subtitle: `{day}, {time}` with no duration.
-   - `interruptedAtMs` is null when the display end is unknown, even if R4 would set it, so no "Interrupted at" badge
+   - `interruptedAtMs` is null when the display end is unknown, even if R4 would set it, so no "Interrupted" badge
      is shown. This applies only when no track counts at all. D3's display-only zero offset still gives a known end
      whenever a readable WAV exists.
 
@@ -188,7 +188,7 @@ A received meeting whose transcript is `none` can be written down once (HARMONY 
 
 - `library.untitled` = "Untitled meeting"
 - `library.group.unknownDate` = "Date unknown"
-- `states.badge.transcribing.noEta` = "Transcribing…" (grey/accent as the transcribing badge)
+- `states.badge.transcribing.noEta` = "Transcribing…" (neutral/spinner under W0.4; current wording provisional pending Alex)
 
 ## D6.1 amendments (answers to GNOME R4–R7 and Mac's ETA question), 2026-10-27
 
