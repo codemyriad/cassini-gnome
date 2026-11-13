@@ -40,6 +40,7 @@ def test_write_manifest_normalizes_pairs_locales_and_scales(tmp_path):
         ("search.png", "light", (8, 8)), ("dark/search.png", "dark", (8, 8)),
         ("first-run-fr.png", "light", (8, 8)), ("dark/first-run-fr.png", "dark", (8, 8)),
         ("first-run-pt-BR.png", "light", (8, 8)), ("dark/first-run-pt-BR.png", "dark", (8, 8)),
+        ("w2-badges-it.png", "light", (8, 8)), ("dark/w2-badges-it.png", "dark", (8, 8)),
         ("what-is-recorded-browser.png", "light", (8, 8)), ("what-is-recorded-browser-dark.png", "dark", (8, 8)),
         ("meeting-gui-transcribing.png", "light", (8, 8)), ("meeting-gui-transcribing-dark.png", "dark", (8, 8)),
         ("companion-health-light.png", "light", (8, 8)), ("companion-health-dark.png", "dark", (8, 8)),
@@ -62,6 +63,8 @@ def test_write_manifest_normalizes_pairs_locales_and_scales(tmp_path):
     assert by_key["recording-saving.light"]["source"] == "tests/ui/recording.py"
     assert by_key["library-saving.dark"]["source"] == "tests/ui/recording.py"
     assert by_key["first-run.dark.pt-br"]["lang"] == "pt-br"
+    assert by_key["w2-badges.light.it"]["lang"] == "it"
+    assert by_key["w2-badges.light.it"]["source"] == "tests/ui/w2-badges.py"
     assert by_key["spectrogram-dropout-2x.dark"]["scale"] == 2
 
 
@@ -100,3 +103,25 @@ def test_accent_unpinned_and_ux_shots_script_wired():
     assert "accent']==" not in workflow and 'accent"]==' not in workflow
     assert 'build-aux/ux-shots.sh "$BOARD_APP" "$CASSINI_BOARD_BUILD" ux-artifacts' in workflow
     assert 'python3 build-aux/ci/ux_shots_manifest.py "$out"' in shots_sh
+
+
+def test_scrimmed_light_modal_dialog_passes_chrome_luminance_check(tmp_path):
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        return struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", zlib.crc32(tag + payload))
+
+    width, height = 64, 64
+    scrimmed_row = b"\x00" + b"\x78\x78\x75\xff" * width
+    dialog_row = b"\x00" + (b"\x78\x78\x75\xff" * 16 + b"\xff\xff\xff\xff" * 32 + b"\x78\x78\x75\xff" * 16)
+    rows = [dialog_row if y == height // 2 else scrimmed_row for y in range(height)]
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(b"".join(rows)))
+        + chunk(b"IEND", b"")
+    )
+
+    (tmp_path / "export.png").write_bytes(png)
+    _write(tmp_path, "dark/export.png", "dark", (width, height))
+    manifest = manifest_mod.build_manifest(tmp_path)
+    assert [row["key"] for row in manifest["shots"]] == ["export.light", "export.dark"]

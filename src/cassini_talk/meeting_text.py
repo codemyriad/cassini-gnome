@@ -7,11 +7,8 @@ from html import escape
 
 from .portable import Word
 from .speaker_merges import resolve_merges
-from .tokens import SPEAKER_COLOURS, SPEAKER_DARK_COLOURS, aside_chip_wash, played_word_colours
+from .tokens import aside_chip_wash, played_word_colours
 from .transcript import Turn, build_turns, display_items, join_items, visible_turns
-
-COLOURS = SPEAKER_COLOURS
-DARK_COLOURS = SPEAKER_DARK_COLOURS
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,8 +255,8 @@ def changed_header_rows(turns, before, after):
     turns = tuple(turns)
     if before is None or before[0] != after[0] or before[3:] != after[3:]:
         return turns
-    old = {s.id: (s.name, s.colour_index, s.provenance) for s in before[2]}
-    new = {s.id: (s.name, s.colour_index, s.provenance) for s in after[2]}
+    old = {s.id: (s.name, s.colour_index, s.provenance, s.stored_colour_index) for s in before[2]}
+    new = {s.id: (s.name, s.colour_index, s.provenance, s.stored_colour_index) for s in after[2]}
     if old.keys() != new.keys():
         return turns
     changed = set(before[1]) ^ set(after[1])

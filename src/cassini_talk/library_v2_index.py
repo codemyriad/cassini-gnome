@@ -270,6 +270,7 @@ class PublishedIndex:
             [*known_speakers, *(w.speaker for w in words)],
             working.lane_rows if working else (),
         )
+        raw_words = words
         words = apply_merges(words, metadata.get("speakerMerges", []), known_speakers)
         title = manifest.get("meeting", {}).get("title") or embedded.tags.get("TITLE") or path.stem
         title = title.strip() if isinstance(title, str) else ""
@@ -278,7 +279,7 @@ class PublishedIndex:
         if transcript == "damaged":
             error = MeetingError("transcript-damaged", None)
         preview_key = "v2:" + "/".join(identity)
-        speakers = _speakers(words, metadata.get("speakers", []), embedded, stored_labels=True)
+        speakers = _speakers(words, metadata.get("speakers", []), embedded, stored_labels=True, raw_words=raw_words)
         names = {speaker.id: speaker.name for speaker in speakers}
         preview = self.scanner._preview(preview_key, words, gaps, names)
         lifecycle = activity.get(identifier, "saved") if origin == "Recording" else "saved"

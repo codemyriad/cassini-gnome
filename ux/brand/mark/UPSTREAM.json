@@ -1,0 +1,27 @@
+{
+  "sourceRepo": "codemyriad/cassini-talk-site",
+  "commit": "36483e24a6956982741f4ce5df892af396d85e1b",
+  "decision": "L-04",
+  "files": {
+    "saturn-nav.svg": {
+      "upstreamPath": "src/assets/logo/saturn-nav.svg",
+      "bytes": 9612,
+      "sha256": "38b639fe49123ee236239a523183815505c33b826b135f63b65d691df7caf61e"
+    },
+    "saturn-mid.svg": {
+      "upstreamPath": "src/assets/logo/saturn-mid.svg",
+      "bytes": 11144,
+      "sha256": "2ed4f1ad9769916fcb0e65ffd51ee755202c8fab4f28e1101b5e02022c4ca5aa"
+    },
+    "saturn-full.svg": {
+      "upstreamPath": "src/assets/logo/saturn-full.svg",
+      "bytes": 12682,
+      "sha256": "3a20f4e52b97bddd15a8ad60343c627a8d3d03e5ecf2b40bfd47a29f51d3c7d7"
+    },
+    "mark-flat.svg": {
+      "upstreamPath": "docs/design-reference/logo/mark-flat.svg",
+      "bytes": 1953,
+      "sha256": "31db652d74efb9a1fcc8ddce7069c21dcd95ca8b5e72aa9e6cc4e933d82e9862"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
- "version": 2,
- "note": "Binding state vectors (HARMONY.md section 3). badge: null means no badge. liveMs is the elapsed recording time for the Recording badge. canWriteDown says whether a 'write it down' action is offered.",
+ "version": 3,
+ "note": "W0.4/L-26 binding badge vectors. vectors exercise persisted meeting precedence, unchanged; entryVectors exercise transient importing entries separately. Run both arrays. No cross-domain priority or persisted importing lifecycle is specified. Provisional ETA variants retain current text pending Alex.",
  "precedence": [
   "recording",
   "saving",
@@ -26,7 +26,7 @@
     "kind": "recording",
     "text": "Recording 12:48",
     "tint": "red",
-    "dot": true
+    "glyph": "dot"
    }
   },
   {
@@ -42,7 +42,8 @@
    "badge": {
     "kind": "saving",
     "text": "Saving…",
-    "tint": "grey"
+    "tint": "neutral",
+    "glyph": "spinner"
    }
   },
   {
@@ -57,8 +58,9 @@
    },
    "badge": {
     "kind": "transcribing",
-    "text": "Transcribing, about 4 minutes left",
-    "tint": "accent"
+    "text": "Transcribing · 4 min",
+    "tint": "neutral",
+    "glyph": "spinner"
    }
   },
   {
@@ -73,8 +75,9 @@
    },
    "badge": {
     "kind": "transcribing",
-    "text": "Transcribing, about 1 minute left",
-    "tint": "accent"
+    "text": "Transcribing · 1 min",
+    "tint": "neutral",
+    "glyph": "spinner"
    }
   },
   {
@@ -115,8 +118,9 @@
    },
    "badge": {
     "kind": "interrupted",
-    "text": "Interrupted at 00:41:12",
-    "tint": "amber"
+    "text": "Interrupted",
+    "tint": "amber",
+    "glyph": "alert"
    }
   },
   {
@@ -131,8 +135,9 @@
    },
    "badge": {
     "kind": "transcribing",
-    "text": "Transcribing, about 4 minutes left",
-    "tint": "accent"
+    "text": "Transcribing · 4 min",
+    "tint": "neutral",
+    "glyph": "spinner"
    }
   },
   {
@@ -151,7 +156,8 @@
    "badge": {
     "kind": "needsAttention",
     "text": "Needs attention",
-    "tint": "amber"
+    "tint": "amber",
+    "glyph": "alert"
    }
   },
   {
@@ -167,7 +173,8 @@
    "badge": {
     "kind": "received",
     "text": "Received",
-    "tint": "grey"
+    "tint": "outline",
+    "glyph": "incoming"
    },
    "canWriteDown": false
   },
@@ -184,7 +191,8 @@
    "badge": {
     "kind": "received",
     "text": "Received",
-    "tint": "grey"
+    "tint": "outline",
+    "glyph": "incoming"
    },
    "canWriteDown": true
   },
@@ -200,8 +208,9 @@
    },
    "badge": {
     "kind": "transcribing",
-    "text": "Transcribing, about 4 minutes left",
-    "tint": "accent"
+    "text": "Transcribing · 4 min",
+    "tint": "neutral",
+    "glyph": "spinner"
    }
   },
   {
@@ -220,7 +229,8 @@
    "badge": {
     "kind": "received",
     "text": "Received",
-    "tint": "grey"
+    "tint": "outline",
+    "glyph": "incoming"
    },
    "canWriteDown": false,
    "note": "An error without an action never raises Needs attention; its line is still shown under the headline."
@@ -241,7 +251,8 @@
    "badge": {
     "kind": "needsAttention",
     "text": "Needs attention",
-    "tint": "amber"
+    "tint": "amber",
+    "glyph": "alert"
    }
   },
   {
@@ -262,7 +273,7 @@
     "kind": "recording",
     "text": "Recording 1:02:48",
     "tint": "red",
-    "dot": true
+    "glyph": "dot"
    }
   },
   {
@@ -278,9 +289,10 @@
    "badge": {
     "kind": "transcribing",
     "text": "Transcribing…",
-    "tint": "accent"
+    "tint": "neutral",
+    "glyph": "spinner"
    },
-   "note": "D6 R3"
+   "note": "PROVISIONAL, pending Alex: current no-ETA label retained (D6 R3)."
   },
   {
    "id": "failed-can-write-down",
@@ -298,13 +310,49 @@
    "badge": {
     "kind": "needsAttention",
     "text": "Needs attention",
-    "tint": "amber"
+    "tint": "amber",
+    "glyph": "alert"
    },
    "canWriteDown": true,
    "note": "D6 R9 (own meeting with counted tracks)"
+  },
+  {
+   "id": "transcribing-under-minute",
+   "fields": {
+    "lifecycle": "saved",
+    "origin": "own",
+    "interruptedAtMs": null,
+    "transcript": "running",
+    "etaMinutes": 0,
+    "error": null
+   },
+   "badge": {
+    "kind": "transcribing",
+    "text": "Transcribing, less than a minute left",
+    "tint": "neutral",
+    "glyph": "spinner"
+   },
+   "note": "PROVISIONAL, pending Alex: current under-minute label retained."
   }
  ],
  "changelog": [
-  "v2 (D6): transcribing-without-eta, failed-can-write-down"
+  "v2 (D6): transcribing-without-eta, failed-can-write-down",
+  "v3 (W0.4/L-25/L-26): compact positive ETA, Interrupted without position, neutral/outline tones, explicit glyphs replacing dot, importing entry vectors; provisional current ETA variants."
+ ],
+ "entryVectors": [
+  {
+   "id": "active-import-entry",
+   "scope": "import-entry",
+   "fields": {
+    "importing": true
+   },
+   "badge": {
+    "kind": "importing",
+    "text": "Importing…",
+    "tint": "neutral",
+    "glyph": "spinner"
+   },
+   "note": "L-25/L-26 transient entry, not a persisted meeting. No canWriteDown or recording/meeting precedence is invented."
+  }
  ]
 }

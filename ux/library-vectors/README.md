@@ -60,7 +60,7 @@ microphone source and the guest "Ana" are both announced in `captureOutcome`.
 |---|---|---|---|
 | `t8-control-others-spoke` | 10 s, 5 s tone; captured | done; 3 + 2 words | control |
 | `t8-others-silent` | 10 s of zeros; captured (zero-valued audio is captured: protocol `outcomes.json`) | done; 3 words; `silentTracks: ["guest"]` | Details adds "Ana: no speech heard." (D67.1) |
-| `t8-others-never-captured` | 0-frame WAV; neverAudio; session interrupted (`problemKind: capture`) | done; 3 words; `silentTracks: ["guest"]` (D67.3) | "Ana: no audio was received." wins over silent (D67.1); Interrupted at 00:00:10 |
+| `t8-others-never-captured` | 0-frame WAV; neverAudio; session interrupted (`problemKind: capture`) | done; 3 words; `silentTracks: ["guest"]` (D67.3) | "Ana: no audio was received." wins over silent (D67.1); Interrupted (position remains in meeting/detail copy) |
 | `t8-others-transcription-failed` | 10 s, 5 s tone; captured | failed as the writer leaves it (D67.2): `reference: null`, stored error, 2 partial words kept in an unreferenced transcript.json for Try again | Needs attention; no words |
 
 Five guard cases pin what those four cannot tell apart. Their lines are not
@@ -72,7 +72,7 @@ required to differ from the four states.
 | `t8-retry-failed-stale-silent` | R13.1 "the transcript is done" | both tracks zeros; the first write-down was done with no speech (`silentTracks` lists both); Try again failed, so that writingDown is still stored | Needs attention; no silent line |
 | `t8-silent-per-source` | R13.1 "every track", R13.3 place | rejoins (D63 #1): Bruno's two tracks both silent, Ana's first track silent and her return track spoke; sources mic, Bruno, Ana | "Bruno: no speech heard." right after Bruno's line, before Ana's; none for Ana |
 | `t8-none-referenced-words` (also R3) | D67.8a "shows them as stored, as for failed" | status none, never written down here, but meeting.json references a readable sidecar with 3 words (another or an older writer); same audio and words as `t8-failed-referenced-words` | no badge; names Me, Ana (R7); no quote (R8.5); can write down (R9); the 3 words are visible |
-| `t8-low-audio-silent` | D67.8b, R13.1 "captured" | Ana sent 500 ms of zeros (lowAudio; session interrupted, `problemKind: capture`); done; `silentTracks: ["guest"]`, her only track | Ana's `details.sources.lowAudio.underSecond` warning ("less than a second", D58.4) and no silent line; Interrupted at 00:00:10 |
+| `t8-low-audio-silent` | D67.8b, R13.1 "captured" | Ana sent 500 ms of zeros (lowAudio; session interrupted, `problemKind: capture`); done; `silentTracks: ["guest"]`, her only track | Ana's `details.sources.lowAudio.underSecond` warning ("less than a second", D58.4) and no silent line; Interrupted (position remains in meeting/detail copy) |
 
 `expected/t8-*.json` are rows as for the other cases. `outcome-lines.json` adds,
 per case, the Details "Audio sources" lines as catalog ids with their placeholder
@@ -91,3 +91,5 @@ covers exactly the T8 cases, its catalog ids and placeholders against
 `../strings.json` where that file is beside the vectors (ux-draft), that the
 four outcome cases' lines differ pairwise, with the silent case's Details lines
 differing from the control's, and the shape each guard case relies on.
+
+W0.4 changes only badge presentation in the expected rows (compact positive ETA and Interrupted without position). Source fixtures/audio and row anatomy are unchanged; pin these expectations together with state vectorsv3 and the catalog.

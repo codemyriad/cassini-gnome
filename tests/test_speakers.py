@@ -261,3 +261,27 @@ def test_loaded_listening_turns_follow_merges_and_are_cached_between_scans(meeti
     undo_merge(meeting.directory)
     restored = scanner.scan(changed_directories={meeting.directory}).meetings[0]
     assert restored.listening_turns == before.listening_turns
+
+
+def test_speaker_colour_slot_stays_fixed_across_merge_and_rename(meeting):
+    from cassini_talk.tokens import speaker_slot
+
+    # 1. Merging speaker b (slot 2) into speaker a (slot 1) leaves speaker c on slot 3 (stored colourIndex 2).
+    merge_into(meeting.directory, "b", "a")
+    merged = current_meeting(meeting.directory)
+    carol = merged.speaker_for("c")
+    assert carol.colour_index == 1 and carol.stored_colour_index == 2
+    assert speaker_slot(carol) == 3
+
+    # 2. Even if meeting.json had no stored speaker entries, pre-merge first-speech rank fixes c at slot 3 on rename.
+    update_metadata(meeting.directory, speakers=[])
+    unnamed = current_meeting(meeting.directory)
+    unnamed_c = unnamed.speaker_for("c")
+    assert unnamed_c.provenance is None and unnamed_c.stored_colour_index == 2
+    assert speaker_slot(unnamed_c) == 0
+    save_name(meeting.directory, "c", "Carol")
+    named = current_meeting(meeting.directory)
+    named_c = named.speaker_for("c")
+    assert named_c.stored_colour_index == 2 and speaker_slot(named_c) == 3
+    stored_entry = next(s for s in read_metadata(meeting.directory)["speakers"] if s["id"] == "c")
+    assert stored_entry["colourIndex"] == 2

@@ -85,11 +85,22 @@ def parse_css_theme(
 def test_vendored_tokens_sha256_generated_files_and_literal_scan_pass():
     gen = _load_generator()
     gen.check_all(ROOT)
+    assert not gen.scan_source_literals(ROOT, allow_pre_w1=False)
 
     upstream = json.loads(UPSTREAM.read_text(encoding="utf-8"))
     commit = upstream["commit"]
     assert re.fullmatch(r"[0-9a-f]{40}", commit)
-    assert hashlib.sha256(VENDORED.read_bytes()).hexdigest() == upstream["sha256"]["tokens.json"]
+    for rel_key, expected_sha in upstream["sha256"].items():
+        assert hashlib.sha256((ROOT / "ux/brand" / rel_key).read_bytes()).hexdigest() == expected_sha
+    assert {
+        "tokens.json",
+        "mark/saturn-nav.svg",
+        "mark/saturn-mid.svg",
+        "mark/saturn-full.svg",
+        "mark/mark-flat.svg",
+    }.issubset(upstream["sha256"])
+    ux_upstream = json.loads((ROOT / "tests/ux/UPSTREAM.json").read_text(encoding="utf-8"))
+    assert commit == ux_upstream["commit"]
     assert commit == tokens.UPSTREAM_COMMIT
 
     for path in (TOKENS_CSS, BRAND_TOKENS_PY):
@@ -100,12 +111,15 @@ def test_vendored_tokens_sha256_generated_files_and_literal_scan_pass():
     assert '@import url("tokens.css");' in STYLE_CSS.read_text(encoding="utf-8")
 
 
-def test_generated_tokens_match_all_49_decided_tokens_and_derived():
+def test_generated_tokens_match_all_53_decided_tokens_and_derived():
     payload = json.loads(VENDORED.read_text(encoding="utf-8"))
     assert payload["schema"] == "cassini-ux/brand-tokens@1"
     assert payload["modes"] == ["light", "dark"]
-    assert len(payload["tokens"]) == 49
+    assert len(payload["tokens"]) == 53
     assert all(spec["status"] == "decided" for spec in payload["tokens"].values())
+    assert all("check" not in spec for spec in payload["tokens"].values())
+    assert all("check" not in spec for spec in payload["derived"].values())
+    assert payload["exceptions"] == []
 
     cx_light, cx_dark, *_ = parse_css_theme(
         TOKENS_CSS.read_text(encoding="utf-8"),
@@ -123,6 +137,14 @@ def test_generator_check_fails_on_sha256_drift_generated_drift_or_source_literal
     for rel in (
         "ux/brand/UPSTREAM.json",
         "ux/brand/tokens.json",
+        "ux/brand/mark/saturn-nav.svg",
+        "ux/brand/mark/saturn-mid.svg",
+        "ux/brand/mark/saturn-full.svg",
+        "ux/brand/mark/mark-flat.svg",
+        "src/brand/mark/saturn-nav.svg",
+        "src/brand/mark/saturn-mid.svg",
+        "src/brand/mark/saturn-full.svg",
+        "src/brand/mark/mark-flat.svg",
         "src/tokens.css",
         "src/style.css",
         "src/cassini_talk/_brand_tokens.py",
@@ -137,7 +159,7 @@ def test_generator_check_fails_on_sha256_drift_generated_drift_or_source_literal
 
     # 1. Drift in generated CSS fails.
     (tmp_path / "src/tokens.css").write_text(
-        (tmp_path / "src/tokens.css").read_text(encoding="utf-8").replace("#F5F4EF", "#F5F4EE", 1),
+        (tmp_path / "src/tokens.css").read_text(encoding="utf-8").replace("#F4F5F7", "#F4F5F6", 1),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="src/tokens.css differs"):
@@ -146,7 +168,7 @@ def test_generator_check_fails_on_sha256_drift_generated_drift_or_source_literal
 
     # 2. Drift in generated Python fails.
     (tmp_path / "src/cassini_talk/_brand_tokens.py").write_text(
-        (tmp_path / "src/cassini_talk/_brand_tokens.py").read_text(encoding="utf-8").replace("#007999", "#007998", 1),
+        (tmp_path / "src/cassini_talk/_brand_tokens.py").read_text(encoding="utf-8").replace("#093351", "#093350", 1),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="src/cassini_talk/_brand_tokens.py differs"):
@@ -191,6 +213,7 @@ def test_every_applied_w1_role_resolves_to_its_token_and_unapplied_set_is_exact(
 
     allowed_w1 = set(tokens.ROLE_TOKENS) - tokens.DEFERRED_W2_ROLES
     assert not (tokens.UNAPPLIED_W1_ROLES - allowed_w1)
+    assert not tokens.UNAPPLIED_W1_ROLES, f"Wave 1 preview left roles unapplied: {sorted(tokens.UNAPPLIED_W1_ROLES)}"
 
     for adw_name, target in tokens.ADW_ROLE_TOKENS.items():
         role = f"adw:{adw_name}"
@@ -214,7 +237,10 @@ def test_every_applied_w1_role_resolves_to_its_token_and_unapplied_set_is_exact(
         "spectro-pill-silent": lambda dark: tokens.spectrogram_colours("pill", dark=dark, silent=True)[1],
         "spectro-row-silent": lambda dark: tokens.spectrogram_colours("row", dark=dark, silent=True)[1],
         "timeline-tick": lambda dark: tokens.timeline_tick_colour(dark=dark),
+        "aside-chip-bg": lambda dark: tokens.aside_chip_wash(dark=dark)[0],
     }
+    assert tokens.aside_chip_wash(dark=False) == (tokens.token("ink", dark=False), "10%")
+    assert tokens.aside_chip_wash(dark=True) == (tokens.token("ink", dark=True), "10%")
     for py_role, getter in python_checks.items():
         if py_role not in tokens.UNAPPLIED_W1_ROLES:
             target = tokens.PYTHON_ROLE_TOKENS[py_role]
@@ -232,8 +258,30 @@ def test_every_applied_w1_role_resolves_to_its_token_and_unapplied_set_is_exact(
         if f"speaker-{slot}" not in tokens.UNAPPLIED_W1_ROLES:
             assert tokens.speaker_colour(speaker, dark=False) == tokens.token(f"speaker-{slot}", dark=False)
             assert tokens.speaker_colour(speaker, dark=True) == tokens.token(f"speaker-{slot}", dark=True)
+            assert f".speaker-ink-{slot}" in style_css_text
         if f"avatar-{slot}" not in tokens.UNAPPLIED_W1_ROLES:
             assert f".speaker-avatar-{slot}" in style_css_text
             assert f".speaker-chip-{slot}" in style_css_text
     assert tokens.speaker_slot(SimpleNamespace(colour_index=6, provenance="user")) == 1
-    assert tokens.speaker_slot(SimpleNamespace(colour_index=4, provenance="unnamed")) == 0
+    assert tokens.speaker_slot(SimpleNamespace(colour_index=1, stored_colour_index=2, provenance="user")) == 3
+    assert tokens.speaker_slot(SimpleNamespace(colour_index=4, stored_colour_index=2, provenance="unnamed")) == 0
+    assert [tokens.saved_voice_slot({"saveOrder": i}) for i in range(7)] == [1, 2, 3, 4, 5, 6, 1]
+
+
+def test_brand_mark_dimensions_resource_thresholds_and_wordmark():
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gtk", "4.0")
+    except ValueError:
+        pytest.skip("GTK 4 introspection is unavailable")
+    from cassini_talk import brand_mark
+
+    assert brand_mark.WORDMARK_TEXT == "cassini.talk"
+    assert brand_mark.WORDMARK_FONT_PX == 18
+    assert brand_mark.WORDMARK_FONT_WEIGHT == 500
+    assert brand_mark.mark_dimensions(26) == (40, 26)
+    assert brand_mark.mark_dimensions(28) == (43, 28)
+    assert brand_mark.mark_dimensions(56) == (86, 56)
+    assert brand_mark.mark_resource_for_height(26) == brand_mark.NAV_MARK_RESOURCE
+    assert brand_mark.mark_resource_for_height(40) == brand_mark.NAV_MARK_RESOURCE
+    assert brand_mark.mark_resource_for_height(41) == brand_mark.MID_MARK_RESOURCE

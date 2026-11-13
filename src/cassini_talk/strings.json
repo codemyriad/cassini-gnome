@@ -641,7 +641,9 @@
    "en": "Saved voices",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "heading",
    "boards": [
@@ -651,7 +653,7 @@
     "SavedVoices-mac"
    ],
    "milestone": "UX17",
-   "note": "Uses: title of the last row in the Settings Speakers card, with a trailing chevron, and the header title of the pushed Saved voices page (GNOME AdwPreferencesDialog subpage, Mac navigationTitle in a NavigationStack). Sentence case, lowercase v.",
+   "note": "Uses: title of the last row in the Settings Speakers card, header title of the pushed Saved voices page, and L-46 section heading above the saved-voices group in the Name a speaker dialog when 'Closest first' is placed in a separate footer (macOS: speakers.savedVoices.closestFirst) or omitted. Sentence case, lowercase v.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -865,7 +867,9 @@
    "en": "Stop",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -937,7 +941,9 @@
    "en": "Try again",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -8686,7 +8692,9 @@
    "en": "Same person",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -8719,7 +8727,9 @@
    "en": "Someone else",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -8788,7 +8798,9 @@
    "en": "Merge into…",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -8821,7 +8833,9 @@
    "en": "Name",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -8989,7 +9003,9 @@
    "en": "Saved voices, closest first",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "heading",
    "boards": [
@@ -9022,15 +9038,19 @@
    "en": "Likely",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "badge",
    "boards": [
-    "Speakers",
-    "Speakers-mac"
+    "Speakers-GNOME",
+    "Speakers-Mac",
+    "Speakers-iOS",
+    "Speakers-Android"
    ],
    "milestone": "UX17",
-   "note": "White pill with accent text on the closest saved-voice row, which has an accentTint fill.",
+   "note": "L-46: neutral ink-at-10% tag on the closest saved-voice row, with ink-2 text and no row highlight (replaces the old white pill / accentTint row highlight).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -9055,7 +9075,9 @@
    "en": "Speaks for {talkTime} in this meeting",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "caption",
    "boards": [
@@ -9087,11 +9109,48 @@
    }
   },
   {
-   "id": "states.badge.interrupted",
-   "en": "Interrupted at {position}",
+   "id": "states.badge.importing",
+   "en": "Importing…",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "States",
+    "States-mac"
+   ],
+   "milestone": "W0.4 (L-25, L-26)",
+   "note": "L-25/L-26: active transient import-entry badge, neutral tint and spinner. Does not add a persisted meeting lifecycle or define priority against a recording. Current model has no importing lifecycle; cross-domain placement remains PROVISIONAL pending Alex.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Importazione…"
+    },
+    "fr": {
+     "text": "Importation…"
+    },
+    "es": {
+     "text": "Importando…"
+    },
+    "pt-BR": {
+     "text": "Importando…"
+    },
+    "pt-PT": {
+     "text": "A importar…"
+    }
+   }
+  },
+  {
+   "id": "states.badge.interrupted",
+   "en": "Interrupted",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "badge",
    "boards": [
@@ -9100,27 +9159,24 @@
     "States",
     "States-mac"
    ],
-   "milestone": "UX2",
-   "placeholders": {
-    "position": "format.position of interruptedAtMs, HH:MM:SS (e.g. 00:41:12)"
-   },
-   "note": "HARMONY 3 row 5. Amber tint (amber text on amberTint). This is history, not an error.",
+   "milestone": "W0.4 (L-26)",
+   "note": "L-26: amber/alert badge, no position. History, not an error. Position-bearing current copy is meeting.interruptedAt, for the meeting/detail surface.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Interrotta a {position}"
+     "text": "Interrotta"
     },
     "fr": {
-     "text": "Interrompue à {position}"
+     "text": "Interrompue"
     },
     "es": {
-     "text": "Interrumpida en {position}"
+     "text": "Interrumpida"
     },
     "pt-BR": {
-     "text": "Interrompida em {position}"
+     "text": "Interrompida"
     },
     "pt-PT": {
-     "text": "Interrompida aos {position}"
+     "text": "Interrompida"
     }
    }
   },
@@ -9129,15 +9185,17 @@
    "en": "Needs attention",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "badge",
    "boards": [
     "States",
     "States-mac"
    ],
-   "milestone": "UX2",
-   "note": "HARMONY 3 row 4: only when error != null and error.action != null. Amber tint.",
+   "milestone": "W0.4 (L-26)",
+   "note": "L-26: amber tone and alert glyph, only actionable errors. Current code identifier needsAttention is retained; the canvas calls the visual kind attention.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -9162,7 +9220,9 @@
    "en": "Received",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "badge",
    "boards": [
@@ -9173,8 +9233,8 @@
     "States",
     "States-mac"
    ],
-   "milestone": "UX2",
-   "note": "HARMONY 3 row 6 (origin = received). Grey chip (chip background, dim text). On a selected row: pill with an rgba(255,255,255,0.22) fill and selFg text on both platforms. The same word ends format.previewSubtitle.received and must stay identical. Live from UX4.",
+   "milestone": "W0.4 (L-26)",
+   "note": "L-26: transparent fill, line-token outline, ink-2 text, incoming glyph. Same word as format.previewSubtitle.received. Phone eligibility remains PROVISIONAL pending Alex/L-10; current per-app applicability is unchanged.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -9199,7 +9259,9 @@
    "en": "Recording {liveBadge}",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "badge",
    "boards": [
@@ -9208,11 +9270,11 @@
     "States",
     "States-mac"
    ],
-   "milestone": "UX2",
+   "milestone": "W0.4 (L-26)",
    "placeholders": {
     "liveBadge": "HARMONY 6 badge/header-pill live timer (format-vectors liveBadge): 12:48, 1:02:48 from one hour on"
    },
-   "note": "HARMONY 3 row 1 (lifecycle = recording). Red tint with a decorative 7 px red dot before the text. Live from UX5.",
+   "note": "L-26: red tone, record-tint/record-ink, dot glyph; timer unchanged. Exact glyph dimensions PROVISIONAL pending Alex; current canvas dot6.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -9237,15 +9299,17 @@
    "en": "Saving…",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "badge",
    "boards": [
     "States",
     "States-mac"
    ],
-   "milestone": "UX2",
-   "note": "HARMONY 3 row 2 (lifecycle = saving). Grey chip. U+2026. Live from UX5.",
+   "milestone": "W0.4 (L-26)",
+   "note": "L-26: neutral tint and spinner, typographic ellipsis.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -9267,10 +9331,12 @@
   },
   {
    "id": "states.badge.transcribing",
-   "en": "Transcribing, about {n} minutes left",
+   "en": "Transcribing · {n} min",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "badge",
    "boards": [
@@ -9279,55 +9345,55 @@
     "States",
     "States-mac"
    ],
-   "milestone": "UX2",
+   "milestone": "W0.4 (L-26)",
    "placeholders": {
     "n": "etaMinutes (integer, only while transcript is queued or running); format-vectors eta"
    },
    "plural": {
-    "one": "Transcribing, about 1 minute left",
-    "other": "Transcribing, about {n} minutes left"
+    "one": "Transcribing · 1 min",
+    "other": "Transcribing · {n} min"
    },
-   "note": "HARMONY 3 row 3. Accent tint. Kept as one sentence for translators; the ETA part follows the HARMONY 6 plural. 'Transcribing' is the allowed badge exception. n = 0 uses states.badge.transcribing.underMinute. Live from UX13. n = 0 uses states.badge.transcribing.underMinute.",
+   "note": "L-26: positive integer ETA only, compact middle-dot label. Neutral tint, spinner. n=0 uses underMinute and absent/invalid ETA uses noEta; those current wordings remain PROVISIONAL pending Alex. Do not derive a sentence by concatenation.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "In trascrizione, circa {n} minuti",
+     "text": "In trascrizione · {n} min",
      "plural": {
-      "one": "In trascrizione, circa 1 minuto",
-      "many": "In trascrizione, circa {n} minuti",
-      "other": "In trascrizione, circa {n} minuti"
+      "one": "In trascrizione · 1 min",
+      "many": "In trascrizione · {n} min",
+      "other": "In trascrizione · {n} min"
      }
     },
     "fr": {
-     "text": "Transcription, environ {n} minutes",
+     "text": "Transcription · {n} min",
      "plural": {
-      "one": "Transcription, environ {n} minute",
-      "many": "Transcription, environ {n} minutes",
-      "other": "Transcription, environ {n} minutes"
+      "one": "Transcription · {n} min",
+      "many": "Transcription · {n} min",
+      "other": "Transcription · {n} min"
      }
     },
     "es": {
-     "text": "Transcribiendo, quedan unos {n} minutos",
+     "text": "Transcribiendo · {n} min",
      "plural": {
-      "one": "Transcribiendo, queda alrededor de 1 minuto",
-      "many": "Transcribiendo, quedan unos {n} minutos",
-      "other": "Transcribiendo, quedan unos {n} minutos"
+      "one": "Transcribiendo · 1 min",
+      "many": "Transcribiendo · {n} min",
+      "other": "Transcribiendo · {n} min"
      }
     },
     "pt-BR": {
-     "text": "Transcrevendo, faltam cerca de {n} minutos",
+     "text": "Transcrevendo · {n} min",
      "plural": {
-      "one": "Transcrevendo, falta cerca de {n} minuto",
-      "many": "Transcrevendo, faltam cerca de {n} minutos",
-      "other": "Transcrevendo, faltam cerca de {n} minutos"
+      "one": "Transcrevendo · {n} min",
+      "many": "Transcrevendo · {n} min",
+      "other": "Transcrevendo · {n} min"
      }
     },
     "pt-PT": {
-     "text": "A transcrever, faltam cerca de {n} minutos",
+     "text": "A transcrever · {n} min",
      "plural": {
-      "one": "A transcrever, falta cerca de {n} minuto",
-      "many": "A transcrever, faltam cerca de {n} minutos",
-      "other": "A transcrever, faltam cerca de {n} minutos"
+      "one": "A transcrever · {n} min",
+      "many": "A transcrever · {n} min",
+      "other": "A transcrever · {n} min"
      }
     }
    }
@@ -9337,13 +9403,15 @@
    "en": "Transcribing…",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "badge",
    "boards": [],
    "milestone": "UX2",
    "status": "harmony",
-   "note": "D6 R3: queued/running with no valid etaMinutes. Same tint as states.badge.transcribing.",
+   "note": "PROVISIONAL, pending Alex (W0.4/L-26): current wording retained verbatim; the canvas gives no replacement for this ETA variant. Neutral tint, spinner.",
    "l10n": {
     "it": {
      "text": "In trascrizione…"
@@ -9367,12 +9435,14 @@
    "en": "Transcribing, less than a minute left",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "badge",
    "boards": [],
    "milestone": "UX2",
-   "note": "Not drawn. Required by format-vectors.json eta {minutes:0}; HARMONY 6 lists it.",
+   "note": "PROVISIONAL, pending Alex (W0.4/L-26): current wording retained verbatim; the canvas gives no replacement for this ETA variant. Neutral tint, spinner.",
    "status": "vectors",
    "l10n": {
     "it": {
@@ -21867,6 +21937,2481 @@
       "many": "{n} exportadas para um ficheiro ZIP",
       "other": "{n} exportadas para um ficheiro ZIP"
      }
+    }
+   }
+  },
+  {
+   "id": "settings.transfer.heading",
+   "en": "Moving to a new phone",
+   "platforms": [
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Coordinator (D97). Settings section heading above the device-to-device transfer switch.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Passaggio a un nuovo telefono"
+    },
+    "fr": {
+     "text": "Passage à un nouveau téléphone"
+    },
+    "es": {
+     "text": "Cambio a un teléfono nuevo"
+    },
+    "pt-BR": {
+     "text": "Mudança para um novo celular"
+    },
+    "pt-PT": {
+     "text": "Mudança para um telemóvel novo"
+    }
+   }
+  },
+  {
+   "id": "settings.transfer.title",
+   "en": "Move to a new phone",
+   "platforms": [
+    "android"
+   ],
+   "role": "switch",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Coordinator (D97). Switch label; on by default. What moves is the notes and saved voices, not the person.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trasferisci su un nuovo telefono"
+    },
+    "fr": {
+     "text": "Transférer vers un nouveau téléphone"
+    },
+    "es": {
+     "text": "Transferir a un teléfono nuevo"
+    },
+    "pt-BR": {
+     "text": "Transferir para um novo celular"
+    },
+    "pt-PT": {
+     "text": "Passar para um telemóvel novo"
+    }
+   }
+  },
+  {
+   "id": "settings.transfer.body",
+   "en": "When you set up a new Android phone from this one, your notes and saved voices are copied directly to it. Nothing is sent to a cloud account. Downloaded models are not copied; the new phone downloads them again.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Coordinator (D97). Explanation under the switch while it is on. Device-to-device transfer during phone setup (cable or phone-to-phone).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Quando configuri un nuovo telefono Android a partire da questo, le tue note e le voci salvate vengono copiate direttamente sul nuovo telefono. Nulla viene inviato a un account cloud. I modelli scaricati non vengono copiati: il nuovo telefono li scarica di nuovo."
+    },
+    "fr": {
+     "text": "Lorsque vous configurez un nouveau téléphone Android à partir de celui-ci, vos notes et vos voix mémorisées y sont copiées directement. Rien n’est envoyé vers un compte cloud. Les modèles téléchargés ne sont pas copiés ; le nouveau téléphone les télécharge à nouveau."
+    },
+    "es": {
+     "text": "Cuando configuras un teléfono Android nuevo a partir de este, tus notas y voces guardadas se copian directamente en él. No se envía nada a ninguna cuenta en la nube. Los modelos descargados no se copian; el teléfono nuevo los descarga otra vez."
+    },
+    "pt-BR": {
+     "text": "Quando você configura um novo celular Android a partir deste, suas notas e vozes salvas são copiadas diretamente para ele. Nada é enviado para uma conta na nuvem. Os modelos baixados não são copiados; o novo celular os baixa novamente."
+    },
+    "pt-PT": {
+     "text": "Ao configurar um telemóvel Android novo a partir deste, as suas notas e vozes guardadas são copiadas diretamente para ele. Nada é enviado para uma conta na nuvem. Os modelos transferidos não são copiados; o telemóvel novo volta a transferi-los."
+    }
+   }
+  },
+  {
+   "id": "settings.transfer.body.off",
+   "en": "Nothing is copied to a new phone. If this phone is lost or replaced, your notes are gone unless you exported them.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Coordinator (D97). Shown under the switch, instead of settings.transfer.body, while it is off.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Nulla viene copiato su un nuovo telefono. Se questo telefono viene perso o sostituito, le tue note vanno perse, a meno che tu non le abbia esportate."
+    },
+    "fr": {
+     "text": "Rien n’est copié vers un nouveau téléphone. Si ce téléphone est perdu ou remplacé, vos notes sont perdues, sauf si vous les avez exportées."
+    },
+    "es": {
+     "text": "No se copia nada a un teléfono nuevo. Si pierdes o cambias este teléfono, tus notas se pierden, salvo que las hayas exportado."
+    },
+    "pt-BR": {
+     "text": "Nada é copiado para um novo celular. Se este celular for perdido ou substituído, suas notas serão perdidas, a menos que você as tenha exportado."
+    },
+    "pt-PT": {
+     "text": "Nada é copiado para um telemóvel novo. Se este telemóvel for perdido ou substituído, as suas notas perdem-se, a menos que as tenha exportado."
+    }
+   }
+  },
+  {
+   "id": "settings.transfer.exportHint",
+   "en": "To keep a copy somewhere safe, use Export All as ZIP.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Coordinator (D97). Follows the body under the switch. 'Export All as ZIP' is the action export.zip.all without its ellipsis: the quoted text must match that entry exactly in every language.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Per conservare una copia in un posto sicuro, usa “Esporta tutto come ZIP”."
+    },
+    "fr": {
+     "text": "Pour garder une copie en lieu sûr, utilisez « Tout exporter en ZIP »."
+    },
+    "es": {
+     "text": "Para guardar una copia en un lugar seguro, usa “Exportar todo como ZIP”."
+    },
+    "pt-BR": {
+     "text": "Para guardar uma cópia em um lugar seguro, use “Exportar tudo como ZIP”."
+    },
+    "pt-PT": {
+     "text": "Para guardar uma cópia num local seguro, utilize «Exportar tudo como ZIP»."
+    }
+   }
+  },
+  {
+   "id": "settings.transfer.tooLarge",
+   "en": "Your notes and saved voices are too large to move in one transfer. Export your notes as a ZIP instead.",
+   "platforms": [
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Coordinator (D97). Shown only after the system refused a device-to-device transfer because of its size. Never shown as a prediction.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le tue note e le voci salvate sono troppo grandi per essere trasferite in una sola volta. Esporta le note come ZIP."
+    },
+    "fr": {
+     "text": "Vos notes et vos voix mémorisées sont trop volumineuses pour être transférées en une seule fois. Exportez plutôt vos notes en ZIP."
+    },
+    "es": {
+     "text": "Tus notas y voces guardadas son demasiado grandes para transferirlas de una sola vez. Exporta tus notas como ZIP."
+    },
+    "pt-BR": {
+     "text": "Suas notas e vozes salvas são grandes demais para serem transferidas de uma só vez. Exporte suas notas como ZIP."
+    },
+    "pt-PT": {
+     "text": "As suas notas e vozes guardadas são demasiado grandes para serem passadas de uma só vez. Exporte as suas notas como ZIP."
+    }
+   }
+  },
+  {
+   "id": "settings.transfer.unavailable",
+   "en": "Choosing this needs Android 9 or newer.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Coordinator (D97). Capability explanation shown in place of a working switch on Android 8, where the app cannot offer the choice.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Per questa scelta serve Android 9 o successivo."
+    },
+    "fr": {
+     "text": "Ce choix nécessite Android 9 ou une version ultérieure."
+    },
+    "es": {
+     "text": "Esta opción necesita Android 9 o posterior."
+    },
+    "pt-BR": {
+     "text": "Esta opção requer o Android 9 ou mais recente."
+    },
+    "pt-PT": {
+     "text": "Esta opção requer o Android 9 ou mais recente."
+    }
+   }
+  },
+  {
+   "id": "settings.transfer.choice.failed",
+   "en": "Couldn’t save this choice. Try again.",
+   "platforms": [
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Coordinator (D97). The Settings write failed; the switch returns to its previous position.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Impossibile salvare questa scelta. Riprova."
+    },
+    "fr": {
+     "text": "Impossible de sauvegarder ce choix. Réessayez."
+    },
+    "es": {
+     "text": "No se pudo guardar esta opción. Inténtalo de nuevo."
+    },
+    "pt-BR": {
+     "text": "Não foi possível salvar esta opção. Tente novamente."
+    },
+    "pt-PT": {
+     "text": "Não foi possível guardar esta opção. Tente novamente."
+    }
+   }
+  },
+  {
+   "id": "notice.transfer.enabled",
+   "en": "Cassini will move your notes and saved voices to a new phone when you set it up from this one. You can change this in Settings.",
+   "platforms": [
+    "android"
+   ],
+   "role": "banner",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Retired by Silvio on 2026-11-12 (D97 amendment): ordinary device-to-device transfer needs no one-time Library notice. Keep the Settings opt-out and privacy policy. Retained here for translation-history compatibility; do not ship.",
+   "status": "retired",
+   "l10n": {
+    "it": {
+     "text": "Cassini trasferirà le tue note e le voci salvate su un nuovo telefono quando lo configuri a partire da questo. Puoi cambiare questa scelta nelle impostazioni."
+    },
+    "fr": {
+     "text": "Cassini transférera vos notes et vos voix mémorisées vers un nouveau téléphone lorsque vous le configurerez à partir de celui-ci. Vous pouvez modifier ce choix dans les réglages."
+    },
+    "es": {
+     "text": "Cassini transferirá tus notas y voces guardadas a un teléfono nuevo cuando lo configures a partir de este. Puedes cambiarlo en Ajustes."
+    },
+    "pt-BR": {
+     "text": "O Cassini vai transferir suas notas e vozes salvas para um novo celular quando você o configurar a partir deste. Você pode alterar isso nos Ajustes."
+    },
+    "pt-PT": {
+     "text": "O Cassini passa as suas notas e vozes guardadas para um telemóvel novo quando este for configurado a partir deste telemóvel. Pode alterar isto nas definições."
+    }
+   }
+  },
+  {
+   "id": "android.privacy.processing",
+   "en": "Transcription runs on this phone.",
+   "platforms": [
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Coordinator (D97). Replaces the older absolute 'never leaves this phone' claims on the Library and in the model settings: with D97, notes can move to a new phone.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "La trascrizione avviene su questo telefono."
+    },
+    "fr": {
+     "text": "La transcription se fait sur ce téléphone."
+    },
+    "es": {
+     "text": "La transcripción se hace en este teléfono."
+    },
+    "pt-BR": {
+     "text": "A transcrição é feita neste celular."
+    },
+    "pt-PT": {
+     "text": "A transcrição é feita neste telemóvel."
+    }
+   }
+  },
+  {
+   "id": "android.speakers.rememberVoice.description",
+   "en": "Future notes will name {name} automatically.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Silvio (2026-11-12): remove routine phone-transfer notices; keep the Settings opt-out and privacy policy. Existing recognition/privacy wording retained.",
+   "placeholders": {
+    "name": "the speaker's name as the person typed it"
+   },
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le prossime note riconosceranno {name} automaticamente."
+    },
+    "fr": {
+     "text": "Cassini nommera {name} automatiquement dans les prochaines notes."
+    },
+    "es": {
+     "text": "En las próximas notas, Cassini reconocerá a {name} automáticamente."
+    },
+    "pt-BR": {
+     "text": "Nas próximas notas, o Cassini vai nomear {name} automaticamente."
+    },
+    "pt-PT": {
+     "text": "Nas próximas notas, o Cassini reconhece {name} automaticamente."
+    }
+   }
+  },
+  {
+   "id": "android.speakers.rememberVoice.description.unnamed",
+   "en": "Future notes will name this person automatically.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Silvio (2026-11-12): remove routine phone-transfer notices; keep the Settings opt-out and privacy policy. Existing recognition/privacy wording retained.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le prossime note riconosceranno questa persona automaticamente."
+    },
+    "fr": {
+     "text": "Cassini nommera cette personne automatiquement dans les prochaines notes."
+    },
+    "es": {
+     "text": "En las próximas notas, Cassini reconocerá a esta persona automáticamente."
+    },
+    "pt-BR": {
+     "text": "Nas próximas notas, o Cassini vai nomear esta pessoa automaticamente."
+    },
+    "pt-PT": {
+     "text": "Nas próximas notas, o Cassini reconhece esta pessoa automaticamente."
+    }
+   }
+  },
+  {
+   "id": "android.savedVoices.privacy",
+   "en": "Voiceprints are kept in the app and are never written into shared files. Only the names you choose are shared.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "D97",
+   "note": "Silvio (2026-11-12): remove routine phone-transfer notices; keep the Settings opt-out and privacy policy. Existing recognition/privacy wording retained.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali restano nell’app e non vengono mai scritte nei file condivisi. Vengono condivisi solo i nomi che scegli."
+    },
+    "fr": {
+     "text": "Les empreintes vocales sont conservées dans l’application et ne sont jamais écrites dans les fichiers partagés. Seuls les noms que vous choisissez sont partagés."
+    },
+    "es": {
+     "text": "Las huellas de voz se guardan en la aplicación y nunca se incluyen en los archivos compartidos. Solo se comparten los nombres que eliges."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz ficam no aplicativo e nunca são incluídas em arquivos compartilhados. Só os nomes que você escolhe são compartilhados."
+    },
+    "pt-PT": {
+     "text": "As impressões vocais ficam na aplicação e nunca são incluídas nos ficheiros partilhados. Só os nomes que escolher são partilhados."
+    }
+   }
+  },
+  {
+   "id": "models.parakeetUltra.noteFallback",
+   "en": "Parakeet Ultra couldn’t run on this device for this recording, so Whistle transcribed it.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D75.1",
+   "note": "Coordinator (D75.1, D78). iOS notice on a note when Parakeet Ultra was the chosen model but could not run on this device for this recording, and Whistle transcribed it instead. 'Parakeet Ultra' and 'Whistle' are literal model names. iOS only: Android has no equivalent notice in the catalog.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Non è stato possibile usare Parakeet Ultra su questo dispositivo per questa registrazione, quindi l’ha trascritta Whistle."
+    },
+    "fr": {
+     "text": "Parakeet Ultra n’a pas pu fonctionner sur cet appareil pour cet enregistrement : Whistle l’a donc transcrit."
+    },
+    "es": {
+     "text": "Parakeet Ultra no pudo funcionar en este dispositivo para esta grabación, así que la transcribió Whistle."
+    },
+    "pt-BR": {
+     "text": "O Parakeet Ultra não pôde ser executado neste dispositivo para esta gravação, então o Whistle a transcreveu."
+    },
+    "pt-PT": {
+     "text": "O Parakeet Ultra não pôde ser executado neste dispositivo para esta gravação, por isso foi o Whistle a transcrevê-la."
+    }
+   }
+  },
+  {
+   "id": "meeting.interruptedAt",
+   "en": "Interrupted at {position}",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "W0.4 (L-26)",
+   "placeholders": {
+    "position": "format.position of interruptedAtMs, HH:MM:SS (e.g. 00:41:12)"
+   },
+   "note": "Current position-bearing copy preserved outside the badge (L-26). Exact placement PROVISIONAL, pending Alex; keep each app’s current meeting/detail placement.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Interrotta a {position}"
+    },
+    "fr": {
+     "text": "Interrompue à {position}"
+    },
+    "es": {
+     "text": "Interrumpida en {position}"
+    },
+    "pt-BR": {
+     "text": "Interrompida em {position}"
+    },
+    "pt-PT": {
+     "text": "Interrompida aos {position}"
+    }
+   }
+  },
+  {
+   "id": "import.action",
+   "en": "Import audio…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "AppMenu",
+    "Library-GNOME",
+    "Library-Mac"
+   ],
+   "milestone": "WP2 (L-23, L-25)",
+   "note": "L-23, L-25: desktop menu item (GNOME ☰ › Import audio…, Mac File › Import Audio…) and sidebar header import icon button tooltip/accessible name. Translations use sentence case in both.",
+   "status": "drawn",
+   "mac": "Import Audio…",
+   "l10n": {
+    "it": {
+     "text": "Importa audio…",
+     "mac": "Importa audio…"
+    },
+    "fr": {
+     "text": "Importer un audio…",
+     "mac": "Importer un audio…"
+    },
+    "es": {
+     "text": "Importar audio…",
+     "mac": "Importar audio…"
+    },
+    "pt-BR": {
+     "text": "Importar áudio…",
+     "mac": "Importar áudio…"
+    },
+    "pt-PT": {
+     "text": "Importar áudio…",
+     "mac": "Importar áudio…"
+    }
+   }
+  },
+  {
+   "id": "import.button.mobile",
+   "en": "Import audio",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "Library-iOS",
+    "Library-Android"
+   ],
+   "milestone": "WP2 (L-25)",
+   "note": "L-25: secondary bottom-bar button next to Record on iOS and Android.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Importa audio"
+    },
+    "fr": {
+     "text": "Importer un audio"
+    },
+    "es": {
+     "text": "Importar audio"
+    },
+    "pt-BR": {
+     "text": "Importar áudio"
+    },
+    "pt-PT": {
+     "text": "Importar áudio"
+    }
+   }
+  },
+  {
+   "id": "import.drop.cantImport",
+   "en": "Can’t import “{file}”",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "DropImport"
+   ],
+   "milestone": "WP2 (L-25)",
+   "placeholders": {
+    "file": "dropped file name"
+   },
+   "note": "L-25: error overlay heading when hovering an unsupported file over the meeting list.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Impossibile importare “{file}”"
+    },
+    "fr": {
+     "text": "Impossible d’importer « {file} »"
+    },
+    "es": {
+     "text": "No se puede importar “{file}”"
+    },
+    "pt-BR": {
+     "text": "Não é possível importar “{file}”"
+    },
+    "pt-PT": {
+     "text": "Não é possível importar “{file}”"
+    }
+   }
+  },
+  {
+   "id": "import.drop.cantImport.detail",
+   "en": "Cassini imports {formats}.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "DropImport"
+   ],
+   "milestone": "WP2 (L-25)",
+   "placeholders": {
+    "formats": "localised list of accepted formats"
+   },
+   "note": "L-25: error overlay subline naming the formats accepted by the app (e.g. import.drop.formats.current).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cassini importa {formats}."
+    },
+    "fr": {
+     "text": "Cassini importe les {formats}."
+    },
+    "es": {
+     "text": "Cassini importa {formats}."
+    },
+    "pt-BR": {
+     "text": "O Cassini importa {formats}."
+    },
+    "pt-PT": {
+     "text": "O Cassini importa {formats}."
+    }
+   }
+  },
+  {
+   "id": "import.drop.enter",
+   "en": "Drop here to import",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "DropImport"
+   ],
+   "milestone": "WP2 (L-25)",
+   "note": "L-25: sidebar footer hint in accent when a dragged file enters the window.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Rilascia qui per importare"
+    },
+    "fr": {
+     "text": "Déposez ici pour importer"
+    },
+    "es": {
+     "text": "Suelta aquí para importar"
+    },
+    "pt-BR": {
+     "text": "Solte aqui para importar"
+    },
+    "pt-PT": {
+     "text": "Largue aqui para importar"
+    }
+   }
+  },
+  {
+   "id": "import.drop.formats.current",
+   "en": "Cassini files and Opus audio",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "DropImport"
+   ],
+   "milestone": "WP2 (L-25)",
+   "note": "L-25: formats accepted by desktop in Phase 1 (before MP3/M4A/WAV decode lands in Phase 2). Used in the drop overlay subline and import.drop.cantImport.detail so UI never claims unsupported formats.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "file Cassini e audio Opus"
+    },
+    "fr": {
+     "text": "fichiers Cassini et audio Opus"
+    },
+    "es": {
+     "text": "archivos Cassini y audio Opus"
+    },
+    "pt-BR": {
+     "text": "arquivos Cassini e áudio Opus"
+    },
+    "pt-PT": {
+     "text": "ficheiros Cassini e áudio Opus"
+    }
+   }
+  },
+  {
+   "id": "import.drop.over",
+   "en": "Drop to import",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "DropImport"
+   ],
+   "milestone": "WP2 (L-25)",
+   "note": "L-25: primary overlay label over the teal wash when hovering valid files over the meeting list.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Rilascia per importare"
+    },
+    "fr": {
+     "text": "Déposer pour importer"
+    },
+    "es": {
+     "text": "Soltar para importar"
+    },
+    "pt-BR": {
+     "text": "Soltar para importar"
+    },
+    "pt-PT": {
+     "text": "Largar para importar"
+    }
+   }
+  },
+  {
+   "id": "import.drop.rest",
+   "en": "Drop audio files here to import",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "DropImport",
+    "Transcribing-Mac"
+   ],
+   "milestone": "WP2 (L-25)",
+   "note": "L-25: quiet resting hint pinned under the desktop sidebar meeting list.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascina qui i file audio per importarli"
+    },
+    "fr": {
+     "text": "Déposez des fichiers audio ici pour les importer"
+    },
+    "es": {
+     "text": "Arrastra archivos de audio aquí para importarlos"
+    },
+    "pt-BR": {
+     "text": "Arraste arquivos de áudio aqui para importar"
+    },
+    "pt-PT": {
+     "text": "Arraste ficheiros de áudio aqui para importar"
+    }
+   }
+  },
+  {
+   "id": "library.allMeetings",
+   "en": "All meetings",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "Library-iOS",
+    "Library-Android",
+    "Recording-iOS",
+    "Recording-Android"
+   ],
+   "milestone": "WP2 (L-50)",
+   "note": "L-50: phone meeting list name (hidden heading on Library, back buttons, and Recording bottom-left label). Replaces 'Library' on phones.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Tutte le riunioni"
+    },
+    "fr": {
+     "text": "Toutes les réunions"
+    },
+    "es": {
+     "text": "Todas las reuniones"
+    },
+    "pt-BR": {
+     "text": "Todas as reuniões"
+    },
+    "pt-PT": {
+     "text": "Todas as reuniões"
+    }
+   }
+  },
+  {
+   "id": "library.backToAllMeetings",
+   "en": "Back to all meetings",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "Recording-iOS",
+    "Recording-Android",
+    "Meeting-iOS",
+    "Meeting-Android"
+   ],
+   "milestone": "WP2 (L-50)",
+   "note": "L-50: accessible label for icon-only back/dismiss buttons returning to the phone meeting list.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Torna a tutte le riunioni"
+    },
+    "fr": {
+     "text": "Retour à toutes les réunions"
+    },
+    "es": {
+     "text": "Volver a todas las reuniones"
+    },
+    "pt-BR": {
+     "text": "Voltar a todas as reuniões"
+    },
+    "pt-PT": {
+     "text": "Voltar a todas as reuniões"
+    }
+   }
+  },
+  {
+   "id": "meeting.emptySelection",
+   "en": "No meeting selected",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Library-Mac",
+    "Library-GNOME"
+   ],
+   "milestone": "WP3 (L-44)",
+   "note": "L-44: quiet empty state in the desktop right pane when no meeting is open.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Nessuna riunione selezionata"
+    },
+    "fr": {
+     "text": "Aucune réunion sélectionnée"
+    },
+    "es": {
+     "text": "Ninguna reunión seleccionada"
+    },
+    "pt-BR": {
+     "text": "Nenhuma reunião selecionada"
+    },
+    "pt-PT": {
+     "text": "Nenhuma reunião selecionada"
+    }
+   }
+  },
+  {
+   "id": "meeting.find.placeholder",
+   "en": "Find in this meeting",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "placeholder",
+   "boards": [
+    "LibraryOpen-MacFind",
+    "LibraryOpen-GNOMEFind",
+    "Meeting-iOSFind",
+    "Meeting-AndroidFind"
+   ],
+   "milestone": "WP3 (L-44)",
+   "note": "L-44: placeholder and accessible label for in-meeting transcript search (⌘F on Mac, Ctrl+F on GNOME).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cerca in questa riunione"
+    },
+    "fr": {
+     "text": "Rechercher dans cette réunion"
+    },
+    "es": {
+     "text": "Buscar en esta reunión"
+    },
+    "pt-BR": {
+     "text": "Buscar nesta reunião"
+    },
+    "pt-PT": {
+     "text": "Pesquisar nesta reunião"
+    }
+   }
+  },
+  {
+   "id": "meeting.moveToRecentlyDeleted",
+   "en": "Move to Recently Deleted",
+   "platforms": [
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "LibraryOpen-Mac",
+    "Transcribing-Mac"
+   ],
+   "milestone": "WP3 (L-44)",
+   "note": "L-44: Mac meeting top-bar trash button tooltip and accessible label.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Sposta in Eliminati di recente"
+    },
+    "fr": {
+     "text": "Placer dans Supprimés récemment"
+    },
+    "es": {
+     "text": "Mover a Eliminados"
+    },
+    "pt-BR": {
+     "text": "Mover para Apagados"
+    },
+    "pt-PT": {
+     "text": "Mover para Apagados recentemente"
+    }
+   }
+  },
+  {
+   "id": "phone.row.noSpeech",
+   "en": "No speech",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "RowStates-iOS",
+    "RowStates-Android"
+   ],
+   "milestone": "WP2 (L-52)",
+   "note": "L-52: neutral pill on a finished phone row whose transcript found no words.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Nessun parlato"
+    },
+    "fr": {
+     "text": "Aucune parole"
+    },
+    "es": {
+     "text": "Sin voz"
+    },
+    "pt-BR": {
+     "text": "Sem fala"
+    },
+    "pt-PT": {
+     "text": "Sem fala"
+    }
+   }
+  },
+  {
+   "id": "phone.row.resume",
+   "en": "Resume",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "RowStates-iOS",
+    "RowStates-Android",
+    "Library-iOS",
+    "Library-Android"
+   ],
+   "milestone": "WP2 (L-52)",
+   "note": "L-52: inline row action next to Paused at {position}, in ink semibold.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riprendi"
+    },
+    "fr": {
+     "text": "Reprendre"
+    },
+    "es": {
+     "text": "Reanudar"
+    },
+    "pt-BR": {
+     "text": "Retomar"
+    },
+    "pt-PT": {
+     "text": "Retomar"
+    }
+   }
+  },
+  {
+   "id": "phone.row.speakerCount",
+   "en": "{n} speakers",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "Row-iOS",
+    "Row-Android",
+    "RowStates-iOS",
+    "RowStates-Android"
+   ],
+   "milestone": "WP2 (L-52)",
+   "placeholders": {
+    "n": "speaking speaker count (>= 1)"
+   },
+   "plural": {
+    "one": "1 speaker",
+    "other": "{n} speakers"
+   },
+   "note": "L-52: neutral pill with people icon on finished phone rows, counting from 1 speaker upward.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{n} voci",
+     "plural": {
+      "one": "1 voce",
+      "many": "{n} voci",
+      "other": "{n} voci"
+     }
+    },
+    "fr": {
+     "text": "{n} intervenants",
+     "plural": {
+      "one": "{n} intervenant",
+      "many": "{n} intervenants",
+      "other": "{n} intervenants"
+     }
+    },
+    "es": {
+     "text": "{n} hablantes",
+     "plural": {
+      "one": "1 hablante",
+      "many": "{n} hablantes",
+      "other": "{n} hablantes"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} locutores",
+     "plural": {
+      "one": "{n} locutor",
+      "many": "{n} locutores",
+      "other": "{n} locutores"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} oradores",
+     "plural": {
+      "one": "1 orador",
+      "many": "{n} oradores",
+      "other": "{n} oradores"
+     }
+    }
+   }
+  },
+  {
+   "id": "phone.row.transcribed.a11y",
+   "en": "transcribed",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Row-iOS",
+    "Row-Android"
+   ],
+   "milestone": "WP2 (L-52)",
+   "note": "L-52: screen-reader state announced on finished phone rows even though the visual Transcribed chip is gone.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "trascritta"
+    },
+    "fr": {
+     "text": "transcrite"
+    },
+    "es": {
+     "text": "transcrita"
+    },
+    "pt-BR": {
+     "text": "transcrita"
+    },
+    "pt-PT": {
+     "text": "transcrita"
+    }
+   }
+  },
+  {
+   "id": "speakers.dialog.a11y",
+   "en": "Name a speaker",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Speakers-Mac",
+    "Speakers-GNOME",
+    "Speakers-iOS",
+    "Speakers-Android"
+   ],
+   "milestone": "WP6 (L-46)",
+   "note": "L-46: accessible label for the Name a speaker dialog/sheet (whose visible heading is the speaker name, e.g. Speaker 3).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Dai un nome a questa voce"
+    },
+    "fr": {
+     "text": "Nommer un intervenant"
+    },
+    "es": {
+     "text": "Poner nombre a un hablante"
+    },
+    "pt-BR": {
+     "text": "Nomear um locutor"
+    },
+    "pt-PT": {
+     "text": "Dar nome a um orador"
+    }
+   }
+  },
+  {
+   "id": "speakers.duplicate.notice",
+   "en": "{name} is already a saved voice.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Speakers-Mac",
+    "Speakers-GNOME",
+    "Speakers-iOS",
+    "Speakers-Android"
+   ],
+   "milestone": "WP6 (L-46)",
+   "placeholders": {
+    "name": "typed speaker name"
+   },
+   "note": "L-46: neutral notice card when the typed name matches an existing saved voice ({name} is semibold, unquoted).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{name} è già tra le voci salvate."
+    },
+    "fr": {
+     "text": "{name} fait déjà partie des voix mémorisées."
+    },
+    "es": {
+     "text": "{name} ya es una voz guardada."
+    },
+    "pt-BR": {
+     "text": "{name} já é uma voz salva."
+    },
+    "pt-PT": {
+     "text": "{name} já é uma voz guardada."
+    }
+   }
+  },
+  {
+   "id": "speakers.rememberVoice.cardBody.computer",
+   "en": "{name} is named automatically next time.\nThe voiceprint stays on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Speakers-Mac",
+    "Speakers-GNOME"
+   ],
+   "milestone": "WP6 (L-46)",
+   "placeholders": {
+    "name": "entered speaker name"
+   },
+   "note": "L-46: two-line subtitle on the Remember this voice card on desktop when a name is entered.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La prossima volta Cassini darà automaticamente il nome {name}.\nL’impronta vocale resta su questo computer."
+    },
+    "fr": {
+     "text": "Cassini nommera {name} automatiquement la prochaine fois.\nL’empreinte vocale reste sur cet ordinateur."
+    },
+    "es": {
+     "text": "Cassini pondrá el nombre {name} automáticamente la próxima vez.\nLa huella de voz se queda en este equipo."
+    },
+    "pt-BR": {
+     "text": "O Cassini dará o nome {name} automaticamente da próxima vez.\nA impressão de voz fica neste computador."
+    },
+    "pt-PT": {
+     "text": "O Cassini dará o nome {name} automaticamente da próxima vez.\nA impressão vocal fica neste computador."
+    }
+   }
+  },
+  {
+   "id": "speakers.rememberVoice.cardBody.computer.unnamed",
+   "en": "This person is named automatically next time.\nThe voiceprint stays on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Speakers-Mac",
+    "Speakers-GNOME"
+   ],
+   "milestone": "WP6 (L-46)",
+   "note": "L-46: two-line subtitle on the Remember this voice card on desktop before a name is typed.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La prossima volta Cassini darà automaticamente un nome a questa persona.\nL’impronta vocale resta su questo computer."
+    },
+    "fr": {
+     "text": "Cassini nommera cette personne automatiquement la prochaine fois.\nL’empreinte vocale reste sur cet ordinateur."
+    },
+    "es": {
+     "text": "Cassini pondrá nombre a esta persona automáticamente la próxima vez.\nLa huella de voz se queda en este equipo."
+    },
+    "pt-BR": {
+     "text": "O Cassini dará nome a esta pessoa automaticamente da próxima vez.\nA impressão de voz fica neste computador."
+    },
+    "pt-PT": {
+     "text": "O Cassini dará nome a esta pessoa automaticamente da próxima vez.\nA impressão vocal fica neste computador."
+    }
+   }
+  },
+  {
+   "id": "speakers.rememberVoice.cardBody.iphone",
+   "en": "{name} is named automatically next time.\nThe voiceprint stays on this iPhone.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "label",
+   "boards": [
+    "Speakers-iOS"
+   ],
+   "milestone": "WP6 (L-46)",
+   "placeholders": {
+    "name": "entered speaker name"
+   },
+   "note": "L-46: two-line subtitle on the Remember this voice card on iOS when a name is entered.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La prossima volta Cassini darà automaticamente il nome {name}.\nL’impronta vocale resta su questo iPhone."
+    },
+    "fr": {
+     "text": "Cassini nommera {name} automatiquement la prochaine fois.\nL’empreinte vocale reste sur cet iPhone."
+    },
+    "es": {
+     "text": "Cassini pondrá el nombre {name} automáticamente la próxima vez.\nLa huella de voz se queda en este iPhone."
+    },
+    "pt-BR": {
+     "text": "O Cassini dará o nome {name} automaticamente da próxima vez.\nA impressão de voz fica neste iPhone."
+    },
+    "pt-PT": {
+     "text": "O Cassini dará o nome {name} automaticamente da próxima vez.\nA impressão vocal fica neste iPhone."
+    }
+   }
+  },
+  {
+   "id": "speakers.rememberVoice.cardBody.iphone.unnamed",
+   "en": "This person is named automatically next time.\nThe voiceprint stays on this iPhone.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "label",
+   "boards": [
+    "Speakers-iOS"
+   ],
+   "milestone": "WP6 (L-46)",
+   "note": "L-46: two-line subtitle on the Remember this voice card on iOS before a name is typed.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La prossima volta Cassini darà automaticamente un nome a questa persona.\nL’impronta vocale resta su questo iPhone."
+    },
+    "fr": {
+     "text": "Cassini nommera cette personne automatiquement la prochaine fois.\nL’empreinte vocale reste sur cet iPhone."
+    },
+    "es": {
+     "text": "Cassini pondrá nombre a esta persona automáticamente la próxima vez.\nLa huella de voz se queda en este iPhone."
+    },
+    "pt-BR": {
+     "text": "O Cassini dará nome a esta pessoa automaticamente da próxima vez.\nA impressão de voz fica neste iPhone."
+    },
+    "pt-PT": {
+     "text": "O Cassini dará nome a esta pessoa automaticamente da próxima vez.\nA impressão vocal fica neste iPhone."
+    }
+   }
+  },
+  {
+   "id": "speakers.rememberVoice.cardBody.phone",
+   "en": "{name} is named automatically next time.\nThe voiceprint stays on this phone.",
+   "platforms": [
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Speakers-Android"
+   ],
+   "milestone": "WP6 (L-46)",
+   "placeholders": {
+    "name": "entered speaker name"
+   },
+   "note": "L-46: two-line subtitle on the Remember this voice card on Android when a name is entered.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La prossima volta Cassini darà automaticamente il nome {name}.\nL’impronta vocale resta su questo telefono."
+    },
+    "fr": {
+     "text": "Cassini nommera {name} automatiquement la prochaine fois.\nL’empreinte vocale reste sur ce téléphone."
+    },
+    "es": {
+     "text": "Cassini pondrá el nombre {name} automáticamente la próxima vez.\nLa huella de voz se queda en este teléfono."
+    },
+    "pt-BR": {
+     "text": "O Cassini dará o nome {name} automaticamente da próxima vez.\nA impressão de voz fica neste celular."
+    },
+    "pt-PT": {
+     "text": "O Cassini dará o nome {name} automaticamente da próxima vez.\nA impressão vocal fica neste telemóvel."
+    }
+   }
+  },
+  {
+   "id": "speakers.rememberVoice.cardBody.phone.unnamed",
+   "en": "This person is named automatically next time.\nThe voiceprint stays on this phone.",
+   "platforms": [
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Speakers-Android"
+   ],
+   "milestone": "WP6 (L-46)",
+   "note": "L-46: two-line subtitle on the Remember this voice card on Android before a name is typed.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La prossima volta Cassini darà automaticamente un nome a questa persona.\nL’impronta vocale resta su questo telefono."
+    },
+    "fr": {
+     "text": "Cassini nommera cette personne automatiquement la prochaine fois.\nL’empreinte vocale reste sur ce téléphone."
+    },
+    "es": {
+     "text": "Cassini pondrá nombre a esta persona automáticamente la próxima vez.\nLa huella de voz se queda en este teléfono."
+    },
+    "pt-BR": {
+     "text": "O Cassini dará nome a esta pessoa automaticamente da próxima vez.\nA impressão de voz fica neste celular."
+    },
+    "pt-PT": {
+     "text": "O Cassini dará nome a esta pessoa automaticamente da próxima vez.\nA impressão vocal fica neste telemóvel."
+    }
+   }
+  },
+  {
+   "id": "speakers.rememberVoice.title",
+   "en": "Remember this voice",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Speakers-Mac",
+    "Speakers-GNOME",
+    "Speakers-iOS",
+    "Speakers-Android"
+   ],
+   "milestone": "WP6 (L-46)",
+   "note": "L-46: regular-weight title of the Remember this voice card across all four apps.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Ricorda questa voce"
+    },
+    "fr": {
+     "text": "Mémoriser cette voix"
+    },
+    "es": {
+     "text": "Recordar esta voz"
+    },
+    "pt-BR": {
+     "text": "Lembrar esta voz"
+    },
+    "pt-PT": {
+     "text": "Memorizar esta voz"
+    }
+   }
+  },
+  {
+   "id": "states.phone.audioOnly",
+   "en": "Audio only",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "Badge-iOS",
+    "Badge-Android",
+    "RowStates-iOS",
+    "RowStates-Android"
+   ],
+   "milestone": "WP1 / WP2 (L-52, L-54)",
+   "note": "L-52, L-54: phone badge for an audio-only item (neutral tone, wave glyph).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Solo audio"
+    },
+    "fr": {
+     "text": "Audio seul"
+    },
+    "es": {
+     "text": "Solo audio"
+    },
+    "pt-BR": {
+     "text": "Somente áudio"
+    },
+    "pt-PT": {
+     "text": "Apenas áudio"
+    }
+   }
+  },
+  {
+   "id": "states.phone.cantPlay",
+   "en": "Can’t play",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "Badge-iOS",
+    "Badge-Android",
+    "RowStates-iOS",
+    "RowStates-Android"
+   ],
+   "milestone": "WP1 / WP2 (L-52, L-54)",
+   "note": "L-52, L-54: phone badge when audio cannot be played (error tone, alert glyph).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Impossibile riprodurre"
+    },
+    "fr": {
+     "text": "Lecture impossible"
+    },
+    "es": {
+     "text": "No se puede reproducir"
+    },
+    "pt-BR": {
+     "text": "Não é possível reproduzir"
+    },
+    "pt-PT": {
+     "text": "Não é possível reproduzir"
+    }
+   }
+  },
+  {
+   "id": "states.phone.cantReadTranscript",
+   "en": "Can’t read transcript",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "Badge-iOS",
+    "Badge-Android",
+    "RowStates-iOS",
+    "RowStates-Android"
+   ],
+   "milestone": "WP1 / WP2 (L-52, L-54)",
+   "note": "L-52, L-54: phone badge when a transcript is damaged or unreadable (error tone, alert glyph).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascrizione illeggibile"
+    },
+    "fr": {
+     "text": "Transcription illisible"
+    },
+    "es": {
+     "text": "Transcripción ilegible"
+    },
+    "pt-BR": {
+     "text": "Transcrição ilegível"
+    },
+    "pt-PT": {
+     "text": "Transcrição ilegível"
+    }
+   }
+  },
+  {
+   "id": "states.phone.couldntTranscribe",
+   "en": "Couldn’t transcribe",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "Badge-iOS",
+    "Badge-Android",
+    "RowStates-iOS",
+    "RowStates-Android"
+   ],
+   "milestone": "WP1 / WP2 (L-52, L-54)",
+   "note": "L-52, L-54: phone badge for a failed transcription (error tone, alert glyph, paired with Try again).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascrizione non riuscita"
+    },
+    "fr": {
+     "text": "Échec de la transcription"
+    },
+    "es": {
+     "text": "No se pudo transcribir"
+    },
+    "pt-BR": {
+     "text": "Falha na transcrição"
+    },
+    "pt-PT": {
+     "text": "Falha na transcrição"
+    }
+   }
+  },
+  {
+   "id": "states.phone.newerFormat",
+   "en": "Newer format",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "Badge-iOS",
+    "Badge-Android",
+    "RowStates-iOS",
+    "RowStates-Android"
+   ],
+   "milestone": "WP1 / WP2 (L-52, L-54)",
+   "note": "L-52, L-54: phone badge when a portable file uses a newer format version (outline tone, alert glyph).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Formato più recente"
+    },
+    "fr": {
+     "text": "Format plus récent"
+    },
+    "es": {
+     "text": "Formato más reciente"
+    },
+    "pt-BR": {
+     "text": "Formato mais recente"
+    },
+    "pt-PT": {
+     "text": "Formato mais recente"
+    }
+   }
+  },
+  {
+   "id": "states.phone.pausedAt",
+   "en": "Paused at {position}",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "Badge-iOS",
+    "Badge-Android",
+    "RowStates-iOS",
+    "RowStates-Android"
+   ],
+   "milestone": "WP1 / WP2 (L-52, L-54)",
+   "placeholders": {
+    "position": "stopped transcription position"
+   },
+   "note": "L-52, L-54: phone badge for a paused transcription (amber tone, pause glyph).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "In pausa a {position}"
+    },
+    "fr": {
+     "text": "En pause à {position}"
+    },
+    "es": {
+     "text": "En pausa en {position}"
+    },
+    "pt-BR": {
+     "text": "Em pausa em {position}"
+    },
+    "pt-PT": {
+     "text": "Em pausa aos {position}"
+    }
+   }
+  },
+  {
+   "id": "states.phone.queued",
+   "en": "Queued",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "Badge-iOS",
+    "Badge-Android",
+    "RowStates-iOS",
+    "RowStates-Android"
+   ],
+   "milestone": "WP1 / WP2 (L-52, L-54)",
+   "note": "L-52, L-54: phone badge for a meeting waiting in the transcription queue (neutral tone, clock glyph).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "In coda"
+    },
+    "fr": {
+     "text": "En attente"
+    },
+    "es": {
+     "text": "En cola"
+    },
+    "pt-BR": {
+     "text": "Na fila"
+    },
+    "pt-PT": {
+     "text": "Em fila"
+    }
+   }
+  },
+  {
+   "id": "transcribing.backgroundNote",
+   "en": "Keeps going in the background while Cassini is open.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: footer note in the desktop transcribing details popover (exact drawn wording; pending final Silvio wording check).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Continua in background mentre Cassini è aperto."
+    },
+    "fr": {
+     "text": "Continue en arrière-plan tant que Cassini est ouvert."
+    },
+    "es": {
+     "text": "Sigue en segundo plano mientras Cassini está abierto."
+    },
+    "pt-BR": {
+     "text": "Continua em segundo plano enquanto o Cassini está aberto."
+    },
+    "pt-PT": {
+     "text": "Continua em segundo plano enquanto o Cassini está aberto."
+    }
+   }
+  },
+  {
+   "id": "transcribing.details.a11y",
+   "en": "Transcribing details",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "a11y",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: accessible label for the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Dettagli della trascrizione"
+    },
+    "fr": {
+     "text": "Détails de la transcription"
+    },
+    "es": {
+     "text": "Detalles de la transcripción"
+    },
+    "pt-BR": {
+     "text": "Detalhes da transcrição"
+    },
+    "pt-PT": {
+     "text": "Detalhes da transcrição"
+    }
+   }
+  },
+  {
+   "id": "transcribing.eta.minutes",
+   "en": "about {n} min left",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [
+    "Transcribing-Mac",
+    "Transcribing-GNOME",
+    "Transcribing-iOS",
+    "Transcribing-Android"
+   ],
+   "milestone": "WP5 (L-45)",
+   "placeholders": {
+    "n": "estimated minutes remaining (>= 1)"
+   },
+   "plural": {
+    "one": "about 1 min left",
+    "other": "about {n} min left"
+   },
+   "note": "L-45: compact ETA suffix after 'Transcribing · ' on the status line under the meeting title.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "circa {n} min rimanenti",
+     "plural": {
+      "one": "circa 1 min rimanente",
+      "many": "circa {n} min rimanenti",
+      "other": "circa {n} min rimanenti"
+     }
+    },
+    "fr": {
+     "text": "environ {n} min restantes",
+     "plural": {
+      "one": "environ {n} min restante",
+      "many": "environ {n} min restantes",
+      "other": "environ {n} min restantes"
+     }
+    },
+    "es": {
+     "text": "quedan unos {n} min",
+     "plural": {
+      "one": "queda 1 min",
+      "many": "quedan unos {n} min",
+      "other": "quedan unos {n} min"
+     }
+    },
+    "pt-BR": {
+     "text": "cerca de {n} min restantes",
+     "plural": {
+      "one": "cerca de {n} min restante",
+      "many": "cerca de {n} min restantes",
+      "other": "cerca de {n} min restantes"
+     }
+    },
+    "pt-PT": {
+     "text": "cerca de {n} min restantes",
+     "plural": {
+      "one": "cerca de 1 min restante",
+      "many": "cerca de {n} min restantes",
+      "other": "cerca de {n} min restantes"
+     }
+    }
+   }
+  },
+  {
+   "id": "transcribing.heading",
+   "en": "Transcribing",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "Transcribing-Mac",
+    "Transcribing-GNOME",
+    "Transcribing-iOS",
+    "Transcribing-Android"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: bold status-line prefix and details popover/sheet title.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "In trascrizione"
+    },
+    "fr": {
+     "text": "Transcription"
+    },
+    "es": {
+     "text": "Transcribiendo"
+    },
+    "pt-BR": {
+     "text": "Transcrevendo"
+    },
+    "pt-PT": {
+     "text": "A transcrever"
+    }
+   }
+  },
+  {
+   "id": "transcribing.speakerSuggestion",
+   "en": "Is this {name}?",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-iOS",
+    "Transcribing-Android"
+   ],
+   "milestone": "WP5 (L-45)",
+   "placeholders": {
+    "name": "suggested saved-voice name"
+   },
+   "note": "L-45: compact inline speaker-match prompt while transcribing on phones.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "È {name}?"
+    },
+    "fr": {
+     "text": "Est-ce {name} ?"
+    },
+    "es": {
+     "text": "¿Es {name}?"
+    },
+    "pt-BR": {
+     "text": "É {name}?"
+    },
+    "pt-PT": {
+     "text": "É {name}?"
+    }
+   }
+  },
+  {
+   "id": "transcribing.speakerSuggestion.no",
+   "en": "No",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "Transcribing-iOS",
+    "Transcribing-Android"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: dismiss button in the compact 'Is this {name}?' row.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "No"
+    },
+    "fr": {
+     "text": "Non"
+    },
+    "es": {
+     "text": "No"
+    },
+    "pt-BR": {
+     "text": "Não"
+    },
+    "pt-PT": {
+     "text": "Não"
+    }
+   }
+  },
+  {
+   "id": "transcribing.speakerSuggestion.yes",
+   "en": "Yes",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "Transcribing-iOS",
+    "Transcribing-Android"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: accept button in the compact 'Is this {name}?' row.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Sì"
+    },
+    "fr": {
+     "text": "Oui"
+    },
+    "es": {
+     "text": "Sí"
+    },
+    "pt-BR": {
+     "text": "Sim"
+    },
+    "pt-PT": {
+     "text": "Sim"
+    }
+   }
+  },
+  {
+   "id": "transcribing.stat.audioDone",
+   "en": "Audio done",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: metric label in the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Audio elaborato"
+    },
+    "fr": {
+     "text": "Audio traité"
+    },
+    "es": {
+     "text": "Audio procesado"
+    },
+    "pt-BR": {
+     "text": "Áudio processado"
+    },
+    "pt-PT": {
+     "text": "Áudio processado"
+    }
+   }
+  },
+  {
+   "id": "transcribing.stat.audioDoneValue",
+   "en": "{done} of {total}",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "placeholders": {
+    "done": "processed audio duration",
+    "total": "total audio duration"
+   },
+   "note": "L-45: metric value under Audio done (e.g. '29:52 of 47:10').",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{done} su {total}"
+    },
+    "fr": {
+     "text": "{done} sur {total}"
+    },
+    "es": {
+     "text": "{done} de {total}"
+    },
+    "pt-BR": {
+     "text": "{done} de {total}"
+    },
+    "pt-PT": {
+     "text": "{done} de {total}"
+    }
+   }
+  },
+  {
+   "id": "transcribing.stat.batteryAtFinish",
+   "en": "Battery at finish",
+   "platforms": [
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: metric label in the transcribing details popover/sheet (Mac and phones; omitted on GNOME).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Batteria a fine trascrizione"
+    },
+    "fr": {
+     "text": "Batterie à la fin"
+    },
+    "es": {
+     "text": "Batería al terminar"
+    },
+    "pt-BR": {
+     "text": "Bateria ao terminar"
+    },
+    "pt-PT": {
+     "text": "Bateria no final"
+    }
+   }
+  },
+  {
+   "id": "transcribing.stat.batteryValue",
+   "en": "About {percent}%",
+   "platforms": [
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "placeholders": {
+    "percent": "estimated battery percentage integer"
+   },
+   "note": "L-45: estimated battery level at completion.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Circa {percent}%"
+    },
+    "fr": {
+     "text": "Environ {percent} %"
+    },
+    "es": {
+     "text": "Unos {percent} %"
+    },
+    "pt-BR": {
+     "text": "Cerca de {percent}%"
+    },
+    "pt-PT": {
+     "text": "Cerca de {percent}%"
+    }
+   }
+  },
+  {
+   "id": "transcribing.stat.timeLeft",
+   "en": "Time left",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: metric label in the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Tempo rimanente"
+    },
+    "fr": {
+     "text": "Temps restant"
+    },
+    "es": {
+     "text": "Tiempo restante"
+    },
+    "pt-BR": {
+     "text": "Tempo restante"
+    },
+    "pt-PT": {
+     "text": "Tempo restante"
+    }
+   }
+  },
+  {
+   "id": "transcribing.stat.timeLeftValue",
+   "en": "About {n} min",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "placeholders": {
+    "n": "estimated minutes remaining"
+   },
+   "plural": {
+    "one": "About 1 min",
+    "other": "About {n} min"
+   },
+   "note": "L-45: metric value under Time left in the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Circa {n} min",
+     "plural": {
+      "one": "Circa 1 min",
+      "many": "Circa {n} min",
+      "other": "Circa {n} min"
+     }
+    },
+    "fr": {
+     "text": "Environ {n} min",
+     "plural": {
+      "one": "Environ {n} min",
+      "many": "Environ {n} min",
+      "other": "Environ {n} min"
+     }
+    },
+    "es": {
+     "text": "Unos {n} min",
+     "plural": {
+      "one": "Aprox. 1 min",
+      "many": "Unos {n} min",
+      "other": "Unos {n} min"
+     }
+    },
+    "pt-BR": {
+     "text": "Cerca de {n} min",
+     "plural": {
+      "one": "Cerca de {n} min",
+      "many": "Cerca de {n} min",
+      "other": "Cerca de {n} min"
+     }
+    },
+    "pt-PT": {
+     "text": "Cerca de {n} min",
+     "plural": {
+      "one": "Cerca de 1 min",
+      "many": "Cerca de {n} min",
+      "other": "Cerca de {n} min"
+     }
+    }
+   }
+  },
+  {
+   "id": "transcribing.stat.wordsSoFar",
+   "en": "Words so far",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: metric label in the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Parole fin qui"
+    },
+    "fr": {
+     "text": "Mots jusqu’ici"
+    },
+    "es": {
+     "text": "Palabras hasta ahora"
+    },
+    "pt-BR": {
+     "text": "Palavras até agora"
+    },
+    "pt-PT": {
+     "text": "Palavras até agora"
+    }
+   }
+  },
+  {
+   "id": "transcribing.step.preparing",
+   "en": "Preparing",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: step 2 in the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Preparazione"
+    },
+    "fr": {
+     "text": "Préparation"
+    },
+    "es": {
+     "text": "Preparación"
+    },
+    "pt-BR": {
+     "text": "Preparação"
+    },
+    "pt-PT": {
+     "text": "Preparação"
+    }
+   }
+  },
+  {
+   "id": "transcribing.step.reading",
+   "en": "Reading",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: step 1 in the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Lettura"
+    },
+    "fr": {
+     "text": "Lecture"
+    },
+    "es": {
+     "text": "Lectura"
+    },
+    "pt-BR": {
+     "text": "Leitura"
+    },
+    "pt-PT": {
+     "text": "Leitura"
+    }
+   }
+  },
+  {
+   "id": "transcribing.step.saving",
+   "en": "Saving",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: step 5 in the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Salvataggio"
+    },
+    "fr": {
+     "text": "Sauvegarde"
+    },
+    "es": {
+     "text": "Guardado"
+    },
+    "pt-BR": {
+     "text": "Salvamento"
+    },
+    "pt-PT": {
+     "text": "Gravação"
+    }
+   }
+  },
+  {
+   "id": "transcribing.step.speakers",
+   "en": "Speakers & matching",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: step 4 in the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Voci e riconoscimento"
+    },
+    "fr": {
+     "text": "Intervenants et correspondance"
+    },
+    "es": {
+     "text": "Hablantes y reconocimiento"
+    },
+    "pt-BR": {
+     "text": "Locutores e reconhecimento"
+    },
+    "pt-PT": {
+     "text": "Oradores e reconhecimento"
+    }
+   }
+  },
+  {
+   "id": "transcribing.step.words",
+   "en": "Words",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: step 3 in the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Parole"
+    },
+    "fr": {
+     "text": "Mots"
+    },
+    "es": {
+     "text": "Palabras"
+    },
+    "pt-BR": {
+     "text": "Palavras"
+    },
+    "pt-PT": {
+     "text": "Palavras"
+    }
+   }
+  },
+  {
+   "id": "transcribing.stopAndKeepProgress",
+   "en": "Stop and keep progress",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "Transcribing-MacPopover",
+    "Transcribing-GNOMEPopover",
+    "Transcribing-iOSSheet",
+    "Transcribing-AndroidSheet"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: secondary button in the transcribing details popover/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Ferma e conserva i progressi"
+    },
+    "fr": {
+     "text": "Arrêter et garder la progression"
+    },
+    "es": {
+     "text": "Detener y conservar el progreso"
+    },
+    "pt-BR": {
+     "text": "Parar e manter o progresso"
+    },
+    "pt-PT": {
+     "text": "Parar e manter o progresso"
+    }
+   }
+  },
+  {
+   "id": "transcribing.transcriptSoFar",
+   "en": "Transcript so far",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "Transcribing-iOS",
+    "Transcribing-Android"
+   ],
+   "milestone": "WP5 (L-45)",
+   "note": "L-45: section heading above live draft turns on iOS and Android while transcribing.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascrizione fin qui"
+    },
+    "fr": {
+     "text": "Transcription jusqu’ici"
+    },
+    "es": {
+     "text": "Transcripción hasta ahora"
+    },
+    "pt-BR": {
+     "text": "Transcrição até agora"
+    },
+    "pt-PT": {
+     "text": "Transcrição até agora"
+    }
+   }
+  },
+  {
+   "id": "speakers.savedVoices.closestFirst",
+   "en": "Closest first",
+   "platforms": [
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "Speakers-Mac"
+   ],
+   "milestone": "WP6 (L-46)",
+   "note": "L-46: footer caption below the saved-voices group in the macOS Name a speaker dialog.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le più simili per prime"
+    },
+    "fr": {
+     "text": "Les plus proches d’abord"
+    },
+    "es": {
+     "text": "Las más parecidas primero"
+    },
+    "pt-BR": {
+     "text": "As mais parecidas primeiro"
+    },
+    "pt-PT": {
+     "text": "As mais parecidas primeiro"
     }
    }
   }

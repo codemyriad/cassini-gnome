@@ -7,6 +7,7 @@ from concurrent.futures import CancelledError
 from gi.repository import Adw, GLib, Gtk
 
 from .strings import plural, text
+from .tokens import saved_voice_slot
 from .ux_formats import confirmed_speech
 from .voice_store import sample_window
 from .voices_logic import stale
@@ -41,7 +42,9 @@ class SavedVoicesPage(Adw.NavigationPage):
         self.empty = Gtk.Label(label=text("savedVoices.empty"), wrap=True, xalign=0, css_classes=["dim-label"])
         self.people.add(self.empty)
         self.error_group = Adw.PreferencesGroup()
-        self.error = Adw.ActionRow(title=text("savedVoices.changeFailed"), use_markup=False, visible=False)
+        self.error = Adw.ActionRow(
+            title=text("savedVoices.changeFailed"), use_markup=False, visible=False, css_classes=["error-line"]
+        )
         self.again = Gtk.Button(label=text("common.tryAgain"), valign=Gtk.Align.CENTER)
         self.again.connect("clicked", lambda *_: self._submit(self.retry) if self.retry else None)
         self.error.add_suffix(self.again)
@@ -90,7 +93,15 @@ class SavedVoicesPage(Adw.NavigationPage):
                 if stale(voice):
                     caption += "\n" + text("savedVoices.row.stale")
                 row.set_subtitle(caption)
-                avatar = Adw.Avatar(size=40, text=voice["name"], show_initials=True)
+                words = [part for part in voice["name"].strip().split() if part]
+                initials = (
+                    (words[0][0] + words[-1][0]).upper() if len(words) >= 2 else (words[0][0].upper() if words else "?")
+                )
+                avatar = Gtk.Label(
+                    label=initials,
+                    valign=Gtk.Align.CENTER,
+                    css_classes=["speaker-avatar", f"speaker-avatar-{saved_voice_slot(voice)}"],
+                )
                 row.add_prefix(avatar)
                 play = Gtk.Button(
                     icon_name="media-playback-start-symbolic",

@@ -222,6 +222,9 @@ class VoiceStore:
     def _validate_people(value):
         if type(value["generation"]) is not int or value["generation"] < 0:
             raise ValueError("Invalid voice generation")
+        next_order = value.get("nextSaveOrder", 0)
+        if type(next_order) is not int or next_order < 0:
+            raise ValueError("Invalid voice save sequence")
         voices = decode_people(json.dumps(value, allow_nan=False))
         seen = set()
         for voice in voices:
@@ -240,11 +243,33 @@ class VoiceStore:
                 raise ValueError("Invalid confirmed speech")
             if any(type(voice[k]) is not int or voice[k] < 0 for k in ("createdAt", "updatedAt")):
                 raise ValueError("Invalid saved timestamps")
+            if "saveOrder" in voice and (type(voice["saveOrder"]) is not int or voice["saveOrder"] < 0):
+                raise ValueError("Invalid voice save order")
             if not isinstance(voice["meetings"], list) or any(_key(k) != k for k in voice["meetings"]):
                 raise ValueError("Invalid voice meeting keys")
 
+    @staticmethod
+    def _ensure_save_order(people):
+        voices = people["voices"]
+        if not voices:
+            people["nextSaveOrder"] = max(people.get("nextSaveOrder", 0), 0)
+            return
+        missing = [(voice["createdAt"], idx, voice) for idx, voice in enumerate(voices) if "saveOrder" not in voice]
+        used_max = max((voice["saveOrder"] for voice in voices if "saveOrder" in voice), default=-1)
+        next_order = max(people.get("nextSaveOrder", 0), used_max + 1)
+        for _created, _idx, voice in sorted(missing, key=lambda item: (item[0], item[1])):
+            voice["saveOrder"] = next_order
+            next_order += 1
+        people["nextSaveOrder"] = max(next_order, max(v["saveOrder"] for v in voices) + 1)
+
     def _people(self):
-        return self._read(self.root / "people.json", self._validate_people, dict(version=1, generation=0, voices=[]))
+        people = self._read(
+            self.root / "people.json",
+            self._validate_people,
+            dict(version=1, generation=0, nextSaveOrder=0, voices=[]),
+        )
+        self._ensure_save_order(people)
+        return people
 
     @staticmethod
     def _validate_meeting(value):
@@ -517,6 +542,11 @@ class VoiceStore:
                 previous = voices.get(voice_id)
                 if not (same and old.get("state") == "confirmed" and not stale(old_voice)):
                     voice = enrol(previous, name, REVISION, item["embedding"], item["seconds"], int(time.time() * 1000))
+                    if previous is not None and "saveOrder" in previous:
+                        voice["saveOrder"] = previous["saveOrder"]
+                    else:
+                        voice["saveOrder"] = people.get("nextSaveOrder", 0)
+                        people["nextSaveOrder"] = voice["saveOrder"] + 1
                     voice["meetings"] = list(dict.fromkeys((previous or {}).get("meetings", []) + [key]))
                     voices[voice["id"]] = voice
                 else:
@@ -555,7 +585,7 @@ class VoiceStore:
     def forget_everyone(self):
         with self._locked():
             people = self._people()
-            people = dict(version=1, generation=people["generation"] + 1, voices=[])
+            people = dict(version=1, generation=people["generation"] + 1, nextSaveOrder=0, voices=[])
             atomic_json(self.root / "people.json", people)
             self._publish(people)
             # Generation was committed first. Even a failed cleanup cannot
@@ -637,6 +667,8 @@ class VoiceStore:
                     )
                     voice["id"] = previous["id"]
                     voice["createdAt"] = previous["createdAt"]
+                    if "saveOrder" in previous:
+                        voice["saveOrder"] = previous["saveOrder"]
                     # Unenrol keeps confirmed seconds. Replacement adds the
                     # newly selected speech, just as a new enrolment does.
                     if previous["id"] not in voices:

@@ -44,11 +44,23 @@ def load_and_validate_vendored(root: Path = ROOT) -> tuple[str, dict[str, tuple[
     if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError(f"Invalid 40-hex commit in {upstream_path}: {commit!r}")
 
+    sha_map = upstream.get("sha256") or {}
+    if "tokens.json" not in sha_map:
+        raise ValueError(f"Missing tokens.json SHA-256 entry in {upstream_path}")
+    for rel_key, expected_sha in sha_map.items():
+        asset_path = root / "ux/brand" / rel_key
+        if not asset_path.is_file():
+            raise ValueError(f"Missing vendored brand file: {asset_path}")
+        asset_bytes = asset_path.read_bytes()
+        actual_sha = hashlib.sha256(asset_bytes).hexdigest()
+        if actual_sha != expected_sha:
+            raise ValueError(f"SHA-256 mismatch for ux/brand/{rel_key}: expected {expected_sha}, got {actual_sha}")
+        if rel_key.startswith("mark/"):
+            src_copy = root / "src/brand" / rel_key
+            if not src_copy.is_file() or src_copy.read_bytes() != asset_bytes:
+                raise ValueError(f"src/brand/{rel_key} differs from vendored ux/brand/{rel_key}")
+
     raw_bytes = tokens_path.read_bytes()
-    actual_sha = hashlib.sha256(raw_bytes).hexdigest()
-    expected_sha = (upstream.get("sha256") or {}).get("tokens.json")
-    if actual_sha != expected_sha:
-        raise ValueError(f"SHA-256 mismatch for ux/brand/tokens.json: expected {expected_sha}, got {actual_sha}")
 
     payload = json.loads(raw_bytes.decode("utf-8"))
     if payload.get("schema") != "cassini-ux/brand-tokens@1":
