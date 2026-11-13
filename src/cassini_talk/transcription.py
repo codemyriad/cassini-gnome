@@ -22,6 +22,38 @@ from .whistle_worker import onnxruntime_dir
 
 LOG = logging.getLogger(__name__)
 REFERENCE = dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
+RECOGNITION_CACHE_FILE = ".recognition-cache.json"
+RECOGNITION_CACHE_FORMAT = "cassini.recognition-cache.v1"
+
+
+def _read_recognition_cache_entries(directory, model):
+    try:
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        return {}
+    try:
+        from .meeting_store import regular, strict_json
+
+        with regular(descriptor, RECOGNITION_CACHE_FILE) as (stream, _info):
+            raw = stream.read(16 * 1024 * 1024 + 1)
+    except OSError:
+        return {}
+    finally:
+        os.close(descriptor)
+    if len(raw) > 16 * 1024 * 1024:
+        return {}
+    try:
+        value = strict_json(raw)
+    except ValueError:
+        return {}
+    if (
+        not isinstance(value, dict)
+        or value.get("format") != RECOGNITION_CACHE_FORMAT
+        or value.get("model") != model
+        or not isinstance(value.get("segments"), dict)
+    ):
+        return {}
+    return dict(value["segments"])
 
 
 def bundle_path():
@@ -283,6 +315,14 @@ def unassigned_voice(identifier, colour_index, source):
     return dict(id=identifier, name=None, provenance="unnamed", colourIndex=colour_index, voiceSource=dict(source))
 
 
+def _retained_snapshot(directory):
+    try:
+        snapshot = transcript_snapshot(directory)
+    except (OSError, ValueError):
+        return None
+    return snapshot if snapshot is not None and len(snapshot["items"]) > 0 else None
+
+
 def _retained_count(directory):
     """How many words the working snapshot holds, which a new attempt keeps until it catches up.
 
@@ -292,10 +332,7 @@ def _retained_count(directory):
     a failure leaves as they were, so they would let a shorter retry overwrite the
     longer snapshot. A missing or unreadable sidecar retains nothing.
     """
-    try:
-        snapshot = transcript_snapshot(directory)
-    except (OSError, ValueError):
-        return 0
+    snapshot = _retained_snapshot(directory)
     return len(snapshot["items"]) if snapshot is not None else 0
 
 
@@ -417,6 +454,7 @@ class TranscriptionQueue:
         self.client_model = None
         self.preparer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-queue-metadata")
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-transcription")
+        self._stopper = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cassini-transcribe-stop")
         self.pending = set()
         self._resume_pending = set()
         self._voice_reruns = {}
@@ -425,6 +463,7 @@ class TranscriptionQueue:
         self.lock = threading.RLock()
         self._idle = threading.Condition(self.lock)
         self._cancelled_meetings = set()
+        self._stopping_meetings = set()
         self._context = threading.local()
         self._active_directory = None
         self._prepare_futures, self._job_futures, self._voice_futures = {}, {}, {}
@@ -438,7 +477,7 @@ class TranscriptionQueue:
     def enqueue(self, directory, *, resume=False):
         directory = Path(directory).absolute()
         with self.lock:
-            if self.closed or directory in self._cancelled_meetings:
+            if self.closed or directory in self._cancelled_meetings or directory in self._stopping_meetings:
                 return False
             if directory in self.pending:
                 if resume and directory not in self._job_futures:
@@ -542,6 +581,8 @@ class TranscriptionQueue:
     def _prepared(self, directory, future):
         try:
             prepared = future.result()
+        except CancelledError:
+            self._completed(directory)
         except Exception as error:
             if not self.closed:
                 self._failed(directory, error)
@@ -555,6 +596,7 @@ class TranscriptionQueue:
                         directory in self._resume_pending
                         and not self.closed
                         and directory not in self._cancelled_meetings
+                        and directory not in self._stopping_meetings
                     ):
                         self._resume_pending.discard(directory)
                         retry = self.preparer.submit(self._mark_queued, directory, True)
@@ -573,7 +615,11 @@ class TranscriptionQueue:
                 retired = False
                 with self.lock:
                     self._resume_pending.discard(directory)
-                    if not self.closed and directory not in self._cancelled_meetings:
+                    if (
+                        not self.closed
+                        and directory not in self._cancelled_meetings
+                        and directory not in self._stopping_meetings
+                    ):
                         self._prepare_futures.pop(directory, None)
                         job_future = self.executor.submit(self._job, directory, *prepared)
                         self._job_futures[directory] = job_future
@@ -639,12 +685,19 @@ class TranscriptionQueue:
             if self.closed:
                 return
             self._run(meeting, metadata)
+        except CancelledError:
+            if self.client:
+                self.client.close()
+                self.client = None
+                self.client_model = None
+            raise
         except Exception as error:
             if not isinstance(error, CancelledError):
                 self._failed(directory, error)
             if self.client:
                 self.client.close()
                 self.client = None
+                self.client_model = None
         finally:
             self._completed(directory)
 
@@ -723,8 +776,34 @@ class TranscriptionQueue:
             raise ValueError("Meeting has no complete audio frames")
         by_track = {track["id"]: track for track in tracks}
         publisher = TranscriptPublisher(
-            directory, existing_count=_retained_count(directory), check_active=self._check_open
+            directory, existing_count=_retained_count(directory), check_active=self._check_not_trashed
         )
+        cache_entries = _read_recognition_cache_entries(directory, tag)
+        cache_dirty = False
+
+        def record_cache(entry):
+            nonlocal cache_dirty
+            if not isinstance(entry, dict) or not isinstance(entry.get("key"), str) or len(entry["key"]) != 64:
+                return
+            cache_entries[entry["key"]] = {
+                "text": entry["text"],
+                "words": entry["words"],
+                "language": entry["language"],
+            }
+            cache_dirty = True
+
+        def flush_cache():
+            nonlocal cache_dirty
+            if not cache_dirty or not cache_entries:
+                return
+            self._check_not_trashed()
+            atomic_json(
+                directory / RECOGNITION_CACHE_FILE,
+                dict(format=RECOGNITION_CACHE_FORMAT, model=tag, segments=cache_entries),
+                before_commit=self._check_not_trashed,
+            )
+            cache_dirty = False
+
         diarization = (
             self.diarization_models.request(directory, origin=meeting.origin) if self.diarization_models else None
         )
@@ -752,14 +831,17 @@ class TranscriptionQueue:
                 LOG.exception("Saved voices unavailable; keeping ordinary speaker names")
         self.client.keep_for_voices = voices_options is not None
         self.client.diarization = diarization
+        self.client.recognition_cache = dict(path=str(directory / RECOGNITION_CACHE_FILE), model=tag)
         turn_groups = {}
         reused_groups = set()
         recognised_summary = None
 
         def progress(value):
             nonlocal recognised_summary
-            if self.closed:
+            if self.closed or directory in self._cancelled_meetings or directory in self._stopping_meetings:
                 raise CancelledError()
+            if "cacheEntry" in value:
+                record_cache(value["cacheEntry"])
             if value["type"] == "planning":
                 return
             if value["type"] == "recognised":
@@ -798,6 +880,8 @@ class TranscriptionQueue:
                         raise ValueError("Invalid timed recognition item")
                 publisher.add(value["words"], track["speaker"], value["trackOrder"], value["language"])
                 published = publisher.flush()
+                if published:
+                    flush_cache()
             else:
                 published = False
             updated = update_progress_metadata(
@@ -818,160 +902,178 @@ class TranscriptionQueue:
                 complete = recognised_summary
                 self.client.close()
                 self.client = self.client_model = None
-        except BaseException:
-            # Keep the useful partial snapshot on real errors. Cancellation
-            # retains the last published one and never starts a final write.
-            if not self.closed and publisher.flush(force=True):
-                self.changed(directory)
-            raise
-        if self.closed:
-            raise CancelledError()
-        if diarization is not None and complete.get("diarization"):
-            from .diarization import apply_transcript, voice_source
-            from .worker_diarization import FORMAT, valid_group
+            if not self.closed and directory not in self._cancelled_meetings:
+                flush_cache()
+            self._check_open()
+            if diarization is not None and complete.get("diarization"):
+                from .diarization import apply_transcript, voice_source
+                from .worker_diarization import FORMAT, valid_group
 
-            result = complete["diarization"]
-            self.diarization_models.measured(result.get("realtimeFactor"))
-            groups = [
-                {key: value for key, value in g.items() if key != "final"}
-                for identifier, g in turn_groups.items()
-                if identifier in result["groupIds"] and g["final"] and valid_group(g)
-            ]
-            if groups:
-                # D64: every listed track's id and lane is taken, readable or not.
-                words, voices = apply_transcript(publisher.words, groups, reserved=reserved)
-                with transaction(directory):
-                    if self.closed:
-                        raise CancelledError()
-                    self._owned(directory)
-                    atomic_json(
-                        directory / "speaker-turns.json",
-                        dict(format=FORMAT, model=result["model"], params=result["params"], groups=groups),
-                        before_commit=self._check_open,
+                result = complete["diarization"]
+                self.diarization_models.measured(result.get("realtimeFactor"))
+                groups = [
+                    {key: value for key, value in g.items() if key != "final"}
+                    for identifier, g in turn_groups.items()
+                    if identifier in result["groupIds"] and g["final"] and valid_group(g)
+                ]
+                if groups:
+                    # D64: every listed track's id and lane is taken, readable or not.
+                    words, voices = apply_transcript(publisher.words, groups, reserved=reserved)
+                    with transaction(directory):
+                        if self.closed:
+                            raise CancelledError()
+                        self._owned(directory)
+                        atomic_json(
+                            directory / "speaker-turns.json",
+                            dict(format=FORMAT, model=result["model"], params=result["params"], groups=groups),
+                            before_commit=self._check_open,
+                        )
+                        # G12: every re-diarized group, conclusive or not, rebinds its old voice names.
+                        sources = {g["id"]: voice_source(g["inputSHA256"], g["turns"]) for g in groups}
+                        speakers.update(voices)
+                        update_progress_metadata(
+                            directory,
+                            speakers,
+                            check_active=self._check_open,
+                            transient=True,
+                            voice_sources=sources,
+                            reserved=reserved,
+                        )
+                        if voices:
+                            publisher.reassign(words)
+                if separation["reason"] != "notApplicable":
+                    separation = separation_result(result, groups, reused_groups)
+                complete.setdefault("diagnostics", []).extend(result.get("diagnostics", []))
+            elif diarization is not None and separation["reason"] != "notApplicable":
+                separation = dict(status="failed", reason="processingFailed")
+            for diagnostic in complete.get("diagnostics", []):
+                LOG.warning("Transcription diagnostic: %s", diagnostic)
+            self._check_open()
+            # A completed transcript is published once, after optional attribution.
+            # Until this succeeds the running job remains resumable after restart.
+            publisher.flush(force=True, complete=True)
+            if voices_options and self.client is not None:
+                try:
+                    with transaction(directory):
+                        history = read_metadata(directory).get("speakerMerges", [])
+                    prints = self.client.voiceprints(
+                        tracks,
+                        # G14: recordings live now, not at job start: one may have begun while writing down.
+                        dict(
+                            voices_options,
+                            directory=str(directory),
+                            speakerMerges=history,
+                            recordingDirectories=self._live_recordings(),
+                            reservedSpeakers=sorted(reserved),
+                        ),
+                        self._check_open,
                     )
-                    # G12: every re-diarized group, conclusive or not, rebinds its old voice names.
-                    sources = {g["id"]: voice_source(g["inputSHA256"], g["turns"]) for g in groups}
-                    speakers.update(voices)
+                    self._check_open()
+
+                    def apply_names(names):
+                        with mutation(directory):
+                            self._check_open()
+                            self._owned(directory)
+                            current = read_metadata(directory)
+                            if current.get("speakerMerges", []) != history:
+                                raise ValueError("Speaker merges changed during voice extraction")
+                            entries = {s["id"]: dict(s) for s in current["speakers"]}
+                            for identifier, name in names.items():
+                                previous = entries.get(identifier, {})
+                                if (
+                                    previous.get("provenance") != "user"
+                                    and not previous.get("nameCleared")
+                                    and identifier in speakers
+                                ):
+                                    speakers[identifier] = dict(
+                                        speakers[identifier], name=name, provenance="recognised"
+                                    )
+                                    entries[identifier] = speakers[identifier]
+                            if list(entries.values()) != current["speakers"]:
+                                update_metadata(
+                                    directory, speakers=list(entries.values()), before_commit=self._check_open
+                                )
+
+                    def voice_active():
+                        self._check_open()
+                        if read_metadata(directory).get("speakerMerges", []) != history:
+                            raise ValueError("Speaker merges changed during voice extraction")
+
+                    def auto_eligible():
+                        # commit_job evaluates this under the same metadata lock
+                        # held through naming, so a concurrent Clear cannot race it.
+                        protected = {
+                            s["id"]
+                            for s in read_metadata(directory)["speakers"]
+                            if s.get("provenance") == "user" or s.get("nameCleared")
+                        }
+                        return prints.keys() - protected
+
+                    self.voice_store.commit_job(
+                        directory,
+                        prints,
+                        voice_generation,
+                        check_active=voice_active,
+                        apply_names=apply_names,
+                        auto_eligible=auto_eligible,
+                        voice_sources={s: e["voiceSource"] for s, e in speakers.items() if "voiceSource" in e},
+                    )
+                except CancelledError:
+                    raise
+                except Exception:
+                    self._check_open()
+                    LOG.exception("Saved voice extraction failed; keeping the completed transcript")
+                    self.client.close()
+                    self.client = self.client_model = None
+            facts = dict(
+                wallDurationMs=max(0, min(9007199254740991, int((self.clock() - started) * 1000))),
+                resumed=(metadata.get("transcript") or {}).get("status") in ("queued", "running"),
+                speakerSeparation=separation,
+            )
+            segments = complete.get("segments")
+            if type(segments) is int and 0 <= segments <= 9007199254740991:
+                facts["speechSegments"] = segments
+            if source_diagnostics:
+                facts["sourceSpansSeparated"] = True
+            if (fallback := recognition_fallback(complete.get("fallback"))) is not None:
+                facts["recognitionFallback"] = fallback
+            if offsets_assumed_zero(tracks):
+                facts["offsetsAssumedZero"] = True
+            if left_out := silent_tracks(tracks):
+                facts["silentTracks"] = left_out
+            with mutation(directory):
+                self._check_open()
+                # End facts or other metadata may have arrived while this job ran.
+                details = writing_details(read_metadata(directory).get("recordingDetails", {}), facts)
+                update_progress_metadata(
+                    directory,
+                    speakers,
+                    transcript=dict(status="done", reference=REFERENCE, model=tag),
+                    transcript_body=transcript_snapshot(directory),
+                    recordingDetails=details,
+                    etaMinutes=None,
+                    error=None,
+                    check_active=self._check_open,
+                )
+        except BaseException:
+            # Keep the useful partial snapshot on real errors or explicit Stop.
+            # App shutdown and Trash retain the last published one without starting a write.
+            if not self.closed and directory not in self._cancelled_meetings:
+                flush_cache()
+                flushed = publisher.flush(force=True)
+                if publisher.published > 0:
                     update_progress_metadata(
                         directory,
                         speakers,
-                        check_active=self._check_open,
+                        check_active=self._check_not_trashed,
                         transient=True,
-                        voice_sources=sources,
                         reserved=reserved,
                     )
-                    if voices:
-                        publisher.reassign(words)
-            if separation["reason"] != "notApplicable":
-                separation = separation_result(result, groups, reused_groups)
-            complete.setdefault("diagnostics", []).extend(result.get("diagnostics", []))
-        elif diarization is not None and separation["reason"] != "notApplicable":
-            separation = dict(status="failed", reason="processingFailed")
-        for diagnostic in complete.get("diagnostics", []):
-            LOG.warning("Transcription diagnostic: %s", diagnostic)
-        if self.closed:
-            raise CancelledError()
-        # A completed transcript is published once, after optional attribution.
-        # Until this succeeds the running job remains resumable after restart.
-        publisher.flush(force=True, complete=True)
-        if voices_options and self.client is not None:
-            try:
-                with transaction(directory):
-                    history = read_metadata(directory).get("speakerMerges", [])
-                prints = self.client.voiceprints(
-                    tracks,
-                    # G14: recordings live now, not at job start: one may have begun while writing down.
-                    dict(
-                        voices_options,
-                        directory=str(directory),
-                        speakerMerges=history,
-                        recordingDirectories=self._live_recordings(),
-                        reservedSpeakers=sorted(reserved),
-                    ),
-                    self._check_open,
-                )
-                self._check_open()
-
-                def apply_names(names):
-                    with mutation(directory):
-                        self._check_open()
-                        self._owned(directory)
-                        current = read_metadata(directory)
-                        if current.get("speakerMerges", []) != history:
-                            raise ValueError("Speaker merges changed during voice extraction")
-                        entries = {s["id"]: dict(s) for s in current["speakers"]}
-                        for identifier, name in names.items():
-                            previous = entries.get(identifier, {})
-                            if (
-                                previous.get("provenance") != "user"
-                                and not previous.get("nameCleared")
-                                and identifier in speakers
-                            ):
-                                speakers[identifier] = dict(speakers[identifier], name=name, provenance="recognised")
-                                entries[identifier] = speakers[identifier]
-                        if list(entries.values()) != current["speakers"]:
-                            update_metadata(directory, speakers=list(entries.values()), before_commit=self._check_open)
-
-                def voice_active():
-                    self._check_open()
-                    if read_metadata(directory).get("speakerMerges", []) != history:
-                        raise ValueError("Speaker merges changed during voice extraction")
-
-                def auto_eligible():
-                    # commit_job evaluates this under the same metadata lock
-                    # held through naming, so a concurrent Clear cannot race it.
-                    protected = {
-                        s["id"]
-                        for s in read_metadata(directory)["speakers"]
-                        if s.get("provenance") == "user" or s.get("nameCleared")
-                    }
-                    return prints.keys() - protected
-
-                self.voice_store.commit_job(
-                    directory,
-                    prints,
-                    voice_generation,
-                    check_active=voice_active,
-                    apply_names=apply_names,
-                    auto_eligible=auto_eligible,
-                    voice_sources={s: e["voiceSource"] for s, e in speakers.items() if "voiceSource" in e},
-                )
-            except CancelledError:
-                raise
-            except Exception:
-                LOG.exception("Saved voice extraction failed; keeping the completed transcript")
-                self.client.close()
-                self.client = self.client_model = None
-        facts = dict(
-            wallDurationMs=max(0, min(9007199254740991, int((self.clock() - started) * 1000))),
-            resumed=(metadata.get("transcript") or {}).get("status") in ("queued", "running"),
-            speakerSeparation=separation,
-        )
-        segments = complete.get("segments")
-        if type(segments) is int and 0 <= segments <= 9007199254740991:
-            facts["speechSegments"] = segments
-        if source_diagnostics:
-            facts["sourceSpansSeparated"] = True
-        if (fallback := recognition_fallback(complete.get("fallback"))) is not None:
-            facts["recognitionFallback"] = fallback
-        if offsets_assumed_zero(tracks):
-            facts["offsetsAssumedZero"] = True
-        if left_out := silent_tracks(tracks):
-            facts["silentTracks"] = left_out
-        with mutation(directory):
-            self._check_open()
-            # End facts or other metadata may have arrived while this job ran.
-            details = writing_details(read_metadata(directory).get("recordingDetails", {}), facts)
-            update_progress_metadata(
-                directory,
-                speakers,
-                transcript=dict(status="done", reference=REFERENCE, model=tag),
-                transcript_body=transcript_snapshot(directory),
-                recordingDetails=details,
-                etaMinutes=None,
-                error=None,
-                check_active=self._check_open,
-            )
+                if flushed:
+                    self.changed(directory)
+            raise
+        with contextlib.suppress(OSError):
+            (directory / RECOGNITION_CACHE_FILE).unlink()
         self.changed(directory)
         self.completed(tag)
         if self.client_model == MODEL_ID:
@@ -1189,10 +1291,88 @@ class TranscriptionQueue:
             with self.lock:
                 self._cancelled_meetings.discard(directory)
 
+    def stop(self, directory, done=lambda: None):
+        """Cancel any queued or running transcription for directory and reset its status to none."""
+        directory = Path(directory).absolute()
+        with self.lock:
+            if self.closed or directory in self._cancelled_meetings:
+                return False
+            self._stopping_meetings.add(directory)
+            self._resume_pending.discard(directory)
+            futures = [mapping.get(directory) for mapping in (self._prepare_futures, self._job_futures)]
+            if self._active_directory == directory and self.client and hasattr(self.client, "cancel"):
+                self.client.cancel()
+        for future in futures:
+            if future is not None:
+                future.cancel()
+        try:
+            self._stopper.submit(self._finish_stop, directory, done)
+        except RuntimeError:
+            with self.lock:
+                self._stopping_meetings.discard(directory)
+            return False
+        return True
+
+    def _abort_if_trashed(self, directory):
+        if self.closed or directory in self._cancelled_meetings:
+            raise CancelledError()
+
+    def _finish_stop(self, directory, done):
+        target = None
+        changed = False
+        try:
+            with self._idle:
+                self._idle.wait_for(
+                    lambda: self.closed or (directory not in self.pending and self._active_directory != directory)
+                )
+            if self.closed or directory in self._cancelled_meetings:
+                return
+            target = self._owned(directory)
+            with transaction(target):
+                self._abort_if_trashed(directory)
+                current = read_metadata(target)
+                tx = dict(current.get("transcript") or {})
+                if tx.get("status") in ("queued", "running"):
+                    prev_ref = tx.get("reference")
+                    snapshot = _retained_snapshot(target)
+                    if snapshot is not None:
+                        ref = REFERENCE
+                    elif isinstance(prev_ref, dict) and prev_ref.get("kind") == "embedded":
+                        ref = prev_ref
+                    else:
+                        ref = None
+                    tx["status"] = "none"
+                    tx["reference"] = ref
+                    update_metadata(
+                        target,
+                        transcript=tx,
+                        transcript_body=snapshot,
+                        etaMinutes=None,
+                        error=None,
+                        before_commit=lambda: self._abort_if_trashed(directory),
+                    )
+                    changed = True
+        except CancelledError:
+            return
+        except (OSError, ValueError):
+            LOG.exception("Could not save stopped transcription state")
+        finally:
+            with self.lock:
+                self._stopping_meetings.discard(directory)
+                self._idle.notify_all()
+            if changed and target is not None:
+                self.changed(target)
+            done()
+
+    def _check_not_trashed(self):
+        if self.closed or getattr(self._context, "directory", None) in self._cancelled_meetings:
+            raise CancelledError()
+
     def _check_open(self):
         if (
             self.closed
             or getattr(self._context, "directory", None) in self._cancelled_meetings
+            or getattr(self._context, "directory", None) in self._stopping_meetings
             or getattr(self._context, "background", False)
             and self.pending
         ):
@@ -1211,10 +1391,12 @@ class TranscriptionQueue:
             self.closed = True
             self._resume_pending.clear()
             client = self.client
+            self._idle.notify_all()
         if client and hasattr(client, "cancel"):
             client.cancel()
         self.preparer.shutdown(wait=False, cancel_futures=True)
         self.executor.shutdown(wait=False, cancel_futures=True)
+        self._stopper.shutdown(wait=False, cancel_futures=True)
 
         # This cleanup is queued on the owner thread so selector/pipe mutation
         # cannot race process_tracks. It also reaps an idle persistent child.
@@ -1230,4 +1412,5 @@ class TranscriptionQueue:
     def _reap_after_jobs(self, reap):
         self.preparer.shutdown(wait=True, cancel_futures=True)
         self.executor.shutdown(wait=True, cancel_futures=True)
+        self._stopper.shutdown(wait=True, cancel_futures=True)
         reap()

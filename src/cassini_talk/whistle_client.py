@@ -119,6 +119,8 @@ class WhistleClient:
             message["keepForVoices"] = True
         if getattr(self, "diarization", None) is not None:
             message["diarization"] = self.diarization
+        if getattr(self, "recognition_cache", None) is not None:
+            message["recognitionCache"] = self.recognition_cache
         packet = json.dumps(message).encode() + b"\n"
         if len(packet) > 512 * 1024:
             raise ValueError("Worker request exceeds limit")
