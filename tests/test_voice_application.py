@@ -144,7 +144,7 @@ def test_undo_recomputes_the_actual_popped_pair_even_after_navigating_back(appli
             lookup_action=lambda _: SimpleNamespace(set_enabled=lambda _: None),
         )
         page = SimpleNamespace(_closed=False, _speaker_future=None, meeting=stale, window=window)
-        page._merge_undone = lambda future: MeetingPage._merge_undone(page, future)
+        page._merge_undone = lambda *args: MeetingPage._merge_undone(page, *args)
         try:
             MeetingPage.undo_speaker_merge(page)
             # A newer merge lands before the queued Undo; the UI remains stale.

@@ -1658,12 +1658,22 @@ class MeetingPage(Adw.NavigationPage):
             lambda f: GLib.idle_add(self._merge_undone, f, directory, meeting_key, app)
         )
 
-    def _merge_undone(self, future, orig_directory, meeting_key, app):
+    def _merge_undone(self, future, orig_directory=None, meeting_key=None, app=None):
         from concurrent.futures import CancelledError
 
+        if orig_directory is None:
+            orig_directory = self.meeting.directory
+        if meeting_key is None:
+            meeting_key = getattr(self.meeting, "key", None)
+        if app is None:
+            app = self.window.get_application()
         if self._speaker_future is future:
             self._speaker_future = None
-        same_meeting = not self._closed and self.meeting.key == meeting_key and self.meeting.directory == orig_directory
+        same_meeting = (
+            not self._closed
+            and getattr(self.meeting, "key", None) == meeting_key
+            and self.meeting.directory == orig_directory
+        )
         try:
             directory, affected = future.result()
         except CancelledError:
