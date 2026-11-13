@@ -157,3 +157,42 @@ def test_switching_meetings_keeps_inflight_merge_bound_to_origin_directory(monke
     app.recompute_voices.assert_called_once_with(dir_a, ("s2", "s1"))
     page.speaker_merged.assert_not_called()
     window.monitor.refresh_now.assert_called_once_with()
+
+
+def test_find_after_equal_content_refresh_targets_displayed_layout_chunk():
+    from cassini_talk.meeting_text import reading_turns
+    from cassini_talk.transcript import Word
+
+    page_class = page_type()
+
+    def build_turns_copy():
+        seq = [Word("a", i * 100, i * 100 + 100, f"tok{i}") for i in range(200)]
+        seq.insert(100, Word("b", 9950, 10250, "Right."))
+        return reading_turns(seq)
+
+    initial_turns = build_turns_copy()
+    reparsed_turns = build_turns_copy()
+    assert initial_turns == reparsed_turns
+    assert initial_turns[0].words[180] is not reparsed_turns[0].words[180]
+
+    # Simulate MeetingPage after an equal-content refresh (e.g. title or merged-speaker
+    # rescan) where page.meeting holds newly reparsed turns while page._turns retains
+    # the displayed layout chunks.
+    scrolled = []
+    page = SimpleNamespace(
+        meeting=SimpleNamespace(turns=reparsed_turns),
+        _turns=initial_turns.layout,
+        _find_query="tok180",
+        _find_matches=(),
+        _find_index=-1,
+        _find_row_highlights={},
+        _sync_find_chrome=Mock(),
+        _refresh_find_highlights=Mock(),
+        _scroll_to_find_match=lambda: scrolled.append(page._find_matches[page._find_index].row_index),
+    )
+    page_class._recompute_find_matches(page, scroll=True)
+    assert len(page._find_matches) == 1
+    assert page._find_matches[0].row_index == 1
+    assert page._find_matches[0].spans == (((1, -1), 53, 0, 6),)
+    assert set(page._find_row_highlights) == {1}
+    assert scrolled == [1]

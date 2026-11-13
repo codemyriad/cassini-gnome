@@ -420,3 +420,32 @@ def test_find_in_meeting_matches_phrases_crossing_layout_chunk_boundaries():
     assert second_span_row == first_span_row + 1
     aside_hl = build_find_row_highlights(aside_matches, 0)
     assert first_span_row in aside_hl and second_span_row in aside_hl
+
+    # 4. Equal-content refresh reparses logical words into distinct Word objects while
+    # the displayed layout retains the original chunks: matches beyond chunk 0 must still
+    # map to the right layout row and local word index (row 1, word 53 for tok180).
+    def make_rejoined_words():
+        seq = [Word("a", i * 100, i * 100 + 100, f"tok{i}") for i in range(200)]
+        seq.insert(100, Word("b", 9950, 10250, "Right."))
+        return seq
+
+    initial_rows = reading_turns(make_rejoined_words())
+    reparsed_rows = reading_turns(make_rejoined_words())
+    assert initial_rows == reparsed_rows
+    assert initial_rows[0].words[180] is not reparsed_rows[0].words[180]
+    assert initial_rows.layout[1].words[53].text == "tok180"
+
+    for refreshed_matches in (
+        find_transcript_matches(initial_rows.layout, "tok180"),
+        find_transcript_matches(reparsed_rows, "tok180", layout_turns=initial_rows.layout),
+    ):
+        assert len(refreshed_matches) == 1
+        assert refreshed_matches[0].row_index == 1
+        assert refreshed_matches[0].spans == (((1, -1), 53, 0, 6),)
+        refreshed_hl = build_find_row_highlights(refreshed_matches, 0)
+        assert set(refreshed_hl) == {1}
+        markup_chunk1 = reading_markup(initial_rows.layout[1], -1, str.upper, row_highlights=refreshed_hl.get(1))
+        assert (
+            f'<span background="{active_bg}" foreground="{hit_fg}" underline="single" underline_color="{accent}">tok180</span>'
+            in markup_chunk1
+        )

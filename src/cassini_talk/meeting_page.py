@@ -107,6 +107,8 @@ class MeetingPage(Adw.NavigationPage):
         self._follow_until = 0
         self._highlight_target = None
         self._header_scrolled = False
+        self._pending_header_scrolled = None
+        self._scroll_header_source = 0
         self._last_full_header_h = 104
         self._last_vadj_value = 0.0
         self._find_query = ""
@@ -410,11 +412,30 @@ class MeetingPage(Adw.NavigationPage):
                 and value >= 48
                 and (upper - (page_size + max(self._last_full_header_h, 96))) >= 48
             ):
-                self._set_header_scrolled(True)
+                self._queue_header_scrolled(True)
         elif value <= 2:
-            self._set_header_scrolled(False)
+            self._queue_header_scrolled(False)
+
+    def _queue_header_scrolled(self, scrolled):
+        # vadjustment::value-changed can fire inside ExactTranscript.do_size_allocate;
+        # deferring set_visible avoids mid-allocation GTK measurement warnings.
+        self._pending_header_scrolled = bool(scrolled)
+        if not self._scroll_header_source:
+            self._scroll_header_source = GLib.idle_add(self._flush_header_scrolled)
+
+    def _flush_header_scrolled(self):
+        self._scroll_header_source = 0
+        pending = self._pending_header_scrolled
+        self._pending_header_scrolled = None
+        if not self._closed and pending is not None:
+            self._set_header_scrolled(pending)
+        return GLib.SOURCE_REMOVE
 
     def _set_header_scrolled(self, scrolled):
+        if getattr(self, "_scroll_header_source", 0):
+            GLib.source_remove(self._scroll_header_source)
+            self._scroll_header_source = 0
+        self._pending_header_scrolled = None
         scrolled = bool(scrolled)
         if self._header_scrolled == scrolled:
             return
@@ -547,7 +568,7 @@ class MeetingPage(Adw.NavigationPage):
             if changed:
                 self._refresh_find_highlights()
             return
-        self._find_matches = find_transcript_matches(self.meeting.turns, self._find_query, layout_turns=self._turns)
+        self._find_matches = find_transcript_matches(self._turns, self._find_query)
         if not self._find_matches:
             self._find_index = -1
             self._find_row_highlights = {}
@@ -1762,6 +1783,10 @@ class MeetingPage(Adw.NavigationPage):
         if self._header_source:
             GLib.source_remove(self._header_source)
             self._header_source = 0
+        if getattr(self, "_scroll_header_source", 0):
+            GLib.source_remove(self._scroll_header_source)
+            self._scroll_header_source = 0
+        self._pending_header_scrolled = None
         self._header_pending.clear()
         self._clear_dialog_focus()
         self.timeline.close()

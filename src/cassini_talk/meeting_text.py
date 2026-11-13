@@ -29,13 +29,22 @@ def find_transcript_matches(turns, query: str, *, layout_turns=None) -> tuple[Tr
     logical_turns = getattr(turns, "logical", turns)
     target_layout = turns if layout_turns is None else layout_turns
     word_loc: dict[int, tuple[tuple[int, int], int]] = {}
+    source_loc: dict[int, tuple[tuple[int, int], int]] = {}
     if target_layout is not logical_turns:
         for l_row in target_layout:
+            row_indices = l_row.word_indices
             for w_i, word in enumerate(l_row.words):
-                word_loc[id(word)] = ((l_row.index, -1), w_i)
+                loc = ((l_row.index, -1), w_i)
+                word_loc[id(word)] = loc
+                src_i = row_indices[w_i] if w_i < len(row_indices) else l_row.first_word + w_i
+                source_loc[src_i] = loc
             for aside_slot, (_after, l_aside) in enumerate(l_row.asides):
+                aside_indices = l_aside.word_indices
                 for w_i, word in enumerate(l_aside.words):
-                    word_loc[id(word)] = ((l_row.index, aside_slot), w_i)
+                    loc = ((l_row.index, aside_slot), w_i)
+                    word_loc[id(word)] = loc
+                    src_i = aside_indices[w_i] if w_i < len(aside_indices) else l_aside.first_word + w_i
+                    source_loc[src_i] = loc
 
     pattern = re.compile(re.escape(needle), re.IGNORECASE)
     matches: list[TranscriptMatch] = []
@@ -94,7 +103,16 @@ def find_transcript_matches(turns, query: str, *, layout_turns=None) -> tuple[Tr
                     sub_end = min(w_end - w_start, h_end - w_start)
                     if sub_end > sub_start:
                         word = owner.words[word_idx]
-                        mapped_owner_key, mapped_word_idx = word_loc.get(id(word), (owner_key, word_idx))
+                        loc = word_loc.get(id(word))
+                        if loc is None and source_loc:
+                            owner_indices = owner.word_indices
+                            src_i = (
+                                owner_indices[word_idx]
+                                if word_idx < len(owner_indices)
+                                else owner.first_word + word_idx
+                            )
+                            loc = source_loc.get(src_i)
+                        mapped_owner_key, mapped_word_idx = loc if loc is not None else (owner_key, word_idx)
                         spans.append((mapped_owner_key, mapped_word_idx, sub_start, sub_end))
                         if first_ms is None:
                             first_ms = word.start_ms

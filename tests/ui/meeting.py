@@ -395,6 +395,23 @@ with tempfile.TemporaryDirectory() as temporary:
         assert 'underline="single"' in page.bound[0][1].get_label()
         assert 'underline="single"' in page.bound[1][1].get_label()
         page.clear_find(focus_transcript=False)
+        # Equal-content refresh (reparsed Word objects with unchanged signature) must
+        # still map Find matches beyond chunk 0 onto row 1, word 53.
+        retained_layout = page._turns
+        reparsed_chunk_words = tuple(Word(w.speaker, w.start_ms, w.end_ms, w.text) for w in chunk_list)
+        reparsed_meeting = replace(
+            page.meeting,
+            title="Renamed after merge",
+            words=reparsed_chunk_words,
+            turns=reading_turns(reparsed_chunk_words),
+        )
+        sync_snapshot(reparsed_meeting)
+        assert page._turns is retained_layout and page.meeting.turns is reparsed_meeting.turns
+        page.find_entry.set_text("tok180")
+        assert len(page._find_matches) == 1 and page.find_count_label.get_label() == "1 of 1"
+        assert page._find_matches[0].row_index == 1 and page._find_matches[0].spans == (((1, -1), 53, 0, 6),)
+        until(lambda: 1 in page.bound and 'underline="single"' in page.bound[1][1].get_label())
+        page.clear_find(focus_transcript=False)
         show_synthetic(timed)
         until(lambda: page.scroller.get_vadjustment().get_upper() > 5000)
         adjustment = page.scroller.get_vadjustment()
