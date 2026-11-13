@@ -246,7 +246,9 @@ with tempfile.TemporaryDirectory() as temporary:
             words_so_far=4812,
             eta_minutes=3,
         )
-        with patch.object(app, "transcription_progress", return_value=live_prog):
+        transcriber = app._ensure_transcriber()
+        transcriber._set_progress(running.directory, live_prog, notify=False, reset=True)
+        try:
             sync_snapshot(running)
             assert page.transcribing_row.get_visible()
             assert "Transcribing" in labels(page.transcribing_row)
@@ -282,10 +284,34 @@ with tempfile.TemporaryDirectory() as temporary:
                 "Keeps going in the background while Cassini is open.",
             ):
                 assert expected in pop_labels, f"Missing {expected!r} in popover labels {pop_labels!r}"
+
+            # Exercise the live progress notification path without a snapshot update.
+            transcriber._set_progress(
+                running.directory,
+                TranscriptionProgress(
+                    step="speakers",
+                    fraction=0.84,
+                    audio_done_ms=running.duration_ms or 180000,
+                    words_so_far=6120,
+                    eta_minutes=1,
+                ),
+            )
+            until(
+                lambda: (
+                    "· about 1 min left" in labels(page.transcribing_row)
+                    and "84%" in labels(page.transcribing_row.popover)
+                )
+            )
+            live_pop_labels = labels(page.transcribing_row.popover)
+            assert "About 1 min" in live_pop_labels
+            assert fmt.number(6120) in live_pop_labels
+
             with patch.object(app, "stop_transcription") as pop_stop_call:
                 page.transcribing_row.popover_stop_button.emit("clicked")
                 pop_stop_call.assert_called_once_with(running)
             until(lambda: not page.transcribing_row.popover.get_mapped())
+        finally:
+            transcriber._clear_progress_locked(running.directory)
 
         with patch.object(app, "stop_transcription") as stop_call:
             page.stop_transcription_button.emit("clicked")

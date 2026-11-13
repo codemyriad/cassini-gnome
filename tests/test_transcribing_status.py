@@ -10,8 +10,10 @@ from test_library import capture, write_metadata
 
 from cassini_talk import ux_formats as fmt
 from cassini_talk.i18n import using_language
+from cassini_talk.recording_session import RecordingSession
 from cassini_talk.strings import plural, text
 from cassini_talk.transcribing_status import (
+    STEP_INDEX,
     STEPS,
     ResolvedTranscribingState,
     popover_stat_values,
@@ -136,7 +138,11 @@ def test_transcription_queue_emits_live_step_transitions_and_clears_on_finish(tm
 
         def process_tracks(self, tracks, notify):
             notify({"type": "planning", "trackId": tracks[0]["id"]})
-            notify({"type": "planned", "etaMinutes": 4, "segments": 1})
+            notify({"type": "planned", "etaMinutes": 4, "segments": 2})
+            words_t0 = [
+                {"startMs": 0, "endMs": 250, "text": "Hello"},
+                {"startMs": 260, "endMs": 340, "text": "there"},
+            ]
             notify(
                 {
                     "type": "progress",
@@ -144,14 +150,37 @@ def test_transcription_queue_emits_live_step_transitions_and_clears_on_finish(tm
                     "trackOrder": 0,
                     "language": "en",
                     "etaMinutes": 3,
-                    "segment": {"startSample": 0, "endSample": 8000},
-                    "words": [
-                        {"startMs": 0, "endMs": 250, "text": "Hello"},
-                        {"startMs": 260, "endMs": 500, "text": "there"},
-                    ],
+                    "segment": {"startSample": 0, "endSample": 1600},
+                    "words": words_t0,
                 }
             )
-            summary = {"language": "en", "diagnostics": [], "segments": 1}
+            # Mid-recognition segment cache write (speech_pipeline.py:617) and decode heartbeat (:654)
+            # emit "planning" messages after "words" has already started; step must never regress.
+            notify(
+                {
+                    "type": "planning",
+                    "trackId": tracks[0]["id"],
+                    "cacheEntry": {
+                        "key": "a" * 64,
+                        "text": "Hello there",
+                        "words": words_t0,
+                        "language": "en",
+                    },
+                }
+            )
+            notify({"type": "planning", "trackId": tracks[1]["id"]})
+            notify(
+                {
+                    "type": "progress",
+                    "trackId": tracks[1]["id"],
+                    "trackOrder": 1,
+                    "language": "en",
+                    "etaMinutes": 2,
+                    "segment": {"startSample": 0, "endSample": 3200},
+                    "words": [{"startMs": 500, "endMs": 680, "text": "again"}],
+                }
+            )
+            summary = {"language": "en", "diagnostics": [], "segments": 2}
             notify({"type": "recognised", "summary": summary, "etaMinutes": 1})
             notify({"type": "diarizing", "etaMinutes": 1})
             return {
@@ -187,10 +216,125 @@ def test_transcription_queue_emits_live_step_transitions_and_clears_on_finish(tm
     steps_seen = [p.step for p in observed]
     for expected in ("preparing", "words", "speakers", "saving"):
         assert expected in steps_seen, f"Missing live step {expected!r} in {steps_seen!r}"
-    words_prog = next(p for p in observed if p.step == "words" and p.words_so_far >= 2)
-    assert words_prog.eta_minutes == 3
-    assert words_prog.audio_done_ms >= 500
+    assert [STEP_INDEX[p.step] for p in observed] == sorted(STEP_INDEX[p.step] for p in observed), (
+        f"Popover step regressed during recognition: {steps_seen!r}"
+    )
+    first_words = next(p for p in observed if p.step == "words" and p.words_so_far == 2)
+    assert first_words.eta_minutes == 3
+    assert 0 < first_words.audio_done_ms < 700
+    second_words = next(p for p in observed if p.step == "words" and p.words_so_far == 3)
+    assert second_words.audio_done_ms == 700
     assert [p.fraction for p in observed] == sorted(p.fraction for p in observed)
+    assert [p.audio_done_ms for p in observed] == sorted(p.audio_done_ms for p in observed)
+
+
+def test_multitrack_audio_done_uses_combined_work_ratio_and_resume_resets_step(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    session = RecordingSession(tmp_path, "Two-track meeting", clock=lambda: 0.0)
+    session.add_track("mic", "Microphone", "microphone", 48000, 1)
+    session.add_track("others", "System audio", "remote", 48000, 1)
+    # 10,000 ms (5 x 96,000 frames @ 48 kHz -> 160,000 samples @ 16 kHz) on each track.
+    for chunk_idx in range(5):
+        session.append("mic", b"\x02\x00" * 96_000, chunk_idx * 2_000)
+        session.append("others", b"\x02\x00" * 96_000, chunk_idx * 2_000)
+    session.checkpoint()
+    session.finish()
+    write_metadata(session.directory)
+
+    changes = Changes()
+    completed = Finished()
+    observed_runs: list[list[TranscriptionProgress]] = [[]]
+    attempt = [0]
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def process_tracks(self, tracks, notify):
+            attempt[0] += 1
+            notify({"type": "planning", "trackId": tracks[0]["id"]})
+            notify({"type": "planned", "etaMinutes": 4, "segments": 2})
+            notify(
+                {
+                    "type": "progress",
+                    "trackId": tracks[0]["id"],
+                    "trackOrder": 0,
+                    "language": "en",
+                    "etaMinutes": 2,
+                    "segment": {"startSample": 0, "endSample": 160_000},
+                    "words": [{"startMs": 0, "endMs": 9_800, "text": "First"}],
+                }
+            )
+            if attempt[0] == 1:
+                raise RuntimeError("boom after first track")
+            notify(
+                {
+                    "type": "progress",
+                    "trackId": tracks[1]["id"],
+                    "trackOrder": 1,
+                    "language": "en",
+                    "etaMinutes": 1,
+                    "segment": {"startSample": 0, "endSample": 80_000},
+                    "words": [{"startMs": 1_000, "endMs": 4_500, "text": "Second"}],
+                }
+            )
+            notify(
+                {
+                    "type": "progress",
+                    "trackId": tracks[1]["id"],
+                    "trackOrder": 1,
+                    "language": "en",
+                    "etaMinutes": 0,
+                    "segment": {"startSample": 80_000, "endSample": 160_000},
+                    "words": [{"startMs": 5_000, "endMs": 9_900, "text": "Third"}],
+                }
+            )
+            summary = {"language": "en", "diagnostics": [], "segments": 3}
+            notify({"type": "recognised", "summary": summary, "etaMinutes": 0})
+            return summary
+
+    queue_holder: list[TranscriptionQueue] = []
+
+    def on_progress(directory):
+        prog = queue_holder[0].progress_for(directory)
+        if prog is not None:
+            observed_runs[-1].append(prog)
+
+    queue = TranscriptionQueue(
+        changes,
+        completed,
+        root=tmp_path,
+        client_factory=Client,
+        progress_changed=on_progress,
+    )
+    queue_holder.append(queue)
+    try:
+        assert queue.enqueue(session.directory)
+        completed.wait(1)
+        run1 = list(observed_runs[-1])
+        t0_done = next(p for p in run1 if p.step == "words" and p.words_so_far >= 1)
+        # After track 0 finishes (50% of combined 16 kHz samples), audio_done_ms must be ~half
+        # of the 10,000 ms meeting rather than jumping to full length while track 1 remains.
+        assert t0_done.audio_done_ms == 5_000
+        assert t0_done.audio_done_ms < 10_000
+
+        # Retry/resume starts a fresh _run, so step legitimately restarts at "preparing".
+        observed_runs.append([])
+        assert queue.enqueue(session.directory)
+        completed.wait(2)
+        run2 = list(observed_runs[-1])
+        assert run2[0].step == "preparing"
+        assert [STEP_INDEX[p.step] for p in run2] == sorted(STEP_INDEX[p.step] for p in run2)
+        words_run2 = [p for p in run2 if p.step == "words"]
+        assert [p.audio_done_ms for p in words_run2] == [0, 5_000, 7_500, 10_000]
+    finally:
+        queue.close()
 
 
 @pytest.mark.parametrize("dark", (False, True))
