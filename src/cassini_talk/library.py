@@ -205,6 +205,9 @@ class Meeting(MeetingState):
     recording_offset_minutes: int | None = None
     audio_size_bytes: int | None = None
     legacy_transcript_file: Path | None = None
+    # L-57: the shown words are the file's own validated embedded transcript
+    # (published or externally opened files, which have no legacy sidecar path).
+    embedded_transcript: bool = False
     has_audio: bool = False
     metadata_editable: bool = True
     title_is_fallback: bool = False
@@ -294,7 +297,11 @@ class Meeting(MeetingState):
         Only the trusted embedded reference counts; a transcript this computer wrote
         into the sidecar keeps the Imported provenance without the attribution.
         """
-        return self.origin == "received" and self.transcript == "done" and self.legacy_transcript_file is not None
+        return (
+            self.origin == "received"
+            and self.transcript == "done"
+            and (self.legacy_transcript_file is not None or self.embedded_transcript)
+        )
 
     @property
     def no_speech(self):

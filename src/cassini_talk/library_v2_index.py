@@ -278,6 +278,19 @@ class PublishedIndex:
         error = MeetingError(**status_error) if status_error else None
         if transcript == "damaged":
             error = MeetingError("transcript-damaged", None)
+        reference = (metadata.get("transcript") or {}).get("reference") or {}
+        embedded_transcript = bool(
+            origin != "Recording"
+            and words
+            and transcript in ("done", "queued", "running")
+            and audio.trusted
+            and embedded.is_readable
+            and (
+                not known
+                or reference.get("kind") == "embedded"
+                and reference.get("transcriptId", embedded.default_transcript_id) == embedded.default_transcript_id
+            )
+        )
         preview_key = "v2:" + "/".join(identity)
         speakers = _speakers(words, metadata.get("speakers", []), embedded, stored_labels=True, raw_words=raw_words)
         names = {speaker.id: speaker.name for speaker in speakers}
@@ -327,6 +340,7 @@ class PublishedIndex:
                 interrupted_at_ms=working.interrupted_at_ms if working else None,
                 audio_file=path,
                 published_file=path,
+                embedded_transcript=embedded_transcript,
                 recording_offset_minutes=working.recording_offset_minutes if working else None,
                 audio_size_bytes=audio.size,
                 has_audio=audio.duration is not None,

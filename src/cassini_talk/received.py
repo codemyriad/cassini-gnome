@@ -119,6 +119,22 @@ def _find_duplicate(candidates, sha, cancel):
     return None
 
 
+def _document_portal_roots():
+    roots = [Path("/run/flatpak/doc"), Path(f"/run/user/{os.getuid()}/doc")]
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        roots.append(Path(runtime) / "doc")
+    return roots
+
+
+def source_folder_name(original):
+    """The folder a file was opened from, or None when only a document-portal id is visible."""
+    parent = original.parent
+    if any(parent.parent == root for root in _document_portal_roots()):
+        return None
+    return parent.name
+
+
 def _prepare_one(
     path,
     root=None,
@@ -216,7 +232,7 @@ def _prepare_one(
                 quoteOverride=None,
                 received=dict(originalName=copy_name, importedAtMs=time.time_ns() // 1000000, sha256=sha),
             )
-            folder = original.parent.name if original_folder is None else original_folder
+            folder = source_folder_name(original) if original_folder is None else original_folder
             if folder and folder not in (".", "..") and "\\" not in folder and len(folder) <= 255:
                 try:
                     folder.encode("utf-8")

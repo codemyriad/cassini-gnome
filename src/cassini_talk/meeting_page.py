@@ -346,6 +346,12 @@ class MeetingPage(Adw.NavigationPage):
         self._split_collapsed_handler = None
         if hasattr(window, "split") and window.split is not None:
             self._split_collapsed_handler = window.split.connect("notify::collapsed", self._sync_back_button)
+        self._split_shown_handlers = []
+        if hasattr(window, "split") and window.split is not None and not window._external_meeting:
+            self._split_shown_handlers = [
+                window.split.connect("notify::" + name, self._split_shown_changed)
+                for name in ("collapsed", "show-content")
+            ]
         self._sync_back_button()
 
         self._style_manager = Adw.StyleManager.get_default()
@@ -831,6 +837,7 @@ class MeetingPage(Adw.NavigationPage):
             and meeting.key in fresh
             and meeting.origin == "received"
             and not self.window._external_meeting
+            and self._detail_shown()
         ):
             fresh.discard(meeting.key)
             self._imported_toast_key = meeting.key
@@ -848,16 +855,43 @@ class MeetingPage(Adw.NavigationPage):
             self.imported_toast.set_margin_bottom(
                 self.IMPORTED_TOAST_ABOVE_PLAYER if meeting.has_audio else self.IMPORTED_TOAST_NO_PLAYER
             )
-        elif self.imported_toast.get_visible() and self.imported_toast.get_focus_child() is not None:
-            self.scroller.grab_focus()
+        had_focus = (
+            not visible and self.imported_toast.get_visible() and self.imported_toast.get_focus_child() is not None
+        )
         self.imported_toast.set_visible(visible)
+        if had_focus:
+            self._restore_imported_toast_focus()
+
+    def _detail_shown(self):
+        """False while a collapsed split keeps this page hidden behind the sidebar list."""
+        split = getattr(self.window, "split", None)
+        return not (split is not None and split.get_collapsed() and not split.get_show_content())
+
+    def _split_shown_changed(self, *_):
+        if self.meeting is not None and self._detail_shown():
+            self._sync_imported_toast(self.meeting)
+
+    def _restore_imported_toast_focus(self):
+        """Focus goes to Play, or else into the transcript where its keyboard navigation lives."""
+        if self.play.get_visible() and self.play.get_sensitive() and self.play.grab_focus():
+            return
+        if self.bound:
+            first_row = next(iter(self.bound.values()))[2]
+            if first_row.get_mapped() and first_row.grab_focus():
+                return
+        if self.list.child_focus(Gtk.DirectionType.TAB_FORWARD) or self.list.grab_focus():
+            return
+        if self.scroller.grab_focus():
+            return
+        # The transcript is unfocusable while transcribing: keep focus on this page.
+        self.child_focus(Gtk.DirectionType.TAB_FORWARD)
 
     def _dismiss_imported_toast(self, *_):
         had_focus = self.imported_toast.get_focus_child() is not None
         self._imported_toast_key = None
         self.imported_toast.set_visible(False)
-        if had_focus and not (self.play.get_sensitive() and self.play.grab_focus()):
-            self.scroller.grab_focus()
+        if had_focus:
+            self._restore_imported_toast_focus()
 
     def _name_rate_items(self, widget, *_args):
         # GTK's model buttons do not consistently derive an AT-SPI name from
@@ -1916,6 +1950,9 @@ class MeetingPage(Adw.NavigationPage):
         if self._split_collapsed_handler and hasattr(self.window, "split") and self.window.split is not None:
             self.window.split.disconnect(self._split_collapsed_handler)
             self._split_collapsed_handler = None
+        for handler in getattr(self, "_split_shown_handlers", ()):
+            self.window.split.disconnect(handler)
+        self._split_shown_handlers = []
         for controller, handler in self._touch_scroll_signals:
             controller.disconnect(handler)
         self._touch_scroll_signals.clear()
