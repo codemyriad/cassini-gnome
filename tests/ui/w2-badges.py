@@ -234,7 +234,7 @@ with tempfile.TemporaryDirectory() as temporary:
             "In trascrizione · 4 min",
             "Richiede attenzione",
             "Interrotta",
-            "Ricevuta",
+            "Importata",
             "Importazione…",
         ]
     else:
@@ -244,7 +244,7 @@ with tempfile.TemporaryDirectory() as temporary:
             "Transcribing · 4 min",
             "Needs attention",
             "Interrupted",
-            "Received",
+            "Imported",
             "Importing…",
         ]
 

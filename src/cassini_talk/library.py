@@ -206,6 +206,7 @@ class Meeting(MeetingState):
     audio_size_bytes: int | None = None
     legacy_transcript_file: Path | None = None
     has_audio: bool = False
+    transcribed_on_other_device: bool = False
     metadata_editable: bool = True
     title_is_fallback: bool = False
     diagnostics: tuple[Diagnostic, ...] = ()
@@ -847,6 +848,9 @@ class LibraryScanner:
             audio_size_bytes=audio_size,
             legacy_transcript_file=legacy_transcript_file,
             has_audio=bool(tracks) if origin == "own" else duration is not None,
+            transcribed_on_other_device=(
+                origin == "received" and transcript == "done" and reference.get("kind") == "embedded"
+            ),
             metadata_editable=not unsupported,
             diagnostics=tuple(diagnostics),
             metadata=raw,

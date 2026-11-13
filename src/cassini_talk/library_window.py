@@ -1695,6 +1695,27 @@ class LibraryWindow(Adw.ApplicationWindow):
             if hasattr(self, "split"):
                 self.split.set_show_content(False)
 
+    def _maybe_show_imported_toast(self, meeting):
+        if meeting.origin != "received":
+            return
+        app = self.get_application()
+        schema = getattr(app, "settings_schema", None)
+        if not schema:
+            return
+        settings = Gio.Settings.new(schema)
+        seen = list(settings.get_strv("imported-toast-seen"))
+        if meeting.id in seen:
+            return
+        settings.set_strv("imported-toast-seen", [*seen, meeting.id])
+        folder_name = (meeting.metadata.get("received") or {}).get("originalFolderName")
+        if isinstance(folder_name, str) and folder_name:
+            message = text("received.importedToast", folder=folder_name)
+        else:
+            message = text("received.importedToast.noFolder")
+        toast = Adw.Toast(title=GLib.markup_escape_text(message))
+        self._imported_toast = toast
+        self.toasts.add_toast(toast)
+
     def _show_right_meeting(self, meeting, *, rebind_player=False, reset_scroll=False):
         LibraryWindow._close_right_recording(self, keep_content=True)
         if self.meeting_page is None or self.meeting_page.get_parent() is not self.meeting_slot:
@@ -1707,6 +1728,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self.meeting_page.rebind_player(self.player)
             self.meeting_page.select_meeting(meeting, reset_scroll=reset_scroll)
         self.detail_stack.set_visible_child_name("meeting")
+        self._maybe_show_imported_toast(meeting)
 
     def _close_right_meeting(self, *, keep_content=False):
         if self.meeting_page is not None and not self._external_meeting:

@@ -1158,6 +1158,7 @@ class MeetingPage(Adw.NavigationPage):
             now_ms=self.window.now_ms,
             tz=self.window.tz,
             received=meeting.origin == "received",
+            transcribed_other_device=meeting.transcribed_on_other_device,
         )
         self.headline.set_title(meeting.title)
         self.headline.set_subtitle(subtitle)
@@ -1228,7 +1229,6 @@ class MeetingPage(Adw.NavigationPage):
         self.trash_button.set_visible(
             trash_allowed or (meeting.published_file is not None and not meeting.metadata_editable)
         )
-        folder_name = (meeting.metadata.get("received") or {}).get("originalFolderName")
         signature = (
             meeting.key,
             undo,
@@ -1251,7 +1251,6 @@ class MeetingPage(Adw.NavigationPage):
             meeting.publication_notice,
             meeting.metadata_editable,
             meeting.has_audio,
-            folder_name,
             dark,
         )
         if signature == self._signature:
@@ -1293,19 +1292,6 @@ class MeetingPage(Adw.NavigationPage):
 
         while child := self.lines.get_first_child():
             self.lines.remove(child)
-        if not is_transcribing and meeting.origin == "received" and isinstance(folder_name, str) and folder_name:
-            card = Gtk.Box(spacing=12, css_classes=["received-folder"], valign=Gtk.Align.START, margin_bottom=8)
-            card.append(
-                Gtk.Image(
-                    icon_name="folder-symbolic",
-                    valign=Gtk.Align.START,
-                    accessible_role=Gtk.AccessibleRole.PRESENTATION,
-                )
-            )
-            body = label("", wrap=True, xalign=0, hexpand=True)
-            body.set_markup(text("received.folderCard", folder="<b>" + GLib.markup_escape_text(folder_name) + "</b>"))
-            card.append(body)
-            self.lines.append(card)
         publication = self.window.publication_line(meeting)
         if publication:
             self.lines.append(publication)

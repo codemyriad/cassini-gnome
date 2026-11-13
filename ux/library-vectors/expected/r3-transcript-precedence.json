@@ -91,7 +91,7 @@
           "transcript": "done",
           "etaMinutes": null,
           "error": null,
-          "badge": "Received",
+          "badge": "Imported",
           "title": "Conformance vector 001",
           "startMs": 1788220800000,
           "durationMs": 60,
@@ -125,7 +125,7 @@
             "id": "transcript-damaged",
             "action": null
           },
-          "badge": "Received",
+          "badge": "Imported",
           "title": "Conformance vector 003",
           "startMs": 1788220800000,
           "durationMs": 60,

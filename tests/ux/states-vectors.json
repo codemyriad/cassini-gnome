@@ -172,7 +172,7 @@
    },
    "badge": {
     "kind": "received",
-    "text": "Received",
+    "text": "Imported",
     "tint": "outline",
     "glyph": "incoming"
    },
@@ -190,7 +190,7 @@
    },
    "badge": {
     "kind": "received",
-    "text": "Received",
+    "text": "Imported",
     "tint": "outline",
     "glyph": "incoming"
    },
@@ -228,7 +228,7 @@
    },
    "badge": {
     "kind": "received",
-    "text": "Received",
+    "text": "Imported",
     "tint": "outline",
     "glyph": "incoming"
    },

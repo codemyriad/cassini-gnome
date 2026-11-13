@@ -410,8 +410,7 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .library-window .static-stop:disabled { background-image: none; opacity: 1; }
 .library-window .static-stop:disabled label { opacity: 1; color: var(--app-record-fg); }
 
-/* UX4 received context and UX7 export. */
-.received-folder { background: var(--app-wash-subtle); border-radius: 10px; padding: 14px; }
+/* UX7 export. */
 .export-dialog { font-size: 15px; }
 .export-heading { font-size: 20px; font-weight: 700; }
 .export-choices { border: 1px solid var(--app-export-border); border-radius: 10px; }

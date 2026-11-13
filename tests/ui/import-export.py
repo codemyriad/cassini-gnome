@@ -193,7 +193,12 @@ with tempfile.TemporaryDirectory() as temporary:
         and received.directory.parent == Path(os.environ["CASSINI_LIBRARY_DIR"])
     )
     assert received.audio_file.read_bytes() == incoming.read_bytes()
-    assert any("Opened from your Downloads folder." in value for value in labels(window.meeting_page.lines))
+    assert not any("Opened from your Downloads folder." in value for value in labels(window.meeting_page.lines))
+    assert window.meeting_page.headline.get_subtitle().endswith(" · Imported · Transcribed on another device")
+    assert window._imported_toast.get_title() == "Imported from Downloads. A copy is kept in your Meeting Library."
+    window._imported_toast = None
+    window.open_meeting(received)
+    assert window._imported_toast is None
     assert not window.received_hint.get_visible()
     until(lambda: not window._pending_selection)
     # L-25 DropImport states: rest, enter, over, unsupported error, and transient Importing… card.

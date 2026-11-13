@@ -181,7 +181,7 @@
           "transcript": "done",
           "etaMinutes": null,
           "error": null,
-          "badge": "Received",
+          "badge": "Imported",
           "title": "Onboarding walkthrough",
           "startMs": 1792760400000,
           "durationMs": 2040000,

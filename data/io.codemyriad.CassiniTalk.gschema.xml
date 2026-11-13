@@ -89,5 +89,9 @@
       <summary>Follow along</summary>
       <description>Keep the word being spoken in view while playing.</description>
     </key>
+    <key name="imported-toast-seen" type="as">
+      <default>[]</default>
+      <summary>Imported meeting IDs whose one-time toast was shown</summary>
+    </key>
   </schema>
 </schemalist>

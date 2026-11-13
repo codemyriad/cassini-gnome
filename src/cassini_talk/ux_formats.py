@@ -137,13 +137,19 @@ def row_time(at_ms, *, tz):
     return f"{at.hour:02d}:{at.minute:02d}"
 
 
-def preview_subtitle(at_ms, duration_ms, *, now_ms, tz, received=False):
+def preview_subtitle(at_ms, duration_ms, *, now_ms, tz, received=False, transcribed_other_device=False):
     value = day_group(at_ms, now_ms=now_ms, tz=tz)
     if at_ms is not None:
         value += f", {row_time(at_ms, tz=tz)}"
     if duration_ms is not None:
         value += f" · {meeting_duration(duration_ms)}"
-    return value + (" · " + text("states.badge.received") if received else "")
+    if not received:
+        return value
+    if transcribed_other_device:
+        marker = "\0"
+        ending = text("format.previewSubtitle.importedOtherDevice", day="", time="", duration=marker)
+        return value + " · " + ending.split(marker + " · ", 1)[1]
+    return value + " · " + text("states.badge.received")
 
 
 def search_date(at_ms, *, now_ms, tz):

@@ -71,6 +71,7 @@ def load_open_meeting(path, root=None, *, scanner=None, capture_activity=None):
         audio_file=path,
         audio_size_bytes=audio_size,
         has_audio=duration is not None,
+        transcribed_on_other_device=(state == "done"),
         words=words,
         turns=reading_turns(words, gaps=gaps),
         listening_turns=speaker_turns(words),
