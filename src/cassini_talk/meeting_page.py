@@ -875,9 +875,11 @@ class MeetingPage(Adw.NavigationPage):
         """Focus goes to Play, or else into the transcript where its keyboard navigation lives."""
         if self.play.get_visible() and self.play.get_sensitive() and self.play.grab_focus():
             return
-        if self.bound:
-            first_row = next(iter(self.bound.values()))[2]
-            if first_row.get_mapped() and first_row.grab_focus():
+        # A shown row takes focus now; ExactTranscript's own TAB handling only
+        # schedules the focus for its next allocation.
+        shown = [self.bound[i][2] for i in getattr(self.list, "visible_rows", ()) if i in self.bound]
+        for row in (*shown, *(bound[2] for bound in self.bound.values())):
+            if row.get_mapped() and row.grab_focus():
                 return
         if self.list.child_focus(Gtk.DirectionType.TAB_FORWARD) or self.list.grab_focus():
             return

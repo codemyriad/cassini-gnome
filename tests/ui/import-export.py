@@ -212,7 +212,7 @@ with tempfile.TemporaryDirectory() as temporary:
 
     def in_transcript():
         focus = window.get_focus()
-        return focus is not None and (focus is page.list or focus.is_ancestor(page.list))
+        return focus is not None and focus is not page.list and focus.is_ancestor(page.list)
 
     def show_focused_notice():
         page._imported_toast_key = received.key
