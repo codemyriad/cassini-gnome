@@ -117,7 +117,13 @@ with tempfile.TemporaryDirectory() as temporary:
         for w_i, tok in enumerate(sentence.split())
     )
     seven_meeting = replace(
-        base_meeting, speakers=seven_speakers, words=words, turns=reading_turns(words), preview_turns=()
+        base_meeting,
+        speakers=seven_speakers,
+        words=words,
+        turns=reading_turns(words),
+        preview_turns=(),
+        transcript="done",
+        eta_minutes=None,
     )
     snap = window._source_snapshot or window.snapshot
     window._library_scanned(

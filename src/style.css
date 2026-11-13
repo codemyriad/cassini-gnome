@@ -258,6 +258,73 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
 .inline-speaker-button.listening, .inline-speaker-item.listening { background: var(--app-accent-wash); }
 .inline-speaker-name { font-size: 14px; font-weight: 400; color: var(--cx-ink); }
 .inline-speaker-name.speaker-unnamed { text-decoration-line: underline; text-decoration-color: color-mix(in srgb, var(--cx-ink-2) 55%, transparent); }
+/* WP5 (L-45, L-48): header transcribing status line and chevron details popover. */
+.transcribing-status-row { font-size: 14px; color: var(--cx-ink-2); }
+.library-window menubutton.transcribing-details-btn > button {
+  min-height: 24px;
+  min-width: 0;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border-radius: 6px;
+  font-weight: 400;
+  color: var(--cx-ink-2);
+}
+.transcribing-status-heading { font-size: 14px; font-weight: 600; color: var(--cx-ink); }
+.transcribing-status-eta { font-size: 14px; font-weight: 400; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.library-window button.transcribing-stop-link {
+  min-height: 24px;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cx-accent-ink);
+  background: transparent;
+}
+.library-window button.transcribing-stop-link:not(:disabled):hover {
+  background: color-mix(in srgb, var(--cx-ink) 6%, transparent);
+}
+.library-window button.transcribing-stop-link:disabled { opacity: 0.45; }
+popover.transcribing-popover > contents {
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--cx-raised);
+  color: var(--cx-ink);
+  border: 1px solid var(--cx-line);
+  box-shadow: 0 14px 36px -10px var(--cx-shadow);
+  font-size: 14px;
+}
+popover.transcribing-popover > arrow {
+  background: var(--cx-raised);
+  border: 1px solid var(--cx-line);
+}
+.transcribing-popover-title { font-size: 16px; font-weight: 700; color: var(--cx-ink); }
+.transcribing-popover-pct { font-size: 14px; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.transcribing-step-done { font-size: 14px; font-weight: 400; color: var(--cx-ink); }
+.transcribing-step-active { font-size: 14px; font-weight: 600; color: var(--cx-ink); }
+.transcribing-step-upcoming { font-size: 14px; font-weight: 400; color: var(--cx-ink-3); }
+.transcribing-stats-grid { border-top: 1px solid var(--cx-line-soft); padding-top: 12px; }
+.transcribing-stat-label { font-size: 12px; color: var(--cx-ink-2); }
+.transcribing-stat-value { font-size: 14px; font-weight: 600; color: var(--cx-ink); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+popover.transcribing-popover button.transcribing-popover-stop {
+  min-height: 34px;
+  min-width: 0;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 0;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--cx-ink) 10%, transparent);
+  color: var(--cx-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):hover {
+  background: color-mix(in srgb, var(--cx-ink) 15%, transparent);
+}
+popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):active {
+  background: color-mix(in srgb, var(--cx-ink) 20%, transparent);
+}
+.transcribing-popover-note { font-size: 12px; color: var(--cx-ink-2); margin-top: -4px; }
 .speaker-dot { min-width: 7px; min-height: 7px; border-radius: 999px; }
 .speaker-dot-0 { background: var(--cx-speaker-0); }
 .speaker-dot-1 { background: var(--cx-speaker-1); }

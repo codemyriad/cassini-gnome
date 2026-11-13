@@ -26,6 +26,7 @@ from .meeting_text import (
 )
 from .strings import plural, text
 from .tokens import speaker_colour, speaker_slot, token
+from .transcribing_status import TranscribingStatusRow
 from .transcript_label import TranscriptLabel
 from .transcript_row import ExactTurnRow
 
@@ -237,6 +238,10 @@ class MeetingPage(Adw.NavigationPage):
         )
         self.speakers_scroller.get_child().set_scroll_to_focus(False)
         self.full_header.append(self.speakers_scroller)
+        self.transcribing_row = TranscribingStatusRow(
+            on_stop=lambda: self.window.get_application().stop_transcription(self.meeting)
+        )
+        self.full_header.append(self.transcribing_row)
         outer.append(self.full_header)
 
         self.stop_transcription_button = None
@@ -282,6 +287,14 @@ class MeetingPage(Adw.NavigationPage):
 
         self.transcript_overlay = Gtk.Overlay(vexpand=True, hexpand=True)
         self.transcript_overlay.set_child(self.scroller)
+        self.transcribing_blank = Gtk.Box(
+            vexpand=True,
+            hexpand=True,
+            css_classes=["meeting-reading-surface"],
+            visible=False,
+        )
+        self.transcript_overlay.add_overlay(self.transcribing_blank)
+        self.transcript_overlay.set_measure_overlay(self.transcribing_blank, False)
         self.scroll_fade = _ScrollFade(
             css_classes=["meeting-scroll-fade"],
             valign=Gtk.Align.START,
@@ -373,6 +386,7 @@ class MeetingPage(Adw.NavigationPage):
             self._last_vadj_value = 0.0
             self._vadj.set_value(0)
         if changed_key:
+            self.transcribing_row.popdown()
             self.clear_find(focus_transcript=False)
             self._clear_dialog_focus()
             self._speaker_future = None
@@ -393,7 +407,7 @@ class MeetingPage(Adw.NavigationPage):
         self._position()
 
     def _on_vadj_changed(self, adj):
-        if self._closed or self._updating_transcript:
+        if self._closed or self._updating_transcript or self.meeting.transcript in ("queued", "running"):
             return
         if self.full_header.get_visible():
             measured = self.full_header.get_height()
@@ -634,6 +648,8 @@ class MeetingPage(Adw.NavigationPage):
         if not self._closed:
             if fade := getattr(self, "scroll_fade", None):
                 fade.queue_draw()
+            if transcribing := getattr(self, "transcribing_row", None):
+                transcribing.invalidate_theme()
             if self._exact:
                 self.list.invalidate()
             for turn, words, _row in list(self.bound.values()):
@@ -680,7 +696,8 @@ class MeetingPage(Adw.NavigationPage):
 
     def set_connected(self, connected):
         visible = (
-            self.window.get_application().browser_companion_available
+            self.meeting.transcript not in ("queued", "running")
+            and self.window.get_application().browser_companion_available
             and not connected
             and not self.settings.get_boolean("companion-card-dismissed")
         )
@@ -1103,11 +1120,37 @@ class MeetingPage(Adw.NavigationPage):
         GLib.idle_add(lambda: (self.player.seek(word.start_ms), False)[1])
         return True
 
+    def refresh_transcription_progress(self, *, stopping=None):
+        meeting = self.meeting
+        is_transcribing = meeting.transcript in ("queued", "running")
+        app = self.window.get_application()
+        if stopping is None:
+            stopping = app.transcription_stopping(meeting) if hasattr(app, "transcription_stopping") else False
+        can_stop = bool(meeting.lifecycle == "saved" and meeting.metadata_editable)
+        if is_transcribing:
+            live_progress = app.transcription_progress(meeting) if hasattr(app, "transcription_progress") else None
+            self.transcribing_row.update_state(
+                meeting,
+                live_progress=live_progress,
+                can_stop=can_stop,
+                stopping=stopping,
+                lang=language(),
+            )
+            self.transcribing_row.set_visible(True)
+            self.stop_transcription_button = self.transcribing_row.stop_button if can_stop else None
+        else:
+            self.transcribing_row.popdown()
+            self.transcribing_row.set_visible(False)
+            self.stop_transcription_button = None
+
     def update(self, meeting):
         self._updating_transcript = True
         self._updating_rows = True
         self.meeting = meeting
         self._sync_back_button()
+        is_transcribing = meeting.transcript in ("queued", "running")
+        if is_transcribing and self._header_scrolled:
+            self._set_header_scrolled(False)
         layout = getattr(meeting.turns, "layout", meeting.turns) if self._exact else meeting.turns
         subtitle = fmt.preview_subtitle(
             meeting.display_start,
@@ -1143,12 +1186,17 @@ class MeetingPage(Adw.NavigationPage):
             button.set_sensitive(can_play)
         self.seek.set_sensitive(can_play)
         self.player_overlay.set_visible(bool(meeting.has_audio))
-        self._can_listen = can_play
-        self.find_row.set_visible(bool(meeting.words) or bool(self._find_query))
+        self._can_listen = can_play and not is_transcribing
+        self.find_row.set_visible(not is_transcribing and (bool(meeting.words) or bool(self._find_query)))
+        self.transcribing_blank.set_visible(is_transcribing)
+        self.scroller.set_opacity(0.0 if is_transcribing else 1.0)
+        self.scroller.set_can_target(not is_transcribing)
+        self.scroller.set_can_focus(not is_transcribing)
+        self.refresh_transcription_progress(stopping=stopping)
 
         if self._turns != layout or self._listening_turns is not meeting.listening_turns:
             self._index_listening_rows(meeting, layout)
-        if not can_play and self.window.listen.active:
+        if (not can_play or is_transcribing) and self.window.listen.active:
             self.window.listen.stop()
         if self._listening_turns is not meeting.listening_turns:
             self._listening_turns = meeting.listening_turns
@@ -1232,24 +1280,26 @@ class MeetingPage(Adw.NavigationPage):
         self._speaker_rows.clear()
         for speaker in visible_speakers:
             self.speakers.append(self._inline_speaker(speaker, matches))
-        self.speakers.set_visible(bool(visible_speakers))
+        show_speakers = bool(visible_speakers) and not is_transcribing
+        self.speakers.set_visible(show_speakers)
         self.speakers_scroller.set_policy(
             Gtk.PolicyType.NEVER,
             Gtk.PolicyType.AUTOMATIC if len(visible_speakers) > 6 else Gtk.PolicyType.NEVER,
         )
-        self.speakers_scroller.set_visible(bool(visible_speakers))
+        self.speakers_scroller.set_visible(show_speakers)
         self._updating_rows = False
         self._finish_merge_transition()
         self._listening_changed()
 
         while child := self.lines.get_first_child():
             self.lines.remove(child)
-        self.stop_transcription_button = None
-        if meeting.origin == "received" and isinstance(folder_name, str) and folder_name:
+        if not is_transcribing and meeting.origin == "received" and isinstance(folder_name, str) and folder_name:
             card = Gtk.Box(spacing=12, css_classes=["received-folder"], valign=Gtk.Align.START, margin_bottom=8)
             card.append(
                 Gtk.Image(
-                    icon_name="folder-symbolic", valign=Gtk.Align.START, accessible_role=Gtk.AccessibleRole.PRESENTATION
+                    icon_name="folder-symbolic",
+                    valign=Gtk.Align.START,
+                    accessible_role=Gtk.AccessibleRole.PRESENTATION,
                 )
             )
             body = label("", wrap=True, xalign=0, hexpand=True)
@@ -1259,29 +1309,16 @@ class MeetingPage(Adw.NavigationPage):
         publication = self.window.publication_line(meeting)
         if publication:
             self.lines.append(publication)
-        if meeting.lifecycle == "saved" and meeting.interrupted_at_ms is not None:
+        if not is_transcribing and meeting.lifecycle == "saved" and meeting.interrupted_at_ms is not None:
             self.lines.append(
                 InlineLine("meeting.interruptedAt", info=True, position=fmt.position(meeting.interrupted_at_ms))
             )
         trash_error = self.window.trash_error_line(meeting)
         if trash_error:
             self.lines.append(trash_error)
-        elif meeting.transcript in ("queued", "running"):
-            progress = Gtk.Box(spacing=12, css_classes=["inline-line", "info-line"])
-            progress.append(Gtk.Spinner(spinning=True, accessible_role=Gtk.AccessibleRole.PRESENTATION))
-            progress.append(label(fmt.eta(meeting.eta_minutes), xalign=0, wrap=True, hexpand=True))
-            if meeting.lifecycle == "saved" and meeting.metadata_editable:
-                stop = self.stop_transcription_button = Gtk.Button(
-                    label=text("common.stop"),
-                    valign=Gtk.Align.CENTER,
-                    sensitive=not stopping,
-                )
-                stop.connect("clicked", lambda *_: self.window.get_application().stop_transcription(meeting))
-                progress.append(stop)
-            self.lines.append(progress)
-        elif meeting.transcript == "damaged":
+        elif not is_transcribing and meeting.transcript == "damaged":
             self.lines.append(InlineLine("errors.transcriptDamaged.line"))
-        elif meeting.transcript == "failed":
+        elif not is_transcribing and meeting.transcript == "failed":
             app = self.window.get_application()
             retry = getattr(app, "write_down", None)
             self.lines.append(
@@ -1293,7 +1330,7 @@ class MeetingPage(Adw.NavigationPage):
                     callback=(lambda: retry(meeting)) if retry and meeting.metadata_editable else None,
                 )
             )
-        elif meeting.no_speech:
+        elif not is_transcribing and meeting.no_speech:
             app = self.window.get_application()
             self.lines.append(
                 InlineLine(
@@ -1778,6 +1815,7 @@ class MeetingPage(Adw.NavigationPage):
 
     def close(self):
         self._closed = True
+        self.transcribing_row.popdown()
         if hasattr(self, "listening_keys"):
             self.listening_keys.close()
         if self._header_source:

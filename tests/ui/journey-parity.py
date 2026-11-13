@@ -35,13 +35,13 @@ from painted import apply_screenshot_scheme, painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk import companion  # noqa: E402
-from cassini_talk import ux_formats as fmt  # noqa: E402
 from cassini_talk.browser_connection import BrowserConnection  # noqa: E402
 from cassini_talk.companion_setup import CompanionSetup  # noqa: E402
 from cassini_talk.global_shortcut import GlobalShortcut  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 from cassini_talk.meeting_store import update_metadata  # noqa: E402
 from cassini_talk.received import import_received  # noqa: E402
+from cassini_talk.strings import plural  # noqa: E402
 
 
 def until(check):
@@ -257,10 +257,21 @@ with tempfile.TemporaryDirectory() as temporary:
         w for w in widgets(window.rows) if getattr(w, "meeting", None) and w.meeting.directory == queued.directory
     )
     window.rows.select_row(row)
-    until(lambda: window.meeting_page is not None and fmt.eta(3) in labels(window.meeting_page.lines))
+    until(
+        lambda: (
+            window.meeting_page is not None
+            and window.meeting_page.transcribing_row.get_visible()
+            and "· " + plural("transcribing.eta.minutes", 3) in labels(window.meeting_page.transcribing_row)
+        )
+    )
     update_metadata(queued.directory, etaMinutes=2)
     window.monitor.refresh_now()
-    until(lambda: window.meeting_page is not None and fmt.eta(2) in labels(window.meeting_page.lines))
+    until(
+        lambda: (
+            window.meeting_page is not None
+            and "· " + plural("transcribing.eta.minutes", 2) in labels(window.meeting_page.transcribing_row)
+        )
+    )
 
     # Only explicit Don't show again suppresses the repeated consent sheet.
     app.on_record()

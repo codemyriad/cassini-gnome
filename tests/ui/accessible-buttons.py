@@ -118,7 +118,15 @@ def child():
         live = replace(
             next(m for m in window.snapshot.meetings if m.title.startswith("Weekly sync")), lifecycle="recording"
         )
-        meeting = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")
+        meeting = replace(
+            next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners"),
+            transcript="done",
+            eta_minutes=None,
+        )
+        saved_snapshot = replace(
+            saved_snapshot,
+            meetings=tuple(meeting if m.key == meeting.key else m for m in saved_snapshot.meetings),
+        )
 
         def start():
             window.snapshot = replace(
