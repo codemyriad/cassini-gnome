@@ -307,8 +307,9 @@ class RecordingPage(Adw.NavigationPage):
     def _apply_scrolled(self):
         self._scroll_source = 0
         if not self._closed:
+            # L-32: the title block stays pinned above the scroller, so the scroll line belongs under it.
             scrolled = self._vadj.get_value() > 0.5
-            (self.top_bar.add_css_class if scrolled else self.top_bar.remove_css_class)("scrolled")
+            (self.full_header.add_css_class if scrolled else self.full_header.remove_css_class)("scrolled")
         return GLib.SOURCE_REMOVE
 
     def _on_rename_shortcut(self, *_):
