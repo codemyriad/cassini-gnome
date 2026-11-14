@@ -562,6 +562,61 @@ class VoiceStore:
             self._publish(people)
             return True
 
+    def rename(self, identifier, name):
+        """D-977: change a saved voice's name for future recognition only.
+
+        Names already written into meetings stay as they are, like Forget.
+        """
+        name = name_value(name)
+        if not name:
+            raise ValueError("A saved voice needs a name")
+        with self._locked():
+            people = self._people()
+            voice = next((v for v in people["voices"] if v["id"] == identifier), None)
+            if voice is None:
+                raise KeyError(identifier)
+            if voice["name"] == name:
+                return False
+            voice["name"] = name
+            voice["updatedAt"] = int(time.time() * 1000)
+            self._transaction({"people.json": people})
+            self._publish(people)
+            return True
+
+    def add_sample(self, name, embedding, seconds, generation, *, voice_id=None):
+        """D-977 guided test phrase: enrol a print with no meeting behind it.
+
+        `voice_id` adds the sample to that saved voice (Same person); None
+        makes a new voice that takes the next save-order colour (L-41).
+        A Forget everyone since the take started (generation) discards it.
+        Returns the voice id, or None when discarded.
+        """
+        name = name_value(name)
+        if not name:
+            raise ValueError("A saved voice needs a name")
+        if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 4:
+            raise ValueError("A saved voice needs at least 4 seconds of speech")
+        with self._locked():
+            people = self._people()
+            if people["generation"] != generation:
+                return None
+            voices = {v["id"]: v for v in people["voices"]}
+            previous = voices.get(voice_id) if voice_id is not None else None
+            if voice_id is not None and previous is None:
+                return None  # Forgotten while recording: never revive it.
+            voice = enrol(previous, name, REVISION, embedding, float(seconds), int(time.time() * 1000))
+            if previous is not None and "saveOrder" in previous:
+                voice["saveOrder"] = previous["saveOrder"]
+            else:
+                voice["saveOrder"] = people.get("nextSaveOrder", 0)
+                people["nextSaveOrder"] = voice["saveOrder"] + 1
+            voice["meetings"] = list((previous or {}).get("meetings", []))
+            voices[voice["id"]] = voice
+            people["voices"] = list(voices.values())
+            self._transaction({"people.json": people})
+            self._publish(people)
+            return voice["id"]
+
     def forget(self, identifier):
         with self._locked():
             people = self._people()

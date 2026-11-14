@@ -624,6 +624,15 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
   background: var(--app-likely-tag-bg);
   color: var(--cx-ink);
 }
+/* D-977: Saved voices readiness tag reads like Likely (ink at 10%, HARMONY 10.15). */
+.saved-voice-ready {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 7px;
+  background: var(--app-likely-tag-bg);
+  color: var(--cx-ink);
+}
 .speakers-dialog .speaker-remember-card {
   padding: 10px 12px;
   border-radius: 12px;

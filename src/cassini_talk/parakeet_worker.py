@@ -110,6 +110,10 @@ def voice_job():
         from cassini_talk.worker_voices import request
 
         request(message, emit)
+    elif message.get("type") == "enrolSample":
+        from cassini_talk.worker_voices import enrol_sample
+
+        enrol_sample(message, emit)
     elif message.get("type") != "quit":
         raise ValueError("Expected voiceprint request")
     return 0

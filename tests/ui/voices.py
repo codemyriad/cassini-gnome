@@ -231,7 +231,7 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: len(voices.rows) == 5 and not voices._loading)
     first = next(iter(voices.rows))
     assert app.voice_store.snapshot()["voices"][0]["name"] == "Marta"
-    assert voices.rows[first][1].get_sensitive()
+    assert voices.rows[first].play.get_sensitive()
     from cassini_talk.folder_player import FolderPlayer
 
     original_init = FolderPlayer.__init__
@@ -243,7 +243,7 @@ with tempfile.TemporaryDirectory() as temporary:
 
     with patch.object(FolderPlayer, "__init__", private_player):
         voices.samples[first] = (meeting, 0, 750)
-        voices.rows[first][1].emit("clicked")
+        voices.rows[first].play.emit("clicked")
         until(lambda: voices.player is not None and voices.player.playing)
         assert voices.player._range_end <= voices.player.position + 10000
         player = voices.player

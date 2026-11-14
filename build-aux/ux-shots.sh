@@ -36,6 +36,8 @@ CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/voices.py "$out/
 CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/voice-preparation.py "$out/voice-preparation.png"
 CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/voice-preparation.py "$out/dark/voice-preparation.png"
 CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/voice-models.py "$out/voice-models.png"
+CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/saved-voices-w6.py "$out/saved-voices-w6.png"
+CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/saved-voices-w6.py "$out/dark/saved-voices-w6.png"
 CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/voices.py "$out/dark/voices-gui.png"
 CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/voice-models.py "$out/dark/voice-models.png"
 CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/speakers.py "$out/dark/speakers-gui.png"
