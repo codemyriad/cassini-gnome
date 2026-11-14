@@ -255,6 +255,8 @@ def _prepare_one(
                 if prior is not None:
                     return None, False, prior
                 check_cancel(cancel)
+                # Rejects a truncated container and fsyncs the Opus copy, so the
+                # durable meeting.json below never points at incomplete audio.
                 decode_to_opus(original, copied, cancel=cancel)
                 os.chmod(copied, 0o600)
                 after = os.stat(original, follow_symlinks=False)

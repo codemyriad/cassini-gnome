@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from cassini_talk import batch_import, import_feedback, import_types, received
+from cassini_talk import audio_import, batch_import, import_feedback, import_types, received
 from cassini_talk.i18n import using_language
 from cassini_talk.library import LibraryScanner
 from cassini_talk.meeting_state import import_entry_badge
@@ -294,6 +294,115 @@ def test_damaged_plain_audio_fails_without_publishing_and_leaves_no_staging(tmp_
     result = batch_import.import_files([bad], root)
     assert result.failed == 1 and result.failed_inputs == [str(bad)]
     assert documents(root) == [] and not list(root.glob(".received-*"))
+
+
+def _truncate_wav(path, keep_seconds, rate=16000):
+    """Keep the header (declaring the full length) but only ``keep_seconds`` of samples."""
+    data = path.read_bytes()
+    start = data.index(b"data") + 8
+    path.write_bytes(data[: start + int(keep_seconds * rate) * 2])
+    return path
+
+
+def _mpeg_frame(tag=None, total=0):
+    # MPEG-1 Layer III, 128 kbit/s, 44.1 kHz, stereo: 417-byte frames.
+    frame = bytearray(b"\xff\xfb\x90\x00" + bytes(413))
+    if tag is not None:
+        # Xing/Info follows 32 bytes of stereo MPEG-1 side information.
+        frame[36:52] = tag + struct.pack(">III", 3, 10, total)
+    return bytes(frame)
+
+
+def test_complete_containers_pass_the_truncation_check(tmp_path):
+    audio_import.check_complete(write_wav(tmp_path / "ok.wav"))
+    audio_import.check_complete(FIXTURES / "tone.m4a")
+    audio_import.check_complete(FIXTURES / "tone.mp3")
+    mp3 = tmp_path / "info.mp3"
+    mp3.write_bytes(_mpeg_frame(b"Info", 417 * 10) + _mpeg_frame() * 9)
+    audio_import.check_complete(mp3)
+    # A streamed WAV leaves its data length unknown; that is not truncation.
+    streamed = write_wav(tmp_path / "streamed.wav")
+    data = bytearray(streamed.read_bytes())
+    at = data.index(b"data") + 4
+    data[4:8] = data[at : at + 4] = struct.pack("<I", 0xFFFFFFFF)
+    streamed.write_bytes(data)
+    audio_import.check_complete(streamed)
+
+
+def test_truncated_containers_are_rejected(tmp_path):
+    wav = _truncate_wav(write_wav(tmp_path / "cut.wav", seconds=10), 1)
+    header_only = tmp_path / "header.wav"
+    header_only.write_bytes(write_wav(tmp_path / "h.wav").read_bytes()[:20])
+    m4a = FIXTURES / "tone.m4a"
+    whole = m4a.read_bytes()
+    in_mdat = tmp_path / "mdat.m4a"
+    in_mdat.write_bytes(whole[:2000])
+    in_moov = tmp_path / "moov.m4a"
+    in_moov.write_bytes(whole[:-100])
+    no_moov = tmp_path / "nomoov.m4a"
+    no_moov.write_bytes(whole[: whole.index(b"moov") - 4])
+    id3 = tmp_path / "id3.mp3"
+    id3.write_bytes((FIXTURES / "tone.mp3").read_bytes()[:12])
+    xing = tmp_path / "xing.mp3"
+    xing.write_bytes(_mpeg_frame(b"Xing", 417 * 10) + _mpeg_frame() * 3)
+    for path in (wav, header_only, in_mdat, in_moov, no_moov, id3, xing):
+        with pytest.raises(ValueError, match="incomplete"):
+            audio_import.check_complete(path)
+
+
+@needs_encoder
+def test_truncated_wav_fails_without_publishing_and_leaves_no_staging(tmp_path):
+    # The header declares 10 s; only 1 s of samples is on disk.
+    source = _truncate_wav(write_wav(tmp_path / "cut.wav", seconds=10), 1)
+    root = tmp_path / "Library"
+    with pytest.raises(ValueError, match="incomplete"):
+        received.import_one(source, root)
+    result = batch_import.import_files([source], root)
+    assert result.failed == 1 and result.imported == 0
+    assert documents(root) == [] and not list(root.glob(".received-*"))
+
+
+@needs_encoder
+def test_truncated_m4a_fails_without_publishing_and_leaves_no_staging(tmp_path):
+    source = tmp_path / "cut.m4a"
+    source.write_bytes((FIXTURES / "tone.m4a").read_bytes()[:2000])
+    root = tmp_path / "Library"
+    with pytest.raises(ValueError, match="incomplete"):
+        received.import_one(source, root)
+    assert documents(root) == [] and not list(root.glob(".received-*"))
+
+
+@needs_encoder
+def test_decoded_opus_is_fsynced_and_a_sync_failure_publishes_nothing(tmp_path, monkeypatch):
+    import errno
+    import os
+
+    source = write_wav(tmp_path / "talk.wav")
+    root = tmp_path / "Library"
+    real_fsync = os.fsync
+    synced = []
+
+    def fsync(fd):
+        name = os.readlink(f"/proc/self/fd/{fd}")
+        if name.endswith(".opus"):
+            synced.append(name)
+            raise OSError(errno.EIO, "simulated I/O error")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    with pytest.raises(OSError):
+        received.import_one(source, root)
+    assert synced and "/.received-" in synced[0]
+    assert documents(root) == [] and not list(root.glob(".received-*"))
+    result = batch_import.import_files([source], root)
+    assert result.failed == 1 and result.imported == 0
+    assert documents(root) == [] and not list(root.glob(".received-*"))
+
+    # With a working disk, the Opus copy is synced before the meeting appears.
+    monkeypatch.setattr(os, "fsync", lambda fd: (synced.append(os.readlink(f"/proc/self/fd/{fd}")), real_fsync(fd))[1])
+    synced.clear()
+    meeting, added = received.import_one(source, root)
+    assert added and any(name.endswith(".opus") for name in synced)
 
 
 def test_ogg_video_and_ogg_flac_named_ogg_are_rejected_before_copying(tmp_path):
