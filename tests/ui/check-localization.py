@@ -21,7 +21,13 @@ for identifier in ("firstRun.hero.title", "firstRun.hero.subtitle", "firstRun.bo
     assert expected in state["visibleLabels"], (identifier, expected, state["visibleLabels"])
 expected_import = catalog["import.action"]["l10n"][lang]["text"]
 assert expected_import in state["menuLabels"], ("import.action", expected_import, state["menuLabels"])
-assert {"fr": "_Raccourcis clavier", "pt-BR": "_Atalhos de teclado"}[lang] in state["menuLabels"], state["menuLabels"]
+# D100: Trash, Keyboard shortcuts and Help are catalog items; About stays a gettext item.
+for identifier in ("menu.trash", "menu.keyboardShortcuts", "menu.help"):
+    expected = catalog[identifier]["l10n"][lang]["text"]
+    assert expected in state["menuLabels"], (identifier, expected, state["menuLabels"])
+assert any(label.startswith({"fr": "_À propos de", "pt-BR": "_Sobre"}[lang]) for label in state["menuLabels"]), state[
+    "menuLabels"
+]
 log = shot.with_suffix(".log").read_text()
 assert not re.search(r"(?:Gtk|Adw|GLib-GObject)-(?:WARNING|CRITICAL)|Traceback \(most recent call last\)", log), log
 print(f"PASS real {lang} launch: mapped catalog copy, gettext menu, unchanged formatting locale, no GTK diagnostics")
