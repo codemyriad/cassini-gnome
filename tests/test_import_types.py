@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """L-25 / W0.7: the shared import-types contract, safe picker MIME filters, Ogg
-content validation, and decoding MP3/M4A/WAV into Imported (Received) meetings."""
+content validation, FLAC header validation (D102), and decoding MP3/M4A/WAV/FLAC
+into Imported (Received) meetings."""
 
 import configparser
 import hashlib
@@ -48,15 +49,19 @@ def test_contract_file_is_installed_with_the_module():
 # ---- decided list and picker filters ------------------------------------------
 
 
-def test_only_decided_entries_are_offered_and_flac_stays_out():
-    assert import_types.extensions() == (".opus", ".ogg", ".mp3", ".m4a", ".wav")
-    assert import_types.labels() == ("Opus/Ogg", "MP3", "M4A/AAC", "WAV")
-    open_entries = [e for e in import_types.contract()["types"] if e["status"] != "decided"]
-    assert [e["id"] for e in open_entries] == ["flac"]
-    offered = set(import_types.picker_mime_types())
-    for entry in open_entries:
-        assert offered.isdisjoint(entry["mimeTypes"])
-        assert not set(entry["extensions"]) & set(import_types.extensions())
+def test_every_entry_is_decided_and_native_flac_is_offered():
+    # D102 (cassini-ux import-types 2026-11-14.3): native FLAC is decided; no open entries remain.
+    assert import_types.contract()["version"] == "2026-11-14.3"
+    assert import_types.extensions() == (".opus", ".ogg", ".mp3", ".m4a", ".wav", ".flac")
+    assert import_types.labels() == ("Opus/Ogg", "MP3", "M4A/AAC", "WAV", "FLAC")
+    assert [e["id"] for e in import_types.contract()["types"] if e["status"] != "decided"] == []
+    assert {"audio/flac", "audio/x-flac"} <= set(import_types.picker_mime_types())
+    assert ".flac" not in import_types.rejected_extensions()
+    assert import_types.rejected_extensions() == (".ogv", ".oga", ".ogx", ".spx")
+    assert import_types.is_plain_audio("Song.FLAC")
+    rule = import_types.header_validation("song.flac")
+    assert rule["minProbeBytes"] == 42 and rule["magicHex"] == "664c6143"
+    assert import_types.header_validation("song.ogg") is None
 
 
 def test_picker_uses_safe_mime_types_only_never_compatibility_or_video():
@@ -66,7 +71,8 @@ def test_picker_uses_safe_mime_types_only_never_compatibility_or_video():
     assert compat >= {"audio/ogg", "application/ogg"}
     assert compat.isdisjoint(mimes)
     assert all(m.startswith("audio/") for m in mimes)
-    assert "video/ogg" not in mimes and "audio/x-flac+ogg" not in mimes
+    for ogg_flac in ("video/ogg", "audio/x-flac+ogg", "audio/x-oggflac", "audio/ogg", "application/ogg"):
+        assert ogg_flac not in mimes
 
 
 def test_gtk_open_dialog_and_open_with_declarations_follow_the_contract():
@@ -94,10 +100,33 @@ def test_gtk_open_dialog_and_open_with_declarations_follow_the_contract():
         ("talk.wav", "audio/x-wav", True),
         ("clip.ogv", None, False),
         ("song.oga", None, False),
-        ("song.flac", None, False),
+        ("song.flac", None, True),
+        ("Song.FLAC", "audio/flac", True),
+        ("song.flac", "audio/x-flac", True),
+        # D102: Ogg FLAC and broad Ogg MIME types never pass for .flac ...
+        ("song.flac", "audio/x-flac+ogg", False),
+        ("song.flac", "audio/x-oggflac", False),
+        ("song.flac", "audio/ogg", False),
+        ("song.flac", "application/ogg", False),
+        ("song.flac", "audio/mpeg", False),
+        ("song.flac", "video/x-flac", False),
+        # ... nor Ogg-FLAC MIME types on the Ogg extensions.
+        ("song.ogg", "audio/x-flac+ogg", False),
+        ("song.ogg", "audio/x-oggflac", False),
+        ("song.opus", "audio/x-flac+ogg", False),
+        ("song.opus", "audio/x-oggflac", False),
+        ("song.oga", "audio/x-flac+ogg", False),
+        ("song.oga", "audio/x-oggflac", False),
+        ("song.oga", "audio/ogg", False),
+        ("song.oga", None, False),
+        # Broad Ogg MIME types are compatibility types for Opus/Ogg only.
+        ("song.ogg", "audio/ogg", True),
+        ("song.opus", "application/ogg", True),
+        ("talk.mp3", "audio/ogg", False),
+        ("talk.wav", "application/ogg", False),
+        ("talk.m4a", "audio/flac", False),
         ("speech.spx", None, False),
         ("clip.ogg", "video/ogg", False),
-        ("song.ogg", "audio/x-flac+ogg", False),
         ("movie.mp4", None, False),
         ("raw.aac", None, False),
         ("noext", None, False),
@@ -184,6 +213,107 @@ def test_ogg_probe_reads_only_the_contract_probe_window(tmp_path):
         assert counting.tell() == 7
 
 
+# ---- native FLAC header validation (D102) ----------------------------------------
+
+
+def flac_header(*, magic=b"fLaC", block=0x00, length=34, rate=48000, channels=1, bits=16, samples=48000):
+    """``fLaC`` + metadata block header + 34-byte STREAMINFO (RFC 9639 section 8.2)."""
+    info = struct.pack(">HH", 4096, 4096) + bytes(3) + bytes(3)
+    packed = (rate << 44) | ((channels - 1) << 41) | ((bits - 1) << 36) | samples
+    info += packed.to_bytes(8, "big") + bytes(16)
+    assert len(info) == 34
+    return magic + bytes([block]) + length.to_bytes(3, "big") + info
+
+
+FLAC_RULE = import_types.header_validation("a.flac")
+VALID_FLAC = flac_header()
+
+
+@pytest.mark.parametrize(
+    "data, reason",
+    [
+        (VALID_FLAC, None),
+        # STREAMINFO flagged as the last metadata block (high bit) is still type 0.
+        (flac_header(block=0x80), None),
+        (VALID_FLAC + bytes(4096), None),
+        (flac_header(rate=8000, channels=2, bits=24), None),
+        (flac_header(rate=0xFFFFF), None),
+        # Truncated: fewer than the 42 header bytes.
+        (VALID_FLAC[:41], "truncated"),
+        (VALID_FLAC[:8], "truncated"),
+        (b"fLaC", "truncated"),
+        (b"", "not-flac"),
+        # Corrupt STREAMINFO block header or sample rate.
+        (flac_header(block=0x04), "not-streaminfo"),
+        (flac_header(block=0x84), "not-streaminfo"),
+        (flac_header(length=33), "streaminfo-length"),
+        (flac_header(length=0x010022), "streaminfo-length"),
+        (flac_header(rate=0), "sample-rate"),
+        (flac_header(rate=0, channels=8, bits=32, samples=(1 << 36) - 1), "sample-rate"),
+        # Other containers renamed to .flac.
+        (ogg_page(b"\x7fFLAC\x01\x00\x00\x01" + VALID_FLAC, bos=True) + bytes(64), "ogg"),
+        (OPUS_STREAM, "ogg"),
+        (b"ID3\x04\x00\x00\x00\x00\x00\x00" + VALID_FLAC, "id3"),
+        (b"RIFF" + bytes(60), "not-flac"),
+        (b"flac" + VALID_FLAC[4:], "not-flac"),
+        ((FIXTURES / "tone.mp3").read_bytes()[:42], "id3"),
+    ],
+)
+def test_flac_header_validation(data, reason):
+    assert import_types.check_header_bytes(data, FLAC_RULE) == reason
+
+
+def test_real_flac_fixture_passes_the_header_check_and_probe_reads_only_42_bytes(tmp_path):
+    data = (FIXTURES / "tone.flac").read_bytes()
+    assert import_types.check_header_bytes(data[:42], FLAC_RULE) is None
+    with (FIXTURES / "tone.flac").open("rb") as stream:
+        stream.seek(9)
+        assert import_types.check_header_file(stream, FLAC_RULE) is None
+        assert stream.tell() == 9
+
+
+def _bad_flac_files(tmp_path):
+    files = {
+        "truncated": VALID_FLAC[:30],
+        "zero-rate": flac_header(rate=0) + bytes(512),
+        "not-streaminfo": flac_header(block=0x04) + bytes(512),
+        "ogg-flac": ogg_page(b"\x7fFLAC\x01\x00\x00\x01" + VALID_FLAC, bos=True) + bytes(512),
+        "id3": b"ID3\x04\x00\x00\x00\x00\x00\x00" + (FIXTURES / "tone.flac").read_bytes(),
+        "empty": b"",
+    }
+    paths = []
+    for name, data in files.items():
+        path = tmp_path / f"{name}.flac"
+        path.write_bytes(data)
+        paths.append(path)
+    return paths
+
+
+def test_invalid_flac_headers_fail_before_decoding_and_publish_nothing(tmp_path, monkeypatch):
+    root = tmp_path / "Library"
+    decoded = []
+    monkeypatch.setattr(received, "decode_to_opus", lambda *a, **k: decoded.append(a))
+    paths = _bad_flac_files(tmp_path)
+    for path in paths:
+        with pytest.raises(ValueError, match="native FLAC"):
+            received.import_one(path, root)
+    result = batch_import.import_files(paths, root)
+    assert (result.imported, result.failed, result.ignored) == (0, len(paths), 0)
+    assert result.failed_inputs == [str(p) for p in paths]
+    assert decoded == [] and documents(root) == [] and not list(root.glob(".received-*"))
+
+
+def test_native_flac_disguised_as_ogg_or_opus_is_rejected(tmp_path):
+    root = tmp_path / "Library"
+    flac = (FIXTURES / "tone.flac").read_bytes()
+    assert import_types.check_ogg_bytes(flac[:1024]) == "not-ogg"
+    ogg = tmp_path / "song.ogg"
+    ogg.write_bytes(flac)
+    with pytest.raises(ValueError):
+        received.import_one(ogg, root)
+    assert documents(root) == []
+
+
 # ---- import into the Library ------------------------------------------------------
 
 
@@ -241,6 +371,8 @@ def _plain_sources(tmp_path):
         sources["mp3"] = FIXTURES / "tone.mp3"
     if _gst_decodes("audio/mpeg,mpegversion=4,stream-format=raw"):
         sources["m4a"] = FIXTURES / "tone.m4a"
+    if _gst_decodes("audio/x-flac"):
+        sources["flac"] = FIXTURES / "tone.flac"
     return sources
 
 
@@ -266,6 +398,135 @@ def test_plain_audio_imports_decode_into_imported_opus_meetings_and_keep_the_ori
     assert len(documents(root)) == len(sources)
     assert not list(root.glob(".received-*"))
     assert {m.directory for m in LibraryScanner(root).scan().meetings} == set(documents(root))
+
+
+needs_flac = pytest.mark.skipif(not _gst_decodes("audio/x-flac"), reason="GStreamer FLAC decoder unavailable")
+
+
+@needs_encoder
+@needs_flac
+def test_native_flac_decodes_into_an_imported_opus_meeting_in_the_library(tmp_path):
+    source = tmp_path / "Quarterly review.flac"
+    source.write_bytes((FIXTURES / "tone.flac").read_bytes())
+    root = tmp_path / "Library"
+    result = batch_import.import_files([source], root)
+    assert (result.imported, result.failed, result.ignored) == (1, 0, 0)
+    [directory] = documents(root)
+    value = json.loads((directory / "meeting.json").read_text())["received"]
+    assert value["originalName"] == "Quarterly review.opus"
+    assert value["sourceSha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
+    copy = directory / value["originalName"]
+    assert import_types.check_ogg_bytes(copy.read_bytes()[:1024]) is None
+    [meeting] = LibraryScanner(root).scan().meetings
+    assert meeting.directory == directory and meeting.origin == "received" and meeting.has_audio
+    assert meeting.badge().text == text("states.badge.received")
+    # About one second of audio survived the FLAC -> Opus decode.
+    assert 800 <= meeting.duration_ms <= 1200
+    assert result.last_key == meeting.key
+
+
+def test_flac_streaminfo_reads_the_rate_and_the_36_bit_total_sample_count():
+    assert import_types.flac_streaminfo((FIXTURES / "tone.flac").read_bytes()[:42]) == (48000, 48000)
+    assert import_types.flac_streaminfo(flac_header(rate=44100, samples=0)) == (44100, 0)
+    top = flac_header(rate=0xFFFFF, channels=8, bits=32, samples=(1 << 36) - 1)
+    assert import_types.flac_streaminfo(top) == (0xFFFFF, (1 << 36) - 1)
+    assert import_types.flac_streaminfo(flac_header(samples=1 << 32)) == (48000, 1 << 32)
+
+
+def _flac_crc8(data):
+    crc = 0
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x07) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
+    return crc
+
+
+def _flac_frame_offsets(data):
+    """Frame offsets of ``tone.flac``, each sync code confirmed by the header CRC-8.
+
+    RFC 9639 section 9.1: sync + block size/rate codes + channels/bits, a
+    UTF-8 coded frame number, optional uncommon block size and sample rate.
+    """
+    offsets = []
+    for at in range(42, len(data) - 16):
+        if data[at] != 0xFF or data[at + 1] != 0xF8:
+            continue
+        first = data[at + 4]
+        number = 1 if first < 0x80 else 8 - (~first & 0xFF).bit_length()
+        end = at + 4 + number
+        end += {6: 1, 7: 2}.get(data[at + 2] >> 4, 0)
+        end += {12: 1, 13: 2, 14: 2}.get(data[at + 2] & 0x0F, 0)
+        if _flac_crc8(data[at:end]) == data[end]:
+            offsets.append(at)
+    return offsets
+
+
+def _flac_variant(tmp_path, name, *, cut=None, streamed=False):
+    data = bytearray((FIXTURES / "tone.flac").read_bytes())
+    if streamed:
+        data[21] &= 0xF0  # STREAMINFO total samples = 0: unknown length.
+        data[22:26] = bytes(4)
+    path = tmp_path / name
+    path.write_bytes(bytes(data[:cut]))
+    return path
+
+
+def test_tone_flac_frame_offsets_are_found():
+    data = (FIXTURES / "tone.flac").read_bytes()
+    offsets = _flac_frame_offsets(data)
+    # One second at 48 kHz in 4608-sample blocks: ten full frames and a short last one.
+    assert len(offsets) == 11 and offsets[0] > 42 and offsets[-1] < len(data)
+    assert offsets[5] < len(data) // 2 < offsets[6]
+
+
+def _assert_flac_rejected(path, root):
+    with pytest.raises(ValueError, match="incomplete"):
+        received.import_one(path, root)
+    assert documents(root) == [] and not list(root.glob(".received-*"))
+    result = batch_import.import_files([path], root)
+    assert (result.imported, result.failed) == (0, 1)
+    # A failed input becomes a Needs attention failure card in the Library.
+    assert result.failed_inputs == [str(path)]
+    assert import_entry_badge({"failed": True}).kind == "needsAttention"
+    assert documents(root) == [] and not list(root.glob(".received-*"))
+
+
+@needs_encoder
+@needs_flac
+def test_flac_cut_mid_frame_is_rejected_and_publishes_nothing(tmp_path):
+    # Half of the file: the decoder silently drops the cut-off frame.
+    _assert_flac_rejected(_flac_variant(tmp_path, "half.flac", cut=10966), tmp_path / "Library")
+
+
+@needs_encoder
+@needs_flac
+@pytest.mark.parametrize("frames_missing", [1, 2, 6])
+def test_flac_cut_on_a_frame_boundary_is_rejected_by_the_streaminfo_total(tmp_path, frames_missing):
+    # The decoder reaches a clean EOS: only STREAMINFO's total sample count
+    # shows that whole trailing frames are missing.
+    offsets = _flac_frame_offsets((FIXTURES / "tone.flac").read_bytes())
+    path = _flac_variant(tmp_path, "boundary.flac", cut=offsets[-frames_missing])
+    _assert_flac_rejected(path, tmp_path / "Library")
+
+
+@needs_encoder
+@needs_flac
+@pytest.mark.parametrize("cut", [10966, -1, -7])
+def test_streamed_flac_with_a_partial_last_frame_is_rejected(tmp_path, cut):
+    # STREAMINFO total = 0: every byte of the file must belong to a parsed frame.
+    path = _flac_variant(tmp_path, "streamed.flac", cut=cut, streamed=True)
+    _assert_flac_rejected(path, tmp_path / "Library")
+
+
+@needs_encoder
+@needs_flac
+def test_complete_streamed_flac_still_imports(tmp_path):
+    path = _flac_variant(tmp_path, "streamed.flac", streamed=True)
+    root = tmp_path / "Library"
+    meeting, added = received.import_one(path, root)
+    assert added and meeting.has_audio and 800 <= meeting.duration_ms <= 1200
+    assert documents(root) == [meeting.directory] and not list(root.glob(".received-*"))
 
 
 @needs_encoder
@@ -414,7 +675,7 @@ def test_ogg_video_and_ogg_flac_named_ogg_are_rejected_before_copying(tmp_path):
     for path in (video, flac):
         with pytest.raises(ValueError):
             received.import_one(path, root)
-    result = batch_import.import_files([video, flac, tmp_path / "x.ogv", tmp_path / "y.flac"], root)
+    result = batch_import.import_files([video, flac, tmp_path / "x.ogv", tmp_path / "y.oga"], root)
     assert (result.imported, result.failed, result.ignored) == (0, 2, 2)
     assert result.failed_inputs == [str(video), str(flac)]
     assert documents(root) == []
@@ -446,8 +707,8 @@ def test_drop_error_names_the_file_and_the_contract_formats(locale):
             assert label in formats
         assert import_feedback.cant_import_detail() == text("import.drop.cantImport.detail", formats=formats)
     with using_language("en"):
-        assert import_feedback.accepted_formats() == "Opus/Ogg, MP3, M4A/AAC and WAV"
-        assert import_feedback.cant_import_detail() == "Cassini imports Opus/Ogg, MP3, M4A/AAC and WAV."
+        assert import_feedback.accepted_formats() == "Opus/Ogg, MP3, M4A/AAC, WAV and FLAC"
+        assert import_feedback.cant_import_detail() == "Cassini imports Opus/Ogg, MP3, M4A/AAC, WAV and FLAC."
 
 
 @pytest.mark.parametrize(
@@ -460,7 +721,9 @@ def test_drop_error_names_the_file_and_the_contract_formats(locale):
         ("a.wav", True),
         ("Notes.ZIP", True),
         ("a.ogv", False),
-        ("a.flac", False),
+        ("a.flac", True),
+        ("a.FLAC", True),
+        ("a.oga", False),
         ("a.txt", False),
     ],
 )

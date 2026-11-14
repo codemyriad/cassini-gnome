@@ -7,7 +7,7 @@ from .strings import plural, text
 
 
 def accepted_formats():
-    """L-25 {formats}: the decided contract labels as a locale list (Opus/Ogg, MP3, M4A/AAC and WAV)."""
+    """L-25 {formats}: the decided contract labels as a locale list (Opus/Ogg, MP3, M4A/AAC, WAV and FLAC)."""
     return join_list(import_types.labels())
 
 
@@ -16,7 +16,7 @@ def cant_import_detail():
 
 
 def droppable_name(name):
-    """A dropped file name the importer takes: a decided type (never .ogv/.flac) or a ZIP."""
+    """A dropped file name the importer takes: a decided type (never .ogv/.oga) or a ZIP."""
     return name.lower().endswith(".zip") or import_types.acceptable_name(name)
 
 

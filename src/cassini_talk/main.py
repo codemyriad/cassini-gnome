@@ -481,7 +481,7 @@ class CassiniApplication(Adw.Application):
         meetings.set_name(text("import.filter.cassiniAndZip"))
         # W0.7 / L-25: decided contract mimeTypes only. GtkFileFilter matches MIME
         # subclasses, so audio/ogg or application/ogg would also offer Ogg
-        # video (.ogv) and undecided FLAC-in-Ogg; no audio suffix globs either.
+        # video (.ogv) and unsupported FLAC-in-Ogg; no audio suffix globs either.
         for mime in (*picker_mime_types(), "application/zip"):
             meetings.add_mime_type(mime)
         meetings.add_suffix("zip")

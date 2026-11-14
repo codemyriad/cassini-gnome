@@ -1,6 +1,6 @@
 {
   "schema": "cassini-ux/import-types@1",
-  "version": "2026-11-14.2",
+  "version": "2026-11-14.3",
   "source": {
     "canvas": "Cassini talk alignment",
     "package": "W0.7",
@@ -8,7 +8,7 @@
     "phase2": "D-1009"
   },
   "platforms": ["gnome", "mac", "ios", "android"],
-  "rule": "Apps offer only entries with status == \"decided\" in file pickers, drag-and-drop accept filters, and Open-with / Share declarations; entries with status == \"open\" are tracked here and must not be offered until decided. Subclass-matching file-picker MIME filters (such as GNOME GtkFileFilter) must use mimeTypes only and must never add compatibilityMimeTypes. Ambiguous container extensions (.ogg) and inputs arriving under compatibilityMimeTypes must pass contentValidation (allowed extension plus Ogg OpusHead stream verification, rejecting Ogg video and FLAC-in-Ogg).",
+  "rule": "Apps offer only entries with status == \"decided\" in file pickers, drag-and-drop accept filters, and Open-with / Share declarations; entries with status == \"open\" are tracked here and must not be offered until decided. Subclass-matching file-picker MIME filters (such as GNOME GtkFileFilter) must use mimeTypes only and must never add compatibilityMimeTypes. Ambiguous container extensions (.ogg) and inputs arriving under compatibilityMimeTypes must pass contentValidation (allowed extension plus Ogg OpusHead stream verification, rejecting Ogg video and FLAC-in-Ogg). contentValidation is always the Ogg Opus rule; entries with a fixed native container (flac) instead carry headerValidation, which apps must check on the first minProbeBytes before decoding.",
   "types": [
     {
       "id": "opus-ogg",
@@ -36,9 +36,9 @@
           "01766f72626973",
           "5370656578202020"
         ],
-        "rejectedExtensions": [".ogv", ".oga", ".ogx", ".spx", ".flac"],
+        "rejectedExtensions": [".ogv", ".oga", ".ogx", ".spx"],
         "rejectedMimePrefixes": ["video/"],
-        "rule": "Require extension .opus or .ogg, reject video/* and undecided FLAC MIME types or extensions, and inspect the first 1024 bytes (or full file if shorter) of any .ogg or compatibility-MIME input: Page 0 must be an OggS BOS page starting with OpusHead (4f70757348656164) and Page 1 must be a non-BOS OggS page starting with OpusTags (4f70757354616773), rejecting single-stream or multiplexed Ogg video (Theora/OGM/Dirac/Daala/Skeleton) and Ogg FLAC (7f464c4143)."
+        "rule": "Require extension .opus or .ogg, reject video/*, the Ogg-only extensions .ogv/.oga/.ogx/.spx, and Ogg-FLAC MIME types (audio/x-flac+ogg, audio/x-oggflac), and inspect the first 1024 bytes (or full file if shorter) of any .ogg or compatibility-MIME input: Page 0 must be an OggS BOS page starting with OpusHead (4f70757348656164) and Page 1 must be a non-BOS OggS page starting with OpusTags (4f70757354616773), rejecting single-stream or multiplexed Ogg video (Theora/OGM/Dirac/Daala/Skeleton) and Ogg FLAC (7f464c4143). Native FLAC (fLaC) arriving as .ogg or .opus is not Ogg and is rejected here; it is accepted only as .flac under the flac entry."
       },
       "note": "Cassini meeting files (.opus) and Ogg Opus audio (.opus, .ogg). Subclass-matching pickers (such as GNOME GtkFileFilter) must use mimeTypes only, never compatibilityMimeTypes."
     },
@@ -81,14 +81,22 @@
     {
       "id": "flac",
       "label": "FLAC",
-      "status": "open",
-      "open": ["L-09", "D-938"],
+      "status": "decided",
+      "decisions": ["L-25", "D-938"],
       "extensions": [".flac"],
-      "mimeTypes": ["audio/flac", "audio/x-flac", "audio/x-flac+ogg", "audio/x-oggflac"],
+      "mimeTypes": ["audio/flac", "audio/x-flac"],
       "compatibilityMimeTypes": [],
       "utis": ["org.xiph.flac"],
       "androidMimeTypes": ["audio/flac", "audio/x-flac"],
-      "note": "Free Lossless Audio Codec (native .flac and Ogg-encapsulated FLAC); excluded from app pickers and import acceptors until L-09 / D-938 is decided."
+      "headerValidation": {
+        "minProbeBytes": 42,
+        "magicHex": "664c6143",
+        "firstMetadataBlockType": 0,
+        "streamInfoLength": 34,
+        "rejectedMimeTypes": ["audio/x-flac+ogg", "audio/x-oggflac", "audio/ogg", "application/ogg"],
+        "rule": "Native FLAC only (RFC 9639): the first 42 bytes must be the stream marker fLaC (664c6143) followed by a metadata block header whose block type (byte 4, low 7 bits) is 0 (STREAMINFO) with a 24-bit length (bytes 5-7) of exactly 34, and a non-zero 20-bit STREAMINFO sample rate (bytes 18-20, top 20 bits). Reject shorter input, Ogg-encapsulated FLAC (OggS) or any other container renamed to .flac, ID3v2-prefixed (non-conformant) streams, and Ogg-FLAC or broad Ogg MIME types."
+      },
+      "note": "Free Lossless Audio Codec, native .flac streams only (D-938, decided as optional parity in D98 and built as capacity allows); Ogg-encapsulated FLAC (.oga / audio/x-flac+ogg) stays unsupported on every platform, and decided types other than opus-ogg are decoded into an Opus portable meeting."
     }
   ]
 }

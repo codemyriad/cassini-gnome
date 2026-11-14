@@ -18107,7 +18107,9 @@
    "en": "{n} meetings",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "format",
    "boards": [],
@@ -18119,7 +18121,7 @@
     "one": "{n} meeting",
     "other": "{n} meetings"
    },
-   "note": "Coordinator (D50, Mac request). Search summary count of meetings; pluralized on its own n. Combined by format.searchCount.join.",
+   "note": "Coordinator (D50, Mac request). Search summary count of meetings; pluralized on its own n. Combined by format.searchCount.join. L-67: shared phone meeting counts, including Settings and Saved voices.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -22675,59 +22677,59 @@
   },
   {
    "id": "settings.transfer.body",
-   "en": "When you set up a new Android phone from this one, your notes and saved voices are copied directly to it. Nothing is sent to a cloud account. Downloaded models are not copied; the new phone downloads them again.",
+   "en": "When you set up a new Android phone from this one, your meetings and saved voices are copied directly to it. Nothing is sent to a cloud account. Downloaded models are not copied; the new phone downloads them again.",
    "platforms": [
     "android"
    ],
    "role": "description",
    "boards": [],
    "milestone": "D97",
-   "note": "Coordinator (D97). Explanation under the switch while it is on. Device-to-device transfer during phone setup (cable or phone-to-phone).",
+   "note": "Coordinator (D97). Explanation under the switch while it is on. Device-to-device transfer during phone setup (cable or phone-to-phone). L-67 (D-1048): phones call these items meetings in every Phase 2 screen.",
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Quando configuri un nuovo telefono Android a partire da questo, le tue note e le voci salvate vengono copiate direttamente sul nuovo telefono. Nulla viene inviato a un account cloud. I modelli scaricati non vengono copiati: il nuovo telefono li scarica di nuovo."
+     "text": "Quando configuri un nuovo telefono Android a partire da questo, le tue riunioni e le voci salvate vengono copiate direttamente sul nuovo telefono. Nulla viene inviato a un account cloud. I modelli scaricati non vengono copiati: il nuovo telefono li scarica di nuovo."
     },
     "fr": {
-     "text": "Lorsque vous configurez un nouveau téléphone Android à partir de celui-ci, vos notes et vos voix mémorisées y sont copiées directement. Rien n’est envoyé vers un compte cloud. Les modèles téléchargés ne sont pas copiés ; le nouveau téléphone les télécharge à nouveau."
+     "text": "Lorsque vous configurez un nouveau téléphone Android à partir de celui-ci, vos réunions et vos voix mémorisées y sont copiées directement. Rien n’est envoyé vers un compte cloud. Les modèles téléchargés ne sont pas copiés ; le nouveau téléphone les télécharge à nouveau."
     },
     "es": {
-     "text": "Cuando configuras un teléfono Android nuevo a partir de este, tus notas y voces guardadas se copian directamente en él. No se envía nada a ninguna cuenta en la nube. Los modelos descargados no se copian; el teléfono nuevo los descarga otra vez."
+     "text": "Cuando configuras un teléfono Android nuevo a partir de este, tus reuniones y voces guardadas se copian directamente en él. No se envía nada a ninguna cuenta en la nube. Los modelos descargados no se copian; el teléfono nuevo los descarga otra vez."
     },
     "pt-BR": {
-     "text": "Quando você configura um novo celular Android a partir deste, suas notas e vozes salvas são copiadas diretamente para ele. Nada é enviado para uma conta na nuvem. Os modelos baixados não são copiados; o novo celular os baixa novamente."
+     "text": "Quando você configura um novo celular Android a partir deste, suas reuniões e vozes salvas são copiadas diretamente para ele. Nada é enviado para uma conta na nuvem. Os modelos baixados não são copiados; o novo celular os baixa novamente."
     },
     "pt-PT": {
-     "text": "Ao configurar um telemóvel Android novo a partir deste, as suas notas e vozes guardadas são copiadas diretamente para ele. Nada é enviado para uma conta na nuvem. Os modelos transferidos não são copiados; o telemóvel novo volta a transferi-los."
+     "text": "Ao configurar um telemóvel Android novo a partir deste, as suas reuniões e vozes guardadas são copiadas diretamente para ele. Nada é enviado para uma conta na nuvem. Os modelos transferidos não são copiados; o telemóvel novo volta a transferi-los."
     }
    }
   },
   {
    "id": "settings.transfer.body.off",
-   "en": "Nothing is copied to a new phone. If this phone is lost or replaced, your notes are gone unless you exported them.",
+   "en": "Nothing is copied to a new phone. If this phone is lost or replaced, your meetings are gone unless you exported them.",
    "platforms": [
     "android"
    ],
    "role": "description",
    "boards": [],
    "milestone": "D97",
-   "note": "Coordinator (D97). Shown under the switch, instead of settings.transfer.body, while it is off AND cloud backup is off too (D98); with cloud backup on, show settings.transfer.body.offBackupOn.",
+   "note": "Coordinator (D97). Shown under the switch, instead of settings.transfer.body, while it is off AND cloud backup is off too (D98); with cloud backup on, show settings.transfer.body.offBackupOn. L-67 (D-1048): phones call these items meetings in every Phase 2 screen.",
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Nulla viene copiato su un nuovo telefono. Se questo telefono viene perso o sostituito, le tue note vanno perse, a meno che tu non le abbia esportate."
+     "text": "Nulla viene copiato su un nuovo telefono. Se questo telefono viene perso o sostituito, le tue riunioni vanno perse, a meno che tu non le abbia esportate."
     },
     "fr": {
-     "text": "Rien n’est copié vers un nouveau téléphone. Si ce téléphone est perdu ou remplacé, vos notes sont perdues, sauf si vous les avez exportées."
+     "text": "Rien n’est copié vers un nouveau téléphone. Si ce téléphone est perdu ou remplacé, vos réunions sont perdues, sauf si vous les avez exportées."
     },
     "es": {
-     "text": "No se copia nada a un teléfono nuevo. Si pierdes o cambias este teléfono, tus notas se pierden, salvo que las hayas exportado."
+     "text": "No se copia nada a un teléfono nuevo. Si pierdes o cambias este teléfono, tus reuniones se pierden, salvo que las hayas exportado."
     },
     "pt-BR": {
-     "text": "Nada é copiado para um novo celular. Se este celular for perdido ou substituído, suas notas serão perdidas, a menos que você as tenha exportado."
+     "text": "Nada é copiado para um novo celular. Se este celular for perdido ou substituído, suas reuniões serão perdidas, a menos que você as tenha exportado."
     },
     "pt-PT": {
-     "text": "Nada é copiado para um telemóvel novo. Se este telemóvel for perdido ou substituído, as suas notas perdem-se, a menos que as tenha exportado."
+     "text": "Nada é copiado para um telemóvel novo. Se este telemóvel for perdido ou substituído, as suas reuniões perdem-se, a menos que as tenha exportado."
     }
    }
   },
@@ -22792,30 +22794,30 @@
   },
   {
    "id": "settings.transfer.tooLarge",
-   "en": "Your notes and saved voices are too large to move in one transfer. Export your notes as a ZIP instead.",
+   "en": "Your meetings and saved voices are too large to move in one transfer. Export your meetings as a ZIP instead.",
    "platforms": [
     "android"
    ],
    "role": "line",
    "boards": [],
    "milestone": "D97",
-   "note": "Coordinator (D97). Shown only after the system refused a device-to-device transfer because of its size. Never shown as a prediction.",
+   "note": "Coordinator (D97). Shown only after the system refused a device-to-device transfer because of its size. Never shown as a prediction. L-67 (D-1048): phones call these items meetings in every Phase 2 screen.",
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Le tue note e le voci salvate sono troppo grandi per essere trasferite in una sola volta. Esporta le note come ZIP."
+     "text": "Le tue riunioni e le voci salvate sono troppo grandi per essere trasferite in una sola volta. Esporta le riunioni come ZIP."
     },
     "fr": {
-     "text": "Vos notes et vos voix mémorisées sont trop volumineuses pour être transférées en une seule fois. Exportez plutôt vos notes en ZIP."
+     "text": "Vos réunions et vos voix mémorisées sont trop volumineuses pour être transférées en une seule fois. Exportez plutôt vos réunions en ZIP."
     },
     "es": {
-     "text": "Tus notas y voces guardadas son demasiado grandes para transferirlas de una sola vez. Exporta tus notas como ZIP."
+     "text": "Tus reuniones y voces guardadas son demasiado grandes para transferirlas de una sola vez. Exporta tus reuniones como ZIP."
     },
     "pt-BR": {
-     "text": "Suas notas e vozes salvas são grandes demais para serem transferidas de uma só vez. Exporte suas notas como ZIP."
+     "text": "Suas reuniões e vozes salvas são grandes demais para serem transferidas de uma só vez. Exporte suas reuniões como ZIP."
     },
     "pt-PT": {
-     "text": "As suas notas e vozes guardadas são demasiado grandes para serem passadas de uma só vez. Exporte as suas notas como ZIP."
+     "text": "As suas reuniões e vozes guardadas são demasiado grandes para serem passadas de uma só vez. Exporte as suas reuniões como ZIP."
     }
    }
   },
@@ -22937,62 +22939,62 @@
   },
   {
    "id": "android.speakers.rememberVoice.description",
-   "en": "Future notes will name {name} automatically.",
+   "en": "Future meetings will name {name} automatically.",
    "platforms": [
     "android"
    ],
    "role": "description",
    "boards": [],
    "milestone": "D97",
-   "note": "Silvio (2026-11-12): remove routine phone-transfer notices; keep the Settings opt-out and privacy policy. Existing recognition/privacy wording retained.",
+   "note": "Silvio (2026-11-12): remove routine phone-transfer notices; keep the Settings opt-out and privacy policy. Existing recognition/privacy wording retained. L-67 (D-1048): phones call these items meetings in every Phase 2 screen.",
    "placeholders": {
     "name": "the speaker's name as the person typed it"
    },
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Le prossime note riconosceranno {name} automaticamente."
+     "text": "Le prossime riunioni riconosceranno {name} automaticamente."
     },
     "fr": {
-     "text": "Cassini nommera {name} automatiquement dans les prochaines notes."
+     "text": "Cassini nommera {name} automatiquement dans les prochaines réunions."
     },
     "es": {
-     "text": "En las próximas notas, Cassini reconocerá a {name} automáticamente."
+     "text": "En las próximas reuniones, Cassini reconocerá a {name} automáticamente."
     },
     "pt-BR": {
-     "text": "Nas próximas notas, o Cassini vai nomear {name} automaticamente."
+     "text": "Nas próximas reuniões, o Cassini vai nomear {name} automaticamente."
     },
     "pt-PT": {
-     "text": "Nas próximas notas, o Cassini reconhece {name} automaticamente."
+     "text": "Nas próximas reuniões, o Cassini reconhece {name} automaticamente."
     }
    }
   },
   {
    "id": "android.speakers.rememberVoice.description.unnamed",
-   "en": "Future notes will name this person automatically.",
+   "en": "Future meetings will name this person automatically.",
    "platforms": [
     "android"
    ],
    "role": "description",
    "boards": [],
    "milestone": "D97",
-   "note": "Silvio (2026-11-12): remove routine phone-transfer notices; keep the Settings opt-out and privacy policy. Existing recognition/privacy wording retained.",
+   "note": "Silvio (2026-11-12): remove routine phone-transfer notices; keep the Settings opt-out and privacy policy. Existing recognition/privacy wording retained. L-67 (D-1048): phones call these items meetings in every Phase 2 screen.",
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Le prossime note riconosceranno questa persona automaticamente."
+     "text": "Le prossime riunioni riconosceranno questa persona automaticamente."
     },
     "fr": {
-     "text": "Cassini nommera cette personne automatiquement dans les prochaines notes."
+     "text": "Cassini nommera cette personne automatiquement dans les prochaines réunions."
     },
     "es": {
-     "text": "En las próximas notas, Cassini reconocerá a esta persona automáticamente."
+     "text": "En las próximas reuniones, Cassini reconocerá a esta persona automáticamente."
     },
     "pt-BR": {
-     "text": "Nas próximas notas, o Cassini vai nomear esta pessoa automaticamente."
+     "text": "Nas próximas reuniões, o Cassini vai nomear esta pessoa automaticamente."
     },
     "pt-PT": {
-     "text": "Nas próximas notas, o Cassini reconhece esta pessoa automaticamente."
+     "text": "Nas próximas reuniões, o Cassini reconhece esta pessoa automaticamente."
     }
    }
   },
@@ -28425,6 +28427,42 @@
    }
   },
   {
+   "id": "help.trash.systemBody",
+   "en": "Deleted meetings go to the system Trash. Choose Undo right away, or later open Trash in Files and choose Restore.",
+   "mac": "Deleted meetings go to the Trash. Choose Edit › Undo right away, or later open the Trash in Finder and choose Put Back.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D101 (D100 Help topic 3 body, D-1000; GNOME D-1032, Mac D-1033): for a desktop app that keeps the system Trash (D29). GNOME names Files › Restore, Mac names Finder › Put Back and Edit › Undo. States no retention period: the system Trash keeps items until it is emptied. An app that already shipped the in-app Trash / Recently Deleted view keeps help.trash.body. Platform menu labels (Files, Finder, Put Back) to be checked against the localised OS in D-1019.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni eliminate finiscono nel Cestino di sistema. Scegli subito Annulla, oppure più tardi apri il Cestino in File e scegli Ripristina.",
+     "mac": "Le riunioni eliminate finiscono nel Cestino. Scegli subito Modifica › Annulla, oppure più tardi apri il Cestino nel Finder e scegli Ripristina."
+    },
+    "fr": {
+     "text": "Les réunions supprimées vont dans la Corbeille du système. Choisissez tout de suite Annuler, ou plus tard ouvrez la Corbeille dans Fichiers et choisissez Restaurer.",
+     "mac": "Les réunions supprimées vont dans la Corbeille. Choisissez tout de suite Édition › Annuler, ou plus tard ouvrez la Corbeille dans le Finder et choisissez Remettre."
+    },
+    "es": {
+     "text": "Las reuniones eliminadas van a la Papelera del sistema. Elige Deshacer enseguida o, más tarde, abre la Papelera en Archivos y elige Restaurar.",
+     "mac": "Las reuniones eliminadas van a la Papelera. Elige Edición › Deshacer enseguida o, más tarde, abre la Papelera en el Finder y elige Devolver."
+    },
+    "pt-BR": {
+     "text": "As reuniões excluídas vão para a Lixeira do sistema. Escolha Desfazer na hora ou, mais tarde, abra a Lixeira em Arquivos e escolha Restaurar.",
+     "mac": "As reuniões excluídas vão para a Lixeira. Escolha Editar › Desfazer na hora ou, mais tarde, abra a Lixeira no Finder e escolha Colocar de Volta."
+    },
+    "pt-PT": {
+     "text": "As reuniões eliminadas vão para o Lixo do sistema. Escolha Desfazer logo ou, mais tarde, abra o Lixo em Ficheiros e escolha Restaurar.",
+     "mac": "As reuniões eliminadas vão para o Lixo. Escolha Editar › Desfazer logo ou, mais tarde, abra o Lixo no Finder e escolha Repor."
+    }
+   }
+  },
+  {
    "id": "help.voices.title",
    "en": "Recognising voices",
    "platforms": [
@@ -28483,6 +28521,392 @@
      "text": "Quando dá nome a um orador, o Cassini pode memorizar a voz e reconhecê-la em novas reuniões. As vozes guardadas ficam neste computador e nunca são exportadas."
     }
    }
+  },
+  {
+   "id": "android.savedVoices.forget.body",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "status": "draft",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "l10n": {
+    "it": {
+     "text": "Cassini smette di riconoscere questa voce. I nomi già presenti nelle riunioni restano."
+    },
+    "fr": {
+     "text": "Cassini cesse de reconnaître cette voix. Les noms déjà présents dans vos réunions restent."
+    },
+    "es": {
+     "text": "Cassini deja de reconocer esta voz. Los nombres que ya están en tus reuniones se mantienen."
+    },
+    "pt-BR": {
+     "text": "O Cassini deixa de reconhecer esta voz. Os nomes já presentes nas suas reuniões permanecem."
+    },
+    "pt-PT": {
+     "text": "O Cassini deixa de reconhecer esta voz. Os nomes já presentes nas suas reuniões mantêm-se."
+    }
+   },
+   "en": "Cassini stops recognising this voice. Names already in your meetings stay."
+  },
+  {
+   "id": "android.savedVoices.forgetEveryone.body",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "status": "draft",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "l10n": {
+    "it": {
+     "plural": {
+      "one": "Cassini smette di riconoscere {n} voce salvata ed elimina le impronte vocali da ogni riunione. I nomi già presenti nelle riunioni restano.",
+      "many": "Cassini smette di riconoscere tutte le {n} voci salvate ed elimina le impronte vocali da ogni riunione. I nomi già presenti nelle riunioni restano.",
+      "other": "Cassini smette di riconoscere tutte le {n} voci salvate ed elimina le impronte vocali da ogni riunione. I nomi già presenti nelle riunioni restano."
+     },
+     "text": "Cassini smette di riconoscere tutte le {n} voci salvate ed elimina le impronte vocali da ogni riunione. I nomi già presenti nelle riunioni restano."
+    },
+    "fr": {
+     "plural": {
+      "one": "Cassini cesse de reconnaître {n} voix mémorisée et supprime les empreintes vocales de toutes les réunions. Les noms déjà présents dans vos réunions restent.",
+      "many": "Cassini cesse de reconnaître les {n} voix mémorisées et supprime les empreintes vocales de toutes les réunions. Les noms déjà présents dans vos réunions restent.",
+      "other": "Cassini cesse de reconnaître les {n} voix mémorisées et supprime les empreintes vocales de toutes les réunions. Les noms déjà présents dans vos réunions restent."
+     },
+     "text": "Cassini cesse de reconnaître les {n} voix mémorisées et supprime les empreintes vocales de toutes les réunions. Les noms déjà présents dans vos réunions restent."
+    },
+    "es": {
+     "plural": {
+      "one": "Cassini deja de reconocer {n} voz guardada y elimina las huellas de voz de todas las reuniones. Los nombres que ya están en tus reuniones se mantienen.",
+      "many": "Cassini deja de reconocer las {n} voces guardadas y elimina las huellas de voz de todas las reuniones. Los nombres que ya están en tus reuniones se mantienen.",
+      "other": "Cassini deja de reconocer las {n} voces guardadas y elimina las huellas de voz de todas las reuniones. Los nombres que ya están en tus reuniones se mantienen."
+     },
+     "text": "Cassini deja de reconocer las {n} voces guardadas y elimina las huellas de voz de todas las reuniones. Los nombres que ya están en tus reuniones se mantienen."
+    },
+    "pt-BR": {
+     "plural": {
+      "one": "O Cassini deixa de reconhecer {n} voz salva e exclui as impressões de voz de todas as reuniões. Os nomes já presentes nas suas reuniões permanecem.",
+      "many": "O Cassini deixa de reconhecer todas as {n} vozes salvas e exclui as impressões de voz de todas as reuniões. Os nomes já presentes nas suas reuniões permanecem.",
+      "other": "O Cassini deixa de reconhecer todas as {n} vozes salvas e exclui as impressões de voz de todas as reuniões. Os nomes já presentes nas suas reuniões permanecem."
+     },
+     "text": "O Cassini deixa de reconhecer todas as {n} vozes salvas e exclui as impressões de voz de todas as reuniões. Os nomes já presentes nas suas reuniões permanecem."
+    },
+    "pt-PT": {
+     "plural": {
+      "one": "O Cassini deixa de reconhecer {n} voz guardada e elimina as impressões vocais de todas as reuniões. Os nomes já presentes nas suas reuniões mantêm-se.",
+      "many": "O Cassini deixa de reconhecer todas as {n} vozes guardadas e elimina as impressões vocais de todas as reuniões. Os nomes já presentes nas suas reuniões mantêm-se.",
+      "other": "O Cassini deixa de reconhecer todas as {n} vozes guardadas e elimina as impressões vocais de todas as reuniões. Os nomes já presentes nas suas reuniões mantêm-se."
+     },
+     "text": "O Cassini deixa de reconhecer todas as {n} vozes guardadas e elimina as impressões vocais de todas as reuniões. Os nomes já presentes nas suas reuniões mantêm-se."
+    }
+   },
+   "plural": {
+    "one": "Cassini stops recognising {n} saved voice and deletes the voiceprints from every meeting. Names already in your meetings stay.",
+    "other": "Cassini stops recognising all {n} saved voices and deletes the voiceprints from every meeting. Names already in your meetings stay."
+   },
+   "en": "Cassini stops recognising all {n} saved voices and deletes the voiceprints from every meeting. Names already in your meetings stay.",
+   "placeholders": {
+    "n": "number of saved voices"
+   }
+  },
+  {
+   "id": "android.savedVoices.howToAdd",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "status": "draft",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "l10n": {
+    "it": {
+     "text": "Per aggiungere qualcuno, dai un nome a una voce in una riunione e lascia attivo “Ricorda questa voce”."
+    },
+    "fr": {
+     "text": "Pour ajouter quelqu’un, nommez un intervenant dans une réunion et laissez «\\u202FMémoriser cette voix\\u202F» activé."
+    },
+    "es": {
+     "text": "Para añadir a alguien, pon nombre a un hablante en cualquier reunión y deja activado “Recordar esta voz”."
+    },
+    "pt-BR": {
+     "text": "Para adicionar alguém, nomeie um locutor em qualquer reunião e deixe “Lembrar esta voz” ativado."
+    },
+    "pt-PT": {
+     "text": "Para adicionar alguém, dê nome a um orador em qualquer reunião e mantenha «Memorizar esta voz» ativado."
+    }
+   },
+   "en": "To add someone, name a speaker in any meeting and keep “Remember this voice” on."
+  },
+  {
+   "id": "android.trash.retentionNote",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "status": "draft",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni qui vengono eliminate per sempre dopo 30 giorni, con il loro audio, le trascrizioni e le impronte vocali di quelle riunioni."
+    },
+    "fr": {
+     "text": "Les réunions placées ici sont supprimées définitivement après 30 jours, avec leur audio, leurs transcriptions et les empreintes vocales issues de ces réunions."
+    },
+    "es": {
+     "text": "Las reuniones de aquí se eliminan definitivamente tras 30 días, con su audio, sus transcripciones y las huellas de voz de esas reuniones."
+    },
+    "pt-BR": {
+     "text": "As reuniões aqui são excluídas para sempre após 30 dias, com o áudio, as transcrições e as impressões de voz dessas reuniões."
+    },
+    "pt-PT": {
+     "text": "As reuniões aqui são eliminadas definitivamente após 30 dias, com o áudio, as transcrições e as impressões vocais dessas reuniões."
+    }
+   },
+   "en": "Meetings here are deleted for good after 30 days, with their audio, transcripts and voiceprints from those meetings."
+  },
+  {
+   "id": "android.trash.delete.body",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "status": "draft",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "l10n": {
+    "it": {
+     "text": "L’audio, le trascrizioni e le impronte vocali di questa riunione vengono eliminati. Non si può annullare."
+    },
+    "fr": {
+     "text": "Son audio, ses transcriptions et les empreintes vocales de cette réunion sont supprimés. Cette action est irréversible."
+    },
+    "es": {
+     "text": "Se eliminan su audio, sus transcripciones y las huellas de voz de esta reunión. No se puede deshacer."
+    },
+    "pt-BR": {
+     "text": "O áudio, as transcrições e as impressões de voz desta reunião são excluídos. Isso não pode ser desfeito."
+    },
+    "pt-PT": {
+     "text": "O áudio, as transcrições e as impressões vocais desta reunião são eliminados. Esta ação não pode ser anulada."
+    }
+   },
+   "en": "Its audio, transcripts and voiceprints from this meeting are deleted. This can’t be undone."
+  },
+  {
+   "id": "android.trash.deleteAll.title",
+   "platforms": [
+    "android"
+   ],
+   "role": "dialog-title",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "status": "draft",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "l10n": {
+    "it": {
+     "plural": {
+      "one": "Eliminare {n} riunione per sempre?",
+      "many": "Eliminare {n} riunioni per sempre?",
+      "other": "Eliminare {n} riunioni per sempre?"
+     },
+     "text": "Eliminare {n} riunioni per sempre?"
+    },
+    "fr": {
+     "plural": {
+      "one": "Supprimer définitivement {n} réunion\\u202F?",
+      "many": "Supprimer définitivement {n} réunions\\u202F?",
+      "other": "Supprimer définitivement {n} réunions\\u202F?"
+     },
+     "text": "Supprimer définitivement {n} réunions\\u202F?"
+    },
+    "es": {
+     "plural": {
+      "one": "¿Eliminar {n} reunión definitivamente?",
+      "many": "¿Eliminar {n} reuniones definitivamente?",
+      "other": "¿Eliminar {n} reuniones definitivamente?"
+     },
+     "text": "¿Eliminar {n} reuniones definitivamente?"
+    },
+    "pt-BR": {
+     "plural": {
+      "one": "Excluir {n} reunião para sempre?",
+      "many": "Excluir {n} reuniões para sempre?",
+      "other": "Excluir {n} reuniões para sempre?"
+     },
+     "text": "Excluir {n} reuniões para sempre?"
+    },
+    "pt-PT": {
+     "plural": {
+      "one": "Eliminar {n} reunião definitivamente?",
+      "many": "Eliminar {n} reuniões definitivamente?",
+      "other": "Eliminar {n} reuniões definitivamente?"
+     },
+     "text": "Eliminar {n} reuniões definitivamente?"
+    }
+   },
+   "plural": {
+    "one": "Delete {n} meeting for good?",
+    "other": "Delete {n} meetings for good?"
+   },
+   "en": "Delete {n} meetings for good?",
+   "placeholders": {
+    "n": "number of meetings"
+   }
+  },
+  {
+   "id": "android.trash.empty.body",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "status": "draft",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni che elimini restano qui per 30 giorni."
+    },
+    "fr": {
+     "text": "Les réunions que vous supprimez restent ici 30 jours."
+    },
+    "es": {
+     "text": "Las reuniones que eliminas se quedan aquí 30 días."
+    },
+    "pt-BR": {
+     "text": "As reuniões que você excluir ficam aqui por 30 dias."
+    },
+    "pt-PT": {
+     "text": "As reuniões que eliminar ficam aqui durante 30 dias."
+    }
+   },
+   "en": "Meetings you delete stay here for 30 days."
+  },
+  {
+   "id": "android.transcribing.waitingForPrevious",
+   "platforms": [
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "status": "draft",
+   "note": "D-1048 / L-67: existing Android transcription path copy; only meeting nouns change.",
+   "l10n": {
+    "it": {
+     "text": "Completamento della riunione precedente…"
+    },
+    "fr": {
+     "text": "Fin de la réunion précédente…"
+    },
+    "es": {
+     "text": "Terminando la reunión anterior…"
+    },
+    "pt-BR": {
+     "text": "Concluindo a reunião anterior…"
+    },
+    "pt-PT": {
+     "text": "A concluir a reunião anterior…"
+    }
+   },
+   "en": "Finishing the previous meeting…"
+  },
+  {
+   "id": "android.transcribing.aheadCount",
+   "platforms": [
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "status": "draft",
+   "note": "D-1048 / L-67: existing Android transcription path copy; only meeting nouns change.",
+   "l10n": {
+    "it": {
+     "plural": {
+      "one": "{n} riunione prima di questa.",
+      "many": "{n} riunioni prima di questa.",
+      "other": "{n} riunioni prima di questa."
+     },
+     "text": "{n} riunioni prima di questa."
+    },
+    "fr": {
+     "plural": {
+      "one": "{n} réunion avant celle-ci.",
+      "many": "{n} réunions avant celle-ci.",
+      "other": "{n} réunions avant celle-ci."
+     },
+     "text": "{n} réunions avant celle-ci."
+    },
+    "es": {
+     "plural": {
+      "one": "{n} reunión antes de esta.",
+      "many": "{n} reuniones antes de esta.",
+      "other": "{n} reuniones antes de esta."
+     },
+     "text": "{n} reuniones antes de esta."
+    },
+    "pt-BR": {
+     "plural": {
+      "one": "{n} reunião antes desta.",
+      "many": "{n} reuniões antes desta.",
+      "other": "{n} reuniões antes desta."
+     },
+     "text": "{n} reuniões antes desta."
+    },
+    "pt-PT": {
+     "plural": {
+      "one": "{n} reunião antes desta.",
+      "many": "{n} reuniões antes desta.",
+      "other": "{n} reuniões antes desta."
+     },
+     "text": "{n} reuniões antes desta."
+    }
+   },
+   "placeholders": {
+    "n": "number of meetings ahead in the queue"
+   },
+   "plural": {
+    "one": "{n} ahead of this meeting.",
+    "other": "{n} ahead of this meeting."
+   },
+   "en": "{n} ahead of this meeting."
+  },
+  {
+   "id": "android.meeting.open",
+   "platforms": [
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "status": "draft",
+   "note": "D-1048 / L-67: existing Android transcription path copy; only meeting nouns change.",
+   "l10n": {
+    "it": {
+     "text": "Apri la riunione"
+    },
+    "fr": {
+     "text": "Ouvrir la réunion"
+    },
+    "es": {
+     "text": "Abrir reunión"
+    },
+    "pt-BR": {
+     "text": "Abrir reunião"
+    },
+    "pt-PT": {
+     "text": "Abrir reunião"
+    }
+   },
+   "en": "Open meeting"
   }
  ]
 }

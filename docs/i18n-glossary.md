@@ -296,7 +296,7 @@ Shared rules for all four:
 - Model names: **Whistle**, **Parakeet Ultra**, **Nemotron** (translate only their descriptions).
 - Brands and platforms: Chrome, Chromium, Edge, Brave, Firefox, Safari, GNOME, macOS, Mac, iOS,
   Android, Finder, Zoom, Google Meet, Microsoft Teams, GitHub.
-- Format and file names: Markdown, Opus, M4A, WAV, MP3, JSON, and every file extension (.md, .opus, …),
+- Format and file names: Markdown, Opus, M4A, WAV, MP3, FLAC, JSON, and every file extension (.md, .opus, …),
   `{filename}` values, `meeting.json`, `people.json`, `models.json`.
 - The literal path **Music/Cassini**.
 - Browser addresses: `chrome://extensions/`, `edge://extensions/`, `brave://extensions/`.

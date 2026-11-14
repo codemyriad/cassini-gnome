@@ -10,4 +10,9 @@ third-party audio; CC0-1.0):
       audio/x-raw,rate=48000,channels=1 ! audioconvert ! avenc_aac bitrate=32000 ! \
       mp4mux ! filesink location=tone.m4a
 
-WAV and the Ogg probe vectors are built in the tests with the standard library.
+WAV, the Ogg probe vectors and the FLAC header vectors are built in the tests with the standard library.
+
+The native FLAC fixture (D102) is the same tone, losslessly encoded:
+
+    gst-launch-1.0 audiotestsrc wave=sine freq=440 samplesperbuffer=4800 num-buffers=10 ! \
+      audio/x-raw,rate=48000,channels=1 ! audioconvert ! flacenc ! filesink location=tone.flac
