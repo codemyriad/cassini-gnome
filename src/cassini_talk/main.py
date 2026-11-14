@@ -73,6 +73,9 @@ class CassiniApplication(Adw.Application):
 
         self.voice_store = VoiceStore(changed=lambda: GLib.idle_add(self._voices_changed))
         self.voice_backfill = None
+        from .voice_enroll import VoiceSetup
+
+        self.voice_setup = VoiceSetup()
         self._transcription_holds = 0
         self._transcription_stops = set()
         self._transcription_generation = 0
@@ -1576,6 +1579,12 @@ class CassiniApplication(Adw.Application):
             self.voice_store.refresh()
         except (OSError, ValueError):
             logging.exception("Could not load private saved voices")
+        try:
+            from .voice_enroll import sweep
+
+            sweep()  # A crash can leave a guided voice sample behind (D-977).
+        except (OSError, ValueError):
+            logging.exception("Could not remove a left-behind voice sample")
 
     def _voices_changed(self):
         if self.settings_dialog and not self.settings_dialog.closed:
@@ -1586,7 +1595,34 @@ class CassiniApplication(Adw.Application):
             self._transcription_changed()
         return False
 
+    def recognition_ready(self):
+        """Both optional models are On, so new meetings name saved voices (D25 §3)."""
+        return bool(
+            self.diarization_models
+            and self.voice_models
+            and self.diarization_models.snapshot().get("ready")
+            and self.voice_models.snapshot().get("ready")
+        )
+
+    def answer_voice_setup(self, enable):
+        """D-977 one-question voice setup: `Remember voices` asks for both optional models.
+
+        Downloads still only start because the person asked (HARMONY §12): this
+        answer is that request. Tell speakers apart comes first; Recognise saved
+        voices follows once it is On. `Not now` downloads nothing; the Settings
+        rows stay the way to turn recognition on later.
+        """
+        self.recording_settings.set_string("voice-setup", "enabled" if enable else "declined")
+        if enable:
+            self.voice_setup.begin(self.diarization_models, self.voice_models)
+        else:
+            self.voice_setup.end()
+
+    def _advance_voice_setup(self):
+        self.voice_setup.advance(self.diarization_models, self.voice_models)
+
     def _models_changed(self):
+        self._advance_voice_setup()
         self._model_notices()
         if self.settings_dialog and not self.settings_dialog.closed:
             self.settings_dialog.render_models()

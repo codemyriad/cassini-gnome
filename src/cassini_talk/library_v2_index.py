@@ -350,6 +350,7 @@ class PublishedIndex:
                 audio_file=path,
                 published_file=path,
                 embedded_transcript=embedded_transcript,
+                plain_audio=origin != "Recording" and embedded.state == portable.State.PLAIN_AUDIO,
                 recording_offset_minutes=working.recording_offset_minutes if working else None,
                 audio_size_bytes=audio.size,
                 has_audio=audio.duration is not None,

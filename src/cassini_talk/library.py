@@ -208,6 +208,8 @@ class Meeting(MeetingState):
     # L-57: the shown words are the file's own validated embedded transcript
     # (published or externally opened files, which have no legacy sidecar path).
     embedded_transcript: bool = False
+    # L-11 (D99 §2): an imported file that is plain audio, not a Cassini file yet.
+    plain_audio: bool = False
     has_audio: bool = False
     metadata_editable: bool = True
     title_is_fallback: bool = False
@@ -861,6 +863,7 @@ class LibraryScanner:
             ),
             audio_file=audio_file,
             audio_size_bytes=audio_size,
+            plain_audio=origin == "received" and embedded is not None and embedded.state == portable.State.PLAIN_AUDIO,
             legacy_transcript_file=legacy_transcript_file,
             has_audio=bool(tracks) if origin == "own" else duration is not None,
             metadata_editable=not unsupported,

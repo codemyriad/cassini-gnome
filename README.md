@@ -14,7 +14,7 @@ Cassini is a GNOME desktop app for Linux that records your meetings, writes them
 - Name speakers in a meeting, remember their voice on this computer so future meetings name them automatically, listen to a short voice sample before naming, merge speakers who are the same person, and undo a merge if needed.
 - Search every meeting for a phrase and filter results by speaker, date, or meetings you recorded yourself.
 - Open Cassini `.opus` files from elsewhere on your computer to keep a copy in your Library as a **Received** meeting.
-- Export any meeting to share or back up, either as a portable Cassini `.opus` audio file or as a Markdown text file.
+- Export any meeting to share or back up, as a portable Cassini `.opus` audio file, as Markdown, or (under More formats) as plain text or SRT/WebVTT subtitles.
 - Record calls in Chrome, Chromium, Edge, or Brave so each person in the call is kept apart in the transcript.
 
 ## Get started
@@ -138,10 +138,13 @@ Cassini copies the file into your Library and marks it as **Received**. Your ori
 
 *The Export dialog over a sample meeting.*
 
-To share a meeting or back it up elsewhere, press **Export…** in the Library header, in the meeting header, or in the main menu (or press `Ctrl+Shift+E`). You can export in two formats:
+To share a meeting or back it up elsewhere, press **Export…** in the Library header, in the meeting header, or in the main menu (or press `Ctrl+Shift+E`). You can choose:
 
 - **Cassini file**: a `.opus` audio file with the transcript, speakers, and notes inside, which plays in any audio player.
 - **Markdown**: the transcript as a plain text `.md` file with speakers, times, and your notes.
+- **More formats**: **Plain text** (`.txt`), **Subtitles (SRT)** (`.srt`) and **Subtitles (WebVTT)** (`.vtt`), with speaker names and times.
+
+The text formats need a finished transcript. Until a meeting is written down, only its audio can be exported: a Cassini file, or, for an imported audio file that is not a Cassini file yet, the **Original audio** exactly as it was imported.
 
 Cassini saves exported files to your **Documents** folder unless you choose another folder, and never overwrites an existing file. **Export** is the only way a meeting leaves this computer. Voiceprints are never exported.
 

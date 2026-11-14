@@ -329,3 +329,44 @@ def request(message, notify):
         run(tracks, message["options"], notify)
     except Exception as error:
         notify("voices-error", message=str(error))
+
+
+def enrol_sample(message, notify):
+    """D-977 guided test phrase: one print from a private 16 kHz float take.
+
+    The app picked the speech windows; the child re-checks them, embeds them
+    with the same CAM++ extractor as meetings, and returns only the print.
+    It never writes, keeps or uploads audio (the network is blocked here).
+    """
+    from .campplus import SpeakerExtractor
+
+    try:
+        options = message["options"]
+        frames, windows = message["frames"], message["windows"]
+        if type(frames) is not int or not 0 < frames <= MAX_SECONDS * 16000:
+            raise ValueError("Invalid voice sample length")
+        if not isinstance(windows, list) or not 1 <= len(windows) <= 64:
+            raise ValueError("Invalid voice sample windows")
+        previous = 0
+        for window in windows:
+            if (
+                not isinstance(window, list)
+                or len(window) != 2
+                or any(type(v) is not int for v in window)
+                or not previous <= window[0] < window[1] <= frames
+                or window[1] - window[0] > 160000
+            ):
+                raise ValueError("Invalid voice sample window")
+            previous = window[1]
+        with regular_input(Path(message["path"])) as stream:
+            if os.fstat(stream.fileno()).st_size != frames * 4:
+                raise ValueError("Voice sample length changed")
+            chunks = [read_window(stream, start, end) for start, end in windows]
+        with contextlib.closing(SpeakerExtractor(options["modelPath"], options["runtimePath"])) as model:
+            result = model.embed(chunks)
+        if result is None:
+            notify("enrol-too-short")
+        else:
+            notify("enrol-print", embedding=result["embedding"], seconds=result["seconds"])
+    except Exception as error:
+        notify("voices-error", message=str(error))

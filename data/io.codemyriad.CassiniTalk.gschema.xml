@@ -84,6 +84,16 @@
       <default>true</default>
       <summary>Show the properties pane</summary>
     </key>
+    <key name="voice-setup" type="s">
+      <default>'unanswered'</default>
+      <choices>
+        <choice value="unanswered" />
+        <choice value="enabled" />
+        <choice value="declined" />
+      </choices>
+      <summary>Answer to the one-question voice setup</summary>
+      <description>Whether “Recognise people you name?” was answered with Remember voices or Not now (D-977).</description>
+    </key>
     <key name="follow-along" type="b">
       <default>true</default>
       <summary>Follow along</summary>
