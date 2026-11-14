@@ -8,7 +8,8 @@ diverging in code. The design canvas "Cassini recording" is the source of truth.
 
 Silvio's resolved comments on the canvas:
 - Transcription happens on this computer only. There is no remote/server option anywhere.
-- Export offers exactly two formats: "Cassini file" and "Markdown".
+- Export offers exactly two formats: "Cassini file" and "Markdown". (Phase 1. Phase 2 keeps both as the two
+  primary choices and adds Plain text, SRT and WebVTT under "More formats": `PARITY.md` export contract, `D99`.)
 
 If the canvas and an older document (SPEC-CONTROL "Product behavior", ADVISOR-APP-CONTROL item 3, DIRECTION 1/2,
 APP-CONTROL UX notes) disagree, **the canvas wins**.
@@ -105,7 +106,7 @@ Rules:
 - "Choose folder", Move Library (confirmation 3) and the "drive not connected" banner come in a later milestone, once
   the hosts read a shared Library-location config.
 - There is **no save dialog for recordings**. Record writes into the Library.
-- Privacy line on first run (provisional until `L-09` / `D-938` closes; async review in `D-1019`; shown on first run only per `L-27`, `L-30`): "Recordings and transcripts stay on this computer, in Music/Cassini." (`firstRun.footer`).
+- Privacy line on first run (`L-09`, `D-938`, `D98`; shown on first run only per `L-27`, `L-30`; `PROVISIONAL` async copy review tracked in `D-1019`): Phase 2 adopts the device-specific `L-09` wording `"Written down on this {device}. The audio never leaves it."` (`privacy.onDevice.computer` on GNOME / `privacy.onDevice.mac` or `privacy.onDevice.computer` on macOS; `privacy.onDevice.phone` on Android **only in the Android phone-only state**; while phone cloud backup is on — the default — phones show the backup-qualified `privacy.onDevice.{iphone,ipad,phone}.withBackup` `"Written down on this {device}. Never uploaded, except to your encrypted cloud backup."`; iOS with backup off shows `privacy.onDevice.{iphone,ipad}.backupExcluded` `"Written down on this {device}. Cassini never uploads the audio and marks it to be left out of iCloud Backup."` and never "The audio never leaves it.", because `NSURLIsExcludedFromBackupKey` is backup guidance and does not guarantee exclusion from backups or Quick Start migration; see `PARITY.md` Wave 6 contract §§2–3), while keeping legacy `"Recordings and transcripts stay on this computer, in Music/Cassini."` (`firstRun.footer`) intact in `strings/strings.json` so existing app pins stay non-breaking.
 - Ownership of the files:
   - `session.json` and the WAV files are **capture-owned**: written by the browser host or native recorder only.
   - The apps write their own data to an app-owned `meeting.json` next to them: title, notes, speakers and names
@@ -113,9 +114,9 @@ Rules:
   - A per-app index or cache is rebuildable and never authoritative.
 - Received files are copied into the Library: `Received-<uuid>/` holding the original `.opus` plus `meeting.json`
   (with `received: {originalName, originalFolderName?, sha256}`). Duplicates are detected by sha256.
-- Voiceprints never go in the Library. They live in app data:
+- Voiceprints never go in the Library. They live in local app data (Wave 6 `D-977` GNOME, `D-978` macOS; `D25`, `D98`):
   - GNOME: `$XDG_DATA_HOME/cassini/voices`
-  - Mac: `~/Library/Application Support/Cassini/voices`
+  - Mac: `~/Library/Application Support/Cassini/voices` (local Saved voices only; never synced to iCloud or uploaded — section 12 and [`PARITY.md`](../PARITY.md) Wave 6 contract).
 - The Mac agent drafts the exact layout in `ux-draft/LIBRARY.md` and `ux-draft/meeting.schema.json` (wave 1).
 
 ## 5. Errors: one line, one action, never a dialog
@@ -177,19 +178,83 @@ playback failed, microphone permission declined, Connect failed, device changed 
 - Plurals: `less than a minute left` (0) / `about 1 minute left` / `about {n} minutes left`; `1 place in 1 meeting` / `{n} places in {m} meetings`;
   `1 person.` / `{n} people.`
 
-## 7. Confirmations: only these three (Esc = secondary, Return = primary)
+## 7. Confirmations: only these five (Esc = secondary, Return = primary, except 4 and 5)
 
 | # | Title | Body | Secondary | Primary |
 |---|---|---|---|---|
 | 1 | A recording is running | Stop and keep it, or keep recording in the background? | Keep recording | Stop and keep it |
 | 2 | Delete {name}’s voice profile? | Cassini will no longer recognise {name} in new meetings. Names already in transcripts stay. | Cancel | Delete (destructive) |
 | 3 | Move the Library while recording? | The meeting being recorded moves to the new folder when you press Stop. | Cancel | Move Library |
+| 4 | Delete “{title}” permanently? | Its audio and transcript are removed from this computer. This can’t be undone. | Cancel | Delete (destructive) |
+| 5 | Empty the Trash? · Mac: Delete all recently deleted meetings? | Every meeting in the Trash is removed from this computer, with its audio and transcript. This can’t be undone. · Mac: Every recently deleted meeting is removed from this computer, with its audio and transcript. This can’t be undone. | Cancel | Empty Trash · Mac: Delete All (destructive) |
+
+- Confirmations 4 and 5 are Phase 2 (`D100`, `D-1000`; catalog `confirm.deletePermanently.*`, `confirm.emptyTrash.*`,
+  status `draft`). They appear only inside the deleted-meetings view (section 7.1), never on a Library meeting.
+  Because they remove data for good, **Return is Cancel** for 4 and 5 (no default destructive button); Esc is Cancel.
 
 - Confirmation 1 appears when the person closes the window or quits while a recording runs. That replaces today's
   auto-stop on close and silent keep.
 - "Forget everyone…" uses confirmation 2's shape. Its copy will be in strings.json.
 - Deleting a meeting moves it to the Trash with no confirmation (D29). GNOME shows one undo toast for 5 s and trashes
   when it closes; macOS offers Edit › Undo Move to Trash (⌘Z) and shows no toast.
+- Phase 2 (`D100`): moving a meeting to the Trash / Recently Deleted stays reversible and unconfirmed (Undo, then
+  Restore for 30 days). Only Delete permanently and Empty Trash / Delete All are irreversible, and only they confirm
+  (4 and 5). Section 7.1 has the rules.
+
+### 7.1 Trash and Recently Deleted (Phase 2, `D100`, `D-1000`; GNOME `D-1032`, Mac `D-1033`)
+
+Until an app's slice merges, that app keeps D29 (system Trash) unchanged. After it merges:
+
+- **Nouns.** GNOME says **Trash** (`menu.trash`, `trash.title`, `common.moveToTrash`, `meeting.trashedToast`); macOS
+  says **Recently Deleted** (the `mac` text of the same `menu.trash` / `trash.*` ids, and
+  `meeting.moveToRecentlyDeleted` on every Mac move entry point: File menu, row context menu, Meeting menu, the
+  top-bar button and the Edit › Undo action name). Never mix them on one platform.
+- **Where a deleted meeting goes (storage: [`library-v2/SPEC.md`](library-v2/SPEC.md) §7.1, binding).** A meeting
+  is moved whole, by identity, into one hidden entry `<Library>/.cassini/trash/<entry-id>/`, with an `entry.json`
+  holding `deletedAtUtc`, the original published name, the working-folder path and the identity. "Whole" means
+  every representation it has: (a) a published root `.opus` only (an imported standalone Cassini file, or a meeting
+  whose working folder is gone); (b) the published `.opus` plus its `.cassini/sessions/<id>/` working folder; or
+  (c) a working folder only (an unpublished v2 meeting, or a v1 root `Recording-` / `Received-` folder before
+  conversion). Every move is an atomic no-replace rename on the Library's volume, under the Library lock and recorded
+  in the Library journal, so a crash between moving the published file and the working folder is finished at the
+  next launch; a meeting is never left half in the Library. It works inside the Flatpak and the Mac sandbox without
+  the Trash portal or `FileManager.trashItem`. No byte of the meeting is rewritten, and the Cassini file format does
+  not change (`D51`).
+- **Undo.** GNOME: the toast's Undo restores it at once (nothing waits for the toast to close any more). Mac:
+  Edit › Undo Move to Recently Deleted (⌘Z) does the same. After that, Restore in the view.
+- **Not in the Library.** A meeting in `.cassini/trash/` is not in the Library list, Search, filters, Saved-voice
+  meeting counts or `Export All as ZIP…`. Its star (per-device state) is kept until it is deleted permanently.
+  Importing the same file again creates a new meeting; both are kept.
+- **The view.** Opened from `menu.trash` (section 10). GNOME: an AdwDialog titled `trash.title`; macOS: a single
+  window titled `trash.title`. Header end: `trash.emptyTrash` (`Empty Trash…` / Mac `Delete All…`), insensitive when
+  empty. While not empty, the info line `trash.retentionNote` sits above the list (`trash.list.a11y`). Each row:
+  the title (LIBRARY-RULES R6), then `format.previewSubtitle` (original day, time and duration, HARMONY 6) · 
+  `trash.row.daysLeft` (or `trash.row.lessThanDay` under 24 h), newest deletion first. Each row has `trash.restore`
+  and `trash.deletePermanently` as buttons and in its context menu; Delete (GNOME) / ⌘⌫ (Mac) on a focused row is
+  Delete permanently. Rows do not open or play. Empty: `trash.empty` with the trash glyph. Look PROVISIONAL, pending
+  Alex (`D-1019`).
+- **Restore** (no confirmation): moves the working folder back first and the published file last, so the meeting
+  reappears complete. It returns unchanged to its original day group (start time `recordedAtUtc`, `D95`); it is not
+  opened. If another meeting now has the original file name, the restored file takes the next free ` (2)`, ` (3)`…
+  name (S-12 §2 suffix rule); its title does not change. GNOME shows `trash.restoredToast`; the Mac shows nothing. If
+  the same meeting is already back in the Library (same identity), or a move fails before anything changed, nothing
+  changes and the view shows the amber line `trash.restoreFailed`.
+- **Delete permanently** (confirmation 4) and **Empty Trash / Delete All** (confirmation 5, one journaled removal
+  per entry): each entry is first renamed to `.cassini/trash/.purge-<entry-id>` (it leaves the list at once), then
+  removed recursively: the published `.opus` and the working folder (audio, transcript, `meeting.json`), then
+  `entry.json`. It never goes to the system Trash. If the first rename fails, nothing was removed and the view shows
+  `trash.deleteFailed`; an interrupted removal is finished at the next launch, silently. Saved voices are not touched
+  (they live outside the Library, section 4).
+- **Retention: 30 days (PROVISIONAL, pending Silvio, `D-1019`).** At launch and at least hourly while running, an
+  entry whose `deletedAtUtc` is 30 × 24 h or more in the past is removed exactly as Delete permanently, without a
+  dialog; `trash.retentionNote` and `help.trash.body` tell the person up front. Days left =
+  floor((deletedAtUtc + 30 d − now) / 24 h).
+- **Phase 1 leftovers.** Meetings already in the system Trash from D29 stay there and are restored with Files ›
+  Restore / Finder › Put Back as before; nothing is migrated. `meeting.trashUnsupported` no longer applies (the
+  trash, `.cassini/trash/`, is inside the Library); `meeting.trashFailed` (GNOME) and `meeting.recentlyDeletedFailed` (Mac)
+  cover a failed move. All old ids stay in the catalog.
+- **Library move** (later milestone): `.cassini/trash/` moves with the Library.
+- Every app PR on these paths carries `two-reviewers` (deletion, `AGENTS.md`, `D98`).
 
 ## 8. Keyboard
 
@@ -209,6 +274,8 @@ playback failed, microphone permission declined, Connect failed, device changed 
 | Back to Library | Alt+← | ⌘[ |
 | Close window / Quit | Ctrl+W / Ctrl+Q | ⌘W / ⌘Q |
 | Move to Trash (Library row or open meeting) | Delete | ⌘⌫ |
+| Delete permanently… (focused row in Trash / Recently Deleted, Phase 2 `D100`) | Delete | ⌘⌫ |
+| Help (Phase 2 `D100`) | F1 | ⌘? |
 
 - D70 listening shortcuts are disabled while editing text. Escape belongs first to a dialog or popover, then search, then an overlay speaker pane; it stops listening only after those have had it.
 - Close and quit show confirmation 1 while recording.
@@ -232,9 +299,12 @@ playback failed, microphone permission declined, Connect failed, device changed 
   and joined as "Dario and Ana" or "Dario, Ana and Lea" (no Oxford comma; only the names are semibold).
 - "Save to **Documents**", with "Choose…" next to it. Buttons: Cancel, Export.
 - Entry points: the header "Export…" button, the menu item "Export…" and the shortcut.
-- Removed on both platforms:
+- Removed on both platforms in Phase 1:
   - Mac ShareLink, Plain Text, WebVTT, SRT
   - GNOME TXT, WebVTT, Ctrl+E
+- Phase 2 (`L-11`, `D-998`, `D99`): one export set on all four apps. Plain text, Subtitles (SRT) and Subtitles (WebVTT)
+  return under a "More formats" disclosure below Markdown, for transcribed meetings only; an imported meeting without a
+  Cassini file offers "Original audio" instead. Rules and catalog ids: `PARITY.md`, Phase 2 parity contract §2.
 - The Markdown output is byte-identical between the apps. The golden file is `ux-draft/export/budget-review.md`
   (coordinator, wave 2).
 
@@ -242,16 +312,16 @@ playback failed, microphone permission declined, Connect failed, device changed 
 
 | Area | GNOME | macOS |
 |---|---|---|
-| Main window | AdwNavigationSplitView. Sidebar header: `☰` menu at start (L-23: `Import audio…`, `Preferences`, `Keyboard shortcuts`, `About`), `Import audio…` icon button + `Record` (or live pill) at end (L-25). Sidebar top: always-visible search field (L-21). Right pane: selecting a meeting opens it in one step (no intermediate preview or "Read the transcript" button); top bar has no "Library" title, only flat meeting actions (`Export…`, `Move to Trash`, `…`) beside window close (L-22, L-23, L-44). | NavigationSplitView. Traffic lights; `Import Audio…` icon button + `Record` (or live pill) in the sidebar header (L-25); always-visible search field at the top of the sidebar (L-21, no toolbar search field). Menu bar `File › Import Audio…` (`⌘O`, was `Open…`, L-23). Right pane: opens in one step; detail toolbar has no "Library" title, grouping `Export` and `Move to Recently Deleted` in one capsule (L-22, L-44). |
+| Main window | AdwNavigationSplitView. Sidebar header: `☰` menu at start (L-23: `Import audio…`, `Preferences`, `Keyboard shortcuts`, `About`; Phase 2 `D100` order: `Import audio…`, `Export All as ZIP…` · `Trash` (`menu.trash`) · `Preferences`, `Keyboard shortcuts` (`menu.keyboardShortcuts`), `Help` (`menu.help`, F1), `About Cassini talk`), `Import audio…` icon button + `Record` (or live pill) at end (L-25). Sidebar top: always-visible search field (L-21). Right pane: selecting a meeting opens it in one step (no intermediate preview or "Read the transcript" button); top bar has no "Library" title, only flat meeting actions (`Export…`, `Move to Trash`, `…`) beside window close (L-22, L-23, L-44). | NavigationSplitView. Traffic lights; `Import Audio…` icon button + `Record` (or live pill) in the sidebar header (L-25); always-visible search field at the top of the sidebar (L-21, no toolbar search field). Menu bar `File › Import Audio…` (`⌘O`, was `Open…`, L-23). Phase 2 `D100`: `Cassini › Saved Voices…` (`savedVoices.menuItem`) below `Settings…`, opening Settings at Saved voices; `File › Move to Recently Deleted` (`⌘⌫`) after `Export…`, then a separator and `File › Recently Deleted` (`menu.trash`); `Help › Cassini talk Help` (`menu.help`, `⌘?`; the system Help search field stays). Right pane: opens in one step; detail toolbar has no "Library" title, grouping `Export` and `Move to Recently Deleted` in one capsule (L-22, L-44). |
 | Toolbar Record button | red fill, white dot, white "Record" (10.2) | the same as GNOME (L-20, 10.2) |
 | First-run Record button | big red pill (`record` / `on-record`, 10.2) at the start of the hero waveform on both; first press opens `RecordFirst` (L-20, L-27) | the same as GNOME (L-20, L-27, 10.2) |
-| First run layout | Single-pane Phase 2 `L-27` hero (`D-956`, `D-972`): header keeps primary menu (`☰`) and window close, with no header `Record` button and only a hidden accessible `"Library"` heading (`library.title`). Left-aligned hero block headed by the Saturn mark (`COMPONENTS.md` §§8–9): `64 px` bold platform-font `"Every word written down."` (`firstRun.hero.title`) over dimmed `"None of it uploaded."` (`firstRun.hero.subtitle`), always one sentence per line; square `4 px` teal bar waveform fading at both ends with the big red `Record` pill at its start; how-to line (`firstRun.body`); and provisional privacy line (`firstRun.footer` until `L-09` / `D-938` closes; async review in `D-1019`) on first run only (`L-30`). *(Phone hero waits on `D-937`.)* | Single-pane Phase 2 `L-27` hero (`D-956`, `D-973`): window header keeps traffic lights (menus in the macOS menu bar), with no toolbar `Record` button and only a hidden accessible `"Library"` heading (`library.title`). Same left-aligned hero block headed by the Saturn mark: `64 px` bold platform-font `"Every word written down."` (`firstRun.hero.title`) over dimmed `"None of it uploaded."` (`firstRun.hero.subtitle`), always one sentence per line; square `4 px` teal bar waveform fading at both ends with the big red `Record` pill at its start; how-to line (`firstRun.body`); and provisional privacy line (`firstRun.footer` until `L-09` / `D-938` closes; async review in `D-1019`) on first run only (`L-30`). *(Phone hero waits on `D-937`.)* |
+| First run layout | Single-pane Phase 2 `L-27` hero (`D-956`, `D-972`): header keeps primary menu (`☰`) and window close, with no header `Record` button and only a hidden accessible `"Library"` heading (`library.title`). Left-aligned hero block headed by the Saturn mark (`COMPONENTS.md` §§8–9): `64 px` bold platform-font `"Every word written down."` (`firstRun.hero.title`) over dimmed `"None of it uploaded."` (`firstRun.hero.subtitle`) with **no** cloud-backup qualifier, always one sentence per line; square `4 px` teal bar waveform fading at both ends with the big red `Record` pill at its start; how-to line (`firstRun.body`); and provisional `L-09` privacy line (`privacy.onDevice.computer`, `D-938`, async review in `D-1019`; `firstRun.footer` kept in catalog) on first run only (`L-30`). *(Phones pair `"None of it uploaded."` with `firstRun.hero.phoneBackupQualifier` `"(except for encrypted cloud backup)"` while OS cloud backup is enabled per `D-937` and [`PARITY.md`](../PARITY.md).)* | Single-pane Phase 2 `L-27` hero (`D-956`, `D-973`): window header keeps traffic lights (menus in the macOS menu bar), with no toolbar `Record` button and only a hidden accessible `"Library"` heading (`library.title`). Same left-aligned hero block headed by the Saturn mark: `64 px` bold platform-font `"Every word written down."` (`firstRun.hero.title`) over dimmed `"None of it uploaded."` (`firstRun.hero.subtitle`) with **no** cloud-backup qualifier, always one sentence per line; square `4 px` teal bar waveform fading at both ends with the big red `Record` pill at its start; how-to line (`firstRun.body`); and provisional `L-09` privacy line (`privacy.onDevice.mac` or `privacy.onDevice.computer`, `D-938`, async review in `D-1019`; `firstRun.footer` kept in catalog) on first run only (`L-30`). *(Phones pair `"None of it uploaded."` with `firstRun.hero.phoneBackupQualifier` `"(except for encrypted cloud backup)"` while OS cloud backup is enabled per `D-937` and [`PARITY.md`](../PARITY.md).)* |
 | Search field | always visible at top of sidebar (`field` / `field-line`, 10.14), placeholder "Search every meeting" (L-21) | always visible at top of sidebar (`field` / `field-line`, 10.14), placeholder "Search" or "Search every meeting", accessibility label "Search every meeting" (L-21) |
 | Selected row | neutral lifted card (`surface` in light, slightly raised in dark) with firm `ink` border and soft shadow, `ink` text, no accent fill (L-19, 10.9) | the same neutral lifted card as GNOME (L-19, 10.9) |
 | Meeting & Recording pane | Meeting opens in right pane: heading with rename, date + length, inline speakers (colour dot + name, soft underline when unnamed, L-43), `Find in this meeting` (`Ctrl+F`), floating player; scrolled moves title + date into compact header (L-44). Transcribing shows accent spinner + status line + thin bar + `Stop` + chevron popover (L-45). Recording pane shows heading + `Today, HH:MM`, compact 30px timer + 32px red `Stop` pill, single sources card + `Change what is recorded` (L-47). | Same one-step pane, inline speakers, `Find in this meeting` (`⌘F`), floating player, scrolled compact header (L-44), Transcribing status line + popover with battery at finish (L-45), and Recording pane with 30px red `Stop` pill (L-47). |
 | Name a speaker dialog | Centred floating dialog (`14px` corners) over the meeting pane with full-window scrim; single column (`Speaker n` heading + talk time, quote with left bar, focused `Name` field, neutral saved-voice duplicate notice `{name} is already a saved voice.` with inline small buttons, `Saved voices, closest first` heading, neutral `ink`-at-10% `Likely` tag with no row highlight, `Remember this voice` card with switch, footer `Merge into…` left + `Cancel` / `Save name` right; L-46). | Single-column floating dialog (`12px` corners) over the meeting pane with full-window scrim, small macOS switch, `Saved voices` heading above the group and `Closest first` footer below it, neutral `ink`-at-10% `Likely` tag with no row highlight, and `{name} is already a saved voice.` duplicate notice (L-46). |
 | Dialogs | AdwDialog / AdwAlertDialog; centred title and body; equal-width buttons | sheet under the toolbar; leading title and body; trailing buttons at natural width |
-| Settings | "Preferences": AdwPreferencesDialog with 4 pages (Recording, Transcription, Library, Browser companion). Saved voices pushed as a subpage. | "Settings": Settings scene TabView with the same 4 tabs. Saved voices pushed in a NavigationStack. |
+| Settings | "Preferences": AdwPreferencesDialog with 4 pages (Recording, Transcription, Library, Browser companion). Saved voices pushed as a subpage (Wave 6 `D-977`: rename, delete/forget, sample count/status, transcript clip + guided test-phrase enrollment; local store only). | "Settings": Settings scene TabView with the same 4 tabs. Saved voices pushed in a NavigationStack (Wave 6 `D-978`, `D-1000`: local Saved voices in `~/Library/Application Support/Cassini/voices`, zero iCloud sync per section 12). |
 | Recording with the app hidden | GNotification updated each second: "Recording, 00:12:48" / "{title}. Your microphone and the meeting in your browser." with Stop (destructive) and Open Cassini. A status icon where the desktop shows them. | MenuBarExtra showing a dot and "12:48". Menu: "Recording, 00:12:48", title, two level rows, "Stop Recording ⌥⌘R", "Add a Note…", "Open Cassini", "Your Mac will not sleep while Cassini records." |
 | RecordFirst captions | "Your desktop may ask you to allow this next." / "Nothing to allow on this computer." | "macOS asks you to allow this next." / "macOS asks once more, for Screen & System Audio Recording." |
 | others-permission line | absent | present |
@@ -261,6 +331,8 @@ playback failed, microphone permission declined, Connect failed, device changed 
 | Accent, amber on tint | `accent`, `warn-ink` on `warn-tint` (`brand/tokens.json`, L-06, L-17, L-39) | the same Cassini `accent` and `warn-ink` on `warn-tint` from `brand/tokens.json`; ignores macOS system accent colour (L-06, L-17, L-39) |
 | Sidebar background | Adwaita sidebar colour mapped to `sidebar` (L-42, 10.14) | native macOS sidebar material (`sidebar-mac` reference in `brand/tokens.json`, L-42, 10.14) |
 | Radius: row / card / dialog / window | 10 / 12 / 14 / 14 | 7 / 10 / 12 / 10 |
+| Deleted meetings (Phase 2, `D100`, 7.1) | "Trash": AdwDialog from `☰ › Trash`; header `Empty Trash…`; GNOME-only `trash.restoredToast` after Restore | "Recently Deleted": a single window from `File › Recently Deleted`; toolbar `Delete All…`; no toast |
+| Help (Phase 2, `D100`) | `☰ › Help` (F1) opens an AdwDialog titled `Help`: four topics (`help.record.*`, `help.library.*`, `help.trash.*`, `help.voices.*`) and a `Keyboard shortcuts` button (`menu.keyboardShortcuts`) opening the shortcuts dialog | `Help › Cassini talk Help` (`⌘?`) opens a window titled `Cassini talk Help` with the same four topics (Mac `help.trash.body` names `File › Recently Deleted`); no shortcuts button, the menus show them |
 
 - Colours come from `brand/tokens.json` (10.1), not from the system accent, destructive or warning colours (L-06,
   L-16).
@@ -305,7 +377,11 @@ exists, leave the surface out of the UI, or keep the existing behaviour unchange
 Not drawn (or deferred to Phase 2):
 - Settings tabs Recording, Library and Browser companion (Phase 2).
 - Summary generation and schema (`L-44` draws Summary/Transcript tabs when a summary exists, but `meeting.schema.json` has no summary field yet; Phase 1 builds the no-summary layout with no tabs).
-- Phase 2 desktop menu additions (L-23): in-app Trash/Recently Deleted list, Help, Mac Saved voices menu item.
+- ~~Phase 2 desktop menu additions~~ **defined in `D100`** (`L-23`, `D-1000`, built as capacity allows per `D98` §4):
+  in-app Trash / Recently Deleted (section 7.1, confirmations 4 and 5), Help (section 10, offline, below), Mac
+  `Saved Voices…` (`savedVoices.menuItem`). Catalog ids are `draft` (milestone `Phase 2 menu (D-1000)`); look and copy
+  are reviewed asynchronously in `D-1019`. Still not drawn: an online user guide. Help stays an in-app, offline view
+  that opens no URL until a published guide address is decided; the existing About dialog keeps `about.modelNotices`.
 - Notes in the Meeting view.
 - Capture-path variants of "Listening inside your browser".
 - Two-speaker labels when "Tell speakers apart" is off.
@@ -314,12 +390,14 @@ Not drawn (or deferred to Phase 2):
 - Extension popup copy.
 - Info.plist and portal permission reasons.
 
-## 12. Models and the network (DECISIONS-UX D4)
+## 12. Models and the network (DECISIONS-UX D4, D98)
 
 - Models are downloaded only from https://dist.gocassini.com, using its manifest, by `(id, source_sha256)`.
   Verification and install rules are in D4 and are identical on both apps.
 - Downloads happen only when the person asks. Each file is checked against both sha256 values before it is used.
 - The only other network use is checking for updates, which sends no meeting data.
+- Help (`D100`, `menu.help`) is an in-app view built from catalog strings; it opens no URL and uses no network.
+- **No cloud backup or iCloud sync on desktop (`L-28`, `D-957`, `D-978`, `D-1012`, `D98`):** Neither GNOME nor macOS uploads meetings, transcripts, or saved voiceprints to iCloud or any cloud backup service. macOS builds **local** Saved voices (`D-978`) in `~/Library/Application Support/Cassini/voices` without iCloud network use, so the desktop first-run hero keeps `"None of it uploaded."` (`firstRun.hero.subtitle`) unqualified (§10). Encrypted OS cloud backup (`L-28`, `"Include saved voices in backups"` ON by default, dismissible backup card: Android `"Keep them on this phone only"` turns off both cloud backup and automatic device-to-device transfer; iOS `"Leave them out of iCloud Backup"` only marks data as excluded from iCloud Backup, with no "phone only" claim) and the `"(except for encrypted cloud backup)"` hero qualifier (`D-937`) apply to the phone apps (`iOS` and `Android`) only — see [`PARITY.md`](../PARITY.md).
 - Whistle is bundled in both apps with identical pinned weights and engine (D5). Every process that loads the
   engine sets `NEEDLE_TELEMETRY=0` and `DO_NOT_TRACK=1` (and `ORT_DISABLE_TELEMETRY=1` for ONNX Runtime). The same
   audio must produce identical words in both apps.

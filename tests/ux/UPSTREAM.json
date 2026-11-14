@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/codemyriad/cassini-ux",
-  "commit": "aa058d366fcb7198bf68df4c0f713e8900410541",
+  "commit": "5e4f0bff95300f2ef795fe71244b22644cad5c25",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -79,14 +79,15 @@
     "library-vectors/expected/t8-low-audio-silent.json": "ux/library-vectors/expected/t8-low-audio-silent.json",
     "listen-by-speaker/turns.json": "tests/ux/listen-by-speaker/turns.json",
     "listen-by-speaker/README.md": "tests/ux/listen-by-speaker/README.md",
-    "import-types.json": "src/cassini_talk/import-types.json"
+    "import-types.json": "src/cassini_talk/import-types.json",
+    "library-v2/trash-vectors.json": "tests/ux/library-v2/trash-vectors.json"
   },
   "sha256": {
     "format-vectors.json": "e418d48c7e551a90756699f42e939c7dd918f444deb302e4410af312afc32279",
     "states-vectors.json": "2b946da58459452cb9fd17cacef58a3f10585a69142796cdd693e2f90fd9f497",
     "LIBRARY-RULES.md": "415d866eb4a098400c76a3975969d9764bb70eed905726fbdcf7e90e42f85ce8",
-    "STATUS-BADGES.md": "3f0e4300e20e8b8fbf193ced32e9e3059807f4485980bcdb655c7fc4ce884df8",
-    "HARMONY.md": "ad73ac529f61c363eb2bd6363fb4c68ab73d52402464944829309ed3e9730b52",
+    "STATUS-BADGES.md": "ea4ff3050d91db4dd1e3297c3f49ce2df7741e980e29be58e824ef113f04c405",
+    "HARMONY.md": "a00c480e03aefb9a13e365fee899382e1cc227340a0d1a10d97355886fd902f2",
     "meeting.schema.json": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e",
     "library-vectors/verify.py": "d3d2a864c28f6b42d77e659f3b65f60a526a93dd3575d3b6a2d6f23f11cf2348",
     "library-vectors/README.md": "4ebeb57bd2b4df449f56a1fb4bf2c1679655fdf462566036c861f70fa359f1f4",
@@ -116,7 +117,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "7cd7ba4dc1693aeddd994eebf70c52fb60bcc0a318a1d43c81348e08dc877543",
+    "strings.json": "eb9065d528478bbcdf6750a3fb1220462a22544935b8dc7f555fd3983b7b0d94",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",
@@ -159,7 +160,8 @@
     "library-vectors/expected/t8-low-audio-silent.json": "8c18748f8d778a2209870e9484262eb7116ecdce780d48fb5201106092628419",
     "listen-by-speaker/turns.json": "0c0d49a7f1d57f97b243d08c0558ab13506a39a93316a2e7506d228f21d75e29",
     "listen-by-speaker/README.md": "499612b72cee5c64cb449f1797d3932a19c44e32a94711ebd8eb25a8d76c354b",
-    "import-types.json": "bd80bb2b5ef176279ad6615e62960d19e693519867ab4fa0dded2d717584295d"
+    "import-types.json": "bd80bb2b5ef176279ad6615e62960d19e693519867ab4fa0dded2d717584295d",
+    "library-v2/trash-vectors.json": "e221e0b5c355cfab68b107e6493ca98e07588a2e7e78b3ef352d5624f8a72d76"
   },
   "sourcePaths": {
     "LIBRARY-RULES.md": "contract/LIBRARY-RULES.md",
@@ -239,6 +241,7 @@
     "listen-by-speaker/README.md": "vectors/listen-by-speaker/README.md",
     "format-vectors.json": "vectors/format/format-vectors.json",
     "states-vectors.json": "vectors/states/states-vectors.json",
-    "import-types.json": "contract/import-types.json"
+    "import-types.json": "contract/import-types.json",
+    "library-v2/trash-vectors.json": "contract/library-v2/trash-vectors.json"
   }
 }

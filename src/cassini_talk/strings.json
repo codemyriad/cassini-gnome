@@ -117,7 +117,9 @@
    "en": "Cancel",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -257,7 +259,9 @@
    "en": "Done",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -457,7 +461,9 @@
    "en": "Not now",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -1310,7 +1316,9 @@
    "en": "Cassini will no longer recognise {name} in new meetings. Names already in transcripts stay.",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "dialog-body",
    "boards": [
@@ -1346,7 +1354,9 @@
    "en": "Delete",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -1379,7 +1389,9 @@
    "en": "Delete {name}’s voice profile?",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "dialog-title",
    "boards": [
@@ -2463,7 +2475,9 @@
    "en": "Audio with the transcript inside. Plays in any audio player.",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "caption",
    "boards": [
@@ -2471,7 +2485,7 @@
     "Export-mac"
    ],
    "milestone": "UX7a",
-   "note": "Small dim text under 'Cassini file'. Two lines on GNOME, one on Mac.",
+   "note": "Small dim text under 'Cassini file'. Two lines on GNOME, one on Mac. Phones: the .opus Cassini file they export today. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -2496,7 +2510,9 @@
    "en": "Cassini file",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -2504,7 +2520,7 @@
     "Export-mac"
    ],
    "milestone": "UX7a",
-   "note": "Never call a meeting a \"file\" in the UI, except \"Cassini file\". The HARMONY-exact strings errors.transcriptDamaged.line and export.speakerNames.body, and \"file\" for export outputs or model downloads, are allowed.",
+   "note": "Never call a meeting a \"file\" in the UI, except \"Cassini file\". The HARMONY-exact strings errors.transcriptDamaged.line and export.speakerNames.body, and \"file\" for export outputs or model downloads, are allowed. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -2529,7 +2545,9 @@
    "en": "Export",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -2537,7 +2555,7 @@
     "Export-mac"
    ],
    "milestone": "UX7a",
-   "note": "Primary (suggested) action: accent fill, white text. No ellipsis, unlike the entry point common.exportEllipsis.",
+   "note": "Primary (suggested) action: accent fill, white text. No ellipsis, unlike the entry point common.exportEllipsis. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -2562,7 +2580,9 @@
    "en": "What to export",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "a11y",
    "boards": [
@@ -2570,7 +2590,7 @@
     "Export-mac"
    ],
    "milestone": "UX7a",
-   "note": "Visually hidden legend. Use it as the accessible label of the radio group (GNOME: the list box/group; Mac: the Picker). Never show it as a visible heading.",
+   "note": "Visually hidden legend. Use it as the accessible label of the radio group (GNOME: the list box/group; Mac: the Picker). Never show it as a visible heading. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -2595,7 +2615,9 @@
    "en": "The transcript as a text file, with speakers and times.",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "caption",
    "boards": [
@@ -2620,6 +2642,327 @@
     "pt-PT": {
      "text": "A transcrição como ficheiro de texto, com oradores e tempos."
     }
+   },
+   "note": "L-11 (D-998, D99): one export format set on all four apps (PARITY export contract)."
+  },
+  {
+   "id": "export.moreFormats",
+   "en": "More formats",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 export (L-11)",
+   "note": "D99. Disclosure under the two primary choices (Cassini file, Markdown); opens Plain text and the two subtitle formats. Hidden for audio-only meetings. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Altri formati"
+    },
+    "fr": {
+     "text": "Autres formats"
+    },
+    "es": {
+     "text": "Más formatos"
+    },
+    "pt-BR": {
+     "text": "Mais formatos"
+    },
+    "pt-PT": {
+     "text": "Mais formatos"
+    }
+   }
+  },
+  {
+   "id": "export.plainText.label",
+   "en": "Plain text",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 export (L-11)",
+   "note": "D99. Format option, .txt. Transcribed meetings only. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Testo semplice"
+    },
+    "fr": {
+     "text": "Texte brut"
+    },
+    "es": {
+     "text": "Texto sin formato"
+    },
+    "pt-BR": {
+     "text": "Texto simples"
+    },
+    "pt-PT": {
+     "text": "Texto simples"
+    }
+   }
+  },
+  {
+   "id": "export.plainText.description",
+   "en": "The transcript without formatting, for any app.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "Phase 2 export (L-11)",
+   "note": "D99. Caption under export.plainText.label. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "La trascrizione senza formattazione, per qualsiasi app."
+    },
+    "fr": {
+     "text": "La transcription sans mise en forme, pour n’importe quelle application."
+    },
+    "es": {
+     "text": "La transcripción sin formato, para cualquier aplicación."
+    },
+    "pt-BR": {
+     "text": "A transcrição sem formatação, para qualquer aplicativo."
+    },
+    "pt-PT": {
+     "text": "A transcrição sem formatação, para qualquer aplicação."
+    }
+   }
+  },
+  {
+   "id": "export.srt.label",
+   "en": "Subtitles (SRT)",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 export (L-11)",
+   "note": "D99. Format option, .srt. Transcribed meetings only. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Sottotitoli (SRT)"
+    },
+    "fr": {
+     "text": "Sous-titres (SRT)"
+    },
+    "es": {
+     "text": "Subtítulos (SRT)"
+    },
+    "pt-BR": {
+     "text": "Legendas (SRT)"
+    },
+    "pt-PT": {
+     "text": "Legendas (SRT)"
+    }
+   }
+  },
+  {
+   "id": "export.srt.description",
+   "en": "Subtitles with times, for video players and editors.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "Phase 2 export (L-11)",
+   "note": "D99. Caption under export.srt.label. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Sottotitoli con i tempi, per lettori ed editor video."
+    },
+    "fr": {
+     "text": "Sous-titres minutés, pour les lecteurs et éditeurs vidéo."
+    },
+    "es": {
+     "text": "Subtítulos con tiempos, para reproductores y editores de video."
+    },
+    "pt-BR": {
+     "text": "Legendas com tempos, para players e editores de vídeo."
+    },
+    "pt-PT": {
+     "text": "Legendas com tempos, para leitores e editores de vídeo."
+    }
+   }
+  },
+  {
+   "id": "export.vtt.label",
+   "en": "Subtitles (WebVTT)",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 export (L-11)",
+   "note": "D99. Format option, .vtt. Transcribed meetings only. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Sottotitoli (WebVTT)"
+    },
+    "fr": {
+     "text": "Sous-titres (WebVTT)"
+    },
+    "es": {
+     "text": "Subtítulos (WebVTT)"
+    },
+    "pt-BR": {
+     "text": "Legendas (WebVTT)"
+    },
+    "pt-PT": {
+     "text": "Legendas (WebVTT)"
+    }
+   }
+  },
+  {
+   "id": "export.vtt.description",
+   "en": "Subtitles with times and speaker names, for web video players.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "Phase 2 export (L-11)",
+   "note": "D99. Caption under export.vtt.label. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Sottotitoli con tempi e nomi delle voci, per i lettori video web."
+    },
+    "fr": {
+     "text": "Sous-titres avec horodatages et noms des intervenants, pour les lecteurs vidéo web."
+    },
+    "es": {
+     "text": "Subtítulos con tiempos y nombres de hablantes, para reproductores de video web."
+    },
+    "pt-BR": {
+     "text": "Legendas com tempos e nomes dos locutores, para players de vídeo na web."
+    },
+    "pt-PT": {
+     "text": "Legendas com tempos e nomes dos oradores, para leitores de vídeo na web."
+    }
+   }
+  },
+  {
+   "id": "export.originalAudio.label",
+   "en": "Original audio",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 export (L-11)",
+   "note": "D99. Format option for an imported meeting that has no Cassini file yet (plain audio, not transcribed): the imported bytes, unchanged, in their own format (same rule as D96 ZIP entries). L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Audio originale"
+    },
+    "fr": {
+     "text": "Audio d’origine"
+    },
+    "es": {
+     "text": "Audio original"
+    },
+    "pt-BR": {
+     "text": "Áudio original"
+    },
+    "pt-PT": {
+     "text": "Áudio original"
+    }
+   }
+  },
+  {
+   "id": "export.originalAudio.description",
+   "en": "The audio exactly as it was imported, without a transcript.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "Phase 2 export (L-11)",
+   "note": "D99. Caption under export.originalAudio.label. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "L’audio esattamente come è stato importato, senza trascrizione."
+    },
+    "fr": {
+     "text": "L’audio tel qu’il a été importé, sans transcription."
+    },
+    "es": {
+     "text": "El audio tal como se importó, sin transcripción."
+    },
+    "pt-BR": {
+     "text": "O áudio exatamente como foi importado, sem transcrição."
+    },
+    "pt-PT": {
+     "text": "O áudio exatamente como foi importado, sem transcrição."
+    }
+   }
+  },
+  {
+   "id": "export.audioOnly.note",
+   "en": "No transcript yet, so only the audio can be exported.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "Phase 2 export (L-11)",
+   "note": "D99. Line under the format choices of an audio-only meeting (no completed transcript), where the text formats are hidden. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Non c’è ancora una trascrizione, quindi si può esportare solo l’audio."
+    },
+    "fr": {
+     "text": "Pas encore de transcription, seul l’audio peut être exporté."
+    },
+    "es": {
+     "text": "Aún no hay transcripción, así que solo se puede exportar el audio."
+    },
+    "pt-BR": {
+     "text": "Ainda não há transcrição, então só é possível exportar o áudio."
+    },
+    "pt-PT": {
+     "text": "Ainda não há transcrição, por isso só é possível exportar o áudio."
+    }
    }
   },
   {
@@ -2627,7 +2970,9 @@
    "en": "Markdown",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -2635,7 +2980,7 @@
     "Export-mac"
    ],
    "milestone": "UX7a",
-   "note": "Radio option 2, semibold. No size is shown.",
+   "note": "Radio option 2, semibold. No size is shown. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -2867,7 +3212,9 @@
    "en": "Export “{title}”",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "dialog-title",
    "boards": [
@@ -2878,7 +3225,7 @@
    "placeholders": {
     "title": "meeting title as shown in the Meeting header (user-editable plain text; escape it for Pango markup on GNOME)"
    },
-   "note": "HARMONY 9. The typographic quotes are part of the string. Also the dialog's accessible name. GNOME: centred. Mac: leading.",
+   "note": "HARMONY 9. The typographic quotes are part of the string. Also the dialog's accessible name. GNOME: centred. Mac: leading. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -3425,7 +3772,9 @@
    "en": "{day}, {time} · {duration} · Imported",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "caption",
    "boards": [
@@ -3438,7 +3787,7 @@
     "time": "24 h HH:MM",
     "duration": "format.meetingDuration output"
    },
-   "note": "L-57: Sample 'Friday 23 October, 15:00 · 34 min · Imported'. Trailing word equals states.badge.received.",
+   "note": "L-57: Sample 'Friday 23 October, 15:00 · 34 min · Imported'. Trailing word equals states.badge.received. Phones: the meeting header subtitle under the title. L-10 (D-997, D99): phones adopt the WP7 Imported provenance too; iOS and Android show it for every meeting whose origin is not own (imported audio, opened or shared Cassini files, ZIP entries). Model id stays received.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -6615,7 +6964,9 @@
    "en": "Forget everyone…",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -6648,7 +6999,9 @@
    "en": "To add someone, name a speaker in any meeting and keep “Remember this voice” on. After you forget a voice, the names already in your meetings stay.",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "description",
    "boards": [
@@ -6714,7 +7067,9 @@
    "en": "Forget",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -6747,7 +7102,9 @@
    "en": "{n} meetings",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -6812,7 +7169,9 @@
    "en": "{meetingCount} · {confirmedSpeech}",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "caption",
    "boards": [
@@ -6849,7 +7208,9 @@
    "en": "Play a sample of {name}",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "a11y",
    "boards": [
@@ -6885,7 +7246,9 @@
    "en": "Name them again in a meeting to keep recognising them.",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "caption",
    "boards": [
@@ -7097,7 +7460,9 @@
    "en": "Any date",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -7105,7 +7470,7 @@
     "Search-mac"
    ],
    "milestone": "UX12",
-   "note": "Filter chip, inactive (outlined pill). The date choices it opens are not drawn.",
+   "note": "Filter chip, inactive (outlined pill). The date choices it opens are not drawn. Also the first date menu item, which clears the date filter. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -7163,7 +7528,9 @@
    "en": "Recorded by me",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -7171,7 +7538,7 @@
     "Search-mac"
    ],
    "milestone": "UX12",
-   "note": "Filter chip, inactive. It means origin = own, which excludes Received meetings.",
+   "note": "Filter chip, inactive. It means origin = own, which excludes Received meetings. Imported meetings (states.badge.received, L-10) never match. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -7196,7 +7563,9 @@
    "en": "Speaker: {name}",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -7207,7 +7576,7 @@
    "placeholders": {
     "name": "speaker display name (a named speaker or common.speaker.unnamed)"
    },
-   "note": "Filter chip, drawn active (accent fill, white semibold). Not drawn: the text when no speaker is set, and how to pick or clear one. Ask.",
+   "note": "Filter chip, drawn active (accent fill, white semibold). Not drawn: the text when no speaker is set, and how to pick or clear one. Ask. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -7230,10 +7599,12 @@
   {
    "id": "search.filter.speakerNone",
    "en": "Speaker",
-   "note": "Coordinator (D14). The Speaker chip when no speaker is chosen. Opens the speaker menu.",
+   "note": "Coordinator (D14). The Speaker chip when no speaker is chosen. Opens the speaker menu. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -7263,10 +7634,12 @@
   {
    "id": "search.filter.anySpeaker",
    "en": "Any speaker",
-   "note": "Coordinator (D14). First item of the speaker menu; clears the speaker filter.",
+   "note": "Coordinator (D14). First item of the speaker menu; clears the speaker filter. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -7296,10 +7669,12 @@
   {
    "id": "search.filter.date.today",
    "en": "Today",
-   "note": "Coordinator (D14). Date menu item, and the chip text when chosen.",
+   "note": "Coordinator (D14). Date menu item, and the chip text when chosen. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -7329,10 +7704,12 @@
   {
    "id": "search.filter.date.week",
    "en": "Past 7 days",
-   "note": "Coordinator (D14). Date menu item and chip text: today and the 6 days before it, local time.",
+   "note": "Coordinator (D14). Date menu item and chip text: today and the 6 days before it, local time. iOS ‘Past week’ becomes this wording. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -7362,10 +7739,12 @@
   {
    "id": "search.filter.date.month",
    "en": "Past 30 days",
-   "note": "Coordinator (D14). Date menu item and chip text: today and the 29 days before it, local time.",
+   "note": "Coordinator (D14). Date menu item and chip text: today and the 29 days before it, local time. iOS ‘Past month’ becomes this wording. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -7389,6 +7768,294 @@
     },
     "pt-PT": {
      "text": "Últimos 30 dias"
+    }
+   }
+  },
+  {
+   "id": "search.filter.date.year",
+   "en": "This year",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 filters (L-34/L-35)",
+   "note": "Coordinator (D99). Date menu item and chip text: from 1 January of the current year, local midnight, to now. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Quest’anno"
+    },
+    "fr": {
+     "text": "Cette année"
+    },
+    "es": {
+     "text": "Este año"
+    },
+    "pt-BR": {
+     "text": "Este ano"
+    },
+    "pt-PT": {
+     "text": "Este ano"
+    }
+   }
+  },
+  {
+   "id": "search.filter.starred",
+   "en": "Starred",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 filters (L-34/L-35)",
+   "note": "D99. Toggle chip, first in the search filter row; keeps only starred meetings. Same text as library.filter.starred; separate id because it belongs to Search. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Con stella"
+    },
+    "fr": {
+     "text": "Avec étoile"
+    },
+    "es": {
+     "text": "Destacadas"
+    },
+    "pt-BR": {
+     "text": "Com estrela"
+    },
+    "pt-PT": {
+     "text": "Com estrela"
+    }
+   }
+  },
+  {
+   "id": "library.filter.all",
+   "en": "All",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 filters (L-34/L-35)",
+   "note": "D99 (L-34). Library filter row at rest, first choice; shows every meeting. Single choice with library.filter.starred (segmented control on iOS and macOS, Material filter chips on Android, linked toggle buttons on GNOME). Feminine plural agrees with meeting (and with the Android legacy ‘note’). L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Tutte"
+    },
+    "fr": {
+     "text": "Toutes"
+    },
+    "es": {
+     "text": "Todas"
+    },
+    "pt-BR": {
+     "text": "Todas"
+    },
+    "pt-PT": {
+     "text": "Todas"
+    }
+   }
+  },
+  {
+   "id": "library.filter.starred",
+   "en": "Starred",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 filters (L-34/L-35)",
+   "note": "D99 (L-34). Library filter row at rest, second choice; shows only starred meetings. Android gains starring with it. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Con stella"
+    },
+    "fr": {
+     "text": "Avec étoile"
+    },
+    "es": {
+     "text": "Destacadas"
+    },
+    "pt-BR": {
+     "text": "Com estrela"
+    },
+    "pt-PT": {
+     "text": "Com estrela"
+    }
+   }
+  },
+  {
+   "id": "library.filters.a11y",
+   "en": "Filters",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "Phase 2 filters (L-34/L-35)",
+   "note": "D99. Accessible name of the Library and Search filter row (a group, so .a11y). L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Filtri"
+    },
+    "fr": {
+     "text": "Filtres"
+    },
+    "es": {
+     "text": "Filtros"
+    },
+    "pt-BR": {
+     "text": "Filtros"
+    },
+    "pt-PT": {
+     "text": "Filtros"
+    }
+   }
+  },
+  {
+   "id": "library.starred.empty",
+   "en": "No stars yet.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 filters (L-34/L-35)",
+   "note": "D99 (L-34). Shown in place of the list when Starred is chosen and nothing is starred. No noun on purpose. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Ancora nessuna stella."
+    },
+    "fr": {
+     "text": "Aucune étoile pour l’instant."
+    },
+    "es": {
+     "text": "Aún no hay nada destacado."
+    },
+    "pt-BR": {
+     "text": "Nenhuma estrela ainda."
+    },
+    "pt-PT": {
+     "text": "Ainda sem estrelas."
+    }
+   }
+  },
+  {
+   "id": "library.row.starred.a11y",
+   "en": "Starred",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "Phase 2 filters (L-34/L-35)",
+   "note": "D99. Accessible state of the star glyph on a Library or search row. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Con stella"
+    },
+    "fr": {
+     "text": "Avec étoile"
+    },
+    "es": {
+     "text": "Destacada"
+    },
+    "pt-BR": {
+     "text": "Com estrela"
+    },
+    "pt-PT": {
+     "text": "Com estrela"
+    }
+   }
+  },
+  {
+   "id": "meeting.star",
+   "en": "Star",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 filters (L-34/L-35)",
+   "note": "D99 (L-34). Star action (row swipe or context menu, meeting menu, toolbar star). Stars are per-device Library state, never written into the Cassini file (D53.1, FORMAT-AMENDMENTS-PROPOSAL §3). L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Aggiungi stella"
+    },
+    "fr": {
+     "text": "Ajouter une étoile"
+    },
+    "es": {
+     "text": "Destacar"
+    },
+    "pt-BR": {
+     "text": "Adicionar estrela"
+    },
+    "pt-PT": {
+     "text": "Adicionar estrela"
+    }
+   }
+  },
+  {
+   "id": "meeting.unstar",
+   "en": "Unstar",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 filters (L-34/L-35)",
+   "note": "D99 (L-34). Opposite of meeting.star, on a starred meeting. L-34/L-35 (D-999, D99): one Library & Search filter set on all four apps (PARITY filter contract).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Rimuovi stella"
+    },
+    "fr": {
+     "text": "Retirer l’étoile"
+    },
+    "es": {
+     "text": "Quitar destacado"
+    },
+    "pt-BR": {
+     "text": "Remover estrela"
+    },
+    "pt-PT": {
+     "text": "Remover estrela"
     }
    }
   },
@@ -9230,7 +9897,7 @@
     "Badge-GNOME"
    ],
    "milestone": "WP7 (L-57)",
-   "note": "L-57: renamed from 'Received' to 'Imported' across Library row badge and Meeting header subtitle (transparent fill, line-token outline, ink-2 text, incoming glyph). Desktop (macOS & GNOME) in Phase 1; phone applicability waits on open L-10.",
+   "note": "L-57: renamed from 'Received' to 'Imported' across Library row badge and Meeting header subtitle (transparent fill, line-token outline, ink-2 text, incoming glyph). Desktop (macOS & GNOME) shipped in WP7 (D-970, D-971). L-10 (D-997, D99): phones adopt the WP7 Imported provenance too; iOS and Android show it for every meeting whose origin is not own (imported audio, opened or shared Cassini files, ZIP entries). Model id stays received. On phones it is the outline badge on the row line, shown next to the speaker-count pill (STATUS-BADGES phone set).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -10892,7 +11559,9 @@
    "en": "No saved voices yet.",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "description",
    "boards": [
@@ -10925,7 +11594,9 @@
    "en": "Forget all saved voices?",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "dialog-title",
    "boards": [
@@ -10958,7 +11629,9 @@
    "en": "Cassini will no longer recognise anyone in new meetings. Names already in transcripts stay.",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "dialog-body",
    "boards": [
@@ -10991,7 +11664,9 @@
    "en": "Forget everyone",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -11159,7 +11834,9 @@
    "en": "Couldn’t change saved voices. Names in your meetings are kept.",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "line",
    "boards": [
@@ -11194,7 +11871,9 @@
    "en": "A newer version of Cassini saved these voices. Update Cassini to change them.",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "line",
    "boards": [
@@ -11294,7 +11973,7 @@
    "id": "common.moveToTrash",
    "en": "Move to Trash",
    "role": "menu-item",
-   "note": "Coordinator (D29). Library row context menu (after common.exportEllipsis and a separator), the last section of the Meeting More actions menu, the Mac File menu after Export…, and the shortcuts list. Hidden while the meeting records or saves, during a Library move, for external files and in Search; the Mac menu-bar item greys out instead. One meeting at a time.",
+   "note": "Coordinator (D29). Library row context menu (after common.exportEllipsis and a separator), the last section of the Meeting More actions menu, the Mac File menu after Export…, and the shortcuts list. Hidden while the meeting records or saves, during a Library move, for external files and in Search; the Mac menu-bar item greys out instead. One meeting at a time. D100 (Phase 2, D-1032/D-1033): the meeting moves into the in-app Trash (Mac: Recently Deleted, label meeting.moveToRecentlyDeleted) instead of the system Trash; still no confirmation and still undoable.",
    "platforms": [
     "gnome",
     "mac"
@@ -11373,7 +12052,7 @@
    "placeholders": {
     "title": "the meeting title as in its Library row"
    },
-   "note": "Coordinator (D29). GNOME only: AdwToast, default 5 s timeout (libadwaita default), action common.undo. The folder is trashed when the toast closes (dismissed, timed out, replaced or app quit), because the Flatpak Trash portal cannot restore. Undo puts the row back with nothing touched. Typographic quotes.",
+   "note": "Coordinator (D29). GNOME only: AdwToast, default 5 s timeout (libadwaita default), action common.undo. The folder is trashed when the toast closes (dismissed, timed out, replaced or app quit), because the Flatpak Trash portal cannot restore. Undo puts the row back with nothing touched. Typographic quotes. D100 (Phase 2, D-1032): the move into the in-app Trash happens at once and Undo moves it back; nothing waits for the toast to close.",
    "milestone": "D29",
    "status": "harmony",
    "l10n": {
@@ -22032,7 +22711,7 @@
    "role": "description",
    "boards": [],
    "milestone": "D97",
-   "note": "Coordinator (D97). Shown under the switch, instead of settings.transfer.body, while it is off.",
+   "note": "Coordinator (D97). Shown under the switch, instead of settings.transfer.body, while it is off AND cloud backup is off too (D98); with cloud backup on, show settings.transfer.body.offBackupOn.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -22053,9 +22732,39 @@
    }
   },
   {
+   "id": "settings.transfer.body.offBackupOn",
+   "en": "Nothing is copied directly to a new phone. Meetings in your cloud backup come back when you restore it on a new phone.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D97 / D98: shown under the settings.transfer switch, instead of settings.transfer.body.off, while transfer is off but encrypted cloud backup (backup.cloud) is still on. settings.transfer.body.off ('… gone unless you exported them') is only shown when cloud backup is off too.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Nulla viene copiato direttamente su un nuovo telefono. Le riunioni nel tuo backup nel cloud tornano quando lo ripristini su un nuovo telefono."
+    },
+    "fr": {
+     "text": "Rien n’est copié directement vers un nouveau téléphone. Les réunions de votre sauvegarde cloud reviennent lorsque vous la restaurez sur un nouveau téléphone."
+    },
+    "es": {
+     "text": "No se copia nada directamente a un teléfono nuevo. Las reuniones de tu copia de seguridad en la nube vuelven cuando la restauras en un teléfono nuevo."
+    },
+    "pt-BR": {
+     "text": "Nada é copiado diretamente para um novo celular. As reuniões do seu backup na nuvem voltam quando você o restaura em um novo celular."
+    },
+    "pt-PT": {
+     "text": "Nada é copiado diretamente para um telemóvel novo. As reuniões da sua cópia de segurança na nuvem voltam quando a restaurar num telemóvel novo."
+    }
+   }
+  },
+  {
    "id": "settings.transfer.exportHint",
    "en": "To keep a copy somewhere safe, use Export All as ZIP.",
    "platforms": [
+    "ios",
     "android"
    ],
    "role": "description",
@@ -22804,7 +23513,7 @@
     "Transcribing-Mac"
    ],
    "milestone": "WP3 (L-44)",
-   "note": "L-44: Mac meeting top-bar trash button tooltip and accessible label.",
+   "note": "L-44: Mac meeting top-bar trash button tooltip and accessible label. D100 (D-1033): once the Mac ships the in-app Recently Deleted, this is also the Mac label of every move entry point (File menu after Export…, row context menu, Meeting menu) and the Edit › Undo action name; common.moveToTrash stays the GNOME label.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -24416,7 +25125,9 @@
    "en": "{day}, {time} · {duration} · Imported · Transcribed on another device",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "caption",
    "boards": [
@@ -24429,7 +25140,7 @@
     "time": "24 h HH:MM",
     "duration": "format.meetingDuration output"
    },
-   "note": "L-57: Meeting header subtitle when an imported Cassini file already arrived with a completed transcript from another device.",
+   "note": "L-57: Meeting header subtitle when an imported Cassini file already arrived with a completed transcript from another device. Phones: the meeting header subtitle under the title. L-10 (D-997, D99): phones adopt the WP7 Imported provenance too; iOS and Android show it for every meeting whose origin is not own (imported audio, opened or shared Cassini files, ZIP entries). Model id stays received.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -24533,7 +25244,7 @@
     "LibraryEmpty-mac"
    ],
    "milestone": "W0.5 (L-27)",
-   "note": "L-27 (D-956): primary line of the first-run empty-state hero in ink, bold, left-aligned, always one sentence on its own line (platform font, 64 px desktop / 32 px phones), directly above dimmed firstRun.hero.subtitle. Desktop ships in Phase 2 (D-972, D-973); phone hero waits on D-937.",
+   "note": "L-27 (D-956, D-937): primary line of the first-run empty-state hero in ink, bold, left-aligned, always one sentence on its own line (platform font, 64 px desktop / 32 px phones), directly above dimmed firstRun.hero.subtitle (desktop D-972 / D-973; phones D-974 / D-975).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -24568,7 +25279,7 @@
     "LibraryEmpty-mac"
    ],
    "milestone": "W0.5 (L-27)",
-   "note": "L-27 (D-956): dimmed second line of the first-run empty-state hero directly under firstRun.hero.title, bold, left-aligned, always one sentence on its own line (platform font, 64 px desktop / 32 px phones). Desktop ships in Phase 2 (D-972, D-973); phone hero waits on D-937 (cloud-backup reconciliation with L-28).",
+   "note": "L-27 (D-956, D-937): dimmed second line of the first-run empty-state hero directly under firstRun.hero.title, bold, left-aligned, always one sentence on its own line (platform font, 64 px desktop / 32 px phones). Desktop shows this unqualified; phones pair it with firstRun.hero.phoneBackupQualifier (or use firstRun.hero.subtitlePhoneNote) while encrypted OS cloud backup is enabled (D-937, D-974, D-975).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -24585,6 +25296,3191 @@
     },
     "pt-PT": {
      "text": "Nada é enviado."
+    }
+   }
+  },
+  {
+   "id": "firstRun.hero.phoneBackupQualifier",
+   "en": "(except for encrypted cloud backup)",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (D-937)",
+   "note": "D-937 / L-27 / L-28: parenthetical qualifier paired with firstRun.hero.subtitle ('None of it uploaded.') on phone first run (D-974 iOS, D-975 Android) whenever encrypted OS cloud backup is enabled (the default). Omitted on desktop (HARMONY §§10, 12) and when the user opts out to phone-only storage.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "(tranne per il backup crittografato nel cloud)"
+    },
+    "fr": {
+     "text": "(sauf pour la sauvegarde cloud chiffrée)"
+    },
+    "es": {
+     "text": "(salvo para la copia de seguridad cifrada en la nube)"
+    },
+    "pt-BR": {
+     "text": "(exceto para o backup criptografado na nuvem)"
+    },
+    "pt-PT": {
+     "text": "(exceto para a cópia de segurança encriptada na nuvem)"
+    }
+   }
+  },
+  {
+   "id": "firstRun.hero.subtitlePhoneNote",
+   "en": "None of it uploaded. (except for encrypted cloud backup)",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "W6.0 (D-937)",
+   "note": "D-937 / L-27 / L-28: combined phone first-run hero second line pairing firstRun.hero.subtitle with firstRun.hero.phoneBackupQualifier when encrypted OS cloud backup is enabled, so phone layouts and screen readers never concatenate strings in code.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Nulla viene caricato. (tranne per il backup crittografato nel cloud)"
+    },
+    "fr": {
+     "text": "Rien n’est mis en ligne. (sauf pour la sauvegarde cloud chiffrée)"
+    },
+    "es": {
+     "text": "No se sube nada. (salvo para la copia de seguridad cifrada en la nube)"
+    },
+    "pt-BR": {
+     "text": "Nada é enviado. (exceto para o backup criptografado na nuvem)"
+    },
+    "pt-PT": {
+     "text": "Nada é enviado. (exceto para a cópia de segurança encriptada na nuvem)"
+    }
+   }
+  },
+  {
+   "id": "privacy.onDevice.computer",
+   "en": "Written down on this computer. The audio never leaves it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryEmpty-mac"
+   ],
+   "milestone": "W6.0 (L-09)",
+   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): desktop first-run on-device privacy line for GNOME and macOS (shown on first run only per L-27, L-30). Legacy firstRun.footer and settings.transcription.privacy stay in the catalog so existing pins never break.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo computer. L’audio non lo lascia mai."
+    },
+    "fr": {
+     "text": "Transcrit sur cet ordinateur. L’audio n’en sort jamais."
+    },
+    "es": {
+     "text": "Transcrito en este equipo. El audio nunca sale de él."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste computador. O áudio nunca sai dele."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste computador. O áudio nunca sai dele."
+    }
+   }
+  },
+  {
+   "id": "privacy.onDevice.mac",
+   "en": "Written down on this Mac. The audio never leaves it.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "LibraryEmpty-mac"
+   ],
+   "milestone": "W6.0 (L-09)",
+   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): Mac-specific first-run on-device privacy line (shown on first run only per L-27, L-30).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo Mac. L’audio non lo lascia mai."
+    },
+    "fr": {
+     "text": "Transcrit sur ce Mac. L’audio n’en sort jamais."
+    },
+    "es": {
+     "text": "Transcrito en este Mac. El audio nunca sale de él."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste Mac. O áudio nunca sai dele."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste Mac. O áudio nunca sai dele."
+    }
+   }
+  },
+  {
+   "id": "privacy.onDevice.iphone",
+   "en": "Written down on this iPhone. The audio never leaves it.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (L-09)",
+   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): the decided L-09 iphone wording, kept for copy review. D98: NOT shown on iOS — no iOS mechanism guarantees the audio never leaves the device (it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'.). While cloud backup is on (the default) show privacy.onDevice.iphone.withBackup; with backup off show privacy.onDevice.iphone.backupExcluded. The unqualified 'never leaves' line is reserved for the Android phone-only state (privacy.onDevice.phone).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo iPhone. L’audio non lo lascia mai."
+    },
+    "fr": {
+     "text": "Transcrit sur cet iPhone. L’audio n’en sort jamais."
+    },
+    "es": {
+     "text": "Transcrito en este iPhone. El audio nunca sale de él."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste iPhone. O áudio nunca sai dele."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste iPhone. O áudio nunca sai dele."
+    }
+   }
+  },
+  {
+   "id": "privacy.onDevice.iphone.withBackup",
+   "en": "Written down on this iPhone. Never uploaded, except to your encrypted cloud backup.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (L-09)",
+   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.iphone (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo iPhone. Mai caricato, tranne nel tuo backup crittografato nel cloud."
+    },
+    "fr": {
+     "text": "Transcrit sur cet iPhone. Jamais mis en ligne, sauf dans votre sauvegarde cloud chiffrée."
+    },
+    "es": {
+     "text": "Transcrito en este iPhone. Nunca se sube, salvo a tu copia de seguridad cifrada en la nube."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste iPhone. Nunca é enviado, exceto para o seu backup criptografado na nuvem."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste iPhone. Nunca é enviado, exceto para a sua cópia de segurança encriptada na nuvem."
+    }
+   }
+  },
+  {
+   "id": "privacy.onDevice.iphone.backupExcluded",
+   "en": "Written down on this iPhone. Cassini never uploads the audio and marks it to be left out of iCloud Backup.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (L-09)",
+   "note": "PROVISIONAL (L-09 / D-938 / D-979 / D98; async copy review tracked in D-1019): iOS first-run privacy line while cloud backup is OFF (NSURLIsExcludedFromBackupKey = true). Processing-only plus iCloud-exclusion wording: never claims the audio never leaves the device. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Shown on first run only per L-27, L-30.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo iPhone. Cassini non carica mai l’audio e lo contrassegna per escluderlo dal Backup iCloud."
+    },
+    "fr": {
+     "text": "Transcrit sur cet iPhone. Cassini ne met jamais l’audio en ligne et le marque pour l’exclure de Sauvegarde iCloud."
+    },
+    "es": {
+     "text": "Transcrito en este iPhone. Cassini nunca sube el audio y lo marca para dejarlo fuera de Copia en iCloud."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste iPhone. O Cassini nunca envia o áudio e o marca para ficar fora do Backup do iCloud."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste iPhone. O Cassini nunca envia o áudio e marca-o para ficar fora da Cópia em iCloud."
+    }
+   }
+  },
+  {
+   "id": "privacy.onDevice.ipad",
+   "en": "Written down on this iPad. The audio never leaves it.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (L-09)",
+   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): the decided L-09 ipad wording, kept for copy review. D98: NOT shown on iOS — no iOS mechanism guarantees the audio never leaves the device (it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'.). While cloud backup is on (the default) show privacy.onDevice.ipad.withBackup; with backup off show privacy.onDevice.ipad.backupExcluded. The unqualified 'never leaves' line is reserved for the Android phone-only state (privacy.onDevice.phone).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo iPad. L’audio non lo lascia mai."
+    },
+    "fr": {
+     "text": "Transcrit sur cet iPad. L’audio n’en sort jamais."
+    },
+    "es": {
+     "text": "Transcrito en este iPad. El audio nunca sale de él."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste iPad. O áudio nunca sai dele."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste iPad. O áudio nunca sai dele."
+    }
+   }
+  },
+  {
+   "id": "privacy.onDevice.ipad.withBackup",
+   "en": "Written down on this iPad. Never uploaded, except to your encrypted cloud backup.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (L-09)",
+   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.ipad (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo iPad. Mai caricato, tranne nel tuo backup crittografato nel cloud."
+    },
+    "fr": {
+     "text": "Transcrit sur cet iPad. Jamais mis en ligne, sauf dans votre sauvegarde cloud chiffrée."
+    },
+    "es": {
+     "text": "Transcrito en este iPad. Nunca se sube, salvo a tu copia de seguridad cifrada en la nube."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste iPad. Nunca é enviado, exceto para o seu backup criptografado na nuvem."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste iPad. Nunca é enviado, exceto para a sua cópia de segurança encriptada na nuvem."
+    }
+   }
+  },
+  {
+   "id": "privacy.onDevice.ipad.backupExcluded",
+   "en": "Written down on this iPad. Cassini never uploads the audio and marks it to be left out of iCloud Backup.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (L-09)",
+   "note": "PROVISIONAL (L-09 / D-938 / D-979 / D98; async copy review tracked in D-1019): iOS first-run privacy line while cloud backup is OFF (NSURLIsExcludedFromBackupKey = true). Processing-only plus iCloud-exclusion wording: never claims the audio never leaves the device. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Shown on first run only per L-27, L-30.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo iPad. Cassini non carica mai l’audio e lo contrassegna per escluderlo dal Backup iCloud."
+    },
+    "fr": {
+     "text": "Transcrit sur cet iPad. Cassini ne met jamais l’audio en ligne et le marque pour l’exclure de Sauvegarde iCloud."
+    },
+    "es": {
+     "text": "Transcrito en este iPad. Cassini nunca sube el audio y lo marca para dejarlo fuera de Copia en iCloud."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste iPad. O Cassini nunca envia o áudio e o marca para ficar fora do Backup do iCloud."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste iPad. O Cassini nunca envia o áudio e marca-o para ficar fora da Cópia em iCloud."
+    }
+   }
+  },
+  {
+   "id": "privacy.onDevice.phone",
+   "en": "Written down on this phone. The audio never leaves it.",
+   "platforms": [
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (L-09)",
+   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): Android first-run on-device privacy line (shown on first run only per L-27, L-30). Legacy android.privacy.processing stays intact in the catalog. D98: Android phone-only state ONLY — shown when cloud backup is off and automatic device-to-device transfer is off; while cloud backup is on (the default) show privacy.onDevice.phone.withBackup instead. Not used on iOS: iOS shows privacy.onDevice.{iphone,ipad}.backupExcluded when backup is off.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo telefono. L’audio non lo lascia mai."
+    },
+    "fr": {
+     "text": "Transcrit sur ce téléphone. L’audio n’en sort jamais."
+    },
+    "es": {
+     "text": "Transcrito en este teléfono. El audio nunca sale de él."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste celular. O áudio nunca sai dele."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste telemóvel. O áudio nunca sai dele."
+    }
+   }
+  },
+  {
+   "id": "privacy.onDevice.phone.withBackup",
+   "en": "Written down on this phone. Never uploaded, except to your encrypted cloud backup.",
+   "platforms": [
+    "android",
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (L-09)",
+   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.phone (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo telefono. Mai caricato, tranne nel tuo backup crittografato nel cloud."
+    },
+    "fr": {
+     "text": "Transcrit sur ce téléphone. Jamais mis en ligne, sauf dans votre sauvegarde cloud chiffrée."
+    },
+    "es": {
+     "text": "Transcrito en este teléfono. Nunca se sube, salvo a tu copia de seguridad cifrada en la nube."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste celular. Nunca é enviado, exceto para o seu backup criptografado na nuvem."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste telemóvel. Nunca é enviado, exceto para a sua cópia de segurança encriptada na nuvem."
+    }
+   }
+  },
+  {
+   "id": "backup.phoneOnlyCard.title",
+   "en": "Keep them on this phone only",
+   "platforms": [
+    "android"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-957 / D-1012 / D98: Android heading of the once-only dismissible notice card on phones while encrypted OS cloud backup is enabled by default. Android only: iOS uses backup.phoneOnlyCard.title.ios because iOS has no mechanism that guarantees 'this phone only'.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Mantieni solo su questo telefono"
+    },
+    "fr": {
+     "text": "Garder uniquement sur ce téléphone"
+    },
+    "es": {
+     "text": "Mantener solo en este teléfono"
+    },
+    "pt-BR": {
+     "text": "Manter apenas neste celular"
+    },
+    "pt-PT": {
+     "text": "Manter apenas neste telemóvel"
+    }
+   }
+  },
+  {
+   "id": "backup.phoneOnlyCard.title.ios",
+   "en": "Leave them out of iCloud Backup",
+   "platforms": [
+    "ios"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-979 / D98: iOS heading of the once-only dismissible backup card (replaces backup.phoneOnlyCard.title on iOS). Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Escludile dal Backup iCloud"
+    },
+    "fr": {
+     "text": "Les exclure de Sauvegarde iCloud"
+    },
+    "es": {
+     "text": "Excluirlas de Copia en iCloud"
+    },
+    "pt-BR": {
+     "text": "Deixá-las fora do Backup do iCloud"
+    },
+    "pt-PT": {
+     "text": "Deixá-las fora da Cópia em iCloud"
+    }
+   }
+  },
+  {
+   "id": "backup.phoneOnlyCard.body",
+   "en": "Your meetings and saved voices are included in encrypted cloud backup and copied when you move to a new phone, so you don’t lose them if this phone is lost or replaced.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-957 / D-1012 / D98: body of the dismissible phone backup card explaining default encrypted cloud backup and automatic device-to-device copy of meetings and saved voices (true on both platforms while backup is on). Android: the card action (backup.phoneOnlyCard.action) turns off BOTH cloud backup (Auto Backup exclusion) AND the settings.transfer device-to-device switch. iOS: the card action (backup.phoneOnlyCard.action.ios) sets NSURLIsExcludedFromBackupKey = true on the meetings and voices directories so iOS skips them in iCloud Backup; Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Manual Export All as ZIP stays available on both.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le tue riunioni e le voci salvate sono incluse nel backup crittografato nel cloud e vengono copiate quando passi a un nuovo telefono, così non le perdi se questo telefono viene perso o sostituito."
+    },
+    "fr": {
+     "text": "Vos réunions et vos voix mémorisées sont incluses dans la sauvegarde cloud chiffrée et copiées lorsque vous passez à un nouveau téléphone, afin de ne pas les perdre si ce téléphone est perdu ou remplacé."
+    },
+    "es": {
+     "text": "Tus reuniones y voces guardadas se incluyen en la copia de seguridad cifrada en la nube y se copian al cambiar a un teléfono nuevo, para que no las pierdas si pierdes o cambias este teléfono."
+    },
+    "pt-BR": {
+     "text": "Suas reuniões e vozes salvas são incluídas no backup criptografado na nuvem e copiadas quando você muda para um novo celular, para que você não as perca se este celular for perdido ou substituído."
+    },
+    "pt-PT": {
+     "text": "As suas reuniões e vozes guardadas são incluídas na cópia de segurança encriptada na nuvem e copiadas ao mudar para um telemóvel novo, para que não as perca se este telemóvel for perdido ou substituído."
+    }
+   }
+  },
+  {
+   "id": "backup.phoneOnlyCard.action",
+   "en": "Keep on this phone only",
+   "platforms": [
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D98: Android primary card action. Turns off BOTH encrypted cloud backup (Auto Backup exclusion) AND automatic OS device-to-device transfer (settings.transfer off), leaving the phone-only state described by backup.phoneOnly.body. Manual user-initiated Export All as ZIP stays available. iOS uses backup.phoneOnlyCard.action.ios instead (no 'this phone only' claim, no transfer guarantee).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Mantieni solo su questo telefono"
+    },
+    "fr": {
+     "text": "Garder uniquement sur ce téléphone"
+    },
+    "es": {
+     "text": "Mantener solo en este teléfono"
+    },
+    "pt-BR": {
+     "text": "Manter apenas neste celular"
+    },
+    "pt-PT": {
+     "text": "Manter apenas neste telemóvel"
+    }
+   }
+  },
+  {
+   "id": "backup.phoneOnlyCard.action.ios",
+   "en": "Leave out of iCloud Backup",
+   "platforms": [
+    "ios"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-979 / D98: iOS primary card action. Turns cloud backup off: sets NSURLIsExcludedFromBackupKey = true on the meetings and voices directories so iOS skips them in iCloud Backup. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Afterwards Settings shows backup.cloud.body.off.ios. Manual Export All as ZIP stays available.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Escludi dal Backup iCloud"
+    },
+    "fr": {
+     "text": "Exclure de Sauvegarde iCloud"
+    },
+    "es": {
+     "text": "Excluir de Copia en iCloud"
+    },
+    "pt-BR": {
+     "text": "Deixar fora do Backup do iCloud"
+    },
+    "pt-PT": {
+     "text": "Deixar fora da Cópia em iCloud"
+    }
+   }
+  },
+  {
+   "id": "backup.phoneOnlyCard.dismiss",
+   "en": "Keep backup on",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-957: secondary dismiss button on the phone backup card keeping encrypted cloud backup enabled and hiding the card permanently.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Lascia il backup attivo"
+    },
+    "fr": {
+     "text": "Garder la sauvegarde activée"
+    },
+    "es": {
+     "text": "Mantener la copia activa"
+    },
+    "pt-BR": {
+     "text": "Manter o backup ativado"
+    },
+    "pt-PT": {
+     "text": "Manter a cópia ativa"
+    }
+   }
+  },
+  {
+   "id": "backup.phoneOnlyCard.close.a11y",
+   "en": "Dismiss backup notice",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "Accessible label for an icon-only close control on the dismissible phone backup card.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Chiudi avviso sul backup"
+    },
+    "fr": {
+     "text": "Fermer l’avis de sauvegarde"
+    },
+    "es": {
+     "text": "Cerrar aviso de copia de seguridad"
+    },
+    "pt-BR": {
+     "text": "Fechar aviso de backup"
+    },
+    "pt-PT": {
+     "text": "Fechar aviso de cópia de segurança"
+    }
+   }
+  },
+  {
+   "id": "backup.includeSavedVoices.title",
+   "en": "Include saved voices in backups",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "switch",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-957 / D-1012 (§20.15): switch in phone backup settings; ON (yes) by default on both iOS and Android. Quoted verbatim in backup.info.what.body.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Includi le voci salvate nei backup"
+    },
+    "fr": {
+     "text": "Inclure les voix mémorisées dans les sauvegardes"
+    },
+    "es": {
+     "text": "Incluir las voces guardadas en las copias de seguridad"
+    },
+    "pt-BR": {
+     "text": "Incluir as vozes salvas nos backups"
+    },
+    "pt-PT": {
+     "text": "Incluir as vozes guardadas nas cópias de segurança"
+    }
+   }
+  },
+  {
+   "id": "backup.includeSavedVoices.subtitle",
+   "en": "Saved voices are on-device voiceprints of people you have named, so a new or restored phone keeps recognising them automatically. Turn this off to keep voiceprints on this phone only.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-957 / D-1012 (§20.15) / D98: Android subtitle under backup.includeSavedVoices.title while ON. Turning the switch off excludes voiceprints from Auto Backup AND device-to-device transfer, so 'on this phone only' holds. iOS uses backup.includeSavedVoices.subtitle.ios.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le voci salvate sono impronte vocali create sul dispositivo per le persone a cui hai dato un nome, così un telefono nuovo o ripristinato continua a riconoscerle automaticamente. Disattiva questa opzione per tenere le impronte vocali solo su questo telefono."
+    },
+    "fr": {
+     "text": "Les voix mémorisées sont les empreintes vocales créées sur l’appareil pour les personnes que vous avez nommées, afin qu’un téléphone neuf ou restauré continue à les reconnaître automatiquement. Désactivez cette option pour garder les empreintes vocales uniquement sur ce téléphone."
+    },
+    "es": {
+     "text": "Las voces guardadas son huellas de voz creadas en el dispositivo para las personas a las que has puesto nombre, de modo que un teléfono nuevo o restaurado siga reconociéndolas automáticamente. Desactívalo para mantener las huellas de voz solo en este teléfono."
+    },
+    "pt-BR": {
+     "text": "As vozes salvas são impressões de voz criadas no aparelho para as pessoas que você nomeou, para que um celular novo ou restaurado continue reconhecendo cada uma automaticamente. Desative esta opção para manter as impressões de voz apenas neste celular."
+    },
+    "pt-PT": {
+     "text": "As vozes guardadas são impressões vocais criadas no dispositivo para as pessoas a quem deu nome, para que um telemóvel novo ou restaurado continue a reconhecê-las automaticamente. Desative esta opção para manter as impressões vocais apenas neste telemóvel."
+    }
+   }
+  },
+  {
+   "id": "backup.includeSavedVoices.subtitle.ios",
+   "en": "Saved voices are on-device voiceprints of people you have named, so a new or restored iPhone or iPad keeps recognising them automatically. Turn this off to leave voiceprints out of iCloud Backup.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-957 / D-1012 (§20.15) / D98: iOS subtitle under backup.includeSavedVoices.title while ON. Turning it off sets NSURLIsExcludedFromBackupKey = true on the voices directory. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le voci salvate sono impronte vocali create sul dispositivo per le persone a cui hai dato un nome, così un iPhone o iPad nuovo o ripristinato continua a riconoscerle automaticamente. Disattiva questa opzione per escludere le impronte vocali dal Backup iCloud."
+    },
+    "fr": {
+     "text": "Les voix mémorisées sont les empreintes vocales créées sur l’appareil pour les personnes que vous avez nommées, afin qu’un iPhone ou iPad neuf ou restauré continue à les reconnaître automatiquement. Désactivez cette option pour exclure les empreintes vocales de Sauvegarde iCloud."
+    },
+    "es": {
+     "text": "Las voces guardadas son huellas de voz creadas en el dispositivo para las personas a las que has puesto nombre, de modo que un iPhone o iPad nuevo o restaurado siga reconociéndolas automáticamente. Desactívalo para dejar las huellas de voz fuera de Copia en iCloud."
+    },
+    "pt-BR": {
+     "text": "As vozes salvas são impressões de voz criadas no aparelho para as pessoas que você nomeou, para que um iPhone ou iPad novo ou restaurado continue reconhecendo cada uma automaticamente. Desative esta opção para deixar as impressões de voz fora do Backup do iCloud."
+    },
+    "pt-PT": {
+     "text": "As vozes guardadas são impressões vocais criadas no dispositivo para as pessoas a quem deu nome, para que um iPhone ou iPad novo ou restaurado continue a reconhecê-las automaticamente. Desative esta opção para deixar as impressões vocais fora da Cópia em iCloud."
+    }
+   }
+  },
+  {
+   "id": "backup.includeSavedVoices.subtitle.off",
+   "en": "Saved voices stay on this phone only: they are not backed up or copied to a new phone. On a new or restored phone, you will need to name speakers again.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-957 / D-1012 (§20.15) / D98: Android subtitle under backup.includeSavedVoices.title when turned OFF. The switch governs voiceprints on EVERY automatic Android channel (Auto Backup AND device-to-device transfer), so 'this phone only' is true regardless of the other switches. Voiceprints never travel in exports (D25). iOS uses backup.includeSavedVoices.subtitle.off.ios.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le voci salvate restano solo su questo telefono: non vengono incluse nei backup né copiate su un nuovo telefono. Su un telefono nuovo o ripristinato dovrai dare di nuovo un nome alle voci."
+    },
+    "fr": {
+     "text": "Les voix mémorisées restent uniquement sur ce téléphone : elles ne sont ni sauvegardées ni copiées vers un nouveau téléphone. Sur un téléphone neuf ou restauré, vous devrez nommer à nouveau les intervenants."
+    },
+    "es": {
+     "text": "Las voces guardadas se quedan solo en este teléfono: no se incluyen en copias de seguridad ni se copian a un teléfono nuevo. En un teléfono nuevo o restaurado tendrás que volver a poner nombre a los hablantes."
+    },
+    "pt-BR": {
+     "text": "As vozes salvas ficam apenas neste celular: elas não entram em backups nem são copiadas para um novo celular. Em um celular novo ou restaurado, você precisará nomear os locutores novamente."
+    },
+    "pt-PT": {
+     "text": "As vozes guardadas ficam apenas neste telemóvel: não entram em cópias de segurança nem são copiadas para um telemóvel novo. Num telemóvel novo ou restaurado, terá de dar novamente nome aos oradores."
+    }
+   }
+  },
+  {
+   "id": "backup.includeSavedVoices.subtitle.off.ios",
+   "en": "Saved voices are marked to be left out of iCloud Backup. A direct transfer to a new iPhone or iPad may still copy them. After restoring from iCloud Backup, you will need to name speakers again.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-957 / D-1012 (§20.15) / D98: iOS subtitle under backup.includeSavedVoices.title when turned OFF (NSURLIsExcludedFromBackupKey = true on the voices directory). Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Voiceprints never travel in exports (D25).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le voci salvate sono contrassegnate per essere escluse dal Backup iCloud. Un trasferimento diretto a un nuovo iPhone o iPad potrebbe comunque copiarle. Dopo un ripristino dal Backup iCloud dovrai dare di nuovo un nome alle voci."
+    },
+    "fr": {
+     "text": "Les voix mémorisées sont marquées pour être exclues de Sauvegarde iCloud. Un transfert direct vers un nouvel iPhone ou iPad peut tout de même les copier. Après une restauration depuis Sauvegarde iCloud, vous devrez nommer à nouveau les intervenants."
+    },
+    "es": {
+     "text": "Las voces guardadas se marcan para quedar fuera de Copia en iCloud. Una transferencia directa a un iPhone o iPad nuevo podría copiarlas igualmente. Tras restaurar desde Copia en iCloud, tendrás que volver a poner nombre a los hablantes."
+    },
+    "pt-BR": {
+     "text": "As vozes salvas são marcadas para ficar fora do Backup do iCloud. Uma transferência direta para um novo iPhone ou iPad ainda pode copiá-las. Depois de restaurar a partir do Backup do iCloud, você precisará nomear os locutores novamente."
+    },
+    "pt-PT": {
+     "text": "As vozes guardadas são marcadas para ficar fora da Cópia em iCloud. Uma transferência direta para um iPhone ou iPad novo pode ainda assim copiá-las. Depois de restaurar a partir da Cópia em iCloud, terá de dar novamente nome aos oradores."
+    }
+   }
+  },
+  {
+   "id": "backup.settings.heading",
+   "en": "Moving and backup",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-979 / D-980: Settings section heading for phone backup and device migration.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Trasferimento e backup"
+    },
+    "fr": {
+     "text": "Transfert et sauvegarde"
+    },
+    "es": {
+     "text": "Traslado y copia de seguridad"
+    },
+    "pt-BR": {
+     "text": "Transferência e backup"
+    },
+    "pt-PT": {
+     "text": "Mudança e cópia de segurança"
+    }
+   }
+  },
+  {
+   "id": "backup.cloud.title",
+   "en": "Encrypted cloud backup",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "switch",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-957: primary switch in Settings › Moving and backup; ON by default.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Backup crittografato nel cloud"
+    },
+    "fr": {
+     "text": "Sauvegarde cloud chiffrée"
+    },
+    "es": {
+     "text": "Copia de seguridad cifrada en la nube"
+    },
+    "pt-BR": {
+     "text": "Backup criptografado na nuvem"
+    },
+    "pt-PT": {
+     "text": "Cópia de segurança encriptada na nuvem"
+    }
+   }
+  },
+  {
+   "id": "backup.cloud.body.on",
+   "en": "Meetings are included in your phone’s backups and when you move to a new phone. Downloaded speech models are not backed up; a new phone downloads them again.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-979 / D-980: explanation under backup.cloud.title while ON.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni sono incluse nei backup del telefono e quando passi a un nuovo telefono. I modelli vocali scaricati non sono inclusi nel backup: il nuovo telefono li scarica di nuovo."
+    },
+    "fr": {
+     "text": "Les réunions sont incluses dans les sauvegardes de votre téléphone et lorsque vous passez à un nouveau téléphone. Les modèles vocaux téléchargés ne sont pas sauvegardés ; le nouveau téléphone les télécharge à nouveau."
+    },
+    "es": {
+     "text": "Las reuniones se incluyen en las copias de seguridad de tu teléfono y al cambiar a un teléfono nuevo. Los modelos de voz descargados no se copian; el teléfono nuevo los descarga otra vez."
+    },
+    "pt-BR": {
+     "text": "As reuniões são incluídas nos backups do seu celular e quando você muda para um novo celular. Os modelos de voz baixados não entram no backup; o novo celular os baixa novamente."
+    },
+    "pt-PT": {
+     "text": "As reuniões são incluídas nas cópias de segurança do seu telemóvel e ao mudar para um telemóvel novo. Os modelos de voz transferidos não entram na cópia de segurança; o telemóvel novo volta a transferi-los."
+    }
+   }
+  },
+  {
+   "id": "backup.cloud.body.off",
+   "en": "Meetings are not added to cloud backups. Turning this off stops future backups; it does not delete backups already stored in your cloud account.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-980 / D98: Android explanation under backup.cloud.title while OFF. Scoped to cloud exclusion only: never claims 'this phone only' (device-to-device transfer is an independent switch). Explicitly never claims existing cloud backups are deleted. The phone-only claim lives in backup.phoneOnly.body, shown only when every automatic channel is off. iOS uses backup.cloud.body.off.ios.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni non vengono aggiunte ai backup nel cloud. Disattivare questa opzione ferma i backup futuri, ma non elimina quelli già salvati nel tuo account cloud."
+    },
+    "fr": {
+     "text": "Les réunions ne sont pas ajoutées aux sauvegardes cloud. Désactiver cette option arrête les prochaines sauvegardes ; cela ne supprime pas celles déjà stockées dans votre compte cloud."
+    },
+    "es": {
+     "text": "Las reuniones no se añaden a las copias de seguridad en la nube. Desactivar esta opción detiene las próximas copias de seguridad; no elimina las que ya están guardadas en tu cuenta en la nube."
+    },
+    "pt-BR": {
+     "text": "As reuniões não são adicionadas aos backups na nuvem. Desativar esta opção interrompe os próximos backups, mas não exclui os backups já guardados na sua conta na nuvem."
+    },
+    "pt-PT": {
+     "text": "As reuniões não são adicionadas às cópias de segurança na nuvem. Desativar esta opção interrompe as próximas cópias de segurança, mas não elimina as que já estão guardadas na sua conta na nuvem."
+    }
+   }
+  },
+  {
+   "id": "backup.cloud.body.off.ios",
+   "en": "Meetings are marked to be left out of iCloud Backup, and Cassini never uploads them. A direct transfer to a new iPhone or iPad may still copy them. Turning this off does not delete backups already stored in iCloud.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-979 / D98: iOS explanation under backup.cloud.title while OFF (iOS has no separate phone-only status line). iOS sets NSURLIsExcludedFromBackupKey = true on the meetings and voices directories so iOS skips them in iCloud Backup. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Explicitly never claims existing iCloud backups are deleted.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni sono contrassegnate per essere escluse dal Backup iCloud e Cassini non le carica mai. Un trasferimento diretto a un nuovo iPhone o iPad potrebbe comunque copiarle. Disattivare questa opzione non elimina i backup già salvati in iCloud."
+    },
+    "fr": {
+     "text": "Les réunions sont marquées pour être exclues de Sauvegarde iCloud, et Cassini ne les met jamais en ligne. Un transfert direct vers un nouvel iPhone ou iPad peut tout de même les copier. Désactiver cette option ne supprime pas les sauvegardes déjà stockées dans iCloud."
+    },
+    "es": {
+     "text": "Las reuniones se marcan para quedar fuera de Copia en iCloud, y Cassini nunca las sube. Una transferencia directa a un iPhone o iPad nuevo podría copiarlas igualmente. Desactivar esta opción no elimina las copias ya guardadas en iCloud."
+    },
+    "pt-BR": {
+     "text": "As reuniões são marcadas para ficar fora do Backup do iCloud, e o Cassini nunca as envia. Uma transferência direta para um novo iPhone ou iPad ainda pode copiá-las. Desativar esta opção não exclui os backups já guardados no iCloud."
+    },
+    "pt-PT": {
+     "text": "As reuniões são marcadas para ficar fora da Cópia em iCloud, e o Cassini nunca as envia. Uma transferência direta para um iPhone ou iPad novo pode ainda assim copiá-las. Desativar esta opção não elimina as cópias de segurança já guardadas em iCloud."
+    }
+   }
+  },
+  {
+   "id": "backup.phoneOnly.body",
+   "en": "Meetings and saved voices stay on this phone only. They are not backed up or copied to a new phone; to keep a copy, use Export All as ZIP.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D98: Android phone-only status line in Moving and backup, shown ONLY when cloud backup is off AND the settings.transfer device-to-device switch is off — the state backup.phoneOnlyCard.action leaves. Android only: iOS never shows a 'this phone only' status (see backup.cloud.body.off.ios). 'Export All as ZIP' must match export.zip.all without its ellipsis in every language.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni e le voci salvate restano solo su questo telefono. Non vengono incluse nei backup né copiate su un nuovo telefono; per conservarne una copia, usa “Esporta tutto come ZIP”."
+    },
+    "fr": {
+     "text": "Les réunions et les voix mémorisées restent uniquement sur ce téléphone. Elles ne sont ni sauvegardées ni copiées vers un nouveau téléphone ; pour en garder une copie, utilisez « Tout exporter en ZIP »."
+    },
+    "es": {
+     "text": "Las reuniones y las voces guardadas se quedan solo en este teléfono. No se incluyen en copias de seguridad ni se copian a un teléfono nuevo; para guardar una copia, usa “Exportar todo como ZIP”."
+    },
+    "pt-BR": {
+     "text": "As reuniões e as vozes salvas ficam apenas neste celular. Elas não entram em backups nem são copiadas para um novo celular; para guardar uma cópia, use “Exportar tudo como ZIP”."
+    },
+    "pt-PT": {
+     "text": "As reuniões e as vozes guardadas ficam apenas neste telemóvel. Não entram em cópias de segurança nem são copiadas para um telemóvel novo; para guardar uma cópia, utilize «Exportar tudo como ZIP»."
+    }
+   }
+  },
+  {
+   "id": "backup.settings.learnMore",
+   "en": "Learn more",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-979 / D-980: row button in Settings › Moving and backup that opens the layered backup explanation page.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Scopri di più"
+    },
+    "fr": {
+     "text": "En savoir plus"
+    },
+    "es": {
+     "text": "Más información"
+    },
+    "pt-BR": {
+     "text": "Saiba mais"
+    },
+    "pt-PT": {
+     "text": "Saber mais"
+    }
+   }
+  },
+  {
+   "id": "backup.info.title",
+   "en": "Moving and backup",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-979 / D-980: navigation title of the Moving and backup explanation screen.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Trasferimento e backup"
+    },
+    "fr": {
+     "text": "Transfert et sauvegarde"
+    },
+    "es": {
+     "text": "Traslado y copia de seguridad"
+    },
+    "pt-BR": {
+     "text": "Transferência e backup"
+    },
+    "pt-PT": {
+     "text": "Mudança e cópia de segurança"
+    }
+   }
+  },
+  {
+   "id": "backup.info.what.heading",
+   "en": "What is backed up",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28: Layer 2 section heading explaining what data is included in backups.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Cosa viene incluso nel backup"
+    },
+    "fr": {
+     "text": "Ce qui est sauvegardé"
+    },
+    "es": {
+     "text": "Qué se incluye en la copia"
+    },
+    "pt-BR": {
+     "text": "O que entra no backup"
+    },
+    "pt-PT": {
+     "text": "O que é incluído na cópia"
+    }
+   }
+  },
+  {
+   "id": "backup.info.what.body",
+   "en": "Your meetings, transcripts and speaker names are backed up while backup is on. Saved voices are included while “Include saved voices in backups” is on. Downloaded speech models are never backed up; your new phone downloads them again.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28: Layer 2 body explaining what is backed up. The quoted toggle matches backup.includeSavedVoices.title in every language.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le tue riunioni, le trascrizioni e i nomi delle voci sono inclusi finché il backup è attivo. Le voci salvate sono incluse finché “Includi le voci salvate nei backup” è attivo. I modelli vocali scaricati non vengono mai inclusi: il nuovo telefono li scarica di nuovo."
+    },
+    "fr": {
+     "text": "Vos réunions, leurs transcriptions et les noms des intervenants sont sauvegardés tant que la sauvegarde est activée. Les voix mémorisées sont incluses tant que « Inclure les voix mémorisées dans les sauvegardes » est activé. Les modèles vocaux téléchargés ne sont jamais sauvegardés ; votre nouveau téléphone les télécharge à nouveau."
+    },
+    "es": {
+     "text": "Tus reuniones, transcripciones y nombres de hablantes se guardan mientras la copia de seguridad está activa. Las voces guardadas se incluyen mientras “Incluir las voces guardadas en las copias de seguridad” está activo. Los modelos de voz descargados nunca se copian; tu teléfono nuevo los descarga otra vez."
+    },
+    "pt-BR": {
+     "text": "Suas reuniões, transcrições e nomes de locutores entram no backup enquanto ele estiver ativado. As vozes salvas são incluídas enquanto “Incluir as vozes salvas nos backups” estiver ativado. Os modelos de voz baixados nunca entram no backup; o seu novo celular os baixa novamente."
+    },
+    "pt-PT": {
+     "text": "As suas reuniões, transcrições e nomes de oradores são incluídos enquanto a cópia de segurança estiver ativa. As vozes guardadas são incluídas enquanto «Incluir as vozes guardadas nas cópias de segurança» estiver ativo. Os modelos de voz transferidos nunca são incluídos; o seu telemóvel novo volta a transferi-los."
+    }
+   }
+  },
+  {
+   "id": "backup.info.icloud.heading",
+   "en": "iCloud Backup",
+   "platforms": [
+    "ios"
+   ],
+   "role": "section-heading",
+   "boards": [],
+   "milestone": "W6.0 (D-979)",
+   "note": "D-979: Layer 2/3 heading for iOS iCloud Backup details.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Backup iCloud"
+    },
+    "fr": {
+     "text": "Sauvegarde iCloud"
+    },
+    "es": {
+     "text": "Copia en iCloud"
+    },
+    "pt-BR": {
+     "text": "Backup do iCloud"
+    },
+    "pt-PT": {
+     "text": "Cópia em iCloud"
+    }
+   }
+  },
+  {
+   "id": "backup.info.icloud.body",
+   "en": "If iCloud Backup is on, backups are stored in your iCloud account. Apple can read an iCloud backup unless you turn on Advanced Data Protection in your Apple Account settings.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-979)",
+   "note": "D-979: honest explanation of who can read an iCloud backup and Advanced Data Protection.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Se Backup iCloud è attivo, i backup vengono archiviati nel tuo account iCloud. Apple può leggere un backup iCloud a meno che tu non attivi Protezione dati avanzata nelle impostazioni del tuo Apple Account."
+    },
+    "fr": {
+     "text": "Si Sauvegarde iCloud est activée, les sauvegardes sont stockées dans votre compte iCloud. Apple peut lire une sauvegarde iCloud, sauf si vous activez la Protection avancée des données dans les réglages de votre compte Apple."
+    },
+    "es": {
+     "text": "Si Copia en iCloud está activada, las copias se guardan en tu cuenta de iCloud. Apple puede leer una copia en iCloud a menos que actives Protección avanzada de datos en los ajustes de tu cuenta de Apple."
+    },
+    "pt-BR": {
+     "text": "Se o Backup do iCloud estiver ativado, os backups são armazenados na sua conta do iCloud. A Apple pode ler um backup do iCloud, a menos que você ative a Proteção Avançada de Dados nos ajustes da sua Conta Apple."
+    },
+    "pt-PT": {
+     "text": "Se a Cópia em iCloud estiver ativa, as cópias de segurança são guardadas na sua conta iCloud. A Apple pode ler uma cópia em iCloud, a menos que ative a Proteção avançada de dados nas definições da sua Conta Apple."
+    }
+   }
+  },
+  {
+   "id": "backup.info.icloud.computerHeading",
+   "en": "Backups on a computer",
+   "platforms": [
+    "ios"
+   ],
+   "role": "section-heading",
+   "boards": [],
+   "milestone": "W6.0 (D-979)",
+   "note": "D-979: section heading for local Finder / computer backups of an iPhone or iPad.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Backup su un computer"
+    },
+    "fr": {
+     "text": "Sauvegardes sur un ordinateur"
+    },
+    "es": {
+     "text": "Copias de seguridad en un equipo"
+    },
+    "pt-BR": {
+     "text": "Backups em um computador"
+    },
+    "pt-PT": {
+     "text": "Cópias de segurança num computador"
+    }
+   }
+  },
+  {
+   "id": "backup.info.icloud.computerBody",
+   "en": "A backup made on your computer is readable by anyone who can use that computer unless you set a backup password.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-979)",
+   "note": "D-979: honest explanation of local computer backup encryption.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Un backup effettuato sul tuo computer può essere letto da chiunque usi quel computer, a meno che tu non imposti una password per il backup."
+    },
+    "fr": {
+     "text": "Une sauvegarde effectuée sur votre ordinateur peut être lue par toute personne ayant accès à cet ordinateur, sauf si vous définissez un mot de passe de sauvegarde."
+    },
+    "es": {
+     "text": "Cualquier persona que pueda usar tu equipo puede leer una copia hecha en él, salvo que configures una contraseña para la copia de seguridad."
+    },
+    "pt-BR": {
+     "text": "Um backup feito no seu computador pode ser lido por qualquer pessoa que use esse computador, a menos que você defina uma senha para o backup."
+    },
+    "pt-PT": {
+     "text": "Uma cópia de segurança feita no seu computador pode ser lida por qualquer pessoa que utilize esse computador, a menos que defina uma palavra-passe para a cópia."
+    }
+   }
+  },
+  {
+   "id": "backup.info.android.heading",
+   "en": "Android cloud backup",
+   "platforms": [
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [],
+   "milestone": "W6.0 (D-980)",
+   "note": "D-980: section heading for Android Auto Backup / Seedvault details.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Backup nel cloud Android"
+    },
+    "fr": {
+     "text": "Sauvegarde cloud Android"
+    },
+    "es": {
+     "text": "Copia en la nube de Android"
+    },
+    "pt-BR": {
+     "text": "Backup na nuvem do Android"
+    },
+    "pt-PT": {
+     "text": "Cópia na nuvem do Android"
+    }
+   }
+  },
+  {
+   "id": "backup.info.android.body",
+   "en": "When Android Backup (Google or Seedvault) is on, backups follow your phone’s encryption and backup provider settings. Android limits app cloud backups to 25 MB; for larger libraries, use Export All as ZIP.",
+   "platforms": [
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-980)",
+   "note": "D-980: explains Google / Seedvault backup, the 25 MB Android Auto Backup quota (25 Mo in fr per GLOSSARY), and Export All as ZIP (quoted in translations to match export.zip.all without ellipsis).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Quando il backup di Android (Google o Seedvault) è attivo, i backup seguono la crittografia del telefono e le impostazioni del servizio di backup. Android limita i backup cloud delle app a 25 MB; per librerie più grandi, usa “Esporta tutto come ZIP”."
+    },
+    "fr": {
+     "text": "Lorsque la sauvegarde Android (Google ou Seedvault) est activée, les sauvegardes suivent le chiffrement de votre téléphone et les réglages de votre service de sauvegarde. Android limite les sauvegardes cloud des applications à 25 Mo ; pour des bibliothèques plus volumineuses, utilisez « Tout exporter en ZIP »."
+    },
+    "es": {
+     "text": "Cuando la copia de seguridad de Android (Google o Seedvault) está activa, las copias siguen el cifrado de tu teléfono y los ajustes de tu proveedor de copias. Android limita las copias en la nube de cada aplicación a 25 MB; para bibliotecas más grandes, usa “Exportar todo como ZIP”."
+    },
+    "pt-BR": {
+     "text": "Quando o backup do Android (Google ou Seedvault) está ativado, os backups seguem a criptografia do seu celular e os ajustes do provedor de backup. O Android limita o backup na nuvem de cada aplicativo a 25 MB; para bibliotecas maiores, use “Exportar tudo como ZIP”."
+    },
+    "pt-PT": {
+     "text": "Quando a cópia de segurança do Android (Google ou Seedvault) está ativa, as cópias seguem a encriptação do seu telemóvel e as definições do fornecedor de cópias. O Android limita as cópias na nuvem de cada aplicação a 25 MB; para bibliotecas maiores, utilize «Exportar tudo como ZIP»."
+    }
+   }
+  },
+  {
+   "id": "backup.info.android.overQuota",
+   "en": "Your meetings exceed Android’s 25 MB cloud backup limit. Use Export All as ZIP to keep a complete copy.",
+   "platforms": [
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "W6.0 (D-980)",
+   "note": "D-980: inline notice when the local library exceeds Android's 25 MB Auto Backup quota. 'Export All as ZIP' matches export.zip.all without ellipsis.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le tue riunioni superano il limite di 25 MB del backup cloud di Android. Usa “Esporta tutto come ZIP” per conservare una copia completa."
+    },
+    "fr": {
+     "text": "Vos réunions dépassent la limite de 25 Mo de la sauvegarde cloud Android. Utilisez « Tout exporter en ZIP » pour garder une copie complète."
+    },
+    "es": {
+     "text": "Tus reuniones superan el límite de 25 MB de la copia en la nube de Android. Usa “Exportar todo como ZIP” para guardar una copia completa."
+    },
+    "pt-BR": {
+     "text": "Suas reuniões ultrapassam o limite de 25 MB do backup na nuvem do Android. Use “Exportar tudo como ZIP” para guardar uma cópia completa."
+    },
+    "pt-PT": {
+     "text": "As suas reuniões ultrapassam o limite de 25 MB da cópia na nuvem do Android. Utilize «Exportar tudo como ZIP» para guardar uma cópia completa."
+    }
+   }
+  },
+  {
+   "id": "backup.info.manualCopy.heading",
+   "en": "A copy you keep yourself",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "L-28 / D-979 / D-980: section heading above settings.transfer.exportHint.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Una copia che conservi tu"
+    },
+    "fr": {
+     "text": "Une copie que vous gardez vous-même"
+    },
+    "es": {
+     "text": "Una copia que guardas tú"
+    },
+    "pt-BR": {
+     "text": "Uma cópia que você mesmo guarda"
+    },
+    "pt-PT": {
+     "text": "Uma cópia guardada por si"
+    }
+   }
+  },
+  {
+   "id": "voices.setup.title",
+   "en": "Recognise people you name?",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "W6.1 / L-28 (D-977..D-980): one-question voice setup heading asking whether Cassini should learn named speakers' voices. en-GB 'Recognise'.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Riconoscere le persone a cui dai un nome?"
+    },
+    "fr": {
+     "text": "Reconnaître les personnes que vous nommez ?"
+    },
+    "es": {
+     "text": "¿Reconocer a las personas a las que pones nombre?"
+    },
+    "pt-BR": {
+     "text": "Reconhecer as pessoas que você nomear?"
+    },
+    "pt-PT": {
+     "text": "Reconhecer as pessoas a quem der nome?"
+    }
+   }
+  },
+  {
+   "id": "voices.setup.body",
+   "en": "When you name a speaker in a meeting, Cassini can remember their voice and name them automatically in future meetings.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "W6.1 / L-28 (D-977..D-980): body text for the one-question voice setup prompt.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Quando dai un nome a una voce in una riunione, Cassini può ricordarla e darle il nome automaticamente nelle prossime riunioni."
+    },
+    "fr": {
+     "text": "Lorsque vous nommez un intervenant dans une réunion, Cassini peut mémoriser sa voix et le nommer automatiquement dans les prochaines réunions."
+    },
+    "es": {
+     "text": "Cuando pones nombre a un hablante en una reunión, Cassini puede recordar su voz y ponerle nombre automáticamente en las próximas reuniones."
+    },
+    "pt-BR": {
+     "text": "Quando você dá nome a um locutor em uma reunião, o Cassini pode lembrar essa voz e nomeá-la automaticamente nas próximas reuniões."
+    },
+    "pt-PT": {
+     "text": "Quando dá nome a um orador numa reunião, o Cassini pode memorizar essa voz e dar-lhe o nome automaticamente nas próximas reuniões."
+    }
+   }
+  },
+  {
+   "id": "voices.setup.privacy.desktop",
+   "en": "Voiceprints stay on this computer. They are never uploaded or written into exported files.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "W6.1 (D-977 GNOME, D-978 Mac): on-device privacy explanation in desktop voice setup (HARMONY §§4, 12).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali restano su questo computer. Non vengono mai caricate né scritte nei file esportati."
+    },
+    "fr": {
+     "text": "Les empreintes vocales restent sur cet ordinateur. Elles ne sont jamais mises en ligne ni écrites dans les fichiers exportés."
+    },
+    "es": {
+     "text": "Las huellas de voz se quedan en este equipo. Nunca se suben ni se incluyen en los archivos exportados."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz ficam neste computador. Elas nunca são enviadas nem incluídas em arquivos exportados."
+    },
+    "pt-PT": {
+     "text": "As impressões vocais ficam neste computador. Nunca são enviadas nem incluídas nos ficheiros exportados."
+    }
+   }
+  },
+  {
+   "id": "voices.setup.privacy.phone",
+   "en": "Voiceprints are created on this phone and are never written into exported or shared files. You can choose in Settings whether backups include them.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "W6.1 (D-979 iOS, D-980 Android): honest on-device privacy explanation in phone voice setup when 'Include saved voices in backups' is configurable in Settings.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali vengono create su questo telefono e non vengono mai scritte nei file esportati o condivisi. Nelle impostazioni puoi scegliere se includerle nei backup."
+    },
+    "fr": {
+     "text": "Les empreintes vocales sont créées sur ce téléphone et ne sont jamais écrites dans les fichiers exportés ou partagés. Vous pouvez choisir dans les réglages si les sauvegardes les incluent."
+    },
+    "es": {
+     "text": "Las huellas de voz se crean en este teléfono y nunca se incluyen en los archivos exportados o compartidos. En Ajustes puedes elegir si se incluyen en las copias de seguridad."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz são criadas neste celular e nunca são incluídas em arquivos exportados ou compartilhados. Nos Ajustes, você pode escolher se elas entram nos backups."
+    },
+    "pt-PT": {
+     "text": "As impressões vocais são criadas neste telemóvel e nunca são incluídas nos ficheiros exportados ou partilhados. Nas definições, pode escolher se são incluídas nas cópias de segurança."
+    }
+   }
+  },
+  {
+   "id": "voices.setup.enable",
+   "en": "Remember voices",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (L-28)",
+   "note": "W6.1 (D-977..D-980): primary opt-in button on the one-question voice setup screen (paired with common.notNow).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Ricorda le voci"
+    },
+    "fr": {
+     "text": "Mémoriser les voix"
+    },
+    "es": {
+     "text": "Recordar voces"
+    },
+    "pt-BR": {
+     "text": "Lembrar vozes"
+    },
+    "pt-PT": {
+     "text": "Memorizar vozes"
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.addAction",
+   "en": "Add a voice…",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: button in Saved voices or voice setup opening guided test-phrase voice enrollment.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Aggiungi una voce…"
+    },
+    "fr": {
+     "text": "Ajouter une voix…"
+    },
+    "es": {
+     "text": "Añadir una voz…"
+    },
+    "pt-BR": {
+     "text": "Adicionar uma voz…"
+    },
+    "pt-PT": {
+     "text": "Adicionar uma voz…"
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.title",
+   "en": "Add a saved voice",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: dialog/sheet title for guided test-phrase voice enrollment.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Aggiungi una voce salvata"
+    },
+    "fr": {
+     "text": "Ajouter une voix mémorisée"
+    },
+    "es": {
+     "text": "Añadir una voz guardada"
+    },
+    "pt-BR": {
+     "text": "Adicionar uma voz salva"
+    },
+    "pt-PT": {
+     "text": "Adicionar uma voz guardada"
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.instructions",
+   "en": "Enter the person’s name, then ask them to read the phrase below in their normal speaking voice.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: instructions above the name field and guided test phrase.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Inserisci il nome della persona, poi chiedile di leggere la frase qui sotto con il suo tono di voce abituale."
+    },
+    "fr": {
+     "text": "Saisissez le nom de la personne, puis demandez-lui de lire la phrase ci-dessous d’une voix naturelle."
+    },
+    "es": {
+     "text": "Escribe el nombre de la persona y pídele que lea en voz alta la frase de abajo con su voz habitual."
+    },
+    "pt-BR": {
+     "text": "Digite o nome da pessoa e peça que ela leia a frase abaixo com seu tom de voz normal."
+    },
+    "pt-PT": {
+     "text": "Introduza o nome da pessoa e peça-lhe para ler a frase abaixo no seu tom de voz habitual."
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.testPhraseLabel",
+   "en": "Phrase to read aloud",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: caption above the guided test phrase card.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Frase da leggere ad alta voce"
+    },
+    "fr": {
+     "text": "Phrase à lire à voix haute"
+    },
+    "es": {
+     "text": "Frase para leer en voz alta"
+    },
+    "pt-BR": {
+     "text": "Frase para ler em voz alta"
+    },
+    "pt-PT": {
+     "text": "Frase para ler em voz alta"
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.testPhrase",
+   "en": "Hello, I’m speaking at my usual pace so Cassini can recognise my voice in future meetings and write my name next to what I say.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: guided spoken test phrase (~8–12 s at normal pace, comfortably exceeding D25's 4 s minimum speech window). en-GB 'recognise'.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Ciao, sto parlando con il mio ritmo abituale così Cassini potrà riconoscere la mia voce nelle prossime riunioni e scrivere il mio nome accanto a quello che dico."
+    },
+    "fr": {
+     "text": "Bonjour, je parle à mon rythme habituel pour que Cassini puisse reconnaître ma voix lors des prochaines réunions et écrire mon nom à côté de ce que je dis."
+    },
+    "es": {
+     "text": "Hola, estoy hablando a mi ritmo habitual para que Cassini pueda reconocer mi voz en las próximas reuniones y escribir mi nombre junto a lo que digo."
+    },
+    "pt-BR": {
+     "text": "Olá, estou falando no meu ritmo normal para que o Cassini possa reconhecer a minha voz nas próximas reuniões e escrever o meu nome ao lado do que eu disser."
+    },
+    "pt-PT": {
+     "text": "Olá, estou a falar ao meu ritmo habitual para que o Cassini possa reconhecer a minha voz nas próximas reuniões e escrever o meu nome ao lado do que eu disser."
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.record",
+   "en": "Record sample",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: button to start recording the guided voice sample.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Registra campione"
+    },
+    "fr": {
+     "text": "Enregistrer un extrait"
+    },
+    "es": {
+     "text": "Grabar muestra"
+    },
+    "pt-BR": {
+     "text": "Gravar amostra"
+    },
+    "pt-PT": {
+     "text": "Gravar amostra"
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.recording",
+   "en": "Listening… Read the phrase aloud.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: live status while capturing the guided test-phrase sample (paired with common.stop).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "In ascolto… Leggi la frase ad alta voce."
+    },
+    "fr": {
+     "text": "À l’écoute… Lisez la phrase à voix haute."
+    },
+    "es": {
+     "text": "Escuchando… Lee la frase en voz alta."
+    },
+    "pt-BR": {
+     "text": "Ouvindo… Leia a frase em voz alta."
+    },
+    "pt-PT": {
+     "text": "A ouvir… Leia a frase em voz alta."
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.tooShort",
+   "en": "Cassini needs at least 4 seconds of clear speech. Try recording the phrase again.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: shown when the recorded enrollment sample has under 4 s of usable speech (D25 MIN_REMEMBER_MS = 4000).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Cassini ha bisogno di almeno 4 secondi di voce chiara. Prova a registrare di nuovo la frase."
+    },
+    "fr": {
+     "text": "Cassini a besoin d’au moins 4 secondes de parole claire. Essayez d’enregistrer à nouveau la phrase."
+    },
+    "es": {
+     "text": "Cassini necesita al menos 4 segundos de voz clara. Intenta grabar la frase otra vez."
+    },
+    "pt-BR": {
+     "text": "O Cassini precisa de pelo menos 4 segundos de fala clara. Tente gravar a frase novamente."
+    },
+    "pt-PT": {
+     "text": "O Cassini precisa de, pelo menos, 4 segundos de fala clara. Tente gravar novamente a frase."
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.ready",
+   "en": "Voice sample ready.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "status",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: status shown when a valid 512-dim voiceprint has been extracted from the sample.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Campione vocale pronto."
+    },
+    "fr": {
+     "text": "Extrait vocal prêt."
+    },
+    "es": {
+     "text": "Muestra de voz lista."
+    },
+    "pt-BR": {
+     "text": "Amostra de voz pronta."
+    },
+    "pt-PT": {
+     "text": "Amostra de voz pronta."
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.save",
+   "en": "Save voice",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: primary confirmation button saving the enrolled voice profile. fr uses 'Mémoriser la voix' to avoid 'Enregistrer' (record) ambiguity.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Salva voce"
+    },
+    "fr": {
+     "text": "Mémoriser la voix"
+    },
+    "es": {
+     "text": "Guardar voz"
+    },
+    "pt-BR": {
+     "text": "Salvar voz"
+    },
+    "pt-PT": {
+     "text": "Guardar voz"
+    }
+   }
+  },
+  {
+   "id": "voices.enroll.fromTranscriptHint",
+   "en": "You can also save a voice from any meeting by naming a speaker and keeping “Remember this voice” on.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: footnote linking guided enrollment with transcript speaker-clip enrollment. Quoted toggle matches speakers.rememberVoice.title.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Puoi anche salvare una voce da qualsiasi riunione dando un nome a una voce e lasciando attivo “Ricorda questa voce”."
+    },
+    "fr": {
+     "text": "Vous pouvez aussi mémoriser une voix depuis n’importe quelle réunion en nommant un intervenant et en laissant « Mémoriser cette voix » activé."
+    },
+    "es": {
+     "text": "También puedes guardar una voz desde cualquier reunión poniendo nombre a un hablante y dejando activado “Recordar esta voz”."
+    },
+    "pt-BR": {
+     "text": "Você também pode salvar uma voz a partir de qualquer reunião dando nome a um locutor e deixando “Lembrar esta voz” ativado."
+    },
+    "pt-PT": {
+     "text": "Também pode guardar uma voz a partir de qualquer reunião dando nome a um orador e deixando «Memorizar esta voz» ativado."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.menuItem",
+   "en": "Saved voices",
+   "mac": "Saved Voices…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "W6.0 (D-1000)",
+   "note": "D-978 / D-1000: desktop app-menu / macOS menu-bar item opening Saved voices. macOS uses Title Case with ellipsis ('Saved Voices…'); translations use sentence case per GLOSSARY §4. D100: Mac placement is the Cassini (app) menu, below Settings…; it opens Settings at the Saved voices page.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Voci salvate",
+     "mac": "Voci salvate…"
+    },
+    "fr": {
+     "text": "Voix mémorisées",
+     "mac": "Voix mémorisées…"
+    },
+    "es": {
+     "text": "Voces guardadas",
+     "mac": "Voces guardadas…"
+    },
+    "pt-BR": {
+     "text": "Vozes salvas",
+     "mac": "Vozes salvas…"
+    },
+    "pt-PT": {
+     "text": "Vozes guardadas",
+     "mac": "Vozes guardadas…"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.row.rename",
+   "en": "Rename…",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: row action opening the Rename saved voice dialog/sheet.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Rinomina…"
+    },
+    "fr": {
+     "text": "Renommer…"
+    },
+    "es": {
+     "text": "Renombrar…"
+    },
+    "pt-BR": {
+     "text": "Renomear…"
+    },
+    "pt-PT": {
+     "text": "Mudar o nome…"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.rename.title",
+   "en": "Rename saved voice",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "dialog-title",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: title of the Rename saved voice dialog/sheet.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Rinomina voce salvata"
+    },
+    "fr": {
+     "text": "Renommer la voix mémorisée"
+    },
+    "es": {
+     "text": "Renombrar voz guardada"
+    },
+    "pt-BR": {
+     "text": "Renomear voz salva"
+    },
+    "pt-PT": {
+     "text": "Mudar o nome da voz guardada"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.rename.save",
+   "en": "Save",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: primary button saving a renamed saved voice.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Salva"
+    },
+    "fr": {
+     "text": "Enregistrer"
+    },
+    "es": {
+     "text": "Guardar"
+    },
+    "pt-BR": {
+     "text": "Salvar"
+    },
+    "pt-PT": {
+     "text": "Guardar"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.rename.blank",
+   "en": "Enter a name.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: validation hint when the saved-voice name field is blank.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Inserisci un nome."
+    },
+    "fr": {
+     "text": "Saisissez un nom."
+    },
+    "es": {
+     "text": "Escribe un nombre."
+    },
+    "pt-BR": {
+     "text": "Digite um nome."
+    },
+    "pt-PT": {
+     "text": "Introduza um nome."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.row.delete",
+   "en": "Delete…",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: destructive row menu item opening confirm.deleteVoiceProfile.* where a platform menu uses 'Delete…' alongside or instead of inline savedVoices.row.forget.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Elimina…"
+    },
+    "fr": {
+     "text": "Supprimer…"
+    },
+    "es": {
+     "text": "Eliminar…"
+    },
+    "pt-BR": {
+     "text": "Excluir…"
+    },
+    "pt-PT": {
+     "text": "Eliminar…"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.row.stopSample",
+   "en": "Stop sample of {name}",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "placeholders": {
+    "name": "the saved voice's person name"
+   },
+   "note": "D-977..D-980: accessible label of savedVoices.row.play while the sample of {name} is playing.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Ferma il campione di {name}"
+    },
+    "fr": {
+     "text": "Arrêter l’extrait de {name}"
+    },
+    "es": {
+     "text": "Detener la muestra de {name}"
+    },
+    "pt-BR": {
+     "text": "Parar a amostra de {name}"
+    },
+    "pt-PT": {
+     "text": "Parar a amostra de {name}"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.row.sampleCount",
+   "en": "{n} samples",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "placeholders": {
+    "n": "number of enrolled speech samples contributing to this voiceprint"
+   },
+   "plural": {
+    "one": "1 sample",
+    "other": "{n} samples"
+   },
+   "note": "D-977..D-980: count of enrolled speech samples for a saved voice. In fr and pt-BR, 'one' covers 0 and 1 so {n} is kept per GLOSSARY §4.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{n} campioni",
+     "plural": {
+      "one": "1 campione",
+      "many": "{n} campioni",
+      "other": "{n} campioni"
+     }
+    },
+    "fr": {
+     "text": "{n} extraits",
+     "plural": {
+      "one": "{n} extrait",
+      "many": "{n} extraits",
+      "other": "{n} extraits"
+     }
+    },
+    "es": {
+     "text": "{n} muestras",
+     "plural": {
+      "one": "1 muestra",
+      "many": "{n} muestras",
+      "other": "{n} muestras"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} amostras",
+     "plural": {
+      "one": "{n} amostra",
+      "many": "{n} amostras",
+      "other": "{n} amostras"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} amostras",
+     "plural": {
+      "one": "{n} amostra",
+      "many": "{n} amostras",
+      "other": "{n} amostras"
+     }
+    }
+   }
+  },
+  {
+   "id": "savedVoices.row.status.ready",
+   "en": "Ready",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-977..D-980: active/ready status label for an enrolled saved voice (paired with savedVoices.row.stale when stale). Feminine in Romance languages to agree with voice (voce, voix, voz).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Pronta"
+    },
+    "fr": {
+     "text": "Prête"
+    },
+    "es": {
+     "text": "Lista"
+    },
+    "pt-BR": {
+     "text": "Pronta"
+    },
+    "pt-PT": {
+     "text": "Pronta"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.privacy.mac",
+   "en": "Voiceprints stay on this Mac. They are never uploaded to iCloud or written into exported files. Only the names you choose are.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-978)",
+   "note": "D-978: Mac-specific Saved voices privacy lead line explicitly confirming local-only storage without iCloud sync (HARMONY §12).",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali restano su questo Mac. Non vengono mai caricate su iCloud né scritte nei file esportati. Nei file esportati finiscono solo i nomi che scegli."
+    },
+    "fr": {
+     "text": "Les empreintes vocales restent sur ce Mac. Elles ne sont jamais mises en ligne sur iCloud ni écrites dans les fichiers exportés. Seuls les noms que vous choisissez y figurent."
+    },
+    "es": {
+     "text": "Las huellas de voz se quedan en este Mac. Nunca se suben a iCloud ni se incluyen en los archivos exportados. Solo se incluyen los nombres que eliges."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz ficam neste Mac. Elas nunca são enviadas para o iCloud nem incluídas em arquivos exportados. Só os nomes que você escolhe são incluídos."
+    },
+    "pt-PT": {
+     "text": "As impressões vocais ficam neste Mac. Nunca são enviadas para o iCloud nem incluídas nos ficheiros exportados. Só os nomes que escolher são incluídos."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.privacy.phone",
+   "en": "Voiceprints are created on this phone and are never written into exported or shared files. Only the names you choose are.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "W6.0 (D-957)",
+   "note": "D-979 / D-980: Saved voices lead privacy line on phones, compatible with optional encrypted cloud backup ('Include saved voices in backups').",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali vengono create su questo telefono e non vengono mai scritte nei file esportati o condivisi. Vengono inclusi solo i nomi che scegli."
+    },
+    "fr": {
+     "text": "Les empreintes vocales sont créées sur ce téléphone et ne sont jamais écrites dans les fichiers exportés ou partagés. Seuls les noms que vous choisissez y figurent."
+    },
+    "es": {
+     "text": "Las huellas de voz se crean en este teléfono y nunca se incluyen en los archivos exportados o compartidos. Solo se incluyen los nombres que eliges."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz são criadas neste celular e nunca são incluídas em arquivos exportados ou compartilhados. Só os nomes que você escolhe são incluídos."
+    },
+    "pt-PT": {
+     "text": "As impressões vocais são criadas neste telemóvel e nunca são incluídas nos ficheiros exportados ou partilhados. Só os nomes que escolher são incluídos."
+    }
+   }
+  },
+  {
+   "id": "menu.trash",
+   "en": "Trash",
+   "mac": "Recently Deleted",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): app-menu entry opening the in-app deleted-meetings view (HARMONY §10/§11, PARITY D-1000 contract). GNOME: primary menu (☰) after the Import/Export section, its own section. macOS: File menu, below Move to Recently Deleted, after a separator. Platform noun matches common.moveToTrash (GNOME) and meeting.moveToRecentlyDeleted (Mac). No ellipsis: it opens a view, not a question.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Cestino",
+     "mac": "Eliminati di recente"
+    },
+    "fr": {
+     "text": "Corbeille",
+     "mac": "Supprimés récemment"
+    },
+    "es": {
+     "text": "Papelera",
+     "mac": "Eliminados"
+    },
+    "pt-BR": {
+     "text": "Lixeira",
+     "mac": "Apagados"
+    },
+    "pt-PT": {
+     "text": "Lixo",
+     "mac": "Apagados recentemente"
+    }
+   }
+  },
+  {
+   "id": "trash.title",
+   "en": "Trash",
+   "mac": "Recently Deleted",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): title of the deleted-meetings view (GNOME AdwDialog title; Mac window title). Same text as menu.trash, separate id because the role differs (CATALOG-NOTES).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Cestino",
+     "mac": "Eliminati di recente"
+    },
+    "fr": {
+     "text": "Corbeille",
+     "mac": "Supprimés récemment"
+    },
+    "es": {
+     "text": "Papelera",
+     "mac": "Eliminados"
+    },
+    "pt-BR": {
+     "text": "Lixeira",
+     "mac": "Apagados"
+    },
+    "pt-PT": {
+     "text": "Lixo",
+     "mac": "Apagados recentemente"
+    }
+   }
+  },
+  {
+   "id": "trash.list.a11y",
+   "en": "Deleted meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): accessible name of the list of meetings in Trash / Recently Deleted.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Riunioni eliminate"
+    },
+    "fr": {
+     "text": "Réunions supprimées"
+    },
+    "es": {
+     "text": "Reuniones eliminadas"
+    },
+    "pt-BR": {
+     "text": "Reuniões excluídas"
+    },
+    "pt-PT": {
+     "text": "Reuniões eliminadas"
+    }
+   }
+  },
+  {
+   "id": "trash.retentionNote",
+   "en": "Meetings in the Trash are deleted permanently after 30 days.",
+   "mac": "Meetings in Recently Deleted are deleted permanently after 30 days.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): neutral info line at the top of the deleted-meetings view while it is not empty. 30 days is the PROVISIONAL retention (pending Silvio, async in D-1019); if it changes, this text and trash.row.daysLeft change together.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni nel Cestino vengono eliminate definitivamente dopo 30 giorni.",
+     "mac": "Le riunioni in Eliminati di recente vengono eliminate definitivamente dopo 30 giorni."
+    },
+    "fr": {
+     "text": "Les réunions dans la corbeille sont supprimées définitivement après 30 jours.",
+     "mac": "Les réunions dans Supprimés récemment sont supprimées définitivement après 30 jours."
+    },
+    "es": {
+     "text": "Las reuniones de la papelera se eliminan definitivamente después de 30 días.",
+     "mac": "Las reuniones de Eliminados se eliminan definitivamente después de 30 días."
+    },
+    "pt-BR": {
+     "text": "As reuniões na Lixeira são excluídas permanentemente após 30 dias.",
+     "mac": "As reuniões em Apagados são excluídas permanentemente após 30 dias."
+    },
+    "pt-PT": {
+     "text": "As reuniões no Lixo são eliminadas definitivamente ao fim de 30 dias.",
+     "mac": "As reuniões em Apagados recentemente são eliminadas definitivamente ao fim de 30 dias."
+    }
+   }
+  },
+  {
+   "id": "trash.empty",
+   "en": "The Trash is empty.",
+   "mac": "No recently deleted meetings.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): empty state of the deleted-meetings view (GNOME AdwStatusPage, Mac ContentUnavailableView), with the trash glyph. trash.emptyTrash is insensitive while this shows.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Il Cestino è vuoto.",
+     "mac": "Nessuna riunione eliminata di recente."
+    },
+    "fr": {
+     "text": "La corbeille est vide.",
+     "mac": "Aucune réunion supprimée récemment."
+    },
+    "es": {
+     "text": "La papelera está vacía.",
+     "mac": "No hay reuniones eliminadas."
+    },
+    "pt-BR": {
+     "text": "A Lixeira está vazia.",
+     "mac": "Nenhuma reunião apagada recentemente."
+    },
+    "pt-PT": {
+     "text": "O Lixo está vazio.",
+     "mac": "Nenhuma reunião apagada recentemente."
+    }
+   }
+  },
+  {
+   "id": "trash.row.daysLeft",
+   "en": "{n} days left",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): second part of a deleted-meeting row's meta line, after format.previewSubtitle (original day, time and duration) and a middle dot. n = whole days until the meeting is deleted permanently (floor of (deletedAt + 30 days − now) / 24 h), at least 1; under one day use trash.row.lessThanDay.",
+   "status": "draft",
+   "placeholders": {
+    "n": "whole days left before permanent deletion, 1 or more"
+   },
+   "plural": {
+    "one": "1 day left",
+    "other": "{n} days left"
+   },
+   "l10n": {
+    "it": {
+     "text": "Ancora {n} giorni",
+     "plural": {
+      "one": "Ancora 1 giorno",
+      "many": "Ancora {n} giorni",
+      "other": "Ancora {n} giorni"
+     }
+    },
+    "fr": {
+     "text": "{n} jours restants",
+     "plural": {
+      "one": "{n} jour restant",
+      "many": "{n} jours restants",
+      "other": "{n} jours restants"
+     }
+    },
+    "es": {
+     "text": "Quedan {n} días",
+     "plural": {
+      "one": "Queda 1 día",
+      "many": "Quedan {n} días",
+      "other": "Quedan {n} días"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} dias restantes",
+     "plural": {
+      "one": "{n} dia restante",
+      "many": "{n} dias restantes",
+      "other": "{n} dias restantes"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} dias restantes",
+     "plural": {
+      "one": "{n} dia restante",
+      "many": "{n} dias restantes",
+      "other": "{n} dias restantes"
+     }
+    }
+   }
+  },
+  {
+   "id": "trash.row.lessThanDay",
+   "en": "Less than a day left",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): replaces trash.row.daysLeft when less than 24 h remain before permanent deletion.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Meno di un giorno"
+    },
+    "fr": {
+     "text": "Moins d’un jour restant"
+    },
+    "es": {
+     "text": "Queda menos de un día"
+    },
+    "pt-BR": {
+     "text": "Menos de um dia restante"
+    },
+    "pt-PT": {
+     "text": "Menos de um dia restante"
+    }
+   }
+  },
+  {
+   "id": "trash.restore",
+   "en": "Restore",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): per-row action (row button and row context menu). Moves the meeting back into the Library root unchanged, at its original place in the day groups; no confirmation (reversible). GNOME then shows trash.restoredToast; the Mac shows no toast.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Ripristina"
+    },
+    "fr": {
+     "text": "Restaurer"
+    },
+    "es": {
+     "text": "Restaurar"
+    },
+    "pt-BR": {
+     "text": "Restaurar"
+    },
+    "pt-PT": {
+     "text": "Restaurar"
+    }
+   }
+  },
+  {
+   "id": "trash.deletePermanently",
+   "en": "Delete permanently…",
+   "mac": "Delete Permanently…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): per-row action (row button in error text per HARMONY 10.4, and row context menu; also Delete on GNOME / ⌘⌫ on Mac with a row focused). Always opens confirmation 4 (confirm.deletePermanently.*) first. Ellipsis because it asks.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Elimina definitivamente…",
+     "mac": "Elimina definitivamente…"
+    },
+    "fr": {
+     "text": "Supprimer définitivement…",
+     "mac": "Supprimer définitivement…"
+    },
+    "es": {
+     "text": "Eliminar definitivamente…",
+     "mac": "Eliminar definitivamente…"
+    },
+    "pt-BR": {
+     "text": "Excluir permanentemente…",
+     "mac": "Excluir permanentemente…"
+    },
+    "pt-PT": {
+     "text": "Eliminar definitivamente…",
+     "mac": "Eliminar definitivamente…"
+    }
+   }
+  },
+  {
+   "id": "trash.emptyTrash",
+   "en": "Empty Trash…",
+   "mac": "Delete All…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): header button of the deleted-meetings view (GNOME header bar end; Mac window toolbar). Insensitive when the view is empty. Always opens confirmation 5 (confirm.emptyTrash.*) first. macOS uses the Recently Deleted verb 'Delete All…'.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Svuota il Cestino…",
+     "mac": "Elimina tutto…"
+    },
+    "fr": {
+     "text": "Vider la corbeille…",
+     "mac": "Tout supprimer…"
+    },
+    "es": {
+     "text": "Vaciar la papelera…",
+     "mac": "Eliminar todo…"
+    },
+    "pt-BR": {
+     "text": "Esvaziar a Lixeira…",
+     "mac": "Excluir tudo…"
+    },
+    "pt-PT": {
+     "text": "Esvaziar o Lixo…",
+     "mac": "Eliminar tudo…"
+    }
+   }
+  },
+  {
+   "id": "confirm.deletePermanently.title",
+   "en": "Delete “{title}” permanently?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 4 (Phase 2). Secondary common.cancel (Esc and Return), primary confirm.deletePermanently.primary (destructive, error-fill per 10.6). Typographic quotes.",
+   "status": "draft",
+   "placeholders": {
+    "title": "the meeting title as in its row"
+   },
+   "l10n": {
+    "it": {
+     "text": "Eliminare definitivamente “{title}”?"
+    },
+    "fr": {
+     "text": "Supprimer définitivement « {title} » ?"
+    },
+    "es": {
+     "text": "¿Eliminar definitivamente “{title}”?"
+    },
+    "pt-BR": {
+     "text": "Excluir “{title}” permanentemente?"
+    },
+    "pt-PT": {
+     "text": "Eliminar «{title}» definitivamente?"
+    }
+   }
+  },
+  {
+   "id": "confirm.deletePermanently.body",
+   "en": "Its audio and transcript are removed from this computer. This can’t be undone.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 4 body. The meeting's published .opus and its working folder (audio, transcript, meeting.json) are removed, not sent to the system Trash (S-12 §7.1).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "L’audio e la trascrizione vengono rimossi da questo computer. Non si può annullare."
+    },
+    "fr": {
+     "text": "Son audio et sa transcription sont supprimés de cet ordinateur. Cette action est irréversible."
+    },
+    "es": {
+     "text": "Su audio y su transcripción se eliminan de este equipo. No se puede deshacer."
+    },
+    "pt-BR": {
+     "text": "O áudio e a transcrição serão removidos deste computador. Não é possível desfazer."
+    },
+    "pt-PT": {
+     "text": "O áudio e a transcrição são removidos deste computador. Não é possível anular."
+    }
+   }
+  },
+  {
+   "id": "confirm.deletePermanently.primary",
+   "en": "Delete",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 4 destructive primary. Not the default button: Return is Cancel.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Elimina"
+    },
+    "fr": {
+     "text": "Supprimer"
+    },
+    "es": {
+     "text": "Eliminar"
+    },
+    "pt-BR": {
+     "text": "Excluir"
+    },
+    "pt-PT": {
+     "text": "Eliminar"
+    }
+   }
+  },
+  {
+   "id": "confirm.emptyTrash.title",
+   "en": "Empty the Trash?",
+   "mac": "Delete all recently deleted meetings?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 5 (Phase 2), from trash.emptyTrash. Secondary common.cancel (Esc and Return), primary confirm.emptyTrash.primary (destructive).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Svuotare il Cestino?",
+     "mac": "Eliminare tutte le riunioni eliminate di recente?"
+    },
+    "fr": {
+     "text": "Vider la corbeille ?",
+     "mac": "Supprimer toutes les réunions supprimées récemment ?"
+    },
+    "es": {
+     "text": "¿Vaciar la papelera?",
+     "mac": "¿Eliminar todas las reuniones de Eliminados?"
+    },
+    "pt-BR": {
+     "text": "Esvaziar a Lixeira?",
+     "mac": "Excluir todas as reuniões apagadas recentemente?"
+    },
+    "pt-PT": {
+     "text": "Esvaziar o Lixo?",
+     "mac": "Eliminar todas as reuniões apagadas recentemente?"
+    }
+   }
+  },
+  {
+   "id": "confirm.emptyTrash.body",
+   "en": "Every meeting in the Trash is removed from this computer, with its audio and transcript. This can’t be undone.",
+   "mac": "Every recently deleted meeting is removed from this computer, with its audio and transcript. This can’t be undone.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 5 body. Removes every meeting listed in the view at the moment the person confirms.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Tutte le riunioni nel Cestino vengono rimosse da questo computer, con audio e trascrizione. Non si può annullare.",
+     "mac": "Tutte le riunioni eliminate di recente vengono rimosse da questo computer, con audio e trascrizione. Non si può annullare."
+    },
+    "fr": {
+     "text": "Toutes les réunions de la corbeille sont supprimées de cet ordinateur, avec leur audio et leur transcription. Cette action est irréversible.",
+     "mac": "Toutes les réunions supprimées récemment sont effacées de cet ordinateur, avec leur audio et leur transcription. Cette action est irréversible."
+    },
+    "es": {
+     "text": "Todas las reuniones de la papelera se eliminan de este equipo, con su audio y su transcripción. No se puede deshacer.",
+     "mac": "Todas las reuniones de Eliminados se borran de este equipo, con su audio y su transcripción. No se puede deshacer."
+    },
+    "pt-BR": {
+     "text": "Todas as reuniões da Lixeira serão removidas deste computador, com o áudio e a transcrição. Não é possível desfazer.",
+     "mac": "Todas as reuniões apagadas recentemente serão removidas deste computador, com o áudio e a transcrição. Não é possível desfazer."
+    },
+    "pt-PT": {
+     "text": "Todas as reuniões no Lixo são removidas deste computador, com o áudio e a transcrição. Não é possível anular.",
+     "mac": "Todas as reuniões apagadas recentemente são removidas deste computador, com o áudio e a transcrição. Não é possível anular."
+    }
+   }
+  },
+  {
+   "id": "confirm.emptyTrash.primary",
+   "en": "Empty Trash",
+   "mac": "Delete All",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 5 destructive primary. Not the default button: Return is Cancel.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Svuota il Cestino",
+     "mac": "Elimina tutto"
+    },
+    "fr": {
+     "text": "Vider la corbeille",
+     "mac": "Tout supprimer"
+    },
+    "es": {
+     "text": "Vaciar la papelera",
+     "mac": "Eliminar todo"
+    },
+    "pt-BR": {
+     "text": "Esvaziar a Lixeira",
+     "mac": "Excluir tudo"
+    },
+    "pt-PT": {
+     "text": "Esvaziar o Lixo",
+     "mac": "Eliminar tudo"
+    }
+   }
+  },
+  {
+   "id": "trash.restoredToast",
+   "en": "“{title}” restored to the Library",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "toast",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): GNOME only, AdwToast after trash.restore (libadwaita default timeout, no action). The Mac shows no toast (D29). Agrees with 'meeting' (feminine).",
+   "status": "draft",
+   "placeholders": {
+    "title": "the meeting title as in its row"
+   },
+   "l10n": {
+    "it": {
+     "text": "“{title}” ripristinata nella Libreria"
+    },
+    "fr": {
+     "text": "« {title} » restaurée dans la bibliothèque"
+    },
+    "es": {
+     "text": "“{title}” restaurada en la biblioteca"
+    },
+    "pt-BR": {
+     "text": "“{title}” restaurada na biblioteca"
+    },
+    "pt-PT": {
+     "text": "«{title}» restaurada na Biblioteca"
+    }
+   }
+  },
+  {
+   "id": "trash.restoreFailed",
+   "en": "Couldn’t restore this meeting. It is still in the Trash.",
+   "mac": "Couldn’t restore this meeting. It is still in Recently Deleted.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): amber line at the top of the deleted-meetings view when Restore fails (for example the same meeting, same identity, is already back in the Library, or a move fails before anything changed). Nothing is changed. A taken file name is not a failure: the restored file takes the next ` (2)` suffix (S-12 §7.1).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Impossibile ripristinare questa riunione. È ancora nel Cestino.",
+     "mac": "Impossibile ripristinare questa riunione. È ancora in Eliminati di recente."
+    },
+    "fr": {
+     "text": "Impossible de restaurer cette réunion. Elle est toujours dans la corbeille.",
+     "mac": "Impossible de restaurer cette réunion. Elle est toujours dans Supprimés récemment."
+    },
+    "es": {
+     "text": "No se pudo restaurar esta reunión. Sigue en la papelera.",
+     "mac": "No se pudo restaurar esta reunión. Sigue en Eliminados."
+    },
+    "pt-BR": {
+     "text": "Não foi possível restaurar esta reunião. Ela continua na Lixeira.",
+     "mac": "Não foi possível restaurar esta reunião. Ela continua em Apagados."
+    },
+    "pt-PT": {
+     "text": "Não foi possível restaurar esta reunião. Continua no Lixo.",
+     "mac": "Não foi possível restaurar esta reunião. Continua em Apagados recentemente."
+    }
+   }
+  },
+  {
+   "id": "trash.deleteFailed",
+   "en": "Couldn’t delete this meeting permanently. It is still in the Trash.",
+   "mac": "Couldn’t delete this meeting permanently. It is still in Recently Deleted.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): amber line at the top of the deleted-meetings view when Delete permanently (or Empty Trash, for that meeting) could not start: the entry could not be renamed to .purge-<id> inside .cassini/trash/ (S-12 §7.1), so nothing was removed. Leftovers of a removal that started are retried at the next launch and never shown.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Impossibile eliminare definitivamente questa riunione. È ancora nel Cestino.",
+     "mac": "Impossibile eliminare definitivamente questa riunione. È ancora in Eliminati di recente."
+    },
+    "fr": {
+     "text": "Impossible de supprimer définitivement cette réunion. Elle est toujours dans la corbeille.",
+     "mac": "Impossible de supprimer définitivement cette réunion. Elle est toujours dans Supprimés récemment."
+    },
+    "es": {
+     "text": "No se pudo eliminar definitivamente esta reunión. Sigue en la papelera.",
+     "mac": "No se pudo eliminar definitivamente esta reunión. Sigue en Eliminados."
+    },
+    "pt-BR": {
+     "text": "Não foi possível excluir esta reunião permanentemente. Ela continua na Lixeira.",
+     "mac": "Não foi possível excluir esta reunião permanentemente. Ela continua em Apagados."
+    },
+    "pt-PT": {
+     "text": "Não foi possível eliminar esta reunião definitivamente. Continua no Lixo.",
+     "mac": "Não foi possível eliminar esta reunião definitivamente. Continua em Apagados recentemente."
+    }
+   }
+  },
+  {
+   "id": "meeting.recentlyDeletedFailed",
+   "en": "Couldn’t move this meeting to Recently Deleted. It is still in your Library.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Mac counterpart of meeting.trashFailed once the Mac ships the in-app Recently Deleted (D-1033). GNOME keeps meeting.trashFailed. meeting.trashUnsupported no longer applies after the slice ships (the trash, .cassini/trash/, is inside the Library), and stays in the catalog for older pins.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Impossibile spostare questa riunione in Eliminati di recente. È ancora nella tua Libreria."
+    },
+    "fr": {
+     "text": "Impossible de placer cette réunion dans Supprimés récemment. Elle est toujours dans votre bibliothèque."
+    },
+    "es": {
+     "text": "No se pudo mover esta reunión a Eliminados. Sigue en tu biblioteca."
+    },
+    "pt-BR": {
+     "text": "Não foi possível mover esta reunião para Apagados. Ela continua na sua biblioteca."
+    },
+    "pt-PT": {
+     "text": "Não foi possível mover esta reunião para Apagados recentemente. Continua na sua Biblioteca."
+    }
+   }
+  },
+  {
+   "id": "menu.help",
+   "en": "Help",
+   "mac": "Cassini talk Help",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): GNOME primary menu (☰) item between Keyboard shortcuts and About (F1); macOS Help menu item (⌘?). Opens the in-app, offline Help view (help.*); never opens a URL or uses the network (HARMONY §12).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Aiuto",
+     "mac": "Aiuto di Cassini talk"
+    },
+    "fr": {
+     "text": "Aide",
+     "mac": "Aide de Cassini talk"
+    },
+    "es": {
+     "text": "Ayuda",
+     "mac": "Ayuda de Cassini talk"
+    },
+    "pt-BR": {
+     "text": "Ajuda",
+     "mac": "Ajuda do Cassini talk"
+    },
+    "pt-PT": {
+     "text": "Ajuda",
+     "mac": "Ajuda do Cassini talk"
+    }
+   }
+  },
+  {
+   "id": "menu.keyboardShortcuts",
+   "en": "Keyboard shortcuts",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): GNOME primary menu (☰) item opening the shortcuts dialog (HARMONY §8; already shipped in Phase 1 L-23 without a catalog id), and the button at the end of the GNOME Help view. macOS has no shortcuts window: the menus show the shortcuts.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Scorciatoie da tastiera"
+    },
+    "fr": {
+     "text": "Raccourcis clavier"
+    },
+    "es": {
+     "text": "Atajos de teclado"
+    },
+    "pt-BR": {
+     "text": "Atalhos de teclado"
+    },
+    "pt-PT": {
+     "text": "Atalhos de teclado"
+    }
+   }
+  },
+  {
+   "id": "help.title",
+   "en": "Help",
+   "mac": "Cassini talk Help",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): title of the in-app Help view (GNOME AdwDialog; Mac window). Same text as menu.help, separate id because the role differs.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Aiuto",
+     "mac": "Aiuto di Cassini talk"
+    },
+    "fr": {
+     "text": "Aide",
+     "mac": "Aide de Cassini talk"
+    },
+    "es": {
+     "text": "Ayuda",
+     "mac": "Ayuda de Cassini talk"
+    },
+    "pt-BR": {
+     "text": "Ajuda",
+     "mac": "Ajuda do Cassini talk"
+    },
+    "pt-PT": {
+     "text": "Ajuda",
+     "mac": "Ajuda do Cassini talk"
+    }
+   }
+  },
+  {
+   "id": "help.record.title",
+   "en": "Recording a meeting",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 1 heading.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Registrare una riunione"
+    },
+    "fr": {
+     "text": "Enregistrer une réunion"
+    },
+    "es": {
+     "text": "Grabar una reunión"
+    },
+    "pt-BR": {
+     "text": "Gravar uma reunião"
+    },
+    "pt-PT": {
+     "text": "Gravar uma reunião"
+    }
+   }
+  },
+  {
+   "id": "help.record.body",
+   "en": "Press Record, or {shortcut} from anywhere. When you press Stop, Cassini writes the meeting down on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 1 body. {shortcut} is common.shortcut.recordAnywhere (Ctrl+Alt+R / ⌥⌘R, or the person's own choice from Settings › Recording).",
+   "status": "draft",
+   "placeholders": {
+    "shortcut": "common.shortcut.recordAnywhere or the configured global shortcut"
+   },
+   "l10n": {
+    "it": {
+     "text": "Premi Registra, oppure {shortcut} da qualsiasi punto. Quando premi Ferma, Cassini trascrive la riunione su questo computer."
+    },
+    "fr": {
+     "text": "Appuyez sur Enregistrer, ou sur {shortcut} depuis n’importe où. Quand vous appuyez sur Arrêter, Cassini transcrit la réunion sur cet ordinateur."
+    },
+    "es": {
+     "text": "Pulsa Grabar, o {shortcut} desde cualquier parte. Cuando pulsas Detener, Cassini transcribe la reunión en este equipo."
+    },
+    "pt-BR": {
+     "text": "Clique em Gravar, ou use {shortcut} de qualquer lugar. Quando você clica em Parar, o Cassini transcreve a reunião neste computador."
+    },
+    "pt-PT": {
+     "text": "Prima Gravar, ou {shortcut} a partir de qualquer ponto. Quando prime Parar, o Cassini transcreve a reunião neste computador."
+    }
+   }
+  },
+  {
+   "id": "help.library.title",
+   "en": "Where your meetings are",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 2 heading.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Dove sono le tue riunioni"
+    },
+    "fr": {
+     "text": "Où sont vos réunions"
+    },
+    "es": {
+     "text": "Dónde están tus reuniones"
+    },
+    "pt-BR": {
+     "text": "Onde ficam suas reuniões"
+    },
+    "pt-PT": {
+     "text": "Onde estão as suas reuniões"
+    }
+   }
+  },
+  {
+   "id": "help.library.body",
+   "en": "Every meeting is kept in Music/Cassini on this computer. None of it is uploaded.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 2 body. Music/Cassini is the literal path (HARMONY §4, GLOSSARY: never the localised folder name). Desktop only: no cloud backup (HARMONY §12).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Ogni riunione è conservata in Music/Cassini su questo computer. Nulla viene caricato."
+    },
+    "fr": {
+     "text": "Chaque réunion est gardée dans Music/Cassini sur cet ordinateur. Rien n’est mis en ligne."
+    },
+    "es": {
+     "text": "Cada reunión se guarda en Music/Cassini en este equipo. No se sube nada."
+    },
+    "pt-BR": {
+     "text": "Cada reunião fica guardada em Music/Cassini neste computador. Nada é enviado."
+    },
+    "pt-PT": {
+     "text": "Cada reunião fica guardada em Music/Cassini neste computador. Nada é enviado."
+    }
+   }
+  },
+  {
+   "id": "help.trash.title",
+   "en": "Getting a meeting back",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 3 heading.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Recuperare una riunione"
+    },
+    "fr": {
+     "text": "Récupérer une réunion"
+    },
+    "es": {
+     "text": "Recuperar una reunión"
+    },
+    "pt-BR": {
+     "text": "Recuperar uma reunião"
+    },
+    "pt-PT": {
+     "text": "Recuperar uma reunião"
+    }
+   }
+  },
+  {
+   "id": "help.trash.body",
+   "en": "Deleted meetings stay in the Trash for 30 days. Open Trash from the main menu, then choose Restore.",
+   "mac": "Deleted meetings stay in Recently Deleted for 30 days. Choose File › Recently Deleted, then Restore.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 3 body; names the menu path of menu.trash on each platform and the 30-day PROVISIONAL retention (trash.retentionNote).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni eliminate restano nel Cestino per 30 giorni. Apri Cestino dal menu principale e scegli Ripristina.",
+     "mac": "Le riunioni eliminate restano in Eliminati di recente per 30 giorni. Scegli File › Eliminati di recente, poi Ripristina."
+    },
+    "fr": {
+     "text": "Les réunions supprimées restent dans la corbeille pendant 30 jours. Ouvrez Corbeille depuis le menu principal, puis choisissez Restaurer.",
+     "mac": "Les réunions supprimées restent dans Supprimés récemment pendant 30 jours. Choisissez Fichier › Supprimés récemment, puis Restaurer."
+    },
+    "es": {
+     "text": "Las reuniones eliminadas se quedan en la papelera 30 días. Abre Papelera desde el menú principal y elige Restaurar.",
+     "mac": "Las reuniones eliminadas se quedan en Eliminados 30 días. Elige Archivo › Eliminados y luego Restaurar."
+    },
+    "pt-BR": {
+     "text": "As reuniões excluídas ficam na Lixeira por 30 dias. Abra Lixeira no menu principal e escolha Restaurar.",
+     "mac": "As reuniões excluídas ficam em Apagados por 30 dias. Escolha Arquivo › Apagados e depois Restaurar."
+    },
+    "pt-PT": {
+     "text": "As reuniões eliminadas ficam no Lixo durante 30 dias. Abra Lixo no menu principal e escolha Restaurar.",
+     "mac": "As reuniões eliminadas ficam em Apagados recentemente durante 30 dias. Escolha Ficheiro › Apagados recentemente e depois Restaurar."
+    }
+   }
+  },
+  {
+   "id": "help.voices.title",
+   "en": "Recognising voices",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 4 heading. en-GB spelling.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Riconoscere le voci"
+    },
+    "fr": {
+     "text": "Reconnaître les voix"
+    },
+    "es": {
+     "text": "Reconocer voces"
+    },
+    "pt-BR": {
+     "text": "Reconhecer vozes"
+    },
+    "pt-PT": {
+     "text": "Reconhecer vozes"
+    }
+   }
+  },
+  {
+   "id": "help.voices.body",
+   "en": "When you name a speaker, Cassini can remember their voice and recognise it in new meetings. Saved voices stay on this computer and are never exported.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 4 body. Matches D25 / HARMONY §§4, 9 (voiceprints local, never exported) and HARMONY §12 (no iCloud on Mac).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Quando dai un nome a una voce, Cassini può ricordarla e riconoscerla nelle nuove riunioni. Le voci salvate restano su questo computer e non vengono mai esportate."
+    },
+    "fr": {
+     "text": "Quand vous nommez un intervenant, Cassini peut mémoriser sa voix et la reconnaître dans les nouvelles réunions. Les voix mémorisées restent sur cet ordinateur et ne sont jamais exportées."
+    },
+    "es": {
+     "text": "Cuando pones nombre a un hablante, Cassini puede recordar su voz y reconocerla en reuniones nuevas. Las voces guardadas se quedan en este equipo y nunca se exportan."
+    },
+    "pt-BR": {
+     "text": "Quando você nomeia um locutor, o Cassini pode lembrar a voz dele e reconhecê-la em novas reuniões. As vozes salvas ficam neste computador e nunca são exportadas."
+    },
+    "pt-PT": {
+     "text": "Quando dá nome a um orador, o Cassini pode memorizar a voz e reconhecê-la em novas reuniões. As vozes guardadas ficam neste computador e nunca são exportadas."
     }
    }
   }

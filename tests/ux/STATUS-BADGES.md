@@ -67,8 +67,12 @@ Every unfinished or problem phone row state keeps its `22/12/8` badge:
 > **WP7 note (L-57):** the user-facing rename of `Received` to `Imported` has
 > landed on desktop (macOS & GNOME) in `WP7` (`cassini-ux` #19). Only the
 > English copy changed: the catalog id stays `states.badge.received` and the
-> model kind stays `origin = received`. Phones wait on open `L-10` before
-> adopting it. `states-vectors.json` v3 is unchanged.
+> model kind stays `origin = received`. `states-vectors.json` v3 is unchanged.
+>
+> **L-10 (`D-997`, `D99`):** phones adopt it. A finished imported phone row
+> shows the outline `Imported` badge (`states.badge.received`, incoming glyph)
+> before the speaker-count pill; any badge from the table above replaces it
+> while that state applies. See `PARITY.md`, Phase 2 parity contract §1.
 
 L-46 supersedes the earlier neutral-tint fill: composite the neutral wash over
 whatever is behind the pill, including selected surfaces, in both light and
