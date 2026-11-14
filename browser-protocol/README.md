@@ -101,6 +101,22 @@ product popup never uses it. The popup does not expose app auto-record policy,
 confirmed saved audio, or an app launcher:
 those need explicit app-backed APIs instead of inferred or simulated state.
 
+### brand and shared copy (D-976)
+
+The popup header is the `cassini.talk` Saturn (`saturn-nav`, 26 px) beside the
+lowercase wordmark (cassini-ux L-04, L-15). Every colour is a cassini-ux brand
+role: `extension/brand-tokens.css` is generated from the vendored
+`ux/brand/tokens.json` by `python3 tools/brand-tokens.py --write`, light on
+`:root` and dark under `prefers-color-scheme: dark`; the popup holds no colour
+literal. Start and Stop use the Record red (L-20), secondary buttons ink at 10%
+(L-54). The subtitle and the privacy line are the cassini-ux catalog's
+`settings.tab.browserCompanion` and `companion.privacy`, verbatim.
+
+`ux/UPSTREAM.json` pins the vendored cassini-ux files (tokens, `saturn-nav.svg`,
+`strings/strings.json`) by commit and SHA-256. Never edit them here: change
+cassini-ux, copy the files at the new commit, update the pin, regenerate the CSS,
+and run `python3 -m unittest tests.test_brand_alignment`.
+
 ## changing things
 
 Changes to the protocol, the schemas, the vectors or the extension land here first, with a

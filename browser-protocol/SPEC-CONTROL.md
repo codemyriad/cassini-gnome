@@ -1111,6 +1111,14 @@ It uses no viewport-unit cap that feeds Chrome's provisional viewport back into
 its preferred-size calculation, and no hard minimum that overflows at 300% zoom.
 There are no protocol or capture-policy changes.
 
+### Popup brand look (extension 0.2.31, D-976)
+
+The popup header is the cassini-ux `cassini.talk` Saturn (`saturn-nav`) beside the
+lowercase wordmark, and every colour it draws is a cassini-ux brand role in the
+active light or dark mode, generated from the vendored `ux/brand/tokens.json`
+(pinned in `ux/UPSTREAM.json`). Start and Stop share the Record red. The footer adds
+the catalog's companion privacy line. There are no protocol or capture-policy changes.
+
 
 ## Peer observation and same-document loading (extension 0.2.22)
 

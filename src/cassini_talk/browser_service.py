@@ -41,10 +41,8 @@ MAX_PACKET = 512 * 1024
 ANY_GENERATION = object()
 RESUME_CAPTURE = "resume-capture-v1"
 SENDER_ME = "sender-me-v1"
-POPUP_RECORD = "popup-record-v1"
-# Bounded correlation of in-flight resume asks and popup asks per control connection.
+# Bounded correlation of in-flight resume asks per control connection.
 RESUME_HISTORY = 64
-POPUP_REQUEST_HISTORY = 256
 # A call the user stopped stays stopped beyond the control link that carried
 # the stop, so a reconnect does not start it again automatically.
 STOPPED_CALL_GRACE = 10 * 60
@@ -341,7 +339,6 @@ class BrowserConnection(Transport):
         self.last_ping = None
         self.ping_seq = 0
         self.meetings = {}
-        self.manual_meetings = {}
         self.status = {"recording": False}
         self.status_seen = self.hello_seen = False
         self.diagnostics = {}
@@ -375,10 +372,6 @@ class BrowserConnection(Transport):
         self.reported = {}
         # requestId -> captureId of resume-capture-v1 asks on this connection.
         self.resumes = {}
-        self.record_requests_sent = None
-        self.record_requests_configured = False
-        self.record_request_ids = {}
-        self.record_requests_active = set()
         self.closed = False
 
     def expired(self, now, *, wait=True):
@@ -523,21 +516,16 @@ class BrowserService:
 
             notifier = notify_recording
         self.notifier = notifier
-        self.workers = ThreadPoolExecutor(max_workers=8, thread_name_prefix="cassini-browser")
+        self.workers = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cassini-browser")
         self.closed = threading.Event()
         # D58 point 5: when a hello last asked for a newer control version than ours.
         self.app_too_old = None
-
-    @staticmethod
-    def _known_meeting(browser, tab):
-        """Browser-owned meeting metadata: inventory first, then manual popup Start."""
-        return browser.meetings.get(tab) or browser.manual_meetings.get(tab)
 
     def _owners(self):
         owners = {}
         for browser in sorted(self.browsers.values(), key=lambda browser: browser.connected_at):
             if not browser.closed:
-                for tab in browser.meetings.keys() | browser.manual_meetings.keys() | browser.states.keys():
+                for tab in browser.meetings.keys() | browser.states.keys():
                     owners[(browser.browser_instance or browser.id, tab)] = browser
         return owners
 
@@ -578,7 +566,7 @@ class BrowserService:
                 return
             browser.attempted.discard(tab)
             if identity is None and browser.browser_instance is not None:
-                url = (self._known_meeting(browser, tab) or {}).get("url")
+                url = browser.meetings.get(tab, {}).get("url")
                 if url is not None:
                     identity = (browser.browser_instance, tab, url)
         if identity is None:
@@ -586,7 +574,7 @@ class BrowserService:
         instance, tab, url = identity
         self._attempted_calls.discard(self._logical_id(identity))
         for peer in self.browsers.values():
-            if peer.browser_instance == instance and (self._known_meeting(peer, tab) or {}).get("url") == url:
+            if peer.browser_instance == instance and peer.meetings.get(tab, {}).get("url") == url:
                 peer.attempted.discard(tab)
 
     def _cancel_capture(self, capture_id, identity=None, reason="user"):
@@ -783,18 +771,16 @@ class BrowserService:
                 pending["cancelled"] = True
                 pending["event"].set()
 
-    def _validate_generation(self, browser, tab, generation):
-        """A D17 retry or popup Start binds to its exact call: a rejoin is another call."""
-        if (
-            generation is not ANY_GENERATION
-            and (self._known_meeting(browser, tab) or {}).get("callGeneration") != generation
-        ):
+    @staticmethod
+    def _validate_generation(browser, tab, generation):
+        """A D17 retry starts only the call its line was for: a rejoin is another call."""
+        if generation is not ANY_GENERATION and browser.meetings.get(tab, {}).get("callGeneration") != generation:
             raise ValueError("This meeting is no longer available")
 
     def _validate_call(self, browser, tab, expected, *, version=None):
         if (
             expected is not None
-            and (browser.browser_instance, tab, (self._known_meeting(browser, tab) or {}).get("url")) != expected
+            and (browser.browser_instance, tab, browser.meetings.get(tab, {}).get("url")) != expected
         ):
             raise ValueError("This meeting is no longer available")
         logical = self._logical_id(expected) if expected is not None else f"{browser.id}:{tab}"
@@ -852,7 +838,7 @@ class BrowserService:
         )
 
     def _meeting_id(self, browser, tab):
-        meeting = self._known_meeting(browser, tab)
+        meeting = browser.meetings.get(tab)
         binding = self.call_captures.get((browser.browser_instance, tab))
         if (
             binding is not None
@@ -877,7 +863,7 @@ class BrowserService:
                 key
                 for key, (value, _) in self._call_aliases.items()
                 if any(
-                    b.browser_instance == value[0] and (self._known_meeting(b, value[1]) or {}).get("url") == value[2]
+                    b.browser_instance == value[0] and b.meetings.get(value[1], {}).get("url") == value[2]
                     for b in self.browsers.values()
                 )
             }
@@ -926,7 +912,7 @@ class BrowserService:
                         or capture is not None
                         and getattr(capture, "call_identity", None) == identity
                     )
-                    if (self._known_meeting(browser, tab) or {}).get("url") == url or for_stop and bound:
+                    if browser.meetings.get(tab, {}).get("url") == url or for_stop and bound:
                         candidates.append(browser)
                 if candidates:
                     browser = max(candidates, key=lambda browser: browser.connected_at)
@@ -1139,7 +1125,6 @@ class BrowserService:
                 browser.busy
                 or browser.pending
                 or browser.reloads
-                or browser.record_requests_active
                 or any(state.get("recording") for state in browser.states.values())
                 for browser in self.browsers.values()
             )
@@ -1156,8 +1141,6 @@ class BrowserService:
 
     def close(self):
         self.closed.set()
-        with self.lock:
-            self._sync_record_requests_locked()
         listener = getattr(self, "_listener", None)
         if listener is not None:
             with contextlib.suppress(OSError):
@@ -1699,12 +1682,7 @@ class BrowserService:
         browser.states = states
         browser.page_states.update(received_pages)
         for tab in tuple(browser.page_states):
-            if (
-                tab not in received_pages
-                and tab not in browser.meetings
-                and tab not in browser.manual_meetings
-                and browser.page_states[tab] != "closed"
-            ):
+            if tab not in received_pages and tab not in browser.meetings and browser.page_states[tab] != "closed":
                 browser.page_states.pop(tab, None)
         for tab, old in previous.items():
             if old.get("recording") and not states.get(tab, {}).get("recording"):
@@ -1715,9 +1693,7 @@ class BrowserService:
                 owner = self.captures.get(old.get("captureId"))
                 if isinstance(path, str) and (owner is None or owner.finished):
                     self._remember_saved(
-                        path,
-                        (self._known_meeting(browser, tab) or {}).get("title", "Recorded meeting"),
-                        value.get("message"),
+                        path, browser.meetings.get(tab, {}).get("title", "Recorded meeting"), value.get("message")
                     )
 
     def _adopt_by_call(self, browser, states):
@@ -1737,7 +1713,7 @@ class BrowserService:
                 or not self._still_recording(capture)
                 or capture.directory is None
                 or key in self._cancelled_captures
-                or (self._known_meeting(browser, tab) or {}).get("callGeneration") != generation
+                or browser.meetings.get(tab, {}).get("callGeneration") != generation
             ):
                 continue
             state = states.setdefault(tab, dict(recording=True, tabId=tab, captureId=key, path=str(capture.directory)))

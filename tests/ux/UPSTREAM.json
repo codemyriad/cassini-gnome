@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/codemyriad/cassini-ux",
-  "commit": "994967ead64e1adc8e75774ca1455823d2c8ef3b",
+  "commit": "03fd3bb7dc806c015c1079807eaf5bc548a9fd42",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -84,8 +84,8 @@
     "format-vectors.json": "e418d48c7e551a90756699f42e939c7dd918f444deb302e4410af312afc32279",
     "states-vectors.json": "2b946da58459452cb9fd17cacef58a3f10585a69142796cdd693e2f90fd9f497",
     "LIBRARY-RULES.md": "415d866eb4a098400c76a3975969d9764bb70eed905726fbdcf7e90e42f85ce8",
-    "STATUS-BADGES.md": "1a10d0fbe8f5fe7b95847aaede72a1be862083b6c0bdb99494ba187f83d5454f",
-    "HARMONY.md": "8ddb3ac96ee39163afc9a0fb247b4568481ff861976ebc26f313f734b7c8ced7",
+    "STATUS-BADGES.md": "3f0e4300e20e8b8fbf193ced32e9e3059807f4485980bcdb655c7fc4ce884df8",
+    "HARMONY.md": "ad73ac529f61c363eb2bd6363fb4c68ab73d52402464944829309ed3e9730b52",
     "meeting.schema.json": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e",
     "library-vectors/verify.py": "d3d2a864c28f6b42d77e659f3b65f60a526a93dd3575d3b6a2d6f23f11cf2348",
     "library-vectors/README.md": "4ebeb57bd2b4df449f56a1fb4bf2c1679655fdf462566036c861f70fa359f1f4",
@@ -115,7 +115,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "0222c1d471993a6f9b0810929fa17d0ec00e140bc36c44d4499b166281bc8604",
+    "strings.json": "7cd7ba4dc1693aeddd994eebf70c52fb60bcc0a318a1d43c81348e08dc877543",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",

@@ -13,6 +13,12 @@ sys.path.insert(0, str(ROOT))
 from verify import verify
 
 class PinningTests(unittest.TestCase):
+    def test_brand_popup_can_replace_an_installed_0230_companion(self):
+        manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
+        parts = tuple(int(part) for part in manifest['version'].split('.'))
+        self.assertGreater(parts + (0,) * (4 - len(parts)), (0, 2, 30, 0),
+                           'D-976 brand popup (Saturn mark, cassini-ux tokens): installers never replace equal 0.2.30')
+
     def test_popup_record_can_replace_an_installed_0229_companion(self):
         manifest = json.loads((ROOT / 'extension/manifest.json').read_text())
         parts = tuple(int(part) for part in manifest['version'].split('.'))

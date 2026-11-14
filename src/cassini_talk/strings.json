@@ -2033,7 +2033,7 @@
   },
   {
    "id": "errors.micSilentRow.line",
-   "en": "No sound from your microphone. Check your sound settings.",
+   "en": "No sound. Check your sound settings.",
    "platforms": [
     "gnome",
     "mac"
@@ -2048,19 +2048,19 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Nessun suono dal tuo microfono. Controlla le impostazioni audio."
+     "text": "Nessun suono. Controlla le impostazioni audio."
     },
     "fr": {
-     "text": "Aucun son ne provient de votre microphone. Vérifiez vos réglages du son."
+     "text": "Aucun son. Vérifiez vos réglages du son."
     },
     "es": {
-     "text": "No llega sonido de tu micrófono. Revisa tu configuración de sonido."
+     "text": "Sin sonido. Revisa tu configuración de sonido."
     },
     "pt-BR": {
-     "text": "Nenhum som vindo do seu microfone. Verifique as configurações de som."
+     "text": "Sem som. Verifique as configurações de som."
     },
     "pt-PT": {
-     "text": "Não está a chegar som do seu microfone. Verifique as definições de som."
+     "text": "Sem som. Verifique as definições de som."
     }
    }
   },
@@ -2911,7 +2911,7 @@
     "LibraryEmpty-mac"
    ],
    "milestone": "UX1b",
-   "note": "Dim paragraph under the H1. 'Record' and 'Stop' are inline words, not separate strings. Follows the 'writes it down' vocabulary.",
+   "note": "How-to line on desktop first run (below the L-27 hero waveform in Phase 2 D-956 / D-972 / D-973; previously under firstRun.title in UX1b). 'Record' and 'Stop' are inline words, not separate strings. Follows the 'writes it down' vocabulary.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -2944,7 +2944,7 @@
     "LibraryEmpty-mac"
    ],
    "milestone": "UX1b",
-   "note": "Exact footer from HARMONY 4, after a decorative lock icon. 'Music/Cassini' is literal on both platforms. Never use the localised XDG music directory name.",
+   "note": "PROVISIONAL until L-09 (D-938) closes (async review tracked in D-1019): desktop first-run privacy line from HARMONY 4, shown on first run only in the L-27 hero (L-30), after a decorative lock icon. 'Music/Cassini' is literal on both platforms. Never use the localised XDG music directory name.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -3015,7 +3015,7 @@
     "RecordFirst-mac"
    ],
    "milestone": "UX1b",
-   "note": "H1 of the first-run empty state. RecordFirst shows it dimmed behind its scrim and reuses this id.",
+   "note": "Legacy UX1b first-run headline (retained in the catalog for pre-Wave-5 pins and RecordFirst background fixtures; replaced on desktop in Phase 2 D-956 / D-972 / D-973 by L-27 firstRun.hero.title + firstRun.hero.subtitle).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -4619,7 +4619,7 @@
     "RecordFirst-mac"
    ],
    "milestone": "UX1b",
-   "note": "Main window title and content/detail header title. GNOME: centred, bold, in the content AdwHeaderBar. Mac: Window(\"Library\"), bold leading toolbar title at 15 px. The first run and RecordFirst draw it centred on both platforms. Never 'Meetings window' or 'Documents'. The Settings tab 'Library' is a separate id (settings.tab.library).",
+   "note": "Main window title and accessible Library heading. In L-22 (detail top bar) and L-27 (Phase 2 desktop first-run hero, D-972 / D-973), 'Library' is not drawn visibly in the header bar; on desktop first run it is exposed only as a hidden accessible heading (and as Mac Window(\"Library\")). Never 'Meetings window' or 'Documents'. The Settings tab 'Library' is a separate id (settings.tab.library).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -7901,7 +7901,7 @@
     "Settings-mac"
    ],
    "milestone": "UX8b",
-   "note": "Intro line at the top of the Transcription tab, after a green shield icon.",
+   "note": "Intro line at the top of the Transcription tab, after a green shield icon. PROVISIONAL wording kept untouched until L-09 (D-938) closes.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -22206,7 +22206,7 @@
    "role": "caption",
    "boards": [],
    "milestone": "D97",
-   "note": "Coordinator (D97). Replaces the older absolute 'never leaves this phone' claims on the Library and in the model settings: with D97, notes can move to a new phone.",
+   "note": "Coordinator (D97). Replaces the older absolute 'never leaves this phone' claims on the Library and in the model settings: with D97, notes can move to a new phone. PROVISIONAL wording kept untouched until L-09 (D-938) closes (shown on phone first run only per L-30).",
    "status": "draft",
    "l10n": {
     "it": {
@@ -24515,6 +24515,76 @@
     },
     "pt-PT": {
      "text": "Importada. É mantida uma cópia na sua Biblioteca."
+    }
+   }
+  },
+  {
+   "id": "firstRun.hero.title",
+   "en": "Every word written down.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryEmpty-mac"
+   ],
+   "milestone": "W0.5 (L-27)",
+   "note": "L-27 (D-956): primary line of the first-run empty-state hero in ink, bold, left-aligned, always one sentence on its own line (platform font, 64 px desktop / 32 px phones), directly above dimmed firstRun.hero.subtitle. Desktop ships in Phase 2 (D-972, D-973); phone hero waits on D-937.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Ogni parola trascritta."
+    },
+    "fr": {
+     "text": "Chaque mot transcrit."
+    },
+    "es": {
+     "text": "Cada palabra transcrita."
+    },
+    "pt-BR": {
+     "text": "Cada palavra transcrita."
+    },
+    "pt-PT": {
+     "text": "Cada palavra transcrita."
+    }
+   }
+  },
+  {
+   "id": "firstRun.hero.subtitle",
+   "en": "None of it uploaded.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "LibraryEmpty",
+    "LibraryEmpty-mac"
+   ],
+   "milestone": "W0.5 (L-27)",
+   "note": "L-27 (D-956): dimmed second line of the first-run empty-state hero directly under firstRun.hero.title, bold, left-aligned, always one sentence on its own line (platform font, 64 px desktop / 32 px phones). Desktop ships in Phase 2 (D-972, D-973); phone hero waits on D-937 (cloud-backup reconciliation with L-28).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Nulla viene caricato."
+    },
+    "fr": {
+     "text": "Rien n’est mis en ligne."
+    },
+    "es": {
+     "text": "No se sube nada."
+    },
+    "pt-BR": {
+     "text": "Nada é enviado."
+    },
+    "pt-PT": {
+     "text": "Nada é enviado."
     }
    }
   }

@@ -16,7 +16,7 @@ state = json.loads(shot.with_suffix(".json").read_text())
 assert state["uiLanguage"] == lang, state
 assert state["lang"] == "en_GB.UTF-8", "UI selection must not rewrite the formatting locale"
 assert struct.unpack(">II", shot.read_bytes()[16:24]) == (1120, 720)
-for identifier in ("firstRun.title", "firstRun.body", "common.record"):
+for identifier in ("firstRun.hero.title", "firstRun.hero.subtitle", "firstRun.body", "common.record"):
     expected = catalog[identifier]["l10n"][lang]["text"]
     assert expected in state["visibleLabels"], (identifier, expected, state["visibleLabels"])
 expected_import = catalog["import.action"]["l10n"][lang]["text"]

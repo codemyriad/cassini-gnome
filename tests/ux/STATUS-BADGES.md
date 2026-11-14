@@ -20,7 +20,7 @@ meeting, outside the badge.
 | transcribing (positive ETA) | transcribing | Transcribing · 4 min | neutral | spinner |
 | needsAttention | needsAttention | Needs attention | amber | alert |
 | interrupted | interrupted | Interrupted | amber | alert |
-| received | received | Received | outline | incoming |
+| received | received | Imported | outline | incoming |
 
 Tone roles: red uses `record-tint` / `record-ink`; neutral uses `ink` at 10%
 opacity for its fill and opaque `ink-2` for text/glyphs (**exception, L-45:**
@@ -64,10 +64,11 @@ Every unfinished or problem phone row state keeps its `22/12/8` badge:
 | unreadable | `states.phone.cantReadTranscript` | `Can’t read transcript` | error (`error-tint` / `error`) | alert | — |
 | newerFormat | `states.phone.newerFormat` | `Newer format` | outline | alert | — |
 
-> **WP7 note (L-57):** user-facing `Received` (`states.badge.received`) renames
-> to `Imported` on desktop in `WP7` (`contract/phase1-wp7-imported`), while
-> phones wait on open `L-10`. `WP1`–`WP6` keep `states-vectors.json` v3 as-is so
-> packages stay cleanly separated.
+> **WP7 note (L-57):** the user-facing rename of `Received` to `Imported` has
+> landed on desktop (macOS & GNOME) in `WP7` (`cassini-ux` #19). Only the
+> English copy changed: the catalog id stays `states.badge.received` and the
+> model kind stays `origin = received`. Phones wait on open `L-10` before
+> adopting it. `states-vectors.json` v3 is unchanged.
 
 L-46 supersedes the earlier neutral-tint fill: composite the neutral wash over
 whatever is behind the pill, including selected surfaces, in both light and
@@ -97,7 +98,7 @@ until the canvas resolves them:
 | Persisted state and priority | lifecycle remains recording/saving/saved; existing meeting precedence remains recording → saving → transcribing → needsAttention → interrupted → received → none |
 | Importing against an existing meeting | No shared cross-domain priority or persisted importing lifecycle currently exists; none is invented here |
 | Import cancellation/failure | No additional badge label or new transition rule specified here; existing app behavior remains |
-| Phone Imported eligibility (L-10) | Phones keep their existing import flow until L-10 is decided; desktop `Received` → `Imported` lands in WP7 (L-57) |
+| Phone Imported eligibility (L-10) | Phones keep their existing import flow until L-10 is decided; desktop `Received` → `Imported` has landed in WP7 (L-57) |
 | Search-result placement | Existing placement retained; the Badge purpose mentions search, but result-card drawings omit it |
 | Position/detail placement | Transcribing status line + sheet/popover are decided by L-45; interrupted stopping position stays in `meeting.interruptedAt` outside the badge |
 | Selected-row override | No new override rule. Existing per-app behavior is retained until Alex resolves selected-row badge styling |

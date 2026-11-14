@@ -222,7 +222,7 @@ def write_candidate_tree(root: Path, version: str = "0.4.2") -> Path:
         "build-aux/rpm/cassini-talk.spec": f"Name:           cassini-talk\nVersion:        {version}\nRelease:        1%{{?dist}}\n",
         "build-aux/arch/PKGBUILD": f"pkgname=cassini-talk\npkgver={version}\npkgrel=1\n",
         "NEWS": f"Version {version}\n~~~~~~~~~~~~~\nReleased: 2026-11-08\n\n- Stable notes.\n",
-        "browser-extension/manifest.json": '{"version":"0.2.30"}\n',
+        "browser-extension/manifest.json": '{"version":"0.2.31"}\n',
         "data/cassini-talk.1": f'.TH CASSINI-TALK 1 "November 2026" "cassini-talk {version}" "User Commands"\n',
         "data/io.codemyriad.CassiniTalk.metainfo.xml.in": (
             '<?xml version="1.0" encoding="UTF-8"?>\n'

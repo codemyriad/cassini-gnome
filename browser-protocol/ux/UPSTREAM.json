@@ -1,0 +1,20 @@
+{
+  "repository": "codemyriad/cassini-ux",
+  "branch": "main",
+  "commit": "366c1c36cc505ff82a752c7b5bed6cae9307c807",
+  "note": "Vendored copies; never edit them here. Change cassini-ux first, then bump this pin (python3 tools/brand-tokens.py --write after copying).",
+  "files": {
+    "brand/tokens.json": {
+      "path": "ux/brand/tokens.json",
+      "sha256": "9d3d10d88db5d86d18a1cd099df36ca1c00234344fa383d28283992b734c6358"
+    },
+    "brand/mark/saturn-nav.svg": {
+      "path": "extension/brand/saturn-nav.svg",
+      "sha256": "38b639fe49123ee236239a523183815505c33b826b135f63b65d691df7caf61e"
+    },
+    "strings/strings.json": {
+      "path": "ux/strings/strings.json",
+      "sha256": "cf38b3cf3ce3b280787562ffa3584e0c32c4481dd6369bd289cfb27eb544b7fa"
+    }
+  }
+}

@@ -7,10 +7,12 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 const {chromium} = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const tokens = JSON.parse(await readFile(path.join(root,'ux/brand/tokens.json'),'utf8')).tokens;
 const server = createServer(async (request, response) => {
   const file = request.url?.slice(1);
-  if (!['popup.html', 'popup.js', 'popup-state.mjs', 'tab-evidence.mjs'].includes(file)) {response.writeHead(404).end();return;}
-  response.setHeader('Content-Type', file.endsWith('.html') ? 'text/html' : 'text/javascript');
+  if (!['popup.html', 'popup.js', 'popup-state.mjs', 'tab-evidence.mjs', 'brand-tokens.css', 'brand/saturn-nav.svg'].includes(file)) {response.writeHead(404).end();return;}
+  const types = {html: 'text/html', css: 'text/css', svg: 'image/svg+xml'};
+  response.setHeader('Content-Type', types[file.split('.').pop()] || 'text/javascript');
   response.end(await readFile(path.join(root,'extension',file)));
 });
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
@@ -52,6 +54,7 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/popup.html`);
   await page.locator('main[aria-busy="false"]').waitFor();
   assert.equal(await page.locator('#status').textContent(),'No meeting sources detected');
+  await brandLook(page,'light');
   assert.equal(await page.locator('#tab-title').textContent(),'Generated meeting <script>');
   // Without an opted-in app, Start is visible but disabled and says why.
   assert.equal(await page.locator('#record').isDisabled(),true);
@@ -118,6 +121,7 @@ try {
     return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
   });
   assert.ok(contrast>=4.5,`dark warning contrast must remain readable: ${contrast.toFixed(2)}:1`);
+  await brandLook(page,'dark');
   await page.screenshot({path:path.join(root,'artifacts/popup-dark.png'),fullPage:true});
   await page.evaluate(()=>{fixture.status.browserHealth.tabs=[{tabId:7,state:'reloadRequired'}];fixture.reloadError='Generated reload refusal'});
   await page.getByRole('button',{name:'Reload meeting tab',exact:true}).waitFor();
@@ -140,6 +144,26 @@ try {
   await context.close();
   console.log('PASS popup: Start/Stop asks the app for the current tab with reasons and feedback, current-tab health/reload, refused reload, honest recovery, copy without meeting URLs, connection loss, light/dark rendering');
 } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}
+
+// D-976: the Saturn mark and lowercase wordmark head the popup, and the drawn colours are the
+// cassini-ux brand roles in the active mode (vendored ux/brand/tokens.json via brand-tokens.css).
+async function brandLook(page,mode){
+  assert.equal(await page.locator('header h1').textContent(),'cassini.talk');
+  assert.ok(await page.locator('header img.mark').evaluate(img=>img.complete&&img.naturalWidth>0&&img.getAttribute('src')==='brand/saturn-nav.svg'),'the Saturn mark loads');
+  assert.equal(Math.round(await page.locator('header img.mark').evaluate(img=>img.getBoundingClientRect().height)),26,'mark at 26');
+  assert.equal(await page.locator('header h1').evaluate(e=>getComputedStyle(e).fontSize),'18px','wordmark at 18');
+  assert.equal(await page.locator('header h1').evaluate(e=>getComputedStyle(e).fontWeight),'500','wordmark medium');
+  const look=await page.evaluate(()=>{const css=selector=>getComputedStyle(document.querySelector(selector));
+    return {ground:css('html').backgroundColor,ink:css('html').color,record:css('#record').backgroundColor,
+      onRecord:css('#record').color,card:css('#card').backgroundColor,tone:document.querySelector('#card').dataset.tone};});
+  assert.equal(look.ground,rgb(tokens.raised[mode]));
+  assert.equal(look.ink,rgb(tokens.ink[mode]));
+  assert.equal(look.record,rgb(tokens.record[mode]),'Start is the Record red');
+  assert.equal(look.onRecord,rgb(tokens['on-record'][mode]));
+  const card={neutral:'sunken',good:'success-tint',warning:'warn-tint'}[look.tone||'neutral'];
+  assert.equal(look.card,rgb(tokens[card][mode]),`${look.tone} card is ${card}`);
+}
+function rgb(hex){const [r,g,b]=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));return `rgb(${r}, ${g}, ${b})`;}
 
 async function recordFlow(page){
   await page.evaluate(()=>{fixture.status.appRecording='disconnected';fixture.status.browserHealth.tabs=[{tabId:7,state:'ready'}]});
@@ -194,6 +218,7 @@ async function recordFlow(page){
   await stop.waitFor();
   assert.equal(await page.locator('#record').getAttribute('data-action'),'stop');
   await mkdir(path.join(root,'artifacts'),{recursive:true});
+  assert.equal(await page.locator('#record').evaluate(e=>getComputedStyle(e).backgroundColor),rgb(tokens.record.light),'Stop keeps the Record red');
   await page.screenshot({path:path.join(root,'artifacts/popup-recording.png'),fullPage:true});
   await page.evaluate(()=>{fixture.recordReply=()=>{fixture.captures=[{tabId:7,recording:true,tracks:2,stopping:true}];return {tabId:7}}});
   await stop.click();

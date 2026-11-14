@@ -82,6 +82,7 @@ talk_sources = files(
   'cassini_talk/speakers_dialog.py',
   'cassini_talk/_brand_tokens.py',
   'cassini_talk/brand_mark.py',
+  'cassini_talk/first_run_hero.py',
   'cassini_talk/tokens.py',
   'cassini_talk/status_badge.py',
   'cassini_talk/transcribing_status.py',

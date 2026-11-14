@@ -23,6 +23,7 @@ WORDMARK_FONT_PX = 18
 WORDMARK_FONT_WEIGHT = 500
 NAV_MARK_HEIGHT_PX = 26
 MID_MARK_THRESHOLD_PX = 40
+HERO_MARK_HEIGHT_PX = 40  # first-run hero (L-27): drawn at 40 px, so saturn-nav (mark_resource_for_height)
 MARK_ASPECT_NUM = 184
 MARK_ASPECT_DEN = 120
 
