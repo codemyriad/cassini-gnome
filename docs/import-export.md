@@ -1,4 +1,4 @@
-# Received import and two-format export (W4-2)
+# Received import and single-meeting export (W4-2, L-11)
 
 Open, Open with and file drops copy Ogg Opus into an atomically published
 Received-UUID folder, select its Library row and leave the original untouched.
@@ -13,8 +13,29 @@ is known. The received-only hint is shown when no own meetings are present.
 There is no new duplicate feedback or missing-folder variant. File/import errors
 keep the Library open with the diagnostic; friendly error copy can be published later.
 
-Export has exactly Cassini file (default) and Markdown, through the header, menu
-and Ctrl+Shift+E. The old Ctrl+E/TXT/WebVTT paths and serializers are removed.
+Export offers Cassini file (default) and Markdown, through the header, menu
+and Ctrl+Shift+E (the old Ctrl+E shortcut stays removed). Phase 2 (`L-11`, `D99` §2,
+PARITY §2) adds a collapsed "More formats" disclosure below Markdown with Plain text
+(`.txt`), Subtitles (SRT) and Subtitles (WebVTT), for transcribed meetings only
+(`export_model.available_formats`). A meeting whose transcript is none, queued,
+running, failed or damaged is audio-only: Markdown and More formats are hidden (not
+greyed out), `export.audioOnly.note` is shown, and only the audio choice remains: a
+Cassini file with an empty word-timed transcript (`D12`), or "Original audio" for an
+imported plain-audio file (`Meeting.plain_audio`), which copies the stored imported
+bytes unchanged with their own extension. A transcript that stops being complete
+while the dialog is open hides the text rows and falls back to the audio choice;
+`export_meeting` also refuses text formats without a completed transcript.
+
+Text formats share the Markdown projection, so names are exactly as shown (unnamed
+`Speaker {n}`) and voiceprints and notes never appear (`D25`). Plain text is one
+block per reading row, `{name} · {hh:mm:ss}` then the row's words (inline replies
+as in the viewer). SRT and WebVTT cut every row and every inline reply into cues of
+at most 7 s and two 42-character lines (a 1.5 s pause also starts a cue; a cue lasts
+at least 1 s unless the same speaker's next cue starts first). SRT prefixes every
+cue with `{name}: `; WebVTT writes `WEBVTT` and the same cues as `<v {name}>` spans,
+escaping `&`, `<` and `>` in names and words. Control characters in names and words
+become spaces so nothing can forge a block or a cue. Every format is staged next to
+the destination, fsynced, published without replacing a file, and the folder fsynced.
 The shared dialog discloses every automatically recognised name, with only the
 names semibold, no Oxford comma and no truncation; long content scrolls. Choose
 uses the native/portal folder chooser. Documents is only its initial suggestion;

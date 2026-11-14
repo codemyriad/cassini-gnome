@@ -71,6 +71,7 @@ def load_open_meeting(path, root=None, *, scanner=None, capture_activity=None):
         embedded_transcript=state == "done" and bool(words) and embedded.is_readable,
         audio_file=path,
         audio_size_bytes=audio_size,
+        plain_audio=embedded.state == portable.State.PLAIN_AUDIO,
         has_audio=duration is not None,
         words=words,
         turns=reading_turns(words, gaps=gaps),

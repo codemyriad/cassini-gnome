@@ -1,24 +1,33 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""D29 deferred native Trash, scoped job exclusion and Library presentation."""
+"""Move to Trash, Undo, Restore and purge for the Library (HARMONY §7, §7.1; D100, D-1032).
+
+A deleted meeting moves at once, whole and by identity, into the Library's own
+`.cassini/trash/<entry-id>/` (S-12 §7.1, library_v2.trash): no system Trash and no Trash
+portal, so Undo and Restore work the same inside the Flatpak. The toast's Undo is a Restore
+of that entry (nothing waits for the toast to close). Entries expire after 30 days, checked
+at launch and hourly. All file work runs on one worker thread, in request order.
+"""
 
 import contextlib
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 from gi.repository import Adw, Gio, GLib
 
 from . import library_location as location
-from .library import LibraryScanner, meeting_id
-from .library_edits import transaction
 from .library_publication import root_for
+from .library_v2 import journal
+from .library_v2 import trash as storage
 from .meeting_state import MeetingError
 from .strings import text
 from .trash_cleanup import TrashCleanup
 
 LOG = logging.getLogger(__name__)
+EXPIRY_SECONDS = 3600
 
 
 def menu_item():
@@ -28,63 +37,93 @@ def menu_item():
     return item
 
 
-def trash_owned(directory, *, queue=None, voices=None, trash=None, cleanup=None):
-    """Worker only: never permanently delete or operate outside the routed Library."""
+def _utc_text(at_ms):
+    if at_ms is None:
+        return None
+    return datetime.fromtimestamp(at_ms / 1000, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def representations(meeting):
+    """(Library root, published root name or None, working folder root-relative path or None)."""
+    directory = Path(meeting.directory).absolute()
+    published = meeting.published_file
+    if published is not None:
+        published = Path(published).absolute()
+        if published.is_symlink():
+            raise ValueError("Meeting file is a link")
+        root = published.parent.resolve()
+        session = None
+        if directory != published:
+            with contextlib.suppress(ValueError):
+                if root_for(directory) == root and directory.is_dir() and not directory.is_symlink():
+                    session = f"{storage.SESSIONS}/{directory.name}"
+        return root, published.name, session
+    managed = root_for(directory)
+    if managed is not None:
+        return managed, None, f"{storage.SESSIONS}/{directory.name}"
+    if directory.is_symlink():
+        raise ValueError("Meeting folder is a link")
+    return directory.parent.resolve(), None, directory.name
+
+
+def _owned_root(root):
+    allowed = {Path(r).resolve() for r in location.roots()}
+    if Path(root).resolve() not in allowed:
+        raise ValueError("Meeting is outside the configured Library")
+    return Path(root).resolve()
+
+
+def _stored_prefix(path):
+    """The file's persisted `x["codemyriad.io"].namePrefix`, or None."""
+    from . import portable
+    from .library_v2 import xschema
+
+    with contextlib.suppress(OSError, ValueError, AttributeError, TypeError):
+        manifest = portable.read_meeting(str(path)).manifest or {}
+        ours = (manifest.get("x") or {}).get(xschema.DOMAIN) or {}
+        prefix = ours.get("namePrefix")
+        return prefix if isinstance(prefix, str) else None
+    return None
+
+
+def trash_meeting(meeting, *, queue=None):
+    """Worker only: move one meeting into the Library's trash. Returns (root, entry id)."""
+    from . import meeting_store
+
+    directory = Path(meeting.directory).absolute()
     exclusion = queue.cancel_meeting(directory) if queue else contextlib.nullcontext()
-    with exclusion:
-        with location.routing(), transaction(directory, repair=False):
-            directory = location.owned_directory(directory)
-            root = root_for(directory)
-            if location.capture_busy(meeting_id(directory)):
-                raise ValueError("Meeting is still recording or saving")
-            if root is not None:
-                from .library_v2 import journal, publish
+    with exclusion, location.routing():
+        root, published, session = representations(meeting)
+        root = _owned_root(root)
+        busy = meeting.origin == "own" and location.capture_busy(meeting.id)
+        entry_id = storage.move_to_trash(
+            root,
+            published=published,
+            session=session,
+            title=meeting.title,
+            recorded_at_utc=_utc_text(meeting.started_at_ms),
+            duration_ms=meeting.duration_ms,
+            name_prefix=_stored_prefix(root / published) if published else None,
+            received=meeting.origin == "received",
+            active_lease=busy,
+            guard=lambda: meeting_store.LOCK,
+        )
+    return root, entry_id
 
-                if trash is not None:
-                    raise ValueError("Managed Trash uses the shared journal's Trash provider")
-                if cleanup:
-                    cleanup.add(directory)
-                # Shared delete owns intent, file-first Trash, session Trash,
-                # fsync and replay. A partial failure keeps its cleanup intent.
-                publish.delete(
-                    journal.Layout(root), origin=journal.identity_of(directory)[0], session_id=meeting_id(directory)
-                )
-            elif directory.exists():
-                snapshot = LibraryScanner.for_meeting(directory).scan(changed_directories={directory})
-                meeting = next((m for m in snapshot.meetings if m.directory == directory), None)
-                if meeting is None or meeting.lifecycle != "saved":
-                    raise ValueError("Meeting is not ready for Trash")
-                if trash is None:
 
-                    def trash(path):
-                        return Gio.File.new_for_path(str(path)).trash(None)
-
-                if cleanup:
-                    cleanup.add(directory)  # Durable before the non-restorable portal call.
-                try:
-                    if not trash(directory):
-                        raise OSError("Native Trash did not confirm success")
-                except BaseException:
-                    if cleanup:
-                        with contextlib.suppress(OSError, ValueError):
-                            cleanup.forget(directory)
-                    raise
-            elif not directory.parent.is_dir():
-                raise FileNotFoundError("Library is unavailable")
-            elif cleanup:
-                cleanup.add(directory)  # An already-removed folder still needs durable private cleanup.
-        if cleanup:
-            try:
-                cleanup.finish(directory)
-            except (OSError, ValueError):
-                # Trash succeeded. Keep the row removed and retry this private
-                # bookkeeping from the durable intent, rather than claiming it failed.
-                LOG.exception("Meeting is in Trash; private cleanup remains queued")
-        else:
-            location.forget_meeting(directory)
-            if voices:
-                voices.remove_meeting(directory)
-        return directory
+def forget_purged(voices, root, identities):
+    """After a purge: drop this device's private per-meeting state (routing aliases and voice
+    prints of that meeting). Saved voices themselves are never unenrolled."""
+    for identity in identities:
+        folder = (identity or {}).get("session")
+        if not folder:
+            continue
+        for path in (Path(root) / storage.SESSIONS / folder, Path(root) / folder):
+            with contextlib.suppress(OSError, ValueError):
+                location.forget_meeting(path)
+        if voices is not None:
+            with contextlib.suppress(OSError, ValueError):
+                voices.remove_meeting(Path(root) / storage.SESSIONS / folder)
 
 
 @dataclass
@@ -92,23 +131,30 @@ class PendingTrash:
     meeting: object
     window: object
     toast: object = None
-    phase: str = "pending"
-    waits: tuple = ()
+    phase: str = "moving"  # moving -> done | failed; then restoring -> restored | done
+    root: Path | None = None
+    entry_id: str | None = None
+    undo: bool = False
 
 
 class MeetingTrash:
     def __init__(self, app):
         self.app = app
-        self.operations = {}
-        self.hidden = {}  # Path -> deletion time, or None during the Undo window/job.
+        self.operations = {}  # Path -> PendingTrash while its move or restore runs
+        self.hidden = {}  # Path -> time its move finished, or None while it runs
         self.absent = set()
         self.errors = {}
         self.toast = None
         self.waiters = []
         self.failed_flush = False
+        self.listeners = []  # callables run on the GTK thread after any trash change
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-trash")
         self.cleanup = TrashCleanup(app.voice_store)
-        self.executor.submit(self.cleanup.retry)
+        self.executor.submit(self.cleanup.retry)  # Phase 1 (D29) bookkeeping still queued
+        self.executor.submit(self._maintain).add_done_callback(self._maintained)
+        self._timer = GLib.timeout_add_seconds(EXPIRY_SECONDS, self._hourly)
+
+    # ---- Library projection ------------------------------------------------------------
 
     def hides(self, directory):
         return Path(directory).absolute() in self.hidden
@@ -117,7 +163,6 @@ class MeetingTrash:
         return bool(
             meeting
             and meeting.lifecycle == "saved"
-            and (meeting.published_file is None or meeting.metadata.get("version") == 1)
             and not self.hides(meeting.directory)
             and not self.app._quitting
             and not (self.app.library_relocator and self.app.library_relocator.running)
@@ -148,30 +193,48 @@ class MeetingTrash:
             if directory not in present:
                 self.absent.add(directory)
             elif directory in self.absent:
-                # A later scan saw a system-Trash restore. Keep its metadata intact.
+                # Restored from the Trash view (or a new meeting took this path): show it.
                 self.hidden.pop(directory)
                 self.absent.discard(directory)
+
+    # ---- Move to Trash and Undo --------------------------------------------------------
 
     def request(self, meeting, window):
         if not self.allowed(meeting, window):
             return
         if self.toast:
-            self.toast.dismiss()  # Replacing a toast commits its previous meeting.
+            self.toast.dismiss()  # Only the newest move offers Undo.
         directory = meeting.directory.absolute()
         self.errors.pop(directory, None)
         operation = PendingTrash(meeting, window)
         self.operations[directory] = operation
         self.hidden[directory] = None
-        operation.waits = self._prepare(meeting)
+        waits = self._prepare(meeting)
         toast = operation.toast = Adw.Toast(
             title=GLib.markup_escape_text(text("meeting.trashedToast", title=meeting.title)),
             button_label=text("common.undo"),
+            timeout=5,
         )
         toast.connect("button-clicked", lambda *_: self.undo(operation))
-        toast.connect("dismissed", lambda *_: self.commit(operation))
+        toast.connect("dismissed", lambda *_: self._toast_closed(operation))
         self.toast = toast
         self._refresh()
         window.toasts.add_toast(toast)
+        self.app.hold()
+        queue = self.app.transcriber
+
+        def work():
+            for future in waits:
+                with contextlib.suppress(Exception):
+                    future.result()  # Drain finished/failed writers; their own UI reports the error.
+            return trash_meeting(meeting, queue=queue)
+
+        future = self.executor.submit(work)
+        future.add_done_callback(lambda f: GLib.idle_add(self._moved, operation, f))
+
+    def _toast_closed(self, operation):
+        if self.toast is operation.toast:
+            self.toast = None
 
     def _prepare(self, meeting):
         waits = []
@@ -212,65 +275,75 @@ class MeetingTrash:
             waits.append(self.app.comfort.editor.submit(lambda: None))
         return tuple(waits)
 
-    def window_hidden(self, window):
-        for operation in list(self.operations.values()):
-            if operation.window is window and operation.phase == "pending":
-                operation.toast.dismiss()
-
-    def undo(self, operation):
-        if operation.phase != "pending":
-            return
-        operation.phase = "undone"
-        directory = operation.meeting.directory.absolute()
-        self.operations.pop(directory, None)
-        self.hidden.pop(directory, None)
-        operation.window._pending_selection = operation.meeting.key
-        if self.toast is operation.toast:
-            self.toast = None
-        self._refresh()
-
-    def commit(self, operation):
-        if operation.phase != "pending":
-            return
-        operation.phase = "committing"
-        if self.toast is operation.toast:
-            self.toast = None
-        self.app.hold()
-        queue = self.app.transcriber
-
-        def work():
-            for future in operation.waits:
-                with contextlib.suppress(Exception):
-                    future.result()  # Drain finished/failed writers; their own UI reports the error.
-            return trash_owned(operation.meeting.directory, queue=queue, cleanup=self.cleanup)
-
-        future = self.executor.submit(work)
-        future.add_done_callback(lambda f: GLib.idle_add(self._complete, operation, f))
-
-    def _complete(self, operation, future):
+    def _moved(self, operation, future):
         directory = operation.meeting.directory.absolute()
         try:
-            future.result()
+            operation.root, operation.entry_id = future.result()
         except Exception as error:
             LOG.warning("Could not move meeting to Trash: %s", error)
             operation.phase = "failed"
             self.failed_flush = True
             self.hidden.pop(directory, None)
-            unsupported = isinstance(error, GLib.Error) and error.matches(
-                Gio.io_error_quark(), Gio.IOErrorEnum.NOT_SUPPORTED
-            )
-            self.errors[directory] = "unsupported" if unsupported else "failed"
+            self.errors[directory] = "failed"
+            if operation.toast:
+                operation.toast.dismiss()
             operation.window._pending_selection = operation.meeting.key
             operation.window.present()
+            self._finish(operation)
+            return GLib.SOURCE_REMOVE
+        operation.phase = "done"
+        self.hidden[directory] = time.monotonic()
+        self.app.discard_meeting_paths(directory)
+        if operation.undo:
+            self._restore_for_undo(operation)
         else:
+            self._finish(operation)
+        return GLib.SOURCE_REMOVE
+
+    def window_hidden(self, window):
+        """Nothing waits for a toast any more: the move already happened (D100)."""
+        if self.toast and any(o.toast is self.toast and o.window is window for o in self.operations.values()):
+            self.toast.dismiss()
+
+    def undo(self, operation):
+        if operation.undo or operation.phase not in ("moving", "done"):
+            return
+        operation.undo = True
+        if self.toast is operation.toast:
+            self.toast = None
+        if operation.phase == "done":
+            directory = operation.meeting.directory.absolute()
+            self.operations[directory] = operation
+            self.app.hold()
+            self._restore_for_undo(operation)
+
+    def _restore_for_undo(self, operation):
+        operation.phase = "restoring"
+        root, entry_id = operation.root, operation.entry_id
+        future = self.executor.submit(storage.restore, root, entry_id)
+        future.add_done_callback(lambda f: GLib.idle_add(self._undone, operation, f))
+
+    def _undone(self, operation, future):
+        directory = operation.meeting.directory.absolute()
+        try:
+            future.result()
+        except Exception as error:
+            LOG.warning("Could not restore meeting from Trash: %s", error)
             operation.phase = "done"
-            self.hidden[directory] = time.monotonic()
-            self.app.discard_meeting_paths(directory)
-        self.operations.pop(directory, None)
-        self._refresh()
-        for window in self.app.get_windows():
-            if hasattr(window, "monitor"):
-                window.monitor.refresh_now()
+            operation.window.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(text("trash.restoreFailed"))))
+        else:
+            operation.phase = "restored"
+            self.hidden.pop(directory, None)
+            self.absent.discard(directory)
+            operation.window._pending_selection = operation.meeting.key
+        self._finish(operation)
+        return GLib.SOURCE_REMOVE
+
+    def _finish(self, operation):
+        directory = operation.meeting.directory.absolute()
+        if self.operations.get(directory) is operation:
+            self.operations.pop(directory)
+        self._changed()
         if not self.operations:
             callbacks, self.waiters = self.waiters, []
             failed, self.failed_flush = self.failed_flush, False
@@ -279,19 +352,119 @@ class MeetingTrash:
                 if notify is not None:
                     notify()
         self.app.release()
-        return GLib.SOURCE_REMOVE
 
     def flush(self, callback, *, failed=None):
-        """Commit on close/quit; keep GTK alive until the native Trash reply."""
-        for operation in list(self.operations.values()):
-            if operation.phase == "pending":
-                operation.toast.dismiss()
+        """On close/quit: keep GTK alive until running moves and restores have finished."""
         if not self.operations:
             return False
         waiter = (callback, failed)
         if waiter not in self.waiters:
             self.waiters.append(waiter)
         return True
+
+    # ---- the Trash view's operations ---------------------------------------------------
+
+    def root(self):
+        return Path(location.primary())
+
+    def submit(self, work, done, *, changes=True):
+        """Run `work` on the trash worker; `done(result, error)` on the GTK thread.
+
+        `changes=False` marks a read-only job (listing the entries): it never notifies the
+        listeners, since the Trash view reloads on every notification (no refresh loop)."""
+        self.app.hold()
+
+        def finished(future):
+            def report():
+                try:
+                    result, error = future.result(), None
+                except Exception as exc:  # reported by the view
+                    result, error = None, exc
+                try:
+                    done(result, error)
+                finally:
+                    if changes:
+                        self._changed()
+                    self.app.release()
+                return GLib.SOURCE_REMOVE
+
+            GLib.idle_add(report)
+
+        self.executor.submit(work).add_done_callback(finished)
+
+    def entries(self, done):
+        self.submit(lambda: storage.entries(self.root()), done, changes=False)
+
+    def restore(self, entry_id, done):
+        root = self.root()
+        self.submit(lambda: storage.restore(root, entry_id), done)
+
+    def purge(self, entry_id, done):
+        root, voices = self.root(), self.app.voice_store
+
+        def work():
+            identity = None
+            with contextlib.suppress(OSError, ValueError):
+                identity = next((e.identity for e in storage.entries(root) if e.entry_id == entry_id), None)
+            storage.purge(root, entry_id)
+            forget_purged(voices, root, [identity])
+
+        self.submit(work, done)
+
+    def empty(self, done):
+        root, voices = self.root(), self.app.voice_store
+
+        def work():
+            try:
+                purged = storage.empty_trash(root)
+            except storage.Incomplete as error:
+                forget_purged(voices, root, error.purged)  # what did go is forgotten; the rest stays
+                raise
+            forget_purged(voices, root, purged)
+
+        self.submit(work, done)
+
+    # ---- startup recovery and 30-day expiry --------------------------------------------
+
+    def _maintain(self):
+        """Worker: finish interrupted moves forward (S-12 §7.1 recovery), then expire.
+        Returns True when anything changed, so the Library rescans only then."""
+        voices = getattr(self.app, "voice_store", None)
+        changed = False
+        for root in dict.fromkeys(Path(r) for r in location.roots()):
+            try:
+                if not (root / journal.META).is_dir():
+                    continue
+                if journal.pending(journal.Layout(root), cleanup=False).entries:
+                    journal.recover(root)
+                    changed = True
+                purged = storage.expire(root)
+                forget_purged(voices, root, purged)
+                changed = changed or bool(purged)
+            except (OSError, ValueError, journal.LockBusy):
+                LOG.exception("Trash maintenance for %s will be retried", root)
+        return changed
+
+    def _maintained(self, future):
+        with contextlib.suppress(Exception):
+            if future.result():
+                GLib.idle_add(self._changed)
+
+    def _hourly(self):
+        if self.app._quitting:
+            self._timer = None
+            return GLib.SOURCE_REMOVE
+        self.executor.submit(self._maintain).add_done_callback(self._maintained)
+        return GLib.SOURCE_CONTINUE
+
+    def _changed(self):
+        self._refresh()
+        for window in self.app.get_windows():
+            if hasattr(window, "monitor"):
+                window.monitor.refresh_now()
+        for listener in list(self.listeners):
+            listener()
+        return GLib.SOURCE_REMOVE
 
     def _refresh(self):
         for window in self.app.get_windows():

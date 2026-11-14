@@ -10,7 +10,7 @@ from pathlib import Path
 
 from . import portable
 from .export_audio import check_cancel, encode_pcm
-from .export_model import encode_choice, file_stem, markdown, model_projection
+from .export_model import TEXT_FORMATS, encode_choice, file_stem, has_completed_transcript, model_projection
 from .portable_writer import descriptors, rewrite_tags
 from .received import regular_input
 
@@ -152,7 +152,40 @@ def verify_cassini_opus(path, *, cancel=None):
     portable.load_words(portable_meeting, portable_meeting.default_transcript_id)
 
 
+def original_suffix(meeting):
+    """The imported file's own extension (D99 §2 Original audio), lower-cased; `.opus` when unknown."""
+    suffix = Path(meeting.audio_file).suffix.lower().lstrip(".") if meeting.audio_file is not None else ""
+    return suffix if suffix.isascii() and suffix.isalnum() and len(suffix) <= 8 else "opus"
+
+
+def copy_original_audio(meeting, output, cancel=None, chunk=1024 * 1024):
+    """D99 §2 / D96: the imported bytes, unchanged; a file that changes while copied is refused."""
+    if meeting.lifecycle != "saved" or meeting.origin != "received" or meeting.audio_file is None:
+        raise ValueError("Only imported audio can be exported as original audio")
+    with regular_input(meeting.audio_file) as source:
+        before = os.fstat(source.fileno())
+        copied = 0
+        while copied < before.st_size:
+            check_cancel(cancel)
+            block = source.read(min(chunk, before.st_size - copied))
+            if not block:
+                raise ValueError("Recording changed while being exported")
+            output.write(block)
+            copied += len(block)
+        after = os.fstat(source.fileno())
+        if source.read(1) or (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            raise ValueError("Recording changed while being exported")
+
+
+SUFFIXES = {"cassini": "opus", **{kind: suffix for kind, (_writer, suffix) in TEXT_FORMATS.items()}}
+
+
 def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
+    if kind not in SUFFIXES and kind != "original":
+        raise ValueError("Unknown export format")
+    if kind in TEXT_FORMATS and not has_completed_transcript(meeting):
+        # D12 / D99 §2: text formats need a completed transcript, never partial words.
+        raise ValueError("Text formats need a completed transcript")
     directory = _require_export_directory(directory)
     check_cancel(cancel)
     stage = None
@@ -160,19 +193,20 @@ def export_meeting(meeting, directory, kind="cassini", *, tz=None, cancel=None):
         fd, name = tempfile.mkstemp(prefix=".cassini-export-", dir=directory)
         stage = Path(name)
         with os.fdopen(fd, "wb") as output:
-            if kind == "markdown":
-                output.write(markdown(model_projection(meeting, tz=tz)).encode())
-            elif kind == "cassini":
-                write_cassini_opus(meeting, output, directory, tz=tz, cancel=cancel)
+            if kind in TEXT_FORMATS:
+                output.write(TEXT_FORMATS[kind][0](model_projection(meeting, tz=tz)).encode())
+            elif kind == "original":
+                copy_original_audio(meeting, output, cancel)
             else:
-                raise ValueError("Unknown export format")
+                write_cassini_opus(meeting, output, directory, tz=tz, cancel=cancel)
             output.flush()
             os.fsync(output.fileno())
         check_cancel(cancel)
         if kind == "cassini":
             verify_cassini_opus(stage, cancel=cancel)
         check_cancel(cancel)
-        result = _publish(stage, directory, file_stem(meeting.title), "md" if kind == "markdown" else "opus")
+        suffix = original_suffix(meeting) if kind == "original" else SUFFIXES[kind]
+        result = _publish(stage, directory, file_stem(meeting.title), suffix)
         _fsync_directory(directory)
         return result
     except InterruptedError:

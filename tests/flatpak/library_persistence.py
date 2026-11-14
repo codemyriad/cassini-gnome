@@ -55,14 +55,15 @@ from cassini_talk import portable
 if sys.argv[3] == "write":
     meeting=load_open_meeting(folder/"session.json")
     unsafe=Path.home()/"Documents/Cassini-temporary-export"
-    # D99 §2: this untranscribed recording exports only as a Cassini file.
-    try: export_meeting(meeting,unsafe,"markdown")
-    except ValueError: pass
-    else: raise AssertionError("Text export accepted an audio-only meeting")
     try: export_meeting(meeting,unsafe,"cassini")
     except PermissionError: pass
     else: raise AssertionError("Export accepted Flatpak's temporary private home")
     assert not unsafe.exists()
+    # D12 / D99 §2: this untranscribed meeting is audio-only; text formats are refused, nothing written.
+    try: export_meeting(meeting,exports,"markdown")
+    except ValueError: pass
+    else: raise AssertionError("Markdown exported without a completed transcript")
+    assert not list(exports.iterdir())
     export_meeting(meeting,exports,"cassini")
 files=sorted(exports.iterdir())
 assert {p.suffix for p in files} == {".opus"}

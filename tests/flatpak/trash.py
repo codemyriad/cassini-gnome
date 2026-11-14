@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Installed sandbox -> real desktop Trash portal -> private host Trash, no extra grants."""
+"""Installed sandbox: Move to Trash, Undo/Restore and purge stay inside the Library (D100, D-1032).
+
+The meeting moves into `<Library>/.cassini/trash/<entry-id>/` with no extra grants; the real
+desktop Trash portal is running, and nothing may reach the host Trash (S-12 §7.1).
+"""
 
 import argparse
 import hashlib
@@ -77,25 +81,44 @@ def worker(application, private, output, portal_prefix=None):
             assert published.parent == music and published.is_file()
             audio_hash = hashlib.sha256(published.read_bytes()).hexdigest()
             before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()}
-            result = inside(
-                "import json,gi;from pathlib import Path;gi.require_version('Adw','1');"
-                "from cassini_talk.meeting_trash import trash_owned;"
-                "from cassini_talk.trash_cleanup import TrashCleanup;"
-                "from cassini_talk.voice_store import VoiceStore;"
-                f"p=Path({str(folder)!r});trash_owned(p,cleanup=TrashCleanup(VoiceStore()));"
-                "print(json.dumps(dict(removed=not p.exists())))"
-            )
-            assert result["removed"] and not folder.exists() and not published.exists()
-            host_trash = private / "data" / "Trash" / "files"
-            (trashed,) = [p for p in host_trash.iterdir() if p.name.startswith(folder.name)]
-            assert {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in trashed.iterdir()} == before
-            audio_copies = [p for p in host_trash.iterdir() if p.is_file() and p.suffix == ".opus"]
-            assert len(audio_copies) == 1
-            assert hashlib.sha256(audio_copies[0].read_bytes()).hexdigest() == audio_hash
-            restarted = inside(
+            scan = (
                 "import json;from cassini_talk.library import LibraryCollectionScanner;"
-                "print(json.dumps(dict(meetings=len(LibraryCollectionScanner().scan().meetings))))"
+                "ms=LibraryCollectionScanner().scan().meetings;"
             )
+            result = inside(
+                "import gi;gi.require_version('Adw','1');"
+                + scan
+                + "from cassini_talk.meeting_trash import trash_meeting;"
+                "(m,)=ms;r,e=trash_meeting(m);print(json.dumps(dict(root=str(r),entry=e)))"
+            )
+            entry = music / ".cassini" / "trash" / result["entry"]
+            assert Path(result["root"]) == music and not folder.exists() and not published.exists()
+            assert hashlib.sha256((entry / "meeting.opus").read_bytes()).hexdigest() == audio_hash
+            moved = entry / folder.name
+            assert {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in moved.iterdir()} == before
+            host_trash = private / "data" / "Trash"
+            assert not host_trash.exists() or not any(host_trash.rglob("*")), "nothing may reach the host Trash"
+            hidden = inside(scan + "print(json.dumps(dict(meetings=len(ms))))")
+            assert hidden["meetings"] == 0
+            restored = inside(
+                "import json;from pathlib import Path;from cassini_talk.library_v2 import trash;"
+                f"print(json.dumps(dict(name=trash.restore(Path({str(music)!r}),{result['entry']!r}))))"
+            )
+            assert restored["name"] == published.name and not entry.exists()
+            assert hashlib.sha256(published.read_bytes()).hexdigest() == audio_hash
+            assert {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()} == before
+            assert inside(scan + "print(json.dumps(dict(meetings=len(ms))))")["meetings"] == 1
+            purged = inside(
+                "import gi;gi.require_version('Adw','1');"
+                + scan
+                + "from cassini_talk.meeting_trash import trash_meeting;"
+                "from cassini_talk.library_v2 import trash;(m,)=ms;r,e=trash_meeting(m);trash.purge(r,e);"
+                "print(json.dumps(dict(left=len(trash.entries(r)))))"
+            )
+            assert purged["left"] == 0 and not folder.exists() and not published.exists()
+            assert not any((music / ".cassini" / "trash").iterdir())
+            assert not host_trash.exists() or not any(host_trash.rglob("*"))
+            restarted = inside(scan + "print(json.dumps(dict(meetings=len(ms))))")
             assert restarted["meetings"] == 0
             output.write_text(
                 json.dumps(
@@ -103,13 +126,14 @@ def worker(application, private, output, portal_prefix=None):
                         application=application,
                         installed=True,
                         noExtraGrants=True,
-                        nativeGioTrash=True,
-                        hostTrash=True,
+                        libraryTrash=True,
+                        hostTrashUntouched=True,
                         allBytesPreserved=True,
+                        restoredByteIdentical=True,
+                        purgeRemovedEverything=True,
                         restartStillRemoved=True,
                         files=before,
                         publishedAudioSHA256=audio_hash,
-                        fileAndSessionTrashed=True,
                     ),
                     indent=2,
                 )

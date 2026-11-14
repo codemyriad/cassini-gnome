@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Actual Open/drop import, Library selection and the two-format Export dialog."""
+"""Actual Open/drop import, Library selection and the L-11 Export dialog (two choices + More formats)."""
 
 import hashlib
 import os
@@ -436,6 +436,95 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.names.get_label().count("<b>") == 3 and "&amp;" in dialog.names.get_label()
     dialog.close()
     until(lambda: dialog.closed)
+    # L-11 (D99 §2, PARITY §2): a transcribed meeting offers Cassini file and Markdown,
+    # then Plain text, SRT and WebVTT under a collapsed More formats disclosure.
+    from cassini_talk.export_dialog import ExportDialog
+
+    transcribed = window.meeting_page.meeting
+    assert transcribed.transcript == "done" and transcribed.words
+    formats_destination = tmp / "Formats"
+    for kind, suffix in (("txt", ".txt"), ("srt", ".srt"), ("vtt", ".vtt")):
+        window.show_export()
+        dialog = window.export_dialog
+        assert dialog.rows["markdown"].get_visible() and dialog.more.get_visible()
+        assert not dialog.audio_only_note.get_visible()
+        assert labels(dialog.rows["audio"])[0] == text("export.cassiniFile.label")
+        assert dialog.more.get_label() == text("export.moreFormats") and not dialog.more.get_expanded()
+        assert [labels(dialog.rows[k])[:2] for k in ("txt", "srt", "vtt")] == [
+            [text("export.plainText.label"), text("export.plainText.description")],
+            [text("export.srt.label"), text("export.srt.description")],
+            [text("export.vtt.label"), text("export.vtt.description")],
+        ]
+        assert not any(dialog.rows[k].get_mapped() for k in ("txt", "srt", "vtt")), "collapsed by default"
+        assert dialog.cassini.get_active() and dialog.selected_format() == "cassini"
+        dialog.more.set_expanded(True)
+        until(lambda dialog=dialog, kind=kind: dialog.rows[kind].get_mapped())
+        assert all(dialog.rows[k].is_ancestor(dialog.more) for k in ("txt", "srt", "vtt"))
+        dialog.destination = Gio.File.new_for_path(str(formats_destination))
+        dialog.buttons[kind].set_active(True)
+        assert dialog.selected_format() == kind and "selected" in dialog.rows[kind].get_css_classes()
+        dialog.export_button.emit("clicked")
+        until(lambda dialog=dialog: dialog.closed and dialog.output is not None)
+        assert dialog.output.suffix == suffix and dialog.output.parent == formats_destination
+        body = dialog.output.read_text()
+        assert body and "voiceprint" not in body.lower()
+        if kind == "txt":
+            assert " · 00:" in body.splitlines()[0]
+        elif kind == "srt":
+            assert body.startswith("1\n00:") and " --> " in body
+        else:
+            assert body.startswith("WEBVTT\n\n") and "<v " in body and "</v>" in body
+        until(lambda dialog=dialog: not dialog.get_mapped())
+    assert not list(formats_destination.glob(".cassini-*"))
+    # A transcript that is queued again while Export is open hides the text formats and
+    # falls back to the audio choice; it never exports partial words (D12).
+    window.show_export()
+    dialog = window.export_dialog
+    dialog.buttons["srt"].set_active(True)
+    dialog.update(replace(transcribed, transcript="queued"))
+    assert not dialog.rows["markdown"].get_visible() and not dialog.more.get_visible()
+    assert dialog.audio_only_note.get_visible() and dialog.selected_format() == "cassini"
+    dialog.update(transcribed)
+    assert dialog.rows["markdown"].get_visible() and dialog.more.get_visible()
+    assert not dialog.audio_only_note.get_visible()
+    dialog.close()
+    until(lambda: dialog.closed)
+    # Audio-only meetings: text formats are hidden (not greyed out), with the catalog note.
+    for state in ("none", "queued", "running", "failed"):
+        dialog = ExportDialog(window, replace(transcribed, transcript=state))
+        dialog.present(window)
+        until(lambda dialog=dialog: dialog.cassini.get_mapped())
+        assert not dialog.rows["markdown"].get_visible() and not dialog.more.get_visible()
+        assert dialog.audio_only_note.get_mapped()
+        assert dialog.audio_only_note.get_text() == text("export.audioOnly.note")
+        assert labels(dialog.rows["audio"])[0] == text("export.cassiniFile.label")
+        assert dialog.selected_format() == "cassini"
+        assert text("export.markdown.label") not in labels(dialog, visible=True)
+        assert text("export.moreFormats") not in labels(dialog, visible=True)
+        dialog.close()
+        until(lambda dialog=dialog: dialog.closed)
+    # An imported meeting with no Cassini file yet offers its Original audio instead.
+    # Its own key keeps the dialog's pre-export refresh from swapping in the Library's copy.
+    plain = replace(
+        received, transcript="none", plain_audio=True, title="Plain import", collection_key="l11/plain-import"
+    )
+    dialog = ExportDialog(window, plain)
+    dialog.present(window)
+    until(lambda: dialog.cassini.get_mapped())
+    assert labels(dialog.rows["audio"])[:2] == [
+        text("export.originalAudio.label"),
+        text("export.originalAudio.description"),
+    ]
+    assert text("export.cassiniFile.label") not in labels(dialog, visible=True)
+    assert dialog.audio_only_note.get_mapped() and not dialog.more.get_visible()
+    assert dialog.selected_format() == "original"
+    original_destination = tmp / "Original audio"
+    dialog.destination = Gio.File.new_for_path(str(original_destination))
+    dialog.export_button.emit("clicked")
+    until(lambda: dialog.closed and dialog.output is not None)
+    assert dialog.output.name == "Plain import.opus"
+    assert dialog.output.read_bytes() == received.audio_file.read_bytes()
+    until(lambda: not dialog.get_mapped())
     # Dismissing a picker keeps Export usable, with no write or lost selection.
     window.show_export()
     dialog = window.export_dialog
@@ -483,5 +572,6 @@ with tempfile.TemporaryDirectory() as temporary:
     window.close()
     app.comfort.close()
 print(
-    "PASS Open/drop import and dedupe select Library; folder card; playback; Cassini/Markdown export; complete, escaped recognised-name disclosure"
+    "PASS Open/drop import and dedupe select Library; folder card; playback; Cassini/Markdown export; "
+    "More formats TXT/SRT/VTT; audio-only and Original audio; complete, escaped recognised-name disclosure"
 )

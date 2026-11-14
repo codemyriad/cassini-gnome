@@ -79,7 +79,8 @@
     "library-vectors/expected/t8-low-audio-silent.json": "ux/library-vectors/expected/t8-low-audio-silent.json",
     "listen-by-speaker/turns.json": "tests/ux/listen-by-speaker/turns.json",
     "listen-by-speaker/README.md": "tests/ux/listen-by-speaker/README.md",
-    "import-types.json": "src/cassini_talk/import-types.json"
+    "import-types.json": "src/cassini_talk/import-types.json",
+    "library-v2/trash-vectors.json": "tests/ux/library-v2/trash-vectors.json"
   },
   "sha256": {
     "format-vectors.json": "e418d48c7e551a90756699f42e939c7dd918f444deb302e4410af312afc32279",
@@ -159,7 +160,8 @@
     "library-vectors/expected/t8-low-audio-silent.json": "8c18748f8d778a2209870e9484262eb7116ecdce780d48fb5201106092628419",
     "listen-by-speaker/turns.json": "0c0d49a7f1d57f97b243d08c0558ab13506a39a93316a2e7506d228f21d75e29",
     "listen-by-speaker/README.md": "499612b72cee5c64cb449f1797d3932a19c44e32a94711ebd8eb25a8d76c354b",
-    "import-types.json": "bd80bb2b5ef176279ad6615e62960d19e693519867ab4fa0dded2d717584295d"
+    "import-types.json": "bd80bb2b5ef176279ad6615e62960d19e693519867ab4fa0dded2d717584295d",
+    "library-v2/trash-vectors.json": "e221e0b5c355cfab68b107e6493ca98e07588a2e7e78b3ef352d5624f8a72d76"
   },
   "sourcePaths": {
     "LIBRARY-RULES.md": "contract/LIBRARY-RULES.md",
@@ -239,6 +241,7 @@
     "listen-by-speaker/README.md": "vectors/listen-by-speaker/README.md",
     "format-vectors.json": "vectors/format/format-vectors.json",
     "states-vectors.json": "vectors/states/states-vectors.json",
-    "import-types.json": "contract/import-types.json"
+    "import-types.json": "contract/import-types.json",
+    "library-v2/trash-vectors.json": "contract/library-v2/trash-vectors.json"
   }
 }

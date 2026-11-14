@@ -168,7 +168,7 @@ def test_empty_round_trip_is_writable_preserves_notes_private_data_and_deduplica
 
 
 def test_concurrent_exports_never_replace_existing_files_and_cancel_leaves_no_partials(tmp_path):
-    model = load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library")
+    model = replace(load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library"), transcript="done")
     directory = tmp_path / "Documents"
     directory.mkdir()
     stem = file_stem(model.title)

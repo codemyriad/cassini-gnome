@@ -22,6 +22,7 @@ def test_vendored_library_v2_fixtures_match_their_pinned_upstream_bytes():
     assert sorted(pinned) == [
         "library-v2/name-vectors-malformed.json",
         "library-v2/name-vectors.json",
+        "library-v2/trash-vectors.json",
         "library-v2/x-schema.json",
     ]
     for name in pinned:

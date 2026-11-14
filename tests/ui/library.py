@@ -173,7 +173,7 @@ with tempfile.TemporaryDirectory() as tmp:
         w
         for w in walk(primary.get_popover())
         if w.__gtype__.name == "GtkModelButton"
-        and any(isinstance(child, Gtk.Label) and child.get_text() == "Keyboard Shortcuts" for child in walk(w))
+        and any(isinstance(child, Gtk.Label) and child.get_text() == "Keyboard shortcuts" for child in walk(w))
     )
     assert item.is_sensitive() and item.activate(), "Activate through the actual primary-menu item"
     until(lambda: app.shortcuts_dialog is not None and app.shortcuts_dialog.get_mapped())
