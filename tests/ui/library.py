@@ -312,7 +312,10 @@ with tempfile.TemporaryDirectory() as tmp:
     labels = [w.get_label() for w in walk(empty) if isinstance(w, Gtk.Label)]
     assert text("firstRun.hero.title") in labels and text("firstRun.hero.subtitle") in labels
     assert text("firstRun.body") in labels and text("firstRun.footer") in labels
-    assert text("firstRun.title") not in labels and text("firstRun.shortcutHint", shortcut=text("common.shortcut.record")) not in labels
+    assert (
+        text("firstRun.title") not in labels
+        and text("firstRun.shortcutHint", shortcut=text("common.shortcut.record")) not in labels
+    )
     assert empty.privacy_footer.get_visible()
     # L-27: no header Record, no visible header title, only a hidden accessible "Library" heading.
     empty_view = empty.root_box.get_child_by_name("empty")

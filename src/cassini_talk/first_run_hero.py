@@ -83,7 +83,7 @@ class HeroWave(Gtk.Widget):
         colour = self.get_color()
         heights, alphas = self._bars(width, height)
         x = 0
-        for bar_h, alpha in zip(heights, alphas):
+        for bar_h, alpha in zip(heights, alphas, strict=True):
             rgba = colour.copy()
             rgba.alpha = colour.alpha * alpha
             rect = Graphene.Rect().init(x, (height - bar_h) / 2, BAR_WIDTH_PX, bar_h)

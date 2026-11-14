@@ -64,7 +64,9 @@ def test_hero_copy_comes_from_the_pinned_catalog():
 
 def test_first_run_view_follows_harmony_section_10():
     source = (ROOT / "src/cassini_talk/library_window.py").read_text()
-    block = source[source.index("    def _first_run_header(self):") : source.index('self.root_box.add_named(view, "empty")')]
+    block = source[
+        source.index("    def _first_run_header(self):") : source.index('self.root_box.add_named(view, "empty")')
+    ]
     # Desktop hero: no phone backup qualifier, no legacy title or shortcut hint, no header Record.
     assert "phoneBackupQualifier" not in block and "subtitlePhoneNote" not in block
     assert '"firstRun.title"' not in block and "firstRun.shortcutHint" not in block
