@@ -114,14 +114,22 @@ class SearchPage(Adw.Bin):
             column_spacing=6,
             row_spacing=6,
             homogeneous=False,
-            max_children_per_line=3,
+            max_children_per_line=4,
             css_classes=["search-filters"],
         )
+        chips.update_property([Gtk.AccessibleProperty.LABEL], [text("library.filters.a11y")])
+        # L-35 order: Starred · Speaker · Any date · Recorded by me. Starred
+        # carries over the Library's at-rest choice; every chip resets on close.
+        self._carried_starred = getattr(window, "library_filter", "all") == "starred"
+        self.starred = Gtk.ToggleButton(
+            label=text("search.filter.starred"), active=self._carried_starred, css_classes=["search-chip"]
+        )
+        self.starred.connect("toggled", lambda *_: self.request())
         self.speaker_button = Gtk.MenuButton(label=text("search.filter.speakerNone"), css_classes=["search-chip"])
         self.date_button = Gtk.MenuButton(label=text("search.filter.anyDate"), css_classes=["search-chip"])
         self.own = Gtk.ToggleButton(label=text("search.filter.recordedByMe"), css_classes=["search-chip"])
         self.own.connect("toggled", lambda *_: self.request())
-        for widget in (self.speaker_button, self.date_button, self.own):
+        for widget in (self.starred, self.speaker_button, self.date_button, self.own):
             widget.set_halign(Gtk.Align.START)
             chips.append(widget)
             parent = widget.get_parent()
@@ -248,9 +256,7 @@ class SearchPage(Adw.Bin):
             and not getattr(self.window, "_closing_search", False)
             and not self.entry.get_text()
             and self._had_nonempty_query
-            and self.speaker is None
-            and self.date == "any"
-            and not self.own.get_active()
+            and not self._filters_changed()
         ):
             self._had_nonempty_query = False
             self.window.back_to_library()
@@ -265,12 +271,25 @@ class SearchPage(Adw.Bin):
                 GLib.source_remove(self._empty_close_source)
                 self._empty_close_source = 0
             self._had_nonempty_query = True
-        elif self._had_nonempty_query and self.speaker is None and self.date == "any" and not self.own.get_active():
+        elif self._had_nonempty_query and not self._filters_changed():
             # GtkEditable.set_text("new") deletes to "" before inserting "new" in the
             # same C call; check on idle so replacing text never closes Search mid-call.
             if not self._empty_close_source:
                 self._empty_close_source = GLib.idle_add(self._check_empty_close)
             return
+        self.request()
+
+    def _filters_changed(self):
+        """Whether the user narrowed Search beyond what it opened with."""
+        return bool(
+            self.speaker is not None
+            or self.date != "any"
+            or self.own.get_active()
+            or self.starred.get_active() != self._carried_starred
+        )
+
+    def stars_changed(self):
+        """Stars changed in this window: refresh the filter and the row glyphs."""
         self.request()
 
     def _menu(self, button, choices, selected, callback):
@@ -314,7 +333,7 @@ class SearchPage(Adw.Bin):
 
     def _date_menu(self):
         choices = [("any", text("search.filter.anyDate"))] + [
-            (key, text("search.filter.date." + key)) for key in ("today", "week", "month")
+            (key, text("search.filter.date." + key)) for key in ("today", "week", "month", "year")
         ]
         self._menu(self.date_button, choices, self.date, self.choose_date)
 
@@ -353,6 +372,10 @@ class SearchPage(Adw.Bin):
             self._snapshot_signature = signature
             self.request()
 
+    def _starred_keys(self):
+        stars = getattr(self.window, "_stars", None)
+        return frozenset(stars.starred) if stars is not None else frozenset()
+
     def request(self):
         if self.closed:
             return
@@ -373,6 +396,7 @@ class SearchPage(Adw.Bin):
             speaker=self.speaker,
             date=self.date,
             own=self.own.get_active(),
+            starred=self._starred_keys() if self.starred.get_active() else None,
             now_ms=self.window.now_ms,
             tz=self.window.tz,
             dark=self._style_manager.get_dark(),
@@ -444,6 +468,11 @@ class SearchPage(Adw.Bin):
         hit, meeting = result.hit, result.meeting
         row = box(4, css_classes=["search-result"])
         heading = Gtk.Box(spacing=8)
+        if self.window.is_starred(meeting):
+            from .library_window import star_glyph
+
+            heading.append(star_glyph())
+            row.update_property([Gtk.AccessibleProperty.DESCRIPTION], [text("library.row.starred.a11y")])
         heading.append(
             label(
                 hit.title_markup or meeting.title,

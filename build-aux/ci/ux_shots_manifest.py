@@ -33,7 +33,7 @@ FLOW_SOURCES = (
     ("recording-saving", "tests/ui/recording.py"),
     ("rename", "tests/ui/rename.py"), ("spectrogram-browser", "tests/ui/spectrogram-browser.py"),
     ("spectrogram-components", "tests/ui/spectrogram.py"), ("spectrogram-", "tests/ui/spectrogram-live.py"),
-    ("speech-models-", "tests/ui/speech-models.py"), ("test-recording-", "tests/ui/test-recording.py"),
+    ("speech-models-", "tests/ui/speech-models.py"), ("starring", "tests/ui/starring.py"), ("test-recording-", "tests/ui/test-recording.py"),
     ("trash-", "tests/ui/trash.py"), ("w1-", "tests/ui/w1-token-states.py"),
     ("w2-badges", "tests/ui/w2-badges.py"), ("what-is-recorded-", "tests/ui/what-is-recorded.py"),
     ("wide-speakers", "tests/ui/wide-speakers.py"),
