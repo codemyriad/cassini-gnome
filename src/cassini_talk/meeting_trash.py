@@ -151,7 +151,7 @@ class MeetingTrash:
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-trash")
         self.cleanup = TrashCleanup(app.voice_store)
         self.executor.submit(self.cleanup.retry)  # Phase 1 (D29) bookkeeping still queued
-        self.executor.submit(self._maintain).add_done_callback(lambda _f: GLib.idle_add(self._changed))
+        self.executor.submit(self._maintain).add_done_callback(self._maintained)
         self._timer = GLib.timeout_add_seconds(EXPIRY_SECONDS, self._hourly)
 
     # ---- Library projection ------------------------------------------------------------
@@ -418,22 +418,34 @@ class MeetingTrash:
     # ---- startup recovery and 30-day expiry --------------------------------------------
 
     def _maintain(self):
-        """Worker: finish interrupted moves forward (S-12 §7.1 recovery), then expire."""
+        """Worker: finish interrupted moves forward (S-12 §7.1 recovery), then expire.
+        Returns True when anything changed, so the Library rescans only then."""
         voices = getattr(self.app, "voice_store", None)
+        changed = False
         for root in dict.fromkeys(Path(r) for r in location.roots()):
             try:
                 if not (root / journal.META).is_dir():
                     continue
-                journal.recover(root)
-                forget_purged(voices, root, storage.expire(root))
+                if journal.pending(journal.Layout(root), cleanup=False).entries:
+                    journal.recover(root)
+                    changed = True
+                purged = storage.expire(root)
+                forget_purged(voices, root, purged)
+                changed = changed or bool(purged)
             except (OSError, ValueError, journal.LockBusy):
                 LOG.exception("Trash maintenance for %s will be retried", root)
+        return changed
+
+    def _maintained(self, future):
+        with contextlib.suppress(Exception):
+            if future.result():
+                GLib.idle_add(self._changed)
 
     def _hourly(self):
         if self.app._quitting:
             self._timer = None
             return GLib.SOURCE_REMOVE
-        self.executor.submit(self._maintain).add_done_callback(lambda _f: GLib.idle_add(self._changed))
+        self.executor.submit(self._maintain).add_done_callback(self._maintained)
         return GLib.SOURCE_CONTINUE
 
     def _changed(self):

@@ -147,7 +147,8 @@ with tempfile.TemporaryDirectory() as temporary:
         "read-only root file",
     )
     assert not window.lookup_action("rename").get_enabled()
-    assert not window.lookup_action("move-to-trash").get_enabled()
+    # D100 / S-12 §7.1 case (a): a standalone root file moves to the Library's Trash too.
+    assert window.lookup_action("move-to-trash").get_enabled()
     assert window.play_button.get_sensitive()
     sink = Gst.ElementFactory.make("fakesink", None)
     sink.set_property("sync", True)
@@ -158,7 +159,7 @@ with tempfile.TemporaryDirectory() as temporary:
     window.open_meeting(window.selected)
     until(lambda: window.meeting_page is not None, "read-only Meeting page")
     assert not window.lookup_action("rename").get_enabled()
-    assert not window.lookup_action("move-to-trash").get_enabled()
+    assert window.lookup_action("move-to-trash").get_enabled()
     assert not window.lookup_action("name-speakers").get_enabled()
     window.close()
 print("D48 GTK passed: disk warning, Retry, missing file, read-only root playback and edit controls")
