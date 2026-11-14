@@ -1,8 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Actual Trash API and recoverable private bookkeeping, only in isolated roots."""
+"""Move to Trash, Undo/Restore and purge through the app API (D100, D-1032), isolated roots.
+
+The meeting moves into the Library's own `.cassini/trash/<entry-id>/` (S-12 §7.1): the system
+Trash and the Trash portal are never called, so Undo works the same in the Flatpak.
+"""
 
 import contextlib
-import json
+import os
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,10 +21,12 @@ try:
     gi.require_version("Adw", "1")
 except ValueError:
     pytest.skip("GIO/Adwaita available in distro jobs", allow_module_level=True)
-from gi.repository import GLib  # noqa: E402
+from gi.repository import Gio, GLib  # noqa: E402
 
-from cassini_talk.meeting_trash import trash_owned  # noqa: E402
-from cassini_talk.trash_cleanup import TrashCleanup  # noqa: E402
+from cassini_talk import meeting_trash as module  # noqa: E402
+from cassini_talk.library import LibraryScanner  # noqa: E402
+from cassini_talk.library_v2 import journal  # noqa: E402
+from cassini_talk.library_v2 import trash as storage  # noqa: E402
 from cassini_talk.voice_store import VoiceStore  # noqa: E402
 
 
@@ -29,89 +36,79 @@ def roots(tmp_path, monkeypatch):
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(library))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     store = VoiceStore(tmp_path / "private" / "voices")
+
+    def no_system_trash(*_args, **_kwargs):
+        raise AssertionError("D100: a deleted meeting never goes through the system Trash or portal")
+
+    monkeypatch.setattr(Gio.File, "trash", no_system_trash)
     return library, store
 
 
-def test_native_gio_trash_keeps_the_whole_folder_and_original_bytes(roots):
+def fingerprint(directory):
+    return {
+        p.relative_to(directory).as_posix(): p.read_bytes() for p in sorted(Path(directory).rglob("*")) if p.is_file()
+    }
+
+
+def meeting_for(library, directory):
+    return next(m for m in LibraryScanner(library).scan().meetings if m.directory == directory)
+
+
+def test_v1_meeting_moves_whole_into_the_library_trash_and_restores_byte_identical(roots):
     library, store = roots
     session = capture(library)
-    before = {p.name: p.read_bytes() for p in session.directory.iterdir()}
-    native = Path(GLib.get_user_data_dir()) / "Trash" / "files"
-    prior = set(native.iterdir()) if native.exists() else set()
-    trash_owned(session.directory, cleanup=TrashCleanup(store))
-    assert not session.directory.exists()
-    candidates = set(native.iterdir()) - prior
-    restored = next(p for p in candidates if p.name.startswith(session.directory.name))
-    assert {p.name: p.read_bytes() for p in restored.iterdir()} == before
+    before = fingerprint(session.directory)
+    meeting = meeting_for(library, session.directory)
+    root, entry_id = module.trash_meeting(meeting)
+    assert root == library.resolve() and not session.directory.exists()
+    entry = library / ".cassini/trash" / entry_id
+    assert fingerprint(entry / session.directory.name) == before
+    assert not LibraryScanner(library).scan().meetings
+    (row,) = storage.entries(library)
+    assert (row.entry_id, row.title, row.duration_ms) == (entry_id, meeting.title, meeting.duration_ms)
+    assert storage.restore(library, entry_id) is None
+    assert fingerprint(session.directory) == before
+    assert [m.directory for m in LibraryScanner(library).scan().meetings] == [session.directory]
+    assert not storage.entries(library) and not os.listdir(library / ".cassini/journal")
 
 
-def test_invalid_external_folder_does_not_reach_native_trash(roots, tmp_path):
-    _library, store = roots
+def test_invalid_external_folder_is_refused_before_anything_moves(roots, tmp_path):
+    _library, _store = roots
     external = capture(tmp_path / "outside")
-    called = []
-    with pytest.raises(ValueError):
-        trash_owned(external.directory, voices=store, trash=lambda p: called.append(p))
-    assert external.directory.exists() and not called
+    meeting = meeting_for(tmp_path / "outside", external.directory)
+    with pytest.raises(ValueError, match="outside"):
+        module.trash_meeting(meeting)
+    assert external.directory.exists() and not (tmp_path / "outside/.cassini").exists()
 
 
-def test_failed_native_trash_keeps_audio_and_prints(roots):
-    library, store = roots
-    session = capture(library)
-    enrol(store, session.directory)
-    before = {p.name: p.read_bytes() for p in session.directory.iterdir()}
-    cache = store.root / "meetings" / (session.directory.name + ".json")
-    original = cache.read_bytes()
-    cleanup = TrashCleanup(store)
-    with pytest.raises(OSError):
-        trash_owned(session.directory, cleanup=cleanup, trash=lambda _: False)
-    assert {p.name: p.read_bytes() for p in session.directory.iterdir()} == before
-    assert cache.read_bytes() == original
-    assert json.loads(cleanup.path.read_text())["pending"] == []
-
-
-def test_busy_capture_cannot_be_trashed(roots):
+def test_busy_capture_is_refused_and_nothing_changes(roots):
     from cassini_talk.recording_session import RecordingSession
 
-    library, store = roots
+    library, _store = roots
     session = RecordingSession(None, source="gnome")
-    called = []
     try:
-        with pytest.raises(ValueError, match="still recording"):
-            trash_owned(session.directory, voices=store, trash=lambda p: called.append(p))
-        assert session.directory.exists() and not called
+        meeting = SimpleNamespace(
+            directory=session.directory,
+            published_file=None,
+            origin="own",
+            id=session.directory.name.split("-", 1)[1],
+            title="Live",
+            started_at_ms=None,
+            duration_ms=None,
+        )
+        with pytest.raises(storage.Refused, match="activity lease"):
+            module.trash_meeting(meeting)
+        assert session.directory.exists() and not storage.entries(library)
     finally:
         session.finish()
 
 
-@pytest.mark.parametrize("already_missing", [False, True])
-def test_private_cleanup_failure_after_success_is_durable_and_retryable(roots, tmp_path, monkeypatch, already_missing):
-    library, store = roots
+def test_cancellation_exclusion_spans_the_move(roots):
+    library, _store = roots
     session = capture(library)
-    enrol(store, session.directory)
-    cleanup = TrashCleanup(store)
-    original = store.remove_meeting
-    monkeypatch.setattr(store, "remove_meeting", lambda _: (_ for _ in ()).throw(OSError("generated read-only cache")))
-
-    def native(path):
-        path.rename(tmp_path / "private-system-trash")
-        return True
-
-    if already_missing:
-        session.directory.rename(tmp_path / "private-system-trash")
-    trash_owned(session.directory, cleanup=cleanup, trash=native)
-    assert not session.directory.exists()
-    assert json.loads(cleanup.path.read_text())["pending"] == [str(session.directory)]
-    monkeypatch.setattr(store, "remove_meeting", original)
-    cleanup.retry()
-    assert not (store.root / "meetings" / (session.directory.name + ".json")).exists()
-    assert json.loads(cleanup.path.read_text())["pending"] == []
-    assert store.snapshot()["voices"][0]["name"] == "Alice"
-
-
-def test_cancellation_exclusion_spans_trash_and_private_cleanup(roots, tmp_path):
-    library, store = roots
-    session = capture(library)
+    meeting = meeting_for(library, session.directory)
     calls = []
+    original = storage.move_to_trash
 
     @contextlib.contextmanager
     def cancel(directory):
@@ -120,59 +117,105 @@ def test_cancellation_exclusion_spans_trash_and_private_cleanup(roots, tmp_path)
         yield
         calls.append("unblocked")
 
-    def native(path):
+    def move(*args, **kwargs):
         assert calls == ["cancelled-and-waited"]
-        path.rename(tmp_path / "private-system-trash")
-        calls.append("native-trash")
-        return True
+        calls.append("moved")
+        return original(*args, **kwargs)
 
-    trash_owned(session.directory, queue=SimpleNamespace(cancel_meeting=cancel), voices=store, trash=native)
-    assert calls == ["cancelled-and-waited", "native-trash", "unblocked"]
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(storage, "move_to_trash", move)
+        module.trash_meeting(meeting, queue=SimpleNamespace(cancel_meeting=cancel))
+    assert calls == ["cancelled-and-waited", "moved", "unblocked"]
 
 
-def test_hidden_save_after_trash_is_a_removed_path_not_an_error(roots, tmp_path):
-    from cassini_talk.capture_guard import queue_saved_for_later
-
+def test_trash_keeps_private_prints_until_purge_and_never_unenrols(roots):
     library, store = roots
     session = capture(library)
+    enrol(store, session.directory)
+    cache = store.root / "meetings" / (session.directory.name + ".json")
+    root, entry_id = module.trash_meeting(meeting_for(library, session.directory))
+    assert cache.exists(), "a restorable meeting keeps its private prints"
+    identity = storage.entries(root)[0].identity
+    storage.purge(root, entry_id)
+    module.forget_purged(store, root, [identity])
+    assert not cache.exists()
+    assert store.snapshot()["voices"][0]["name"] == "Alice"
+    assert not list((library / ".cassini/trash").iterdir())
 
-    def native(path):
-        path.rename(tmp_path / "private-system-trash")
-        return True
 
-    trash_owned(session.directory, voices=store, trash=native)
-    assert queue_saved_for_later(str(session.directory)) is None
-    assert not session.directory.exists()
+def test_unavailable_library_root_moves_nothing(roots):
+    library, store = roots
+    session = capture(library)
+    meeting = meeting_for(library, session.directory)
+    library.rename(library.with_name("disconnected-library"))
+    with pytest.raises((OSError, ValueError, storage.Refused)):
+        module.trash_meeting(meeting)
+    assert (library.with_name("disconnected-library") / session.directory.name).exists()
 
 
-def test_trash_drains_closed_speaker_and_export_writers_off_the_caller(tmp_path, monkeypatch):
-    import threading
-    from concurrent.futures import Future, ThreadPoolExecutor
+class Writer:
+    def __init__(self):
+        from concurrent.futures import Future
 
-    from cassini_talk import meeting_trash as module
+        self.future = Future()
+        self.waited = threading.Event()
+        original = self.future.result
 
-    class Writer(Future):
-        def __init__(self):
-            super().__init__()
-            self.waited = threading.Event()
-
-        def result(self, *args, **kwargs):
+        def result(*args, **kwargs):
             self.waited.set()
-            return super().result(*args, **kwargs)
+            return original(*args, **kwargs)
 
+        self.future.result = result
+
+
+def controller_for(app):
+    from concurrent.futures import ThreadPoolExecutor
+
+    controller = module.MeetingTrash.__new__(module.MeetingTrash)
+    controller.app, controller.cleanup = app, None
+    controller.hidden, controller.operations, controller.errors, controller.absent = {}, {}, {}, set()
+    controller.toast, controller.waiters, controller.failed_flush = None, [], False
+    controller.listeners = []
+    controller.executor = ThreadPoolExecutor(1)
+    controller._refresh = lambda: None
+    return controller
+
+
+def drain(controller, until):
+    """Event-gated: finish queued worker jobs, then dispatch their GTK callbacks (no sleeps)."""
+    context = GLib.MainContext.default()
+    for _ in range(20):
+        controller.executor.submit(lambda: None).result(timeout=10)
+        while context.pending():
+            context.iteration(False)
+        if until():
+            return
+    assert until()
+
+
+def test_move_waits_for_closed_writers_off_the_ui_thread_and_undo_restores(tmp_path, monkeypatch):
     speaker, export = Writer(), Writer()
-    meeting = SimpleNamespace(directory=tmp_path / "Recording-12345678-1234-4234-8234-123456789abc")
-    page = SimpleNamespace(
-        meeting=meeting, _speaker_future=None, speakers_dialog=SimpleNamespace(closed=True, future=speaker)
+    meeting = SimpleNamespace(
+        directory=tmp_path / "Recording-12345678-1234-4234-8234-123456789abc", key="k", title="Weekly sync"
     )
+    page = SimpleNamespace(
+        meeting=meeting, _speaker_future=None, speakers_dialog=SimpleNamespace(closed=True, future=speaker.future)
+    )
+    toasts = []
     window = SimpleNamespace(
         meeting_page=page,
         _loaded_directory=None,
         snapshot=None,
-        export_dialog=SimpleNamespace(closed=True, future=export, meeting=meeting),
+        export_dialog=SimpleNamespace(closed=True, future=export.future, meeting=meeting),
         back_to_library=lambda: None,
+        toasts=SimpleNamespace(add_toast=toasts.append),
+        present=lambda: None,
+        search_page=None,
+        recording_page=None,
+        _external_meeting=None,
+        _pending_selection=None,
     )
-    holds, removed = [], threading.Event()
+    holds = []
     app = SimpleNamespace(
         get_windows=lambda: [window],
         settings_dialog=None,
@@ -181,78 +224,74 @@ def test_trash_drains_closed_speaker_and_export_writers_off_the_caller(tmp_path,
         hold=lambda: holds.append(True),
         release=lambda: holds.pop(),
         discard_meeting_paths=lambda _: None,
+        _quitting=False,
+        library_relocator=None,
     )
-    controller = module.MeetingTrash.__new__(module.MeetingTrash)
-    controller.app, controller.cleanup = app, None
-    controller.hidden, controller.operations, controller.errors = {}, {}, {}
-    controller.toast, controller.waiters, controller.failed_flush = None, [], False
-    controller.executor = ThreadPoolExecutor(1)
-    operation = module.PendingTrash(meeting, window, waits=controller._prepare(meeting))
-    controller.operations[meeting.directory] = operation
+    meeting.lifecycle = "saved"
+    controller = controller_for(app)
+    moved, restored = threading.Event(), []
 
-    def native(*_args, **_kwargs):
-        assert speaker.done() and export.done(), "Trash ran before a closed writer finished"
-        removed.set()
-        return meeting.directory
+    def trash_meeting(m, **_kwargs):
+        assert speaker.future.done() and export.future.done(), "the move ran before a closed writer finished"
+        moved.set()
+        return tmp_path, "5d0c3a7e-0000-4000-8000-0000000000e1"
 
-    monkeypatch.setattr(module, "trash_owned", native)
+    monkeypatch.setattr(module, "trash_meeting", trash_meeting)
+    monkeypatch.setattr(storage, "restore", lambda root, entry: restored.append((root, entry)))
     try:
-        # A pending writer must not block the UI-side commit call.
-        with ThreadPoolExecutor(1) as caller:
-            caller.submit(controller.commit, operation).result(timeout=2)
-        assert speaker.waited.wait(2) and not removed.is_set()
-        speaker.set_result(None)
-        assert export.waited.wait(2) and not removed.is_set()
-        export.set_exception(RuntimeError("generated already-closed export failure"))
-        assert removed.wait(2), "a failed-but-finished writer prevented Trash"
-        controller.executor.shutdown(wait=True)
-        context = GLib.MainContext.default()
-        while context.pending():
-            context.iteration(False)
-        assert not holds and not controller.operations
+        controller.request(meeting, window)
+        assert controller.hides(meeting.directory) and len(toasts) == 1 and toasts[0].get_timeout() == 5
+        assert speaker.waited.wait(2) and not moved.is_set()
+        speaker.future.set_result(None)
+        assert export.waited.wait(2) and not moved.is_set()
+        export.future.set_exception(RuntimeError("generated already-closed export failure"))
+        assert moved.wait(2), "a failed-but-finished writer prevented the move"
+        drain(controller, lambda: not controller.operations)
+        assert controller.hides(meeting.directory) and not holds
+        toasts[0].emit("button-clicked")
+        drain(controller, lambda: restored and not controller.operations)
+        assert restored == [(tmp_path, "5d0c3a7e-0000-4000-8000-0000000000e1")]
+        assert not controller.hides(meeting.directory) and window._pending_selection == "k" and not holds
     finally:
-        for future in (speaker, export):
-            if not future.done():
-                future.set_result(None)
-        caller.shutdown(wait=True)
         controller.executor.shutdown(wait=True)
-
-
-def test_unavailable_library_root_does_not_discard_private_prints(roots):
-    library, store = roots
-    session = capture(library)
-    enrol(store, session.directory)
-    cache = store.root / "meetings" / (session.directory.name + ".json")
-    before = cache.read_bytes()
-    library.rename(library.with_name("disconnected-library"))
-    with pytest.raises(FileNotFoundError, match="unavailable"):
-        trash_owned(session.directory, cleanup=TrashCleanup(store))
-    assert cache.read_bytes() == before
 
 
 @pytest.mark.parametrize("failure", [False, True])
-def test_flush_reports_failure_to_restart_and_never_calls_success_on_failure(tmp_path, failure):
+def test_flush_reports_failure_and_never_calls_success_on_failure(tmp_path, failure):
     from concurrent.futures import Future
-
-    from cassini_talk.meeting_trash import MeetingTrash
 
     held, called = [True], []
     meeting = SimpleNamespace(directory=tmp_path / "Recording-test", key="test")
-    window = SimpleNamespace(present=lambda: called.append("present"))
-    operation = SimpleNamespace(meeting=meeting, window=window, phase="committing")
+    toast = SimpleNamespace(dismiss=lambda: None)
+    window = SimpleNamespace(present=lambda: called.append("present"), _pending_selection=None)
+    operation = module.PendingTrash(meeting, window, toast=toast)
     app = SimpleNamespace(get_windows=lambda: [], discard_meeting_paths=lambda _: None, release=lambda: held.pop())
-    trash = MeetingTrash.__new__(MeetingTrash)
-    trash.app = app
+    trash = controller_for(app)
     trash.operations = {meeting.directory: operation}
-    trash.waiters, trash.errors, trash.hidden = [], {}, {}
-    trash.failed_flush = False
-    trash._refresh = lambda: None
     assert trash.flush(lambda: called.append("success"), failed=lambda: called.append("failed"))
     result = Future()
     if failure:
         result.set_exception(OSError("generated Trash write failure"))
     else:
-        result.set_result(None)
-    trash._complete(operation, result)
+        result.set_result((tmp_path, "5d0c3a7e-0000-4000-8000-0000000000e1"))
+    trash._moved(operation, result)
     assert called == (["present", "failed"] if failure else ["success"])
     assert not held and not trash.waiters and not trash.operations and not trash.failed_flush
+    assert trash.errors == ({meeting.directory.absolute(): "failed"} if failure else {})
+    trash.executor.shutdown(wait=True)
+
+
+def test_startup_maintenance_recovers_and_expires(roots, monkeypatch):
+    library, store = roots
+    session = capture(library)
+    root, entry_id = module.trash_meeting(meeting_for(library, session.directory))
+    controller = controller_for(SimpleNamespace(voice_store=store))
+    real_expire = storage.expire
+    monkeypatch.setattr(storage, "expire", lambda r: real_expire(r, storage.parse_utc("2026-01-01T00:00:00Z")))
+    controller._maintain()
+    assert [e.entry_id for e in storage.entries(root)] == [entry_id], "not 30 days yet"
+    monkeypatch.setattr(storage, "expire", lambda r: real_expire(r, storage.parse_utc("2099-01-01T00:00:00Z")))
+    controller._maintain()
+    assert not storage.entries(root) and not journal.pending(journal.Layout(root)).entries
+    assert not (library / session.directory.name).exists()
+    controller.executor.shutdown(wait=True)

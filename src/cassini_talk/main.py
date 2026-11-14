@@ -126,6 +126,8 @@ class CassiniApplication(Adw.Application):
         self.sound_check = None
         self.sound_check_dialog = None
         self.shortcuts_dialog = None
+        self.trash_dialog = None
+        self.help_dialog = None
         self.library_relocator = None
         self.comfort = None
         self.global_shortcut = None
@@ -146,6 +148,8 @@ class CassiniApplication(Adw.Application):
         self._add_action("open", self.on_open, ["<primary>o"])
         self._add_action("about", self.on_about)
         self._add_action("shortcuts", self.on_shortcuts, ["<primary>question"])
+        self._add_action("trash", self.on_trash)
+        self._add_action("help", self.on_help, ["F1"])
         self._add_action("preferences", self.on_preferences, ["<primary>comma"])
         self._add_action("quit", self.on_quit, ["<primary>q"])
         self._add_action("stop-and-quit", self.on_stop_and_quit)
@@ -1882,6 +1886,7 @@ class CassiniApplication(Adw.Application):
                 ("listen_speakers", "shortcuts.listen.speakers"),
                 ("listen_stop", "listen.stop"),
                 ("play_turn", "shortcuts.playTurn"),
+                ("delete_permanently", "trash.deletePermanently"),
             )
         }
         for item in builder.get_objects():
@@ -1889,6 +1894,8 @@ class CassiniApplication(Adw.Application):
                 identifier = {
                     "app.open": "import.action",
                     "app.preferences": "settings.title",
+                    "app.help": "menu.help",
+                    "app.shortcuts": "menu.keyboardShortcuts",
                     "app.record": "common.record",
                     "win.back-library": "common.backToLibrary",
                     "win.export": "common.exportEllipsis",
@@ -1905,6 +1912,32 @@ class CassiniApplication(Adw.Application):
         dialog = self.shortcuts_dialog = builder.get_object("shortcuts_dialog")
         dialog.connect("closed", lambda *_: setattr(self, "shortcuts_dialog", None))
         dialog.present(window)
+
+    def on_trash(self, *_args):
+        """☰ › Trash (HARMONY §7.1, D100): the in-app list of deleted meetings."""
+        window = self.get_active_window()
+        if window is None or not hasattr(window, "toasts"):
+            return None
+        if self.trash_dialog is not None and not self.trash_dialog.closed:
+            return self.trash_dialog
+        from .trash_dialog import TrashDialog
+
+        dialog = self.trash_dialog = TrashDialog(window)
+        dialog.connect("closed", lambda *_: setattr(self, "trash_dialog", None))
+        dialog.present(window)
+        return dialog
+
+    def on_help(self, *_args):
+        """☰ › Help (F1, D100): the offline Help view; it opens no URL."""
+        window = self.get_active_window()
+        if window is None or self.help_dialog is not None:
+            return self.help_dialog
+        from .help_dialog import HelpDialog
+
+        dialog = self.help_dialog = HelpDialog(window)
+        dialog.connect("closed", lambda *_: setattr(self, "help_dialog", None))
+        dialog.present(window)
+        return dialog
 
     def on_preferences(self, *_args):
         from .settings_dialog import SettingsDialog

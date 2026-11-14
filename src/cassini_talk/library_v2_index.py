@@ -90,6 +90,15 @@ class PublishedIndex:
             for entry in pending.entries
             if entry["kind"] == "delete"
         }
+        # S-12 §7.1: a meeting whose Move to Trash or Restore is still pending (a crash before
+        # startup recovery finished it) is never shown half in the Library.
+        for entry in pending.entries:
+            if entry["kind"] in ("trash", "restore") and isinstance(entry.get("identity"), dict):
+                session = journal.identity_of(entry["identity"].get("session") or "")
+                if session is not None:
+                    deleted.add(session)
+                elif isinstance(entry["identity"].get("sha"), str):
+                    deleted.add(("Received", entry["identity"]["sha"]))
         raw = {meeting.directory.name: meeting for meeting in hidden.meetings}
         rows = {self._identity(meeting): meeting for meeting in (*base.meetings, *hidden.meetings)}
         diagnostics = [*base.diagnostics, *hidden.diagnostics]

@@ -846,9 +846,15 @@ class LibraryWindow(Adw.ApplicationWindow):
         top.append(text("import.action"), "app.open")
         top.append(text("export.zip.all"), "win.export-zip")
         menu.append_section(None, top)
+        # HARMONY §10 Phase 2 order (D100): Import, Export All · Trash · Preferences,
+        # Keyboard shortcuts, Help (F1), About.
+        deleted = Gio.Menu()
+        deleted.append(text("menu.trash"), "app.trash")
+        menu.append_section(None, deleted)
         bottom = Gio.Menu()
         bottom.append(text("settings.title"), "app.preferences")
-        bottom.append(_("_Keyboard Shortcuts"), "app.shortcuts")
+        bottom.append(text("menu.keyboardShortcuts"), "app.shortcuts")
+        bottom.append(text("menu.help"), "app.help")
         bottom.append(_("_About Cassini").replace("Cassini", text("app.name")), "app.about")
         menu.append_section(None, bottom)
         button = Gtk.MenuButton(
