@@ -90,6 +90,8 @@ class ImportDialog(Adw.Dialog):
         except Exception:
             LOG.exception("Batch import failed")
             result = replace(self._result, failed=self._result.failed + 1)
+        if result.failed_inputs and hasattr(self.window, "_add_failed_imports"):
+            self.window._add_failed_imports(result.failed_inputs)
         fresh = getattr(self.window, "_fresh_imports", None)
         if fresh is not None:
             fresh.update(result.added_keys)

@@ -124,6 +124,8 @@ Requires:       typelib-1_0-Gst-1_0
 Requires:       gstreamer-plugins-base
 Requires:       gstreamer-plugins-good
 Recommends:     gstreamer-plugin-pipewire
+# M4A/AAC import (L-25): an AAC decoder; MP3 and WAV are in plugins-good.
+Recommends:     gstreamer-plugins-libav
 %else
 Requires:       hicolor-icon-theme
 Requires:       libzstd
@@ -136,6 +138,8 @@ Requires:       gstreamer1
 Requires:       gstreamer1-plugins-base
 Requires:       gstreamer1-plugins-good
 Recommends:     pipewire-gstreamer
+# M4A/AAC import (L-25): an AAC decoder; MP3 and WAV are in plugins-good.
+Recommends:     gstreamer1-plugin-libav
 %endif
 
 %description

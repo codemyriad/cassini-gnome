@@ -1,7 +1,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D96 shared catalog projection; no IO, widgets or worker state."""
 
+from . import import_types
+from .i18n import join_list
 from .strings import plural, text
+
+
+def accepted_formats():
+    """L-25 {formats}: the decided contract labels as a locale list (Opus/Ogg, MP3, M4A/AAC and WAV)."""
+    return join_list(import_types.labels())
+
+
+def cant_import_detail():
+    return text("import.drop.cantImport.detail", formats=accepted_formats())
+
+
+def droppable_name(name):
+    """A dropped file name the importer takes: a decided type (never .ogv/.flac) or a ZIP."""
+    return name.lower().endswith(".zip") or import_types.acceptable_name(name)
 
 
 def progress(result):

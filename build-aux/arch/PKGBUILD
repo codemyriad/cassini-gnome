@@ -41,7 +41,8 @@ depends=(
 makedepends=(meson gcc)
 checkdepends=(python-pytest python-jsonschema python-rfc3339-validator appstream desktop-file-utils)
 # The PulseAudio sink (pulsesink) ships in gst-plugins-good, already a dependency.
-optdepends=('gst-plugin-pipewire: audio output through PipeWire')
+optdepends=('gst-plugin-pipewire: audio output through PipeWire'
+            'gst-libav: import M4A/AAC audio')
 # The app checks every file of the bundle against its pinned sha256 before it
 # loads anything, and the private ONNX Runtime against its wheel's RECORD,
 # so makepkg must not strip them or split debug info out.

@@ -28,6 +28,9 @@ def import_entry_badge(fields) -> Badge | None:
     """Transient import-entry card badge (W0.4 entryVectors, separate from persisted lifecycle)."""
     if fields.get("importing") is True:
         return Badge("importing", text("states.badge.importing"), "neutral", "spinner")
+    if fields.get("failed") is True:
+        # L-25 / W4.6: a failed import keeps its card with the amber Needs attention badge.
+        return Badge("needsAttention", text("states.badge.needsAttention"), "amber", "alert")
     return None
 
 

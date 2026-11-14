@@ -467,16 +467,19 @@ class CassiniApplication(Adw.Application):
             callback()
 
     def on_open(self, *_args):
+        from .import_types import picker_mime_types
         from .strings import text
 
         dialog = Gtk.FileDialog(title=text("import.action"))
         meetings = Gtk.FileFilter()
 
         meetings.set_name(text("import.filter.cassiniAndZip"))
-        for mime in ("audio/ogg", "audio/x-opus+ogg", "audio/opus", "application/zip"):
+        # W0.7 / L-25: decided contract mimeTypes only. GtkFileFilter matches MIME
+        # subclasses, so audio/ogg or application/ogg would also offer Ogg
+        # video (.ogv) and undecided FLAC-in-Ogg; no audio suffix globs either.
+        for mime in (*picker_mime_types(), "application/zip"):
             meetings.add_mime_type(mime)
-        for suffix in ("opus", "ogg", "zip"):
-            meetings.add_suffix(suffix)
+        meetings.add_suffix("zip")
         filters = Gio.ListStore.new(Gtk.FileFilter)
         filters.append(meetings)
         sessions = Gtk.FileFilter()

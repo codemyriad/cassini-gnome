@@ -10,6 +10,7 @@ from pathlib import Path
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
+from . import import_feedback
 from . import ux_formats as fmt
 from .capture_activity import BrowserActivity, application_activity
 from .capture_guard import recorder_stopping
@@ -66,6 +67,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._import_dialogs = set()
         self._import_executor = None
         self._active_imports = {}
+        self._failed_imports = {}
         self._import_row_widgets = []
         self._rendered_imports = ()
         self._drop_state = ("rest", None)
@@ -230,7 +232,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             path = Path(raw)
             name = path.name
             suffix = path.suffix.lower()
-            if suffix in (".opus", ".ogg", ".zip") or LibraryWindow._is_folder_open_path(path):
+            if import_feedback.droppable_name(name) or LibraryWindow._is_folder_open_path(path):
                 return ("valid", None)
             if suffix:
                 return ("invalid", name or raw)
@@ -240,7 +242,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         basename = file.get_basename()
         if basename:
             suffix = Path(basename).suffix.lower()
-            if suffix in (".opus", ".ogg", ".zip") or basename == "session.json":
+            if import_feedback.droppable_name(basename) or basename == "session.json":
                 return ("valid", None)
             if suffix:
                 return ("invalid", basename)
@@ -313,15 +315,13 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.drop_overlay.remove_css_class("error")
             self.drop_overlay_glyph.set_glyph_kind("incoming", size_px=28)
             self.drop_overlay_title.set_label(text("import.drop.over"))
-            self.drop_overlay_detail.set_label(text("import.drop.formats.current"))
+            self.drop_overlay_detail.set_label(import_feedback.accepted_formats())
             self.drop_overlay.set_visible(True)
         elif state == "error":
             self.drop_overlay.add_css_class("error")
             self.drop_overlay_glyph.set_glyph_kind("alert", size_px=28)
             self.drop_overlay_title.set_label(text("import.drop.cantImport", file=bad_file or ""))
-            self.drop_overlay_detail.set_label(
-                text("import.drop.cantImport.detail", formats=text("import.drop.formats.current"))
-            )
+            self.drop_overlay_detail.set_label(import_feedback.cant_import_detail())
             self.drop_overlay.set_visible(True)
             if sticky_error:
                 self._drop_error_timer = GLib.timeout_add(4000, self._clear_sticky_drop_error)
@@ -426,10 +426,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._set_drop_state("error", bad, sticky_error=True)
         else:
             self._set_drop_state("rest")
-            self.toast(
-                f"{text('import.drop.cantImport', file=bad)} "
-                f"{text('import.drop.cantImport.detail', formats=text('import.drop.formats.current'))}"
-            )
+            self.toast(f"{text('import.drop.cantImport', file=bad)} {import_feedback.cant_import_detail()}")
 
     def _validate_dropped_files_async(self, chosen, cached):
         self._cancel_drop_validation()
@@ -1137,7 +1134,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             wrap=True,
         )
         self.drop_overlay_detail = label(
-            text("import.drop.formats.current"),
+            import_feedback.accepted_formats(),
             "small",
             "dim-label",
             justify=Gtk.Justification.CENTER,
@@ -1587,6 +1584,52 @@ class LibraryWindow(Adw.ApplicationWindow):
         active = getattr(self, "_active_imports", None) or {}
         return tuple(entry for entries in active.values() for entry in entries)
 
+    def _failed_import_list(self):
+        """W4.6: failed imports, in memory only, as (stem, filename, failed_ms, path)."""
+        return tuple((getattr(self, "_failed_imports", None) or {}).values())
+
+    def _has_import_cards(self):
+        return bool(LibraryWindow._active_import_list(self) or LibraryWindow._failed_import_list(self))
+
+    def _resync_import_cards(self):
+        if getattr(getattr(self, "monitor", None), "_closed", False):
+            return
+        if self._list_signature and self._list_signature[0] == "library":
+            LibraryWindow._sync_import_rows(self, LibraryWindow._active_import_list(self))
+            if hasattr(self, "sidebar_header"):
+                self._queue_sidebar_scrolled()
+        elif self.snapshot is not None:
+            self._updated(self._source_snapshot or self.snapshot)
+
+    def _add_failed_imports(self, paths):
+        """Keep a Needs attention card for each failed top-level import (W4.6)."""
+        failed = getattr(self, "_failed_imports", None)
+        if failed is None:
+            failed = self._failed_imports = {}
+        now = self.now_ms
+        added = False
+        for raw in paths or ():
+            if not raw:
+                continue
+            path = Path(raw)
+            if LibraryWindow._is_folder_open_path(path):
+                continue
+            # Newest failure last; a repeated failure moves its card.
+            failed.pop(str(path), None)
+            failed[str(path)] = (path.stem or path.name, path.name, now, str(path))
+            added = True
+        if added:
+            LibraryWindow._resync_import_cards(self)
+
+    def _dismiss_failed_import(self, raw):
+        failed = getattr(self, "_failed_imports", None)
+        if failed and failed.pop(raw, None) is not None:
+            LibraryWindow._resync_import_cards(self)
+
+    def _retry_failed_import(self, raw):
+        LibraryWindow._dismiss_failed_import(self, raw)
+        self.open_files((Gio.File.new_for_path(raw),))
+
     def _clear_import_rows(self):
         widgets = getattr(self, "_import_row_widgets", None)
         if widgets:
@@ -1600,11 +1643,12 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _sync_import_rows(self, active_imports):
         today_title = fmt.day_group(self.now_ms, now_ms=self.now_ms, tz=self.tz)
         has_today_group = bool(self._rows_layout and self._rows_layout[0][0] == today_title)
-        target = (has_today_group, today_title, active_imports)
+        failed_imports = LibraryWindow._failed_import_list(self)
+        target = (has_today_group, today_title, active_imports, failed_imports)
         if getattr(self, "_rendered_imports", ()) == target:
             return
         LibraryWindow._clear_import_rows(self)
-        if not active_imports:
+        if not active_imports and not failed_imports:
             return
         widgets = []
         insert_at = 1 if has_today_group else 0
@@ -1615,6 +1659,11 @@ class LibraryWindow(Adw.ApplicationWindow):
             insert_at = 1
         for offset, (stem, filename, started_ms) in enumerate(active_imports):
             row = self._importing_row(stem, filename, started_ms)
+            self.rows.insert(row, insert_at + offset)
+            widgets.append(row)
+        insert_at += len(active_imports)
+        for offset, (stem, filename, failed_ms, raw) in enumerate(failed_imports):
+            row = self._failed_import_row(stem, filename, failed_ms, raw)
             self.rows.insert(row, insert_at + offset)
             widgets.append(row)
         self._import_row_widgets = widgets
@@ -1629,6 +1678,10 @@ class LibraryWindow(Adw.ApplicationWindow):
             path = Path(raw)
             if not LibraryWindow._is_folder_open_path(path):
                 entries.append((path.stem or path.name, path.name, now))
+                # Trying the same file again replaces its failed card.
+                failed = getattr(self, "_failed_imports", None)
+                if failed:
+                    failed.pop(str(path), None)
         if entries:
             self._active_imports[token] = tuple(entries)
             if self._list_signature and self._list_signature[0] == "library":
@@ -1813,13 +1866,14 @@ class LibraryWindow(Adw.ApplicationWindow):
         ):
             self._pending_selection = None
         active_imports = LibraryWindow._active_import_list(self)
+        import_cards = bool(active_imports or LibraryWindow._failed_import_list(self))
         pending_row = any(m.key == self._pending_selection for m in snapshot.meetings)
         if snapshot.unavailable:
             if not pending_row and self._list_signature == ("offline",):
                 self._pending = False
                 return
             groups, layout, group_layout_key = (), None, None
-        elif not snapshot.meetings and not active_imports:
+        elif not snapshot.meetings and not import_cards:
             if not pending_row and self._list_signature == ("empty",) and not self.search_page:
                 self._pending = False
                 return
@@ -1897,7 +1951,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self._stop_playback(clear_selection=True)
             self.root_box.set_visible_child_name("library" if self.search_page else "offline")
             self._list_signature = ("offline",)
-        elif not snapshot.meetings and not active_imports:
+        elif not snapshot.meetings and not import_cards:
             if not self._external_meeting and not self.search_page:
                 LibraryWindow._close_right_recording(self)
                 LibraryWindow._close_right_meeting(self)
@@ -1988,6 +2042,37 @@ class LibraryWindow(Adw.ApplicationWindow):
             meta.append(
                 label(filename, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True)
             )
+        box.append(meta)
+        row.set_child(box)
+        return row
+
+    def _failed_import_row(self, stem, filename, failed_ms, raw):
+        """W4.6: a failed import keeps its card with the amber Needs attention badge."""
+        row = Gtk.ListBoxRow(selectable=False, activatable=False, css_classes=["meeting-row", "failed-import-row"])
+        box = vertical(6, margin_start=12, margin_end=12, margin_top=9, margin_bottom=9)
+        top = Gtk.Box(spacing=8)
+        top.append(label(stem, "row-title", xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
+        dismiss = Gtk.Button(
+            icon_name="window-close-symbolic",
+            tooltip_text=text("common.close"),
+            valign=Gtk.Align.CENTER,
+            css_classes=["flat", "circular", "failed-import-dismiss"],
+        )
+        dismiss.update_property([Gtk.AccessibleProperty.LABEL], [text("common.close")])
+        dismiss.connect("clicked", lambda *_: LibraryWindow._dismiss_failed_import(self, raw))
+        top.append(dismiss)
+        box.append(top)
+        meta = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+        meta.append(label(fmt.row_time(failed_ms, tz=self.tz), "small", "dim-label", "row-num"))
+        badge = import_entry_badge({"failed": True})
+        meta.append(StatusBadge(badge.kind, badge.text))
+        if filename:
+            meta.append(
+                label(filename, "small", "dim-label", xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True)
+            )
+        retry = Gtk.Button(label=text("common.tryAgain"), valign=Gtk.Align.CENTER, css_classes=["flat"])
+        retry.connect("clicked", lambda *_: LibraryWindow._retry_failed_import(self, raw))
+        meta.append(retry)
         box.append(meta)
         row.set_child(box)
         return row
@@ -2421,7 +2506,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         had_pushed = bool(self.search_page or self._external_meeting)
         if had_pushed:
             self._pop_pushed_pages()
-            if self.snapshot is not None and not self.snapshot.meetings and not self._active_import_list():
+            if self.snapshot is not None and not self.snapshot.meetings and not LibraryWindow._has_import_cards(self):
                 self.root_box.set_visible_child_name("offline" if self.snapshot.unavailable else "empty")
             elif self.root_box.get_visible_child_name() == "library":
                 target_row = self.rows.get_selected_row()
@@ -2443,7 +2528,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._close_right_recording()
             self._stop_playback(clear_selection=True)
             self.split.set_show_content(False)
-            if self.snapshot is not None and not self.snapshot.meetings and not self._active_import_list():
+            if self.snapshot is not None and not self.snapshot.meetings and not LibraryWindow._has_import_cards(self):
                 self.root_box.set_visible_child_name("offline" if self.snapshot.unavailable else "empty")
             self._recording_line(getattr(self.get_application(), "recorder", None))
             self._refresh_export()
@@ -2601,6 +2686,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             # Import failed: retain the Library and show its diagnostic. Opening
             # the readable header in the legacy player would disguise a failed
             # copy, incomplete stream, or full Library as a successful import.
+            if cancel is not None and file.get_path():
+                LibraryWindow._add_failed_imports(self, (file.get_path(),))
             self.toast(str(error))
         return False
 
