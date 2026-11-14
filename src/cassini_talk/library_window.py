@@ -712,7 +712,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         if value == self.library_filter:
             return
         self.library_filter = value
-        settings = getattr(self.get_application(), "recording_settings", None)
+        settings = self._filter_settings()
         if settings is not None and settings.get_string("library-filter") != value:
             settings.set_string("library-filter", value)
         button = self.filter_starred if value == "starred" else self.filter_all
@@ -1202,9 +1202,18 @@ class LibraryWindow(Adw.ApplicationWindow):
         if not self._closing_search and self.search_page is None:
             self._enter_search(focus=True)
 
+    def _filter_settings(self):
+        """The app's GSettings when its schema is installed; harness runs may have none."""
+        from .identity import APP_ID
+
+        source = Gio.SettingsSchemaSource.get_default()
+        if source is None or source.lookup(APP_ID, True) is None:
+            return None
+        return getattr(self.get_application(), "recording_settings", None)
+
     def _library_filter_row(self):
         """L-34 at rest: linked toggle buttons All / Starred; hidden with the list while searching."""
-        settings = getattr(self.get_application(), "recording_settings", None)
+        settings = self._filter_settings()
         remembered = settings.get_string("library-filter") if settings is not None else "all"
         self.library_filter = "starred" if remembered == "starred" else "all"
         group = Gtk.Box(
