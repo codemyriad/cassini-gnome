@@ -425,6 +425,110 @@ def test_native_flac_decodes_into_an_imported_opus_meeting_in_the_library(tmp_pa
     assert result.last_key == meeting.key
 
 
+def test_flac_streaminfo_reads_the_rate_and_the_36_bit_total_sample_count():
+    assert import_types.flac_streaminfo((FIXTURES / "tone.flac").read_bytes()[:42]) == (48000, 48000)
+    assert import_types.flac_streaminfo(flac_header(rate=44100, samples=0)) == (44100, 0)
+    top = flac_header(rate=0xFFFFF, channels=8, bits=32, samples=(1 << 36) - 1)
+    assert import_types.flac_streaminfo(top) == (0xFFFFF, (1 << 36) - 1)
+    assert import_types.flac_streaminfo(flac_header(samples=1 << 32)) == (48000, 1 << 32)
+
+
+def _flac_crc8(data):
+    crc = 0
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x07) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
+    return crc
+
+
+def _flac_frame_offsets(data):
+    """Frame offsets of ``tone.flac``, each sync code confirmed by the header CRC-8.
+
+    RFC 9639 section 9.1: sync + block size/rate codes + channels/bits, a
+    UTF-8 coded frame number, optional uncommon block size and sample rate.
+    """
+    offsets = []
+    for at in range(42, len(data) - 16):
+        if data[at] != 0xFF or data[at + 1] != 0xF8:
+            continue
+        first = data[at + 4]
+        number = 1 if first < 0x80 else 8 - (~first & 0xFF).bit_length()
+        end = at + 4 + number
+        end += {6: 1, 7: 2}.get(data[at + 2] >> 4, 0)
+        end += {12: 1, 13: 2, 14: 2}.get(data[at + 2] & 0x0F, 0)
+        if _flac_crc8(data[at:end]) == data[end]:
+            offsets.append(at)
+    return offsets
+
+
+def _flac_variant(tmp_path, name, *, cut=None, streamed=False):
+    data = bytearray((FIXTURES / "tone.flac").read_bytes())
+    if streamed:
+        data[21] &= 0xF0  # STREAMINFO total samples = 0: unknown length.
+        data[22:26] = bytes(4)
+    path = tmp_path / name
+    path.write_bytes(bytes(data[:cut]))
+    return path
+
+
+def test_tone_flac_frame_offsets_are_found():
+    data = (FIXTURES / "tone.flac").read_bytes()
+    offsets = _flac_frame_offsets(data)
+    # One second at 48 kHz in 4608-sample blocks: ten full frames and a short last one.
+    assert len(offsets) == 11 and offsets[0] > 42 and offsets[-1] < len(data)
+    assert offsets[5] < len(data) // 2 < offsets[6]
+
+
+def _assert_flac_rejected(path, root):
+    with pytest.raises(ValueError, match="incomplete"):
+        received.import_one(path, root)
+    assert documents(root) == [] and not list(root.glob(".received-*"))
+    result = batch_import.import_files([path], root)
+    assert (result.imported, result.failed) == (0, 1)
+    # A failed input becomes a Needs attention failure card in the Library.
+    assert result.failed_inputs == [str(path)]
+    assert import_entry_badge({"failed": True}).kind == "needsAttention"
+    assert documents(root) == [] and not list(root.glob(".received-*"))
+
+
+@needs_encoder
+@needs_flac
+def test_flac_cut_mid_frame_is_rejected_and_publishes_nothing(tmp_path):
+    # Half of the file: the decoder silently drops the cut-off frame.
+    _assert_flac_rejected(_flac_variant(tmp_path, "half.flac", cut=10966), tmp_path / "Library")
+
+
+@needs_encoder
+@needs_flac
+@pytest.mark.parametrize("frames_missing", [1, 2, 6])
+def test_flac_cut_on_a_frame_boundary_is_rejected_by_the_streaminfo_total(tmp_path, frames_missing):
+    # The decoder reaches a clean EOS: only STREAMINFO's total sample count
+    # shows that whole trailing frames are missing.
+    offsets = _flac_frame_offsets((FIXTURES / "tone.flac").read_bytes())
+    path = _flac_variant(tmp_path, "boundary.flac", cut=offsets[-frames_missing])
+    _assert_flac_rejected(path, tmp_path / "Library")
+
+
+@needs_encoder
+@needs_flac
+@pytest.mark.parametrize("cut", [10966, -1, -7])
+def test_streamed_flac_with_a_partial_last_frame_is_rejected(tmp_path, cut):
+    # STREAMINFO total = 0: every byte of the file must belong to a parsed frame.
+    path = _flac_variant(tmp_path, "streamed.flac", cut=cut, streamed=True)
+    _assert_flac_rejected(path, tmp_path / "Library")
+
+
+@needs_encoder
+@needs_flac
+def test_complete_streamed_flac_still_imports(tmp_path):
+    path = _flac_variant(tmp_path, "streamed.flac", streamed=True)
+    root = tmp_path / "Library"
+    meeting, added = received.import_one(path, root)
+    assert added and meeting.has_audio and 800 <= meeting.duration_ms <= 1200
+    assert documents(root) == [meeting.directory] and not list(root.glob(".received-*"))
+
+
 @needs_encoder
 def test_reimporting_the_same_plain_audio_deduplicates_on_the_original_digest(tmp_path, monkeypatch):
     source = write_wav(tmp_path / "talk.wav")

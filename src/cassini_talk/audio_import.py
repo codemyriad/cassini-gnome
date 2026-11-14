@@ -8,10 +8,12 @@ Runs on the import worker, never on the GTK main thread.
 
 import contextlib
 import os
+import re
 import struct
 import time
 from pathlib import PurePath
 
+from . import import_types
 from .export_audio import check_cancel
 
 # Speech-oriented VBR target; the decoded stream keeps 1 or 2 channels.
@@ -161,6 +163,54 @@ def check_complete(source):
         check(stream, os.fstat(stream.fileno()).st_size)
 
 
+FLAC_HEADER_BYTES = 42
+
+
+class _FlacTally:
+    """Native FLAC completeness: decoded frames against STREAMINFO (D102, bug class #14).
+
+    flacdec drops a cut-off final frame and reports a clean EOS, so a truncated
+    download would otherwise publish a shorter meeting. With a declared total
+    sample count, the decoded source-rate frames (counted before resampling)
+    must match it exactly; a streamed encode (total 0) must instead have every
+    byte of the file consumed by flacparse, so a partial last frame fails.
+    """
+
+    def __init__(self, source, ok):
+        self.ok = ok  # Gst.PadProbeReturn.OK
+        with open(source, "rb") as stream:
+            header = stream.read(FLAC_HEADER_BYTES)
+            self.size = os.fstat(stream.fileno()).st_size
+        if len(header) < FLAC_HEADER_BYTES:
+            raise ValueError(INCOMPLETE)
+        self.total = import_types.flac_streaminfo(header)[1]
+        self.frames = 0
+        self.parsed = 0
+        self.parser = False
+
+    def count_frames(self, pad, info):
+        caps = pad.get_current_caps()
+        structure = caps.get_structure(0) if caps and caps.get_size() else None
+        width = re.match(r"[SUF](\d+)(?:_(\d+))?", structure.get_string("format") or "") if structure else None
+        ok, channels = structure.get_int("channels") if structure else (False, 0)
+        if width is None or not ok or channels <= 0:
+            self.frames = None  # Unknown layout: fail closed in verify().
+        elif self.frames is not None:
+            self.frames += info.get_buffer().get_size() // (int(width.group(2) or width.group(1)) // 8 * channels)
+        return self.ok
+
+    def count_bytes(self, _pad, info):
+        self.parsed += info.get_buffer().get_size()
+        return self.ok
+
+    def verify(self):
+        if self.total:
+            if self.frames != self.total:
+                raise ValueError(INCOMPLETE)
+        elif not self.parser or self.parsed != self.size:
+            raise ValueError(INCOMPLETE)
+
+
 def _fsync_file(path):
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
@@ -201,6 +251,7 @@ def decode_to_opus(source, output, *, cancel=None, clock=time.monotonic):
     if missing_elements():
         raise ValueError("Audio decoding is not available on this computer")
     check_complete(source)
+    flac = _FlacTally(source, Gst.PadProbeReturn.OK) if PurePath(os.fspath(source)).suffix.lower() == ".flac" else None
     pipeline = Gst.parse_launch(
         "filesrc name=input ! decodebin name=decode "
         "audioconvert name=convert dithering=0 noise-shaping=0 ! audioresample ! "
@@ -221,7 +272,18 @@ def decode_to_opus(source, output, *, cancel=None, clock=time.monotonic):
         if name.startswith("audio/") and not sink.is_linked() and pad.link(sink) == Gst.PadLinkReturn.OK:
             linked.append(name)
 
-    pipeline.get_by_name("decode").connect("pad-added", pad_added)
+    decode = pipeline.get_by_name("decode")
+    decode.connect("pad-added", pad_added)
+    if flac is not None:
+        convert.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, flac.count_frames)
+
+        def element_added(_bin, element):
+            factory = element.get_factory()
+            if factory is not None and factory.get_name() == "flacparse":
+                flac.parser = True
+                element.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, flac.count_bytes)
+
+        decode.connect("element-added", element_added)
     bus = pipeline.get_bus()
     completed = False
     try:
@@ -246,6 +308,8 @@ def decode_to_opus(source, output, *, cancel=None, clock=time.monotonic):
         finally:
             # NULL closes filesink's descriptor before the file is synced.
             pipeline.set_state(Gst.State.NULL)
+        if flac is not None:
+            flac.verify()
         _fsync_file(output)
         completed = True
     finally:

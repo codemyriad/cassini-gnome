@@ -135,11 +135,24 @@ def check_header_bytes(data, rule):
         return "not-streaminfo"
     if int.from_bytes(data[5:8], "big") != rule["streamInfoLength"]:
         return "streaminfo-length"
-    # STREAMINFO: min/max block size (2+2), min/max frame size (3+3), then a
-    # 20-bit sample rate, i.e. bytes 18-20 of the stream.
-    if (data[18] << 12) | (data[19] << 4) | (data[20] >> 4) == 0:
+    if flac_streaminfo(data)[0] == 0:
         return "sample-rate"
     return None
+
+
+def flac_streaminfo(data):
+    """(sample_rate, total_samples) from the first 42 bytes of a native FLAC stream.
+
+    STREAMINFO follows the 4-byte marker and 4-byte block header: min/max block
+    size (2+2), min/max frame size (3+3), then a 20-bit sample rate (bytes
+    18-20), 3 bits channels, 5 bits bits-per-sample and a 36-bit total sample
+    count (low nibble of byte 21, bytes 22-25). Zero total means "unknown"
+    (a streamed encode).
+    """
+    data = bytes(data)
+    rate = (data[18] << 12) | (data[19] << 4) | (data[20] >> 4)
+    total = ((data[21] & 0x0F) << 32) | int.from_bytes(data[22:26], "big")
+    return rate, total
 
 
 def check_header_file(stream, rule):
