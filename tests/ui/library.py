@@ -331,6 +331,7 @@ with tempfile.TemporaryDirectory() as tmp:
     until(lambda: isinstance(empty.get_visible_dialog(), Adw.AboutDialog))
     about = empty.get_visible_dialog()
     assert about.get_application_name() == "Cassini talk"
+    assert about.get_application_icon() == "saturn-mid"
     about.close()
     until(lambda: empty.get_visible_dialog() is None)
     app.activate_action("record", None)

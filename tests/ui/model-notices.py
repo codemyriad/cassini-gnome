@@ -46,6 +46,7 @@ def labels(widget):
 launched = []
 with patch.object(ModelStore, "fetch_manifest", side_effect=AssertionError("About fetched a manifest")):
     empty = app.on_about()
+    assert empty.get_application_icon() == "saturn-mid"
     assert "Licences of downloaded models" not in labels(empty)
     empty.force_close()
     revision = model_root() / "fixture-model" / ("a" * 64)

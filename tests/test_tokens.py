@@ -268,20 +268,77 @@ def test_every_applied_w1_role_resolves_to_its_token_and_unapplied_set_is_exact(
     assert [tokens.saved_voice_slot({"saveOrder": i}) for i in range(7)] == [1, 2, 3, 4, 5, 6, 1]
 
 
-def test_brand_mark_dimensions_resource_thresholds_and_wordmark():
+def test_about_dialog_wires_saturn_mid_gresource_at_pinned_sha256():
+    import xml.etree.ElementTree as ET
+
+    upstream = json.loads(UPSTREAM.read_text(encoding="utf-8"))
+    mark_upstream = json.loads((ROOT / "ux/brand/mark/UPSTREAM.json").read_text(encoding="utf-8"))
+    expected_sha = upstream["sha256"]["mark/saturn-mid.svg"]
+    assert expected_sha == mark_upstream["files"]["saturn-mid.svg"]["sha256"]
+    assert hashlib.sha256((ROOT / "src/brand/mark/saturn-mid.svg").read_bytes()).hexdigest() == expected_sha
+
+    gresource_tree = ET.parse(ROOT / "src/cassini-talk.gresource.xml")
+    files = {
+        (el.attrib.get("alias") or (el.text or "").strip()): (el.text or "").strip()
+        for el in gresource_tree.findall(".//file")
+    }
+    assert files.get("brand/mark/saturn-mid.svg") == "brand/mark/saturn-mid.svg"
+    assert files.get("icons/scalable/apps/saturn-mid.svg") == "brand/mark/saturn-mid.svg"
+
+    main_py = (ROOT / "src/cassini_talk/main.py").read_text(encoding="utf-8")
+    on_about_block = main_py.split("def on_about(", 1)[1].split("\ndef ", 1)[0]
+    assert "application_icon=ensure_about_mark_icon()" in on_about_block
+    assert "self.get_application_id()" not in on_about_block
+
+
+def test_brand_mark_dimensions_resource_thresholds_and_wordmark(tmp_path):
+    import subprocess
+    from unittest.mock import MagicMock
+
     gi = pytest.importorskip("gi")
     try:
         gi.require_version("Gtk", "4.0")
     except ValueError:
         pytest.skip("GTK 4 introspection is unavailable")
+    from gi.repository import Gio, Gtk
+
     from cassini_talk import brand_mark
 
     assert brand_mark.WORDMARK_TEXT == "cassini.talk"
     assert brand_mark.WORDMARK_FONT_PX == 18
     assert brand_mark.WORDMARK_FONT_WEIGHT == 500
+    assert brand_mark.ABOUT_MARK_ICON_NAME == "saturn-mid"
+    assert brand_mark.ABOUT_MARK_ICON_RESOURCE == "/io/codemyriad/CassiniTalk/icons/scalable/apps/saturn-mid.svg"
     assert brand_mark.mark_dimensions(26) == (40, 26)
     assert brand_mark.mark_dimensions(28) == (43, 28)
     assert brand_mark.mark_dimensions(56) == (86, 56)
     assert brand_mark.mark_resource_for_height(26) == brand_mark.NAV_MARK_RESOURCE
     assert brand_mark.mark_resource_for_height(40) == brand_mark.NAV_MARK_RESOURCE
     assert brand_mark.mark_resource_for_height(41) == brand_mark.MID_MARK_RESOURCE
+
+    fake_theme = MagicMock()
+    fake_theme.get_resource_path.return_value = []
+    fake_display = object()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(Gtk.IconTheme, "get_for_display", lambda d: fake_theme if d is fake_display else None)
+        assert brand_mark.ensure_about_mark_icon(fake_display) == "saturn-mid"
+    added = [call.args[0] for call in fake_theme.add_resource_path.call_args_list]
+    assert added == [brand_mark.ICON_RESOURCE_PREFIX, brand_mark.RESOURCE_PREFIX]
+
+    compiler = shutil.which("glib-compile-resources")
+    if compiler is not None:
+        bundle = tmp_path / "cassini-talk.gresource"
+        src_dir = ROOT / "src"
+        subprocess.run(
+            [compiler, str(src_dir / "cassini-talk.gresource.xml"), f"--sourcedir={src_dir}", f"--target={bundle}"],
+            check=True,
+        )
+        res = Gio.Resource.load(str(bundle))
+        Gio.resources_register(res)
+        try:
+            expected_sha = json.loads(UPSTREAM.read_text(encoding="utf-8"))["sha256"]["mark/saturn-mid.svg"]
+            for res_path in (brand_mark.MID_MARK_RESOURCE, brand_mark.ABOUT_MARK_ICON_RESOURCE):
+                raw = Gio.resources_lookup_data(res_path, Gio.ResourceLookupFlags.NONE).get_data()
+                assert hashlib.sha256(raw).hexdigest() == expected_sha
+        finally:
+            Gio.resources_unregister(res)
