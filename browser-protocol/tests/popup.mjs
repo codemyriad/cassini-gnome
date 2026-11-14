@@ -25,12 +25,20 @@ try {
       tabs:{async query(){return [fixture.tab]}},
       runtime:{async sendMessage(message){
         fixture.requests.push(message);
+        if(message.type==='recordRequest'){
+          if(fixture.recordReply)return fixture.recordReply(message);
+          return {error:'No record fixture'};
+        }
         if(message.type==='reloadMeetingTab'){
           if(fixture.reloadError)return {error:fixture.reloadError};
           fixture.status.browserHealth.tabs=[];
         }
         if(fixture.statusError)throw Error(fixture.statusError);
         if(message.type==='status' && fixture.statusNeverResolves)return new Promise(()=>{});
+        if(message.type==='status' && fixture.holdStatus){
+          const value=structuredClone(fixture.status);fixture.holdStatus=false;
+          return new Promise(resolve=>{window.releaseStatus=()=>resolve(value)});
+        }
         if(message.type==='status' && fixture.captures){
           const capture=fixture.captures.find(c=>c.tabId===message.tabId);
           return {...structuredClone(fixture.status),...(capture||{recording:false,tabId:message.tabId})};
@@ -45,7 +53,10 @@ try {
   await page.locator('main[aria-busy="false"]').waitFor();
   assert.equal(await page.locator('#status').textContent(),'No meeting sources detected');
   assert.equal(await page.locator('#tab-title').textContent(),'Generated meeting <script>');
-  assert.equal(await page.getByRole('button',{name:/record|stop/i}).count(),0);
+  // Without an opted-in app, Start is visible but disabled and says why.
+  assert.equal(await page.locator('#record').isDisabled(),true);
+  assert.match(await page.locator('#record-hint').textContent(),/cannot start recordings from the browser/);
+  await recordFlow(page);
   await page.evaluate(()=>fixture.status.browserHealth.tabs=[{tabId:3,state:'reloadRequired'},{tabId:7,state:'ready'}]);
   await page.getByRole('heading',{name:'Meeting sources detected',exact:true}).waitFor();
   assert.equal(await page.locator('#reload').isVisible(),false);
@@ -124,8 +135,71 @@ try {
   await page.getByRole('heading',{name:'Meeting detection is unavailable',exact:true}).waitFor();
   assert.match(await page.locator('#explanation').textContent(),/did not answer in time/);
   assert.equal(await page.locator('#connection').getAttribute('data-connected'),'false');
-  assert.equal(await page.evaluate(()=>fixture.requests.some(r=>r.type==='start'||r.type==='stop')),false);
+  assert.equal(await page.evaluate(()=>fixture.requests.some(r=>r.type==='start'||r.type==='stop')),false,'the popup never uses the direct capture RPC');
   assert.deepEqual(errors,[]);
   await context.close();
-  console.log('PASS popup: no recording controls/RPCs, current-tab health/reload, refused reload, honest recovery, copy without meeting URLs, connection loss, light/dark rendering');
+  console.log('PASS popup: Start/Stop asks the app for the current tab with reasons and feedback, current-tab health/reload, refused reload, honest recovery, copy without meeting URLs, connection loss, light/dark rendering');
 } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}
+
+async function recordFlow(page){
+  await page.evaluate(()=>{fixture.status.appRecording='disconnected';fixture.status.browserHealth.tabs=[{tabId:7,state:'ready'}]});
+  await page.getByText('Open Cassini to record from the browser.',{exact:true}).waitFor();
+  assert.equal(await page.locator('#record').isDisabled(),true);
+  await page.evaluate(()=>{fixture.status.appRecording='available';fixture.status.browserHealth.tabs=[]});
+  await page.getByText(/Join the call first/).waitFor();
+  assert.equal(await page.locator('#record').isDisabled(),true);
+  // A refusal from Cassini stays visible and the button stays usable.
+  await page.evaluate(()=>{fixture.status.browserHealth.tabs=[{tabId:7,state:'ready'}];
+    fixture.recordReply=()=>({error:'Generated app refusal',code:'needsSetup'})});
+  const start=page.getByRole('button',{name:'Start recording',exact:true});
+  await page.waitForFunction(()=>!document.querySelector('#record').disabled);
+  await start.click();
+  await page.getByText('Generated app refusal',{exact:true}).waitFor();
+  await page.waitForFunction(()=>!document.querySelector('#record').disabled);
+  assert.equal(await page.locator('#record-hint').isVisible(),false);
+  // A click during an outstanding status poll: the refusal restores the card at
+  // once, and the refresh it asks for runs when the held poll ends.
+  await page.evaluate(()=>{delete window.releaseStatus;fixture.holdStatus=true});
+  await page.waitForFunction(()=>typeof window.releaseStatus==='function');
+  const statusCount=await page.evaluate(()=>fixture.requests.filter(r=>r.type==='status').length);
+  await page.evaluate(()=>{fixture.recordReply=()=>({error:'Generated refusal during a poll',code:'needsSetup'})});
+  await start.click();
+  await page.getByText('Generated refusal during a poll',{exact:true}).waitFor();
+  assert.equal(await page.locator('#record').textContent(),'Start recording');
+  assert.equal(await page.locator('#record').isDisabled(),false);
+  assert.equal(await page.locator('#status').textContent(),'Meeting sources detected');
+  assert.equal(await page.locator('#card').getAttribute('data-tone'),'good');
+  assert.equal(await page.evaluate(()=>fixture.requests.filter(r=>r.type==='status').length),statusCount,'the held poll is still outstanding');
+  await page.evaluate(()=>window.releaseStatus());
+  await page.waitForFunction(n=>fixture.requests.filter(r=>r.type==='status').length>n,statusCount);
+  await page.getByRole('heading',{name:'Meeting sources detected',exact:true}).waitFor();
+  assert.equal(await page.locator('#record-error').isVisible(),true,'the refusal stays until the offered action changes');
+  // An accepted ask shows progress until this tab's capture reflects it.
+  await page.evaluate(()=>{fixture.recordReply=message=>new Promise(resolve=>{window.finishRecord=()=>{
+    fixture.captures=[{tabId:7,recording:false,starting:true,recordRequest:{action:'start',state:'accepted'}}];resolve({tabId:7})}})});
+  await start.click();
+  await page.getByRole('button',{name:'Starting…',exact:true}).waitFor();
+  assert.equal(await page.locator('#record').isDisabled(),true);
+  assert.equal(await page.locator('#status').textContent(),'Asking Cassini to start recording…');
+  // The whole card renders the pending state, not just the heading and button.
+  assert.equal(await page.locator('#card').getAttribute('data-tone'),'neutral');
+  assert.match(await page.locator('#explanation').textContent(),/Waiting for it to confirm/);
+  assert.equal(await page.locator('#recording-note').textContent(),'Recording is not yet confirmed');
+  assert.equal(await page.locator('#reload').isVisible(),false);
+  assert.equal(await page.locator('#record-error').isVisible(),false,'a new click clears the old refusal');
+  await page.evaluate(()=>window.finishRecord());
+  await page.getByRole('heading',{name:'Asking Cassini to start recording…',exact:true}).waitFor();
+  await page.evaluate(()=>{fixture.captures=[{tabId:7,recording:true,tracks:2}]});
+  const stop=page.getByRole('button',{name:'Stop recording',exact:true});
+  await stop.waitFor();
+  assert.equal(await page.locator('#record').getAttribute('data-action'),'stop');
+  await mkdir(path.join(root,'artifacts'),{recursive:true});
+  await page.screenshot({path:path.join(root,'artifacts/popup-recording.png'),fullPage:true});
+  await page.evaluate(()=>{fixture.recordReply=()=>{fixture.captures=[{tabId:7,recording:true,tracks:2,stopping:true}];return {tabId:7}}});
+  await stop.click();
+  await page.getByRole('button',{name:'Saving…',exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>fixture.requests.filter(r=>r.type==='recordRequest').map(({action,tabId})=>({action,tabId}))),
+    [{action:'start',tabId:7},{action:'start',tabId:7},{action:'start',tabId:7},{action:'stop',tabId:7}]);
+  await page.evaluate(()=>{delete fixture.captures;delete fixture.recordReply;delete fixture.status.appRecording;fixture.status.browserHealth.tabs=[]});
+  await page.getByRole('heading',{name:'No meeting sources detected',exact:true}).waitFor();
+}

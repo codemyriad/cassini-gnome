@@ -169,11 +169,17 @@
     memo.set(output, reach);
     return reach;
   }
-  const audioContextPrototype = globalThis.AudioContext?.prototype;
+  const audioContextPrototype = (globalThis.AudioContext || globalThis.webkitAudioContext)?.prototype;
   const rememberAudioSource = node => {
     try {
       if (node?.mediaStream) audioSources.set(node, { tracks: node.mediaStream.getAudioTracks() });
       else if (node?.mediaElement) audioSources.set(node, { element: node.mediaElement });
+    } catch {}
+    return node;
+  };
+  const rememberAudioTrackSource = (node, track) => {
+    try {
+      if (node && track) audioSources.set(node, { tracks: [track] });
     } catch {}
     return node;
   };
@@ -188,6 +194,25 @@
     if (typeof create === "function") audioContextPrototype[factory] = function (...args) { return remember(Reflect.apply(create, this, args)); };
     if (typeof globalThis[Node] === "function") globalThis[Node] = new Proxy(globalThis[Node], {
       construct(target, args, newTarget) { return remember(Reflect.construct(target, args, newTarget)); }
+    });
+  }
+  const createTrackSource = audioContextPrototype?.createMediaStreamTrackSource;
+  if (typeof createTrackSource === "function") {
+    audioContextPrototype.createMediaStreamTrackSource = function (...args) {
+      const track = args.length > 0 ? args[0] : undefined;
+      return rememberAudioTrackSource(Reflect.apply(createTrackSource, this, args.length ? [track] : []), track);
+    };
+  }
+  if (typeof globalThis.MediaStreamTrackAudioSourceNode === "function") {
+    globalThis.MediaStreamTrackAudioSourceNode = new Proxy(globalThis.MediaStreamTrackAudioSourceNode, {
+      construct(target, args, newTarget) {
+        const options = args.length > 1 ? args[1] : undefined;
+        let track; try { track = options?.mediaStreamTrack; } catch {}
+        if (track !== undefined) {
+          return rememberAudioTrackSource(Reflect.construct(target, [args[0], { mediaStreamTrack: track }], newTarget), track);
+        }
+        return Reflect.construct(target, args, newTarget);
+      }
     });
   }
   const audioNodePrototype = globalThis.AudioNode?.prototype;

@@ -18,7 +18,8 @@
     Receiver=globalThis.RTCRtpReceiver, Transceiver=globalThis.RTCRtpTransceiver,
     Track=globalThis.MediaStreamTrack, Stream=globalThis.MediaStream,
     Stats=globalThis.RTCStatsReport, AudioNodeClass=globalThis.AudioNode, AudioParamClass=globalThis.AudioParam,
-    Context=globalThis.AudioContext, SourceNode=globalThis.MediaStreamAudioSourceNode,
+    Context=globalThis.AudioContext||globalThis.webkitAudioContext, SourceNode=globalThis.MediaStreamAudioSourceNode,
+    TrackSourceNode=globalThis.MediaStreamTrackAudioSourceNode,
     DestinationNode=globalThis.MediaStreamAudioDestinationNode, NativeWeakMap=globalThis.WeakMap;
   if (!PC || typeof globalThis.crypto?.randomUUID!=='function') return;
   const method=(prototype,key)=>descriptor(prototype||{},key)?.value;
@@ -241,23 +242,47 @@
       for(let i=0;i<tracks.length;i++){if(!lineageOf(tracks[i]))return;add(copy,tracks[i])}
       if(copy.length)call(weakSet,sources,[node,{tracks:copy}]);
     };
+    const rememberTrackSource=(node,track)=>{
+      if(!node||!track||!live(track)||!lineageOf(track))return;
+      const copy=list();add(copy,track);
+      call(weakSet,sources,[node,{tracks:copy}]);
+    };
     const rememberDestination=node=>{
       const stream=get(destinationStream,node);if(!stream)return;
       const tracks=call(streamTracks,stream);call(weakSet,destinations,[node,true]);
       for(let i=0;i<tracks.length;i++)rememberRoot(tracks[i],null,node);
     };
+    const argument=(args,position)=>position<args.length?args[position]:undefined;
     const factory=(prototype,key,remember)=>{
       const native=method(prototype,key);if(!native)return;
       prototype[key]=function(){const node=call(native,this,arguments);try{remember(node)}catch{}return node};
     };
     const wrap=(name,Class,remember)=>{if(Class)globalThis[name]=new Proxy(Class,{construct(target,args,newTarget){const node=construct(target,args,newTarget);try{remember(node)}catch{}return node}})};
     if(sourceStream){factory(Context?.prototype,'createMediaStreamSource',rememberSource);wrap('MediaStreamAudioSourceNode',SourceNode,rememberSource)}
+    const createTrackSource=method(Context?.prototype,'createMediaStreamTrackSource');
+    if(createTrackSource)Context.prototype.createMediaStreamTrackSource=function(){
+      const track=argument(arguments,0),node=call(createTrackSource,this,arguments.length?[track]:[]);
+      try{rememberTrackSource(node,track)}catch{}return node;
+    };
+    if(TrackSourceNode)globalThis.MediaStreamTrackAudioSourceNode=new Proxy(TrackSourceNode,{construct(target,args,newTarget){
+      // Read own mediaStreamTrack once and pass a null-prototype options bag so
+      // getters or proxies cannot hand native construction a different track.
+      const options=argument(args,1);
+      if(options&&(typeof options==='object'||typeof options==='function')){
+        let track;try{track=data(options,'mediaStreamTrack')}catch{}
+        if(track!==undefined){
+          const clean=create(null);clean.mediaStreamTrack=track;
+          const node=construct(target,[argument(args,0),clean],newTarget);
+          try{rememberTrackSource(node,track)}catch{}return node;
+        }
+      }
+      return construct(target,args,newTarget);
+    }});
     if(destinationStream){factory(Context?.prototype,'createMediaStreamDestination',rememberDestination);wrap('MediaStreamAudioDestinationNode',DestinationNode,rememberDestination)}
     const edges=(map,node)=>{let value=lookup(map,node);if(!value){value=list();call(weakSet,map,[node,value])}return value};
     // WebIDL unsigned long; anything but a number is unknown (-1).
     // Read only supplied argument slots: an omitted slot must never inherit a
     // page-installed numeric prototype property.
-    const argument=(args,position)=>position<args.length?args[position]:undefined;
     const index=(args,position,fallback)=>{const value=argument(args,position);return value===undefined?fallback:typeof value==='number'?value>>>0:-1};
     const link=(from,args)=>{
       const to=argument(args,0);if(!audioNode(to))return; // AudioParam modulation never carries lineage.
@@ -319,7 +344,8 @@
     try{call(statsEach,reports,[report=>{if(result.length<128)add(result,report);else overflow=true}])}catch{return result}
     return result;
   };
-  const fresh=report=>{const timestamp=data(report,'timestamp'),age=origin+now()-timestamp;return typeof timestamp==='number'&&numberFinite(timestamp)&&age>=0&&age<=2500};
+  // Allow up to 5 ms negative skew from performance.now() timer coarsening vs RTCStatsReport.timestamp.
+  const fresh=report=>{const timestamp=data(report,'timestamp'),age=origin+now()-timestamp;return typeof timestamp==='number'&&numberFinite(timestamp)&&age>=-5&&age<=2500};
   const nativeSlots=pc=>{
     const result=list();
     try{const slots=call(transceivers,pc);if(slots.length>64)overflow=true;for(let i=0;i<slots.length&&i<64;i++)add(result,slots[i])}catch{}
@@ -409,7 +435,7 @@
       if(endpoint){if(member.tracks.length)endpoint.tracks=member.tracks}
       else if(qualified.length<64)add(qualified,member);
     }
-    const older=receiveAt<sendAt?receiveAt:sendAt,age=cohortQualified?instant-older:0;
+    const older=receiveAt<sendAt?receiveAt:sendAt,rawAge=instant-older,age=cohortQualified?(rawAge<0&&rawAge>=-5?0:rawAge):0;
     return assign(create(null),{version:2,documentGeneration,hookGeneration:''+generation,revision,ageMs:age,cohortQualified,
       sourceCount:sourceCount>64?64:sourceCount,heard:sourceCount>0&&heardNow,
       receivedPeers,capturedSendingPeers,samePeerCount:overflow?0:samePeerCount,

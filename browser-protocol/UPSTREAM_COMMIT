@@ -1,26 +1,26 @@
-tree 3404c6228efc9d351f2df592277221283ac727ee
-parent 156b40c314e7acf4e75d53c2fbc77fdae8deacc4
-parent e3cb34350ed651721a670c6bf075efe043faa880
-author Silvio Tomatis <silviot@gmail.com> 1794501066 +0100
-committer GitHub <noreply@github.com> 1794501066 +0100
+tree 658546d841bda42901f3d0c9e08ed68951467884
+parent e21a648b3b2311f66837914e08d01529ac19ada8
+parent c314f5c9eed7ac61a034b6f0a0154b6ff0059688
+author Silvio Tomatis <silviot@gmail.com> 1794625629 +0100
+committer GitHub <noreply@github.com> 1794625629 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq9enKCRC1aQ7uu5UhlAAAgvAQAEcYtFwb0/AMgCBCOuCiD+wu
- 3hbbFMTEa+myS9ZXHkmteBH9GKmtGn+A8w17atBxfRK09QH7+zL3s2oZkMo3D4Wr
- zpTNZ0BPtwhLTTPuzmHZpuEBMD+V8yx14YcFedhjvaYz/h0/C+KdUykyIUtKFlmS
- XRb3IiMg+jNI2BvXQxCrPdB6rkLQ3mWUSICWJFXNUcjbAYPKkgjSkt5ck77FvUYe
- Ug4By50Iojhfks4hbXKTzw3TT0rV3of9s8qzI2kotBWJ3AUr16CORiH3WCKH4B5q
- np0Ea18hVtzmOpX8UCmlIT4i1gUgefyEFkcrHOl4CVTXbxtenA+V7x8ywIKiNNvo
- B82BGzeV546rqIZXBEk7JnjMJzWUa0m6GjP/fn+QgDDpTytGoBcLUtG7thhEq/s4
- oN05HNEazhTPEwtbR085mnb0IzBE/Z8WUeyUW94E1fpUWpdhbH4ByqLhe1U0T8XZ
- nwrycVQLi9fnHieZe+1wehpyDDV4ONvcZgEkzIcKkoYPL4npDx0lyKg7SJqQZx6R
- ql/PDl9bLjrlDR+iDIOGJu8DniN3i54CBnj2vi3a1UvVpAD0YQm5C+D6qNmvhDxV
- za+leSc8u9fs410JP5+63hEnxDZdTTP1geCO5Wi2ESbOS5VnLwSpnG8oNEbfglqx
- 4EnS3GR7aorL/ChvVzzu
- =9GHY
+ wsFcBAABCAAQBQJq99BdCRC1aQ7uu5UhlAAATU0QAGIYMkiuzP8vdN2oRvVmgVPP
+ KGFNtQ5YToAKsgy9BRebUqCAnQHfqh+TwH5wap7m0ZEpracR5iusO0DXoXeU+Ikd
+ MzhIsIWJIm+x9OKsTDohnRMUbCU31BVGuMAhQoAp9QZXpsUxpy60vd6NjIQH1SzN
+ /YuC7GjvghqBtpncT810+UrWYXUDVv+UnuU3KVz06RiprPBnZiAC4Bi13jp6UbKV
+ 0QpqB4VMMLPX3+S4kHjK++RZMbgLd1oJGUTfemWlovoP3kG1HhDTbnt/BB8VYhiM
+ zprZBFwWSzk7DfOJLGjmEOG8ReDXkCczSUmt+5seUsbr+2drnEXOq3x/pHgR9WTe
+ 0jxMUzp2UA9oUem20gTNWiJXMco0akynE60wI89pwA54H77E1q4/N4CoMd8ElIMH
+ BRWCw0znfExA/zIOy3lh7zs/wOK0Jh3NxgJDoF9sr+ghz3yQX5jvFbNUpZ52l1Jx
+ a6aQmPzGgPCzB1SpQltB5wUv/RbHzysZRXSIe++Ukn0Sh+nq83nbQeNBvp+0btVq
+ cMLyvNiqxH/WUDtOj0n7QrULdwmKX7BjLejcHDJs7N/JpzeNlCLRHrseQCci6xZ5
+ cfOhuAORKocHQJTDQjJfT3vwGaXiia9OTo3l5mLYMIiTG2gJx4vHKBDGLfbZW4kx
+ nikkKAqtdQIzeted7mMG
+ =wuBB
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #102 from codemyriad/fix/auto-record-webaudio-lineage
+Merge pull request #105 from codemyriad/participate/d-983
 
-Start automatic recording when the page processes the microphone through WebAudio (Teams)
+feat: start and stop a recording from the browser popup (popup-record-v1)

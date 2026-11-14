@@ -81,8 +81,10 @@ prove.
 ## browser companion popup
 
 The extension popup reports the active tab’s meeting-source readiness separately
-from its app-control connection. Recording controls live in the Cassini app;
-the extension popup does not start or stop recordings. A detected source is not
+from its app-control connection. Its Start recording / Stop recording button asks
+the connected Cassini app (`popup-record-v1`), which records through its own
+control command; the popup explains why the button is unavailable when the app is
+missing, too old, or the tab is not ready. A detected source is not
 a verified participant or proof of saved audio. A missing current-tab health row
 means no meeting is reported, not proof that page injection succeeded or failed.
 
@@ -93,9 +95,10 @@ The packaged-file self-check remains diagnostic and never gates page readiness.
 
 Run `node tests/popup.mjs` for the popup’s isolated Chromium interaction checks;
 `node --test extension/tests/popup-state.test.cjs` covers its evidence-to-status
-mapping. Browser fixtures initiate capture through the trusted popup RPC rather
-than keeping obsolete recording buttons in the product. The first popup increment
-does not expose app auto-record policy, confirmed saved audio, or an app launcher:
+mapping, and `node --test extension/tests/popup-record.test.cjs` the app ask.
+Browser fixtures initiate capture through the trusted direct popup RPC; the
+product popup never uses it. The popup does not expose app auto-record policy,
+confirmed saved audio, or an app launcher:
 those need explicit app-backed APIs instead of inferred or simulated state.
 
 ## changing things

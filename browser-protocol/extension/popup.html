@@ -26,10 +26,15 @@ main { padding: 22px; }
 #recording-note { margin: 18px 0 0; color: #68747e; font-size: 12px; line-height: 1.6; }
 button { width: 100%; margin-top: 17px; padding: 10px 12px; border: 1px solid #d5dde5; border-radius: 7px; background: #fff; color: #365f93; font: 600 12px system-ui; cursor: pointer; }
 button:hover { background: #f1f5fa; } button:disabled { opacity: .55; cursor: default; }
+#record { background: #365f93; border-color: #365f93; color: #fff; }
+#record:hover:not(:disabled) { background: #2d5280; }
+#record[data-action="stop"] { background: #b3412e; border-color: #b3412e; }
+#record[data-action="stop"]:hover:not(:disabled) { background: #983726; }
+#record-hint { margin: 7px 0 0; color: #68747e; font-size: 11px; line-height: 1.5; }
 button:focus-visible, summary:focus-visible { outline: 3px solid #7c9cd1; outline-offset: 3px; }
 #reload-warning { margin: 7px 0 0; color: #7a838c; font-size: 10px; line-height: 1.5; }
 #installation-warning { color: #926a31; font-size: 11px; line-height: 1.6; }
-#action-error { color: #a4582f; font-size: 12px; line-height: 1.5; }
+#action-error, #record-error { color: #a4582f; font-size: 12px; line-height: 1.5; }
 footer { padding: 15px 22px 20px; border-top: 1px solid #e9edef; }
 footer > p { margin: 0 0 14px; font-size: 12px; color: #66727b; line-height: 1.6; }
 summary { width: fit-content; cursor: pointer; color: #737f89; font-size: 11px; }
@@ -40,14 +45,14 @@ summary { width: fit-content; cursor: pointer; color: #737f89; font-size: 11px; 
 @media (prefers-color-scheme: dark) {
  :root { color: #e4e8ed; background: #24272c; }
  #connection, footer { border-color: #3c4249; }
- #connection, #explanation, #recording-note, #diagnostics, footer > p, #copy-result { color: #b4bdc7; }
+ #connection, #explanation, #recording-note, #record-hint, #diagnostics, footer > p, #copy-result { color: #b4bdc7; }
  .subtitle, .eyebrow, #site, summary, #reload-warning { color: #a7b1bc; }
  .card { background: #2d333b; border-color: #424b56; }
  .card[data-tone="good"] { background: #273b32; border-color: #3e5b4a; }
  .card[data-tone="warning"] { background: #40392b; border-color: #625237; }
  button { background: #303741; color: #b9d1f4; border-color: #4d5b6d; }
  button:hover { background: #3c4755; } #installation-warning { color: #e2bc7e; }
-#action-error { color: #f0b28b; }
+#action-error, #record-error { color: #f0b28b; }
 }
 </style></head><body>
 <header><span class="mark" aria-hidden="true"></span><h1>Cassini</h1><span class="subtitle">Browser companion</span></header>
@@ -56,12 +61,14 @@ summary { width: fit-content; cursor: pointer; color: #737f89; font-size: 11px; 
  <div class="eyebrow">This tab</div><p id="tab-title">Checking this tab…</p><p id="site"></p>
  <section class="card" id="card" aria-live="polite" aria-atomic="true"><h2 id="status">Checking meeting detection…</h2><p id="explanation"></p></section>
  <p id="installation-warning" hidden>Some audio capture files could not be read. See connection details; this check does not determine page readiness.</p>
- <p id="recording-note">Recording is managed in Cassini.</p>
+ <p id="recording-note">Start recording asks the Cassini app on this computer to record this tab.</p>
+ <button id="record" hidden disabled aria-describedby="record-hint">Start recording</button><p id="record-hint" hidden></p>
+ <p id="record-error" role="status" hidden></p>
  <button id="reload" hidden>Reload meeting tab</button><p id="reload-warning" hidden>Reloading briefly disconnects you from the call.</p>
  <p id="action-error" role="status" hidden></p>
 </main>
 <footer>
- <p>Use the Cassini app to start, stop, or manage automatic recording.</p>
+ <p>Automatic recording and saved recordings are managed in the Cassini app.</p>
  <details><summary>Connection details</summary><pre id="diagnostics">Checking…</pre><button id="copy" disabled>Copy diagnostics</button><p id="copy-result" role="status" hidden></p></details>
 </footer>
 <script type="module" src="popup.js"></script></body></html>

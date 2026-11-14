@@ -40,11 +40,13 @@ function fixture(){
     }
   }
   class MediaStreamAudioSourceNode extends AudioNode {#stream;constructor(context,{mediaStream}){super(context,0,1);this.#stream=mediaStream}get mediaStream(){return this.#stream}}
+  class MediaStreamTrackAudioSourceNode extends AudioNode {constructor(context,{mediaStreamTrack}){super(context,0,1)}}
   class MediaStreamAudioDestinationNode extends AudioNode {#stream=new Stream(new Track('MediaStreamAudioDestinationNode'));constructor(context){super(context,1,0)}get stream(){return this.#stream}}
   class GainNode extends AudioNode {constructor(context){super(context,1,1);this.gain=new AudioParam()}}
   class AudioContext extends BaseAudioContext {
     constructor(){super();this.destination=new AudioNode(this,1,0)}
     createMediaStreamSource(mediaStream){return new MediaStreamAudioSourceNode(this,{mediaStream})}
+    createMediaStreamTrackSource(mediaStreamTrack){return new MediaStreamTrackAudioSourceNode(this,{mediaStreamTrack})}
     createMediaStreamDestination(){return new MediaStreamAudioDestinationNode(this)}
     createGain(){return new GainNode(this)}createOscillator(){return new AudioNode(this,0,1)}createMediaElementSource(){return new AudioNode(this,0,1)}
     createChannelMerger(inputs=6){return new AudioNode(this,inputs,1)}createChannelSplitter(outputs=6){return new AudioNode(this,1,outputs)}
@@ -75,7 +77,7 @@ function fixture(){
   const window={RTCPeerConnection:Peer,location,postMessage:packet=>messages.push(packet),addEventListener:(name,fn)=>listeners.push(fn)};
   const context=vm.createContext({isSecureContext:true,window,location,RTCPeerConnection:Peer,RTCRtpSender:Sender,RTCRtpReceiver:Receiver,RTCRtpTransceiver:Transceiver,
     MediaStreamTrack:Track,MediaStream:Stream,RTCStatsReport:Report,BaseAudioContext,AudioContext,AudioNode,AudioParam,
-    MediaStreamAudioSourceNode,MediaStreamAudioDestinationNode,
+    MediaStreamAudioSourceNode,MediaStreamTrackAudioSourceNode,MediaStreamAudioDestinationNode,
     navigator:{mediaDevices:{async getUserMedia(){return new Stream(new Track())},async getDisplayMedia(){return new Stream(new Track('Shared screen audio'))}}},
     crypto:{randomUUID:()=> 'hook-document'},performance:{timeOrigin:origin,now:()=>now},
     setInterval:fn=>timers.push(fn),setTimeout,clearTimeout});
@@ -409,4 +411,40 @@ test('the terminal check walks each nested output once: teardown work grows line
  };
  const small=await work(4),large=await work(8);
  assert.ok(large<=small*3,`teardown work ${small} at width 4 and ${large} at width 8 must scale linearly`);
+});
+
+test('MediaStreamTrackAudioSourceNode and createMediaStreamTrackSource keep captured mic lineage and reject non-mic or getter-swapped tracks',async()=>{
+ const f=fixture(),g=await graphPeer(f,({audio,mic,output})=>{
+  audio.createMediaStreamTrackSource(mic.getAudioTracks()[0]).connect(output);
+ });
+ assert.equal(await qualifies(f,g.peer),true);
+ const fCtor=fixture(),gCtor=await graphPeer(fCtor,({audio,mic,output})=>{
+  new fCtor.context.MediaStreamTrackAudioSourceNode(audio,{mediaStreamTrack:mic.getAudioTracks()[0]}).connect(output);
+ });
+ assert.equal(await qualifies(fCtor,gCtor.peer),true);
+ const fNeg=fixture(),gNeg=await graphPeer(fNeg,async({audio,output})=>{
+  const display=await fNeg.context.navigator.mediaDevices.getDisplayMedia();
+  audio.createMediaStreamTrackSource(display.getAudioTracks()[0]).connect(output);
+ });
+ assert.equal(await qualifies(fNeg,gNeg.peer),false);
+ const fSwap=fixture(),gSwap=await graphPeer(fSwap,async({audio,mic,output})=>{
+  const display=await fSwap.context.navigator.mediaDevices.getDisplayMedia();
+  const options={};
+  Object.defineProperty(options,'mediaStreamTrack',{configurable:true,get(){
+   Object.defineProperty(options,'mediaStreamTrack',{value:mic.getAudioTracks()[0],configurable:true});
+   return display.getAudioTracks()[0];
+  }});
+  new fSwap.context.MediaStreamTrackAudioSourceNode(audio,options).connect(output);
+ });
+ assert.equal(await qualifies(fSwap,gSwap.peer),false);
+});
+
+test('sub-millisecond negative timestamp skew is tolerated and clamped while larger future timestamps are rejected',async()=>{
+ const f=fixture(),p=await f.peer('captured');
+ p.sender.age=-1;p.receiver.age=-1;
+ assert.equal(await qualifies(f,p),true);
+ assert.equal(f.read().ageMs,0);
+ const fBad=fixture(),pBad=await fBad.peer('captured');
+ pBad.sender.age=-10;pBad.receiver.age=-10;
+ assert.equal(await qualifies(fBad,pBad),false);
 });

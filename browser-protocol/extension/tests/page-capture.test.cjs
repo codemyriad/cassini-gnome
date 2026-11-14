@@ -462,3 +462,22 @@ test('page media that the page then sends is recorded as Me, not as page media',
  assert.notEqual(live[0].sourceTrackId,f.captures[0].sourceTrackId);
  assert.equal(live[0].enabled(),true);
 }));
+
+test('createMediaStreamTrackSource and MediaStreamTrackAudioSourceNode keep Me lineage and exclude display audio',()=>fixture(async f=>{
+ for(const build of [(audio,track)=>audio.createMediaStreamTrackSource(track),(audio,track)=>new f.MediaStreamTrackAudioSourceNode(audio,{mediaStreamTrack:track})]){
+  f.peer.senders=[];
+  const [mic]=(await f.navigator.mediaDevices.getUserMedia({audio:true})).getAudioTracks();
+  const [screen]=(await f.navigator.mediaDevices.getDisplayMedia({video:true,audio:true})).getAudioTracks();
+  const audioMic=new f.AudioContext(),outMic=audioMic.createMediaStreamDestination();
+  build(audioMic,mic).connect(outMic);
+  const audioScreen=new f.AudioContext(),outScreen=audioScreen.createMediaStreamDestination();
+  build(audioScreen,screen).connect(outScreen);
+  f.peer.senders=[micSender(outMic.stream.getAudioTracks()[0]),micSender(outScreen.stream.getAudioTracks()[0])];
+  const before=f.captures.length;
+  await f.start('track-source',{captureLocal:true,sourceOutcomes:true});
+  const added=f.captures.slice(before);
+  assert.equal(added.length,1,'only the microphone track source is recorded as Me');
+  assert.equal(added[0].kind,'local');
+  await f.stop();
+ }
+}));

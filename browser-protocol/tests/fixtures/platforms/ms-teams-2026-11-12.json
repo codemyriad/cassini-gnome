@@ -1,0 +1,104 @@
+{
+  "schema": "cassini-platform-topology/v1",
+  "platform": "ms-teams",
+  "capturedOn": "2026-11-12",
+  "provenance": "incident-observation",
+  "call": {
+    "localSpeakers": 1,
+    "remoteSpeakers": 2
+  },
+  "runtime": {
+    "usesWebAudio": true,
+    "usesAudioWorklet": false,
+    "usesWasm": false
+  },
+  "webAudioGraphs": [
+    {
+      "id": "graph-0",
+      "contextState": "running",
+      "nodes": [
+        {
+          "id": "n0",
+          "type": "getUserMediaAudio",
+          "origin": "microphone"
+        },
+        {
+          "id": "n1",
+          "type": "MediaStreamAudioSourceNode"
+        },
+        {
+          "id": "n2",
+          "type": "GainNode"
+        },
+        {
+          "id": "n3",
+          "type": "MediaStreamAudioDestinationNode"
+        }
+      ],
+      "edges": [
+        {
+          "from": "n0",
+          "to": "n1",
+          "kind": "stream"
+        },
+        {
+          "from": "n1",
+          "to": "n2",
+          "kind": "audio",
+          "output": 0,
+          "input": 0
+        },
+        {
+          "from": "n2",
+          "to": "n3",
+          "kind": "audio",
+          "output": 0,
+          "input": 0
+        }
+      ],
+      "outputTrackOrigin": "microphone"
+    }
+  ],
+  "peers": [
+    {
+      "peer": 0,
+      "connectionState": "connected",
+      "dataChannelCount": 1,
+      "transceivers": [
+        {
+          "slot": 0,
+          "kind": "audio",
+          "direction": "sendrecv",
+          "currentDirection": "sendrecv",
+          "sender": {
+            "kind": "audio",
+            "label": "MediaStreamAudioDestinationNode",
+            "lineage": "webaudio-microphone",
+            "webAudioGraphId": "graph-0",
+            "webAudioDestNodeId": "n3",
+            "cloned": false,
+            "packetsProgressing": true
+          },
+          "receiver": {
+            "kind": "audio",
+            "label": "remote audio",
+            "mixing": "mixed",
+            "speakersOnTrack": 2,
+            "speakersOverTime": [
+              2
+            ],
+            "csrc": {
+              "present": false,
+              "distinctCount": 0
+            },
+            "ssrc": {
+              "present": true,
+              "distinctCount": 1
+            },
+            "packetsProgressing": true
+          }
+        }
+      ]
+    }
+  ]
+}

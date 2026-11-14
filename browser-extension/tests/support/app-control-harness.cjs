@@ -49,7 +49,7 @@ async function setup(sourceCount = 3, previous = {}, hostFeatures = [], nativeFa
   context.controlLater = later; context.controlCancel = cancel;
   vm.runInContext(fs.readFileSync(path.join(extension, 'call-signals.js'), 'utf8').replace(/^export /gm, ''), context);
   const background = fs.readFileSync(path.join(extension, 'background.js'), 'utf8').replace(/^import .*\n/gm, '').replace('runtime: chrome.runtime, alarms: chrome.alarms,', 'runtime: chrome.runtime, alarms: chrome.alarms, later: controlLater, cancel: controlCancel,');
-  vm.runInContext(background + '\nglobalThis.api={status,controlStatus,appControl,frames,start,stop,meetings,callInfo,sessionTimers,repairTab,repairOpenTabs,browserHealth,relayTimers,checkCompanion,failure,NativeHost,signalProducer,signalAdapters,genericProducer,discoveryTimers,retireNativeDiscovery};', context);
+  vm.runInContext(background + '\nglobalThis.api={status,controlStatus,appControl,frames,start,stop,meetings,callInfo,callChanged,sessionTimers,repairTab,repairOpenTabs,browserHealth,relayTimers,checkCompanion,failure,NativeHost,signalProducer,signalAdapters,genericProducer,discoveryTimers,retireNativeDiscovery};', context);
   beforeReady?.({chrome, api:context.api, frame, tabs});
   await until(() => ports.length && ports[0].sent.some(m => m.type === 'status'));
   function frame(tabId = 2, count = sourceCount, frameId = 0, documentId) {
