@@ -202,9 +202,9 @@ class MeetingPage(Adw.NavigationPage):
 
         self.star_menu = Gio.Menu()
         menu = self.more_menu = Gio.Menu()
-        menu.append_section(None, self.star_menu)
         menu.append(text("details.menu"), "win.recording-details")
         menu.append(text("common.exportEllipsis"), "win.export")
+        menu.append_section(None, self.star_menu)
         self.more_button = Gtk.MenuButton(
             icon_name="view-more-symbolic",
             tooltip_text=text("meeting.moreActions"),
@@ -1415,7 +1415,6 @@ class MeetingPage(Adw.NavigationPage):
             return
         self._signature = signature
         self.more_menu.remove_all()
-        self.more_menu.append_section(None, self.star_menu)
         self.more_menu.append_item(self.window.rename_item())
         if meeting.speakers and (meeting.metadata_editable or meeting.published_file is not None):
             self.more_menu.append(text("meeting.nameSpeakers"), "win.name-speakers")
@@ -1423,6 +1422,8 @@ class MeetingPage(Adw.NavigationPage):
         self.more_menu.append(text("common.exportEllipsis"), "win.export")
         if undo:
             self.more_menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
+        # Rename stays first (HARMONY); the per-device star sits above Trash.
+        self.more_menu.append_section(None, self.star_menu)
         if trash_allowed or (meeting.published_file is not None and not meeting.metadata_editable):
             section = Gio.Menu()
             from .meeting_trash import menu_item
