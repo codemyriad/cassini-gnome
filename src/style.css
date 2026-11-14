@@ -145,6 +145,11 @@ text > placeholder {
 .library-window .sidebar-search-entry { min-height: 34px; border-radius: 6px; padding: 0 9px; background-color: var(--cx-field); color: var(--cx-ink); border: 1px solid var(--cx-field-line); font-size: 14px; }
 .library-window .sidebar-search-entry:focus-within { border-color: var(--cx-accent); outline: 2px solid var(--cx-accent); outline-offset: -1px; }
 .library-window .library-rows { background: transparent; padding: 0 10px 10px; }
+.library-window .library-filter-row { padding: 0 10px 8px; }
+.library-window button.library-filter { min-height: 28px; padding: 0 14px; font-size: 13px; }
+.library-window button.library-filter:checked { background: var(--app-primary-bg); color: var(--app-primary-fg); font-weight: 600; }
+.library-window .row-star { color: var(--cx-ink-2); }
+.library-window .library-starred-empty { color: var(--cx-ink-2); }
 .library-window .day-heading { padding: 10px 12px 4px; background: transparent; }
 .library-window .day-heading-label { font-size: 13px; font-weight: 700; color: var(--cx-ink-2); }
 .library-window .meeting-row { padding: 0; border-radius: 10px; margin: 3px 0; color: var(--cx-ink); background: var(--cx-card-rest); border: 1px solid var(--cx-line); box-shadow: none; }

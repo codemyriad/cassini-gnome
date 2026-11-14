@@ -107,7 +107,13 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page.store.get_item(0) is page.store.get_item(0)
     assert [hit.position_ms for hit in page.hits] == [4000, 872000, 1870000, 527000]
     assert "Any speaker" in labels(page.speaker_button.get_popover())
-    assert [s for s in labels(page.date_button.get_popover())] == ["Any date", "Today", "Past 7 days", "Past 30 days"]
+    assert [s for s in labels(page.date_button.get_popover())] == [
+        "Any date",
+        "Today",
+        "Past 7 days",
+        "Past 30 days",
+        "This year",
+    ]
     assert all(not s.startswith("Speaker ") for s in page.names)
 
     # Search badges belong to the hit's meeting, independently of Library selection.
