@@ -247,6 +247,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not window.received_hint.get_visible()
     until(lambda: not window._pending_selection)
     # L-25 DropImport states: rest, enter, over, unsupported error, and transient Importing… card.
+    from cassini_talk import import_feedback
     from cassini_talk.strings import text
 
     assert window.drop_footer_label.get_label() == text("import.drop.rest")
@@ -256,16 +257,15 @@ with tempfile.TemporaryDirectory() as temporary:
     window._set_drop_state("over")
     assert "drag-over" in window.drop_frame.get_css_classes() and window.drop_overlay.get_visible()
     assert window.drop_overlay_title.get_label() == text("import.drop.over")
-    assert window.drop_overlay_detail.get_label() == text("import.drop.formats.current")
-    bad_file = tmp / "voice-note.m4a"
+    assert window.drop_overlay_detail.get_label() == import_feedback.accepted_formats()
+    # W0.7: Ogg video is never a decided type (M4A now is).
+    bad_file = tmp / "screen-capture.ogv"
     bad_file.write_bytes(b"unsupported")
     bad_drop = Gdk.FileList.new_from_array([Gio.File.new_for_path(str(bad_file))])
     assert not window._drop_files(None, bad_drop, 0, 0)
     assert window.drop_overlay.get_visible() and "error" in window.drop_overlay.get_css_classes()
-    assert window.drop_overlay_title.get_label() == text("import.drop.cantImport", file="voice-note.m4a")
-    assert window.drop_overlay_detail.get_label() == text(
-        "import.drop.cantImport.detail", formats=text("import.drop.formats.current")
-    )
+    assert window.drop_overlay_title.get_label() == text("import.drop.cantImport", file="screen-capture.ogv")
+    assert window.drop_overlay_detail.get_label() == import_feedback.cant_import_detail()
     window._set_drop_state("rest")
     assert not window.drop_overlay.get_visible()
     # Extensionless file validation runs asynchronously via GIO without blocking GTK:
@@ -308,6 +308,17 @@ with tempfile.TemporaryDirectory() as temporary:
     window.open_file(Gio.File.new_for_path(str(broken)))
     until(lambda: not window._opening_files)
     assert failures and app.get_windows() == [window], "A failed import opened the legacy app"
+
+    # L-25 W4.6: the failed import keeps its card with the amber Needs attention badge.
+    def attention():
+        return labels(window.rows).count(text("states.badge.needsAttention"))
+
+    until(lambda: "incomplete.opus" in labels(window.rows))
+    with_card = attention()
+    assert with_card >= 1
+    assert all(window._row_by_key[k] is row for k, row in cached_before_import.items())
+    window._dismiss_failed_import(str(broken))
+    assert "incomplete.opus" not in labels(window.rows) and attention() == with_card - 1
     assert not list(Path(os.environ["CASSINI_LIBRARY_DIR"]).glob(".received-*"))
     window.open_meeting(received)
     until(lambda: window.meeting_page is not None and window.player._prerolled)

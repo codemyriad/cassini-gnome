@@ -124,36 +124,6 @@ def test_cancelled_import_leaves_no_failed_card(tmp_path):
     assert kinds(window) == [] and window._failed_imports == {}
 
 
-def test_real_failed_card_uses_catalog_badge_and_actions(tmp_path):
-    import os
-
-    from gi.repository import Gdk, Gtk
-
-    if not any(os.environ.get(v) for v in ("DISPLAY", "WAYLAND_DISPLAY", "BROADWAY_DISPLAY")):
-        pytest.skip("No display for real GTK widgets")
-    if not Gtk.init_check() or Gdk.Display.get_default() is None:
-        pytest.skip("No display for real GTK widgets")
-    from cassini_talk.strings import text
-
-    window = SimpleNamespace(tz="UTC")
-    row = LibraryWindow._failed_import_row(window, "Board", "Board.m4a", 1_793_107_080_000, str(tmp_path / "Board.m4a"))
-    labels, buttons = [], []
-
-    def walk(widget):
-        child = widget.get_first_child()
-        while child is not None:
-            if hasattr(child, "get_label") and child.get_label():
-                (buttons if isinstance(child, Gtk.Button) else labels).append(child.get_label())
-            walk(child)
-            child = child.get_next_sibling()
-
-    walk(row)
-    assert "failed-import-row" in row.get_css_classes()
-    assert text("states.badge.needsAttention") in labels
-    assert "Board.m4a" in labels and "Board" in labels
-    assert text("common.tryAgain") in buttons
-
-
 @pytest.mark.parametrize(
     "name, verdict",
     [
