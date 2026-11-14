@@ -84,8 +84,7 @@ def chip_labels(page):
     ]
 
 
-with tempfile.TemporaryDirectory() as temporary:
-    tmp = Path(temporary)
+def prepare(tmp):
     subprocess.run([sys.executable, str(ROOT / "ux/library-vectors/make.py"), str(tmp / "fixtures")], check=True)
     schemas = tmp / "schemas"
     schemas.mkdir()
@@ -100,6 +99,77 @@ with tempfile.TemporaryDirectory() as temporary:
         CASSINI_SCREENSHOT_ACTIVITY=str(tmp / "fixtures/main/activity.json"),
         CASSINI_SCREENSHOT_NOW="1793107080000",
     )
+    return library
+
+
+def startup(scenario):
+    """A fresh launch with Starred remembered (D-1040): no unstarred meeting leaks in."""
+    from cassini_talk import stars
+    from cassini_talk.library import LibraryScanner
+
+    with tempfile.TemporaryDirectory() as temporary:
+        library = prepare(Path(temporary))
+        apply_screenshot_scheme()
+        saved = [m for m in LibraryScanner(library).scan().meetings if m.lifecycle == "saved"]
+        newest, oldest = saved[0], saved[-1]
+        if scenario == "mixed":
+            stars.update(library, stars.star_key(oldest), True)
+        Gtk.Settings.get_default().props.gtk_enable_animations = False
+        app = CassiniApplication(f"com.gocassini.StarringStartup.{scenario}", "test", "development")
+        # GSETTINGS_BACKEND=memory: the window reads what is set here before it exists.
+        app.recording_settings.set_string("library-filter", "starred")
+        app.register(None)
+        app.activate()
+        window = app.get_active_window()
+        until(lambda: not window._pending and window._stars is not None and window._stars.loaded)
+        assert window.filter_starred.get_active() and window.library_filter == "starred"
+        if scenario == "empty":
+            until(lambda: window.starred_empty.get_mapped())
+            assert window.starred_empty.get_label() == text("library.starred.empty")
+            assert visible_meeting_titles(window) == [], "an unstarred meeting leaked next to the empty line"
+            assert window.selected is None and window.rows.get_selected_row() is None
+            assert window.meeting_page is None
+        else:
+            until(lambda: window.selected is not None and window.meeting_page is not None)
+            assert window.selected.key == oldest.key != newest.key
+            assert window.rows.get_selected_row() is row_for(window, oldest.title)
+            assert visible_meeting_titles(window) == [oldest.title]
+            assert not window.starred_empty.get_visible()
+            # Unstarring the open meeting keeps it listed and open, without the empty line...
+            page = window.meeting_page
+            assert page.star_button.get_tooltip_text() == text("meeting.unstar")
+            page.star_button.emit("clicked")
+            until(lambda: page.star_button.get_tooltip_text() == text("meeting.star"))
+            until(lambda: stars_on_disk(library) == set())
+            assert visible_meeting_titles(window) == [oldest.title]
+            assert window.rows.get_selected_row() is row_for(window, oldest.title)
+            assert not window.starred_empty.get_visible()
+            # ...until it is closed: then it hides and the empty line shows alone.
+            window.back_to_library()
+            until(lambda: window.starred_empty.get_mapped())
+            assert visible_meeting_titles(window) == [] and window.selected is None
+            # It does not come back on the next Library rescan.
+            before = window._source_snapshot
+            window.monitor.refresh_now()
+            until(lambda: window._source_snapshot is not before)
+            assert visible_meeting_titles(window) == [] and window.starred_empty.get_mapped()
+        window._stars.flush()
+        window.close()
+        app.do_shutdown()
+    print(f"PASS: Starred remembered at startup ({scenario})")
+
+
+if scenario := os.environ.get("CASSINI_STARRING_STARTUP"):
+    os.environ.pop("CASSINI_SCREENSHOT_OUT", None)
+    startup(scenario)
+    raise SystemExit(0)
+
+for scenario in ("empty", "mixed"):
+    subprocess.run([sys.executable, __file__], check=True, env={**os.environ, "CASSINI_STARRING_STARTUP": scenario})
+
+with tempfile.TemporaryDirectory() as temporary:
+    tmp = Path(temporary)
+    library = prepare(tmp)
     apply_screenshot_scheme()
     Gtk.Settings.get_default().props.gtk_enable_animations = False
     app = CassiniApplication("com.gocassini.StarringTest", "test", "development")

@@ -96,6 +96,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._closing_search = False
         self._stars = None
         self.library_filter = "all"
+        # The open meeting the user unstarred this session stays listed under
+        # Starred until selection moves; nothing else non-starred ever shows.
+        self._kept_unstarred_key = None
+        # Starred was remembered but the stars were still loading, so the
+        # first matching meeting is chosen once they arrive.
+        self._await_star_default = False
         self._sidebar_scroll_source = 0
         self._list_signature = None
         self._row_by_key = {}
@@ -689,6 +695,16 @@ class LibraryWindow(Adw.ApplicationWindow):
             return None
         from .stars import star_key
 
+        # Set before the store reports the change, so the open meeting never blinks out.
+        open_meeting = self.meeting_page.meeting if self.meeting_page else self.selected
+        unstarring_open = (
+            self.is_starred(meeting)
+            and open_meeting is not None
+            and self.selected is not None
+            and self.selected.key == meeting.key == open_meeting.key
+        )
+        if unstarring_open:
+            self._kept_unstarred_key = meeting.key
         return self._stars.toggle(star_key(meeting))
 
     def _stars_changed(self, store):
@@ -701,6 +717,9 @@ class LibraryWindow(Adw.ApplicationWindow):
                 if signature != row._row_signature:
                     self._fill_row(row, meeting, signature)
         self._apply_library_filter()
+        if getattr(self, "_await_star_default", False) and store.loaded:
+            self._await_star_default = False
+            LibraryWindow._select_default_row(self)
         if self.meeting_page is not None:
             self.meeting_page.sync_star()
         if self.search_page is not None:
@@ -712,6 +731,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         if value == self.library_filter:
             return
         self.library_filter = value
+        self._kept_unstarred_key = None
+        self._await_star_default = False
         settings = self._filter_settings()
         if settings is not None and settings.get_string("library-filter") != value:
             settings.set_string("library-filter", value)
@@ -724,10 +745,50 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._apply_library_filter()
 
     def _row_matches_filter(self, row):
-        if self.library_filter != "starred":
+        if getattr(self, "library_filter", "all") != "starred":
             return True
         meeting = getattr(row, "meeting", None)
         return meeting is None or self.is_starred(meeting)
+
+    def _default_row(self):
+        """The first saved meeting that the active Library filter shows."""
+        if getattr(self, "library_filter", "all") == "starred":
+            stars = getattr(self, "_stars", None)
+            if stars is None or not stars.loaded:
+                self._await_star_default = True
+                return None
+        return next(
+            (
+                r
+                for r in self._row_by_key.values()
+                if LibraryWindow._is_saved_detail_ready(self, r.meeting) and LibraryWindow._row_matches_filter(self, r)
+            ),
+            None,
+        )
+
+    def _select_default_row(self):
+        """Late automatic selection once remembered Starred learns the stars."""
+        if (
+            self.rows.get_selected_row() is not None
+            or self.selected is not None
+            or self.search_page
+            or self.meeting_page
+            or self.recording_page
+            or self._external_meeting
+        ):
+            return
+        row = LibraryWindow._default_row(self)
+        if row is None:
+            return
+        self.rows.handler_block(self._selection_handler)
+        self.rows.select_row(row)
+        self.rows.handler_unblock(self._selection_handler)
+        self._updating_rows_selection = True
+        try:
+            self._selected(self.rows, row)
+        finally:
+            self._updating_rows_selection = False
+        self.rows.invalidate_filter()
 
     def _row_visible(self, row):
         if self.library_filter != "starred":
@@ -738,8 +799,20 @@ class LibraryWindow(Adw.ApplicationWindow):
         meeting = getattr(row, "meeting", None)
         if meeting is None:
             return True
-        # The open meeting stays put when it is unstarred, until selection moves.
-        return self.is_starred(meeting) or (self.selected is not None and self.selected.key == meeting.key)
+        # Only the open meeting the user just unstarred stays put, until selection moves.
+        return self.is_starred(meeting) or (
+            meeting.key == getattr(self, "_kept_unstarred_key", None)
+            and self.selected is not None
+            and self.selected.key == meeting.key
+        )
+
+    def _selection_moved(self, _rows, row):
+        kept = self._kept_unstarred_key
+        if kept is not None and getattr(getattr(row, "meeting", None), "key", None) != kept:
+            self._kept_unstarred_key = None
+            LibraryWindow._apply_library_filter(self)
+        elif self.library_filter == "starred":
+            self.rows.invalidate_filter()
 
     def _apply_library_filter(self):
         if not hasattr(self, "starred_empty"):
@@ -747,11 +820,14 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.rows.invalidate_filter()
         snapshot = self.snapshot
         starred = self.library_filter == "starred"
+        kept = getattr(self, "_kept_unstarred_key", None)
         nothing = bool(
             starred
             and snapshot is not None
             and not snapshot.unavailable
             and not any(self.is_starred(m) for m in snapshot.meetings)
+            # The unstarred meeting still open stays listed; the empty line waits for it.
+            and not (kept is not None and self.selected is not None and self.selected.key == kept)
         )
         self.starred_empty.set_visible(nothing)
 
@@ -1286,10 +1362,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         self._selection_handler = self.rows.connect("row-selected", self._selected)
         self.rows.set_filter_func(self._row_visible)
-        # After _selected: an unstarred meeting left open hides once selection moves.
-        self.rows.connect(
-            "row-selected", lambda *_: self.rows.invalidate_filter() if self.library_filter == "starred" else None
-        )
+        # After _selected, never blocked: an unstarred meeting left open hides once selection moves.
+        self.rows.connect("row-selected", self._selection_moved)
         list_content = vertical()
         self.recording_lines = vertical(margin_start=14, margin_end=14, margin_top=8, visible=False)
         self._recording_line_signature = None
@@ -2206,20 +2280,24 @@ class LibraryWindow(Adw.ApplicationWindow):
                         and not was_library
                         and meeting.title == "Budget review"
                         and self._fixed_now is not None
+                        and (self.library_filter != "starred" or self.is_starred(meeting))
                     ):
                         selected = row
             LibraryWindow._sync_import_rows(self, active_imports)
             default_row = None
             if (selected is not None or old is not None or not was_library) and self._row_by_key:
-                default_row = next(
-                    (r for r in self._row_by_key.values() if LibraryWindow._is_saved_detail_ready(self, r.meeting)),
-                    None,
-                )
+                default_row = None if selected is not None else LibraryWindow._default_row(self)
                 self.rows.select_row(selected or default_row)
             else:
                 self.rows.select_row(None)
             focus_row = (
-                selected or default_row or (next(iter(self._row_by_key.values()), None) if not was_library else None)
+                selected
+                or default_row
+                or (
+                    next((r for r in self._row_by_key.values() if LibraryWindow._row_matches_filter(self, r)), None)
+                    if not was_library
+                    else None
+                )
             )
             if not was_library and not self.search_page and focus_row and hasattr(self, "search_entry"):
                 current_focus = self.get_focus()
