@@ -57,6 +57,15 @@ HARNESS_BASE_IMAGES = ("ubuntu:26.04", "debian:testing")
 # Files whose container image references are managed by --bump and verified by --check.
 IMAGE_TARGETS: dict[str, tuple[str, ...]] = {
     ".github/workflows/build.yml": ("ubuntu:26.04",),
+    # The prebuilt-image publish matrix must list the same digests deb/packages/source build from.
+    ".github/workflows/ci-images.yml": (
+        "ubuntu:26.04",
+        "debian:testing",
+        "fedora:44",
+        "fedora:latest",
+        "registry.opensuse.org/opensuse/tumbleweed:latest",
+        "archlinux:latest",
+    ),
     ".github/workflows/daily-test-release.yml": (
         "ubuntu:26.04",
         "debian:testing",
