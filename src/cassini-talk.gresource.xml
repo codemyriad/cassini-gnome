@@ -8,5 +8,6 @@
     <file>brand/mark/saturn-mid.svg</file>
     <file>brand/mark/saturn-full.svg</file>
     <file>brand/mark/mark-flat.svg</file>
+    <file alias="icons/scalable/apps/saturn-mid.svg">brand/mark/saturn-mid.svg</file>
   </gresource>
 </gresources>

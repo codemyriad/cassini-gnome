@@ -1910,11 +1910,13 @@ class CassiniApplication(Adw.Application):
         self.settings_dialog.present(self.get_active_window())
 
     def on_about(self, *_args):
+        from .brand_mark import ensure_about_mark_icon
+        from .model_download import has_downloaded_models, model_root
         from .strings import text
 
         about = Adw.AboutDialog(
             application_name=text("app.name"),
-            application_icon=self.get_application_id(),
+            application_icon=ensure_about_mark_icon(),
             developer_name="Codemyriad",
             version=self.version,
             website="https://github.com/codemyriad/cassini-gnome",
@@ -1928,8 +1930,6 @@ class CassiniApplication(Adw.Application):
         # Translators: Replace "translator-credits" with your name/username, and optionally an email or URL.
         about.set_translator_credits(_("translator-credits"))
         about.add_link(_("Cassini Portable Meeting Format"), "https://format.gocassini.com/")
-        from .model_download import has_downloaded_models, model_root
-        from .strings import text
 
         notice = model_root() / "NOTICE.txt"
         if notice.is_file() and has_downloaded_models():

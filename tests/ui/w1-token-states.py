@@ -24,11 +24,17 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from dispatch_wait import dispatch_until, drain_app_workers  # noqa: E402
-from gi.repository import Adw, Gio, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, Gtk  # noqa: E402
 from painted import painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
-from cassini_talk.brand_mark import MID_MARK_RESOURCE, NAV_MARK_RESOURCE, BrandLockup, BrandMark  # noqa: E402
+from cassini_talk.brand_mark import (  # noqa: E402
+    ABOUT_MARK_ICON_NAME,
+    MID_MARK_RESOURCE,
+    NAV_MARK_RESOURCE,
+    BrandLockup,
+    BrandMark,
+)
 from cassini_talk.companion_setup import CompanionSetup  # noqa: E402
 from cassini_talk.library import LibrarySpeaker  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
@@ -258,11 +264,52 @@ with tempfile.TemporaryDirectory() as temporary:
     save_shot(window, out_dir, "brand-and-buttons")
     brand_dialog.force_close()
 
+    # 7. About dialog shows the Saturn mark (saturn-mid, L-04, COMPONENTS.md §9, D-1021) in light and dark.
+    import hashlib
+    import json
+
+    window._close_search()
+
+    def _find_about_icon(widget: Gtk.Widget) -> Gtk.Image | None:
+        if isinstance(widget, Gtk.Image) and widget.get_icon_name() == ABOUT_MARK_ICON_NAME:
+            return widget
+        child = widget.get_first_child()
+        while child is not None:
+            found = _find_about_icon(child)
+            if found is not None:
+                return found
+            child = child.get_next_sibling()
+        return None
+
+    about_dialog = app.on_about()
+    assert about_dialog.get_application_icon() == ABOUT_MARK_ICON_NAME
+    until(
+        lambda: (
+            about_dialog.get_mapped()
+            and (img := _find_about_icon(about_dialog)) is not None
+            and img.get_mapped()
+            and img.get_width() >= 64
+            and img.get_height() >= 64
+        ),
+        "About dialog Saturn mark did not map",
+    )
+    icon_theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+    assert icon_theme.has_icon(ABOUT_MARK_ICON_NAME)
+    icon_paintable = icon_theme.lookup_icon(ABOUT_MARK_ICON_NAME, None, 128, 1, Gtk.TextDirection.NONE, 0)
+    icon_file = icon_paintable.get_file()
+    assert icon_file is not None and icon_file.get_uri().startswith("resource:///io/codemyriad/CassiniTalk/")
+    expected_mid_sha = json.loads((ROOT / "ux/brand/UPSTREAM.json").read_text(encoding="utf-8"))["sha256"][
+        "mark/saturn-mid.svg"
+    ]
+    assert hashlib.sha256(icon_file.load_contents(None)[1]).hexdigest() == expected_mid_sha
+    save_shot(window, out_dir, "about")
+    about_dialog.force_close()
+
     drain_app_workers(app)
     app.begin_exit()
     window.close()
     app.do_shutdown()
     print(
         f"PASS W1 token states ({'dark' if dark else 'light'}): "
-        "seven-speakers, error-line, delete-dialog, success-badge, sidebar-search, brand-and-buttons"
+        "seven-speakers, error-line, delete-dialog, success-badge, sidebar-search, brand-and-buttons, about"
     )

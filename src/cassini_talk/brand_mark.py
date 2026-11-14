@@ -10,10 +10,13 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gtk  # noqa: E402
 
 RESOURCE_PREFIX = "/io/codemyriad/CassiniTalk/brand/mark"
+ICON_RESOURCE_PREFIX = "/io/codemyriad/CassiniTalk/icons"
 NAV_MARK_RESOURCE = f"{RESOURCE_PREFIX}/saturn-nav.svg"
 MID_MARK_RESOURCE = f"{RESOURCE_PREFIX}/saturn-mid.svg"
 FULL_MARK_RESOURCE = f"{RESOURCE_PREFIX}/saturn-full.svg"
 FLAT_MARK_RESOURCE = f"{RESOURCE_PREFIX}/mark-flat.svg"
+ABOUT_MARK_ICON_NAME = "saturn-mid"
+ABOUT_MARK_ICON_RESOURCE = f"{ICON_RESOURCE_PREFIX}/scalable/apps/{ABOUT_MARK_ICON_NAME}.svg"
 
 WORDMARK_TEXT = "cassini.talk"
 WORDMARK_FONT_PX = 18
@@ -22,6 +25,18 @@ NAV_MARK_HEIGHT_PX = 26
 MID_MARK_THRESHOLD_PX = 40
 MARK_ASPECT_NUM = 184
 MARK_ASPECT_DEN = 120
+
+
+def ensure_about_mark_icon(display: Gdk.Display | None = None) -> str:
+    """Ensure the Saturn mark GResource icon path is registered on Display's IconTheme and return its icon name."""
+    target = display if display is not None else Gdk.Display.get_default()
+    if target is not None:
+        theme = Gtk.IconTheme.get_for_display(target)
+        paths = theme.get_resource_path() or []
+        for prefix in (ICON_RESOURCE_PREFIX, RESOURCE_PREFIX):
+            if prefix not in paths:
+                theme.add_resource_path(prefix)
+    return ABOUT_MARK_ICON_NAME
 
 
 def mark_dimensions(height_px: int = NAV_MARK_HEIGHT_PX) -> tuple[int, int]:
