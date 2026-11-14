@@ -180,9 +180,17 @@ def _copy_opus(original, copied, expected_bytes, cancel):
 
 
 def _hash_source(original, expected_bytes, cancel):
-    """Full-file SHA-256 of a plain-audio original (the dedup key) and its (size, mtime)."""
+    """Full-file SHA-256 of a plain-audio original (the dedup key) and its (size, mtime).
+
+    A native container with a contract ``headerValidation`` (FLAC, D102) must
+    pass it first, so Ogg FLAC or another container renamed to ``.flac`` fails
+    before it is hashed or decoded.
+    """
+    rule = import_types.header_validation(original.name)
     with regular_input(original) as source:
         before = os.fstat(source.fileno())
+        if rule is not None and import_types.check_header_file(source, rule) is not None:
+            raise ValueError("Choose a native FLAC recording")
     if expected_bytes is not None and before.st_size != expected_bytes:
         raise ValueError("Recording changed while being imported")
     sha = sha256_file(original, cancel)
@@ -227,7 +235,7 @@ def _prepare_one(
         or not original.is_file()
     ):
         raise ValueError("Choose an Ogg Opus recording")
-    # L-25 / W4.3: MP3, M4A and WAV are decoded into an Opus copy; the original
+    # L-25 / W4.3 / D102: MP3, M4A, WAV and FLAC are decoded into an Opus copy; the original
     # file is only read. Opus/Ogg bytes are copied untouched.
     plain = import_types.is_plain_audio(original.name)
     requested_root = root

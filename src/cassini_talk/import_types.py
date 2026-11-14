@@ -5,7 +5,8 @@ GTK-free. Only entries with ``status == "decided"`` are offered. Picker filters
 use ``mimeTypes`` only (GtkFileFilter matches MIME subclasses, so the broad
 ``compatibilityMimeTypes`` such as ``audio/ogg`` would also offer Ogg video
 and FLAC-in-Ogg). Ambiguous ``.ogg`` inputs and inputs arriving under a
-compatibility MIME type must pass ``contentValidation`` before import.
+compatibility MIME type must pass ``contentValidation`` before import; entries
+with a fixed native container (``.flac``, D102) must pass ``headerValidation``.
 """
 
 import json
@@ -83,19 +84,72 @@ def needs_ogg_probe(name, mime=None):
 
 
 def acceptable_name(name, mime=None):
-    """Name/MIME check only (no content). Content probing is ``check_ogg_bytes``."""
+    """Name/MIME check only (no content), as the contract's ``validate_import_candidate``.
+
+    A MIME type must belong to the owning entry (``mimeTypes`` or
+    ``compatibilityMimeTypes``) and not be one of its rejected types, so an
+    Ogg-FLAC or broad Ogg MIME type on ``.flac``, or an Ogg-FLAC MIME type on
+    ``.ogg``/``.opus``, is refused. Content probing is ``check_ogg_bytes`` /
+    ``check_header_bytes``.
+    """
     entry = entry_for(name)
     if entry is None:
         return False
     if mime:
         mime = mime.split(";", 1)[0].strip().lower()
         prefixes = _unique(prefix for rule in _validations() for prefix in rule["rejectedMimePrefixes"])
-        if any(mime.startswith(prefix) for prefix in prefixes):
+        if mime.startswith("video/") or any(mime.startswith(prefix) for prefix in prefixes):
             return False
         open_mimes = {m for e in contract()["types"] if e["status"] != "decided" for m in e["mimeTypes"]}
         if mime in open_mimes:
             return False
+        if mime not in (*entry["mimeTypes"], *entry["compatibilityMimeTypes"]):
+            return False
+        if mime in entry.get("headerValidation", {}).get("rejectedMimeTypes", ()):
+            return False
     return True
+
+
+def header_validation(name):
+    """The owning entry's ``headerValidation`` (native FLAC), or None."""
+    entry = entry_for(name)
+    return entry.get("headerValidation") if entry is not None else None
+
+
+def check_header_bytes(data, rule):
+    """Return None when ``data`` (the first ``minProbeBytes``) passes the native
+    ``headerValidation`` rule (D102, RFC 9639), else a short reason code:
+    ``ogg``, ``id3``, ``not-flac``, ``truncated``, ``not-streaminfo``,
+    ``streaminfo-length`` or ``sample-rate``.
+    """
+    data = bytes(data)
+    if data.startswith(b"OggS"):
+        return "ogg"
+    if data.startswith(b"ID3"):
+        return "id3"
+    if not data.startswith(bytes.fromhex(rule["magicHex"])):
+        return "not-flac"
+    if len(data) < rule["minProbeBytes"]:
+        return "truncated"
+    if data[4] & 0x7F != rule["firstMetadataBlockType"]:
+        return "not-streaminfo"
+    if int.from_bytes(data[5:8], "big") != rule["streamInfoLength"]:
+        return "streaminfo-length"
+    # STREAMINFO: min/max block size (2+2), min/max frame size (3+3), then a
+    # 20-bit sample rate, i.e. bytes 18-20 of the stream.
+    if (data[18] << 12) | (data[19] << 4) | (data[20] >> 4) == 0:
+        return "sample-rate"
+    return None
+
+
+def check_header_file(stream, rule):
+    """Probe an open binary stream from its start (it is rewound afterwards)."""
+    position = stream.tell()
+    try:
+        stream.seek(0)
+        return check_header_bytes(stream.read(rule["minProbeBytes"]), rule)
+    finally:
+        stream.seek(position)
 
 
 def probe_bytes():

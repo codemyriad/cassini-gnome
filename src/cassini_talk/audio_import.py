@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""L-25 / W4.3: decode a decided plain-audio import (MP3, M4A, WAV) into Ogg Opus.
+"""L-25 / W4.3: decode a decided plain-audio import (MP3, M4A, WAV, FLAC) into Ogg Opus.
 
 The original file is never modified; the Library keeps an Opus copy so the
 meeting is an ordinary portable meeting (Received / "Imported" provenance).

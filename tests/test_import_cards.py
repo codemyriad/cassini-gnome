@@ -134,7 +134,8 @@ def test_cancelled_import_leaves_no_failed_card(tmp_path):
         ("song.ogg", "valid"),
         ("Notes.zip", "valid"),
         ("clip.ogv", "invalid"),
-        ("song.flac", "invalid"),
+        ("song.flac", "valid"),
+        ("song.oga", "invalid"),
         ("video.mp4", "invalid"),
     ],
 )
@@ -143,3 +144,41 @@ def test_drop_classification_follows_the_shared_types_list(tmp_path, name, verdi
     assert result[0] == verdict
     if verdict == "invalid":
         assert result[1] == name
+
+
+def test_invalid_flac_import_lands_as_a_needs_attention_card_like_invalid_ogg(tmp_path):
+    from cassini_talk import batch_import
+    from cassini_talk.meeting_state import import_entry_badge
+
+    ogg_flac = tmp_path / "Renamed.flac"
+    ogg_flac.write_bytes(b"OggS\x00\x02" + bytes(20) + b"\x01\x2d\x7fFLAC" + bytes(64))
+    zero_rate = tmp_path / "Zero rate.flac"
+    zero_rate.write_bytes(b"fLaC\x00\x00\x00\x22" + bytes(34) + bytes(256))
+    bad_ogg = tmp_path / "Video.ogg"
+    bad_ogg.write_bytes(b"OggS\x00\x02" + bytes(20) + b"\x01\x2a\x80theora" + bytes(64))
+    window = window_with_cards()
+    result = batch_import.import_files([ogg_flac, zero_rate, bad_ogg], tmp_path / "Library")
+    assert (result.imported, result.failed) == (0, 3)
+    window._add_failed_imports(result.failed_inputs)
+    assert kinds(window) == [
+        ("failed", "Renamed", "Renamed.flac"),
+        ("failed", "Zero rate", "Zero rate.flac"),
+        ("failed", "Video", "Video.ogg"),
+    ]
+    assert import_entry_badge({"failed": True}).kind == "needsAttention"
+
+
+def test_gio_content_types_for_flac_follow_the_contract():
+    from cassini_talk import import_types
+
+    # What GIO reports for a .flac by name (shared-mime-info: audio/flac, alias audio/x-flac).
+    by_name, _uncertain = Gio.content_type_guess("song.flac", None)
+    assert by_name in ("audio/flac", "audio/x-flac")
+    assert import_types.acceptable_name("song.flac", by_name)
+    # GIO's Ogg FLAC type and its broad Ogg parents never pass for .flac or the Ogg extensions.
+    for mime in ("audio/x-flac+ogg", "audio/x-oggflac"):
+        assert not Gio.content_type_is_a(mime, by_name)
+        for ext in (".flac", ".ogg", ".opus", ".oga"):
+            assert not import_types.acceptable_name("song" + ext, mime)
+    for mime in ("audio/ogg", "application/ogg"):
+        assert not import_types.acceptable_name("song.flac", mime)

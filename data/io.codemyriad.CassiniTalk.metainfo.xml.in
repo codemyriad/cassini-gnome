@@ -53,6 +53,8 @@
     <mediatype>audio/wav</mediatype>
     <mediatype>audio/x-wav</mediatype>
     <mediatype>audio/vnd.wave</mediatype>
+    <mediatype>audio/flac</mediatype>
+    <mediatype>audio/x-flac</mediatype>
   </provides>
 
   <requires>

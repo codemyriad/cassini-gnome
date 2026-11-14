@@ -203,6 +203,10 @@ playback failed, microphone permission declined, Connect failed, device changed 
 
 ### 7.1 Trash and Recently Deleted (Phase 2, `D100`, `D-1000`; GNOME `D-1032`, Mac `D-1033`)
 
+> **Withdrawn by `D101` (`decisions/DECISIONS-UX.md`) (2026-11-14, Silvio):** desktop keeps the system Trash with Undo. The in-app Trash / Recently Deleted view, the soft-delete store under `.cassini/trash/` and the 30-day retention were approved by mistake and are not required. Help and Mac Saved Voices stand. If an app already built the view, it may stay; do not spend more effort on it.
+
+The rules below, and confirmations 4 and 5, apply only to an app that already shipped the view.
+
 Until an app's slice merges, that app keeps D29 (system Trash) unchanged. After it merges:
 
 - **Nouns.** GNOME says **Trash** (`menu.trash`, `trash.title`, `common.moveToTrash`, `meeting.trashedToast`); macOS
@@ -332,7 +336,7 @@ Until an app's slice merges, that app keeps D29 (system Trash) unchanged. After 
 | Sidebar background | Adwaita sidebar colour mapped to `sidebar` (L-42, 10.14) | native macOS sidebar material (`sidebar-mac` reference in `brand/tokens.json`, L-42, 10.14) |
 | Radius: row / card / dialog / window | 10 / 12 / 14 / 14 | 7 / 10 / 12 / 10 |
 | Deleted meetings (Phase 2, `D100`, 7.1) | "Trash": AdwDialog from `☰ › Trash`; header `Empty Trash…`; GNOME-only `trash.restoredToast` after Restore | "Recently Deleted": a single window from `File › Recently Deleted`; toolbar `Delete All…`; no toast |
-| Help (Phase 2, `D100`) | `☰ › Help` (F1) opens an AdwDialog titled `Help`: four topics (`help.record.*`, `help.library.*`, `help.trash.*`, `help.voices.*`) and a `Keyboard shortcuts` button (`menu.keyboardShortcuts`) opening the shortcuts dialog | `Help › Cassini talk Help` (`⌘?`) opens a window titled `Cassini talk Help` with the same four topics (Mac `help.trash.body` names `File › Recently Deleted`); no shortcuts button, the menus show them |
+| Help (Phase 2, `D100`) | `☰ › Help` (F1) opens an AdwDialog titled `Help`: four topics (`help.record.*`, `help.library.*`, `help.trash.title` with `help.trash.systemBody`, or `help.trash.body` if the app kept the in-app Trash (`D101`, §12), `help.voices.*`) and a `Keyboard shortcuts` button (`menu.keyboardShortcuts`) opening the shortcuts dialog | `Help › Cassini talk Help` (`⌘?`) opens a window titled `Cassini talk Help` with the same four topics (Mac text of the same ids); no shortcuts button, the menus show them |
 
 - Colours come from `brand/tokens.json` (10.1), not from the system accent, destructive or warning colours (L-06,
   L-16).
@@ -397,6 +401,9 @@ Not drawn (or deferred to Phase 2):
 - Downloads happen only when the person asks. Each file is checked against both sha256 values before it is used.
 - The only other network use is checking for updates, which sends no meeting data.
 - Help (`D100`, `menu.help`) is an in-app view built from catalog strings; it opens no URL and uses no network.
+  The Trash topic body follows the Trash the app has (`D101`): an app keeping the system Trash shows
+  `help.trash.systemBody` (GNOME Files › Restore, Mac Finder › Put Back, Undo right away, no retention period); only an
+  app that already shipped the in-app Trash / Recently Deleted view (7.1) shows `help.trash.body`.
 - **No cloud backup or iCloud sync on desktop (`L-28`, `D-957`, `D-978`, `D-1012`, `D98`):** Neither GNOME nor macOS uploads meetings, transcripts, or saved voiceprints to iCloud or any cloud backup service. macOS builds **local** Saved voices (`D-978`) in `~/Library/Application Support/Cassini/voices` without iCloud network use, so the desktop first-run hero keeps `"None of it uploaded."` (`firstRun.hero.subtitle`) unqualified (§10). Encrypted OS cloud backup (`L-28`, `"Include saved voices in backups"` ON by default, dismissible backup card: Android `"Keep them on this phone only"` turns off both cloud backup and automatic device-to-device transfer; iOS `"Leave them out of iCloud Backup"` only marks data as excluded from iCloud Backup, with no "phone only" claim) and the `"(except for encrypted cloud backup)"` hero qualifier (`D-937`) apply to the phone apps (`iOS` and `Android`) only — see [`PARITY.md`](../PARITY.md).
 - Whistle is bundled in both apps with identical pinned weights and engine (D5). Every process that loads the
   engine sets `NEEDLE_TELEMETRY=0` and `DO_NOT_TRACK=1` (and `ORT_DISABLE_TELEMETRY=1` for ONNX Runtime). The same
