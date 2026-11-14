@@ -1,121 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   SPDX-License-Identifier: GPL-3.0-or-later
+
+  L-66: exactly the GNOME column of cassini-ux contract/HARMONY.md section 8,
+  in table order (vendored in tests/ux; tests/test_shortcuts_dialog.py).
+  Titles come from the shared catalog (cassini_talk/shortcuts_table.py).
 -->
 <interface>
   <requires lib="Adw" version="1.0"/>
   <object class="AdwShortcutsDialog" id="shortcuts_dialog">
     <child>
       <object class="AdwShortcutsSection">
-        <property name="title" translatable="yes">General</property>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Record Meeting</property>
-            <property name="action-name">app.record</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Open a Meeting</property>
-            <property name="action-name">app.open</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="action-name">win.rename</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Export Transcript</property>
-            <property name="action-name">win.export</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Move to Trash</property>
-            <property name="accelerator">Delete</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem" id="delete_permanently">
-            <property name="title">Delete permanently…</property>
-            <property name="accelerator">Delete</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="action-name">app.preferences</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="action-name">win.back-library</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Show Shortcuts</property>
-            <property name="action-name">app.shortcuts</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="action-name">app.help</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Close Window</property>
-            <property name="action-name">window.close</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Quit</property>
-            <property name="action-name">app.quit</property>
-          </object>
-        </child>
-      </object>
-    </child>
-    <child>
-      <object class="AdwShortcutsSection">
-        <property name="title" translatable="yes">Playback</property>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Play or Pause</property>
-            <property name="action-name">win.play-pause</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Back 10 Seconds</property>
-            <property name="action-name">win.skip-back</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Forward 10 Seconds</property>
-            <property name="action-name">win.skip-forward</property>
-          </object>
-        </child>
-        <child><object class="AdwShortcutsItem" id="listen_turns"><property name="title">Next or previous turn of this speaker</property><property name="accelerator">&lt;Alt&gt;Down &lt;Alt&gt;Up</property></object></child>
-        <child><object class="AdwShortcutsItem" id="listen_speakers"><property name="title">Next or previous speaker</property><property name="accelerator">&lt;Alt&gt;&lt;Shift&gt;Down &lt;Alt&gt;&lt;Shift&gt;Up</property></object></child>
-        <child><object class="AdwShortcutsItem" id="listen_stop"><property name="title">Stop listening</property><property name="accelerator">Escape</property></object></child>
-        <child><object class="AdwShortcutsItem" id="play_turn"><property name="title">Play this turn</property><property name="accelerator">&lt;Shift&gt;Return</property></object></child>
-        <child><object class="AdwShortcutsItem"><property name="action-name">win.rate-up</property></object></child>
-        <child><object class="AdwShortcutsItem"><property name="action-name">win.rate-down</property></object></child>
-      </object>
-    </child>
-    <child>
-      <object class="AdwShortcutsSection">
-        <property name="title" translatable="yes">Transcript</property>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Search</property>
-            <property name="action-name">win.search</property>
-          </object>
-        </child>
+        <child><object class="AdwShortcutsItem" id="record"><property name="accelerator">&lt;Control&gt;r</property></object></child>
+        <child><object class="AdwShortcutsItem" id="record_anywhere"><property name="accelerator">&lt;Control&gt;&lt;Alt&gt;r</property></object></child>
+        <child><object class="AdwShortcutsItem" id="find"><property name="accelerator">&lt;Control&gt;f</property></object></child>
+        <child><object class="AdwShortcutsItem" id="import"><property name="accelerator">&lt;Control&gt;o</property></object></child>
+        <child><object class="AdwShortcutsItem" id="export"><property name="accelerator">&lt;Control&gt;&lt;Shift&gt;e</property></object></child>
+        <child><object class="AdwShortcutsItem" id="preferences"><property name="accelerator">&lt;Control&gt;comma</property></object></child>
+        <child><object class="AdwShortcutsItem" id="play_pause"><property name="accelerator">space</property></object></child>
+        <child><object class="AdwShortcutsItem" id="skip_back"><property name="accelerator">Left</property></object></child>
+        <child><object class="AdwShortcutsItem" id="skip_forward"><property name="accelerator">Right</property></object></child>
+        <child><object class="AdwShortcutsItem" id="listen_turns"><property name="accelerator">&lt;Alt&gt;Down &lt;Alt&gt;Up</property></object></child>
+        <child><object class="AdwShortcutsItem" id="listen_speakers"><property name="accelerator">&lt;Alt&gt;&lt;Shift&gt;Down &lt;Alt&gt;&lt;Shift&gt;Up</property></object></child>
+        <child><object class="AdwShortcutsItem" id="play_turn"><property name="accelerator">&lt;Shift&gt;Return</property></object></child>
+        <child><object class="AdwShortcutsItem" id="listen_stop"><property name="accelerator">Escape</property></object></child>
+        <child><object class="AdwShortcutsItem" id="back_library"><property name="accelerator">&lt;Alt&gt;Left</property></object></child>
+        <child><object class="AdwShortcutsItem" id="close_window"><property name="accelerator">&lt;Control&gt;w</property></object></child>
+        <child><object class="AdwShortcutsItem" id="quit"><property name="accelerator">&lt;Control&gt;q</property></object></child>
+        <child><object class="AdwShortcutsItem" id="move_to_trash"><property name="accelerator">Delete</property></object></child>
+        <child><object class="AdwShortcutsItem" id="delete_permanently"><property name="accelerator">Delete</property></object></child>
+        <child><object class="AdwShortcutsItem" id="help"><property name="accelerator">F1</property></object></child>
       </object>
     </child>
   </object>

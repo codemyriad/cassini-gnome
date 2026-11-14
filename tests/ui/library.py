@@ -183,7 +183,10 @@ with tempfile.TemporaryDirectory() as tmp:
     assert app.shortcuts_dialog is shortcuts, "Repeated invocation must not stack dialogs"
     shortcut_labels = [w.get_text() for w in walk(shortcuts) if isinstance(w, Gtk.Label)]
     assert "Back 10 seconds" in shortcut_labels and "Forward 10 seconds" in shortcut_labels
-    assert "Ctrl+Shift+E" in shortcut_labels or "Ctrl" in shortcut_labels
+    assert {"Import audio…", "Export…", "Start or stop recording from anywhere", "Find in this meeting"} <= set(
+        shortcut_labels
+    ), "L-66: the dialog lists HARMONY section 8"
+    assert not {"Open a Meeting", "Export Transcript", "Show Shortcuts", "Rename…"} & set(shortcut_labels)
     shortcuts.close()
     until(lambda: app.shortcuts_dialog is None)
     # Idle/live-clock ticks and equivalent snapshots retain widget identity,
