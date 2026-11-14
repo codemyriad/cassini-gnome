@@ -75,6 +75,8 @@ def test_first_run_view_follows_harmony_section_10():
         assert f'"{key}"' in block, key
     assert "AccessibleRole.HEADING" in block
     assert "BrandMark(HERO_MARK_HEIGHT_PX)" in block
+    # D-972: the column is capped at 720 px by a clamp, never forced as a minimum width.
+    assert "Adw.Clamp(maximum_size=720" in block and "width_request=720" not in block
     # Record sits at the start of the wave.
     assert block.index("wave_row.append(record)") < block.index("wave_row.append(self.hero_wave)")
 
@@ -88,3 +90,10 @@ def test_hero_styles_read_brand_roles_only():
     assert "line-height: 0.98" in rules["hero-title"]
     for body in rules.values():
         assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", body)
+
+
+def test_wave_can_shrink_below_its_drawn_width(hero):
+    source = (ROOT / "src/cassini_talk/first_run_hero.py").read_text()
+    assert "set_size_request" not in source, "a size request would make the drawn width a minimum"
+    assert hero.bar_count(hero.MIN_WAVE_WIDTH_PX) == hero.MIN_WAVE_BARS
+    assert hero.MIN_WAVE_WIDTH_PX < hero.WAVE_WIDTH_PX

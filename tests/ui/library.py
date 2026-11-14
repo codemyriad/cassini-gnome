@@ -339,6 +339,24 @@ with tempfile.TemporaryDirectory() as tmp:
     assert len(marks) == 1 and marks[0].resource_path == NAV_MARK_RESOURCE and marks[0].height_px == 40
     assert empty.hero_title.get_label() == text("firstRun.hero.title")
     assert "hero-subtitle" in empty.hero_subtitle.get_css_classes()
+    # D-972: the 720 px column is a cap, not a minimum. A 640 px window stays 640 px wide
+    # and keeps the header menu, Close and the hero Record pill on screen.
+    empty.set_default_size(640, 720)
+    minimum = empty.measure(Gtk.Orientation.HORIZONTAL, -1)[0]
+    assert minimum <= 640, f"first-run window needs {minimum} px; it must fit 640 px"
+    # get_width() excludes the window frame, so it reads slightly under the requested 640.
+    until(lambda: 0 < empty.get_width() <= 640)
+    menu = next(w for w in walk(headers[0]) if isinstance(w, Gtk.MenuButton))
+    controls = [w for w in walk(headers[0]) if isinstance(w, Gtk.WindowControls) and not w.get_empty()]
+    close = next(w for c in controls for w in walk(c) if isinstance(w, Gtk.Button) and "close" in w.get_css_classes())
+    for widget, name in ((menu, "menu"), (close, "Close"), (record, "Record pill"), (empty.hero_wave, "wave")):
+        ok, bounds = widget.compute_bounds(empty)
+        assert ok and widget.get_mapped(), name
+        assert bounds.get_x() >= 0 and bounds.get_x() + bounds.get_width() <= empty.get_width(), (name, bounds.get_x())
+    empty.set_default_size(1120, 720)
+    until(lambda: empty.get_width() > 1000)
+    clamp = next(w for w in walk(empty_view) if isinstance(w, Adw.Clamp))
+    until(lambda: clamp.get_child().get_width() == 720)  # wide windows keep the 720 px column
     # A sandbox fallback is the initial Library too, but its footer must not
     # claim Music/Cassini. Settings/Show in Files use the actual primary path.
     from cassini_talk import library_location

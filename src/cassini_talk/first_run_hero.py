@@ -21,6 +21,8 @@ BAR_GAP_PX = 4
 WAVE_BARS = 64  # drawn first-run count (canvas FirstRun-GNOME); formula PROPOSED upstream
 WAVE_HEIGHT_PX = 56
 WAVE_WIDTH_PX = WAVE_BARS * BAR_WIDTH_PX + (WAVE_BARS - 1) * BAR_GAP_PX
+MIN_WAVE_BARS = 8  # fewest bars a narrow window shrinks the wave to
+MIN_WAVE_WIDTH_PX = MIN_WAVE_BARS * BAR_WIDTH_PX + (MIN_WAVE_BARS - 1) * BAR_GAP_PX
 MIN_BAR_PX = BAR_WIDTH_PX  # a silent bar is still a square
 FADE_FRACTION = 0.22  # share of bars fading at each end (desktop: both ends)
 
@@ -62,12 +64,14 @@ class HeroWave(Gtk.Widget):
         )
         self.width_px = width_px
         self.height_px = height_px
-        self.set_size_request(width_px, height_px)
         self._geometry = None
 
     def do_measure(self, orientation, _for_size):
-        size = self.width_px if orientation == Gtk.Orientation.HORIZONTAL else self.height_px
-        return size, size, -1, -1
+        # Natural width is the drawn wave; the minimum is a few bars, so a narrow
+        # window shrinks the wave (whole bars only) instead of growing the window.
+        if orientation == Gtk.Orientation.HORIZONTAL:
+            return min(self.width_px, MIN_WAVE_WIDTH_PX), self.width_px, -1, -1
+        return self.height_px, self.height_px, -1, -1
 
     def _bars(self, width, height):
         if self._geometry is None or self._geometry[0] != (width, height):

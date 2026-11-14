@@ -913,8 +913,11 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         heading.set_opacity(0.0)
         overlay.add_overlay(heading)
-        center = vertical(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, vexpand=True, css_classes=["first-run"])
-        hero = vertical(halign=Gtk.Align.START, width_request=720, css_classes=["first-run-hero"])
+        center = vertical(valign=Gtk.Align.CENTER, vexpand=True, hexpand=True, css_classes=["first-run"])
+        # A 720 px column on wide windows that shrinks with narrow ones: a clamp caps
+        # the width without making it the window's minimum (the header must stay on screen).
+        hero = vertical(hexpand=True, css_classes=["first-run-hero"])
+        clamp = Adw.Clamp(maximum_size=720, tightening_threshold=720, hexpand=True, child=hero)
         mark = BrandMark(HERO_MARK_HEIGHT_PX)
         mark.set_halign(Gtk.Align.START)
         mark.add_css_class("hero-mark")
@@ -964,7 +967,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         footer.append(label(text("firstRun.footer"), "small", "dim-label", xalign=0, wrap=True))
         self.privacy_footer = footer
         hero.append(footer)
-        center.append(hero)
+        center.append(clamp)
         outer.append(center)
         view.set_content(overlay)
         self.root_box.add_named(view, "empty")
