@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-12",
+  "updated": "2026-11-14",
   "bump_command": "python3 build-aux/ci/pin_images.py --bump",
   "canary_exceptions": [
     ".github/workflows/rpm-canary.yml"
@@ -29,8 +29,8 @@
       "amd64_digest": "sha256:53d138f25f6738257c78553d51369b662efc0e0eb1cd1556a2fe0ad5a115be88"
     },
     "registry.opensuse.org/opensuse/tumbleweed:latest": {
-      "digest": "sha256:27356084647aa08ad9e9c5e0ebfd2742f9f65279860e862b3a65148450c113da",
-      "amd64_digest": "sha256:5c5850eeda3e97203f4647344ec565a3bcdd29b140007f07d7791d6334ce4ac1"
+      "digest": "sha256:3c0ecbc69f8389dfa6651dc6de7bf094c86ac8d0042a204b7b63db3fab5392d4",
+      "amd64_digest": "sha256:206dc8ac56167e1b900154ade89cf052a7454b00b49c0414a8ad0aa2d341dc7f"
     },
     "archlinux:latest": {
       "digest": "sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899",
