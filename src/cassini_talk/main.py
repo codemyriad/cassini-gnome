@@ -164,8 +164,6 @@ class CassiniApplication(Adw.Application):
         self.set_accels_for_action("win.play-pause", ["space", "AudioPlay", "AudioPause"])
         self.set_accels_for_action("win.skip-back", ["Left"])
         self.set_accels_for_action("win.skip-forward", ["Right"])
-        self.set_accels_for_action("win.rate-up", ["<primary>bracketright"])
-        self.set_accels_for_action("win.rate-down", ["<primary>bracketleft"])
         self.set_accels_for_action("win.back-library", ["<alt>Left"])
         self.set_accels_for_action("win.rename", ["F2"])
         self.set_accels_for_action("win.search", ["<primary>f"])
@@ -1915,36 +1913,14 @@ class CassiniApplication(Adw.Application):
         if window is None or self.shortcuts_dialog is not None:
             return
         builder = Gtk.Builder.new_from_resource(RESOURCE + "/shortcuts-dialog.ui")
-        local_titles = {
-            builder.get_object(name): identifier
-            for name, identifier in (
-                ("listen_turns", "shortcuts.listen.turns"),
-                ("listen_speakers", "shortcuts.listen.speakers"),
-                ("listen_stop", "listen.stop"),
-                ("play_turn", "shortcuts.playTurn"),
-                ("delete_permanently", "trash.deletePermanently"),
-            )
-        }
-        for item in builder.get_objects():
-            if isinstance(item, Adw.ShortcutsItem):
-                identifier = {
-                    "app.open": "import.action",
-                    "app.preferences": "settings.title",
-                    "app.help": "menu.help",
-                    "app.shortcuts": "menu.keyboardShortcuts",
-                    "app.record": "common.record",
-                    "win.back-library": "common.backToLibrary",
-                    "win.export": "common.exportEllipsis",
-                    "win.rename": "meeting.renameEllipsis",
-                    "win.skip-back": "player.back10",
-                    "win.skip-forward": "player.forward10",
-                    "win.rate-up": "player.speed.increase",
-                    "win.rate-down": "player.speed.decrease",
-                }.get(item.get_action_name()) or local_titles.get(item)
-                if identifier:
-                    from .strings import text
+        from .shortcuts_table import SUBTITLES, TITLES
+        from .strings import text
 
-                    item.set_title(text(identifier))
+        for name, identifier in TITLES.items():
+            item = builder.get_object(name)
+            item.set_title(text(identifier) if identifier else _("Play or Pause"))
+            if name in SUBTITLES:
+                item.set_subtitle(text(SUBTITLES[name]))
         dialog = self.shortcuts_dialog = builder.get_object("shortcuts_dialog")
         dialog.connect("closed", lambda *_: setattr(self, "shortcuts_dialog", None))
         dialog.present(window)
