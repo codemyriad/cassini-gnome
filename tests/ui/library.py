@@ -310,8 +310,53 @@ with tempfile.TemporaryDirectory() as tmp:
     until(lambda: not empty._pending)
     assert empty.root_box.get_visible_child_name() == "empty"
     labels = [w.get_label() for w in walk(empty) if isinstance(w, Gtk.Label)]
-    assert text("firstRun.title") in labels and text("firstRun.footer") in labels
+    assert text("firstRun.hero.title") in labels and text("firstRun.hero.subtitle") in labels
+    assert text("firstRun.body") in labels and text("firstRun.footer") in labels
+    assert (
+        text("firstRun.title") not in labels
+        and text("firstRun.shortcutHint", shortcut=text("common.shortcut.record")) not in labels
+    )
     assert empty.privacy_footer.get_visible()
+    # L-27: no header Record, no visible header title, only a hidden accessible "Library" heading.
+    empty_view = empty.root_box.get_child_by_name("empty")
+    headers = [w for w in walk(empty_view) if isinstance(w, Adw.HeaderBar)]
+    assert len(headers) == 1
+    header_buttons = [w for w in walk(headers[0]) if isinstance(w, Gtk.Button) and w.get_action_name() == "app.record"]
+    assert header_buttons == [], "first-run header must not carry Record"
+    assert not any(isinstance(w, Gtk.Label) and w.get_label() == text("app.name") for w in walk(headers[0]))
+    assert empty.first_run_heading.get_label() == text("library.title")
+    assert empty.first_run_heading.get_accessible_role() == Gtk.AccessibleRole.HEADING
+    assert empty.first_run_heading.get_visible() and empty.first_run_heading.get_opacity() == 0.0
+    # Big Record pill sits at the start of the wave, in the hero block.
+    from cassini_talk.brand_mark import NAV_MARK_RESOURCE, BrandMark
+    from cassini_talk.first_run_hero import HeroWave
+
+    wave_row = empty.hero_wave.get_parent()
+    record = wave_row.get_first_child()
+    assert record.get_action_name() == "app.record" and "big-record" in record.get_css_classes()
+    assert record.get_next_sibling() is empty.hero_wave and isinstance(empty.hero_wave, HeroWave)
+    marks = [w for w in walk(empty_view) if isinstance(w, BrandMark)]
+    assert len(marks) == 1 and marks[0].resource_path == NAV_MARK_RESOURCE and marks[0].height_px == 40
+    assert empty.hero_title.get_label() == text("firstRun.hero.title")
+    assert "hero-subtitle" in empty.hero_subtitle.get_css_classes()
+    # D-972: the 720 px column is a cap, not a minimum. A 640 px window stays 640 px wide
+    # and keeps the header menu, Close and the hero Record pill on screen.
+    empty.set_default_size(640, 720)
+    minimum = empty.measure(Gtk.Orientation.HORIZONTAL, -1)[0]
+    assert minimum <= 640, f"first-run window needs {minimum} px; it must fit 640 px"
+    # get_width() excludes the window frame, so it reads slightly under the requested 640.
+    until(lambda: 0 < empty.get_width() <= 640)
+    menu = next(w for w in walk(headers[0]) if isinstance(w, Gtk.MenuButton))
+    controls = [w for w in walk(headers[0]) if isinstance(w, Gtk.WindowControls) and not w.get_empty()]
+    close = next(w for c in controls for w in walk(c) if isinstance(w, Gtk.Button) and "close" in w.get_css_classes())
+    for widget, name in ((menu, "menu"), (close, "Close"), (record, "Record pill"), (empty.hero_wave, "wave")):
+        ok, bounds = widget.compute_bounds(empty)
+        assert ok and widget.get_mapped(), name
+        assert bounds.get_x() >= 0 and bounds.get_x() + bounds.get_width() <= empty.get_width(), (name, bounds.get_x())
+    empty.set_default_size(1120, 720)
+    until(lambda: empty.get_width() > 1000)
+    clamp = next(w for w in walk(empty_view) if isinstance(w, Adw.Clamp))
+    until(lambda: clamp.get_child().get_width() == 720)  # wide windows keep the 720 px column
     # A sandbox fallback is the initial Library too, but its footer must not
     # claim Music/Cassini. Settings/Show in Files use the actual primary path.
     from cassini_talk import library_location

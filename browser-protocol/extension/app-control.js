@@ -2,8 +2,9 @@
 // Persistent app management, independent of the per-recording PCM connection.
 export class AppControl {
   constructor({ runtime, alarms, snapshot, command, capabilities = [], identity = () => ({}), cancelPending = () => {}, connected = async () => {},
-                later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id), busy = () => false, signalSnapshot = null, signalFinalize = value => value }) {
-    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, identity, cancelPending, connected, later, cancel, busy, signalSnapshot, signalFinalize });
+                later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id), busy = () => false, signalSnapshot = null, signalFinalize = value => value,
+               recordWaiting = () => {} }) {
+    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, identity, cancelPending, connected, later, cancel, busy, signalSnapshot, signalFinalize, recordWaiting });
     this.port = null;
     this.resetSignals();
     this.ready = false;
@@ -16,6 +17,13 @@ export class AppControl {
     this.resumeIntents = new Map();
     this.tail = Promise.resolve();
     this.tabTails = new Map();
+    // popup-record-v1: popup Start/Stop asks the app, which keeps owning policy.
+    this.recordConfigured = false;
+    this.recordRequests = new Map();
+    this.recordSequence = 0;
+    // Bumped whenever popup asks lose their footing (disconnect, reconnect,
+    // revocation, close) so accepted-but-unreflected asks stop claiming progress.
+    this.recordEpoch = 0;
     this.alarm = alarm => { if (alarm.name === 'cassini-app-control') this.connect(); };
   }
   start() {
@@ -25,6 +33,7 @@ export class AppControl {
   close() {
     this.stopped = true;
     this.resumeIntents.clear();
+    this.failRecordRequests();
     this.cancel(this.retry);
     this.alarms.onAlarm.removeListener(this.alarm);
     this.alarms.clear('cassini-app-control').catch(() => {});
@@ -53,6 +62,7 @@ export class AppControl {
     try { port.disconnect(); } catch {}
     this.requests.clear(); this.completed.clear();
     this.resumeIntents.clear();
+    this.failRecordRequests();
     this.reconnect();
   }
   connect() {
@@ -66,6 +76,7 @@ export class AppControl {
     this.ready = false;
     this.connecting = true;
     this.tabTails.clear();
+    this.failRecordRequests();
     this.connectedAt = Date.now();
     this.requests.clear(); this.completed.clear();
     port.onDisconnect.addListener(() => { void this.runtime.lastError; this.disconnected(port); });
@@ -150,8 +161,93 @@ export class AppControl {
       },Math.max(0,500-(Date.now()-run.startedAt)));
     });
   }
+  // What the popup can offer: the app must be connected, past its initial
+  // snapshot, and have opted in to popup-record-v1 on this connection.
+  recordAvailability() {
+    if (!this.port || !this.ready) return 'disconnected';
+    return this.recordConfigured ? 'available' : 'unsupported';
+  }
+  failRecordRequests() {
+    this.recordConfigured = false;
+    this.recordEpoch++;
+    const pending = [...this.recordRequests.values()];
+    this.recordRequests.clear();
+    for (const request of pending) { this.cancel(request.timer); request.reject(request.lost()); }
+  }
+  recordUnavailable() {
+    const unavailable = this.recordAvailability();
+    if (unavailable === 'disconnected') return Object.assign(new Error('Cassini is not connected. Open Cassini, then try again.'), { code: 'appUnavailable' });
+    if (unavailable === 'unsupported') return Object.assign(new Error('This version of Cassini cannot start or stop recordings from the browser. Use the Cassini app.'), { code: 'unsupported' });
+    return null;
+  }
+  // Waits until every inventory/status change notified so far has been sent on
+  // this connection, so an ask never overtakes the snapshot that introduces its
+  // tab, callGeneration or captureId. Stops as soon as `live()` turns false; the
+  // caller's deadline, not this loop, bounds a stalled or constantly busy page.
+  async flushPublication(live = () => true) {
+    while (live() && this.port && !this.connecting && (this.dirty || this.publishing)) {
+      if (!this.publishing) this.publish();
+      await this.publishing;
+    }
+  }
+  // Sends one popup ask and resolves with the app's correlated answer. The app
+  // performs any recording through its own ordinary control command. The ask is
+  // registered (deadline and disconnect/revocation cancellation armed) before
+  // pending publication is flushed; `build` then runs synchronously, so the ask
+  // carries the same state the app was just told about. It may throw a refusal.
+  requestRecording(build, timeoutMs = 10000) {
+    const unavailable = this.recordUnavailable();
+    if (unavailable) return Promise.reject(unavailable);
+    const port = this.port, epoch = this.recordEpoch;
+    const requestId = `popup-${this.connectedAt}-${++this.recordSequence}`;
+    let request;
+    const answer = new Promise((resolve, reject) => {
+      request = { resolve, reject,
+        lost: () => Object.assign(new Error('Cassini disconnected before answering. Check the Cassini app.'), { code: 'appUnavailable' }) };
+    });
+    const live = () => this.recordRequests.get(requestId) === request;
+    const fail = error => {
+      if (!live()) return;
+      this.recordRequests.delete(requestId);
+      this.cancel(request.timer);
+      request.reject(error);
+    };
+    request.timer = this.later(() => fail(Object.assign(new Error('Cassini did not answer in time. Check the Cassini app.'), { code: 'timeout' })), timeoutMs);
+    this.recordRequests.set(requestId, request);
+    this.recordWaiting(requestId);
+    void (async () => {
+      await this.flushPublication(live);
+      // Timed out, disconnected or revoked meanwhile: the ask is never sent.
+      if (!live()) return;
+      if (port !== this.port || epoch !== this.recordEpoch) return fail(request.lost());
+      const refused = this.recordUnavailable();
+      if (refused) return fail(refused);
+      const body = typeof build === 'function' ? build() : build;
+      this.send(port, { type: 'recordRequest', requestId, ...body });
+    })().catch(fail);
+    return answer;
+  }
   receive(port, message) {
     if (port !== this.port) return;
+    if (message?.type === 'recordRequests') {
+      if (typeof message.enabled !== 'boolean' || Object.keys(message).some(key => !['type','enabled'].includes(key))) return;
+      const enabled = message.enabled && this.capabilities.includes('popup-record-v1');
+      if (!enabled) this.failRecordRequests();
+      this.recordConfigured = enabled;
+      this.send(port, { type: 'recordRequestsConfigured', enabled });
+      return;
+    }
+    if (message?.type === 'recordRequestResult') {
+      const request = typeof message.requestId === 'string' ? this.recordRequests.get(message.requestId) : undefined;
+      if (!request || typeof message.ok !== 'boolean') return;
+      this.recordRequests.delete(message.requestId);
+      this.cancel(request.timer);
+      if (message.ok) request.resolve({ ok: true });
+      else request.resolve({ ok: false,
+        error: typeof message.error === 'string' && message.error ? [...message.error].slice(0, 2000).join('') : 'Cassini could not do that. Check the Cassini app.',
+        ...(typeof message.code === 'string' && /^[A-Za-z]{1,32}$/.test(message.code) ? { code: message.code } : {}) });
+      return;
+    }
     if (message?.type === 'configure') {
       const values = message.capabilities;
       if (!Array.isArray(values) || values.length > 2 || new Set(values).size !== values.length ||

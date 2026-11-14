@@ -59,6 +59,66 @@
         "capabilities"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "recordRequests"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "enabled"
+      ],
+      "additionalProperties": false,
+      "$comment": "popup-record-v1: per-connection opt-in (true) or revocation (false); sent only to a peer whose hello lists popup-record-v1. Reconnect starts opted out."
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "recordRequestResult"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Za-z]{1,32}$"
+        }
+      },
+      "required": [
+        "type",
+        "requestId",
+        "ok"
+      ],
+      "additionalProperties": true,
+      "if": {
+        "properties": {
+          "ok": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "error"
+        ]
+      },
+      "$comment": "popup-record-v1: the app's one answer to a recordRequest. ok:true means the app accepted the ask and has sent (or will promptly send) its own ordinary start/stop command; it is not recording confirmation."
     }
   ],
   "$defs": {

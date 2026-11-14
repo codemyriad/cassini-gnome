@@ -23,7 +23,7 @@ const extensionId=[...createHash('sha256').update(key).digest('hex').slice(0,32)
 assert.notEqual(extensionId,'pcafdaahfhjiolfpfnlhmljfgoabbaij');
 const pair=['call-signals-v1','verified-auto-admission-v1'];
 import {privateControl,packet,barrier} from './rtc-evidence-control.mjs';
-const positive=['duplex','captured-clone','echo','unanswered-early-media','repaired-frame-positive-media','primordial-poison-positive','webaudio-mic','stream-clone'];
+const positive=['duplex','captured-clone','echo','unanswered-early-media','repaired-frame-positive-media','primordial-poison-positive','webaudio-mic','webaudio-track-source','stream-clone'];
 const negative=['passive-viewer','mic-preview','synthetic-sender','unanswered-ringing-no-capture','cross-frame-capture','cross-frame-split','cross-document-split','forged-page-evidence','webaudio-non-mic'];
 const report={decision:'D80.5',scope:'real loaded companion/worker/native-control fixture and R1 media; interactive captured-media session, not answered human intent; no GNOME/Mac adoption or native recording proof',completed:false,cases:[]};
 async function gathered(page,index) {
@@ -37,7 +37,7 @@ async function gathered(page,index) {
   },index);
 }
 try{
-  for(const fixture of ['duplex','passive-viewer','mic-preview','synthetic-sender','captured-clone','unrelated-mic-peer','unrelated-mic-same-backend','echo','unanswered-early-media','unanswered-ringing-no-capture','cross-frame-capture','cross-frame-split','cross-document-split','forged-page-evidence','repaired-frame-positive-media','primordial-poison-positive','webaudio-mic','webaudio-non-mic','stream-clone'].filter(name=>!process.env.CASSINI_RTC_CASE||name===process.env.CASSINI_RTC_CASE)){
+  for(const fixture of ['duplex','passive-viewer','mic-preview','synthetic-sender','captured-clone','unrelated-mic-peer','unrelated-mic-same-backend','split-pc-4person-webaudio','echo','unanswered-early-media','unanswered-ringing-no-capture','cross-frame-capture','cross-frame-split','cross-document-split','forged-page-evidence','repaired-frame-positive-media','primordial-poison-positive','webaudio-mic','webaudio-track-source','webaudio-non-mic','stream-clone'].filter(name=>!process.env.CASSINI_RTC_CASE||name===process.env.CASSINI_RTC_CASE)){
     report.runningFixture=fixture;
     console.log("RTC fixture:",fixture);
     const context=await chromium.launchPersistentContext(path.join(directory,'profile-'+fixture),{channel:'chromium',headless:true,
@@ -70,11 +70,22 @@ try{
           window.capture=await iframe.contentWindow.navigator.mediaDevices.getUserMedia({audio:true});
         }
         if(fixture.startsWith('unrelated-mic-'))peers.push(new RTCPeerConnection());
-        if(fixture==='webaudio-mic'){
-          // Microsoft Teams: the microphone is processed through WebAudio and
-          // the MediaStreamDestination output is what the sender transmits.
+        if(fixture==='split-pc-4person-webaudio')peers.push(new RTCPeerConnection(),new RTCPeerConnection(),new RTCPeerConnection());
+        if(fixture==='webaudio-mic'||fixture==='split-pc-4person-webaudio'){
+          // Microsoft Teams / processed mic: the microphone is processed through WebAudio
+          // and the MediaStreamDestination output is what the sender transmits.
           window.audio=new AudioContext();window.fixtureGain=audio.createGain();window.fixtureOutput=audio.createMediaStreamDestination();
           audio.createMediaStreamSource(capture).connect(fixtureGain);fixtureGain.connect(fixtureOutput);await audio.resume();
+          const track=fixtureOutput.stream.getAudioTracks()[0];cassiniRtcDeclareCaptured(track);
+          if(fixture==='split-pc-4person-webaudio')peers[1].addTransceiver(track,{direction:'sendonly'});
+          else peers[0].addTrack(track);
+        }else if(fixture==='webaudio-track-source'){
+          window.audio=new AudioContext();window.fixtureGain=audio.createGain();window.fixtureOutput=audio.createMediaStreamDestination();
+          const micTrack=capture.getAudioTracks()[0];
+          const source=typeof audio.createMediaStreamTrackSource==='function'
+            ?audio.createMediaStreamTrackSource(micTrack)
+            :audio.createMediaStreamSource(new MediaStream([micTrack]));
+          source.connect(fixtureGain);fixtureGain.connect(fixtureOutput);await audio.resume();
           const track=fixtureOutput.stream.getAudioTracks()[0];cassiniRtcDeclareCaptured(track);peers[0].addTrack(track);
         }else if(fixture==='webaudio-non-mic'){
           // A live captured microphone exists in the page, but the sent output
@@ -93,7 +104,13 @@ try{
         }else if(capture&&!['mic-preview','unrelated-mic-peer','unrelated-mic-same-backend'].includes(fixture)){
           const track=capture.getAudioTracks()[0];peers[0].addTrack(fixture==='captured-clone'?track.clone():track);
         }else if(fixture.startsWith('unrelated-mic-'))peers[1].addTrack(capture.getAudioTracks()[0]);
-        peers[0].addTransceiver('audio',{direction:'recvonly'});
+        if(fixture==='split-pc-4person-webaudio'){
+          peers[0].addTransceiver('audio',{direction:'recvonly'});
+          peers[2].addTransceiver('audio',{direction:'recvonly'});
+          peers[3].addTransceiver('audio',{direction:'recvonly'});
+        }else{
+          peers[0].addTransceiver('audio',{direction:'recvonly'});
+        }
       },fixture);
       let separateFrame=null,separatePage=null;
       if(fixture==='cross-frame-split'){
@@ -111,7 +128,7 @@ try{
         await caller.evaluate(fixture=>peers.push((fixture==='cross-frame-split'?document.querySelector('#split-capture').contentWindow:splitCapture).peers[0]),fixture);
       }
       await remote.evaluate(()=>{window.peers=[];window.audio=new AudioContext()});
-      const peerCount=fixture.startsWith('unrelated-mic-')||separateFrame?2:1;
+      const peerCount=fixture==='split-pc-4person-webaudio'?4:fixture.startsWith('unrelated-mic-')||separateFrame?2:1;
       async function negotiate(){for(let index=0;index<peerCount;index++){
         await caller.evaluate(async index=>{await peers[index].setLocalDescription(await peers[index].createOffer())},index);
         const offer=await gathered(caller,index);
@@ -119,7 +136,7 @@ try{
           if(fixture==='unrelated-mic-same-backend')window.fixtureCertificate??=await RTCPeerConnection.generateCertificate({name:'ECDSA',namedCurve:'P-256'});
           const pc=new RTCPeerConnection(fixture==='unrelated-mic-same-backend'?{certificates:[window.fixtureCertificate]}:undefined);peers[index]=pc;
           await pc.setRemoteDescription(offer);
-          if(index===0){
+          if(index===0||(fixture==='split-pc-4person-webaudio'&&(index===2||index===3))){
             let stream;
             if(fixture==='echo'){
               const receiver=pc.getReceivers().find(receiver=>receiver.track?.kind==='audio');
@@ -175,7 +192,8 @@ try{
       report.cases.push(observation);
       if(negative.includes(fixture))assert.equal(candidateR1,false,fixture);
       if(positive.includes(fixture))assert.equal(candidateR1,true,fixture);
-      if(fixture.startsWith('unrelated-mic-')){assert.equal(candidateR1,true,'D80.5 '+fixture);assert.equal(topology.samePeerConnection,false);assert.equal(observed.samePeerCount,0)}
+      if(fixture.startsWith('unrelated-mic-')||fixture==='split-pc-4person-webaudio'){assert.equal(candidateR1,true,'D80.5 '+fixture);assert.equal(topology.samePeerConnection,false);assert.equal(observed.samePeerCount,0)}
+      if(fixture==='split-pc-4person-webaudio'){assert.equal(observed.receivedPeers,3);assert.equal(observed.capturedSendingPeers,1)}
       assert.equal(observed.cohortQualified,candidateR1,'native document/frame cohort '+fixture);
       if(separateFrame){
         const first=await waitRtcTopology(separateFrame,{sending:'captured',receiving:false});
@@ -237,11 +255,30 @@ try{
         assert.equal(inventory.row.documentGeneration,hookDocument,'legacy RTP facts remain truthful without claiming verified binding');
         await packet(worker,{tabId,state:'unknown',after:await barrier(worker)});
       }
-      assert.equal(inventory.row.sourceCount,1);assert.equal(inventory.row.heard,true);
+      assert.equal(inventory.row.sourceCount,fixture==='split-pc-4person-webaudio'?3:1);assert.equal(inventory.row.heard,true);
       if(expected==='active')assert.equal(inventory.row.callGeneration,published.row.callEvidence.callGeneration);
       else assert.equal(published.row.callEvidence.callGeneration,null);
       assert.notEqual(inventory.row.callGeneration,'0');
       observation.worker={acknowledged:true,state:published.row.callEvidence.state,namespaceBinding:trusted,legacySourceCount:inventory.row.sourceCount,legacyHeard:inventory.row.heard};
+      if(fixture==='split-pc-4person-webaudio'){
+        const initialGen=published.row.callEvidence.callGeneration,initialSeq=published.packet.sequence;
+        const postActive=await worker.evaluate(async({initialSeq})=>new Promise((resolve,reject)=>{
+          let timer;
+          const check=()=>{
+            const next=fixturePackets.filter(p=>p.type==='callSignals'&&p.sequence>initialSeq);
+            if(next.length>=3){clearTimeout(timer);fixtureObservers.delete(check);resolve(next)}
+          };
+          timer=setTimeout(()=>{fixtureObservers.delete(check);reject(Error('Timed out waiting for 4-person split-PC renewals'))},15000);
+          fixtureObservers.add(check);check();
+        }),{initialSeq});
+        for(const sig of postActive){
+          const row=sig.tabs.find(t=>t.tabId===tabId);
+          assert.equal(row?.callEvidence.state,'active','4-person split-PC WebAudio call must renew without dropping to unknown');
+          assert.equal(row.callEvidence.callGeneration,initialGen);
+          assert.equal(row.remoteAudio,'separated');
+        }
+        observation.worker.sustainedRenewals=postActive.length;
+      }
       if(fixture==='primordial-poison-positive'){
         await worker.evaluate(async tabId=>chrome.scripting.executeScript({target:{tabId,frameIds:[0]},world:'MAIN',func:()=>{
         Object.getOwnPropertyDescriptor=()=>({value:{read:()=>({samePeerCount:99})}});

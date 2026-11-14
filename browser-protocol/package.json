@@ -3,7 +3,8 @@
   "private": true,
   "license": "GPL-3.0-or-later",
   "scripts": {
-    "test": "node --test tests/event-value.test.mjs extension/tests/*.test.cjs && node tests/popup.mjs && node tests/popup-toolbar.mjs && node tests/product-topologies.mjs && node tests/call-generation.mjs && node tests/worker-recovery.mjs && node tests/independent-sessions.mjs && node tests/capture-real-time.mjs && node tests/capture-render-stall.mjs && node tests/extension-reload.mjs && node tests/rtc-evidence-attacks.mjs && node tests/bfcache.mjs && node tests/webaudio-capture.mjs",
+    "test": "node --test tests/event-value.test.mjs tests/rtc-topology-probe.test.mjs extension/tests/*.test.cjs && node tests/popup.mjs && node tests/popup-toolbar.mjs && node tests/product-topologies.mjs && node tests/call-generation.mjs && node tests/worker-recovery.mjs && node tests/independent-sessions.mjs && node tests/capture-real-time.mjs && node tests/capture-render-stall.mjs && node tests/extension-reload.mjs && node tests/rtc-evidence-attacks.mjs && node tests/bfcache.mjs && node tests/webaudio-capture.mjs && node tests/platform-topology-replay.mjs",
+    "test:platforms": "node tests/platform-topology-replay.mjs",
     "test:webaudio": "node tests/webaudio-capture.mjs",
     "test:signals": "node tests/webaudio-capture.mjs"
   },

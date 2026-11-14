@@ -89,7 +89,8 @@ recording continues. No management message supplies a filesystem destination.
 Unknown fields are ignored. Unknown host message types are ignored. Apps ignore unknown
 extension message types. The extension sends no unsolicited message types beyond those
 listed; new types are replies to app-initiated, capability-gated requests (for example
-`pong`, see heartbeat-v1). A missing host uses
+`pong`, see heartbeat-v1), or user asks sent only after the app opted in on that
+connection (`recordRequest`, see popup-record-v1). A missing host uses
 bounded 1–30 second retry plus a one-minute alarm that survives MV3 worker idling; do not use
 Chrome-150-only alarm persistence options. Permissions added: tabs (background metadata),
 alarms (reconnect). The minimum remains Chrome 116.
@@ -214,7 +215,8 @@ installed (unpacked, self-hosted or from a store):
 
 This additive capability preserves all v1 messages and legacy vectors. Without
 `independent: true`, the popup/app start retains the v1 single-slot refusal.
-The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1"]`.
+The extension's hello now advertises `capabilities: ["independent-sessions-v1", "call-evidence-v1", "page-state-v1", "multi-stream-v1", "resume-capture-v1", "heartbeat-v1"]`
+(later releases append more, e.g. `tab-readiness-v1`, `sender-me-v1`, `popup-record-v1`).
 Only apps that see that capability may request concurrent capture.
 
 An app may send `start` with `independent: true` for each active-call tab. Each
@@ -982,10 +984,11 @@ reload refusals, relay policy, wire version and capabilities are unchanged.
 ## Status popup (extension 0.2.20)
 
 The browser companion popup displays active-tab source readiness independently
-from the native app-control connection. It has no recording Start/Stop or mode
-controls. Apps continue using the existing control commands; the trusted popup
-RPC remains available to isolated browser fixtures. This is a presentation
-change, with no wire-version, capability, audio, or recording-policy change.
+from the native app-control connection. It has no mode controls; since extension
+0.2.30 its Start/Stop asks the app (see "Popup Start and Stop" below) and never
+uses the direct capture RPC, which remains available to isolated browser fixtures.
+This is a presentation change, with no wire-version, capability, audio, or
+recording-policy change.
 
 The popup requests scalar status with the browser-owned current `tabId`, so
 concurrent captures cannot borrow the first session’s recording state. A pending
@@ -1010,6 +1013,95 @@ URLs, or recording paths. Confirmed app recording state, app auto-record policy,
 and launching the native app require additional explicit app-backed interfaces;
 the popup does not infer or fabricate them.
 
+## Popup Start and Stop (`popup-record-v1`, extension 0.2.30, D-983)
+
+The popup offers **Start recording** for the browser-owned current tab and, while
+that tab is recording or starting, **Stop recording**. The popup never records by
+itself: it asks the connected app, which applies its own manual Record/Stop rules
+(capture choices, Library entry, manual-Stop memory, native ownership) and acts
+through its ordinary control `command`. Whole-tab capture is not offered.
+
+Hello advertises `popup-record-v1`. An adopting app opts in on each control
+connection, after hello, with `{"type":"recordRequests","enabled":true}`; the
+extension always answers `{"type":"recordRequestsConfigured","enabled":B}` (false
+when unsupported). `enabled:false` revokes. Malformed opt-ins (non-boolean,
+extra fields) are ignored. Reconnect starts opted out. Without the opt-in the
+popup's button is disabled and explains that this Cassini version cannot start
+recordings from the browser; nothing is sent.
+
+After the initial snapshot of an opted-in connection, a popup click sends one of:
+
+```json
+{"type":"recordRequest","requestId":"popup-1731500000000-1","action":"start","tabId":2,"callGeneration":"call-A","title":"Weekly sync","url":"https://meet.example/call","documentGeneration":"doc-A","pageState":"present"}
+{"type":"recordRequest","requestId":"popup-1731500000000-2","action":"stop","tabId":2,"captureId":"capture-1"}
+```
+
+`requestId` is an extension-chosen string (≤128 characters), never reused on the
+connection and distinct from the app's own command IDs. `callGeneration` is the
+background's current call for that tab, so the app can bind its Start
+(`callGeneration` on the command) and refuse a stale ask. Start also carries the
+browser-owned `title` (≤200) and `url` (`^https?://`, ≤2048), with the same
+meaning and bounds as a `meetings` row, plus `documentGeneration` and `pageState`
+when known. A verified-auto-admission-v1 inventory omits repaired or unverified
+tabs (D80.3), so the app resolves and titles a manual Start from these fields
+when the tab has no `meetings` row; they never re-admit the tab to automatic
+admission. Stop names the running `captureId`, or omits it while the Start is
+still pending; it carries no meeting metadata.
+
+Before sending an ask, the extension waits until every inventory/status change
+already notified on this connection has been published, then re-checks that the
+connection and opt-in are unchanged (otherwise `appUnavailable`/`unsupported`,
+nothing sent) and builds the ask from current state. A Start stays bound to the
+`callGeneration` and `documentGeneration` its `title`/`url` were read for: if
+either changed during the wait it is refused (`gone`, nothing sent) rather than
+pairing the new call with the previous meeting's metadata. The 10-second deadline
+and disconnect/revocation cancellation are armed before this wait, so a stalled or
+constantly refreshing publication cannot hold an ask open. An ask therefore never
+precedes the `meetings`/`status` snapshot that introduces its `tabId`,
+`callGeneration` or `captureId`. The app answers each ask exactly once:
+
+```json
+{"type":"recordRequestResult","requestId":"popup-1731500000000-1","ok":true}
+{"type":"recordRequestResult","requestId":"popup-1731500000000-3","ok":false,"error":"Cassini needs microphone access before it can record. Open Cassini to allow it.","code":"permission"}
+```
+
+`ok:true` means the app accepted the ask and has sent (or promptly sends) its own
+`start`/`stop` command; it is not recording confirmation. Send the command before
+the result where possible. The command carries the app's own fresh requestId.
+For verified-auto-admission-v1 apps this ask is an **explicit manual** authorization:
+it may start listen-only or unverified calls with sources, and it never renews or
+substitutes an automatic ask. A Stop ask is a user Stop (`reason:"user"`) and
+counts as a manual Stop for auto-start suppression (D43). `ok:false` carries an
+`error` the popup shows verbatim (≤2000 characters) and an optional
+`^[A-Za-z]{1,32}$` `code`; these codes are popup-only and not control result codes.
+Unknown/late result IDs are ignored.
+
+The extension refuses locally, with no ask, when the app is not connected
+(`appUnavailable`) or not opted in (`unsupported`); for Start when the tab is gone,
+not a web page, already recording or starting (`busy`), not ready
+(`pageUnreachable`) or without discovered sources (`noSources`); for Stop when the
+tab has no recording or pending Start (`gone`). One ask per tab is outstanding at a
+time. An ask without a result within **10 seconds** fails with `timeout`; a control
+disconnect fails it with `appUnavailable`. Neither is retried: after reconnect the
+user decides again. Only the extension popup may send the private
+`{type:"recordRequest",action,tabId}` RPC; page content cannot reach it.
+
+The trusted scoped popup status (0.2.19) adds `appRecording`
+(`available`/`disconnected`/`unsupported`) and, while an ask is outstanding or
+accepted but not yet reflected by this tab's capture state (bounded by 10 s after
+acceptance), `recordRequest:{action,state:"pending"|"accepted"}`. An accepted ask
+belongs to the connection and opt-in it was made on: a disconnect, reconnect or
+revocation clears it. It also ends when the app's own `start`/`stop` command for
+that tab finishes, successfully or not; a command that finishes before its ask's
+`ok:true` arrives leaves no accepted wait behind. The popup shows
+**Starting…**/**Stopping…** for these, **Saving…** while `stopping`, and otherwise
+Start disabled with a reason: app not connected, app without the capability,
+reload required, page check pending, or no meeting audio yet. Stop is disabled
+with a reason when the app cannot be asked; losing control never stops a
+recording. `conformance/control/popup-record-vectors.json` holds the literal flow
+and wire cases; `extension/tests/popup-record.test.cjs` and `tests/popup.mjs` run
+the extension and popup against them.
+
 ### Toolbar popup sizing (extension 0.2.21)
 
 The action popup prefers 376 CSS pixels during intrinsic sizing. The root's
@@ -1018,6 +1110,14 @@ final containing block, including the smaller CSS viewport at high browser zoom.
 It uses no viewport-unit cap that feeds Chrome's provisional viewport back into
 its preferred-size calculation, and no hard minimum that overflows at 300% zoom.
 There are no protocol or capture-policy changes.
+
+### Popup brand look (extension 0.2.31, D-976)
+
+The popup header is the cassini-ux `cassini.talk` Saturn (`saturn-nav`) beside the
+lowercase wordmark, and every colour it draws is a cassini-ux brand role in the
+active light or dark mode, generated from the vendored `ux/brand/tokens.json`
+(pinned in `ux/UPSTREAM.json`). Start and Stop share the Record red. The footer adds
+the catalog's companion privacy line. There are no protocol or capture-policy changes.
 
 
 ## Peer observation and same-document loading (extension 0.2.22)
@@ -1322,7 +1422,9 @@ track; a `MediaStreamTrack.clone()` of a lineage track; a `MediaStream.clone()`
 copy, paired by audio-track position and equal native label; and the output track of a
 `MediaStreamAudioDestinationNode` (factory or constructor). A
 `MediaStreamAudioSourceNode` is a microphone source only when every audio track of
-its native `mediaStream` had lineage at creation. Lineage follows
+its native `mediaStream` had lineage at creation; a `MediaStreamTrackAudioSourceNode`
+(or `createMediaStreamTrackSource`, extension 0.2.29) is a microphone source only when
+its own `mediaStreamTrack` is a live audio track that had lineage at creation. Lineage follows
 `AudioNode.connect(node, output, input)` edges on port 0 only (output 0 into input 0),
 because channel splitters, mergers and multi-port nodes can route other inputs alone to
 a port. A `disconnect()` removes every recorded edge it may have removed; only supplied

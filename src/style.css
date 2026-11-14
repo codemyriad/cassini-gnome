@@ -228,7 +228,18 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
 .library-window .cassini-record:disabled .record-button-dot { background: currentColor; }
 .library-window .big-record { min-width: 74px; border-radius: 999px; min-height: 44px; padding: 0 22px; font-size: 15px; }
 .library-window .record-dot { font-size: 12px; }
-.library-window .first-run-icon { background: var(--app-wash-chip); border-radius: 24px; padding: 24px; margin-bottom: 0; }
+.library-window .first-run { padding: 24px 48px; }
+.library-window .first-run-heading { font-size: 1px; min-height: 0; min-width: 0; }
+.library-window .hero-mark { margin-bottom: 24px; }
+/* L-27: 64 px bold platform font, one sentence per line; the second sentence dimmed. */
+.library-window .hero-title { font-size: 64px; font-weight: 700; line-height: 0.98; letter-spacing: -0.035em; color: var(--cx-ink); }
+.library-window .hero-subtitle { color: var(--cx-ink-3); }
+.library-window .hero-wave-row { margin-top: 24px; margin-bottom: 24px; }
+.library-window .big-record.hero-record { min-height: 48px; padding: 0 26px 0 22px; font-size: 16px; font-weight: 600; }
+.library-window .hero-record .record-button-dot { min-width: 10px; min-height: 10px; }
+.library-window .hero-wave { color: var(--cx-accent); }
+.library-window .hero-body { font-size: 16px; color: var(--cx-ink-2); margin-bottom: 8px; }
+.library-window .hero-privacy { margin-top: 14px; }
 .library-window .excerpt { line-height: 1.5; }
 
 .library-window .live-pill { background: var(--app-record-tint); border-radius: 999px; padding: 4px 4px 4px 13px; min-height: 26px; }
