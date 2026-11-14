@@ -205,6 +205,9 @@ class Meeting(MeetingState):
     recording_offset_minutes: int | None = None
     audio_size_bytes: int | None = None
     legacy_transcript_file: Path | None = None
+    # L-57: the shown words are the file's own validated embedded transcript
+    # (published or externally opened files, which have no legacy sidecar path).
+    embedded_transcript: bool = False
     has_audio: bool = False
     metadata_editable: bool = True
     title_is_fallback: bool = False
@@ -286,6 +289,19 @@ class Meeting(MeetingState):
                 "library.row.transcribing.line", duration=ux_formats.meeting_duration(self.duration_ms)
             ) if self.duration_ms is not None else None
         return ux_formats.row_meta(self.duration_ms, self.speaker_names), self.quote_line
+
+    @property
+    def transcribed_elsewhere(self):
+        """L-57: an imported file arrived with its own validated, completed transcript.
+
+        Only the trusted embedded reference counts; a transcript this computer wrote
+        into the sidecar keeps the Imported provenance without the attribution.
+        """
+        return (
+            self.origin == "received"
+            and self.transcript == "done"
+            and (self.legacy_transcript_file is not None or self.embedded_transcript)
+        )
 
     @property
     def no_speech(self):

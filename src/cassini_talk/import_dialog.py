@@ -90,6 +90,9 @@ class ImportDialog(Adw.Dialog):
         except Exception:
             LOG.exception("Batch import failed")
             result = replace(self._result, failed=self._result.failed + 1)
+        fresh = getattr(self.window, "_fresh_imports", None)
+        if fresh is not None:
+            fresh.update(result.added_keys)
         if result.last_key:
             if self.window.meeting_page or self.window.recording_page or self.window.search_page:
                 self.window.back_to_library()

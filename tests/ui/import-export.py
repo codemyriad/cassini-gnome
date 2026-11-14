@@ -193,7 +193,57 @@ with tempfile.TemporaryDirectory() as temporary:
         and received.directory.parent == Path(os.environ["CASSINI_LIBRARY_DIR"])
     )
     assert received.audio_file.read_bytes() == incoming.read_bytes()
-    assert any("Opened from your Downloads folder." in value for value in labels(window.meeting_page.lines))
+    # L-57: the persistent folder card is gone; a one-time notice sits above the player instead.
+    page = window.meeting_page
+    assert not any("Opened from" in value for value in labels(page.lines))
+    assert page.imported_toast.get_visible()
+    assert page.imported_toast_label.get_label() == "Imported from Downloads. A copy is kept in your Meeting Library."
+    assert received.key not in window._fresh_imports, "the notice is one-time: shown, then consumed"
+    # Dismissing the focused notice hands focus to Play, or else into the transcript.
+    page.imported_toast_close.grab_focus()
+    assert window.get_focus() is page.imported_toast_close
+    play_ready = page.play.get_visible() and page.play.get_sensitive()
+    page.imported_toast_close.emit("clicked")
+    assert not page.imported_toast.get_visible()
+    if play_ready:
+        assert window.get_focus() is page.play, window.get_focus()
+    page.update(received)
+    assert not page.imported_toast.get_visible(), "a dismissed notice never returns for the same meeting"
+
+    def in_transcript():
+        focus = window.get_focus()
+        return focus is not None and focus is not page.list and focus.is_ancestor(page.list)
+
+    def show_focused_notice():
+        page._imported_toast_key = received.key
+        page._sync_imported_toast(received)
+        assert page.imported_toast.get_visible()
+        page.imported_toast_close.grab_focus()
+        assert window.get_focus() is page.imported_toast_close
+
+    # The freshly opened page lays out its transcript rows on the next frames.
+    until(lambda: any(row.get_mapped() for _turn, _words, row in page.bound.values()))
+    page.play.set_sensitive(False)
+    show_focused_notice()
+    page.imported_toast_close.emit("clicked")
+    assert in_transcript(), window.get_focus()
+    # A state change that hides the focused notice uses the same handoff.
+    show_focused_notice()
+    page._imported_toast_key = "another-meeting"
+    page._sync_imported_toast(received)
+    assert not page.imported_toast.get_visible()
+    assert in_transcript(), window.get_focus()
+    page.update(received)
+    # A collapsed window keeps the notice for when the meeting is actually opened.
+    window.split.set_collapsed(True)
+    window.split.set_show_content(False)
+    window._fresh_imports.add(received.key)
+    page._sync_imported_toast(received)
+    assert received.key in window._fresh_imports and not page.imported_toast.get_visible()
+    window.split.set_show_content(True)
+    assert received.key not in window._fresh_imports and page.imported_toast.get_visible()
+    page._dismiss_imported_toast()
+    window.split.set_collapsed(False)
     assert not window.received_hint.get_visible()
     until(lambda: not window._pending_selection)
     # L-25 DropImport states: rest, enter, over, unsupported error, and transient Importing… card.

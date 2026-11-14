@@ -58,6 +58,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.recording_details_dialog = None
         self.rename_dialog = None
         self._pending_selection = None
+        # L-57: meetings newly copied into the Library in this session that have
+        # not yet shown their one-time "Imported from …" notice.
+        self._fresh_imports = set()
         self._opening_files = 0
         self._import_cancels = set()
         self._import_dialogs = set()
@@ -2519,7 +2522,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._ensure_import_executor()
             return ImportDialog(self, (raw_path,))
         from .open_meeting import load_open_meeting
-        from .received import import_received
+        from .received import import_one
 
         activity = dict(self.monitor.capture_activity())
 
@@ -2551,7 +2554,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             path = Path(file.get_path())
             if path.is_dir():
                 return self.monitor._executor.submit(lambda: (load(path), False)).result()
-            return import_received(path, cancel=cancel), True
+            meeting, added = import_one(path, cancel=cancel)
+            return meeting, True, added
 
         self._opening_files += 1
         if path_hint is not None:
@@ -2571,10 +2575,12 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.monitor._closed:
             return False
         try:
-            meeting, imported = future.result()
+            meeting, imported, *added = future.result()
             if imported:
                 if self.meeting_page or self.recording_page or self.search_page:
                     self.back_to_library()
+                if added and added[0]:
+                    self._fresh_imports.add(meeting.key)
                 self._pending_selection = meeting.key
                 self.monitor.refresh_now()
             else:
