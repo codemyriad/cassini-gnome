@@ -710,12 +710,13 @@ class BlockedStateChange:
     """Holds one pipeline state change on its calling thread until `release` is set.
 
     Stands in for a sound server that accepts the connection but never answers.
-    Records which thread asked for every state change, and queues `on_enter`
-    on the main loop from the held worker, so the test is gated on events.
+    Records which thread asked for every state change, queues `on_enter` on the
+    main loop from the held worker, and sets `entered` / `closed` so the test is
+    gated on events rather than elapsed time.
     """
 
-    def __init__(self, monkeypatch, GLib, Gst, blocked, on_enter):
-        self.release = threading.Event()
+    def __init__(self, monkeypatch, GLib, Gst, blocked, on_enter=None):
+        self.release, self.entered, self.closed = threading.Event(), threading.Event(), threading.Event()
         self.calls, self.pipelines = [], []
         real, main = Gst.Pipeline.set_state, threading.main_thread()
 
@@ -723,14 +724,24 @@ class BlockedStateChange:
             self.calls.append((state, threading.current_thread() is main))
             self.pipelines.append(element)
             if state == blocked and not self.release.is_set():
-                GLib.idle_add(on_enter)
+                self.entered.set()
+                if on_enter is not None:
+                    GLib.idle_add(on_enter)
                 assert self.release.wait(20)  # Hang guard only.
-            return real(element, state)
+            result = real(element, state)
+            if state == Gst.State.NULL:
+                self.closed.set()
+            return result
 
         monkeypatch.setattr(Gst.Pipeline, "set_state", set_state)
 
 
-def run_blocked_take(monkeypatch, blocked_state, on_enter, prepare=None):
+def run_blocked_take(monkeypatch, blocked_state, on_enter=None, prepare=None, *, source=None, open_timeout_s=None):
+    """Runs one take until `finished` is reported on the main loop, with `blocked_state` still held.
+
+    Returns before the held state change is released: the caller asserts the
+    report did not wait for GStreamer, then calls `finish_blocked_take`.
+    """
     gi = pytest.importorskip("gi")
     try:
         gi.require_version("Gst", "1.0")
@@ -743,16 +754,20 @@ def run_blocked_take(monkeypatch, blocked_state, on_enter, prepare=None):
         pytest.skip("audiotestsrc/appsink are unavailable")
     from cassini_talk.phrase_recorder import PhraseRecorder
 
-    recorder = PhraseRecorder("audiotestsrc is-live=true samplesperbuffer=1600 ! audio/x-raw,rate=16000")
-    done, loop = [], GLib.MainLoop()
+    recorder = PhraseRecorder(
+        source or "audiotestsrc is-live=true samplesperbuffer=1600 ! audio/x-raw,rate=16000",
+        open_timeout_s=open_timeout_s,
+    )
+    done, loop, seen = [], GLib.MainLoop(), {}
     state = getattr(Gst.State, blocked_state)
-    block = BlockedStateChange(monkeypatch, GLib, Gst, state, lambda: on_enter(recorder, block, done))
+    block = BlockedStateChange(monkeypatch, GLib, Gst, state, on_enter and (lambda: on_enter(recorder, block, done)))
     recorder.connect("finished", lambda _r, ok: done.append(ok))
     report = recorder._report
 
     def reported():
         report()
-        loop.quit()  # The take is settled and the microphone is closed.
+        seen["released_at_report"] = block.release.is_set()
+        loop.quit()  # The take is settled; GStreamer may still be held.
         return False
 
     recorder._report = reported
@@ -762,9 +777,18 @@ def run_blocked_take(monkeypatch, blocked_state, on_enter, prepare=None):
     guard = GLib.timeout_add_seconds(20, loop.quit)  # Hang guard only; nothing asserts elapsed time.
     loop.run()
     GLib.source_remove(guard)
+    assert seen == dict(released_at_report=False)  # Reported while GStreamer was still held.
+    return Gst, recorder, block, done
+
+
+def finish_blocked_take(Gst, block):
+    """Lets the held state change through and waits for the background NULL teardown."""
+    assert block.entered.wait(20)  # The held state change was reached (hang guard only).
+    assert not block.closed.is_set()
+    block.release.set()
+    assert block.closed.wait(20)  # Hang guard only.
     assert all(not on_main for _state, on_main in block.calls)  # No state change on the main thread.
     assert block.pipelines[-1].get_state(0)[1] == Gst.State.NULL  # No live microphone is left.
-    return Gst, recorder, block, done
 
 
 @pytest.mark.parametrize("action", ["cancel", "stop"])
@@ -776,13 +800,16 @@ def test_microphone_that_never_answers_never_blocks_the_main_loop(monkeypatch, a
         seen["held"] = not block.release.is_set()
         getattr(recorder, action)()  # Returns at once although startup is in flight.
         seen["listening"], seen["finished"] = recorder.listening, list(done)
-        block.release.set()
         return False
 
     Gst, recorder, block, done = run_blocked_take(monkeypatch, "PLAYING", while_opening)
+    # Stop is answered on the main loop while PLAYING is still held.
     assert seen == dict(held=True, listening=False, finished=[])
-    assert [state for state, _ in block.calls] == [Gst.State.PLAYING, Gst.State.NULL]
     assert done == ([] if action == "cancel" else [True]) and not recorder.listening
+    assert [state for state, _ in block.calls] == [Gst.State.PLAYING]
+    finish_blocked_take(Gst, block)
+    assert [state for state, _ in block.calls] == [Gst.State.PLAYING, Gst.State.NULL]
+    assert done == ([] if action == "cancel" else [True])  # Never reported twice.
     if action == "cancel":
         assert len(recorder.samples) == 0
 
@@ -791,25 +818,69 @@ def test_microphone_that_never_answers_never_blocks_the_main_loop(monkeypatch, a
 def test_stop_and_cancel_close_the_microphone_off_the_main_thread(monkeypatch, action):
     seen = {}
 
-    def while_closing(recorder, block, done):
-        seen["held"], seen["listening"] = not block.release.is_set(), recorder.listening
-        seen["finished"] = list(done)
-        block.release.set()
-        return False
-
     def prepare(recorder):
         def on_level(*_):
-            if "acted" not in seen:
+            if "acted" not in seen and len(recorder.samples) >= 4 * RATE:
                 seen["acted"] = True
                 getattr(recorder, action)()  # Returns at once; NULL is held on the close worker.
 
         recorder.connect("level", on_level)
 
-    Gst, recorder, block, done = run_blocked_take(monkeypatch, "NULL", while_closing, prepare)
-    assert seen == dict(acted=True, held=True, listening=False, finished=[])
-    assert done == ([] if action == "cancel" else [True])
+    # A non-live source delivers a valid 4+ s take at once (or stops itself at the take bound).
+    Gst, recorder, block, done = run_blocked_take(
+        monkeypatch,
+        "NULL",
+        prepare=prepare,
+        source="audiotestsrc is-live=false samplesperbuffer=8000 wave=sine volume=0.2 ! audio/x-raw,rate=16000",
+    )
+    assert done == ([] if action == "cancel" else [True]) and not recorder.listening
+    taken = len(recorder.samples)
     if action == "stop":
-        assert len(recorder.samples) > 0
+        assert taken >= 4 * RATE
+    finish_blocked_take(Gst, block)
+    assert done == ([] if action == "cancel" else [True])  # Never reported twice.
+    assert len(recorder.samples) == taken  # The sealed take is untouched by the teardown.
+
+
+def test_microphone_that_never_opens_ends_as_unavailable(monkeypatch):
+    """A stalled PLAYING ends on the open bound with ok=False (deviceUnavailable, not tooShort)."""
+    Gst, recorder, block, done = run_blocked_take(monkeypatch, "PLAYING", open_timeout_s=0.05)
+    assert done == [False] and not recorder.listening and len(recorder.samples) == 0
+    finish_blocked_take(Gst, block)
+    assert [state for state, _ in block.calls] == [Gst.State.PLAYING, Gst.State.NULL]
+    assert done == [False]  # The late PLAYING never reports again.
+
+
+def test_microphone_that_fails_to_open_reports_unavailable_not_too_short(monkeypatch):
+    """PLAYING failing after a stall reports ok=False, never the tooShort ok=True with no audio."""
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("GStreamer introspection is unavailable")
+    from gi.repository import GLib, Gst
+
+    Gst.init(None)
+    if Gst.ElementFactory.find("audiotestsrc") is None or Gst.ElementFactory.find("appsink") is None:
+        pytest.skip("audiotestsrc/appsink are unavailable")
+    from cassini_talk.phrase_recorder import PhraseRecorder
+
+    real = Gst.Pipeline.set_state
+
+    def set_state(element, state):
+        if state == Gst.State.PLAYING:
+            return Gst.StateChangeReturn.FAILURE
+        return real(element, state)
+
+    monkeypatch.setattr(Gst.Pipeline, "set_state", set_state)
+    recorder = PhraseRecorder("audiotestsrc is-live=true ! audio/x-raw,rate=16000")
+    done, loop = [], GLib.MainLoop()
+    recorder.connect("finished", lambda _r, ok: (done.append(ok), loop.quit()))
+    recorder.start()
+    guard = GLib.timeout_add_seconds(20, loop.quit)  # Hang guard only.
+    loop.run()
+    GLib.source_remove(guard)
+    assert done == [False] and not recorder.listening
 
 
 def test_desktop_draws_no_phone_backup_or_transfer_copy():

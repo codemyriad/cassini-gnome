@@ -15,6 +15,9 @@ LOG = logging.getLogger(__name__)
 
 IDLE, STARTING, LIVE, CLOSING, CLOSED = "idle", "starting", "live", "closing", "closed"
 CANCELLED = "cancelled"
+# R79 §1, as NativeRecorder's OPEN_TIMEOUT_S: the microphone has opened when
+# audio arrives within this bound; otherwise the take ends as unavailable.
+OPEN_TIMEOUT_S = 3.0
 
 
 class PhraseRecorder(GObject.Object):
@@ -26,9 +29,11 @@ class PhraseRecorder(GObject.Object):
     Every GStreamer state change runs on a worker thread, never on GTK: a
     sound server that accepts the connection but never answers would
     otherwise freeze the window on Record, Stop or Cancel. `start`, `stop`
-    and `cancel` return at once. Stop or Cancel while the microphone is
-    still opening ends the take there; the opening worker closes the
-    microphone as soon as it unblocks, so it is never left live.
+    and `cancel` return at once, and `finished` follows on the main loop as
+    soon as the take is settled (the samples are sealed then), without
+    waiting for GStreamer. Stop, Cancel or the open bound while the
+    microphone is still opening ends the take there; the worker closes the
+    microphone to NULL as soon as it unblocks, so it is never left live.
     """
 
     __gsignals__ = {
@@ -39,9 +44,13 @@ class PhraseRecorder(GObject.Object):
     # The same element as recordings (runtime.RECORDING_ELEMENTS), on the default microphone.
     SOURCE = 'pulsesrc client-name="Cassini voice sample" provide-clock=false'
 
-    def __init__(self, source=None):
+    open_timeout_s = OPEN_TIMEOUT_S
+
+    def __init__(self, source=None, open_timeout_s=None):
         super().__init__()
         self.source = source or self.SOURCE
+        if open_timeout_s is not None:
+            self.open_timeout_s = open_timeout_s
         self.samples = array("f")
         self.pipeline = None
         self._phase = IDLE
@@ -64,7 +73,17 @@ class PhraseRecorder(GObject.Object):
                 return
             self._phase = STARTING
             self.samples = array("f")
+        GLib.timeout_add(max(1, round(self.open_timeout_s * 1000)), self._open_timed_out)
         threading.Thread(target=self._open, name="cassini-voice-sample-open", daemon=True).start()
+
+    def _open_timed_out(self):
+        """GTK thread: no audio within the open bound means the microphone is unavailable."""
+        with self._lock:
+            stalled = not self._done and not len(self.samples)
+        if stalled:
+            LOG.warning("The voice sample microphone did not open within %.1f s", self.open_timeout_s)
+            self._end(False)
+        return False
 
     def _open(self):
         """Worker thread: build the pipeline and wait out PLAYING, however long it blocks."""
@@ -89,10 +108,9 @@ class PhraseRecorder(GObject.Object):
             if ok and not self._done:
                 self._phase, self.pipeline = LIVE, pipeline
                 return
-            if not self._done:
-                self._done, self._outcome = True, False
-            self._phase = CLOSING  # Stopped, cancelled or failed while opening.
-        self._close(pipeline)
+        if not ok:
+            self._end(False)  # PLAYING failed: unavailable, never a too-short take (no-op once settled).
+        self._close(pipeline)  # Stopped, cancelled, timed out or failed: tear down in the background.
 
     def _on_sample(self, sink):
         """Streaming thread: keep the chunk under the lock, so EOS never overtakes it."""
@@ -140,7 +158,7 @@ class PhraseRecorder(GObject.Object):
         self._end(CANCELLED)
 
     def _end(self, outcome):
-        """Any thread, never blocks: settle the take once and close the microphone off GTK."""
+        """Any thread, never blocks: settle the take once, report it, close the microphone off GTK."""
         with self._lock:
             if outcome is CANCELLED:
                 self.samples = array("f")
@@ -152,24 +170,29 @@ class PhraseRecorder(GObject.Object):
             phase, pipeline = self._phase, self.pipeline
             if phase in (IDLE, LIVE):
                 self._phase, self.pipeline = CLOSING, None
+        # `self.samples` is sealed now (`_on_sample` drops everything once `_done`),
+        # so GTK hears the result at once, however long GStreamer takes to close.
+        GLib.idle_add(self._report)
         if phase == LIVE:
             threading.Thread(
                 target=self._close, args=(pipeline,), name="cassini-voice-sample-close", daemon=True
             ).start()
-        elif phase == IDLE:
-            GLib.idle_add(self._report)
         # STARTING: the opening worker sees `_done` once PLAYING returns and closes it.
 
     def _close(self, pipeline):
-        """Worker thread: NULL joins the streaming thread, then GTK hears the result."""
-        if pipeline is not None:
-            from gi.repository import Gst
+        """Worker thread: NULL joins the streaming thread; never touches the settled take."""
+        if pipeline is None:
+            return
+        from gi.repository import Gst
 
+        try:
             pipeline.get_bus().remove_signal_watch()
             pipeline.set_state(Gst.State.NULL)
-        GLib.idle_add(self._report)
+        except Exception:
+            LOG.exception("Could not close the voice sample microphone")
 
     def _report(self):
+        """GTK thread, once per take: queued only by whoever set `_done`."""
         with self._lock:
             self._phase, outcome = CLOSED, self._outcome
         if outcome is not CANCELLED:
