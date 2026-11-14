@@ -11973,7 +11973,7 @@
    "id": "common.moveToTrash",
    "en": "Move to Trash",
    "role": "menu-item",
-   "note": "Coordinator (D29). Library row context menu (after common.exportEllipsis and a separator), the last section of the Meeting More actions menu, the Mac File menu after Export…, and the shortcuts list. Hidden while the meeting records or saves, during a Library move, for external files and in Search; the Mac menu-bar item greys out instead. One meeting at a time.",
+   "note": "Coordinator (D29). Library row context menu (after common.exportEllipsis and a separator), the last section of the Meeting More actions menu, the Mac File menu after Export…, and the shortcuts list. Hidden while the meeting records or saves, during a Library move, for external files and in Search; the Mac menu-bar item greys out instead. One meeting at a time. D100 (Phase 2, D-1032/D-1033): the meeting moves into the in-app Trash (Mac: Recently Deleted, label meeting.moveToRecentlyDeleted) instead of the system Trash; still no confirmation and still undoable.",
    "platforms": [
     "gnome",
     "mac"
@@ -12052,7 +12052,7 @@
    "placeholders": {
     "title": "the meeting title as in its Library row"
    },
-   "note": "Coordinator (D29). GNOME only: AdwToast, default 5 s timeout (libadwaita default), action common.undo. The folder is trashed when the toast closes (dismissed, timed out, replaced or app quit), because the Flatpak Trash portal cannot restore. Undo puts the row back with nothing touched. Typographic quotes.",
+   "note": "Coordinator (D29). GNOME only: AdwToast, default 5 s timeout (libadwaita default), action common.undo. The folder is trashed when the toast closes (dismissed, timed out, replaced or app quit), because the Flatpak Trash portal cannot restore. Undo puts the row back with nothing touched. Typographic quotes. D100 (Phase 2, D-1032): the move into the in-app Trash happens at once and Undo moves it back; nothing waits for the toast to close.",
    "milestone": "D29",
    "status": "harmony",
    "l10n": {
@@ -23513,7 +23513,7 @@
     "Transcribing-Mac"
    ],
    "milestone": "WP3 (L-44)",
-   "note": "L-44: Mac meeting top-bar trash button tooltip and accessible label.",
+   "note": "L-44: Mac meeting top-bar trash button tooltip and accessible label. D100 (D-1033): once the Mac ships the in-app Recently Deleted, this is also the Mac label of every move entry point (File menu after Export…, row context menu, Meeting menu) and the Edit › Undo action name; common.moveToTrash stays the GNOME label.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -27057,7 +27057,7 @@
    "role": "menu-item",
    "boards": [],
    "milestone": "W6.0 (D-1000)",
-   "note": "D-978 / D-1000: desktop app-menu / macOS menu-bar item opening Saved voices. macOS uses Title Case with ellipsis ('Saved Voices…'); translations use sentence case per GLOSSARY §4.",
+   "note": "D-978 / D-1000: desktop app-menu / macOS menu-bar item opening Saved voices. macOS uses Title Case with ellipsis ('Saved Voices…'); translations use sentence case per GLOSSARY §4. D100: Mac placement is the Cassini (app) menu, below Settings…; it opens Settings at the Saved voices page.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -27429,6 +27429,1058 @@
     },
     "pt-PT": {
      "text": "As impressões vocais são criadas neste telemóvel e nunca são incluídas nos ficheiros exportados ou partilhados. Só os nomes que escolher são incluídos."
+    }
+   }
+  },
+  {
+   "id": "menu.trash",
+   "en": "Trash",
+   "mac": "Recently Deleted",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): app-menu entry opening the in-app deleted-meetings view (HARMONY §10/§11, PARITY D-1000 contract). GNOME: primary menu (☰) after the Import/Export section, its own section. macOS: File menu, below Move to Recently Deleted, after a separator. Platform noun matches common.moveToTrash (GNOME) and meeting.moveToRecentlyDeleted (Mac). No ellipsis: it opens a view, not a question.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Cestino",
+     "mac": "Eliminati di recente"
+    },
+    "fr": {
+     "text": "Corbeille",
+     "mac": "Supprimés récemment"
+    },
+    "es": {
+     "text": "Papelera",
+     "mac": "Eliminados"
+    },
+    "pt-BR": {
+     "text": "Lixeira",
+     "mac": "Apagados"
+    },
+    "pt-PT": {
+     "text": "Lixo",
+     "mac": "Apagados recentemente"
+    }
+   }
+  },
+  {
+   "id": "trash.title",
+   "en": "Trash",
+   "mac": "Recently Deleted",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): title of the deleted-meetings view (GNOME AdwDialog title; Mac window title). Same text as menu.trash, separate id because the role differs (CATALOG-NOTES).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Cestino",
+     "mac": "Eliminati di recente"
+    },
+    "fr": {
+     "text": "Corbeille",
+     "mac": "Supprimés récemment"
+    },
+    "es": {
+     "text": "Papelera",
+     "mac": "Eliminados"
+    },
+    "pt-BR": {
+     "text": "Lixeira",
+     "mac": "Apagados"
+    },
+    "pt-PT": {
+     "text": "Lixo",
+     "mac": "Apagados recentemente"
+    }
+   }
+  },
+  {
+   "id": "trash.list.a11y",
+   "en": "Deleted meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): accessible name of the list of meetings in Trash / Recently Deleted.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Riunioni eliminate"
+    },
+    "fr": {
+     "text": "Réunions supprimées"
+    },
+    "es": {
+     "text": "Reuniones eliminadas"
+    },
+    "pt-BR": {
+     "text": "Reuniões excluídas"
+    },
+    "pt-PT": {
+     "text": "Reuniões eliminadas"
+    }
+   }
+  },
+  {
+   "id": "trash.retentionNote",
+   "en": "Meetings in the Trash are deleted permanently after 30 days.",
+   "mac": "Meetings in Recently Deleted are deleted permanently after 30 days.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): neutral info line at the top of the deleted-meetings view while it is not empty. 30 days is the PROVISIONAL retention (pending Silvio, async in D-1019); if it changes, this text and trash.row.daysLeft change together.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni nel Cestino vengono eliminate definitivamente dopo 30 giorni.",
+     "mac": "Le riunioni in Eliminati di recente vengono eliminate definitivamente dopo 30 giorni."
+    },
+    "fr": {
+     "text": "Les réunions dans la corbeille sont supprimées définitivement après 30 jours.",
+     "mac": "Les réunions dans Supprimés récemment sont supprimées définitivement après 30 jours."
+    },
+    "es": {
+     "text": "Las reuniones de la papelera se eliminan definitivamente después de 30 días.",
+     "mac": "Las reuniones de Eliminados se eliminan definitivamente después de 30 días."
+    },
+    "pt-BR": {
+     "text": "As reuniões na Lixeira são excluídas permanentemente após 30 dias.",
+     "mac": "As reuniões em Apagados são excluídas permanentemente após 30 dias."
+    },
+    "pt-PT": {
+     "text": "As reuniões no Lixo são eliminadas definitivamente ao fim de 30 dias.",
+     "mac": "As reuniões em Apagados recentemente são eliminadas definitivamente ao fim de 30 dias."
+    }
+   }
+  },
+  {
+   "id": "trash.empty",
+   "en": "The Trash is empty.",
+   "mac": "No recently deleted meetings.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): empty state of the deleted-meetings view (GNOME AdwStatusPage, Mac ContentUnavailableView), with the trash glyph. trash.emptyTrash is insensitive while this shows.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Il Cestino è vuoto.",
+     "mac": "Nessuna riunione eliminata di recente."
+    },
+    "fr": {
+     "text": "La corbeille est vide.",
+     "mac": "Aucune réunion supprimée récemment."
+    },
+    "es": {
+     "text": "La papelera está vacía.",
+     "mac": "No hay reuniones eliminadas."
+    },
+    "pt-BR": {
+     "text": "A Lixeira está vazia.",
+     "mac": "Nenhuma reunião apagada recentemente."
+    },
+    "pt-PT": {
+     "text": "O Lixo está vazio.",
+     "mac": "Nenhuma reunião apagada recentemente."
+    }
+   }
+  },
+  {
+   "id": "trash.row.daysLeft",
+   "en": "{n} days left",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): second part of a deleted-meeting row's meta line, after format.previewSubtitle (original day, time and duration) and a middle dot. n = whole days until the meeting is deleted permanently (floor of (deletedAt + 30 days − now) / 24 h), at least 1; under one day use trash.row.lessThanDay.",
+   "status": "draft",
+   "placeholders": {
+    "n": "whole days left before permanent deletion, 1 or more"
+   },
+   "plural": {
+    "one": "1 day left",
+    "other": "{n} days left"
+   },
+   "l10n": {
+    "it": {
+     "text": "Ancora {n} giorni",
+     "plural": {
+      "one": "Ancora 1 giorno",
+      "many": "Ancora {n} giorni",
+      "other": "Ancora {n} giorni"
+     }
+    },
+    "fr": {
+     "text": "{n} jours restants",
+     "plural": {
+      "one": "{n} jour restant",
+      "many": "{n} jours restants",
+      "other": "{n} jours restants"
+     }
+    },
+    "es": {
+     "text": "Quedan {n} días",
+     "plural": {
+      "one": "Queda 1 día",
+      "many": "Quedan {n} días",
+      "other": "Quedan {n} días"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} dias restantes",
+     "plural": {
+      "one": "{n} dia restante",
+      "many": "{n} dias restantes",
+      "other": "{n} dias restantes"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} dias restantes",
+     "plural": {
+      "one": "{n} dia restante",
+      "many": "{n} dias restantes",
+      "other": "{n} dias restantes"
+     }
+    }
+   }
+  },
+  {
+   "id": "trash.row.lessThanDay",
+   "en": "Less than a day left",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): replaces trash.row.daysLeft when less than 24 h remain before permanent deletion.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Meno di un giorno"
+    },
+    "fr": {
+     "text": "Moins d’un jour restant"
+    },
+    "es": {
+     "text": "Queda menos de un día"
+    },
+    "pt-BR": {
+     "text": "Menos de um dia restante"
+    },
+    "pt-PT": {
+     "text": "Menos de um dia restante"
+    }
+   }
+  },
+  {
+   "id": "trash.restore",
+   "en": "Restore",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): per-row action (row button and row context menu). Moves the meeting back into the Library root unchanged, at its original place in the day groups; no confirmation (reversible). GNOME then shows trash.restoredToast; the Mac shows no toast.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Ripristina"
+    },
+    "fr": {
+     "text": "Restaurer"
+    },
+    "es": {
+     "text": "Restaurar"
+    },
+    "pt-BR": {
+     "text": "Restaurar"
+    },
+    "pt-PT": {
+     "text": "Restaurar"
+    }
+   }
+  },
+  {
+   "id": "trash.deletePermanently",
+   "en": "Delete permanently…",
+   "mac": "Delete Permanently…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): per-row action (row button in error text per HARMONY 10.4, and row context menu; also Delete on GNOME / ⌘⌫ on Mac with a row focused). Always opens confirmation 4 (confirm.deletePermanently.*) first. Ellipsis because it asks.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Elimina definitivamente…",
+     "mac": "Elimina definitivamente…"
+    },
+    "fr": {
+     "text": "Supprimer définitivement…",
+     "mac": "Supprimer définitivement…"
+    },
+    "es": {
+     "text": "Eliminar definitivamente…",
+     "mac": "Eliminar definitivamente…"
+    },
+    "pt-BR": {
+     "text": "Excluir permanentemente…",
+     "mac": "Excluir permanentemente…"
+    },
+    "pt-PT": {
+     "text": "Eliminar definitivamente…",
+     "mac": "Eliminar definitivamente…"
+    }
+   }
+  },
+  {
+   "id": "trash.emptyTrash",
+   "en": "Empty Trash…",
+   "mac": "Delete All…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): header button of the deleted-meetings view (GNOME header bar end; Mac window toolbar). Insensitive when the view is empty. Always opens confirmation 5 (confirm.emptyTrash.*) first. macOS uses the Recently Deleted verb 'Delete All…'.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Svuota il Cestino…",
+     "mac": "Elimina tutto…"
+    },
+    "fr": {
+     "text": "Vider la corbeille…",
+     "mac": "Tout supprimer…"
+    },
+    "es": {
+     "text": "Vaciar la papelera…",
+     "mac": "Eliminar todo…"
+    },
+    "pt-BR": {
+     "text": "Esvaziar a Lixeira…",
+     "mac": "Excluir tudo…"
+    },
+    "pt-PT": {
+     "text": "Esvaziar o Lixo…",
+     "mac": "Eliminar tudo…"
+    }
+   }
+  },
+  {
+   "id": "confirm.deletePermanently.title",
+   "en": "Delete “{title}” permanently?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 4 (Phase 2). Secondary common.cancel (Esc and Return), primary confirm.deletePermanently.primary (destructive, error-fill per 10.6). Typographic quotes.",
+   "status": "draft",
+   "placeholders": {
+    "title": "the meeting title as in its row"
+   },
+   "l10n": {
+    "it": {
+     "text": "Eliminare definitivamente “{title}”?"
+    },
+    "fr": {
+     "text": "Supprimer définitivement « {title} » ?"
+    },
+    "es": {
+     "text": "¿Eliminar definitivamente “{title}”?"
+    },
+    "pt-BR": {
+     "text": "Excluir “{title}” permanentemente?"
+    },
+    "pt-PT": {
+     "text": "Eliminar «{title}» definitivamente?"
+    }
+   }
+  },
+  {
+   "id": "confirm.deletePermanently.body",
+   "en": "Its audio and transcript are removed from this computer. This can’t be undone.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 4 body. The meeting's published .opus and its working folder (audio, transcript, meeting.json) are removed, not sent to the system Trash (S-12 §7.1).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "L’audio e la trascrizione vengono rimossi da questo computer. Non si può annullare."
+    },
+    "fr": {
+     "text": "Son audio et sa transcription sont supprimés de cet ordinateur. Cette action est irréversible."
+    },
+    "es": {
+     "text": "Su audio y su transcripción se eliminan de este equipo. No se puede deshacer."
+    },
+    "pt-BR": {
+     "text": "O áudio e a transcrição serão removidos deste computador. Não é possível desfazer."
+    },
+    "pt-PT": {
+     "text": "O áudio e a transcrição são removidos deste computador. Não é possível anular."
+    }
+   }
+  },
+  {
+   "id": "confirm.deletePermanently.primary",
+   "en": "Delete",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 4 destructive primary. Not the default button: Return is Cancel.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Elimina"
+    },
+    "fr": {
+     "text": "Supprimer"
+    },
+    "es": {
+     "text": "Eliminar"
+    },
+    "pt-BR": {
+     "text": "Excluir"
+    },
+    "pt-PT": {
+     "text": "Eliminar"
+    }
+   }
+  },
+  {
+   "id": "confirm.emptyTrash.title",
+   "en": "Empty the Trash?",
+   "mac": "Delete all recently deleted meetings?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-title",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 5 (Phase 2), from trash.emptyTrash. Secondary common.cancel (Esc and Return), primary confirm.emptyTrash.primary (destructive).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Svuotare il Cestino?",
+     "mac": "Eliminare tutte le riunioni eliminate di recente?"
+    },
+    "fr": {
+     "text": "Vider la corbeille ?",
+     "mac": "Supprimer toutes les réunions supprimées récemment ?"
+    },
+    "es": {
+     "text": "¿Vaciar la papelera?",
+     "mac": "¿Eliminar todas las reuniones de Eliminados?"
+    },
+    "pt-BR": {
+     "text": "Esvaziar a Lixeira?",
+     "mac": "Excluir todas as reuniões apagadas recentemente?"
+    },
+    "pt-PT": {
+     "text": "Esvaziar o Lixo?",
+     "mac": "Eliminar todas as reuniões apagadas recentemente?"
+    }
+   }
+  },
+  {
+   "id": "confirm.emptyTrash.body",
+   "en": "Every meeting in the Trash is removed from this computer, with its audio and transcript. This can’t be undone.",
+   "mac": "Every recently deleted meeting is removed from this computer, with its audio and transcript. This can’t be undone.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "dialog-body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 5 body. Removes every meeting listed in the view at the moment the person confirms.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Tutte le riunioni nel Cestino vengono rimosse da questo computer, con audio e trascrizione. Non si può annullare.",
+     "mac": "Tutte le riunioni eliminate di recente vengono rimosse da questo computer, con audio e trascrizione. Non si può annullare."
+    },
+    "fr": {
+     "text": "Toutes les réunions de la corbeille sont supprimées de cet ordinateur, avec leur audio et leur transcription. Cette action est irréversible.",
+     "mac": "Toutes les réunions supprimées récemment sont effacées de cet ordinateur, avec leur audio et leur transcription. Cette action est irréversible."
+    },
+    "es": {
+     "text": "Todas las reuniones de la papelera se eliminan de este equipo, con su audio y su transcripción. No se puede deshacer.",
+     "mac": "Todas las reuniones de Eliminados se borran de este equipo, con su audio y su transcripción. No se puede deshacer."
+    },
+    "pt-BR": {
+     "text": "Todas as reuniões da Lixeira serão removidas deste computador, com o áudio e a transcrição. Não é possível desfazer.",
+     "mac": "Todas as reuniões apagadas recentemente serão removidas deste computador, com o áudio e a transcrição. Não é possível desfazer."
+    },
+    "pt-PT": {
+     "text": "Todas as reuniões no Lixo são removidas deste computador, com o áudio e a transcrição. Não é possível anular.",
+     "mac": "Todas as reuniões apagadas recentemente são removidas deste computador, com o áudio e a transcrição. Não é possível anular."
+    }
+   }
+  },
+  {
+   "id": "confirm.emptyTrash.primary",
+   "en": "Empty Trash",
+   "mac": "Delete All",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): HARMONY §7 confirmation 5 destructive primary. Not the default button: Return is Cancel.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Svuota il Cestino",
+     "mac": "Elimina tutto"
+    },
+    "fr": {
+     "text": "Vider la corbeille",
+     "mac": "Tout supprimer"
+    },
+    "es": {
+     "text": "Vaciar la papelera",
+     "mac": "Eliminar todo"
+    },
+    "pt-BR": {
+     "text": "Esvaziar a Lixeira",
+     "mac": "Excluir tudo"
+    },
+    "pt-PT": {
+     "text": "Esvaziar o Lixo",
+     "mac": "Eliminar tudo"
+    }
+   }
+  },
+  {
+   "id": "trash.restoredToast",
+   "en": "“{title}” restored to the Library",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "toast",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): GNOME only, AdwToast after trash.restore (libadwaita default timeout, no action). The Mac shows no toast (D29). Agrees with 'meeting' (feminine).",
+   "status": "draft",
+   "placeholders": {
+    "title": "the meeting title as in its row"
+   },
+   "l10n": {
+    "it": {
+     "text": "“{title}” ripristinata nella Libreria"
+    },
+    "fr": {
+     "text": "« {title} » restaurée dans la bibliothèque"
+    },
+    "es": {
+     "text": "“{title}” restaurada en la biblioteca"
+    },
+    "pt-BR": {
+     "text": "“{title}” restaurada na biblioteca"
+    },
+    "pt-PT": {
+     "text": "«{title}» restaurada na Biblioteca"
+    }
+   }
+  },
+  {
+   "id": "trash.restoreFailed",
+   "en": "Couldn’t restore this meeting. It is still in the Trash.",
+   "mac": "Couldn’t restore this meeting. It is still in Recently Deleted.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): amber line at the top of the deleted-meetings view when Restore fails (for example the same meeting, same identity, is already back in the Library, or a move fails before anything changed). Nothing is changed. A taken file name is not a failure: the restored file takes the next ` (2)` suffix (S-12 §7.1).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Impossibile ripristinare questa riunione. È ancora nel Cestino.",
+     "mac": "Impossibile ripristinare questa riunione. È ancora in Eliminati di recente."
+    },
+    "fr": {
+     "text": "Impossible de restaurer cette réunion. Elle est toujours dans la corbeille.",
+     "mac": "Impossible de restaurer cette réunion. Elle est toujours dans Supprimés récemment."
+    },
+    "es": {
+     "text": "No se pudo restaurar esta reunión. Sigue en la papelera.",
+     "mac": "No se pudo restaurar esta reunión. Sigue en Eliminados."
+    },
+    "pt-BR": {
+     "text": "Não foi possível restaurar esta reunião. Ela continua na Lixeira.",
+     "mac": "Não foi possível restaurar esta reunião. Ela continua em Apagados."
+    },
+    "pt-PT": {
+     "text": "Não foi possível restaurar esta reunião. Continua no Lixo.",
+     "mac": "Não foi possível restaurar esta reunião. Continua em Apagados recentemente."
+    }
+   }
+  },
+  {
+   "id": "trash.deleteFailed",
+   "en": "Couldn’t delete this meeting permanently. It is still in the Trash.",
+   "mac": "Couldn’t delete this meeting permanently. It is still in Recently Deleted.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): amber line at the top of the deleted-meetings view when Delete permanently (or Empty Trash, for that meeting) could not start: the entry could not be renamed to .purge-<id> inside .cassini/trash/ (S-12 §7.1), so nothing was removed. Leftovers of a removal that started are retried at the next launch and never shown.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Impossibile eliminare definitivamente questa riunione. È ancora nel Cestino.",
+     "mac": "Impossibile eliminare definitivamente questa riunione. È ancora in Eliminati di recente."
+    },
+    "fr": {
+     "text": "Impossible de supprimer définitivement cette réunion. Elle est toujours dans la corbeille.",
+     "mac": "Impossible de supprimer définitivement cette réunion. Elle est toujours dans Supprimés récemment."
+    },
+    "es": {
+     "text": "No se pudo eliminar definitivamente esta reunión. Sigue en la papelera.",
+     "mac": "No se pudo eliminar definitivamente esta reunión. Sigue en Eliminados."
+    },
+    "pt-BR": {
+     "text": "Não foi possível excluir esta reunião permanentemente. Ela continua na Lixeira.",
+     "mac": "Não foi possível excluir esta reunião permanentemente. Ela continua em Apagados."
+    },
+    "pt-PT": {
+     "text": "Não foi possível eliminar esta reunião definitivamente. Continua no Lixo.",
+     "mac": "Não foi possível eliminar esta reunião definitivamente. Continua em Apagados recentemente."
+    }
+   }
+  },
+  {
+   "id": "meeting.recentlyDeletedFailed",
+   "en": "Couldn’t move this meeting to Recently Deleted. It is still in your Library.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Mac counterpart of meeting.trashFailed once the Mac ships the in-app Recently Deleted (D-1033). GNOME keeps meeting.trashFailed. meeting.trashUnsupported no longer applies after the slice ships (the trash, .cassini/trash/, is inside the Library), and stays in the catalog for older pins.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Impossibile spostare questa riunione in Eliminati di recente. È ancora nella tua Libreria."
+    },
+    "fr": {
+     "text": "Impossible de placer cette réunion dans Supprimés récemment. Elle est toujours dans votre bibliothèque."
+    },
+    "es": {
+     "text": "No se pudo mover esta reunión a Eliminados. Sigue en tu biblioteca."
+    },
+    "pt-BR": {
+     "text": "Não foi possível mover esta reunião para Apagados. Ela continua na sua biblioteca."
+    },
+    "pt-PT": {
+     "text": "Não foi possível mover esta reunião para Apagados recentemente. Continua na sua Biblioteca."
+    }
+   }
+  },
+  {
+   "id": "menu.help",
+   "en": "Help",
+   "mac": "Cassini talk Help",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): GNOME primary menu (☰) item between Keyboard shortcuts and About (F1); macOS Help menu item (⌘?). Opens the in-app, offline Help view (help.*); never opens a URL or uses the network (HARMONY §12).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Aiuto",
+     "mac": "Aiuto di Cassini talk"
+    },
+    "fr": {
+     "text": "Aide",
+     "mac": "Aide de Cassini talk"
+    },
+    "es": {
+     "text": "Ayuda",
+     "mac": "Ayuda de Cassini talk"
+    },
+    "pt-BR": {
+     "text": "Ajuda",
+     "mac": "Ajuda do Cassini talk"
+    },
+    "pt-PT": {
+     "text": "Ajuda",
+     "mac": "Ajuda do Cassini talk"
+    }
+   }
+  },
+  {
+   "id": "menu.keyboardShortcuts",
+   "en": "Keyboard shortcuts",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "menu-item",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): GNOME primary menu (☰) item opening the shortcuts dialog (HARMONY §8; already shipped in Phase 1 L-23 without a catalog id), and the button at the end of the GNOME Help view. macOS has no shortcuts window: the menus show the shortcuts.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Scorciatoie da tastiera"
+    },
+    "fr": {
+     "text": "Raccourcis clavier"
+    },
+    "es": {
+     "text": "Atajos de teclado"
+    },
+    "pt-BR": {
+     "text": "Atalhos de teclado"
+    },
+    "pt-PT": {
+     "text": "Atalhos de teclado"
+    }
+   }
+  },
+  {
+   "id": "help.title",
+   "en": "Help",
+   "mac": "Cassini talk Help",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): title of the in-app Help view (GNOME AdwDialog; Mac window). Same text as menu.help, separate id because the role differs.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Aiuto",
+     "mac": "Aiuto di Cassini talk"
+    },
+    "fr": {
+     "text": "Aide",
+     "mac": "Aide de Cassini talk"
+    },
+    "es": {
+     "text": "Ayuda",
+     "mac": "Ayuda de Cassini talk"
+    },
+    "pt-BR": {
+     "text": "Ajuda",
+     "mac": "Ajuda do Cassini talk"
+    },
+    "pt-PT": {
+     "text": "Ajuda",
+     "mac": "Ajuda do Cassini talk"
+    }
+   }
+  },
+  {
+   "id": "help.record.title",
+   "en": "Recording a meeting",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 1 heading.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Registrare una riunione"
+    },
+    "fr": {
+     "text": "Enregistrer une réunion"
+    },
+    "es": {
+     "text": "Grabar una reunión"
+    },
+    "pt-BR": {
+     "text": "Gravar uma reunião"
+    },
+    "pt-PT": {
+     "text": "Gravar uma reunião"
+    }
+   }
+  },
+  {
+   "id": "help.record.body",
+   "en": "Press Record, or {shortcut} from anywhere. When you press Stop, Cassini writes the meeting down on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 1 body. {shortcut} is common.shortcut.recordAnywhere (Ctrl+Alt+R / ⌥⌘R, or the person's own choice from Settings › Recording).",
+   "status": "draft",
+   "placeholders": {
+    "shortcut": "common.shortcut.recordAnywhere or the configured global shortcut"
+   },
+   "l10n": {
+    "it": {
+     "text": "Premi Registra, oppure {shortcut} da qualsiasi punto. Quando premi Ferma, Cassini trascrive la riunione su questo computer."
+    },
+    "fr": {
+     "text": "Appuyez sur Enregistrer, ou sur {shortcut} depuis n’importe où. Quand vous appuyez sur Arrêter, Cassini transcrit la réunion sur cet ordinateur."
+    },
+    "es": {
+     "text": "Pulsa Grabar, o {shortcut} desde cualquier parte. Cuando pulsas Detener, Cassini transcribe la reunión en este equipo."
+    },
+    "pt-BR": {
+     "text": "Clique em Gravar, ou use {shortcut} de qualquer lugar. Quando você clica em Parar, o Cassini transcreve a reunião neste computador."
+    },
+    "pt-PT": {
+     "text": "Prima Gravar, ou {shortcut} a partir de qualquer ponto. Quando prime Parar, o Cassini transcreve a reunião neste computador."
+    }
+   }
+  },
+  {
+   "id": "help.library.title",
+   "en": "Where your meetings are",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 2 heading.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Dove sono le tue riunioni"
+    },
+    "fr": {
+     "text": "Où sont vos réunions"
+    },
+    "es": {
+     "text": "Dónde están tus reuniones"
+    },
+    "pt-BR": {
+     "text": "Onde ficam suas reuniões"
+    },
+    "pt-PT": {
+     "text": "Onde estão as suas reuniões"
+    }
+   }
+  },
+  {
+   "id": "help.library.body",
+   "en": "Every meeting is kept in Music/Cassini on this computer. None of it is uploaded.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 2 body. Music/Cassini is the literal path (HARMONY §4, GLOSSARY: never the localised folder name). Desktop only: no cloud backup (HARMONY §12).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Ogni riunione è conservata in Music/Cassini su questo computer. Nulla viene caricato."
+    },
+    "fr": {
+     "text": "Chaque réunion est gardée dans Music/Cassini sur cet ordinateur. Rien n’est mis en ligne."
+    },
+    "es": {
+     "text": "Cada reunión se guarda en Music/Cassini en este equipo. No se sube nada."
+    },
+    "pt-BR": {
+     "text": "Cada reunião fica guardada em Music/Cassini neste computador. Nada é enviado."
+    },
+    "pt-PT": {
+     "text": "Cada reunião fica guardada em Music/Cassini neste computador. Nada é enviado."
+    }
+   }
+  },
+  {
+   "id": "help.trash.title",
+   "en": "Getting a meeting back",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 3 heading.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Recuperare una riunione"
+    },
+    "fr": {
+     "text": "Récupérer une réunion"
+    },
+    "es": {
+     "text": "Recuperar una reunión"
+    },
+    "pt-BR": {
+     "text": "Recuperar uma reunião"
+    },
+    "pt-PT": {
+     "text": "Recuperar uma reunião"
+    }
+   }
+  },
+  {
+   "id": "help.trash.body",
+   "en": "Deleted meetings stay in the Trash for 30 days. Open Trash from the main menu, then choose Restore.",
+   "mac": "Deleted meetings stay in Recently Deleted for 30 days. Choose File › Recently Deleted, then Restore.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 3 body; names the menu path of menu.trash on each platform and the 30-day PROVISIONAL retention (trash.retentionNote).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni eliminate restano nel Cestino per 30 giorni. Apri Cestino dal menu principale e scegli Ripristina.",
+     "mac": "Le riunioni eliminate restano in Eliminati di recente per 30 giorni. Scegli File › Eliminati di recente, poi Ripristina."
+    },
+    "fr": {
+     "text": "Les réunions supprimées restent dans la corbeille pendant 30 jours. Ouvrez Corbeille depuis le menu principal, puis choisissez Restaurer.",
+     "mac": "Les réunions supprimées restent dans Supprimés récemment pendant 30 jours. Choisissez Fichier › Supprimés récemment, puis Restaurer."
+    },
+    "es": {
+     "text": "Las reuniones eliminadas se quedan en la papelera 30 días. Abre Papelera desde el menú principal y elige Restaurar.",
+     "mac": "Las reuniones eliminadas se quedan en Eliminados 30 días. Elige Archivo › Eliminados y luego Restaurar."
+    },
+    "pt-BR": {
+     "text": "As reuniões excluídas ficam na Lixeira por 30 dias. Abra Lixeira no menu principal e escolha Restaurar.",
+     "mac": "As reuniões excluídas ficam em Apagados por 30 dias. Escolha Arquivo › Apagados e depois Restaurar."
+    },
+    "pt-PT": {
+     "text": "As reuniões eliminadas ficam no Lixo durante 30 dias. Abra Lixo no menu principal e escolha Restaurar.",
+     "mac": "As reuniões eliminadas ficam em Apagados recentemente durante 30 dias. Escolha Ficheiro › Apagados recentemente e depois Restaurar."
+    }
+   }
+  },
+  {
+   "id": "help.voices.title",
+   "en": "Recognising voices",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 4 heading. en-GB spelling.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Riconoscere le voci"
+    },
+    "fr": {
+     "text": "Reconnaître les voix"
+    },
+    "es": {
+     "text": "Reconocer voces"
+    },
+    "pt-BR": {
+     "text": "Reconhecer vozes"
+    },
+    "pt-PT": {
+     "text": "Reconhecer vozes"
+    }
+   }
+  },
+  {
+   "id": "help.voices.body",
+   "en": "When you name a speaker, Cassini can remember their voice and recognise it in new meetings. Saved voices stay on this computer and are never exported.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "Phase 2 menu (D-1000)",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 4 body. Matches D25 / HARMONY §§4, 9 (voiceprints local, never exported) and HARMONY §12 (no iCloud on Mac).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Quando dai un nome a una voce, Cassini può ricordarla e riconoscerla nelle nuove riunioni. Le voci salvate restano su questo computer e non vengono mai esportate."
+    },
+    "fr": {
+     "text": "Quand vous nommez un intervenant, Cassini peut mémoriser sa voix et la reconnaître dans les nouvelles réunions. Les voix mémorisées restent sur cet ordinateur et ne sont jamais exportées."
+    },
+    "es": {
+     "text": "Cuando pones nombre a un hablante, Cassini puede recordar su voz y reconocerla en reuniones nuevas. Las voces guardadas se quedan en este equipo y nunca se exportan."
+    },
+    "pt-BR": {
+     "text": "Quando você nomeia um locutor, o Cassini pode lembrar a voz dele e reconhecê-la em novas reuniões. As vozes salvas ficam neste computador e nunca são exportadas."
+    },
+    "pt-PT": {
+     "text": "Quando dá nome a um orador, o Cassini pode memorizar a voz e reconhecê-la em novas reuniões. As vozes guardadas ficam neste computador e nunca são exportadas."
     }
    }
   }

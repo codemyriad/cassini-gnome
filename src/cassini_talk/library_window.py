@@ -37,6 +37,19 @@ def vertical(spacing=0, **kwargs):
     return Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=spacing, **kwargs)
 
 
+def star_glyph():
+    """The subtle star on a starred Library or search row (L-34, D99)."""
+    glyph = Gtk.Image(
+        icon_name="starred-symbolic",
+        pixel_size=12,
+        valign=Gtk.Align.CENTER,
+        css_classes=["row-star", "dim-label"],
+        accessible_role=Gtk.AccessibleRole.IMG,
+    )
+    glyph.update_property([Gtk.AccessibleProperty.LABEL], [text("library.row.starred.a11y")])
+    return glyph
+
+
 class LibraryWindow(Adw.ApplicationWindow):
     def __init__(self, application):
         super().__init__(application=application, title=text("app.name"), default_width=1120, default_height=720)
@@ -81,6 +94,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._drop_validation_gen = 0
         self._drop_validation_cancellable = None
         self._closing_search = False
+        self._stars = None
+        self.library_filter = "all"
         self._sidebar_scroll_source = 0
         self._list_signature = None
         self._row_by_key = {}
@@ -150,6 +165,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.root_box.set_visible_child_name("loading")
         self._activity = dict(self._fixture_activity)
         self.monitor = LibraryMonitor(self._library_scanned, capture_activity=lambda: self._activity)
+        self._ensure_star_store()
         # Native clocks, meters and date grouping also need this tick when the
         # optional host browser bridge is unavailable or still being probed.
         self._activity_timer = GLib.timeout_add_seconds(1, self._activity_tick)
@@ -173,6 +189,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("rename", self.show_rename),
             ("name-speakers", lambda *_: self.meeting_page.name_speakers() if self.meeting_page else None),
             ("move-to-trash", self.move_to_trash),
+            ("toggle-star", self.toggle_star),
             ("recording-details", self.show_recording_details),
             ("undo-speaker-merge", lambda *_: self.meeting_page.undo_speaker_merge() if self.meeting_page else None),
             ("play-pause", self._play_selected),
@@ -540,6 +557,9 @@ class LibraryWindow(Adw.ApplicationWindow):
                     and not self.search_page
                 )
             )
+        star = self.lookup_action("toggle-star")
+        if star:
+            star.set_enabled(LibraryWindow.star_allowed(self, meeting))
         trash = self.lookup_action("move-to-trash")
         if trash:
             trash.set_enabled(self.get_application().meeting_trash.allowed(meeting, self) and not self._focused_editors)
@@ -609,6 +629,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.rename_dialog.present(self)
 
     def _library_scanned(self, snapshot):
+        if hasattr(self, "_stars"):
+            LibraryWindow._ensure_star_store(self)
         self._source_snapshot = snapshot
         self.get_application().meeting_trash.scanned(snapshot, self.monitor.scan_started)
         self._updated(snapshot)
@@ -627,6 +649,111 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         self._source_snapshot = source
         self._updated(source)
+
+    def _ensure_star_store(self):
+        """One per-device star store per Library root (L-34); follows a moved Library."""
+        from .stars import StarStore
+
+        monitor = getattr(self, "monitor", None)
+        if monitor is None:
+            return None
+        root = monitor.scanner.root
+        if self._stars is None or self._stars.root != root:
+            inherit = frozenset()
+            if self._stars is not None:
+                inherit = self._stars.starred
+                self._stars.close()
+            self._stars = StarStore(
+                root,
+                dispatch=lambda callback: GLib.idle_add(callback),
+                on_changed=lambda store: self._stars_changed(store),
+                inherit=inherit,
+            )
+        return self._stars
+
+    def star_allowed(self, meeting):
+        return bool(
+            meeting
+            and getattr(self, "_stars", None) is not None
+            and not self._external_meeting
+            and not meeting.key.startswith("unreadable/")
+        )
+
+    def is_starred(self, meeting):
+        stars = getattr(self, "_stars", None)
+        return bool(meeting and stars is not None and stars.is_starred(meeting.key))
+
+    def toggle_star(self, meeting=None):
+        meeting = meeting or (self.meeting_page.meeting if self.meeting_page else self.selected)
+        if not self.star_allowed(meeting):
+            return None
+        from .stars import star_key
+
+        return self._stars.toggle(star_key(meeting))
+
+    def _stars_changed(self, store):
+        if store is not self._stars:
+            return
+        for row in self._row_by_key.values():
+            meeting = getattr(row, "meeting", None)
+            if meeting is not None:
+                signature = self._row_signature(meeting)
+                if signature != row._row_signature:
+                    self._fill_row(row, meeting, signature)
+        self._apply_library_filter()
+        if self.meeting_page is not None:
+            self.meeting_page.sync_star()
+        if self.search_page is not None:
+            self.search_page.stars_changed()
+
+    def set_library_filter(self, value):
+        """L-34 All / Starred at rest: single choice, remembered on this device."""
+        value = "starred" if value == "starred" else "all"
+        if value == self.library_filter:
+            return
+        self.library_filter = value
+        settings = getattr(self.get_application(), "recording_settings", None)
+        if settings is not None and settings.get_string("library-filter") != value:
+            settings.set_string("library-filter", value)
+        button = self.filter_starred if value == "starred" else self.filter_all
+        if not button.get_active():
+            button.set_active(True)
+        selected = self.rows.get_selected_row()
+        if value == "starred" and selected is not None and not self._row_matches_filter(selected):
+            self.rows.select_row(None)
+        self._apply_library_filter()
+
+    def _row_matches_filter(self, row):
+        if self.library_filter != "starred":
+            return True
+        meeting = getattr(row, "meeting", None)
+        return meeting is None or self.is_starred(meeting)
+
+    def _row_visible(self, row):
+        if self.library_filter != "starred":
+            return True
+        keys = getattr(row, "_group_keys", None)
+        if keys is not None:
+            return any((other := self._row_by_key.get(key)) is not None and self._row_visible(other) for key in keys)
+        meeting = getattr(row, "meeting", None)
+        if meeting is None:
+            return True
+        # The open meeting stays put when it is unstarred, until selection moves.
+        return self.is_starred(meeting) or (self.selected is not None and self.selected.key == meeting.key)
+
+    def _apply_library_filter(self):
+        if not hasattr(self, "starred_empty"):
+            return
+        self.rows.invalidate_filter()
+        snapshot = self.snapshot
+        starred = self.library_filter == "starred"
+        nothing = bool(
+            starred
+            and snapshot is not None
+            and not snapshot.unavailable
+            and not any(self.is_starred(m) for m in snapshot.meetings)
+        )
+        self.starred_empty.set_visible(nothing)
 
     def move_to_trash(self):
         meeting = self.meeting_page.meeting if self.meeting_page else self.selected
@@ -719,6 +846,10 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _row_menu(self, row, x, y):
         self.rows.select_row(row)
         menu = Gio.Menu()
+        if self.star_allowed(row.meeting):
+            star = Gio.Menu()
+            star.append(text("meeting.unstar" if self.is_starred(row.meeting) else "meeting.star"), "win.toggle-star")
+            menu.append_section(None, star)
         menu.append_item(self.rename_item())
         menu.append(text("common.exportEllipsis"), "win.export")
         if self.get_application().meeting_trash.allowed(row.meeting, self) or (
@@ -1071,6 +1202,29 @@ class LibraryWindow(Adw.ApplicationWindow):
         if not self._closing_search and self.search_page is None:
             self._enter_search(focus=True)
 
+    def _library_filter_row(self):
+        """L-34 at rest: linked toggle buttons All / Starred; hidden with the list while searching."""
+        settings = getattr(self.get_application(), "recording_settings", None)
+        remembered = settings.get_string("library-filter") if settings is not None else "all"
+        self.library_filter = "starred" if remembered == "starred" else "all"
+        group = Gtk.Box(
+            css_classes=["linked", "library-filters"], halign=Gtk.Align.START, accessible_role=Gtk.AccessibleRole.GROUP
+        )
+        group.update_property([Gtk.AccessibleProperty.LABEL], [text("library.filters.a11y")])
+        self.filter_all = Gtk.ToggleButton(label=text("library.filter.all"), active=self.library_filter == "all")
+        self.filter_starred = Gtk.ToggleButton(
+            label=text("library.filter.starred"), group=self.filter_all, active=self.library_filter == "starred"
+        )
+        for button, value in ((self.filter_all, "all"), (self.filter_starred, "starred")):
+            button.add_css_class("library-filter")
+            button.connect(
+                "toggled", lambda toggle, choice=value: self.set_library_filter(choice) if toggle.get_active() else None
+            )
+            group.append(button)
+        self.library_filter_row = Gtk.Box(css_classes=["library-filter-row"])
+        self.library_filter_row.append(group)
+        return self.library_filter_row
+
     def _build_library(self):
         self.split = Adw.NavigationSplitView(min_sidebar_width=320, max_sidebar_width=400, sidebar_width_fraction=0.53)
         self.split.set_min_sidebar_width(320)
@@ -1116,11 +1270,29 @@ class LibraryWindow(Adw.ApplicationWindow):
             "row-activated", lambda _rows, row: self.open_meeting(row.meeting) if hasattr(row, "meeting") else None
         )
         self._selection_handler = self.rows.connect("row-selected", self._selected)
+        self.rows.set_filter_func(self._row_visible)
+        # After _selected: an unstarred meeting left open hides once selection moves.
+        self.rows.connect(
+            "row-selected", lambda *_: self.rows.invalidate_filter() if self.library_filter == "starred" else None
+        )
         list_content = vertical()
         self.recording_lines = vertical(margin_start=14, margin_end=14, margin_top=8, visible=False)
         self._recording_line_signature = None
         list_content.append(self.recording_lines)
         list_content.append(self.rows)
+        self.starred_empty = label(
+            text("library.starred.empty"),
+            "dim-label",
+            "library-starred-empty",
+            wrap=True,
+            justify=Gtk.Justification.CENTER,
+            margin_start=20,
+            margin_end=20,
+            margin_top=32,
+            margin_bottom=32,
+            visible=False,
+        )
+        list_content.append(self.starred_empty)
         self.received_hint = label(
             text("received.libraryHint"),
             "small",
@@ -1187,6 +1359,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.drop_footer.append(footer_inner)
 
         library_pane = vertical(vexpand=True, hexpand=True)
+        library_pane.append(self._library_filter_row())
         library_pane.append(self.drop_frame)
         library_pane.append(self.drop_footer)
         self.sidebar_stack.add_named(library_pane, "library")
@@ -1606,6 +1779,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             badge.kind if badge else None,
             badge.text if badge and meeting.lifecycle != "recording" else None,
             LibraryWindow._row_display_fields(self, meeting),
+            LibraryWindow.is_starred(self, meeting),
         )
 
     def _active_import_list(self):
@@ -1951,6 +2125,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 finally:
                     self._updating_rows_selection = False
                 self._pending = False
+                LibraryWindow._apply_library_filter(self)
                 if hasattr(self, "sidebar_header"):
                     self._queue_sidebar_scrolled()
                 return
@@ -1990,7 +2165,9 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.root_box.set_visible_child_name("library")
             selected = None
             for group in groups:
-                self.rows.append(self._day_heading(group.title))
+                heading = self._day_heading(group.title)
+                heading._group_keys = tuple(m.key for m in group.meetings)
+                self.rows.append(heading)
                 for meeting in group.meetings:
                     row = old_rows.get(meeting.key)
                     if row is None:
@@ -2048,6 +2225,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             self._updating_rows_selection = False
         self.loading.set_spinning(False)
         self._pending = False
+        LibraryWindow._apply_library_filter(self)
         if hasattr(self, "sidebar_header"):
             self._queue_sidebar_scrolled()
 
@@ -2111,7 +2289,15 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._live_badges.pop(meeting.key, None)
         box = vertical(6, margin_start=12, margin_end=12, margin_top=9, margin_bottom=9)
         top = Gtk.Box(spacing=8)
+        starred = row._row_signature[-1]
+        if starred:
+            top.append(star_glyph())
         top.append(label(meeting.title, "row-title", xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
+        # D99: the row reads "Starred" to assistive technology, not only by glyph.
+        if starred:
+            row.update_property([Gtk.AccessibleProperty.DESCRIPTION], [text("library.row.starred.a11y")])
+        else:
+            row.reset_property(Gtk.AccessibleProperty.DESCRIPTION)
         duration, secondary = self._row_display_fields(meeting)
         if duration:
             top.append(label(duration, "small", "dim-label", "row-num"))
@@ -2752,6 +2938,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         if self.meeting_page:
             self.meeting_page.close()
             self.meeting_page = None
+        if self._stars is not None:
+            self._stars.close()
         if self._activity_timer:
             GLib.source_remove(self._activity_timer)
             self._activity_timer = 0

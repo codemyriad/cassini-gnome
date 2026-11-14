@@ -70,6 +70,7 @@ talk_sources = files(
   'cassini_talk/zstd_stream.py',
   'cassini_talk/search_index.py',
   'cassini_talk/search_page.py',
+  'cassini_talk/stars.py',
   'cassini_talk/meeting_page.py',
   'cassini_talk/exact_transcript.py',
   'cassini_talk/transcript_navigation.py',

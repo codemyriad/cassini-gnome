@@ -649,3 +649,43 @@ def test_search_hit_highlights_use_teal_tokens_in_light_and_dark_without_white_w
     assert 'background="#24708A" foreground="#E8E9EC" weight="semibold"' in dark_hit.quote_markup
     assert dark_hit.selected_quote_markup == dark_hit.quote_markup
     assert 'background="#24708A" foreground="#E8E9EC" weight="semibold"' in dark_hit.context_markup
+
+
+def test_this_year_starts_at_local_midnight_on_1_january():
+    zone = ZoneInfo("Europe/Rome")
+    now = int(datetime(2026, 10, 27, 12, tzinfo=zone).timestamp() * 1000)
+    lower, upper = date_range("year", now, zone)
+    assert datetime.fromtimestamp(lower / 1000, zone).isoformat() == "2026-01-01T00:00:00+01:00"
+    assert datetime.fromtimestamp(upper / 1000, zone).isoformat() == "2026-10-28T00:00:00+01:00"
+
+
+def test_year_starred_and_recorded_by_me_filters_and_together(index):
+    """L-35: Starred · Speaker · Any date (incl. This year) · Recorded by me combine with AND."""
+    zone = ZoneInfo("Europe/Rome")
+    hit_keys = sorted({hit.key for hit in search(index, speaker="Marta")})
+    assert len(hit_keys) == 3
+    first, second, third = (index.current[key] for key in hit_keys)
+    new_year = int(datetime(2026, 1, 1, tzinfo=zone).timestamp() * 1000)
+    others = [m for m in index.current.values() if m.key not in hit_keys]
+    index.sync(
+        LibrarySnapshot(
+            meetings=(
+                replace(first, started_at_ms=new_year, origin="received"),
+                replace(second, started_at_ms=new_year - 60000),
+                third,
+                *others,
+            )
+        )
+    )
+    assert {first.origin, second.origin, third.origin} == {"own"}
+    year = {hit.key for hit in search(index, speaker="Marta", date="year")}
+    assert first.key in year and second.key not in year and third.key in year
+    # Recorded by me keeps only origin = own: an Imported meeting never matches.
+    own = {hit.key for hit in search(index, speaker="Marta", own=True)}
+    assert first.key not in own and second.key in own
+    starred = frozenset({first.key, second.key})
+    assert {hit.key for hit in search(index, speaker="Marta", starred=starred)} == starred
+    assert not search(index, speaker="Marta", starred=frozenset())
+    assert {hit.key for hit in search(index, speaker="Marta", starred=starred, date="year")} == {first.key}
+    assert not search(index, speaker="Marta", starred=starred, date="year", own=True)
+    assert search(index, speaker="Marta", starred=None) == search(index, speaker="Marta")

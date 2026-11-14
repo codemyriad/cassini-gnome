@@ -125,9 +125,12 @@ def excerpt_markup(marked, *, limit=220, selected=False, dark=False):
 def calendar_range(choice, now_ms, tz):
     if choice == "any":
         return None
-    days = {"today": 1, "week": 7, "month": 30}[choice]
     zone = ZoneInfo(tz) if isinstance(tz, str) else tz
     today = datetime.fromtimestamp(now_ms / 1000, zone).date()
+    if choice == "year":
+        # D99: from local midnight on 1 January to the end of today.
+        return today.replace(month=1, day=1), today + timedelta(days=1)
+    days = {"today": 1, "week": 7, "month": 30}[choice]
     return today - timedelta(days=days - 1), today + timedelta(days=1)
 
 
@@ -298,7 +301,7 @@ class SearchIndex:
                     names.setdefault(speaker.name.casefold(), speaker.name)
         return tuple(names[key] for key in sorted(names))
 
-    def query(self, query, *, speaker=None, date="any", own=False, dark=False, now_ms, tz):
+    def query(self, query, *, speaker=None, date="any", own=False, starred=None, dark=False, now_ms, tz):
         query = query.strip()
         if not query or not any(char.isalnum() for char in query):
             return ()
@@ -380,6 +383,9 @@ class SearchIndex:
                     title_markup=titles[key],
                 )
             )
+        if starred is not None:
+            # L-35: per-device stars are not in the index; AND them here.
+            result = [hit for hit in result if hit.key in starred]
         result.sort(
             key=lambda hit: (
                 self.current[hit.key].sort_time is None,

@@ -64,6 +64,8 @@ CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screensh
 CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/rename.py "$out/rename.png"
 CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/rename.py "$out/dark/rename.png"
 CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/search.py "$out/search-gui.png"
+CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/starring.py "$out/starring.png"
+CASSINI_SCREENSHOT_SCHEME=dark CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/starring.py "$out/dark/starring.png"
 CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/model-notices.py "$out/notices-gui.png"
 CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/settings.py "$out/settings-gui.png"
 CASSINI_TEST_BUILD="$build" build-aux/ux-screenshot.sh tests/ui/test-recording.py "$out/test-recording.png"
