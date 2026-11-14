@@ -87,6 +87,7 @@ class MeetingPage(Adw.NavigationPage):
         self._updating = False
         self.bound = {}
         self._signature = None
+        self._star_menu_state = None
         self._reading_index = -1
         self._follow_rows = FollowRows(())
         self._turns = ()
@@ -178,6 +179,17 @@ class MeetingPage(Adw.NavigationPage):
         self.export_button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.exportEllipsis")])
         actions_box.append(self.export_button)
 
+        # L-34: per-device star (D99); win.toggle-star acts on this meeting.
+        self.star_button = Gtk.Button(
+            icon_name="non-starred-symbolic",
+            tooltip_text=text("meeting.star"),
+            action_name="win.toggle-star",
+            css_classes=["flat", "meeting-icon-btn", "meeting-star-btn"],
+            valign=Gtk.Align.CENTER,
+        )
+        self.star_button.update_property([Gtk.AccessibleProperty.LABEL], [text("meeting.star")])
+        actions_box.append(self.star_button)
+
         self.trash_button = Gtk.Button(
             icon_name="user-trash-symbolic",
             tooltip_text=text("common.moveToTrash"),
@@ -188,9 +200,11 @@ class MeetingPage(Adw.NavigationPage):
         self.trash_button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.moveToTrash")])
         actions_box.append(self.trash_button)
 
+        self.star_menu = Gio.Menu()
         menu = self.more_menu = Gio.Menu()
         menu.append(text("details.menu"), "win.recording-details")
         menu.append(text("common.exportEllipsis"), "win.export")
+        menu.append_section(None, self.star_menu)
         self.more_button = Gtk.MenuButton(
             icon_name="view-more-symbolic",
             tooltip_text=text("meeting.moreActions"),
@@ -1266,6 +1280,22 @@ class MeetingPage(Adw.NavigationPage):
             self.transcribing_row.set_visible(False)
             self.stop_transcription_button = None
 
+    def sync_star(self):
+        """Star / Unstar wording and glyph for this meeting (L-34)."""
+        allowed = self.window.star_allowed(self.meeting)
+        starred = allowed and self.window.is_starred(self.meeting)
+        wording = text("meeting.unstar" if starred else "meeting.star")
+        self.star_button.set_visible(allowed)
+        self.star_button.set_icon_name("starred-symbolic" if starred else "non-starred-symbolic")
+        self.star_button.set_tooltip_text(wording)
+        self.star_button.update_property([Gtk.AccessibleProperty.LABEL], [wording])
+        (self.star_button.add_css_class if starred else self.star_button.remove_css_class)("starred")
+        if self._star_menu_state != (allowed, starred):
+            self._star_menu_state = (allowed, starred)
+            self.star_menu.remove_all()
+            if allowed:
+                self.star_menu.append(wording, "win.toggle-star")
+
     def update(self, meeting):
         self._updating_transcript = True
         self._updating_rows = True
@@ -1293,6 +1323,7 @@ class MeetingPage(Adw.NavigationPage):
         if self.window._external_meeting:
             self.window.set_title(meeting.title)
         self.rename_button.set_visible(bool(self.window.rename_allowed(meeting)))
+        self.sync_star()
 
         self.total.set_label(fmt.position(meeting.duration_ms or 0))
         app = self.window.get_application()
@@ -1391,6 +1422,8 @@ class MeetingPage(Adw.NavigationPage):
         self.more_menu.append(text("common.exportEllipsis"), "win.export")
         if undo:
             self.more_menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
+        # Rename stays first (HARMONY); the per-device star sits above Trash.
+        self.more_menu.append_section(None, self.star_menu)
         if trash_allowed or (meeting.published_file is not None and not meeting.metadata_editable):
             section = Gio.Menu()
             from .meeting_trash import menu_item
