@@ -367,8 +367,11 @@ class MeetingTrash:
     def root(self):
         return Path(location.primary())
 
-    def submit(self, work, done):
-        """Run `work` on the trash worker; `done(result, error)` on the GTK thread."""
+    def submit(self, work, done, *, changes=True):
+        """Run `work` on the trash worker; `done(result, error)` on the GTK thread.
+
+        `changes=False` marks a read-only job (listing the entries): it never notifies the
+        listeners, since the Trash view reloads on every notification (no refresh loop)."""
         self.app.hold()
 
         def finished(future):
@@ -380,7 +383,8 @@ class MeetingTrash:
                 try:
                     done(result, error)
                 finally:
-                    self._changed()
+                    if changes:
+                        self._changed()
                     self.app.release()
                 return GLib.SOURCE_REMOVE
 
@@ -389,7 +393,7 @@ class MeetingTrash:
         self.executor.submit(work).add_done_callback(finished)
 
     def entries(self, done):
-        self.submit(lambda: storage.entries(self.root()), done)
+        self.submit(lambda: storage.entries(self.root()), done, changes=False)
 
     def restore(self, entry_id, done):
         root = self.root()
@@ -411,7 +415,12 @@ class MeetingTrash:
         root, voices = self.root(), self.app.voice_store
 
         def work():
-            forget_purged(voices, root, storage.empty_trash(root))
+            try:
+                purged = storage.empty_trash(root)
+            except storage.Incomplete as error:
+                forget_purged(voices, root, error.purged)  # what did go is forgotten; the rest stays
+                raise
+            forget_purged(voices, root, purged)
 
         self.submit(work, done)
 

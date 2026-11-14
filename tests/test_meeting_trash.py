@@ -295,3 +295,38 @@ def test_startup_maintenance_recovers_and_expires(roots, monkeypatch):
     assert not storage.entries(root) and not journal.pending(journal.Layout(root)).entries
     assert not (library / session.directory.name).exists()
     controller.executor.shutdown(wait=True)
+
+
+def test_open_trash_with_an_unchanged_list_is_idle_and_mutations_notify_once(tmp_path, monkeypatch):
+    """Codex R1: a read-only entries() load never notifies the listeners (the Trash view
+    reloads on every notification, which made a never-ending reload loop)."""
+    holds, loads, restored = [], [], []
+    rescans = []
+    window = SimpleNamespace(monitor=SimpleNamespace(refresh_now=lambda: rescans.append(True)))
+    app = SimpleNamespace(
+        get_windows=lambda: [window], hold=lambda: holds.append(True), release=lambda: holds.pop(), voice_store=None
+    )
+    controller = controller_for(app)
+    monkeypatch.setattr(module.location, "primary", lambda: str(tmp_path))
+    monkeypatch.setattr(storage, "entries", lambda root: loads.append(root) or [])
+    monkeypatch.setattr(storage, "restore", lambda root, entry: restored.append(entry))
+    rendered = []
+
+    def reload():  # what TrashDialog.reload does on every notification
+        controller.entries(lambda result, error: rendered.append((result, error)))
+
+    controller.listeners.append(reload)
+    try:
+        reload()  # the view opens: one load
+        drain(controller, lambda: rendered)
+        for _ in range(5):
+            drain(controller, lambda: True)
+        assert len(loads) == 1 and rendered == [([], None)] and not rescans and not holds
+        controller.restore("5d0c3a7e-0000-4000-8000-0000000000e1", lambda *_: None)
+        drain(controller, lambda: restored and len(loads) == 2)
+        for _ in range(5):
+            drain(controller, lambda: True)
+        assert len(loads) == 2, "one mutation reloads the view exactly once"
+        assert len(rescans) == 1 and len(rendered) == 2 and not holds
+    finally:
+        controller.executor.shutdown(wait=True)

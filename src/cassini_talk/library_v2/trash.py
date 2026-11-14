@@ -72,6 +72,11 @@ class Failed(OSError):
     recovery finishes it forward."""
 
 
+class Moved(OSError):
+    """The rename itself happened, then making it durable (a directory fsync) failed: the
+    meeting has moved, so the operation must be finished forward, never rolled back."""
+
+
 def dumps(value):
     """The exact serialization of entry.json (the reference model's)."""
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -512,7 +517,9 @@ def _fsync_parent(path):
 
 
 def _rename(source, target):
-    """One no-replace rename (file or directory), then fsync both directories."""
+    """One no-replace rename (file or directory), then fsync both directories.
+
+    A failure after the rename itself raises Moved, so the caller knows something moved."""
     if _real_dir(source):
         result, code = fsutil.native()(os.fsencode(source), os.fsencode(target))
         if result != 0:
@@ -526,9 +533,12 @@ def _rename(source, target):
             os.rename(source, target)
     else:
         fsutil.rename_noreplace(source, target)
-    _fsync_parent(source)
-    if Path(source).parent != Path(target).parent:
-        _fsync_parent(target)
+    try:
+        _fsync_parent(source)
+        if Path(source).parent != Path(target).parent:
+            _fsync_parent(target)
+    except OSError as error:
+        raise Moved(error.errno or errno.EIO, f"Moved, but not yet durable: {error}") from error
 
 
 def _remove_tree(path):
@@ -628,7 +638,9 @@ def _run(layout, journal_entry, untitled=None):
         try:
             apply_step(layout, step, journal_entry, untitled=untitled)
         except OSError as error:
-            if not applied_move:
+            # Once anything of the meeting moved (this step's rename included, even when its
+            # fsync then failed), entry.json and the journal entry stay for forward recovery.
+            if not (applied_move or isinstance(error, Moved) or _step_moved(layout, step)):
                 _roll_back_unmoved(layout, journal_entry)
                 raise
             raise Failed(error.errno or errno.EIO, f"Stopped after a partial move: {error}") from error
@@ -638,6 +650,17 @@ def _run(layout, journal_entry, untitled=None):
         _checkpoint(count)
     journal.retire(layout, journal_entry["op"])
     _checkpoint(count + 1)
+
+
+def _step_moved(layout, step):
+    """A move step whose source is gone and whose target exists did happen, whatever it raised."""
+    if step["do"] != "move":
+        return False
+    try:
+        source, target = layout.resolve(step["from"]), layout.resolve(step["to"])
+    except ValueError:
+        return False
+    return not os.path.lexists(source) and os.path.lexists(target)
 
 
 def _roll_back_unmoved(layout, journal_entry):
@@ -856,20 +879,78 @@ def purge(root, entry_id):
         _purge_locked(layout, entry_id)
 
 
+def _relevant(journal_entry, entry_id, key):
+    """A pending journal entry touching this trash entry or its meeting."""
+    if journal_entry.get("kind") in KINDS:
+        return journal_entry.get("entryId") == entry_id or (
+            key is not None and identity_key(journal_entry.get("identity")) == key
+        )
+    identity = journal_entry.get("identity") or {}
+    return key is not None and key == f"{identity.get('origin')}-{identity.get('sessionId')}"
+
+
+def _settle(layout, entry_id):
+    """Finish forward every pending operation of this entry or its meeting (the caller holds
+    the lock). Returns (completed purge journal entry of this entry or None, still blocked)."""
+    try:
+        key = identity_key(_read_entry(layout.root / TRASH / entry_id / ENTRY_FILE).get("identity"))
+    except (OSError, ValueError):
+        key = None
+    found = [e for e in journal.pending(layout).entries if _relevant(e, entry_id, key)]
+    if not found:
+        return None, False
+    finished = None
+    for journal_entry in found:
+        if journal_entry.get("kind") in KINDS:
+            try:
+                resume(layout, journal_entry)
+            except (Conflict, OSError, ValueError, KeyError, TypeError, Refused):
+                continue
+            if journal_entry["kind"] == "purge" and journal_entry.get("entryId") == entry_id:
+                finished = journal_entry
+        else:
+            identity = journal_entry["identity"]
+            journal.replay(layout, identity=(identity["origin"], identity["sessionId"]))
+    blocked = any(_relevant(e, entry_id, key) for e in journal.pending(layout, cleanup=False).entries)
+    return finished, blocked
+
+
 def _purge_locked(layout, entry_id):
+    """Purge one entry, but never while an operation on it or its meeting is unfinished: a
+    replay after the purge would otherwise recreate the entry around its surviving parts."""
+    _check_entry_id(entry_id)
+    finished, blocked = _settle(layout, entry_id)
+    if blocked:
+        raise Refused("an earlier change to this meeting has not finished")
+    if finished is not None and not os.path.lexists(layout.root / TRASH / entry_id):
+        return {"kind": "purge", "entryId": entry_id, "identity": finished.get("identity")}
     head, steps = plan_purge(layout.root, {"entryId": entry_id})
     _run(layout, _new_journal(head, steps))
     return head
 
 
+class Incomplete(Refused):
+    """Empty Trash purged what it could; some entries stay (an unfinished earlier change)."""
+
+    def __init__(self, purged, kept):
+        super().__init__(f"{len(kept)} entries have an unfinished earlier change")
+        self.purged, self.kept = purged, kept
+
+
 def empty_trash(root):
-    """One journaled purge per entry, newest deletion first. Returns the purged identities."""
+    """One journaled purge per entry, newest deletion first. Returns the purged identities;
+    raises Incomplete (carrying them) when an entry had to stay."""
     root = Path(root)
     layout = journal.Layout(root)
-    purged = []
+    purged, kept = [], []
     with journal.LibraryLock(layout):
         for row in entries(root):
-            purged.append(_purge_locked(layout, row.entry_id).get("identity"))
+            try:
+                purged.append(_purge_locked(layout, row.entry_id).get("identity"))
+            except Refused:
+                kept.append(row.entry_id)
+    if kept:
+        raise Incomplete(purged, kept)
     return purged
 
 

@@ -51,6 +51,15 @@ def until(check, message="Trash GUI did not reach expected state"):
         guard.destroy()
 
 
+def idle_for(seconds):
+    """Run the main loop for `seconds` (a bounded wait: the assertion is that nothing happens)."""
+    done = []
+    GLib.timeout_add(int(seconds * 1000), lambda: done.append(True) and GLib.SOURCE_REMOVE)
+    context = GLib.MainContext.default()
+    while not done:
+        context.iteration(True)
+
+
 def frames(window, count=3):
     ticks = []
     window.add_tick_callback(lambda *_: (ticks.append(True), len(ticks) < count)[1])
@@ -379,6 +388,19 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.empty_button.is_sensitive() and dialog.empty_button.get_label() == "Empty Trash…"
     assert dialog.list.get_accessible_role() == Gtk.AccessibleRole.LIST
     capture(window, "-trash-view")
+
+    # An open Trash with an unchanged list is idle: reading the entries never notifies the
+    # listeners, so the view does not reload, re-render or refresh the Library in a loop.
+    loads, renders, rescans = [], [], []
+    real_render = dialog._render
+    controller.entries = lambda done, real=controller.entries: (loads.append(True), real(done))[1]
+    dialog._render = lambda: (renders.append(True), real_render())[1]
+    window.monitor.refresh_now = lambda real=window.monitor.refresh_now: (rescans.append(True), real())[1]
+    dialog.reload()
+    until(lambda: renders)
+    idle_for(1.5)
+    assert (len(loads), len(renders), len(rescans)) == (1, 1, 0), "the open Trash kept reloading"
+    del controller.entries, dialog._render, window.monitor.refresh_now
 
     # Restore (no confirmation): back in the Library, its toast in the view.
     client_row.restore_button.emit("clicked")
