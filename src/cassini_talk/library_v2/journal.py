@@ -12,7 +12,8 @@ its stage, and is never resolved by deleting anything.
 Entry phases: "prepared" (journaled, the stage is not yet known to be complete),
 "staged" (the stage is complete, fsynced and validated), "conflict" (a stage that
 no longer fits what is live: kept for the user, never applied or deleted), and
-"intent" for deletions.
+"intent" for deletions. Kinds `trash`, `restore` and `purge` (S-12 §7.1, D100) carry their
+own ordered step list and are validated and replayed by library_v2.trash.
 """
 
 import contextlib
@@ -33,6 +34,7 @@ from . import fsutil
 META = ".cassini"
 SESSION_NAME = re.compile(r"(Recording|Received)-([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\Z", re.I)
 KINDS = ("publish", "replace", "rename", "delete")
+TRASH_KINDS = ("trash", "restore", "purge")
 MAX_ENTRY = 1 << 20
 
 
@@ -221,6 +223,10 @@ def _revision(value, *, optional=False):
 
 def check_entry(layout, entry):
     """Structure, types and confined paths of one entry, per kind; ValueError when malformed."""
+    if entry.get("kind") in TRASH_KINDS:
+        from . import trash
+
+        return trash.check(layout, entry)
     if entry.get("kind") not in KINDS or not isinstance(entry.get("createdAt"), str):
         raise ValueError("invalid journal kind")
     identity = entry.get("identity")
@@ -269,20 +275,27 @@ class Report:
     orphans: list = field(default_factory=list)  # staging files no entry names; kept
 
     def blocks(self, origin, session_id):
-        return any(
-            isinstance(item, dict) and item.get("identity") == dict(origin=origin, sessionId=session_id)
-            for item, _reason in self.kept
-        )
+        identities = (dict(origin=origin, sessionId=session_id), dict(session=f"{origin}-{session_id}"))
+        return any(isinstance(item, dict) and item.get("identity") in identities for item, _reason in self.kept)
 
 
 def replay(layout, *, identity=None):
     """Resume pending entries (the caller holds the lock). identity=(origin, sessionId) limits it."""
-    from . import publish
+    from . import publish, trash
 
     report = Report()
     found = pending(layout)
     report.kept.extend((name, "damaged journal entry") for name in found.damaged)
+    # S-12 §7.1: trash, restore and purge roll forward first (they never share an identity
+    # with another pending entry), then `.purge-*` leftovers are swept on a full replay.
+    completed, kept, _messages = trash.recover(
+        layout, identity=None if identity is None else f"{identity[0]}-{identity[1]}"
+    )
+    report.completed.extend(entry["op"] for entry in completed)
+    report.kept.extend(kept)
     for entry in found.entries:
+        if entry.get("kind") in TRASH_KINDS:
+            continue
         if identity is not None and entry.get("identity") != dict(origin=identity[0], sessionId=identity[1]):
             continue
         try:

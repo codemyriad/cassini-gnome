@@ -38,6 +38,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="delete_permanently">
+            <property name="title">Delete permanently…</property>
+            <property name="accelerator">Delete</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem">
             <property name="action-name">app.preferences</property>
           </object>
@@ -51,6 +57,11 @@
           <object class="AdwShortcutsItem">
             <property name="title" translatable="yes">Show Shortcuts</property>
             <property name="action-name">app.shortcuts</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="action-name">app.help</property>
           </object>
         </child>
         <child>
