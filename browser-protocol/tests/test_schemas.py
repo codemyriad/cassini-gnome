@@ -164,4 +164,33 @@ class SchemaTests(unittest.TestCase):
         for path in (ROOT/'extension').rglob('*'):
             if path.is_file(): self.assertIsNone(re.search(rb'\bmac\b|macos',path.read_bytes(),re.I),str(path))
 
+    def test_platform_topology_fixtures_validate_and_forbid_sensitive_fields(self):
+        topology = schema('platform-topology')
+        fixtures = sorted((ROOT / 'tests/fixtures/platforms').glob('*.json'))
+        self.assertTrue(fixtures, 'at least one platform topology fixture is checked in')
+        for path in fixtures:
+            with self.subTest(fixture=path.name):
+                self.assertRegex(path.name, r'^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.json$')
+                value = json.loads(path.read_text())
+                topology.validate(value)
+                self.assertEqual(path.name, f"{value['platform']}-{value['capturedOn']}.json")
+
+        teams = json.loads((ROOT / 'tests/fixtures/platforms/ms-teams-2026-11-12.json').read_text())
+        for mutate in (
+            lambda f: f.__setitem__('sdp', 'v=0'),
+            lambda f: f['peers'][0]['transceivers'][0]['receiver'].__setitem__('label', 'Chris'),
+            lambda f: f['peers'][0]['transceivers'][0]['sender'].__setitem__('label', "Silvio's AirPods"),
+            lambda f: f['peers'][0]['transceivers'][0]['sender'].__setitem__('webAudioDestNodeId', None),
+            lambda f: f['peers'][0]['transceivers'][0]['sender'].update({'webAudioGraphId': None, 'webAudioDestNodeId': 'n3'}),
+            lambda f: f['webAudioGraphs'][0]['edges'].append({'from': 'n1', 'to': 'n2', 'kind': 'audio'}),
+            lambda f: f['webAudioGraphs'][0]['edges'][0].__setitem__('output', 0),
+            lambda f: f['webAudioGraphs'][0]['nodes'].append({'id': 'n4', 'type': 'ChannelMergerNode', 'inputs': 0}),
+            lambda f: f['webAudioGraphs'][0]['nodes'][0].__setitem__('type', 'CustomSecretWorklet'),
+            lambda f: f['peers'][0]['transceivers'][0]['receiver'].update({'mixing': 'single', 'speakersOnTrack': 2}),
+            lambda f: f.__setitem__('platform', 'https://teams.microsoft.com'),
+        ):
+            bad = json.loads(json.dumps(teams))
+            mutate(bad)
+            self.assertFalse(topology.is_valid(bad), bad)
+
 if __name__=='__main__': unittest.main()

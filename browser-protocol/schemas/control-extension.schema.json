@@ -756,6 +756,127 @@
         "browserInstance"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "recordRequestsConfigured"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "enabled"
+      ],
+      "additionalProperties": false,
+      "$comment": "popup-record-v1: only ever a reply to the app's recordRequests."
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "recordRequest"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "action": {
+          "enum": [
+            "start",
+            "stop"
+          ]
+        },
+        "tabId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "callGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "captureId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "$comment": "Browser-owned tab title, as in meetings; never page-reported."
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^https?://",
+          "$comment": "Browser-owned tab URL, as in meetings; never page-reported."
+        },
+        "documentGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "pageState": {
+          "enum": [
+            "present",
+            "closed",
+            "navigating"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "requestId",
+        "action",
+        "tabId"
+      ],
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "start"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "callGeneration",
+              "title",
+              "url"
+            ],
+            "not": {
+              "required": [
+                "captureId"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "stop"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "callGeneration"
+              ]
+            }
+          }
+        }
+      ],
+      "$comment": "popup-record-v1: sent only after the app opted in on this connection, after the initial snapshot, when the user clicks Start/Stop in the browser popup for the browser-owned current tab."
     }
   ],
   "$defs": {

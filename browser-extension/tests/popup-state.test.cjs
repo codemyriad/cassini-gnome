@@ -9,7 +9,7 @@ test('healthy source transport and unknown call evidence explain the listen-only
   const result=status([{tabId:7,state:'ready'}],{tabEvidence:{tabId:7,
     callEvidence:{state:'unknown',reason:'unverified'},captureCapability:{kind:'separated',assurance:'observed'}}});
   const view=popupState(result,tab);
-  assert.equal(view.title,'Interactive session is unverified');assert.match(view.description,/Listen-only.*manual/);
+  assert.equal(view.title,'Interactive session is unverified');assert.match(view.description,/Listen-only.*manually/);
   assert.equal(view.reloadTabId,null);assert.equal(view.connected,true);
   result.tabEvidence.callEvidence={state:'active',reason:'activeCall'};
   assert.equal(popupState(result,tab).title,'Interactive media session detected');
@@ -36,7 +36,8 @@ test('another tab recording is never presented as this tab recording', async () 
   const {popupState} = await state;
   const view = popupState(status([], {recording: true, tabId: 8, tracks: 3}), tab);
   assert.equal(view.title, 'No meeting sources detected');
-  assert.equal(view.note, 'Recording is managed in Cassini.');
+  assert.equal(view.note, 'Start recording asks the Cassini app on this computer to record this tab.');
+  assert.equal(view.record.action, 'start', 'another tab recording never offers Stop here');
 });
 test('recording controls and stream identities stay separate from capture availability', async () => {
   const {popupState} = await state;
@@ -110,4 +111,65 @@ test('post-reload guidance stays specific to the same tab until new evidence arr
   assert.notEqual(popupState(status([],extra),tab,7).title,waiting.title);
  assert.notEqual(popupState(status(),{...tab,id:8},7).title,waiting.title);
  assert.equal(popupState({},tab,7).title,'Meeting detection is unavailable');
+});
+
+test('popup record control: Start only with an opted-in app and a ready tab, with a reason otherwise', async () => {
+  const {popupState} = await state;
+  const ready = extra => status([{tabId: 7, state: 'ready'}], {tabId: 7, recording: false, starting: false, appRecording: 'available', ...extra});
+  assert.deepEqual(popupState(ready(), tab).record, {action: 'start', enabled: true, hint: '', label: 'Start recording'});
+  const reasons = [
+    [ready({appRecording: 'disconnected'}), /Open Cassini/],
+    [ready({appRecording: 'unsupported'}), /cannot start recordings from the browser/],
+    [ready({appRecording: undefined}), /cannot start recordings from the browser/],
+    [status([{tabId: 7, state: 'reloadRequired'}], {tabId: 7, appRecording: 'available'}), /Reload the tab/],
+    [status([{tabId: 7, state: 'checking'}], {tabId: 7, appRecording: 'available'}), /page check/],
+    [status([], {tabId: 7, appRecording: 'available'}), /Join the call first/],
+    [status([{tabId: 4, state: 'ready'}], {tabId: 7, appRecording: 'available'}), /Join the call first/],
+  ];
+  for (const [result, hint] of reasons) {
+    const {record} = popupState(result, tab);
+    assert.equal(record.action, 'start'); assert.equal(record.enabled, false); assert.match(record.hint, hint);
+  }
+  // Manual Start stays available for an unverified (listen-only) call with sources.
+  const unverified = ready({tabEvidence: {tabId: 7, callEvidence: {state: 'unknown', reason: 'unverified'}, captureCapability: {kind: 'separated', assurance: 'observed'}}});
+  assert.equal(popupState(unverified, tab).title, 'Interactive session is unverified');
+  assert.equal(popupState(unverified, tab).record.enabled, true);
+  for (const active of [undefined, {...tab, url: 'chrome://extensions/'}]) assert.equal(popupState(ready(), active).record, null);
+  assert.equal(popupState({}, tab).record, null);
+});
+
+test('popup record control: Stop for this tab only, with saving and pending feedback', async () => {
+  const {popupState} = await state;
+  const active = extra => status([{tabId: 7, state: 'ready'}], {tabId: 7, recording: true, tracks: 2, appRecording: 'available', ...extra});
+  assert.deepEqual(popupState(active(), tab).record, {action: 'stop', enabled: true, hint: '', label: 'Stop recording'});
+  assert.deepEqual(popupState(active({recording: false, starting: true}), tab).record.action, 'stop', 'a preparing capture can be stopped');
+  assert.deepEqual(popupState(active({stopping: true}), tab).record, {action: 'stop', enabled: false, hint: '', label: 'Saving…'});
+  const offline = popupState(active({appRecording: 'disconnected'}), tab).record;
+  assert.equal(offline.enabled, false); assert.match(offline.hint, /Stop the recording in the Cassini app/);
+  assert.equal(popupState(active({tabId: 8}), tab).record.action, 'start', 'another tab’s capture never offers Stop here');
+  const starting = popupState(active({recording: false, recordRequest: {action: 'start', state: 'pending'}}), tab);
+  assert.deepEqual(starting.record, {action: 'start', enabled: false, hint: '', label: 'Starting…'});
+  assert.equal(starting.title, 'Asking Cassini to start recording…');
+  assert.match(starting.note, /not yet confirmed/);
+  const stopping = popupState(active({recordRequest: {action: 'stop', state: 'accepted'}}), tab);
+  assert.deepEqual(stopping.record, {action: 'stop', enabled: false, hint: '', label: 'Stopping…'});
+  assert.equal(stopping.title, 'Asking Cassini to stop recording…');
+  assert.equal(popupState(active({tabId: 8, recordRequest: {action: 'stop', state: 'pending'}}), tab).record.label, 'Start recording');
+});
+test('without a health row, this tab’s reload/checking evidence reaches the record control; evidence-only ready does not enable Start', async () => {
+  const {popupState} = await state;
+  const evidence = page => status([], {tabId: 7, appRecording: 'available', tabEvidence: {tabId: 7, transport: {page},
+    callEvidence: {state: 'unknown', reason: 'unverified'}, captureCapability: {kind: 'unknown', assurance: 'unknown'}}});
+  let view = popupState(evidence('reloadRequired'), tab);
+  assert.equal(view.title, 'This tab needs to reload');
+  assert.deepEqual({...view.record}, {action: 'start', enabled: false, hint: 'Reload the tab before recording.', label: 'Start recording'});
+  view = popupState(evidence('checking'), tab);
+  assert.equal(view.title, 'Checking the page connection…');
+  assert.equal(view.record.enabled, false); assert.equal(view.record.hint, 'Wait until the page check finishes.');
+  view = popupState(evidence('ready'), tab);
+  assert.equal(view.record.enabled, false);
+  assert.match(view.record.hint, /Join the call first/);
+  // Evidence for another tab never stands in for this tab.
+  const other = evidence('reloadRequired'); other.tabEvidence.tabId = 8;
+  assert.match(popupState(other, tab).record.hint, /Join the call first/);
 });

@@ -7,10 +7,12 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 const {chromium} = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const tokens = JSON.parse(await readFile(path.join(root,'ux/brand/tokens.json'),'utf8')).tokens;
 const server = createServer(async (request, response) => {
   const file = request.url?.slice(1);
-  if (!['popup.html', 'popup.js', 'popup-state.mjs', 'tab-evidence.mjs'].includes(file)) {response.writeHead(404).end();return;}
-  response.setHeader('Content-Type', file.endsWith('.html') ? 'text/html' : 'text/javascript');
+  if (!['popup.html', 'popup.js', 'popup-state.mjs', 'tab-evidence.mjs', 'brand-tokens.css', 'brand/saturn-nav.svg'].includes(file)) {response.writeHead(404).end();return;}
+  const types = {html: 'text/html', css: 'text/css', svg: 'image/svg+xml'};
+  response.setHeader('Content-Type', types[file.split('.').pop()] || 'text/javascript');
   response.end(await readFile(path.join(root,'extension',file)));
 });
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
@@ -25,12 +27,20 @@ try {
       tabs:{async query(){return [fixture.tab]}},
       runtime:{async sendMessage(message){
         fixture.requests.push(message);
+        if(message.type==='recordRequest'){
+          if(fixture.recordReply)return fixture.recordReply(message);
+          return {error:'No record fixture'};
+        }
         if(message.type==='reloadMeetingTab'){
           if(fixture.reloadError)return {error:fixture.reloadError};
           fixture.status.browserHealth.tabs=[];
         }
         if(fixture.statusError)throw Error(fixture.statusError);
         if(message.type==='status' && fixture.statusNeverResolves)return new Promise(()=>{});
+        if(message.type==='status' && fixture.holdStatus){
+          const value=structuredClone(fixture.status);fixture.holdStatus=false;
+          return new Promise(resolve=>{window.releaseStatus=()=>resolve(value)});
+        }
         if(message.type==='status' && fixture.captures){
           const capture=fixture.captures.find(c=>c.tabId===message.tabId);
           return {...structuredClone(fixture.status),...(capture||{recording:false,tabId:message.tabId})};
@@ -44,8 +54,12 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/popup.html`);
   await page.locator('main[aria-busy="false"]').waitFor();
   assert.equal(await page.locator('#status').textContent(),'No meeting sources detected');
+  await brandLook(page,'light');
   assert.equal(await page.locator('#tab-title').textContent(),'Generated meeting <script>');
-  assert.equal(await page.getByRole('button',{name:/record|stop/i}).count(),0);
+  // Without an opted-in app, Start is visible but disabled and says why.
+  assert.equal(await page.locator('#record').isDisabled(),true);
+  assert.match(await page.locator('#record-hint').textContent(),/cannot start recordings from the browser/);
+  await recordFlow(page);
   await page.evaluate(()=>fixture.status.browserHealth.tabs=[{tabId:3,state:'reloadRequired'},{tabId:7,state:'ready'}]);
   await page.getByRole('heading',{name:'Meeting sources detected',exact:true}).waitFor();
   assert.equal(await page.locator('#reload').isVisible(),false);
@@ -107,6 +121,7 @@ try {
     return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
   });
   assert.ok(contrast>=4.5,`dark warning contrast must remain readable: ${contrast.toFixed(2)}:1`);
+  await brandLook(page,'dark');
   await page.screenshot({path:path.join(root,'artifacts/popup-dark.png'),fullPage:true});
   await page.evaluate(()=>{fixture.status.browserHealth.tabs=[{tabId:7,state:'reloadRequired'}];fixture.reloadError='Generated reload refusal'});
   await page.getByRole('button',{name:'Reload meeting tab',exact:true}).waitFor();
@@ -124,8 +139,92 @@ try {
   await page.getByRole('heading',{name:'Meeting detection is unavailable',exact:true}).waitFor();
   assert.match(await page.locator('#explanation').textContent(),/did not answer in time/);
   assert.equal(await page.locator('#connection').getAttribute('data-connected'),'false');
-  assert.equal(await page.evaluate(()=>fixture.requests.some(r=>r.type==='start'||r.type==='stop')),false);
+  assert.equal(await page.evaluate(()=>fixture.requests.some(r=>r.type==='start'||r.type==='stop')),false,'the popup never uses the direct capture RPC');
   assert.deepEqual(errors,[]);
   await context.close();
-  console.log('PASS popup: no recording controls/RPCs, current-tab health/reload, refused reload, honest recovery, copy without meeting URLs, connection loss, light/dark rendering');
+  console.log('PASS popup: Start/Stop asks the app for the current tab with reasons and feedback, current-tab health/reload, refused reload, honest recovery, copy without meeting URLs, connection loss, light/dark rendering');
 } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}
+
+// D-976: the Saturn mark and lowercase wordmark head the popup, and the drawn colours are the
+// cassini-ux brand roles in the active mode (vendored ux/brand/tokens.json via brand-tokens.css).
+async function brandLook(page,mode){
+  assert.equal(await page.locator('header h1').textContent(),'cassini.talk');
+  assert.ok(await page.locator('header img.mark').evaluate(img=>img.complete&&img.naturalWidth>0&&img.getAttribute('src')==='brand/saturn-nav.svg'),'the Saturn mark loads');
+  assert.equal(Math.round(await page.locator('header img.mark').evaluate(img=>img.getBoundingClientRect().height)),26,'mark at 26');
+  assert.equal(await page.locator('header h1').evaluate(e=>getComputedStyle(e).fontSize),'18px','wordmark at 18');
+  assert.equal(await page.locator('header h1').evaluate(e=>getComputedStyle(e).fontWeight),'500','wordmark medium');
+  const look=await page.evaluate(()=>{const css=selector=>getComputedStyle(document.querySelector(selector));
+    return {ground:css('html').backgroundColor,ink:css('html').color,record:css('#record').backgroundColor,
+      onRecord:css('#record').color,card:css('#card').backgroundColor,tone:document.querySelector('#card').dataset.tone};});
+  assert.equal(look.ground,rgb(tokens.raised[mode]));
+  assert.equal(look.ink,rgb(tokens.ink[mode]));
+  assert.equal(look.record,rgb(tokens.record[mode]),'Start is the Record red');
+  assert.equal(look.onRecord,rgb(tokens['on-record'][mode]));
+  const card={neutral:'sunken',good:'success-tint',warning:'warn-tint'}[look.tone||'neutral'];
+  assert.equal(look.card,rgb(tokens[card][mode]),`${look.tone} card is ${card}`);
+}
+function rgb(hex){const [r,g,b]=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));return `rgb(${r}, ${g}, ${b})`;}
+
+async function recordFlow(page){
+  await page.evaluate(()=>{fixture.status.appRecording='disconnected';fixture.status.browserHealth.tabs=[{tabId:7,state:'ready'}]});
+  await page.getByText('Open Cassini to record from the browser.',{exact:true}).waitFor();
+  assert.equal(await page.locator('#record').isDisabled(),true);
+  await page.evaluate(()=>{fixture.status.appRecording='available';fixture.status.browserHealth.tabs=[]});
+  await page.getByText(/Join the call first/).waitFor();
+  assert.equal(await page.locator('#record').isDisabled(),true);
+  // A refusal from Cassini stays visible and the button stays usable.
+  await page.evaluate(()=>{fixture.status.browserHealth.tabs=[{tabId:7,state:'ready'}];
+    fixture.recordReply=()=>({error:'Generated app refusal',code:'needsSetup'})});
+  const start=page.getByRole('button',{name:'Start recording',exact:true});
+  await page.waitForFunction(()=>!document.querySelector('#record').disabled);
+  await start.click();
+  await page.getByText('Generated app refusal',{exact:true}).waitFor();
+  await page.waitForFunction(()=>!document.querySelector('#record').disabled);
+  assert.equal(await page.locator('#record-hint').isVisible(),false);
+  // A click during an outstanding status poll: the refusal restores the card at
+  // once, and the refresh it asks for runs when the held poll ends.
+  await page.evaluate(()=>{delete window.releaseStatus;fixture.holdStatus=true});
+  await page.waitForFunction(()=>typeof window.releaseStatus==='function');
+  const statusCount=await page.evaluate(()=>fixture.requests.filter(r=>r.type==='status').length);
+  await page.evaluate(()=>{fixture.recordReply=()=>({error:'Generated refusal during a poll',code:'needsSetup'})});
+  await start.click();
+  await page.getByText('Generated refusal during a poll',{exact:true}).waitFor();
+  assert.equal(await page.locator('#record').textContent(),'Start recording');
+  assert.equal(await page.locator('#record').isDisabled(),false);
+  assert.equal(await page.locator('#status').textContent(),'Meeting sources detected');
+  assert.equal(await page.locator('#card').getAttribute('data-tone'),'good');
+  assert.equal(await page.evaluate(()=>fixture.requests.filter(r=>r.type==='status').length),statusCount,'the held poll is still outstanding');
+  await page.evaluate(()=>window.releaseStatus());
+  await page.waitForFunction(n=>fixture.requests.filter(r=>r.type==='status').length>n,statusCount);
+  await page.getByRole('heading',{name:'Meeting sources detected',exact:true}).waitFor();
+  assert.equal(await page.locator('#record-error').isVisible(),true,'the refusal stays until the offered action changes');
+  // An accepted ask shows progress until this tab's capture reflects it.
+  await page.evaluate(()=>{fixture.recordReply=message=>new Promise(resolve=>{window.finishRecord=()=>{
+    fixture.captures=[{tabId:7,recording:false,starting:true,recordRequest:{action:'start',state:'accepted'}}];resolve({tabId:7})}})});
+  await start.click();
+  await page.getByRole('button',{name:'Starting…',exact:true}).waitFor();
+  assert.equal(await page.locator('#record').isDisabled(),true);
+  assert.equal(await page.locator('#status').textContent(),'Asking Cassini to start recording…');
+  // The whole card renders the pending state, not just the heading and button.
+  assert.equal(await page.locator('#card').getAttribute('data-tone'),'neutral');
+  assert.match(await page.locator('#explanation').textContent(),/Waiting for it to confirm/);
+  assert.equal(await page.locator('#recording-note').textContent(),'Recording is not yet confirmed');
+  assert.equal(await page.locator('#reload').isVisible(),false);
+  assert.equal(await page.locator('#record-error').isVisible(),false,'a new click clears the old refusal');
+  await page.evaluate(()=>window.finishRecord());
+  await page.getByRole('heading',{name:'Asking Cassini to start recording…',exact:true}).waitFor();
+  await page.evaluate(()=>{fixture.captures=[{tabId:7,recording:true,tracks:2}]});
+  const stop=page.getByRole('button',{name:'Stop recording',exact:true});
+  await stop.waitFor();
+  assert.equal(await page.locator('#record').getAttribute('data-action'),'stop');
+  await mkdir(path.join(root,'artifacts'),{recursive:true});
+  assert.equal(await page.locator('#record').evaluate(e=>getComputedStyle(e).backgroundColor),rgb(tokens.record.light),'Stop keeps the Record red');
+  await page.screenshot({path:path.join(root,'artifacts/popup-recording.png'),fullPage:true});
+  await page.evaluate(()=>{fixture.recordReply=()=>{fixture.captures=[{tabId:7,recording:true,tracks:2,stopping:true}];return {tabId:7}}});
+  await stop.click();
+  await page.getByRole('button',{name:'Saving…',exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>fixture.requests.filter(r=>r.type==='recordRequest').map(({action,tabId})=>({action,tabId}))),
+    [{action:'start',tabId:7},{action:'start',tabId:7},{action:'start',tabId:7},{action:'stop',tabId:7}]);
+  await page.evaluate(()=>{delete fixture.captures;delete fixture.recordReply;delete fixture.status.appRecording;fixture.status.browserHealth.tabs=[]});
+  await page.getByRole('heading',{name:'No meeting sources detected',exact:true}).waitFor();
+}

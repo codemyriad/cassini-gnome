@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "capability": "popup-record-v1",
+  "note": "Browser popup Start/Stop asks the connected app (SPEC-CONTROL.md, 'Popup Start and Stop'). `flow` is one literal control-connection exchange after hello/meetings/status; the app answers each recordRequest exactly once with recordRequestResult and records through its own ordinary command. `wire` lists single messages and whether each side's schema admits them.",
+  "flow": [
+    {"from": "app", "message": {"type": "recordRequests", "enabled": true}},
+    {"from": "extension", "message": {"type": "recordRequestsConfigured", "enabled": true}},
+    {"from": "extension", "message": {"type": "recordRequest", "requestId": "popup-1731500000000-1", "action": "start", "tabId": 2, "callGeneration": "call-A", "title": "Weekly sync", "url": "https://meet.example/call", "documentGeneration": "doc-A", "pageState": "present"}},
+    {"from": "app", "message": {"type": "command", "requestId": "manual-17", "action": "start", "tabId": 2, "mode": "tracks", "independent": true, "keepOnNavigation": true, "callGeneration": "call-A"}},
+    {"from": "app", "message": {"type": "recordRequestResult", "requestId": "popup-1731500000000-1", "ok": true}},
+    {"from": "extension", "message": {"type": "recordRequest", "requestId": "popup-1731500000000-2", "action": "stop", "tabId": 2, "captureId": "capture-1"}},
+    {"from": "app", "message": {"type": "command", "requestId": "manual-18", "action": "stop", "tabId": 2, "independent": true, "reason": "user", "captureId": "capture-1"}},
+    {"from": "app", "message": {"type": "recordRequestResult", "requestId": "popup-1731500000000-2", "ok": true}},
+    {"from": "extension", "message": {"type": "recordRequest", "requestId": "popup-1731500000000-3", "action": "start", "tabId": 2, "callGeneration": "call-A", "title": "Weekly sync", "url": "https://meet.example/call", "documentGeneration": "doc-A", "pageState": "present"}},
+    {"from": "app", "message": {"type": "recordRequestResult", "requestId": "popup-1731500000000-3", "ok": false, "error": "Cassini needs microphone access before it can record. Open Cassini to allow it.", "code": "permission"}}
+  ],
+  "wire": [
+    {"name": "opt-out", "from": "app", "valid": true, "message": {"type": "recordRequests", "enabled": false}},
+    {"name": "opt-in-needs-boolean", "from": "app", "valid": false, "message": {"type": "recordRequests", "enabled": "yes"}},
+    {"name": "opt-in-rejects-extra-fields", "from": "app", "valid": false, "message": {"type": "recordRequests", "enabled": true, "tabId": 2}},
+    {"name": "refusal-needs-error", "from": "app", "valid": false, "message": {"type": "recordRequestResult", "requestId": "popup-1", "ok": false}},
+    {"name": "refusal-code-pattern", "from": "app", "valid": false, "message": {"type": "recordRequestResult", "requestId": "popup-1", "ok": false, "error": "No.", "code": "not a code"}},
+    {"name": "result-needs-request-id", "from": "app", "valid": false, "message": {"type": "recordRequestResult", "ok": true}},
+    {"name": "start-needs-call-generation", "from": "extension", "valid": false, "message": {"type": "recordRequest", "requestId": "popup-1", "action": "start", "tabId": 2, "title": "Weekly sync", "url": "https://meet.example/call"}},
+    {"name": "start-needs-browser-metadata", "from": "extension", "valid": false, "message": {"type": "recordRequest", "requestId": "popup-1", "action": "start", "tabId": 2, "callGeneration": "call-A"}},
+    {"name": "start-minimal-metadata", "from": "extension", "valid": true, "message": {"type": "recordRequest", "requestId": "popup-1", "action": "start", "tabId": 2, "callGeneration": "call-A", "title": "Weekly sync", "url": "https://meet.example/call"}},
+    {"name": "start-url-must-be-web", "from": "extension", "valid": false, "message": {"type": "recordRequest", "requestId": "popup-1", "action": "start", "tabId": 2, "callGeneration": "call-A", "title": "Weekly sync", "url": "chrome://settings/"}},
+    {"name": "start-has-no-capture", "from": "extension", "valid": false, "message": {"type": "recordRequest", "requestId": "popup-1", "action": "start", "tabId": 2, "callGeneration": "call-A", "title": "Weekly sync", "url": "https://meet.example/call", "captureId": "capture-1"}},
+    {"name": "stop-of-pending-start", "from": "extension", "valid": true, "message": {"type": "recordRequest", "requestId": "popup-1", "action": "stop", "tabId": 2}},
+    {"name": "no-whole-tab-ask", "from": "extension", "valid": false, "message": {"type": "recordRequest", "requestId": "popup-1", "action": "record", "tabId": 2}}
+  ]
+}

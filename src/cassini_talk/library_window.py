@@ -880,68 +880,96 @@ class LibraryWindow(Adw.ApplicationWindow):
                 header.pack_end(Gtk.Button(label=text("common.exportEllipsis"), action_name="win.export"))
         return header
 
+    def _first_run_header(self):
+        """L-27: primary menu and window close only; no header Record and no visible title."""
+        header = Adw.HeaderBar(
+            show_start_title_buttons=False,
+            show_end_title_buttons=True,
+            decoration_layout=":close",
+            css_classes=["library-header", "first-run-header"],
+        )
+        header.set_title_widget(Gtk.Box())
+        header.pack_end(self._primary_menu_button())
+        return header
+
     def _build_empty(self):
+        """L-27 first-run hero (HARMONY section 10, COMPONENTS.md section 8)."""
+        from .brand_mark import HERO_MARK_HEIGHT_PX, BrandMark
+        from .first_run_hero import HeroWave
+
         view = Adw.ToolbarView()
-        view.add_top_bar(self._header(record=True))
+        view.add_top_bar(self._first_run_header())
+        overlay = Gtk.Overlay()
         outer = vertical(vexpand=True)
-        center = vertical(22, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, vexpand=True, css_classes=["first-run"])
-        center.append(
-            Gtk.Image(
-                icon_name="audio-input-microphone-symbolic",
-                pixel_size=48,
-                accessible_role=Gtk.AccessibleRole.PRESENTATION,
-                halign=Gtk.Align.CENTER,
-                css_classes=["first-run-icon"],
-            )
+        overlay.set_child(outer)
+        # Only a hidden accessible "Library" heading: transparent, but still in the accessibility tree.
+        heading = self.first_run_heading = label(
+            text("library.title"),
+            "first-run-heading",
+            accessible_role=Gtk.AccessibleRole.HEADING,
+            halign=Gtk.Align.START,
+            valign=Gtk.Align.START,
+            can_target=False,
         )
-        title = label(
-            text("firstRun.title"),
-            "library-title",
-            justify=Gtk.Justification.CENTER,
-            halign=Gtk.Align.CENTER,
-            wrap=True,
-            width_request=280,
-        )
-        title.set_max_width_chars(28)
-        title.set_halign(Gtk.Align.FILL)
-        center.append(Adw.Clamp(maximum_size=280, tightening_threshold=280, child=title))
-        body = label(text("firstRun.body"), "dim-label", justify=Gtk.Justification.CENTER, wrap=True, width_request=460)
-        body.set_max_width_chars(50)
-        center.append(body)
+        heading.set_opacity(0.0)
+        overlay.add_overlay(heading)
+        center = vertical(valign=Gtk.Align.CENTER, vexpand=True, hexpand=True, css_classes=["first-run"])
+        # A 720 px column on wide windows that shrinks with narrow ones: a clamp caps
+        # the width without making it the window's minimum (the header must stay on screen).
+        hero = vertical(hexpand=True, css_classes=["first-run-hero"])
+        clamp = Adw.Clamp(maximum_size=720, tightening_threshold=720, hexpand=True, child=hero)
+        mark = BrandMark(HERO_MARK_HEIGHT_PX)
+        mark.set_halign(Gtk.Align.START)
+        mark.add_css_class("hero-mark")
+        hero.append(mark)
+        # One sentence per line, left-aligned, 64 px bold platform font; the second line dimmed.
+        for key, classes in (
+            ("firstRun.hero.title", ["hero-title"]),
+            ("firstRun.hero.subtitle", ["hero-title", "hero-subtitle"]),
+        ):
+            # No wrap (drawn): ellipsize rather than reflow if a translation outgrows the column.
+            line = label(text(key), *classes, xalign=0, halign=Gtk.Align.START, ellipsize=Pango.EllipsizeMode.END)
+            hero.append(line)
+        self.hero_title, self.hero_subtitle = hero.get_last_child().get_prev_sibling(), hero.get_last_child()
+        wave_row = Gtk.Box(spacing=16, halign=Gtk.Align.START, css_classes=["hero-wave-row"])
+        record = self._record(big=True)
+        record.add_css_class("hero-record")
+        record.set_halign(Gtk.Align.START)
+        record.set_valign(Gtk.Align.CENTER)
+        wave_row.append(record)
+        self.hero_wave = HeroWave()
+        wave_row.append(self.hero_wave)
+        hero.append(wave_row)
+        body = label(text("firstRun.body"), "dim-label", "hero-body", xalign=0, halign=Gtk.Align.START, wrap=True)
+        body.set_max_width_chars(60)
+        hero.append(body)
         self.first_recording_lines = vertical(visible=False)
-        center.append(self.first_recording_lines)
-        center.append(self._record(big=True))
-        center.append(
-            label(
-                text("firstRun.shortcutHint", shortcut=text("common.shortcut.record")),
-                "small",
-                "dim-label",
-                margin_top=8,
-            )
-        )
+        hero.append(self.first_recording_lines)
         companion = self.first_companion = Gtk.Button(
             label=text("companion.addStep.title"),
             css_classes=["flat"],
-            halign=Gtk.Align.CENTER,
+            halign=Gtk.Align.START,
             visible=self.get_application().browser_companion_available,
         )
         companion.connect("clicked", lambda *_: self.get_application().on_companion_setup(parent=self))
-        center.append(companion)
+        hero.append(companion)
         from .browser_status import BrowserStatus
 
         self.first_browser_status = BrowserStatus(self.get_application(), self)
-        center.append(self.first_browser_status)
-        outer.append(center)
-        footer = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, margin_bottom=18)
+        hero.append(self.first_browser_status)
+        # Provisional privacy line (firstRun.footer until L-09 / D-938 closes), first run only (L-30).
+        footer = Gtk.Box(spacing=8, halign=Gtk.Align.START, css_classes=["hero-privacy"])
         footer.append(
             Gtk.Image(
                 icon_name="changes-prevent-symbolic", pixel_size=14, accessible_role=Gtk.AccessibleRole.PRESENTATION
             )
         )
-        footer.append(label(text("firstRun.footer"), "small", "dim-label"))
+        footer.append(label(text("firstRun.footer"), "small", "dim-label", xalign=0, wrap=True))
         self.privacy_footer = footer
-        outer.append(footer)
-        view.set_content(outer)
+        hero.append(footer)
+        center.append(clamp)
+        outer.append(center)
+        view.set_content(overlay)
         self.root_box.add_named(view, "empty")
         self.offline = label(text("errors.libraryOffline.line"), wrap=True, vexpand=True)
         offline_view = Adw.ToolbarView(content=self.offline)

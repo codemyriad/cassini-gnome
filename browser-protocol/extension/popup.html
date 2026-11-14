@@ -1,67 +1,71 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Cassini browser companion</title>
+<link rel="stylesheet" href="brand-tokens.css">
 <style>
-:root { color-scheme: light dark; font: 13px system-ui, sans-serif; color: #252a30; background: #fff; }
+/* Every colour is a cassini-ux brand role from brand-tokens.css (generated; L-16, L-39, L-42).
+   No colour literal belongs in this file: tests/test_brand_alignment.py rejects one. */
+:root { color-scheme: light dark; font: 13px system-ui, sans-serif; color: var(--cx-ink); background: var(--cx-raised); }
 * { box-sizing: border-box; }
 /* Prefer 376px during intrinsic sizing, but allow Chrome's final containing
    block to constrain it at high browser zoom. Avoid viewport-unit feedback. */
 html { width: 376px; max-width: 100%; }
 body { margin: 0; width: 100%; }
-header { display: flex; align-items: center; gap: 9px; padding: 22px 22px 17px; }
-.mark { width: 14px; height: 14px; border: 4px solid #f9d5c8; border-radius: 50%; background: #e46a54; }
-h1 { font-size: 17px; letter-spacing: -.4px; margin: 0; }
-.subtitle { margin-left: auto; color: #7a838b; font-size: 11px; }
-#connection { margin: 0 22px; padding: 0 0 17px; border-bottom: 1px solid #e9edef; color: #66727b; font-size: 11px; }
-#connection::before { content: '●'; margin-right: 7px; color: #87929a; }
-#connection[data-connected="true"]::before { color: #398569; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; padding: 20px 22px 15px; }
+/* The cassini.talk Saturn (saturn-nav, header size) beside the lowercase wordmark: mark 26, word 18 medium (L-04, L-15). */
+.mark { display: block; flex: none; width: auto; height: 26px; }
+.wordmark { margin: 0; font: 500 18px system-ui, sans-serif; letter-spacing: normal; text-transform: none; }
+.subtitle { margin-left: auto; color: var(--cx-ink-3); font-size: 11px; }
+#connection { margin: 0 22px; padding: 0 0 17px; border-bottom: 1px solid var(--cx-line); color: var(--cx-ink-2); font-size: 11px; }
+#connection::before { content: '●'; margin-right: 7px; color: var(--cx-ink-3); }
+#connection[data-connected="true"]::before { color: var(--cx-success); }
 main { padding: 22px; }
-.eyebrow { color: #828b93; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.eyebrow { color: var(--cx-ink-3); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
 #tab-title { margin: 6px 0 3px; font-size: 15px; font-weight: 650; overflow-wrap: anywhere; }
-#site { margin: 0; color: #7a858f; font-size: 11px; overflow-wrap: anywhere; }
-.card { margin-top: 22px; padding: 16px; border: 1px solid #e4e8ec; border-radius: 9px; background: #f6f8fa; }
-.card[data-tone="good"] { border-color: #dcebe2; background: #f2f8f5; }
-.card[data-tone="warning"] { border-color: #efe2c9; background: #fcf8ef; }
+#site { margin: 0; color: var(--cx-ink-3); font-size: 11px; overflow-wrap: anywhere; }
+.card { margin-top: 22px; padding: 16px; border: 1px solid var(--cx-line-soft); border-radius: 9px; background: var(--cx-sunken); }
+.card[data-tone="good"] { background: var(--cx-success-tint); }
+.card[data-tone="warning"] { background: var(--cx-warn-tint); }
 #status { margin: 0; font-size: 14px; font-weight: 650; line-height: 1.45; }
-#explanation { margin: 9px 0 0; color: #65717b; font-size: 12px; line-height: 1.65; }
-#recording-note { margin: 18px 0 0; color: #68747e; font-size: 12px; line-height: 1.6; }
-button { width: 100%; margin-top: 17px; padding: 10px 12px; border: 1px solid #d5dde5; border-radius: 7px; background: #fff; color: #365f93; font: 600 12px system-ui; cursor: pointer; }
-button:hover { background: #f1f5fa; } button:disabled { opacity: .55; cursor: default; }
-button:focus-visible, summary:focus-visible { outline: 3px solid #7c9cd1; outline-offset: 3px; }
-#reload-warning { margin: 7px 0 0; color: #7a838c; font-size: 10px; line-height: 1.5; }
-#installation-warning { color: #926a31; font-size: 11px; line-height: 1.6; }
-#action-error { color: #a4582f; font-size: 12px; line-height: 1.5; }
-footer { padding: 15px 22px 20px; border-top: 1px solid #e9edef; }
-footer > p { margin: 0 0 14px; font-size: 12px; color: #66727b; line-height: 1.6; }
-summary { width: fit-content; cursor: pointer; color: #737f89; font-size: 11px; }
-#diagnostics { white-space: pre-wrap; overflow-wrap: anywhere; color: #66727b; font-size: 10px; line-height: 1.65; }
+#explanation { margin: 9px 0 0; color: var(--cx-ink-2); font-size: 12px; line-height: 1.65; }
+#recording-note { margin: 18px 0 0; color: var(--cx-ink-2); font-size: 12px; line-height: 1.6; }
+/* Secondary buttons: ink at 10% over whatever is behind them (L-46, L-54). */
+button { width: 100%; margin-top: 17px; padding: 10px 12px; border: 1px solid transparent; border-radius: 7px;
+  background: color-mix(in srgb, var(--cx-ink) 10%, transparent); color: var(--cx-ink); font: 600 12px system-ui; cursor: pointer; }
+button:hover:not(:disabled) { background: color-mix(in srgb, var(--cx-ink) 16%, transparent); }
+button:disabled { opacity: .55; cursor: default; }
+/* Record and Stop: the Record red fill with white text and glyph in both modes (L-07, L-20). */
+#record { display: flex; align-items: center; justify-content: center; gap: 7px; background: var(--cx-record); color: var(--cx-on-record); }
+#record::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--cx-on-record); }
+#record[data-action="stop"]::before { border-radius: 1.5px; }
+#record:hover:not(:disabled) { background: var(--cx-record); filter: brightness(.9); }
+#record-hint { margin: 7px 0 0; color: var(--cx-ink-2); font-size: 11px; line-height: 1.5; }
+button:focus-visible, summary:focus-visible { outline: 3px solid var(--cx-accent); outline-offset: 3px; }
+#reload-warning { margin: 7px 0 0; color: var(--cx-ink-3); font-size: 10px; line-height: 1.5; }
+#installation-warning { color: var(--cx-warn-ink); font-size: 11px; line-height: 1.6; }
+#action-error, #record-error { color: var(--cx-error); font-size: 12px; line-height: 1.5; }
+footer { padding: 15px 22px 20px; border-top: 1px solid var(--cx-line); }
+footer > p { margin: 0 0 14px; font-size: 12px; color: var(--cx-ink-2); line-height: 1.6; }
+summary { width: fit-content; cursor: pointer; color: var(--cx-ink-3); font-size: 11px; }
+#diagnostics { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--cx-ink-2); font-size: 10px; line-height: 1.65; }
 #copy { margin-top: 5px; width: auto; padding: 7px 10px; font-size: 11px; }
-#copy-result { color: #66727b; font-size: 11px; }
+#copy-result { color: var(--cx-ink-2); font-size: 11px; }
 [hidden] { display: none !important; }
-@media (prefers-color-scheme: dark) {
- :root { color: #e4e8ed; background: #24272c; }
- #connection, footer { border-color: #3c4249; }
- #connection, #explanation, #recording-note, #diagnostics, footer > p, #copy-result { color: #b4bdc7; }
- .subtitle, .eyebrow, #site, summary, #reload-warning { color: #a7b1bc; }
- .card { background: #2d333b; border-color: #424b56; }
- .card[data-tone="good"] { background: #273b32; border-color: #3e5b4a; }
- .card[data-tone="warning"] { background: #40392b; border-color: #625237; }
- button { background: #303741; color: #b9d1f4; border-color: #4d5b6d; }
- button:hover { background: #3c4755; } #installation-warning { color: #e2bc7e; }
-#action-error { color: #f0b28b; }
-}
 </style></head><body>
-<header><span class="mark" aria-hidden="true"></span><h1>Cassini</h1><span class="subtitle">Browser companion</span></header>
+<header><img class="mark" src="brand/saturn-nav.svg" alt="" width="40" height="26"><h1 class="wordmark">cassini.talk</h1><span class="subtitle">Browser companion</span></header>
 <p id="connection">Checking the app connection…</p>
 <main id="tab-status" aria-busy="true">
  <div class="eyebrow">This tab</div><p id="tab-title">Checking this tab…</p><p id="site"></p>
  <section class="card" id="card" aria-live="polite" aria-atomic="true"><h2 id="status">Checking meeting detection…</h2><p id="explanation"></p></section>
  <p id="installation-warning" hidden>Some audio capture files could not be read. See connection details; this check does not determine page readiness.</p>
- <p id="recording-note">Recording is managed in Cassini.</p>
+ <p id="recording-note">Start recording asks the Cassini app on this computer to record this tab.</p>
+ <button id="record" hidden disabled aria-describedby="record-hint">Start recording</button><p id="record-hint" hidden></p>
+ <p id="record-error" role="status" hidden></p>
  <button id="reload" hidden>Reload meeting tab</button><p id="reload-warning" hidden>Reloading briefly disconnects you from the call.</p>
  <p id="action-error" role="status" hidden></p>
 </main>
 <footer>
- <p>Use the Cassini app to start, stop, or manage automatic recording.</p>
+ <p>Automatic recording and saved recordings are managed in the Cassini app.</p>
+ <p id="privacy">Recordings are still saved on this computer, in Music/Cassini. Nothing is uploaded.</p>
  <details><summary>Connection details</summary><pre id="diagnostics">Checking…</pre><button id="copy" disabled>Copy diagnostics</button><p id="copy-result" role="status" hidden></p></details>
 </footer>
 <script type="module" src="popup.js"></script></body></html>

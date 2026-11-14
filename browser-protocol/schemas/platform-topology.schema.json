@@ -1,0 +1,660 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cassini privacy-safe browser platform topology replay fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "platform",
+    "capturedOn",
+    "provenance",
+    "call",
+    "runtime",
+    "webAudioGraphs",
+    "peers"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cassini-platform-topology/v1"
+    },
+    "platform": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "minLength": 2,
+      "maxLength": 64
+    },
+    "capturedOn": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "provenance": {
+      "enum": [
+        "live-probe",
+        "synthetic-probe",
+        "incident-observation"
+      ]
+    },
+    "call": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "localSpeakers",
+        "remoteSpeakers"
+      ],
+      "properties": {
+        "localSpeakers": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16
+        },
+        "remoteSpeakers": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 64
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "usesWebAudio",
+        "usesAudioWorklet",
+        "usesWasm"
+      ],
+      "properties": {
+        "usesWebAudio": {
+          "type": "boolean"
+        },
+        "usesAudioWorklet": {
+          "type": "boolean"
+        },
+        "usesWasm": {
+          "type": "boolean"
+        }
+      }
+    },
+    "webAudioGraphs": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/webAudioGraph"
+      }
+    },
+    "peers": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/peer"
+      }
+    }
+  },
+  "$defs": {
+    "trackLabel": {
+      "enum": [
+        "MediaStreamAudioDestinationNode",
+        "remote audio",
+        "remote video",
+        "microphone",
+        "camera",
+        "display audio",
+        "display video",
+        "synthetic audio",
+        "synthetic video",
+        "opaque-local-audio",
+        "opaque-local-video",
+        "opaque-remote-audio",
+        "opaque-remote-video",
+        "unlabeled"
+      ]
+    },
+    "webAudioNodeType": {
+      "enum": [
+        "getUserMediaAudio",
+        "getDisplayMediaAudio",
+        "MediaStreamAudioSourceNode",
+        "MediaElementAudioSourceNode",
+        "MediaStreamTrackAudioSourceNode",
+        "MediaStreamAudioDestinationNode",
+        "AudioDestinationNode",
+        "GainNode",
+        "BiquadFilterNode",
+        "DynamicsCompressorNode",
+        "AnalyserNode",
+        "DelayNode",
+        "ConvolverNode",
+        "WaveShaperNode",
+        "StereoPannerNode",
+        "PannerNode",
+        "ChannelSplitterNode",
+        "ChannelMergerNode",
+        "IIRFilterNode",
+        "ScriptProcessorNode",
+        "AudioWorkletNode",
+        "OscillatorNode",
+        "AudioBufferSourceNode",
+        "ConstantSourceNode",
+        "AudioNode"
+      ]
+    },
+    "webAudioNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^n(?:0|[1-9]\\d*)$"
+        },
+        "type": {
+          "$ref": "#/$defs/webAudioNodeType"
+        },
+        "origin": {
+          "enum": [
+            "microphone",
+            "display",
+            "remote",
+            "media-element",
+            "synthetic",
+            "unknown"
+          ]
+        },
+        "inputs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32
+        },
+        "outputs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "ChannelMergerNode"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "inputs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "ChannelSplitterNode"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "outputs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32
+              }
+            }
+          }
+        }
+      ]
+    },
+    "webAudioEdge": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to",
+            "kind"
+          ],
+          "properties": {
+            "from": {
+              "type": "string",
+              "pattern": "^n(?:0|[1-9]\\d*)$"
+            },
+            "to": {
+              "type": "string",
+              "pattern": "^n(?:0|[1-9]\\d*)$"
+            },
+            "kind": {
+              "const": "stream"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to",
+            "kind",
+            "output",
+            "input"
+          ],
+          "properties": {
+            "from": {
+              "type": "string",
+              "pattern": "^n(?:0|[1-9]\\d*)$"
+            },
+            "to": {
+              "type": "string",
+              "pattern": "^n(?:0|[1-9]\\d*)$"
+            },
+            "kind": {
+              "const": "audio"
+            },
+            "output": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "input": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to",
+            "kind",
+            "output"
+          ],
+          "properties": {
+            "from": {
+              "type": "string",
+              "pattern": "^n(?:0|[1-9]\\d*)$"
+            },
+            "to": {
+              "type": "string",
+              "pattern": "^n(?:0|[1-9]\\d*)$"
+            },
+            "kind": {
+              "const": "param"
+            },
+            "output": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            }
+          }
+        }
+      ]
+    },
+    "webAudioGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "contextState",
+        "nodes",
+        "edges",
+        "outputTrackOrigin"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^graph-(?:0|[1-9]\\d*)$"
+        },
+        "contextState": {
+          "enum": [
+            "suspended",
+            "running",
+            "closed"
+          ]
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/webAudioNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/webAudioEdge"
+          }
+        },
+        "outputTrackOrigin": {
+          "enum": [
+            "microphone",
+            "display",
+            "remote",
+            "media-element",
+            "synthetic",
+            "mixed-microphone-display",
+            "none"
+          ]
+        }
+      }
+    },
+    "rtpSourceSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "present",
+        "distinctCount"
+      ],
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "distinctCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        }
+      }
+    },
+    "sender": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "label",
+        "lineage",
+        "webAudioGraphId",
+        "webAudioDestNodeId",
+        "cloned",
+        "packetsProgressing"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "audio",
+            "video"
+          ]
+        },
+        "label": {
+          "$ref": "#/$defs/trackLabel"
+        },
+        "lineage": {
+          "enum": [
+            "microphone",
+            "microphone-clone",
+            "webaudio-microphone",
+            "webaudio-synthetic",
+            "webaudio-media-element",
+            "webaudio-display",
+            "display",
+            "camera",
+            "synthetic",
+            "unknown"
+          ]
+        },
+        "webAudioGraphId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^graph-(?:0|[1-9]\\d*)$"
+            }
+          ]
+        },
+        "webAudioDestNodeId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^n(?:0|[1-9]\\d*)$"
+            }
+          ]
+        },
+        "cloned": {
+          "type": "boolean"
+        },
+        "packetsProgressing": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "required": [
+          "webAudioGraphId"
+        ],
+        "properties": {
+          "webAudioGraphId": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "webAudioDestNodeId": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "kind": {
+            "const": "audio"
+          },
+          "webAudioDestNodeId": {
+            "type": "string",
+            "pattern": "^n(?:0|[1-9]\\d*)$"
+          }
+        }
+      }
+    },
+    "receiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "label",
+        "mixing",
+        "speakersOnTrack",
+        "speakersOverTime",
+        "csrc",
+        "ssrc",
+        "packetsProgressing"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "audio",
+            "video"
+          ]
+        },
+        "label": {
+          "$ref": "#/$defs/trackLabel"
+        },
+        "mixing": {
+          "enum": [
+            "single",
+            "mixed",
+            "switched",
+            "unknown"
+          ]
+        },
+        "speakersOnTrack": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 64
+        },
+        "speakersOverTime": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 64
+          }
+        },
+        "csrc": {
+          "$ref": "#/$defs/rtpSourceSummary"
+        },
+        "ssrc": {
+          "$ref": "#/$defs/rtpSourceSummary"
+        },
+        "packetsProgressing": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "required": [
+          "mixing"
+        ],
+        "properties": {
+          "mixing": {
+            "const": "single"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "speakersOnTrack": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "transceiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slot",
+        "kind",
+        "direction",
+        "currentDirection",
+        "sender",
+        "receiver"
+      ],
+      "properties": {
+        "slot": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "kind": {
+          "enum": [
+            "audio",
+            "video"
+          ]
+        },
+        "direction": {
+          "enum": [
+            "sendrecv",
+            "sendonly",
+            "recvonly",
+            "inactive",
+            "stopped"
+          ]
+        },
+        "currentDirection": {
+          "enum": [
+            "sendrecv",
+            "sendonly",
+            "recvonly",
+            "inactive",
+            "stopped",
+            null
+          ]
+        },
+        "sender": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sender"
+            }
+          ]
+        },
+        "receiver": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/receiver"
+            }
+          ]
+        }
+      }
+    },
+    "peer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "peer",
+        "connectionState",
+        "dataChannelCount",
+        "transceivers"
+      ],
+      "properties": {
+        "peer": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        },
+        "connectionState": {
+          "enum": [
+            "new",
+            "connecting",
+            "connected",
+            "disconnected",
+            "failed",
+            "closed"
+          ]
+        },
+        "dataChannelCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "transceivers": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/transceiver"
+          }
+        }
+      }
+    }
+  }
+}

@@ -21,8 +21,10 @@ module.exports = async function fixture(run, settings={}) {
   connect(target,output=0,input=0){if(!(target instanceof AudioNode||target instanceof AudioParam))throw new TypeError('not a node');this.links.push({target,output,input});return target}
   disconnect(target){if(target!==undefined&&!this.links.some(l=>l.target===target))throw Error('InvalidAccessError');this.links=this.links.filter(l=>target!==undefined&&l.target!==target)}
  }
+ class MediaStreamTrackAudioSourceNode extends AudioNode {constructor(context,{mediaStreamTrack}){super(context,{mediaStreamTrack})}}
  class Context {constructor(){if(contextError)throw Error('generated context attach failure')}sampleRate=48000;state='running';async close(){this.state='closed'}
   createMediaStreamSource(mediaStream){return new AudioNode(this,{mediaStream})}
+  createMediaStreamTrackSource(mediaStreamTrack){return new MediaStreamTrackAudioSourceNode(this,{mediaStreamTrack})}
   createMediaElementSource(mediaElement){return new AudioNode(this,{mediaElement})}
   createMediaStreamDestination(){return new AudioNode(this,{stream:new Stream([new Track({id:'webaudio-output',label:'MediaStreamAudioDestinationNode',kind:'audio',readyState:'live',enabled:true,muted:false})])})}
   createGain(){return new AudioNode(this,{gain:new AudioParam()})}
@@ -46,7 +48,7 @@ module.exports = async function fixture(run, settings={}) {
   async getUserMedia(){return new Stream([new Track({id:`user-mic-${++nextInput}`,label:'Headset Microphone',kind:'audio',readyState:'live',enabled:true,muted:false})])},
   async getDisplayMedia(){return new Stream([new Track({id:`display-audio-${++nextInput}`,label:'Tab audio',kind:'audio',readyState:'live',enabled:true,muted:false})])}
  }};
- const context=vm.createContext({window,navigator,document:{querySelectorAll:()=>media},MediaStream:Stream,MediaStreamTrack:Track,AudioContext:ContextClass,AudioNode,AudioParam,
+ const context=vm.createContext({window,navigator,document:{querySelectorAll:()=>media},MediaStream:Stream,MediaStreamTrack:Track,AudioContext:ContextClass,AudioNode,AudioParam,MediaStreamTrackAudioSourceNode,
   crypto:{randomUUID:()=>`id-${++uuid}`},performance:{now:()=>now},setInterval:fn=>(timers.push(fn),timers.length),clearInterval(){},
   setTimeout,clearTimeout,queueMicrotask});
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../../page-hook.js'),'utf8'),context,{importModuleDynamically:vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER});
@@ -60,7 +62,7 @@ module.exports = async function fixture(run, settings={}) {
  const tick=async()=>{now+=1000;await timers[0]();};
  const scan=async()=>{assert.ok(timers[1],'capture scan exists');await timers.at(-1)();};
  let activeToken='recording';
- try {await run({peer,window,navigator,Track,AudioContext:context.AudioContext,remote,tick,scan,captures,messages,cachedPeer:()=>new Peer(),receive(data){if(data.type==="start")activeToken=data.token;return control(data)},render(track,card){const element={srcObject:new Stream([track]),closest:()=>card};media.push(element);return element},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
+ try {await run({peer,window,navigator,Track,AudioContext:context.AudioContext,MediaStreamTrackAudioSourceNode:context.MediaStreamTrackAudioSourceNode,remote,tick,scan,captures,messages,cachedPeer:()=>new Peer(),receive(data){if(data.type==="start")activeToken=data.token;return control(data)},render(track,card){const element={srcObject:new Stream([track]),closest:()=>card};media.push(element);return element},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
  finally {await control({type:'stop',token:activeToken});delete globalThis.__cassiniPageCapture;}
 }
 ;
