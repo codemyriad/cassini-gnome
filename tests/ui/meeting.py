@@ -618,13 +618,15 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.meeting_page.meeting.words
     assert not isinstance(window.player, FolderPlayer), "Received meeting must exercise player replacement"
     assert window.player.rate == 1.5 and window.meeting_page.rate_button.get_label() == "1.5×"
-    subprocess.run(["xdotool", "key", "ctrl+bracketright"], check=True)
+    # HARMONY section 8 removed the speed shortcuts; the speed control still steps.
+    assert app.get_accels_for_action("win.rate-up") == [] and app.get_accels_for_action("win.rate-down") == []
+    window.activate_action("win.rate-up", None)
     until(lambda: window.player.rate == 1.75)
     assert window.meeting_page.rate_button.get_label() == "1.75×"
     app.on_shortcuts()
     until(lambda: app.shortcuts_dialog and app.shortcuts_dialog.get_mapped())
     shortcut_labels = labels(app.shortcuts_dialog)
-    assert "Increase playback speed" in shortcut_labels and "Decrease playback speed" in shortcut_labels
+    assert "Increase playback speed" not in shortcut_labels and "Decrease playback speed" not in shortcut_labels
     assert "Preferences" in shortcut_labels and "Back to Library" in shortcut_labels
     app.shortcuts_dialog.close()
     until(lambda: app.shortcuts_dialog is None)
