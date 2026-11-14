@@ -44,7 +44,7 @@ def test_many_inputs_and_nested_zip_paths_keep_original_bytes_and_names(tmp_path
         compression=zipfile.ZIP_DEFLATED,
     )
     root = tmp_path / "Library"
-    result = batch_import.import_files([ONE, archive, tmp_path / "unsupported.wav"], root)
+    result = batch_import.import_files([ONE, archive, tmp_path / "unsupported.flac"], root)
     assert (result.imported, result.duplicates, result.ignored, result.failed) == (2, 1, 3, 0)
     assert len(documents(root)) == 2 and not list(root.glob(".received-*"))
     metadata = [json.loads((p / "meeting.json").read_text()) for p in documents(root)]

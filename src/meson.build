@@ -155,6 +155,9 @@ talk_sources = files(
   'cassini_talk/archive_import.py',
   'cassini_talk/batch_import.py',
   'cassini_talk/import_feedback.py',
+  'cassini_talk/import_types.py',
+  'cassini_talk/import-types.json',
+  'cassini_talk/audio_import.py',
   'cassini_talk/import_dialog.py',
 
   'cassini_talk/capture_guard.py',

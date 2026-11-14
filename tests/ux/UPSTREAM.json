@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/codemyriad/cassini-ux",
-  "commit": "03fd3bb7dc806c015c1079807eaf5bc548a9fd42",
+  "commit": "aa058d366fcb7198bf68df4c0f713e8900410541",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -78,7 +78,8 @@
     "library-vectors/expected/t8-none-referenced-words.json": "ux/library-vectors/expected/t8-none-referenced-words.json",
     "library-vectors/expected/t8-low-audio-silent.json": "ux/library-vectors/expected/t8-low-audio-silent.json",
     "listen-by-speaker/turns.json": "tests/ux/listen-by-speaker/turns.json",
-    "listen-by-speaker/README.md": "tests/ux/listen-by-speaker/README.md"
+    "listen-by-speaker/README.md": "tests/ux/listen-by-speaker/README.md",
+    "import-types.json": "src/cassini_talk/import-types.json"
   },
   "sha256": {
     "format-vectors.json": "e418d48c7e551a90756699f42e939c7dd918f444deb302e4410af312afc32279",
@@ -157,7 +158,8 @@
     "library-vectors/expected/t8-none-referenced-words.json": "111f5a44d2db94a8faaefd635b5c3f6520af0d9280839e90a327c62493ae6c56",
     "library-vectors/expected/t8-low-audio-silent.json": "8c18748f8d778a2209870e9484262eb7116ecdce780d48fb5201106092628419",
     "listen-by-speaker/turns.json": "0c0d49a7f1d57f97b243d08c0558ab13506a39a93316a2e7506d228f21d75e29",
-    "listen-by-speaker/README.md": "499612b72cee5c64cb449f1797d3932a19c44e32a94711ebd8eb25a8d76c354b"
+    "listen-by-speaker/README.md": "499612b72cee5c64cb449f1797d3932a19c44e32a94711ebd8eb25a8d76c354b",
+    "import-types.json": "bd80bb2b5ef176279ad6615e62960d19e693519867ab4fa0dded2d717584295d"
   },
   "sourcePaths": {
     "LIBRARY-RULES.md": "contract/LIBRARY-RULES.md",
@@ -236,6 +238,7 @@
     "listen-by-speaker/turns.json": "vectors/listen-by-speaker/turns.json",
     "listen-by-speaker/README.md": "vectors/listen-by-speaker/README.md",
     "format-vectors.json": "vectors/format/format-vectors.json",
-    "states-vectors.json": "vectors/states/states-vectors.json"
+    "states-vectors.json": "vectors/states/states-vectors.json",
+    "import-types.json": "contract/import-types.json"
   }
 }

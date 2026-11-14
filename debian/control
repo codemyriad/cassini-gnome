@@ -45,6 +45,7 @@ Depends: ${misc:Depends},
          libzstd1,
          pulseaudio-utils,
 Recommends: pipewire-pulse | pulseaudio,
+            gstreamer1.0-libav,
 Description: play and record meetings, and read along with their transcripts
  Cassini plays meeting recordings in the Cassini portable meeting format:
  ordinary Ogg Opus files that carry their own word-by-word transcript,

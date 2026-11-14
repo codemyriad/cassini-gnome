@@ -42,8 +42,17 @@
 
   <provides>
     <binary>cassini-talk</binary>
-    <mediatype>audio/ogg</mediatype>
+    <mediatype>audio/opus</mediatype>
     <mediatype>audio/x-opus+ogg</mediatype>
+    <mediatype>audio/mpeg</mediatype>
+    <mediatype>audio/mp3</mediatype>
+    <mediatype>audio/mp4</mediatype>
+    <mediatype>audio/x-m4a</mediatype>
+    <mediatype>audio/m4a</mediatype>
+    <mediatype>audio/mp4a-latm</mediatype>
+    <mediatype>audio/wav</mediatype>
+    <mediatype>audio/x-wav</mediatype>
+    <mediatype>audio/vnd.wave</mediatype>
   </provides>
 
   <requires>

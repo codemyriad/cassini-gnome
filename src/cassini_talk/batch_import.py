@@ -8,13 +8,14 @@ from concurrent.futures import CancelledError
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 
-from . import archive_import
+from . import archive_import, import_types
 from .export_audio import check_cancel
 from .received import commit_staged, discard_staged, import_one, regular_input, stage_one
 
 DECODE_ERRORS = (OSError, ValueError, RuntimeError, EOFError, zipfile.BadZipFile, zlib.error)
 
-SUPPORTED = {".opus", ".ogg"}
+# W0.7: decided extensions from the shared contract/import-types.json.
+SUPPORTED = frozenset(import_types.extensions())
 # The common ZIP dialect used by Android/iOS and D96 exports. LZMA/Zstd
 # decoders can allocate an attacker-declared dictionary before yielding bytes.
 METHODS = {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
@@ -48,12 +49,14 @@ class Result:
     added_keys: list[str] = field(default_factory=list)
     # Bounded by entries; codes/filenames only, never transcript/model objects.
     errors: list[tuple[str, str]] = field(default_factory=list)
+    # W4.6: chosen top-level files (never ZIP members) that failed, bounded by entries.
+    failed_inputs: list[str] = field(default_factory=list)
 
 
 def import_files(paths, root=None, *, cancel=None, progress=None):
     """Use on a worker. Keep successful files on cancellation or another failure.
 
-    Only ZIP and currently supported Opus inputs are handled. Nested archives
+    Only ZIP and decided import types (contract/import-types.json) are handled. Nested archives
     are ignored and counted in unsupported. Private extraction disappears on
     every exit; archive members stay privately staged until whole-archive
     validation completes so rollback never touches published Library documents.
@@ -63,7 +66,14 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
 
     def report():
         if progress is not None:
-            progress(replace(result, errors=list(result.errors), added_keys=list(result.added_keys)))
+            progress(
+                replace(
+                    result,
+                    errors=list(result.errors),
+                    added_keys=list(result.added_keys),
+                    failed_inputs=list(result.failed_inputs),
+                )
+            )
 
     def failed(name, reason):
         result.failed += 1
@@ -225,8 +235,10 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                     result.ignored += 1
             except archive_import.ArchiveError as error:
                 failed(path.name, error.reason)
+                result.failed_inputs.append(str(path))
             except DECODE_ERRORS:
                 failed(path.name, "damaged")
+                result.failed_inputs.append(str(path))
             report()
     except CancelledError:
         result.cancelled = True

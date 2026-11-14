@@ -13,7 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from . import portable
+from . import import_types, portable
+from .audio_import import decode_to_opus
 from .export_audio import check_cancel
 from .library import LibraryScanner, library_root
 from .library_schema import valid
@@ -31,6 +32,12 @@ class StagedImport:
     requested_root: Path | None
     sha: str
     expected_key: str
+    # Full-file SHA-256 of a decoded plain-audio original (MP3/M4A/WAV).
+    source_sha: str | None = None
+
+    @property
+    def dedup_sha(self):
+        return self.source_sha or self.sha
 
 
 def sha256_file(path, cancel=None):
@@ -98,6 +105,9 @@ def _dedup_candidates(root, requested_root, sha, cancel, dedup_index):
         try:
             value = read_metadata(directory)
             by_sha.setdefault(value["received"]["sha256"], []).append(directory)
+            source_sha = value["received"].get("sourceSha256")
+            if isinstance(source_sha, str):
+                by_sha.setdefault(source_sha, []).append(directory)
         except (OSError, ValueError, KeyError):
             continue
     return list(by_sha.get(sha, ()))
@@ -112,7 +122,11 @@ def _find_duplicate(candidates, sha, cancel):
             value = read_metadata(directory)
             received = value["received"]
             current = directory / received["originalName"]
-            if received["sha256"] == sha and not current.is_symlink() and sha256_file(current, cancel) == sha:
+            # A decoded import matches on its original's digest while its Opus
+            # copy must still hold the recorded Library digest.
+            if sha not in (received["sha256"], received.get("sourceSha256")) or current.is_symlink():
+                continue
+            if sha256_file(current, cancel) == received["sha256"]:
                 return _meeting(directory)
         except (OSError, ValueError, KeyError):
             continue
@@ -135,6 +149,65 @@ def source_folder_name(original):
     return parent.name
 
 
+def _copy_opus(original, copied, expected_bytes, cancel):
+    """Copy Opus/Ogg bytes untouched; ambiguous .ogg must prove an Ogg Opus stream."""
+    with regular_input(original) as source, copied.open("xb") as output:
+        before = os.fstat(source.fileno())
+        if expected_bytes is not None and before.st_size != expected_bytes:
+            raise ValueError("Recording changed while being imported")
+        if import_types.needs_ogg_probe(original.name) and import_types.check_ogg_file(source) is not None:
+            raise ValueError("Choose an Ogg Opus recording")
+        written = 0
+        os.chmod(copied, 0o600)
+        digest = hashlib.sha256()
+        while written < before.st_size:
+            check_cancel(cancel)
+            block = source.read(min(1024 * 1024, before.st_size - written))
+            if not block:
+                raise ValueError("Recording changed while being imported")
+            check_cancel(cancel)
+            written += len(block)
+            if expected_bytes is not None and written > expected_bytes:
+                raise ValueError("Recording changed while being imported")
+            digest.update(block)
+            output.write(block)
+        after = os.fstat(source.fileno())
+        if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            raise ValueError("Recording changed while being imported")
+        output.flush()
+        os.fsync(output.fileno())
+    return digest.hexdigest()
+
+
+def _hash_source(original, expected_bytes, cancel):
+    """Full-file SHA-256 of a plain-audio original (the dedup key) and its (size, mtime)."""
+    with regular_input(original) as source:
+        before = os.fstat(source.fileno())
+    if expected_bytes is not None and before.st_size != expected_bytes:
+        raise ValueError("Recording changed while being imported")
+    sha = sha256_file(original, cancel)
+    after = os.stat(original, follow_symlinks=False)
+    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+        raise ValueError("Recording changed while being imported")
+    return sha, (after.st_size, after.st_mtime_ns)
+
+
+def _lookup_duplicate(root, requested_root, sha, cancel, dedup_index, staged_by_sha):
+    """(published duplicate, staged duplicate) for a dedup key; either may be None."""
+    # A stored digest is an index. A changed/missing original copy must
+    # not prevent this good incoming copy from reaching the Library.
+    candidates = _dedup_candidates(root, requested_root, sha, cancel, dedup_index)
+    existing = _find_duplicate(candidates, sha, cancel)
+    if existing is not None:
+        return existing, None
+    prior = staged_by_sha.get(sha) if staged_by_sha is not None else None
+    if prior is None or not prior.copied.is_file():
+        return None, None
+    if prior.source_sha is not None:
+        return None, (prior if prior.source_sha == sha else None)
+    return None, (prior if sha256_file(prior.copied, cancel) == sha else None)
+
+
 def _prepare_one(
     path,
     root=None,
@@ -149,11 +222,14 @@ def _prepare_one(
     check_cancel(cancel)
     original = Path(path).absolute()
     if (
-        original.suffix.lower() not in (".opus", ".ogg")
+        import_types.entry_for(original.name) is None
         or not original.name.rsplit(".", 1)[0].strip(".")
         or not original.is_file()
     ):
         raise ValueError("Choose an Ogg Opus recording")
+    # L-25 / W4.3: MP3, M4A and WAV are decoded into an Opus copy; the original
+    # file is only read. Opus/Ogg bytes are copied untouched.
+    plain = import_types.is_plain_audio(original.name)
     requested_root = root
     root = library_root(root).resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -169,43 +245,33 @@ def _prepare_one(
             stem = stem.encode("utf-8").decode("utf-8")
             copy_name = stem.encode("utf-8")[:250].decode("utf-8", errors="ignore") + ".opus"
             copied = stage / copy_name
-            with regular_input(original) as source, copied.open("xb") as output:
-                before = os.fstat(source.fileno())
-                if expected_bytes is not None and before.st_size != expected_bytes:
-                    raise ValueError("Recording changed while being imported")
-                written = 0
+            if plain:
+                source_sha, source_stat = _hash_source(original, expected_bytes, cancel)
+                existing, prior = _lookup_duplicate(
+                    root, requested_root, source_sha, cancel, dedup_index, staged_by_sha
+                )
+                if existing is not None:
+                    return existing, False, None
+                if prior is not None:
+                    return None, False, prior
+                check_cancel(cancel)
+                # Rejects a truncated container and fsyncs the Opus copy, so the
+                # durable meeting.json below never points at incomplete audio.
+                decode_to_opus(original, copied, cancel=cancel)
                 os.chmod(copied, 0o600)
-                digest = hashlib.sha256()
-                while written < before.st_size:
-                    check_cancel(cancel)
-                    block = source.read(min(1024 * 1024, before.st_size - written))
-                    if not block:
-                        raise ValueError("Recording changed while being imported")
-                    check_cancel(cancel)
-                    written += len(block)
-                    if expected_bytes is not None and written > expected_bytes:
-                        raise ValueError("Recording changed while being imported")
-                    digest.update(block)
-                    output.write(block)
-                after = os.fstat(source.fileno())
-                if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                after = os.stat(original, follow_symlinks=False)
+                if source_stat != (after.st_size, after.st_mtime_ns):
                     raise ValueError("Recording changed while being imported")
-                output.flush()
-                os.fsync(output.fileno())
-            sha = digest.hexdigest()
-            # A stored digest is an index. A changed/missing original copy must
-            # not prevent this good incoming copy from reaching the Library.
-            candidates = _dedup_candidates(root, requested_root, sha, cancel, dedup_index)
-            existing = _find_duplicate(candidates, sha, cancel)
-            if existing is not None:
-                return existing, False, None
-            prior_staged = staged_by_sha.get(sha) if staged_by_sha is not None else None
-            if (
-                prior_staged is not None
-                and prior_staged.copied.is_file()
-                and sha256_file(prior_staged.copied, cancel) == sha
-            ):
-                return None, False, prior_staged
+                sha = sha256_file(copied, cancel)
+                dedup_sha = source_sha
+            else:
+                sha = _copy_opus(original, copied, expected_bytes, cancel)
+                dedup_sha = sha
+                existing, prior = _lookup_duplicate(root, requested_root, sha, cancel, dedup_index, staged_by_sha)
+                if existing is not None:
+                    return existing, False, None
+                if prior is not None:
+                    return None, False, prior
             check_cancel(cancel)
             opened = load_open_meeting(copied, root)
             if not opened.has_audio:
@@ -232,6 +298,10 @@ def _prepare_one(
                 quoteOverride=None,
                 received=dict(originalName=copy_name, importedAtMs=time.time_ns() // 1000000, sha256=sha),
             )
+            if plain:
+                # sha256 stays the Library copy's digest (LIBRARY.md); the
+                # original's digest lets a re-import of the same file dedupe.
+                metadata["received"]["sourceSha256"] = dedup_sha
             folder = source_folder_name(original) if original_folder is None else original_folder
             if folder and folder not in (".", "..") and "\\" not in folder and len(folder) <= 255:
                 try:
@@ -258,9 +328,10 @@ def _prepare_one(
                     requested_root=requested_root,
                     sha=sha,
                     expected_key=expected_key,
+                    source_sha=dedup_sha if plain else None,
                 )
                 if staged_by_sha is not None:
-                    staged_by_sha[sha] = staged
+                    staged_by_sha[dedup_sha] = staged
                 keep_stage = True
                 return None, True, staged
             published = (
@@ -275,7 +346,7 @@ def _prepare_one(
                 # Received folder behind. This UUID was created by this import.
                 shutil.rmtree(published)
                 raise
-            _index_published(dedup_index, sha, published)
+            _index_published(dedup_index, dedup_sha, published)
             return meeting, True, None
         finally:
             if not keep_stage and stage.exists():
@@ -325,8 +396,9 @@ def commit_staged(staged_item, *, dedup_index=None):
         try:
             root = library_root(staged_item.requested_root).resolve()
             root.mkdir(mode=0o700, parents=True, exist_ok=True)
-            candidates = _dedup_candidates(root, staged_item.requested_root, staged_item.sha, None, dedup_index)
-            existing = _find_duplicate(candidates, staged_item.sha, None)
+            key = staged_item.dedup_sha
+            candidates = _dedup_candidates(root, staged_item.requested_root, key, None, dedup_index)
+            existing = _find_duplicate(candidates, key, None)
             if existing is not None:
                 return existing, False
             published = _publish_import(staged_item.stage, staged_item.identifier, staged_item.requested_root)
@@ -335,7 +407,7 @@ def commit_staged(staged_item, *, dedup_index=None):
             except BaseException:
                 shutil.rmtree(published)
                 raise
-            _index_published(dedup_index, staged_item.sha, published)
+            _index_published(dedup_index, key, published)
             return meeting, True
         finally:
             if staged_item.stage.exists():

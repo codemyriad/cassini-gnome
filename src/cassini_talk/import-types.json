@@ -1,0 +1,94 @@
+{
+  "schema": "cassini-ux/import-types@1",
+  "version": "2026-11-14.2",
+  "source": {
+    "canvas": "Cassini talk alignment",
+    "package": "W0.7",
+    "decisions": ["L-25"],
+    "phase2": "D-1009"
+  },
+  "platforms": ["gnome", "mac", "ios", "android"],
+  "rule": "Apps offer only entries with status == \"decided\" in file pickers, drag-and-drop accept filters, and Open-with / Share declarations; entries with status == \"open\" are tracked here and must not be offered until decided. Subclass-matching file-picker MIME filters (such as GNOME GtkFileFilter) must use mimeTypes only and must never add compatibilityMimeTypes. Ambiguous container extensions (.ogg) and inputs arriving under compatibilityMimeTypes must pass contentValidation (allowed extension plus Ogg OpusHead stream verification, rejecting Ogg video and FLAC-in-Ogg).",
+  "types": [
+    {
+      "id": "opus-ogg",
+      "label": "Opus/Ogg",
+      "status": "decided",
+      "decisions": ["L-25"],
+      "extensions": [".opus", ".ogg"],
+      "mimeTypes": ["audio/opus", "audio/x-opus+ogg"],
+      "compatibilityMimeTypes": ["audio/ogg", "application/ogg"],
+      "utis": ["org.xiph.opus", "org.xiph.ogg-audio"],
+      "androidMimeTypes": ["audio/opus", "audio/ogg"],
+      "contentValidation": {
+        "ambiguousExtensions": [".ogg"],
+        "minProbeBytes": 1024,
+        "containerMagicHex": "4f676753",
+        "acceptedBosMagicHex": ["4f70757348656164"],
+        "secondPageMagicHex": "4f70757354616773",
+        "rejectedBosMagicHex": [
+          "7f464c4143",
+          "807468656f7261",
+          "6669736865616400",
+          "01766964656f000000",
+          "4242434400",
+          "806461616c61",
+          "01766f72626973",
+          "5370656578202020"
+        ],
+        "rejectedExtensions": [".ogv", ".oga", ".ogx", ".spx", ".flac"],
+        "rejectedMimePrefixes": ["video/"],
+        "rule": "Require extension .opus or .ogg, reject video/* and undecided FLAC MIME types or extensions, and inspect the first 1024 bytes (or full file if shorter) of any .ogg or compatibility-MIME input: Page 0 must be an OggS BOS page starting with OpusHead (4f70757348656164) and Page 1 must be a non-BOS OggS page starting with OpusTags (4f70757354616773), rejecting single-stream or multiplexed Ogg video (Theora/OGM/Dirac/Daala/Skeleton) and Ogg FLAC (7f464c4143)."
+      },
+      "note": "Cassini meeting files (.opus) and Ogg Opus audio (.opus, .ogg). Subclass-matching pickers (such as GNOME GtkFileFilter) must use mimeTypes only, never compatibilityMimeTypes."
+    },
+    {
+      "id": "mp3",
+      "label": "MP3",
+      "status": "decided",
+      "decisions": ["L-25"],
+      "extensions": [".mp3"],
+      "mimeTypes": ["audio/mpeg", "audio/mp3"],
+      "compatibilityMimeTypes": [],
+      "utis": ["public.mp3"],
+      "androidMimeTypes": ["audio/mpeg"],
+      "note": "MPEG-1/2 Audio Layer III."
+    },
+    {
+      "id": "m4a",
+      "label": "M4A/AAC",
+      "status": "decided",
+      "decisions": ["L-25"],
+      "extensions": [".m4a"],
+      "mimeTypes": ["audio/mp4", "audio/x-m4a", "audio/m4a", "audio/mp4a-latm"],
+      "compatibilityMimeTypes": [],
+      "utis": ["com.apple.m4a-audio", "public.mpeg-4-audio"],
+      "androidMimeTypes": ["audio/mp4", "audio/x-m4a", "audio/mp4a-latm"],
+      "note": "MPEG-4 audio container (.m4a; excludes video/mp4 and raw ADTS .aac)."
+    },
+    {
+      "id": "wav",
+      "label": "WAV",
+      "status": "decided",
+      "decisions": ["L-25"],
+      "extensions": [".wav"],
+      "mimeTypes": ["audio/wav", "audio/x-wav", "audio/vnd.wave"],
+      "compatibilityMimeTypes": [],
+      "utis": ["com.microsoft.waveform-audio"],
+      "androidMimeTypes": ["audio/wav", "audio/x-wav"],
+      "note": "Waveform Audio File Format (RIFF WAVE)."
+    },
+    {
+      "id": "flac",
+      "label": "FLAC",
+      "status": "open",
+      "open": ["L-09", "D-938"],
+      "extensions": [".flac"],
+      "mimeTypes": ["audio/flac", "audio/x-flac", "audio/x-flac+ogg", "audio/x-oggflac"],
+      "compatibilityMimeTypes": [],
+      "utis": ["org.xiph.flac"],
+      "androidMimeTypes": ["audio/flac", "audio/x-flac"],
+      "note": "Free Lossless Audio Codec (native .flac and Ogg-encapsulated FLAC); excluded from app pickers and import acceptors until L-09 / D-938 is decided."
+    }
+  ]
+}
