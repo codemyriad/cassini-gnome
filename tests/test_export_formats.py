@@ -362,3 +362,58 @@ def test_same_speaker_turns_starting_together_keep_positive_durations():
     # later start, never collapsed to zero length.
     built = cues(value([("a", 500, 500, "one"), ("b", 500, 500, "x"), ("a", 500, 500, "two")]))
     assert all(end > start for _l, start, end, *_ in built)
+
+
+def _assert_one_speaker_in_order(model, expected):
+    """Every word once in spoken order; strictly increasing, non-overlapping SRT and WebVTT cues."""
+    built = cues(model)
+    spoken = " ".join(" ".join(lines)[prefix:] for _l, _s, _e, lines, prefix in built)
+    assert spoken.split() == expected
+    for timings in ([(s, e) for _l, s, e, *_ in built], _timings(srt(model)), _timings(webvtt(model))):
+        assert len(timings) == len(built)
+        assert all(e > s for s, e in timings)
+        assert all(a_end <= b_start and a_start < b_start for (a_start, a_end), (b_start, _) in pairwise(timings))
+    return built
+
+
+def test_long_tied_monologue_across_reading_rows_keeps_spoken_order():
+    # Over 140 words become two reading rows that both start at 500 ms; spreading each row on
+    # its own would zipper the second paragraph into the first with duplicate intervals.
+    words = [("a", 500, 1500, f"word{i:03d}") for i in range(150)]
+    model = value(words, speakers=(("a", "Ada"),))
+    from cassini_talk.export_model import _reading
+
+    assert len(_reading(model)[0]) >= 2
+    built = _assert_one_speaker_in_order(model, [w[3] for w in words])
+    assert built[0][1] == 500 and built[0][3][0].startswith("Ada: word000")
+
+
+def test_tied_turn_stays_before_the_same_speakers_next_row():
+    first = [("a", 500, 1500, f"first{i:02d}") for i in range(40)]
+    second = [("a", 2100, 2300, "second00"), ("a", 2300, 2500, "second01")]
+    model = value([*first, ("b", 1600, 1800, "reply"), ("b", 1800, 2000, "now"), *second])
+    built = cues(model)
+    ada = [(start, end, lines, prefix) for label, start, end, lines, prefix in built if label == "Ada"]
+    spoken = " ".join(" ".join(lines)[prefix:] for _s, _e, lines, prefix in ada)
+    assert spoken.split() == [w[3] for w in first + second]
+    assert all(a[1] <= b[0] and a[0] < b[0] for a, b in pairwise(ada))
+    # Every cue of Ada's first turn ends before her second turn begins, in both formats.
+    assert max(end for start, end, lines, _p in ada if "second" not in " ".join(lines)) <= 2100
+    for document in (srt(model), webvtt(model)):
+        ada_timings = [
+            t for t, block in zip(_timings(document), document.split("-->")[1:], strict=True) if "Ada" in block
+        ]
+        assert ada_timings == [(s, e) for s, e, *_ in ada]
+    for document in (srt(model), webvtt(model)):
+        assert document.index("first39") < document.index("second00")
+
+
+def test_next_cue_closer_than_the_tied_run_is_pushed_after_it():
+    # Six cues tied at 500 ms and a seventh 2 ms later: the run needs 6 ms, so the seventh
+    # cue moves after it instead of being overtaken.
+    long = "x" * 40
+    words = [("a", 500, 500, f"{long}{i}") for i in range(1, 7)] + [("a", 502, 502, f"{long}7")]
+    model = value(words, speakers=(("a", "Ada"),))
+    built = _assert_one_speaker_in_order(model, [w[3] for w in words])
+    assert len(built) == 7
+    assert [lines[-1][-1] for _l, _s, _e, lines, _p in built] == list("1234567")

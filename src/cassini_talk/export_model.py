@@ -165,29 +165,43 @@ def _cue_lines(value, start=0):
     return [value[:at], value[at + 1 :]]
 
 
-def _spread_tied(turn):
-    """Give same-start cues of one turn consecutive, non-empty slices of their shared span.
+def _spread_tied(speaker_cues, duration=None):
+    """Give one speaker's tied or colliding cues consecutive, non-empty slices of their span.
 
-    Imported timings can put every word of a long turn at the same start (or at zero
-    duration); length splitting then yields several cues starting together, and each would
-    be hidden by the next. The run's span, at least CUE_MIN_MS per cue and never past the
-    turn's next later cue, is divided evenly so they play one after another.
+    `speaker_cues` is every cue of one speaker across all reading rows, in chronological
+    and spoken order. Imported timings can put every word of a long turn at the same start
+    (or at zero duration), and a turn can span several reading rows; length splitting then
+    yields cues starting together, and each would be hidden by the next. A monotonic floor
+    carries across the whole list: a run of cues starting at or before the floor gets at
+    least CUE_MIN_MS per cue, never past the speaker's next later cue (or the recording's
+    end), divided evenly so they play one after another. When the next cue is closer than
+    one millisecond per run cue, the run's end pushes that cue (and later ones) forward, so
+    an earlier cue never overtakes a later one.
     """
+    floor = None
     index = 0
-    while index < len(turn):
-        start = turn[index]["start"]
+    while index < len(speaker_cues):
+        original = speaker_cues[index]["start"]
+        start = original if floor is None else max(original, floor)
         stop = index + 1
-        while stop < len(turn) and turn[stop]["start"] == start:
+        while stop < len(speaker_cues) and speaker_cues[stop]["start"] <= start:
             stop += 1
         count = stop - index
-        if count > 1:
-            span_end = max(max(d["end"] for d in turn[index:stop]), start + count * CUE_MIN_MS)
-            if stop < len(turn) and turn[stop]["start"] > start:
-                span_end = min(span_end, turn[stop]["start"])
-            span = max(span_end - start, count)
-            for offset, draft in enumerate(turn[index:stop]):
-                draft["start"] = start + span * offset // count
-                draft["end"] = start + span * (offset + 1) // count
+        if count == 1 and start == original:
+            floor = start + 1
+            index = stop
+            continue
+        run = speaker_cues[index:stop]
+        span_end = max(max(d["end"] for d in run), start + count * CUE_MIN_MS)
+        if stop < len(speaker_cues):
+            span_end = min(span_end, speaker_cues[stop]["start"])
+        if duration is not None and duration > start:
+            span_end = min(span_end, duration)
+        span = max(span_end - start, count)
+        for offset, draft in enumerate(run):
+            draft["start"] = start + span * offset // count
+            draft["end"] = start + span * (offset + 1) // count
+        floor = start + span
         index = stop
 
 
@@ -196,8 +210,8 @@ def cues(value):
 
     Every reading row and every inline reply is a turn; a turn is cut into
     segments of at most CUE_MAX_MS and two CUE_LINE lines including the
-    `{name}: ` prefix. Linear in the number of words apart from the final
-    stable sort by start.
+    `{name}: ` prefix. Linear in the number of words apart from the two
+    stable sorts by start.
     """
     with using_language(value["uiLanguage"]) if "uiLanguage" in value else nullcontext():
         rows, name, _order = _reading(value)
@@ -227,13 +241,21 @@ def cues(value):
                 current["words"].append(shown)
                 current["end"] = max(current["end"], word.end_ms)
                 previous_end = word.end_ms
-            _spread_tied(turn)
             drafts.extend(turn)
 
         for row in rows:
             segment(row.speaker, zip(row.words, row.items, strict=True))
             for _after, aside in row.asides:
                 segment(aside.speaker, zip(aside.words, aside.items, strict=True))
+    # Stable: equal starts keep row and word order. Spread per speaker across all rows,
+    # then re-sort since spreading can move a speaker's cues past other speakers' cues.
+    drafts.sort(key=lambda draft: draft["start"])
+    by_speaker = {}
+    for draft in drafts:
+        by_speaker.setdefault(draft["speaker"], []).append(draft)
+    duration = value.get("durationMs")
+    for speaker_cues in by_speaker.values():
+        _spread_tied(speaker_cues, duration if type(duration) is int else None)
     drafts.sort(key=lambda draft: draft["start"])
     # Per speaker: the nearest following cue start and the next start strictly after it, so a
     # cue is only ever capped by a strictly later start and keeps a positive duration.
