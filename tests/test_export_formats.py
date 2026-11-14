@@ -6,6 +6,7 @@ import threading
 import time
 from concurrent.futures import CancelledError
 from dataclasses import replace
+from itertools import pairwise
 
 import pytest
 from test_export import ASSETS
@@ -316,3 +317,48 @@ def test_zero_duration_and_empty_items_never_crash_or_duplicate():
     assert len(built) == 1 and built[0][1:3] == (500, 1500)
     assert " ".join(built[0][3]).count("Yes") == 1
     assert srt(value([("a", 0, 0, "")])) == ""  # Nothing audible or shown: no empty cue.
+
+
+def _timings(text):
+    """(start, end) ms of every cue timing line in an SRT or WebVTT document."""
+
+    def ms(stamp):
+        clock, millis = stamp.replace(",", ".").rsplit(".", 1)
+        hours, minutes, seconds = (int(part) for part in clock.split(":"))
+        return ((hours * 60 + minutes) * 60 + seconds) * 1000 + int(millis)
+
+    return [tuple(ms(side.strip()) for side in line.split("-->")) for line in text.splitlines() if "-->" in line]
+
+
+@pytest.mark.parametrize("start,end", [(500, 1500), (500, 500)])
+def test_tied_word_timings_split_across_cues_all_stay_visible_in_order(start, end):
+    # Imported transcripts can time every word of a long turn identically; length splitting
+    # must not make cues start together and hide each other (500 -> 500).
+    words = [("a", start, end, f"word{i:02d}") for i in range(40)]
+    model = value(words, speakers=(("a", "Ada"),))
+    built = cues(model)
+    assert len(built) >= 3
+    spoken = " ".join(" ".join(lines)[prefix:] for _l, _s, _e, lines, prefix in built)
+    assert spoken.split() == [w[3] for w in words]
+    for timings in ([(s, e) for _l, s, e, *_ in built], _timings(srt(model)), _timings(webvtt(model))):
+        assert len(timings) == len(built)
+        assert all(e > s for s, e in timings)
+        assert timings[0][0] == start
+        # Starts strictly increase and each cue ends by the next one's start: one on screen at a time.
+        assert all(a_end <= b_start and a_start < b_start for (a_start, a_end), (b_start, _) in pairwise(timings))
+    assert "Ada: word00" in srt(model) and "word39</v>" in webvtt(model)
+
+
+def test_tied_cues_never_spill_past_the_turns_next_later_cue():
+    words = [("a", 500, 600, f"word{i:02d}") for i in range(20)] + [("a", 700, 800, "after")]
+    built = cues(value(words, speakers=(("a", "Ada"),)))
+    assert all(end > start for _l, start, end, *_ in built)
+    assert all(a[2] <= b[1] for a, b in pairwise(built))
+    assert built[-1][3][-1].endswith("after")
+
+
+def test_same_speaker_turns_starting_together_keep_positive_durations():
+    # Two separate turns of one speaker at the same instant are only capped by a strictly
+    # later start, never collapsed to zero length.
+    built = cues(value([("a", 500, 500, "one"), ("b", 500, 500, "x"), ("a", 500, 500, "two")]))
+    assert all(end > start for _l, start, end, *_ in built)

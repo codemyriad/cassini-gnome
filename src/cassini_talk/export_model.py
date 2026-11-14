@@ -165,6 +165,32 @@ def _cue_lines(value, start=0):
     return [value[:at], value[at + 1 :]]
 
 
+def _spread_tied(turn):
+    """Give same-start cues of one turn consecutive, non-empty slices of their shared span.
+
+    Imported timings can put every word of a long turn at the same start (or at zero
+    duration); length splitting then yields several cues starting together, and each would
+    be hidden by the next. The run's span, at least CUE_MIN_MS per cue and never past the
+    turn's next later cue, is divided evenly so they play one after another.
+    """
+    index = 0
+    while index < len(turn):
+        start = turn[index]["start"]
+        stop = index + 1
+        while stop < len(turn) and turn[stop]["start"] == start:
+            stop += 1
+        count = stop - index
+        if count > 1:
+            span_end = max(max(d["end"] for d in turn[index:stop]), start + count * CUE_MIN_MS)
+            if stop < len(turn) and turn[stop]["start"] > start:
+                span_end = min(span_end, turn[stop]["start"])
+            span = max(span_end - start, count)
+            for offset, draft in enumerate(turn[index:stop]):
+                draft["start"] = start + span * offset // count
+                draft["end"] = start + span * (offset + 1) // count
+        index = stop
+
+
 def cues(value):
     """Subtitle cues: (speaker name, start ms, end ms, [line, line?], prefix length).
 
@@ -182,6 +208,7 @@ def cues(value):
             prefix = len(label) + 2
             current = None
             previous_end = None
+            turn = []
             for word, shown in atoms:
                 shown = _plain(shown or "")
                 if not shown:
@@ -194,26 +221,34 @@ def cues(value):
                 ):
                     current = dict(speaker=speaker, label=label, start=word.start_ms, end=word.end_ms, words=[])
                     current["length"] = prefix + len(shown)
-                    drafts.append(current)
+                    turn.append(current)
                 else:
                     current["length"] += 1 + len(shown)
                 current["words"].append(shown)
                 current["end"] = max(current["end"], word.end_ms)
                 previous_end = word.end_ms
+            _spread_tied(turn)
+            drafts.extend(turn)
 
         for row in rows:
             segment(row.speaker, zip(row.words, row.items, strict=True))
             for _after, aside in row.asides:
                 segment(aside.speaker, zip(aside.words, aside.items, strict=True))
     drafts.sort(key=lambda draft: draft["start"])
+    # Per speaker: the nearest following cue start and the next start strictly after it, so a
+    # cue is only ever capped by a strictly later start and keeps a positive duration.
     following = {}
     result = [None] * len(drafts)
     for index in range(len(drafts) - 1, -1, -1):
         draft = drafts[index]
-        end = min(max(draft["end"], draft["start"] + CUE_MIN_MS), draft["start"] + CUE_MAX_MS)
-        if draft["speaker"] in following:
-            end = max(draft["start"], min(end, following[draft["speaker"]]))
-        following[draft["speaker"]] = draft["start"]
+        start = draft["start"]
+        end = min(max(draft["end"], start + CUE_MIN_MS), start + CUE_MAX_MS)
+        nearest, beyond = following.get(draft["speaker"], (None, None))
+        cap = nearest if nearest is not None and nearest > start else beyond
+        if cap is not None:
+            end = min(end, cap)
+        if nearest != start:
+            following[draft["speaker"]] = (start, nearest)
         prefix = draft["label"] + ": "
         result[index] = (
             draft["label"],
