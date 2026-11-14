@@ -261,7 +261,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         details.append(self.nemotron_progress)
         row.append(details)
         self.nemotron_remove = Gtk.Button(label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False)
-        self.nemotron_remove.connect("clicked", lambda *_: self.app.diarization_models.remove())
+        self.nemotron_remove.connect("clicked", lambda *_: self._remove_optional(self.app.diarization_models))
         row.append(self.nemotron_remove)
         self.nemotron_action = Gtk.Button(valign=Gtk.Align.CENTER)
         self.nemotron_action.connect("clicked", self._nemotron_action)
@@ -302,7 +302,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         details.append(self.voice_progress)
         row.append(details)
         self.voice_remove = Gtk.Button(label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False)
-        self.voice_remove.connect("clicked", lambda *_: self.app.voice_models.remove())
+        self.voice_remove.connect("clicked", lambda *_: self._remove_optional(self.app.voice_models))
         row.append(self.voice_remove)
         self.voice_action = Gtk.Button(label=text("models.download"), valign=Gtk.Align.CENTER)
         self.voice_action.connect("clicked", self._voice_action)
@@ -329,17 +329,22 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.push_subpage(self.saved_voices_page)
         self.saved_voices_page.refresh()
 
+    def _remove_optional(self, models):
+        self.app.voice_setup.end()  # Remove ends `Remember voices` (D-977).
+        models.remove()
+
     def _voice_action(self, *_):
         models = self.app.voice_models
         if models is None:
             return
         state = models.snapshot()
         if state["downloading"]:
+            self.app.voice_setup.end()  # Cancel ends `Remember voices` (D-977).
             models.cancel_download()
         elif state["downloaded"] and state["error"]:
             models.retry()
         elif state["downloaded"]:
-            models.remove()
+            self._remove_optional(models)
         else:
             models.download()
         self.render_voices()
@@ -407,11 +412,12 @@ class SettingsDialog(Adw.PreferencesDialog):
             return
         state = models.snapshot()
         if state["downloading"]:
+            self.app.voice_setup.end()  # Cancel ends `Remember voices` (D-977).
             models.cancel_download()
         elif state["downloaded"] and state["error"]:
             models.retry()
         elif state["downloaded"]:
-            models.remove()
+            self._remove_optional(models)
         else:
             models.download()
         self.render_diarization()

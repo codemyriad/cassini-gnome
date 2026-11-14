@@ -47,6 +47,45 @@ def voice_setup_step(tell, voices):
     return "wait" if voices.get("busy") or voices.get("error") else "download-voices"
 
 
+class VoiceSetup:
+    """D-977 `Remember voices`: one open request that chains both optional downloads.
+
+    The request ends when both models are On (or Recognise saved voices is
+    downloading), and whenever the person cancels or removes a model during
+    setup: `end()` is called by those actions, and a Tell speakers apart
+    download this request started that comes back neither downloaded nor
+    failed was cancelled, so it is never started again (HARMONY §12).
+    """
+
+    def __init__(self):
+        self.active = False
+        self._started = None
+
+    def begin(self, tell, voices):
+        self.active, self._started = True, None
+        self.advance(tell, voices)
+
+    def end(self):
+        self.active, self._started = False, None
+
+    def advance(self, tell, voices):
+        if not self.active:
+            return
+        if tell is None or voices is None:
+            self.end()
+            return
+        step = voice_setup_step(tell.snapshot(), voices.snapshot())
+        if step == "download-tell":
+            if self._started is tell:
+                self.end()  # Cancelled or removed after this request started it.
+            elif tell.download():
+                self._started = tell
+        elif step in ("download-voices", "done"):
+            self.end()
+            if step == "download-voices":
+                voices.download()
+
+
 def _dbfs(samples, start, end):
     total = 0.0
     for index in range(start, end):

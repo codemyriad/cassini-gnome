@@ -7,6 +7,7 @@ import os
 import re
 import struct
 import sys
+import threading
 import time
 from array import array
 from pathlib import Path
@@ -22,6 +23,7 @@ from cassini_talk.voice_enroll import (
     MAX_ENROL_MS,
     MIN_ENROL_MS,
     RATE,
+    VoiceSetup,
     enrol_windows,
     judge,
     private_sample,
@@ -434,6 +436,125 @@ def test_remember_voices_downloads_tell_apart_first_then_recognition(tell, voice
     assert voice_setup_step(tell, voices) == step
 
 
+class FakeModels:
+    """SpeechModels' download contract: busy while running, Cancel clears it without an error."""
+
+    def __init__(self, **state):
+        self.state = dict(MISSING, **state)
+        self.downloads = 0
+
+    def snapshot(self):
+        return dict(self.state)
+
+    def download(self):
+        if self.state["busy"]:
+            return False
+        self.downloads += 1
+        self.state.update(busy=True, downloading=True, error=False)
+        return True
+
+    def cancel_download(self):
+        self.state.update(busy=False, downloading=False)  # Cancellation sets no error.
+
+    def remove(self):
+        self.state.update(downloaded=False, ready=False, busy=False)
+
+    def finish(self):
+        self.state.update(busy=False, downloading=False, downloaded=True, ready=True)
+
+
+def notify(setup, tell, voices, times=3):
+    """`_models_changed` runs after every model change, often more than once."""
+    for _ in range(times):
+        setup.advance(tell, voices)
+
+
+def test_cancelling_tell_apart_during_setup_never_restarts_it():
+    setup, tell, voices = VoiceSetup(), FakeModels(), FakeModels()
+    setup.begin(tell, voices)
+    assert tell.downloads == 1 and setup.active
+    notify(setup, tell, voices)  # Progress notifications while it downloads.
+    assert tell.downloads == 1 and setup.active
+    tell.cancel_download()
+    notify(setup, tell, voices)
+    assert (tell.downloads, voices.downloads, setup.active) == (1, 0, False)
+
+
+def test_cancelling_recognition_during_setup_never_restarts_or_chains():
+    setup, tell, voices = VoiceSetup(), FakeModels(), FakeModels()
+    setup.begin(tell, voices)
+    tell.finish()
+    notify(setup, tell, voices)
+    assert (tell.downloads, voices.downloads, setup.active) == (1, 1, False)
+    voices.cancel_download()
+    notify(setup, tell, voices)
+    assert (tell.downloads, voices.downloads, setup.active) == (1, 1, False)
+
+
+def test_removing_tell_apart_during_setup_ends_the_request():
+    setup, tell, voices = VoiceSetup(), FakeModels(), FakeModels()
+    setup.begin(tell, voices)
+    tell.state.update(busy=False, downloading=False, downloaded=True)  # Checking the runtime.
+    notify(setup, tell, voices)
+    tell.remove()
+    notify(setup, tell, voices)
+    assert (tell.downloads, voices.downloads, setup.active) == (1, 0, False)
+
+
+def test_a_failed_setup_download_waits_for_try_again_and_then_chains():
+    setup, tell, voices = VoiceSetup(), FakeModels(), FakeModels()
+    setup.begin(tell, voices)
+    tell.state.update(busy=False, downloading=False, error=True)
+    notify(setup, tell, voices)
+    assert (tell.downloads, setup.active) == (1, True)
+    tell.download()  # Try again on the Settings row.
+    tell.finish()
+    notify(setup, tell, voices)
+    assert (tell.downloads, voices.downloads, setup.active) == (2, 1, False)
+
+
+def settings_dialog_class():
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+    except ValueError:
+        pytest.skip("GTK introspection is unavailable")
+    try:
+        from cassini_talk.settings_dialog import SettingsDialog
+    except (ImportError, ValueError) as error:
+        pytest.skip(f"Settings dialog is unavailable: {error}")
+    return SettingsDialog
+
+
+@pytest.mark.parametrize("row", ["tell", "voices"])
+def test_settings_cancel_and_remove_end_remember_voices(row):
+    from functools import partial
+
+    dialog_class = settings_dialog_class()
+    for action in ("cancel", "remove"):
+        setup, tell, voices = VoiceSetup(), FakeModels(), FakeModels()
+        setup.begin(tell, voices)
+        if row == "voices":
+            tell.finish()
+            setup.advance(tell, voices)  # Chains Recognise saved voices.
+            setup.active = True  # Ending is the dialog's job here, whatever the chain did.
+        models = tell if row == "tell" else voices
+        if action == "remove":
+            models.finish()
+        dialog = SimpleNamespace(
+            app=SimpleNamespace(diarization_models=tell, voice_models=voices, voice_setup=setup),
+            render_diarization=lambda: None,
+            render_voices=lambda: None,
+        )
+        dialog._remove_optional = partial(dialog_class._remove_optional, dialog)
+        (dialog_class._nemotron_action if row == "tell" else dialog_class._voice_action)(dialog)
+        assert not setup.active, action
+        assert not models.state["downloading"] and not models.state["downloaded"], action
+        notify(setup, tell, voices)
+        assert tell.downloads + voices.downloads == 1 + (row == "voices"), action
+
+
 def test_voice_setup_answer_is_a_settings_key_defaulting_to_unanswered():
     schema = (ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml").read_text()
     block = re.search(r'<key name="voice-setup" type="s">(.*?)</key>', schema, re.S).group(1)
@@ -583,6 +704,112 @@ def test_cancel_drops_the_take():
     assert done == [True] and len(recorder.samples) > 0
     recorder.cancel()
     assert len(recorder.samples) == 0
+
+
+class BlockedStateChange:
+    """Holds one pipeline state change on its calling thread until `release` is set.
+
+    Stands in for a sound server that accepts the connection but never answers.
+    Records which thread asked for every state change, and queues `on_enter`
+    on the main loop from the held worker, so the test is gated on events.
+    """
+
+    def __init__(self, monkeypatch, GLib, Gst, blocked, on_enter):
+        self.release = threading.Event()
+        self.calls, self.pipelines = [], []
+        real, main = Gst.Pipeline.set_state, threading.main_thread()
+
+        def set_state(element, state):
+            self.calls.append((state, threading.current_thread() is main))
+            self.pipelines.append(element)
+            if state == blocked and not self.release.is_set():
+                GLib.idle_add(on_enter)
+                assert self.release.wait(20)  # Hang guard only.
+            return real(element, state)
+
+        monkeypatch.setattr(Gst.Pipeline, "set_state", set_state)
+
+
+def run_blocked_take(monkeypatch, blocked_state, on_enter, prepare=None):
+    gi = pytest.importorskip("gi")
+    try:
+        gi.require_version("Gst", "1.0")
+    except ValueError:
+        pytest.skip("GStreamer introspection is unavailable")
+    from gi.repository import GLib, Gst
+
+    Gst.init(None)
+    if Gst.ElementFactory.find("audiotestsrc") is None or Gst.ElementFactory.find("appsink") is None:
+        pytest.skip("audiotestsrc/appsink are unavailable")
+    from cassini_talk.phrase_recorder import PhraseRecorder
+
+    recorder = PhraseRecorder("audiotestsrc is-live=true samplesperbuffer=1600 ! audio/x-raw,rate=16000")
+    done, loop = [], GLib.MainLoop()
+    state = getattr(Gst.State, blocked_state)
+    block = BlockedStateChange(monkeypatch, GLib, Gst, state, lambda: on_enter(recorder, block, done))
+    recorder.connect("finished", lambda _r, ok: done.append(ok))
+    report = recorder._report
+
+    def reported():
+        report()
+        loop.quit()  # The take is settled and the microphone is closed.
+        return False
+
+    recorder._report = reported
+    if prepare:
+        prepare(recorder)
+    recorder.start()  # Returns at once: only the worker blocks.
+    guard = GLib.timeout_add_seconds(20, loop.quit)  # Hang guard only; nothing asserts elapsed time.
+    loop.run()
+    GLib.source_remove(guard)
+    assert all(not on_main for _state, on_main in block.calls)  # No state change on the main thread.
+    assert block.pipelines[-1].get_state(0)[1] == Gst.State.NULL  # No live microphone is left.
+    return Gst, recorder, block, done
+
+
+@pytest.mark.parametrize("action", ["cancel", "stop"])
+def test_microphone_that_never_answers_never_blocks_the_main_loop(monkeypatch, action):
+    seen = {}
+
+    def while_opening(recorder, block, done):
+        # The main loop runs this queued callback while PLAYING is still held.
+        seen["held"] = not block.release.is_set()
+        getattr(recorder, action)()  # Returns at once although startup is in flight.
+        seen["listening"], seen["finished"] = recorder.listening, list(done)
+        block.release.set()
+        return False
+
+    Gst, recorder, block, done = run_blocked_take(monkeypatch, "PLAYING", while_opening)
+    assert seen == dict(held=True, listening=False, finished=[])
+    assert [state for state, _ in block.calls] == [Gst.State.PLAYING, Gst.State.NULL]
+    assert done == ([] if action == "cancel" else [True]) and not recorder.listening
+    if action == "cancel":
+        assert len(recorder.samples) == 0
+
+
+@pytest.mark.parametrize("action", ["cancel", "stop"])
+def test_stop_and_cancel_close_the_microphone_off_the_main_thread(monkeypatch, action):
+    seen = {}
+
+    def while_closing(recorder, block, done):
+        seen["held"], seen["listening"] = not block.release.is_set(), recorder.listening
+        seen["finished"] = list(done)
+        block.release.set()
+        return False
+
+    def prepare(recorder):
+        def on_level(*_):
+            if "acted" not in seen:
+                seen["acted"] = True
+                getattr(recorder, action)()  # Returns at once; NULL is held on the close worker.
+
+        recorder.connect("level", on_level)
+
+    Gst, recorder, block, done = run_blocked_take(monkeypatch, "NULL", while_closing, prepare)
+    assert seen == dict(acted=True, held=True, listening=False, finished=[])
+    assert done == ([] if action == "cancel" else [True])
+    if action == "stop":
+        assert len(recorder.samples) > 0
 
 
 def test_desktop_draws_no_phone_backup_or_transfer_copy():

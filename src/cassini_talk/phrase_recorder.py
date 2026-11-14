@@ -13,11 +13,22 @@ from .voice_enroll import MAX_ENROL_MS, RATE, _dbfs
 LOG = logging.getLogger(__name__)
 
 
+IDLE, STARTING, LIVE, CLOSING, CLOSED = "idle", "starting", "live", "closing", "closed"
+CANCELLED = "cancelled"
+
+
 class PhraseRecorder(GObject.Object):
     """Up to MAX_ENROL_MS of the default microphone; nothing is written to disk here.
 
     Signals: `level(dBFS)` while listening, `finished(ok)` once stopped (ok is
     False when the microphone could not be opened or failed mid-take).
+
+    Every GStreamer state change runs on a worker thread, never on GTK: a
+    sound server that accepts the connection but never answers would
+    otherwise freeze the window on Record, Stop or Cancel. `start`, `stop`
+    and `cancel` return at once. Stop or Cancel while the microphone is
+    still opening ends the take there; the opening worker closes the
+    microphone as soon as it unblocks, so it is never left live.
     """
 
     __gsignals__ = {
@@ -33,38 +44,55 @@ class PhraseRecorder(GObject.Object):
         self.source = source or self.SOURCE
         self.samples = array("f")
         self.pipeline = None
+        self._phase = IDLE
         self._done = False
+        self._outcome = None
         self._lock = threading.Lock()
 
     @property
     def listening(self):
-        return self.pipeline is not None
+        with self._lock:
+            return not self._done and self._phase in (STARTING, LIVE)
 
     def start(self):
+        """GTK thread: returns at once; the microphone opens on a worker thread."""
         from gi.repository import Gst
 
         Gst.init(None)
-        self.samples = array("f")
-        self._done = False
+        with self._lock:
+            if self._phase != IDLE:
+                return
+            self._phase = STARTING
+            self.samples = array("f")
+        threading.Thread(target=self._open, name="cassini-voice-sample-open", daemon=True).start()
+
+    def _open(self):
+        """Worker thread: build the pipeline and wait out PLAYING, however long it blocks."""
+        from gi.repository import Gst
+
+        pipeline, ok = None, False
         try:
-            self.pipeline = Gst.parse_launch(
+            pipeline = Gst.parse_launch(
                 f"{self.source} ! audioconvert ! audioresample ! "
                 f"audio/x-raw,format=F32LE,rate={RATE},channels=1,layout=interleaved ! "
                 "appsink name=sink emit-signals=true sync=false max-buffers=64 drop=false"
             )
-        except GLib.Error:
-            LOG.exception("Could not build the voice sample pipeline")
-            self.pipeline = None
-            GLib.idle_add(self._finish, False)
-            return
-        sink = self.pipeline.get_by_name("sink")
-        sink.connect("new-sample", self._on_sample)
-        bus = self.pipeline.get_bus()
-        bus.add_signal_watch()
-        bus.connect("message::error", lambda *_: self._finish(False))
-        bus.connect("message::eos", lambda *_: self._finish(True))
-        if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
-            GLib.idle_add(self._finish, False)
+            pipeline.get_by_name("sink").connect("new-sample", self._on_sample)
+            bus = pipeline.get_bus()
+            bus.add_signal_watch()  # Dispatched on the GTK main context.
+            bus.connect("message::error", lambda *_: self._end(False))
+            bus.connect("message::eos", lambda *_: self._end(True))
+            ok = pipeline.set_state(Gst.State.PLAYING) != Gst.StateChangeReturn.FAILURE
+        except Exception:  # A worker that dies here would leave the dialog listening forever.
+            LOG.exception("Could not open the voice sample microphone")
+        with self._lock:
+            if ok and not self._done:
+                self._phase, self.pipeline = LIVE, pipeline
+                return
+            if not self._done:
+                self._done, self._outcome = True, False
+            self._phase = CLOSING  # Stopped, cancelled or failed while opening.
+        self._close(pipeline)
 
     def _on_sample(self, sink):
         """Streaming thread: keep the chunk under the lock, so EOS never overtakes it."""
@@ -103,31 +131,47 @@ class PhraseRecorder(GObject.Object):
         return False
 
     def stop(self):
-        self._finish(True)
-        return False
-
-    def _finish(self, ok):
-        with self._lock:
-            if self._done:
-                return False
-            self._done = True
-        pipeline, self.pipeline = self.pipeline, None
-        if pipeline is not None:
-            from gi.repository import Gst
-
-            pipeline.get_bus().remove_signal_watch()
-            pipeline.set_state(Gst.State.NULL)  # Joins the streaming thread.
-        self.emit("finished", ok)
+        """Keep the take; `finished(True)` follows once the microphone is closed."""
+        self._end(True)
         return False
 
     def cancel(self):
-        """Stop without a result; the take is dropped."""
+        """Stop without a result; the take is dropped and `finished` is never emitted."""
+        self._end(CANCELLED)
+
+    def _end(self, outcome):
+        """Any thread, never blocks: settle the take once and close the microphone off GTK."""
         with self._lock:
-            self._done = True
-        pipeline, self.pipeline = self.pipeline, None
+            if outcome is CANCELLED:
+                self.samples = array("f")
+            if self._done:
+                if outcome is CANCELLED:
+                    self._outcome = CANCELLED  # A result still in flight is dropped too.
+                return
+            self._done, self._outcome = True, outcome
+            phase, pipeline = self._phase, self.pipeline
+            if phase in (IDLE, LIVE):
+                self._phase, self.pipeline = CLOSING, None
+        if phase == LIVE:
+            threading.Thread(
+                target=self._close, args=(pipeline,), name="cassini-voice-sample-close", daemon=True
+            ).start()
+        elif phase == IDLE:
+            GLib.idle_add(self._report)
+        # STARTING: the opening worker sees `_done` once PLAYING returns and closes it.
+
+    def _close(self, pipeline):
+        """Worker thread: NULL joins the streaming thread, then GTK hears the result."""
         if pipeline is not None:
             from gi.repository import Gst
 
             pipeline.get_bus().remove_signal_watch()
-            pipeline.set_state(Gst.State.NULL)  # Joins the streaming thread.
-        self.samples = array("f")
+            pipeline.set_state(Gst.State.NULL)
+        GLib.idle_add(self._report)
+
+    def _report(self):
+        with self._lock:
+            self._phase, outcome = CLOSED, self._outcome
+        if outcome is not CANCELLED:
+            self.emit("finished", outcome)
+        return False

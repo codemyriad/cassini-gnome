@@ -73,7 +73,9 @@ class CassiniApplication(Adw.Application):
 
         self.voice_store = VoiceStore(changed=lambda: GLib.idle_add(self._voices_changed))
         self.voice_backfill = None
-        self._voice_setup_chain = False
+        from .voice_enroll import VoiceSetup
+
+        self.voice_setup = VoiceSetup()
         self._transcription_holds = 0
         self._transcription_stops = set()
         self._transcription_generation = 0
@@ -1607,25 +1609,13 @@ class CassiniApplication(Adw.Application):
         rows stay the way to turn recognition on later.
         """
         self.recording_settings.set_string("voice-setup", "enabled" if enable else "declined")
-        self._voice_setup_chain = bool(enable)
-        self._advance_voice_setup()
+        if enable:
+            self.voice_setup.begin(self.diarization_models, self.voice_models)
+        else:
+            self.voice_setup.end()
 
     def _advance_voice_setup(self):
-        if not self._voice_setup_chain:
-            return
-        from .voice_enroll import voice_setup_step
-
-        tell, voices = self.diarization_models, self.voice_models
-        if tell is None or voices is None:
-            self._voice_setup_chain = False
-            return
-        step = voice_setup_step(tell.snapshot(), voices.snapshot())
-        if step == "download-tell":
-            tell.download()
-        elif step in ("download-voices", "done"):
-            self._voice_setup_chain = False
-            if step == "download-voices":
-                voices.download()
+        self.voice_setup.advance(self.diarization_models, self.voice_models)
 
     def _models_changed(self):
         self._advance_voice_setup()
