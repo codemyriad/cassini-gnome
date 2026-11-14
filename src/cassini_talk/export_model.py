@@ -62,33 +62,12 @@ def markdown(value):
         return _markdown(value)
 
 
-def _markdown(value):
+def _reading(value):
+    """The shared reading rows and the resolver for names exactly as shown (D47)."""
     items = value["items"]
     names = {s["id"]: s["name"] for s in value["speakers"]}
     order = list(dict.fromkeys(item["speaker"] for item in sorted(items, key=lambda item: item["startMs"])))
-    lines = ["# " + escaped(value["title"]), ""]
-    stamp = value.get("startMs")
-    if stamp is None:
-        stamp = value.get("recordedAtLocal")
-    date_line = ""
-    if stamp is not None:
-        date_line = fmt.full_date_time(stamp, tz=value.get("tz"))
-    if value.get("durationMs") is not None:
-        date_line += (" · " if date_line else "") + fmt.meeting_duration(value["durationMs"])
-    if date_line:
-        lines += [date_line, ""]
-    if order:
-        lines += [
-            text(
-                "export.markdown.speakersLine",
-                names=", ".join(
-                    escaped(names.get(identifier, text("common.speaker.unnamed", n=i + 1)))
-                    for i, identifier in enumerate(order)
-                ),
-            ),
-            "",
-        ]
-    lines += ["## " + text("export.markdown.transcriptHeading"), ""]
+    rank = {identifier: i for i, identifier in enumerate(order)}
     words = [
         Word(
             item["speaker"],
@@ -103,9 +82,31 @@ def _markdown(value):
     ]
 
     def name(identifier):
-        return names.get(identifier, text("common.speaker.unnamed", n=order.index(identifier) + 1))
+        return names.get(identifier, text("common.speaker.unnamed", n=rank[identifier] + 1))
 
-    for row in reading_turns(words, gaps=value.get("turnGaps")):
+    return reading_turns(words, gaps=value.get("turnGaps")) if words else [], name, order
+
+
+def _markdown(value):
+    rows, name, order = _reading(value)
+    lines = ["# " + escaped(value["title"]), ""]
+    stamp = value.get("startMs")
+    if stamp is None:
+        stamp = value.get("recordedAtLocal")
+    date_line = ""
+    if stamp is not None:
+        date_line = fmt.full_date_time(stamp, tz=value.get("tz"))
+    if value.get("durationMs") is not None:
+        date_line += (" · " if date_line else "") + fmt.meeting_duration(value["durationMs"])
+    if date_line:
+        lines += [date_line, ""]
+    if order:
+        lines += [
+            text("export.markdown.speakersLine", names=", ".join(escaped(name(identifier)) for identifier in order)),
+            "",
+        ]
+    lines += ["## " + text("export.markdown.transcriptHeading"), ""]
+    for row in rows:
         over = speaker_list((name(identifier) for identifier in row.over), language=language())
         caption = " " + text("meeting.turn.over", names=escaped(over)) if over else ""
         lines += [
@@ -122,6 +123,164 @@ def _markdown(value):
         ]
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"
+
+
+# L-11 (D99 §2, PARITY §2): text formats share the Markdown projection, so
+# speaker names and turns are exactly what the viewer shows. Voiceprints and
+# notes never appear; times are playback positions from the word timings.
+CUE_MAX_MS = 7000  # PARITY §2: a cue covers at most 7 s ...
+CUE_LINE = 42  # ... and at most two lines of this many characters.
+CUE_PAUSE_MS = 1500  # A silence this long inside a turn starts a new cue.
+CUE_MIN_MS = 1000  # Shortest cue on screen unless the speaker's next cue starts first.
+
+
+def _plain(value):
+    """One line of text: control characters (newlines, tabs, NUL) become spaces."""
+    return " ".join("".join(" " if unicodedata.category(c)[0] == "C" else c for c in value).split())
+
+
+def plain_text(value):
+    """`.txt`: one block per speaker turn, `{name} · {hh:mm:ss}` then the words."""
+    with using_language(value["uiLanguage"]) if "uiLanguage" in value else nullcontext():
+        rows, name, _order = _reading(value)
+        blocks = [
+            f"{_plain(name(row.speaker))} · {fmt.position(row.start_ms)}\n{_plain(row_text(row, name)[0])}\n"
+            for row in rows
+        ]
+    return "\n".join(blocks)
+
+
+def _cue_lines(value, start=0):
+    """One line when it fits, else two split at the most balanced space after `start` (never three)."""
+    if len(value) <= CUE_LINE:
+        return [value]
+    spaces = [i for i in range(start, len(value)) if value[i] == " "]
+    if not spaces:
+        return [value]
+    fitting = [i for i in spaces if i <= CUE_LINE and len(value) - i - 1 <= CUE_LINE]
+    if fitting:
+        at = min(fitting, key=lambda i: abs(len(value) - 1 - 2 * i))
+    else:
+        at = next((i for i in reversed(spaces) if i <= CUE_LINE), spaces[0])
+    return [value[:at], value[at + 1 :]]
+
+
+def cues(value):
+    """Subtitle cues: (speaker name, start ms, end ms, [line, line?], prefix length).
+
+    Every reading row and every inline reply is a turn; a turn is cut into
+    segments of at most CUE_MAX_MS and two CUE_LINE lines including the
+    `{name}: ` prefix. Linear in the number of words apart from the final
+    stable sort by start.
+    """
+    with using_language(value["uiLanguage"]) if "uiLanguage" in value else nullcontext():
+        rows, name, _order = _reading(value)
+        drafts = []
+
+        def segment(speaker, atoms):
+            label = _plain(name(speaker))
+            prefix = len(label) + 2
+            current = None
+            previous_end = None
+            for word, shown in atoms:
+                shown = _plain(shown or "")
+                if not shown:
+                    continue
+                if (
+                    current is None
+                    or word.end_ms - current["start"] > CUE_MAX_MS
+                    or word.start_ms - previous_end >= CUE_PAUSE_MS
+                    or current["length"] + 1 + len(shown) > 2 * CUE_LINE
+                ):
+                    current = dict(speaker=speaker, label=label, start=word.start_ms, end=word.end_ms, words=[])
+                    current["length"] = prefix + len(shown)
+                    drafts.append(current)
+                else:
+                    current["length"] += 1 + len(shown)
+                current["words"].append(shown)
+                current["end"] = max(current["end"], word.end_ms)
+                previous_end = word.end_ms
+
+        for row in rows:
+            segment(row.speaker, zip(row.words, row.items, strict=True))
+            for _after, aside in row.asides:
+                segment(aside.speaker, zip(aside.words, aside.items, strict=True))
+    drafts.sort(key=lambda draft: draft["start"])
+    following = {}
+    result = [None] * len(drafts)
+    for index in range(len(drafts) - 1, -1, -1):
+        draft = drafts[index]
+        end = min(max(draft["end"], draft["start"] + CUE_MIN_MS), draft["start"] + CUE_MAX_MS)
+        if draft["speaker"] in following:
+            end = max(draft["start"], min(end, following[draft["speaker"]]))
+        following[draft["speaker"]] = draft["start"]
+        prefix = draft["label"] + ": "
+        result[index] = (
+            draft["label"],
+            draft["start"],
+            end,
+            _cue_lines(prefix + " ".join(draft["words"]), len(prefix)),
+            len(prefix),
+        )
+    return result
+
+
+def _stamp(ms, separator):
+    ms = max(0, ms)
+    seconds, millis = divmod(ms, 1000)
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}{separator}{millis:03d}"
+
+
+def srt(value):
+    """`.srt`: numbered cues, each line set prefixed `{name}: `."""
+    blocks = [
+        f"{number}\n{_stamp(start, ',')} --> {_stamp(end, ',')}\n" + "".join(line + "\n" for line in lines)
+        for number, (_label, start, end, lines, _prefix) in enumerate(cues(value), start=1)
+    ]
+    return "\n".join(blocks)
+
+
+def vtt_escape(value):
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def webvtt(value):
+    """`.vtt`: `WEBVTT`, then the same cues as SRT with `<v {name}>` voice spans."""
+    out = ["WEBVTT\n"]
+    for label, start, end, lines, prefix in cues(value):
+        body = "\n".join(lines)[prefix:]  # The name moves from the prefix into the voice span.
+        out.append(f"\n{_stamp(start, '.')} --> {_stamp(end, '.')}\n<v {vtt_escape(label)}>{vtt_escape(body)}</v>\n")
+    return "".join(out)
+
+
+TEXT_FORMATS = {"markdown": (markdown, "md"), "txt": (plain_text, "txt"), "srt": (srt, "srt"), "vtt": (webvtt, "vtt")}
+
+
+def has_completed_transcript(meeting):
+    """D12/D99: only a completed transcript has text formats; queued, running, failed is audio-only."""
+    return meeting.transcript == "done"
+
+
+def audio_format(meeting):
+    """D99 §2: an imported meeting with no Cassini file yet offers its original audio
+    instead of a Cassini file while it is audio-only; everything else is a Cassini file."""
+    if (
+        meeting.origin == "received"
+        and getattr(meeting, "plain_audio", False)
+        and meeting.audio_file is not None
+        and not has_completed_transcript(meeting)
+    ):
+        return "original"
+    return "cassini"
+
+
+def available_formats(meeting):
+    """The single-meeting choices in dialog order (PARITY §2); text formats are hidden, not disabled."""
+    if has_completed_transcript(meeting):
+        return (audio_format(meeting), "markdown", "txt", "srt", "vtt")
+    return (audio_format(meeting),)
 
 
 def model_projection(meeting, *, tz=None):

@@ -447,6 +447,10 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .export-destination { background: var(--app-wash-subtle); border-radius: 10px; padding: 12px; }
 .export-dialog .small { font-size: 13px; }
 .export-choice:last-child { min-height: 32px; }
+/* L-11 (D99): More formats disclosure below Markdown, inside the same bordered group. */
+.export-more { border-top: 1px solid var(--app-hairline); }
+.export-more title { padding: 12px 14px; }
+.export-more-rows > .export-choice:first-child { border-top: 1px solid var(--app-hairline); }
 
 /* Search shares sidebar colours and L-19 neutral card rules with the Library. */
 .search-sidebar-filters { padding: 2px 10px 6px; }

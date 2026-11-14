@@ -129,7 +129,8 @@ def test_empty_embedded_speaker_id_is_damaged_before_import_or_export(tmp_path, 
 def test_flatpak_rejects_writable_tmpfs_home_before_creating_an_export(tmp_path, monkeypatch):
     from cassini_talk import library_location
 
-    original = load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library")
+    # D99 §2: Markdown is offered only for a completed transcript.
+    original = replace(load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library"), transcript="done")
     monkeypatch.setattr("cassini_talk.companion.in_flatpak", lambda: True)
     monkeypatch.setattr(library_location, "_sandbox_mounts", lambda: (tmp_path / "host-grant",))
     destination = tmp_path / "private-home/Documents"
@@ -141,7 +142,7 @@ def test_flatpak_rejects_writable_tmpfs_home_before_creating_an_export(tmp_path,
 def test_flatpak_selected_folder_grant_exports_both_formats_without_a_home_grant(tmp_path, monkeypatch):
     from cassini_talk import library_location
 
-    original = load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library")
+    original = replace(load_open_meeting(ASSETS / "plain-title.opus", tmp_path / "Library"), transcript="done")
     destination = tmp_path / "host-grant"
     destination.mkdir()
     monkeypatch.setattr("cassini_talk.companion.in_flatpak", lambda: True)
