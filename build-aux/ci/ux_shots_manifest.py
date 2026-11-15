@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Write and verify a deterministic shots.json manifest for ux-artifacts."""
 
+import io
 import json
 import re
 import struct
@@ -66,13 +67,50 @@ def _chrome_luminance(data: bytes) -> tuple[int, int, float]:
         elif tag == b"IEND":
             break
     bpp = 4 if color_type == 6 else 3
-    stride, raw = width * bpp, zlib.decompress(bytes(idat))
     top_y = min(height // 2, 48 if width >= 2000 else 24)
     mid_y = height // 2
     targets = {top_y, mid_y}
     step = max(1, width // 32)
     xs = range(0, width, step) if width < 32 else range(step, width - step, step)
+    rows = _decoded_rows_pil(data, width, bpp, targets)
+    if rows is None:
+        rows = _decoded_rows(bytes(idat), width, bpp, targets)
     row_lums: list[float] = []
+    for y in sorted(targets):
+        cur = rows[y]
+        samples = [
+            (cur[x * bpp] + cur[x * bpp + 1] + cur[x * bpp + 2]) / 3.0
+            for x in xs
+            if bpp == 3 or cur[x * bpp + 3] >= 200
+        ]
+        if samples:
+            row_lums.append(sum(samples) / len(samples))
+    if not row_lums:
+        raise ValueError("No opaque pixels on sampled chrome scanline")
+    return width, height, max(row_lums)
+
+
+def _decoded_rows_pil(data: bytes, width: int, bpp: int, targets: set[int]) -> dict[int, bytes] | None:
+    """Pillow's C decoder, when installed: the pure-Python unfilter below took
+    72 of the Boards job's seconds for 150 full-window shots (D-1062). Only an
+    accelerator: any surprise here (a corrupt file, a test's stand-in PIL)
+    falls back to the pure decoder, which alone reports what is wrong."""
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as image:
+            if image.mode != ("RGBA" if bpp == 4 else "RGB") or image.size[0] != width:
+                return None
+            image.load()
+            rows = {y: image.crop((0, y, width, y + 1)).tobytes() for y in targets}
+    except Exception:  # noqa: BLE001 - fall back to the pure decoder
+        return None
+    return rows if all(len(row) == width * bpp for row in rows.values()) else None
+
+
+def _decoded_rows(idat: bytes, width: int, bpp: int, targets: set[int]) -> dict[int, bytes]:
+    stride, raw = width * bpp, zlib.decompress(idat)
+    rows: dict[int, bytes] = {}
     prev, cur, offset = bytearray(stride), bytearray(stride), 0
     for y in range(max(targets) + 1):
         flt, line = raw[offset], raw[offset + 1 : offset + 1 + stride]
@@ -95,18 +133,10 @@ def _chrome_luminance(data: bytes) -> tuple[int, int, float]:
             else:
                 raise ValueError(f"Unsupported PNG filter {flt}")
         if y in targets:
-            samples = [
-                (cur[x * bpp] + cur[x * bpp + 1] + cur[x * bpp + 2]) / 3.0
-                for x in xs
-                if bpp == 3 or cur[x * bpp + 3] >= 200
-            ]
-            if samples:
-                row_lums.append(sum(samples) / len(samples))
+            rows[y] = bytes(cur)
         if y < max(targets):
             prev[:] = cur
-    if not row_lums:
-        raise ValueError("No opaque pixels on sampled chrome scanline")
-    return width, height, max(row_lums)
+    return rows
 
 
 def build_manifest(out_dir: Path) -> dict:

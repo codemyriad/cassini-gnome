@@ -8,6 +8,12 @@ permissions:
   contents: write
   actions: read
 
+# D-1062: a re-pushed tag queues behind its running release instead of racing
+# it to publish; never cancelled halfway through an upload.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   main-inputs:
     name: Require exact green main inputs
