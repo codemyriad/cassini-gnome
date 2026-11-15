@@ -478,7 +478,7 @@ class CassiniApplication(Adw.Application):
         dialog = Gtk.FileDialog(title=text("import.action"))
         meetings = Gtk.FileFilter()
 
-        meetings.set_name(text("import.filter.cassiniAndZip"))
+        meetings.set_name(text("import.filter.supported"))
         # W0.7 / L-25: decided contract mimeTypes only. GtkFileFilter matches MIME
         # subclasses, so audio/ogg or application/ogg would also offer Ogg
         # video (.ogv) and unsupported FLAC-in-Ogg; no audio suffix globs either.
@@ -487,10 +487,8 @@ class CassiniApplication(Adw.Application):
         meetings.add_suffix("zip")
         filters = Gio.ListStore.new(Gtk.FileFilter)
         filters.append(meetings)
-        sessions = Gtk.FileFilter()
-        sessions.set_name(_("Recording Session"))
-        sessions.add_pattern("session.json")
-        filters.append(sessions)
+        # D-1061: no developer-only session.json filter here; session.json and
+        # Recording-* folders still open from the command line / open_file.
         dialog.set_filters(filters)
         dialog.set_default_filter(meetings)
         dialog.open_multiple(self.get_active_window(), None, self._on_open_chosen)

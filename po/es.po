@@ -168,9 +168,6 @@ msgstr "[ARCHIVO…]"
 msgid "Open Meeting"
 msgstr "Abrir reunión"
 
-msgid "Recording Session"
-msgstr "Sesión de grabación"
-
 msgid "Recording a meeting"
 msgstr "Grabando una reunión"
 
