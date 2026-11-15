@@ -14,8 +14,12 @@ def pcm_blocks(path, *, inactivity_seconds=30):
     from gi.repository import Gst
 
     Gst.init(None)
+    # opusdec decodes at the OpusHead input rate (16 kHz for many phone voice
+    # notes) unless downstream can resample; without audioresample such a file
+    # fails caps negotiation ("Internal data stream error") and is never
+    # written down. 48 kHz files pass through audioresample untouched.
     pipeline = Gst.parse_launch(
-        "uridecodebin name=source ! audioconvert dithering=0 noise-shaping=0 ! "
+        "uridecodebin name=source ! audioconvert dithering=0 noise-shaping=0 ! audioresample ! "
         "audio/x-raw,format=S16LE,rate=48000,channels=(int)[1,2] ! "
         "appsink name=pcm max-buffers=2 drop=false sync=false"
     )
