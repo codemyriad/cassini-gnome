@@ -7,6 +7,7 @@ Runs on the import worker, never on the GTK main thread.
 """
 
 import contextlib
+import errno
 import os
 import re
 import struct
@@ -234,11 +235,42 @@ def missing_elements():
     ]
 
 
+def bus_error(Gst, error, debug):
+    """The exception for a GStreamer bus ERROR (``Message.parse_error()``).
+
+    A full disk or quota is an ``OSError`` carrying ENOSPC/EDQUOT so the
+    import catalog says "free some space" (BUG-CLASSES #15); filesink reports
+    ENOSPC as ``ResourceError.NO_SPACE_LEFT`` and any other write errno as
+    ``ResourceError.WRITE`` with ``g_strerror`` in the debug text. Anything
+    else stays a ValueError: a decode failure the catalog calls damaged.
+    """
+    resource = Gst.resource_error_quark()
+    if _matches(error, resource, Gst.ResourceError.NO_SPACE_LEFT):
+        return OSError(errno.ENOSPC, os.strerror(errno.ENOSPC), error.message)
+    if _matches(error, resource, Gst.ResourceError.WRITE) and debug:
+        for code in (errno.ENOSPC, errno.EDQUOT):
+            if os.strerror(code) in debug:
+                return OSError(code, os.strerror(code), error.message)
+    return ValueError(error.message)
+
+
+def _matches(error, domain, code):
+    # GLib.Error.matches() takes the quark; older PyGObject exposes .domain
+    # only as the quark's string, so compare that as well.
+    with contextlib.suppress(AttributeError, TypeError):
+        if error.matches(domain, code):
+            return True
+    from gi.repository import GLib
+
+    return error.domain in (domain, GLib.quark_to_string(domain)) and error.code == int(code)
+
+
 def decode_to_opus(source, output, *, cancel=None, clock=time.monotonic):
     """Decode ``source`` (a regular file path) into a new Ogg Opus file at ``output``.
 
     Raises ValueError when the input carries no decodable audio or its
-    container is truncated, and CancelledError (via check_cancel) when
+    container is truncated, OSError(ENOSPC/EDQUOT) when the output disk fills
+    up (see bus_error), and CancelledError (via check_cancel) when
     ``cancel`` is set. ``output`` must not exist; it is removed again on
     failure. On success the Opus file has been fsynced (filesink does not).
     """
@@ -296,7 +328,7 @@ def decode_to_opus(source, output, *, cancel=None, clock=time.monotonic):
                 message = bus.timed_pop_filtered(BUS_POLL_NS, Gst.MessageType.ERROR | Gst.MessageType.EOS)
                 if message is not None:
                     if message.type == Gst.MessageType.ERROR:
-                        raise ValueError(message.parse_error()[0].message)
+                        raise bus_error(Gst, *message.parse_error())
                     break
                 ok, position = pipeline.query_position(Gst.Format.TIME)
                 if ok and position != last_position:

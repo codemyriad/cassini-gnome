@@ -8,9 +8,9 @@ from concurrent.futures import CancelledError
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 
-from . import archive_import, import_types
+from . import archive_import, import_feedback, import_types
 from .export_audio import check_cancel
-from .received import commit_staged, discard_staged, import_one, regular_input, stage_one
+from .received import UnsupportedImport, commit_staged, discard_staged, import_one, regular_input, stage_one
 
 DECODE_ERRORS = (OSError, ValueError, RuntimeError, EOFError, zipfile.BadZipFile, zlib.error)
 
@@ -137,9 +137,9 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                             item, norm_name = pending.pop(0)
                             try:
                                 meeting, added = commit_staged(item, dedup_index=dedup_index)
-                            except DECODE_ERRORS:
+                            except DECODE_ERRORS as error:
                                 result.imported -= 1
-                                failed(norm_name, "damaged")
+                                failed(norm_name, import_feedback.failure_reason(error))
                                 continue
                             if not added:
                                 result.imported -= 1
@@ -196,8 +196,10 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                                                 )
                                     except (CancelledError, archive_import.ArchiveError):
                                         raise
-                                    except DECODE_ERRORS:
-                                        failed(norm_name, "damaged")
+                                    except UnsupportedImport:
+                                        result.ignored += 1
+                                    except DECODE_ERRORS as error:
+                                        failed(norm_name, import_feedback.failure_reason(error))
                                     report()
                         commit_archive()
                     except CancelledError:
@@ -236,8 +238,11 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
             except archive_import.ArchiveError as error:
                 failed(path.name, error.reason)
                 result.failed_inputs.append(str(path))
-            except DECODE_ERRORS:
-                failed(path.name, "damaged")
+            except UnsupportedImport:
+                # D96/D-1059: e.g. "..mp3" has no name to import; Try again cannot help.
+                result.ignored += 1
+            except DECODE_ERRORS as error:
+                failed(path.name, import_feedback.failure_reason(error))
                 result.failed_inputs.append(str(path))
             report()
     except CancelledError:

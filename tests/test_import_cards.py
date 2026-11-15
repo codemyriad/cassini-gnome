@@ -182,3 +182,183 @@ def test_gio_content_types_for_flac_follow_the_contract():
             assert not import_types.acceptable_name("song" + ext, mime)
     for mime in ("audio/ogg", "application/ogg"):
         assert not import_types.acceptable_name("song.flac", mime)
+
+
+# ---- D-1059: single-file open / Try again feedback is catalog copy, never raw text ----
+
+
+def damaged_mp3(tmp_path, name="Corrupt G.mp3"):
+    """3 KB that no decoder types as audio (deterministic, unlike /dev/urandom)."""
+    import hashlib
+
+    path = tmp_path / name
+    block = b"".join(hashlib.sha256(bytes([i])).digest() for i in range(94))
+    path.write_bytes(block[:3000].replace(b"\xff", b"\x00"))
+    return path
+
+
+def opened_future(path, root):
+    from concurrent.futures import Future
+
+    from cassini_talk.received import import_one
+
+    future = Future()
+    try:
+        meeting, added = import_one(path, root)
+    except Exception as error:  # noqa: BLE001 - delivered to _opened_file as the worker would
+        future.set_exception(error)
+    else:
+        future.set_result((meeting, True, added))
+    return future
+
+
+def window_for_open(tmp_path):
+    window = window_with_cards()
+    window.toasts = []
+    window.toast = window.toasts.append
+    window._opening_files = 1
+    window._import_cancels = set()
+    window._opened_file = LibraryWindow._opened_file.__get__(window)
+    return window
+
+
+@pytest.mark.parametrize("lang", ["en", "it", "fr", "es", "pt-BR", "pt-PT"])
+@pytest.mark.parametrize("name", ["notes.txt", "clip.oga", "..opus", "README"])
+def test_unsupported_open_says_ignored_in_catalog_copy_and_keeps_no_retry_card(tmp_path, lang, name):
+    from cassini_talk.i18n import using_language
+    from cassini_talk.strings import plural
+
+    source = tmp_path / name
+    source.write_text("hello\n")
+    window = window_for_open(tmp_path)
+    token = object()
+    window._begin_import_entries(token, (str(source),))
+    with using_language(lang):
+        window._opened_file(opened_future(source, tmp_path / "Library"), Gio.File.new_for_path(str(source)), token)
+        expected = plural("import.summary.unsupported", 1)
+    assert window.toasts == [expected]
+    assert "Choose an Ogg Opus recording" not in window.toasts
+    # Try again could never succeed: no Needs attention card, and nothing staged.
+    assert window._failed_imports == {} and kinds(window) == []
+    assert not (tmp_path / "Library").exists()
+
+
+@pytest.mark.parametrize("lang", ["en", "it", "fr", "es", "pt-BR", "pt-PT"])
+def test_damaged_audio_open_and_try_again_show_catalog_failure_never_the_raw_decoder_error(tmp_path, lang, caplog):
+    from cassini_talk.i18n import using_language
+    from cassini_talk.strings import plural
+
+    source = damaged_mp3(tmp_path)
+    window = window_for_open(tmp_path)
+    raw = []
+    with using_language(lang):
+        expected = plural("import.summary.failed", 1)
+        for _attempt in ("open", "Try again"):
+            token = object()
+            window._begin_import_entries(token, (str(source),))
+            future = opened_future(source, tmp_path / "Library")
+            raw.append(str(future.exception()))
+            with caplog.at_level("WARNING", logger="cassini_talk.library_window"):
+                window._opened_file(future, Gio.File.new_for_path(str(source)), token)
+            window._opening_files = 1
+            # The damaged supported file stays retryable (W4.6, as for a truncated FLAC).
+            assert kinds(window) == [("failed", "Corrupt G", "Corrupt G.mp3")]
+    assert window.toasts == [expected, expected]
+    assert raw[0] and all(r not in toast for r in raw for toast in window.toasts)
+    # The raw diagnostic stays available in the log only.
+    assert sum(raw[0] in record.getMessage() for record in caplog.records) == 2
+
+
+@pytest.mark.parametrize("lang", ["en", "it", "fr", "es", "pt-BR", "pt-PT"])
+def test_failed_folder_open_shows_catalog_copy_not_the_reader_error(tmp_path, lang):
+    from concurrent.futures import Future
+
+    from cassini_talk.i18n import using_language
+    from cassini_talk.strings import text
+
+    window = window_for_open(tmp_path)
+    future = Future()
+    future.set_exception(ValueError("session.json: Expecting value: line 1 column 1 (char 0)"))
+    with using_language(lang):
+        window._opened_file(future, Gio.File.new_for_path(str(tmp_path / "session.json")))
+        assert window.toasts == [text("details.folderUnavailable")]
+    assert window._failed_imports == {}
+
+
+# ---- D-1059 / BUG-CLASSES #15: a full disk says so and keeps Try again ----
+
+
+@pytest.mark.parametrize("lang", ["en", "it", "fr", "es", "pt-BR", "pt-PT"])
+def test_storage_full_open_says_free_space_and_try_again_works_after(tmp_path, lang, caplog):
+    import errno
+    from concurrent.futures import Future
+
+    from cassini_talk.i18n import using_language
+    from cassini_talk.strings import plural, text
+
+    source = tmp_path / "Weekly sync.mp3"
+    source.write_bytes(b"ID3" + bytes(64))
+    window = window_for_open(tmp_path)
+    token = object()
+    window._begin_import_entries(token, (str(source),))
+    future = Future()
+    future.set_exception(OSError(errno.ENOSPC, "No space left on device"))
+    with using_language(lang):
+        with caplog.at_level("WARNING", logger="cassini_talk.library_window"):
+            window._opened_file(future, Gio.File.new_for_path(str(source)), token)
+        assert window.toasts == [text("import.failed.diskFull")]
+        assert window.toasts != [plural("import.summary.failed", 1)]
+    assert all("No space left on device" not in toast and "Errno" not in toast for toast in window.toasts)
+    # The raw OS text stays a log diagnostic only.
+    assert any("No space left on device" in record.getMessage() for record in caplog.records)
+    # The Needs attention card stays, so Try again after freeing space reimports the file.
+    assert kinds(window) == [("failed", "Weekly sync", "Weekly sync.mp3")]
+    window._retry_failed_import(str(source))
+    assert window.opened == [(str(source),)] and window._failed_imports == {}
+
+
+def test_storage_full_in_a_folder_open_says_free_space(tmp_path):
+    import errno
+    from concurrent.futures import Future
+
+    from cassini_talk.strings import text
+
+    window = window_for_open(tmp_path)
+    future = Future()
+    future.set_exception(OSError(errno.ENOSPC, "No space left on device"))
+    window._opened_file(future, Gio.File.new_for_path(str(tmp_path / "session.json")))
+    assert window.toasts == [text("import.failed.diskFull")]
+    assert window._failed_imports == {}
+
+
+def test_audio_conversion_filling_the_disk_says_free_space_and_keeps_try_again(tmp_path, monkeypatch):
+    """A real GStreamer filesink ENOSPC during conversion reaches the toast as storage-full."""
+    import os
+    from concurrent.futures import Future
+
+    from test_import_types import needs_encoder, write_wav
+
+    from cassini_talk import audio_import, received
+    from cassini_talk.strings import text
+
+    if needs_encoder.args[0] or not os.path.exists("/dev/full"):
+        pytest.skip("GStreamer Opus encode path or /dev/full unavailable")
+    real = audio_import.decode_to_opus
+
+    def decode(source, output, **kwargs):
+        os.symlink("/dev/full", output)
+        return real(source, output, **kwargs)
+
+    monkeypatch.setattr(received, "decode_to_opus", decode)
+    source = write_wav(tmp_path / "Weekly sync.wav")
+    future = Future()
+    try:
+        received.import_one(source, tmp_path / "Library")
+    except (OSError, ValueError) as error:
+        future.set_exception(error)
+    window = window_for_open(tmp_path)
+    token = object()
+    window._begin_import_entries(token, (str(source),))
+    window._opened_file(future, Gio.File.new_for_path(str(source)), token)
+    assert window.toasts == [text("import.failed.diskFull")]
+    assert kinds(window) == [("failed", "Weekly sync", "Weekly sync.wav")]
