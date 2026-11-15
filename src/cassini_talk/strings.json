@@ -21970,6 +21970,67 @@
    }
   },
   {
+   "id": "import.filter.supported",
+   "en": "Audio, Cassini files and ZIP archives",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "L-25",
+   "note": "D-1061. Name of the default file-type filter in the import picker, where the platform's picker shows one, once it accepts audio as well as Cassini files and ZIP archives. Supersedes import.filter.cassiniAndZip for pickers that accept audio; that entry stays unchanged for existing pins.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Audio, file Cassini e archivi ZIP"
+    },
+    "fr": {
+     "text": "Audio, fichiers Cassini et archives ZIP"
+    },
+    "es": {
+     "text": "Audio, archivos Cassini y archivos ZIP"
+    },
+    "pt-BR": {
+     "text": "Áudio, arquivos Cassini e arquivos ZIP"
+    },
+    "pt-PT": {
+     "text": "Áudio, ficheiros Cassini e ficheiros ZIP"
+    }
+   }
+  },
+  {
+   "id": "import.filter.recordingSession",
+   "en": "Recording session",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "label",
+   "boards": [],
+   "milestone": "L-25",
+   "note": "D-1061. GNOME import picker filter matching a capture session.json; replaces the uncatalogued _(\"Recording Session\") in on_open, in sentence case. HARMONY §2 lists 'session' as a never-say word for a meeting; kept because this filter names the capture file itself, not a meeting. Flagged for copy review (needs-human).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Sessione di registrazione"
+    },
+    "fr": {
+     "text": "Session d’enregistrement"
+    },
+    "es": {
+     "text": "Sesión de grabación"
+    },
+    "pt-BR": {
+     "text": "Sessão de gravação"
+    },
+    "pt-PT": {
+     "text": "Sessão de gravação"
+    }
+   }
+  },
+  {
    "id": "import.progress",
    "en": "Importing {done} of {total}…",
    "platforms": [
@@ -22450,6 +22511,38 @@
     },
     "pt-PT": {
      "text": "Este ficheiro ZIP não contém nada que o Cassini possa importar."
+    }
+   }
+  },
+  {
+   "id": "import.failed.diskFull",
+   "en": "There isn’t enough space to import this file. Free some space and try again.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "line",
+   "boards": [],
+   "milestone": "D96",
+   "note": "D-1059 (BUG-CLASSES #15, storage-full reported clearly). Import stopped because the disk is full (ENOSPC or the platform equivalent) while copying or unpacking a file. Distinct from import.summary.failed (damaged or unreadable) and import.cancelled (person cancelled). The second sentence is the recovery step; the app may offer common.tryAgain. Wording follows library.publishDiskLow.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Non c’è abbastanza spazio per importare questo file. Libera un po’ di spazio e riprova."
+    },
+    "fr": {
+     "text": "Il n’y a pas assez d’espace pour importer ce fichier. Libérez de l’espace et réessayez."
+    },
+    "es": {
+     "text": "No hay espacio suficiente para importar este archivo. Libera espacio e inténtalo de nuevo."
+    },
+    "pt-BR": {
+     "text": "Não há espaço suficiente para importar este arquivo. Libere espaço e tente novamente."
+    },
+    "pt-PT": {
+     "text": "Não há espaço suficiente para importar este ficheiro. Liberte espaço e tente novamente."
     }
    }
   },
@@ -28525,13 +28618,14 @@
   {
    "id": "android.savedVoices.forget.body",
    "platforms": [
-    "android"
+    "android",
+    "ios"
    ],
    "role": "description",
    "boards": [],
    "milestone": "Phase 2 phone nouns (L-67)",
    "status": "draft",
-   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged. D-1047: also reused verbatim by iOS Phase 2; the historical android ID remains stable for existing consumers.",
    "l10n": {
     "it": {
      "text": "Cassini smette di riconoscere questa voce. I nomi già presenti nelle riunioni restano."
@@ -28554,13 +28648,14 @@
   {
    "id": "android.savedVoices.forgetEveryone.body",
    "platforms": [
-    "android"
+    "android",
+    "ios"
    ],
    "role": "description",
    "boards": [],
    "milestone": "Phase 2 phone nouns (L-67)",
    "status": "draft",
-   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged. D-1047: also reused verbatim by iOS Phase 2; the historical android ID remains stable for existing consumers.",
    "l10n": {
     "it": {
      "plural": {
@@ -28644,13 +28739,14 @@
   {
    "id": "android.trash.retentionNote",
    "platforms": [
-    "android"
+    "android",
+    "ios"
    ],
    "role": "description",
    "boards": [],
    "milestone": "Phase 2 phone nouns (L-67)",
    "status": "draft",
-   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged. D-1047: also reused verbatim by iOS Phase 2; the historical android ID remains stable for existing consumers.",
    "l10n": {
     "it": {
      "text": "Le riunioni qui vengono eliminate per sempre dopo 30 giorni, con il loro audio, le trascrizioni e le impronte vocali di quelle riunioni."
@@ -28673,13 +28769,14 @@
   {
    "id": "android.trash.delete.body",
    "platforms": [
-    "android"
+    "android",
+    "ios"
    ],
    "role": "description",
    "boards": [],
    "milestone": "Phase 2 phone nouns (L-67)",
    "status": "draft",
-   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged. D-1047: also reused verbatim by iOS Phase 2; the historical android ID remains stable for existing consumers.",
    "l10n": {
     "it": {
      "text": "L’audio, le trascrizioni e le impronte vocali di questa riunione vengono eliminati. Non si può annullare."
@@ -28702,13 +28799,14 @@
   {
    "id": "android.trash.deleteAll.title",
    "platforms": [
-    "android"
+    "android",
+    "ios"
    ],
    "role": "dialog-title",
    "boards": [],
    "milestone": "Phase 2 phone nouns (L-67)",
    "status": "draft",
-   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged. D-1047: also reused verbatim by iOS Phase 2; the historical android ID remains stable for existing consumers.",
    "l10n": {
     "it": {
      "plural": {
@@ -28720,11 +28818,11 @@
     },
     "fr": {
      "plural": {
-      "one": "Supprimer définitivement {n} réunion\\u202F?",
-      "many": "Supprimer définitivement {n} réunions\\u202F?",
-      "other": "Supprimer définitivement {n} réunions\\u202F?"
+      "one": "Supprimer définitivement {n} réunion ?",
+      "many": "Supprimer définitivement {n} réunions ?",
+      "other": "Supprimer définitivement {n} réunions ?"
      },
-     "text": "Supprimer définitivement {n} réunions\\u202F?"
+     "text": "Supprimer définitivement {n} réunions ?"
     },
     "es": {
      "plural": {
@@ -28763,13 +28861,14 @@
   {
    "id": "android.trash.empty.body",
    "platforms": [
-    "android"
+    "android",
+    "ios"
    ],
    "role": "description",
    "boards": [],
    "milestone": "Phase 2 phone nouns (L-67)",
    "status": "draft",
-   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged. D-1047: also reused verbatim by iOS Phase 2; the historical android ID remains stable for existing consumers.",
    "l10n": {
     "it": {
      "text": "Le riunioni che elimini restano qui per 30 giorni."
@@ -28907,6 +29006,366 @@
     }
    },
    "en": "Open meeting"
+  },
+  {
+   "id": "ios.settings.library.trashFooter",
+   "en": "Meetings in Recently Deleted are not counted. They are deleted for good after 30 days.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "text": "No se cuentan las reuniones de Eliminado recientemente. Se eliminan para siempre tras 30 días."
+    },
+    "fr": {
+     "text": "Les réunions dans Suppressions récentes ne sont pas comptées. Elles sont supprimées définitivement après 30 jours."
+    },
+    "it": {
+     "text": "Le riunioni in Eliminati di recente non sono contate. Vengono eliminate definitivamente dopo 30 giorni."
+    },
+    "pt-BR": {
+     "text": "As reuniões em Apagados não são contadas. Elas são excluídas para sempre após 30 dias."
+    },
+    "pt-PT": {
+     "text": "As reuniões em Apagados não são contadas. São eliminadas definitivamente após 30 dias."
+    }
+   }
+  },
+  {
+   "id": "ios.savedVoices.forgetAllData.body",
+   "en": "Deletes the voiceprints of every meeting. Names already in your meetings stay.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "text": "Elimina las huellas de voz de todas las reuniones. Los nombres que ya están en tus reuniones se mantienen."
+    },
+    "fr": {
+     "text": "Supprime les empreintes vocales de toutes les réunions. Les noms déjà présents dans vos réunions sont conservés."
+    },
+    "it": {
+     "text": "Elimina le impronte vocali di ogni riunione. I nomi già presenti nelle riunioni restano."
+    },
+    "pt-BR": {
+     "text": "Exclui as impressões de voz de todas as reuniões. Os nomes que já estão nas suas reuniões permanecem."
+    },
+    "pt-PT": {
+     "text": "Elimina as impressões vocais de todas as reuniões. Os nomes já presentes nas reuniões mantêm-se."
+    }
+   }
+  },
+  {
+   "id": "ios.speakers.rememberVoice.description",
+   "en": "Future meetings will name {name} automatically. The voiceprint never leaves this device.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "text": "Las próximas reuniones nombrarán a {name} automáticamente. La huella de voz nunca sale de este dispositivo."
+    },
+    "fr": {
+     "text": "Les prochaines réunions nommeront {name} automatiquement. L’empreinte vocale ne quitte jamais cet appareil."
+    },
+    "it": {
+     "text": "Le prossime riunioni riconosceranno {name} automaticamente. L’impronta vocale non lascia mai il dispositivo."
+    },
+    "pt-BR": {
+     "text": "As próximas reuniões vão nomear {name} automaticamente. A impressão de voz nunca sai deste dispositivo."
+    },
+    "pt-PT": {
+     "text": "As próximas reuniões vão nomear {name} automaticamente. A impressão vocal nunca sai deste dispositivo."
+    }
+   },
+   "placeholders": {
+    "name": "name of the speaker"
+   }
+  },
+  {
+   "id": "ios.speakers.rememberVoice.description.unnamed",
+   "en": "Future meetings will name this person automatically. The voiceprint never leaves this device.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "text": "Las próximas reuniones nombrarán a esta persona automáticamente. La huella de voz nunca sale de este dispositivo."
+    },
+    "fr": {
+     "text": "Les prochaines réunions nommeront cette personne automatiquement. L’empreinte vocale ne quitte jamais cet appareil."
+    },
+    "it": {
+     "text": "Le prossime riunioni riconosceranno questa persona automaticamente. L’impronta vocale non lascia mai il dispositivo."
+    },
+    "pt-BR": {
+     "text": "As próximas reuniões vão nomear esta pessoa automaticamente. A impressão de voz nunca sai deste dispositivo."
+    },
+    "pt-PT": {
+     "text": "As próximas reuniões vão nomear esta pessoa automaticamente. A impressão vocal nunca sai deste dispositivo."
+    }
+   }
+  },
+  {
+   "id": "ios.speakers.suggestVoice.description",
+   "en": "Future meetings will suggest {name}. The voiceprint never leaves this device.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "text": "Las próximas reuniones sugerirán a {name}. La huella de voz nunca sale de este dispositivo."
+    },
+    "fr": {
+     "text": "Les prochaines réunions suggéreront {name}. L’empreinte vocale ne quitte jamais cet appareil."
+    },
+    "it": {
+     "text": "Le prossime riunioni suggeriranno {name}. L’impronta vocale non lascia mai il dispositivo."
+    },
+    "pt-BR": {
+     "text": "As próximas reuniões vão sugerir {name}. A impressão de voz nunca sai deste dispositivo."
+    },
+    "pt-PT": {
+     "text": "As próximas reuniões vão sugerir {name}. A impressão vocal nunca sai deste dispositivo."
+    }
+   },
+   "placeholders": {
+    "name": "name of the speaker"
+   }
+  },
+  {
+   "id": "ios.speakers.suggestVoice.description.unnamed",
+   "en": "Future meetings will suggest this person. The voiceprint never leaves this device.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "text": "Las próximas reuniones sugerirán a esta persona. La huella de voz nunca sale de este dispositivo."
+    },
+    "fr": {
+     "text": "Les prochaines réunions suggéreront cette personne. L’empreinte vocale ne quitte jamais cet appareil."
+    },
+    "it": {
+     "text": "Le prossime riunioni suggeriranno questa persona. L’impronta vocale non lascia mai il dispositivo."
+    },
+    "pt-BR": {
+     "text": "As próximas reuniões vão sugerir esta pessoa. A impressão de voz nunca sai deste dispositivo."
+    },
+    "pt-PT": {
+     "text": "As próximas reuniões vão sugerir esta pessoa. A impressão vocal nunca sai deste dispositivo."
+    }
+   }
+  },
+  {
+   "id": "ios.speakers.peopleInMeeting",
+   "en": "People in this meeting",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "text": "Personas en esta reunión"
+    },
+    "fr": {
+     "text": "Personnes dans cette réunion"
+    },
+    "it": {
+     "text": "Persone in questa riunione"
+    },
+    "pt-BR": {
+     "text": "Pessoas nesta reunião"
+    },
+    "pt-PT": {
+     "text": "Pessoas nesta reunião"
+    }
+   }
+  },
+  {
+   "id": "ios.speakers.meetingSaveFailed",
+   "en": "The meeting could not be saved. Nothing was changed.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "text": "No se pudo guardar la reunión. No se cambió nada."
+    },
+    "fr": {
+     "text": "Impossible de sauvegarder la réunion. Rien n’a été modifié."
+    },
+    "it": {
+     "text": "Impossibile salvare la riunione. Non è stato modificato nulla."
+    },
+    "pt-BR": {
+     "text": "Não foi possível salvar a reunião. Nada foi alterado."
+    },
+    "pt-PT": {
+     "text": "Não foi possível guardar a reunião. Nada foi alterado."
+    }
+   }
+  },
+  {
+   "id": "ios.trash.deleteManyFailed",
+   "en": "{n} meetings could not be deleted. They stay in Recently Deleted.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "plural": {
+      "many": "No se pudieron eliminar {n} reuniones. Siguen en Eliminado recientemente.",
+      "one": "No se pudo eliminar {n} reunión. Sigue en Eliminado recientemente.",
+      "other": "No se pudieron eliminar {n} reuniones. Siguen en Eliminado recientemente."
+     },
+     "text": "No se pudieron eliminar {n} reuniones. Siguen en Eliminado recientemente."
+    },
+    "fr": {
+     "plural": {
+      "many": "Impossible de supprimer {n} réunions. Elles restent dans Suppressions récentes.",
+      "one": "Impossible de supprimer {n} réunion. Elle reste dans Suppressions récentes.",
+      "other": "Impossible de supprimer {n} réunions. Elles restent dans Suppressions récentes."
+     },
+     "text": "Impossible de supprimer {n} réunions. Elles restent dans Suppressions récentes."
+    },
+    "it": {
+     "plural": {
+      "many": "Non è stato possibile eliminare {n} riunioni. Restano in Eliminati di recente.",
+      "one": "Non è stato possibile eliminare {n} riunione. Resta in Eliminati di recente.",
+      "other": "Non è stato possibile eliminare {n} riunioni. Restano in Eliminati di recente."
+     },
+     "text": "Non è stato possibile eliminare {n} riunioni. Restano in Eliminati di recente."
+    },
+    "pt-BR": {
+     "plural": {
+      "many": "Não foi possível excluir {n} reuniões. Elas continuam em Apagados.",
+      "one": "Não foi possível excluir {n} reunião. Ela continua em Apagados.",
+      "other": "Não foi possível excluir {n} reuniões. Elas continuam em Apagados."
+     },
+     "text": "Não foi possível excluir {n} reuniões. Elas continuam em Apagados."
+    },
+    "pt-PT": {
+     "plural": {
+      "many": "Não foi possível eliminar {n} reuniões. Ficam em Apagados.",
+      "one": "Não foi possível eliminar {n} reunião. Fica em Apagados.",
+      "other": "Não foi possível eliminar {n} reuniões. Ficam em Apagados."
+     },
+     "text": "Não foi possível eliminar {n} reuniões. Ficam em Apagados."
+    }
+   },
+   "placeholders": {
+    "n": "number of meetings that could not be deleted"
+   },
+   "plural": {
+    "one": "{n} meeting could not be deleted. It stays in Recently Deleted.",
+    "other": "{n} meetings could not be deleted. They stay in Recently Deleted."
+   }
+  },
+  {
+   "id": "ios.trash.deleteFailed",
+   "en": "“{title}” could not be deleted. It stays in Recently Deleted.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "text": "No se pudo eliminar “{title}”. Sigue en Eliminado recientemente."
+    },
+    "fr": {
+     "text": "Impossible de supprimer « {title} ». La réunion reste dans Suppressions récentes."
+    },
+    "it": {
+     "text": "Non è stato possibile eliminare “{title}”. Resta in Eliminati di recente."
+    },
+    "pt-BR": {
+     "text": "Não foi possível excluir “{title}”. Ela continua em Apagados."
+    },
+    "pt-PT": {
+     "text": "Não foi possível eliminar «{title}». Fica em Apagados."
+    }
+   },
+   "placeholders": {
+    "title": "title of the meeting"
+   }
+  },
+  {
+   "id": "ios.failure.meetingDetails",
+   "en": "This meeting’s details are not supported or are damaged. Its files have been kept.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Phase 2 phone nouns (L-67)",
+   "note": "D-1047 / L-67: iOS Phase 2 meeting wording. Recently Deleted labels retain the shipped iOS translations. Meeting is feminine in every translated locale; voiceprints and names refer to the existing data, not a new deletion behaviour.",
+   "status": "draft",
+   "l10n": {
+    "es": {
+     "text": "Los detalles de esta reunión no son compatibles o están dañados. Se conservaron sus archivos."
+    },
+    "fr": {
+     "text": "Les détails de cette réunion ne sont pas pris en charge ou sont endommagés. Ses fichiers ont été conservés."
+    },
+    "it": {
+     "text": "I dettagli di questa riunione non sono supportati o sono danneggiati. I suoi file sono stati conservati."
+    },
+    "pt-BR": {
+     "text": "Os detalhes desta reunião não são compatíveis ou estão danificados. Os arquivos dela foram mantidos."
+    },
+    "pt-PT": {
+     "text": "Os detalhes desta reunião não são suportados ou estão danificados. Os ficheiros foram mantidos."
+    }
+   }
   }
  ]
 }

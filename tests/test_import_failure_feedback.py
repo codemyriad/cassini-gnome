@@ -89,3 +89,89 @@ def test_single_file_feedback_copy_exists_in_every_language(lang):
         assert "1" in copy and "{" not in copy
         if lang != "en":
             assert copy == entry["l10n"][lang]["plural"]["one"].format(n="1")
+
+
+# ---- BUG-CLASSES #15: storage-full is its own message, never "damaged" or raw OS text ----
+
+
+def no_space():
+    import errno
+
+    return OSError(errno.ENOSPC, "No space left on device")
+
+
+def test_storage_full_is_recognised_directly_and_through_a_wrapped_cause():
+    import errno
+
+    from cassini_talk import import_feedback
+
+    assert import_feedback.storage_full(no_space())
+    assert import_feedback.storage_full(OSError(errno.EDQUOT, "Disk quota exceeded"))
+    try:
+        try:
+            raise no_space()
+        except OSError as error:
+            raise ValueError("copy failed") from error
+    except ValueError as wrapped:
+        assert import_feedback.storage_full(wrapped)
+    assert not import_feedback.storage_full(OSError(errno.EACCES, "Permission denied"))
+    assert not import_feedback.storage_full(ValueError("damaged"))
+    assert import_feedback.failure_reason(no_space()) == "diskFull"
+    assert import_feedback.failure_reason(ValueError("damaged")) == "damaged"
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_single_storage_full_failure_asks_to_free_space(lang):
+    from cassini_talk import import_feedback
+    from cassini_talk.strings import text
+
+    entry = ENTRIES["import.failed.diskFull"]
+    assert "gnome" in entry["platforms"]
+    with using_language(lang):
+        copy = import_feedback.single_failure(no_space())
+        assert copy == text("import.failed.diskFull")
+        assert import_feedback.single_failure(ValueError("x")) == plural("import.summary.failed", 1)
+    if lang == "en":
+        assert copy == "There isn’t enough space to import this file. Free some space and try again."
+    assert "No space left" not in copy and "{" not in copy
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_batch_storage_full_keeps_a_retry_card_and_says_free_space(tmp_path, monkeypatch, lang):
+    from cassini_talk import import_feedback
+    from cassini_talk.strings import text
+
+    def full(*_args, **_kwargs):
+        raise no_space()
+
+    monkeypatch.setattr(batch_import, "import_one", full)
+    source = tmp_path / "Weekly sync.opus"
+    source.write_bytes(b"OggS" + bytes(64))
+    result = batch_import.import_files([source], tmp_path / "Library")
+    assert (result.failed, result.failed_inputs) == (1, [str(source)])
+    assert result.errors == [("Weekly sync.opus", "diskFull")]
+    with using_language(lang):
+        message = import_feedback.summary(result)
+        assert plural("import.summary.failed", 1) in message
+        assert text("import.failed.diskFull") in message
+    assert "No space left" not in message and "Errno" not in message
+
+
+def test_zip_member_storage_full_says_free_space_not_damaged(tmp_path, monkeypatch):
+    import zipfile
+
+    from cassini_talk import import_feedback
+    from cassini_talk.strings import text
+
+    def full(*_args, **_kwargs):
+        raise no_space()
+
+    monkeypatch.setattr(batch_import, "stage_one", full)
+    archive = tmp_path / "Notes.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("Planning.opus", b"OggS" + bytes(64))
+    result = batch_import.import_files([archive], tmp_path / "Library")
+    assert result.failed == 1 and result.errors == [("Planning.opus", "diskFull")]
+    message = import_feedback.summary(result)
+    assert text("import.failed.diskFull") in message
+    assert text("import.zip.failed.damaged") not in message and "No space left" not in message

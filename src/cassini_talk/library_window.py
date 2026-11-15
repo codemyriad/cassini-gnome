@@ -3006,13 +3006,18 @@ class LibraryWindow(Adw.ApplicationWindow):
             # the legacy player would disguise a failed copy, incomplete stream,
             # or full Library as a successful import. Raw GStreamer/OS text is a
             # diagnostic for the log, never user-facing copy (BUG-CLASSES #13).
+            # A full disk says so and asks to free space; the card stays so
+            # Try again works afterwards (BUG-CLASSES #15).
             LOG.warning("Could not open %s: %s", file.get_path() or file.get_uri(), error)
             if cancel is None:
-                self.toast(text("details.folderUnavailable"))
+                if import_feedback.storage_full(error):
+                    self.toast(text("import.failed.diskFull"))
+                else:
+                    self.toast(text("details.folderUnavailable"))
             else:
                 if file.get_path():
                     LibraryWindow._add_failed_imports(self, (file.get_path(),))
-                self.toast(plural("import.summary.failed", 1))
+                self.toast(import_feedback.single_failure(error))
         return False
 
     def _close_after_trash(self):

@@ -283,3 +283,49 @@ def test_failed_folder_open_shows_catalog_copy_not_the_reader_error(tmp_path, la
         window._opened_file(future, Gio.File.new_for_path(str(tmp_path / "session.json")))
         assert window.toasts == [text("details.folderUnavailable")]
     assert window._failed_imports == {}
+
+
+# ---- D-1059 / BUG-CLASSES #15: a full disk says so and keeps Try again ----
+
+
+@pytest.mark.parametrize("lang", ["en", "it", "fr", "es", "pt-BR", "pt-PT"])
+def test_storage_full_open_says_free_space_and_try_again_works_after(tmp_path, lang, caplog):
+    import errno
+    from concurrent.futures import Future
+
+    from cassini_talk.i18n import using_language
+    from cassini_talk.strings import plural, text
+
+    source = tmp_path / "Weekly sync.mp3"
+    source.write_bytes(b"ID3" + bytes(64))
+    window = window_for_open(tmp_path)
+    token = object()
+    window._begin_import_entries(token, (str(source),))
+    future = Future()
+    future.set_exception(OSError(errno.ENOSPC, "No space left on device"))
+    with using_language(lang):
+        with caplog.at_level("WARNING", logger="cassini_talk.library_window"):
+            window._opened_file(future, Gio.File.new_for_path(str(source)), token)
+        assert window.toasts == [text("import.failed.diskFull")]
+        assert window.toasts != [plural("import.summary.failed", 1)]
+    assert all("No space left on device" not in toast and "Errno" not in toast for toast in window.toasts)
+    # The raw OS text stays a log diagnostic only.
+    assert any("No space left on device" in record.getMessage() for record in caplog.records)
+    # The Needs attention card stays, so Try again after freeing space reimports the file.
+    assert kinds(window) == [("failed", "Weekly sync", "Weekly sync.mp3")]
+    window._retry_failed_import(str(source))
+    assert window.opened == [(str(source),)] and window._failed_imports == {}
+
+
+def test_storage_full_in_a_folder_open_says_free_space(tmp_path):
+    import errno
+    from concurrent.futures import Future
+
+    from cassini_talk.strings import text
+
+    window = window_for_open(tmp_path)
+    future = Future()
+    future.set_exception(OSError(errno.ENOSPC, "No space left on device"))
+    window._opened_file(future, Gio.File.new_for_path(str(tmp_path / "session.json")))
+    assert window.toasts == [text("import.failed.diskFull")]
+    assert window._failed_imports == {}
