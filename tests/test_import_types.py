@@ -124,6 +124,7 @@ class _FakeApp:
 def test_open_dialog_offers_one_catalogued_filter_naming_audio(monkeypatch, lang):
     # D-1061: the default filter admits audio, so its name says so, in every UI
     # language; no uncatalogued developer-only "Recording Session" filter.
+    pytest.importorskip("gi")
     from cassini_talk import main
     from cassini_talk.strings import CATALOG, ENTRIES
 
