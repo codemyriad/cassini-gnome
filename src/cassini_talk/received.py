@@ -24,6 +24,20 @@ from .open_meeting import load_open_meeting
 IMPORT_LOCK = threading.Lock()
 
 
+class UnsupportedImport(ValueError):
+    """Neither a Cassini file nor a decided audio type (D96 ``import.summary.unsupported``).
+
+    Retrying can never succeed, so callers report it as ignored, never as a
+    failed (Needs attention) import. Its message is a log diagnostic only.
+    """
+
+
+def importable_name(name):
+    """Name-only check: a decided import type with a non-empty stem."""
+    name = Path(name).name
+    return import_types.entry_for(name) is not None and bool(name.rsplit(".", 1)[0].strip("."))
+
+
 @dataclass(frozen=True)
 class StagedImport:
     stage: Path
@@ -156,7 +170,8 @@ def _copy_opus(original, copied, expected_bytes, cancel):
         if expected_bytes is not None and before.st_size != expected_bytes:
             raise ValueError("Recording changed while being imported")
         if import_types.needs_ogg_probe(original.name) and import_types.check_ogg_file(source) is not None:
-            raise ValueError("Choose an Ogg Opus recording")
+            # Diagnostic only: the UI reports a failed import with catalog copy (D-1059).
+            raise ValueError("Not an Ogg Opus stream")
         written = 0
         os.chmod(copied, 0o600)
         digest = hashlib.sha256()
@@ -190,7 +205,7 @@ def _hash_source(original, expected_bytes, cancel):
     with regular_input(original) as source:
         before = os.fstat(source.fileno())
         if rule is not None and import_types.check_header_file(source, rule) is not None:
-            raise ValueError("Choose a native FLAC recording")
+            raise ValueError("Not a native FLAC stream")
     if expected_bytes is not None and before.st_size != expected_bytes:
         raise ValueError("Recording changed while being imported")
     sha = sha256_file(original, cancel)
@@ -229,12 +244,10 @@ def _prepare_one(
 ):
     check_cancel(cancel)
     original = Path(path).absolute()
-    if (
-        import_types.entry_for(original.name) is None
-        or not original.name.rsplit(".", 1)[0].strip(".")
-        or not original.is_file()
-    ):
-        raise ValueError("Choose an Ogg Opus recording")
+    if not importable_name(original.name):
+        raise UnsupportedImport("Not a supported recording type")
+    if not original.is_file():
+        raise ValueError("Recording is not a regular file")
     # L-25 / W4.3 / D102: MP3, M4A, WAV and FLAC are decoded into an Opus copy; the original
     # file is only read. Opus/Ogg bytes are copied untouched.
     plain = import_types.is_plain_audio(original.name)

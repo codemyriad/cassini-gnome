@@ -2,6 +2,7 @@
 """The Library shell. Filesystem reads and transcript decoding stay in the monitor worker."""
 
 import contextlib
+import logging
 import os
 import time
 from dataclasses import replace
@@ -25,8 +26,10 @@ from .player import Player
 from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
 from .spectrogram_strip import SpectrogramStrip
 from .status_badge import BadgeGlyph, StatusBadge
-from .strings import text
+from .strings import plural, text
 from .tokens import speaker_slot
+
+LOG = logging.getLogger(__name__)
 
 
 def label(value, *classes, **kwargs):
@@ -2958,6 +2961,8 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _opened_file(self, future, file, cancel=None):
         from concurrent.futures import CancelledError
 
+        from .received import UnsupportedImport
+
         self._opening_files -= 1
         if cancel is not None:
             self._finish_import_entries(cancel)
@@ -2989,13 +2994,23 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self.open_meeting(meeting, external=not watched)
         except CancelledError:
             return False
+        except UnsupportedImport as error:
+            # D96/D-1059: neither a Cassini file nor supported audio. Try again
+            # can never succeed, so no Needs attention card; catalog copy only.
+            LOG.info("Ignored unsupported file %s: %s", file.get_path() or file.get_uri(), error)
+            self.toast(plural("import.summary.unsupported", 1))
         except (OSError, ValueError) as error:
-            # Import failed: retain the Library and show its diagnostic. Opening
-            # the readable header in the legacy player would disguise a failed
-            # copy, incomplete stream, or full Library as a successful import.
-            if cancel is not None and file.get_path():
-                LibraryWindow._add_failed_imports(self, (file.get_path(),))
-            self.toast(str(error))
+            # Import failed: retain the Library. Opening the readable header in
+            # the legacy player would disguise a failed copy, incomplete stream,
+            # or full Library as a successful import. Raw GStreamer/OS text is a
+            # diagnostic for the log, never user-facing copy (BUG-CLASSES #13).
+            LOG.warning("Could not open %s: %s", file.get_path() or file.get_uri(), error)
+            if cancel is None:
+                self.toast(text("details.folderUnavailable"))
+            else:
+                if file.get_path():
+                    LibraryWindow._add_failed_imports(self, (file.get_path(),))
+                self.toast(plural("import.summary.failed", 1))
         return False
 
     def _close_after_trash(self):

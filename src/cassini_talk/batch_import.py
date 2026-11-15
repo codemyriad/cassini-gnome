@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 
 from . import archive_import, import_types
 from .export_audio import check_cancel
-from .received import commit_staged, discard_staged, import_one, regular_input, stage_one
+from .received import UnsupportedImport, commit_staged, discard_staged, import_one, regular_input, stage_one
 
 DECODE_ERRORS = (OSError, ValueError, RuntimeError, EOFError, zipfile.BadZipFile, zlib.error)
 
@@ -196,6 +196,8 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
                                                 )
                                     except (CancelledError, archive_import.ArchiveError):
                                         raise
+                                    except UnsupportedImport:
+                                        result.ignored += 1
                                     except DECODE_ERRORS:
                                         failed(norm_name, "damaged")
                                     report()
@@ -236,6 +238,9 @@ def import_files(paths, root=None, *, cancel=None, progress=None):
             except archive_import.ArchiveError as error:
                 failed(path.name, error.reason)
                 result.failed_inputs.append(str(path))
+            except UnsupportedImport:
+                # D96/D-1059: e.g. "..mp3" has no name to import; Try again cannot help.
+                result.ignored += 1
             except DECODE_ERRORS:
                 failed(path.name, "damaged")
                 result.failed_inputs.append(str(path))

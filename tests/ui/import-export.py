@@ -248,7 +248,7 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: not window._pending_selection)
     # L-25 DropImport states: rest, enter, over, unsupported error, and transient Importing… card.
     from cassini_talk import import_feedback
-    from cassini_talk.strings import text
+    from cassini_talk.strings import plural, text
 
     assert window.drop_footer_label.get_label() == text("import.drop.rest")
     window._set_drop_state("enter")
@@ -319,6 +319,38 @@ with tempfile.TemporaryDirectory() as temporary:
     assert all(window._row_by_key[k] is row for k, row in cached_before_import.items())
     window._dismiss_failed_import(str(broken))
     assert "incomplete.opus" not in labels(window.rows) and attention() == with_card - 1
+    assert not list(Path(os.environ["CASSINI_LIBRARY_DIR"]).glob(".received-*"))
+    # D-1059: failures are catalog copy, never a raw reader/GStreamer diagnostic.
+    assert failures == [plural("import.summary.failed", 1)], failures
+    # An unsupported file (Open With / command line) is ignored: no Try again card,
+    # never the stale hard-coded "Choose an Ogg Opus recording".
+    notes = tmp / "notes.txt"
+    notes.write_text("hello\n")
+    window.open_file(Gio.File.new_for_path(str(notes)))
+    until(lambda: not window._opening_files and len(failures) == 2)
+    assert failures[1] == plural("import.summary.unsupported", 1), failures
+    assert "notes.txt" not in labels(window.rows) and attention() == with_card - 1
+    # A damaged supported file keeps its retryable card; pressing its real Try again
+    # shows the same catalog failure, never "Could not determine type of stream.".
+    corrupt = tmp / "Corrupt G.mp3"
+    noise = b"".join(hashlib.sha256(bytes([i])).digest() for i in range(94))[:3000]
+    corrupt.write_bytes(noise.replace(b"\xff", b"\x00"))
+    window.open_file(Gio.File.new_for_path(str(corrupt)))
+    until(lambda: not window._opening_files and "Corrupt G.mp3" in labels(window.rows))
+    assert attention() == with_card and len(failures) == 3
+
+    def corrupt_retry():
+        card = next(row for row in window._import_row_widgets if "Corrupt G.mp3" in labels(row))
+        return next(
+            b for b in descendants(card) if isinstance(b, Gtk.Button) and b.get_label() == text("common.tryAgain")
+        )
+
+    corrupt_retry().emit("clicked")
+    until(lambda: not window._opening_files and len(failures) == 4 and "Corrupt G.mp3" in labels(window.rows))
+    assert failures[2:] == [plural("import.summary.failed", 1)] * 2, failures
+    assert attention() == with_card
+    window._dismiss_failed_import(str(corrupt))
+    assert "Corrupt G.mp3" not in labels(window.rows) and attention() == with_card - 1
     assert not list(Path(os.environ["CASSINI_LIBRARY_DIR"]).glob(".received-*"))
     window.open_meeting(received)
     until(lambda: window.meeting_page is not None and window.player._prerolled)

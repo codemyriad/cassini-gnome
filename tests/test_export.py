@@ -524,7 +524,9 @@ def test_received_dot_only_stem_is_rejected_before_library_creation(tmp_path):
     source = tmp_path / "..opus"
     source.write_bytes((ASSETS / "plain-title.opus").read_bytes())
     root = tmp_path / "Library"
-    with pytest.raises(ValueError, match="Choose an Ogg Opus"):
+    from cassini_talk.received import UnsupportedImport
+
+    with pytest.raises(UnsupportedImport):
         import_received(source, root)
     assert not root.exists()
 
