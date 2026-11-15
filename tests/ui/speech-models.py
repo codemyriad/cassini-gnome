@@ -168,7 +168,9 @@ try:
                     )
                     return dict(diagnostics=[])
 
-            own = tmp / "first-whistle"
+            # The meeting lands in the Library, as in production, so the window
+            # shows the Library page whose sidebar carries the card (D-1060).
+            own = tmp / "library"
             session = make_capture(own)
             finished = Finished()
             queue = TranscriptionQueue(
@@ -185,6 +187,30 @@ try:
                 until(lambda: window.parakeet_suggestion.get_visible())
                 assert app.recording_settings.get_boolean("whistle-transcribed")
                 assert app.recording_settings.get_boolean("parakeet-suggestion-shown")
+                # D-1060: a styled card inside the Library sidebar, below its header
+                # bar, never a top bar that pushes the window's header bars down.
+                suggestion = window.parakeet_suggestion
+                assert suggestion.has_css_class("suggestion-card")
+                assert suggestion.get_ancestor(Adw.NavigationSplitView) is window.split
+                assert suggestion.download is not None and suggestion.download.get_visible()
+                # In Settings the Parakeet Ultra row keeps the only Download button.
+                assert dialog.parakeet_suggestion.has_css_class("suggestion-card")
+                assert dialog.parakeet_suggestion.download is None
+                window.monitor.refresh()
+                until(lambda: window.root_box.get_visible_child_name() == "library" and window.snapshot.meetings)
+                window.open_meeting(window.snapshot.meetings[0])
+                dialog.force_close()
+                until(lambda: dialog.closed and suggestion.get_mapped() and suggestion.get_height() > 0)
+                shell = window.get_content()
+                ok, header = window.sidebar_header.compute_bounds(shell)
+                assert ok and header.get_y() < 1, header.get_y()
+                ok, card = suggestion.compute_bounds(shell)
+                assert ok and card.get_y() >= header.get_y() + header.get_height(), (card.get_y(), header.get_height())
+                capture(window, "-library-suggestion")
+                dialog = app.settings_dialog = SettingsDialog(app)
+                dialog.present(window)
+                dialog.set_visible_page_name("transcription")
+                assert dialog.parakeet_suggestion.get_visible()
                 window.parakeet_suggestion.dismiss.emit("clicked")
                 until(lambda: not dialog.parakeet_suggestion.get_visible())
                 assert not window.parakeet_suggestion.get_visible()
