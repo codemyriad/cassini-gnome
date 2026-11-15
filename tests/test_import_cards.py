@@ -329,3 +329,36 @@ def test_storage_full_in_a_folder_open_says_free_space(tmp_path):
     window._opened_file(future, Gio.File.new_for_path(str(tmp_path / "session.json")))
     assert window.toasts == [text("import.failed.diskFull")]
     assert window._failed_imports == {}
+
+
+def test_audio_conversion_filling_the_disk_says_free_space_and_keeps_try_again(tmp_path, monkeypatch):
+    """A real GStreamer filesink ENOSPC during conversion reaches the toast as storage-full."""
+    import os
+    from concurrent.futures import Future
+
+    from test_import_types import needs_encoder, write_wav
+
+    from cassini_talk import audio_import, received
+    from cassini_talk.strings import text
+
+    if needs_encoder.args[0] or not os.path.exists("/dev/full"):
+        pytest.skip("GStreamer Opus encode path or /dev/full unavailable")
+    real = audio_import.decode_to_opus
+
+    def decode(source, output, **kwargs):
+        os.symlink("/dev/full", output)
+        return real(source, output, **kwargs)
+
+    monkeypatch.setattr(received, "decode_to_opus", decode)
+    source = write_wav(tmp_path / "Weekly sync.wav")
+    future = Future()
+    try:
+        received.import_one(source, tmp_path / "Library")
+    except (OSError, ValueError) as error:
+        future.set_exception(error)
+    window = window_for_open(tmp_path)
+    token = object()
+    window._begin_import_entries(token, (str(source),))
+    window._opened_file(future, Gio.File.new_for_path(str(source)), token)
+    assert window.toasts == [text("import.failed.diskFull")]
+    assert kinds(window) == [("failed", "Weekly sync", "Weekly sync.wav")]
