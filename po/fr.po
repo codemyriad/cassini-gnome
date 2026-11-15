@@ -168,9 +168,6 @@ msgstr "[FICHIER…]"
 msgid "Open Meeting"
 msgstr "Ouvrir une réunion"
 
-msgid "Recording Session"
-msgstr "Session d’enregistrement"
-
 msgid "Recording a meeting"
 msgstr "Enregistrement d’une réunion"
 

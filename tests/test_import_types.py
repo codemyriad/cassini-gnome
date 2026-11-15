@@ -90,6 +90,68 @@ def test_gtk_open_dialog_and_open_with_declarations_follow_the_contract():
     assert tuple(re.findall(r"<mediatype>([^<]+)</mediatype>", metainfo)) == import_types.picker_mime_types()
 
 
+class _FakeFileDialog:
+    """Captures what on_open hands to Gtk.FileDialog without opening a window."""
+
+    last = None
+
+    def __init__(self, title):
+        self.title = title
+        self.filters = None
+        self.default = None
+        self.opened = False
+        _FakeFileDialog.last = self
+
+    def set_filters(self, filters):
+        self.filters = [filters.get_item(i) for i in range(filters.get_n_items())]
+
+    def set_default_filter(self, default):
+        self.default = default
+
+    def open_multiple(self, *_args):
+        self.opened = True
+
+
+class _FakeApp:
+    def get_active_window(self):
+        return None
+
+    def _on_open_chosen(self, *_args):
+        pass
+
+
+@pytest.mark.parametrize("lang", ["en", "it", "fr", "es", "pt-BR", "pt-PT"])
+def test_open_dialog_offers_one_catalogued_filter_naming_audio(monkeypatch, lang):
+    # D-1061: the default filter admits audio, so its name says so, in every UI
+    # language; no uncatalogued developer-only "Recording Session" filter.
+    pytest.importorskip("gi")
+    from cassini_talk import main
+    from cassini_talk.strings import CATALOG, ENTRIES
+
+    monkeypatch.setattr(main.Gtk, "FileDialog", _FakeFileDialog)
+    with using_language(lang):
+        main.CassiniApplication.on_open(_FakeApp())
+        expected = text("import.filter.supported")
+        localized = {entry.get("l10n", {}).get(lang, {}).get("text", entry["en"]) for entry in ENTRIES.values()}
+    dialog = _FakeFileDialog.last
+    assert dialog.opened
+    assert len(dialog.filters) == 1 and dialog.default is dialog.filters[0]
+    assert dialog.filters[0].get_name() == expected
+    if lang == "en":
+        assert expected == CATALOG["import.filter.supported"] == "Audio, Cassini files and ZIP archives"
+    else:
+        assert expected != CATALOG["import.filter.supported"]
+    assert dialog.title in localized
+    assert all(f.get_name() in localized for f in dialog.filters)
+
+
+def test_open_dialog_source_has_no_session_filter():
+    source = (ROOT / "src/cassini_talk/main.py").read_text()
+    body = source[source.index("    def on_open(") : source.index("    def _on_open_chosen(")]
+    assert "Recording Session" not in body and "add_pattern" not in body
+    assert 'text("import.filter.supported")' in body and "cassiniAndZip" not in body
+
+
 @pytest.mark.parametrize(
     "name, mime, ok",
     [
