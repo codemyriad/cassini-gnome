@@ -163,8 +163,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         shell.add_top_bar(self.update_banner)
         from .parakeet_suggestion_widget import ParakeetSuggestion
 
+        # D78/D-1060: a card in the Library sidebar below its header bar and the
+        # search field, never a top bar above the window's header bars.
         self.parakeet_suggestion = ParakeetSuggestion(application)
-        shell.add_top_bar(self.parakeet_suggestion)
         self.set_content(shell)
         self.update_build_banner()
         self._build_empty()
@@ -1355,6 +1356,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.search_entry.add_controller(search_click)
         search_box.append(self.search_entry)
         sidebar_content.append(search_box)
+        sidebar_content.append(self.parakeet_suggestion)
 
         self.sidebar_stack = Gtk.Stack(vexpand=True, hexpand=True, hhomogeneous=False, vhomogeneous=False)
         self.rows = Gtk.ListBox(

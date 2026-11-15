@@ -376,8 +376,13 @@ popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):act
 .meeting-transcript { background: var(--app-view-bg); color: var(--app-view-fg); padding: 22px 48px; }
 .transcript-word-action { min-width: 0; min-height: 0; padding: 0; border: 0; }
 .meeting-transcript row { padding: 0; background: transparent; }
-.companion-card { background: var(--app-accent-tint); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+.companion-card, .suggestion-card { background: var(--app-accent-tint); border-radius: 10px; padding: 16px; }
+.companion-card { margin-bottom: 12px; }
 .companion-card > box > label, .companion-card > image, .companion-card button.flat { color: var(--app-accent-ink); }
+/* D78 Parakeet suggestion (D-1060): a card inside content, never a bar above the header bars. */
+.suggestion-card > label, .suggestion-card button.flat { color: var(--app-accent-ink); }
+.library-sidebar .parakeet-suggestion { margin: 0 10px 8px; }
+.cassini-preferences .parakeet-suggestion { margin-top: 12px; }
 .meeting-player { min-height: 44px; padding: 0 14px 0 6px; border-radius: 12px; border: 1px solid var(--cx-line-soft); background: var(--cx-raised); box-shadow: 0 10px 30px -12px var(--cx-shadow), 0 2px 6px -2px var(--cx-shadow); }
 .meeting-player button.suggested-action { border-radius: 50%; min-width: 32px; min-height: 32px; padding: 0; background: var(--cx-accent-strong); color: var(--cx-on-accent); }
 .meeting-player scale { padding: 0; }

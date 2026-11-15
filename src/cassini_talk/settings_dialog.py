@@ -194,7 +194,9 @@ class SettingsDialog(Adw.PreferencesDialog):
             speech.add(self.model_line)
             from .parakeet_suggestion_widget import ParakeetSuggestion
 
-            self.parakeet_suggestion = ParakeetSuggestion(self.app)
+            # D-1060: the Parakeet Ultra row above already has Download; the card
+            # recommends it and can be dismissed, without a second Download button.
+            self.parakeet_suggestion = ParakeetSuggestion(self.app, download=False)
             speech.add(self.parakeet_suggestion)
             self.app.speech_models.refresh_suggestion()
             self.render_models()
