@@ -177,18 +177,32 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.lookup_action("rate").get_state().get_string() == "1.5"
     window.activate_action("win.rate", GLib.Variant("s", "nan"))
     assert window.player.rate == 1.5, "Invalid rate must be ignored"
-    # Real GStreamer clock, synchronised fakesink: 4 wall seconds at 2×.
+    # Real GStreamer clock, synchronised fakesink, 2×: stream time over the
+    # pipeline's own clock, each pair read back to back, is the rate. No fixed
+    # wall-clock window (BUG-CLASSES #17, D-1062): the old 4-second window read
+    # the tick-updated position, so a loaded runner overshooting the window by
+    # half a second failed a correct player.
     window.activate_action("win.rate", GLib.Variant("s", "2"))
     window.player.seek(10000)
     until(lambda: window.player._prerolled)
     window.player.play()
     until(lambda: window.player.position > 10100)
-    started, position = time.monotonic(), window.player.position
-    until(lambda: time.monotonic() - started >= 4)
-    advance = window.player.position - position
+    pipeline = window.player._pipeline
+    until(lambda: pipeline.get_clock() is not None and window.player._query_position() is not None)
+
+    def stream_and_clock():
+        clock_ms = pipeline.get_clock().get_time() // Gst.MSECOND
+        return window.player._query_position(), clock_ms
+
+    stream0, clock0 = stream_and_clock()
+    until(lambda: (window.player._query_position() or 0) >= stream0 + 4000)
+    stream1, clock1 = stream_and_clock()
     window.player.pause()
-    assert 7000 <= advance <= 9000, ("2× clock advance", advance)
-    print(f"PASS real 2× playback: {advance} ms in 4 wall seconds", flush=True)
+    rate = (stream1 - stream0) / max(1, clock1 - clock0)
+    assert 1.75 <= rate <= 2.25, ("2× playback rate against the pipeline clock", stream1 - stream0, clock1 - clock0)
+    print(
+        f"PASS real 2× playback: {stream1 - stream0} ms of audio in {clock1 - clock0} ms of pipeline clock", flush=True
+    )
     window.activate_action("win.rate", GLib.Variant("s", "1.5"))
     window.player.seek(192000)
 

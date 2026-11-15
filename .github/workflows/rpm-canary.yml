@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+# D-1062: a canary only reports; a newer run supersedes an older one.
+concurrency:
+  group: rpm-canary
+  cancel-in-progress: true
+
 env:
   CONTAINER_ENGINE: docker
 
