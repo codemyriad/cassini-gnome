@@ -92,19 +92,20 @@ def _chrome_luminance(data: bytes) -> tuple[int, int, float]:
 
 def _decoded_rows_pil(data: bytes, width: int, bpp: int, targets: set[int]) -> dict[int, bytes] | None:
     """Pillow's C decoder, when installed: the pure-Python unfilter below took
-    72 of the Boards job's seconds for 150 full-window shots (D-1062)."""
+    72 of the Boards job's seconds for 150 full-window shots (D-1062). Only an
+    accelerator: any surprise here (a corrupt file, a test's stand-in PIL)
+    falls back to the pure decoder, which alone reports what is wrong."""
     try:
         from PIL import Image
-    except ImportError:
-        return None
-    try:
+
         with Image.open(io.BytesIO(data)) as image:
-            if image.mode != ("RGBA" if bpp == 4 else "RGB"):
+            if image.mode != ("RGBA" if bpp == 4 else "RGB") or image.size[0] != width:
                 return None
             image.load()
-            return {y: image.crop((0, y, width, y + 1)).tobytes() for y in targets}
-    except (OSError, SyntaxError, ValueError) as exc:
-        raise ValueError(f"Undecodable PNG ({exc})") from exc
+            rows = {y: image.crop((0, y, width, y + 1)).tobytes() for y in targets}
+    except Exception:  # noqa: BLE001 - fall back to the pure decoder
+        return None
+    return rows if all(len(row) == width * bpp for row in rows.values()) else None
 
 
 def _decoded_rows(idat: bytes, width: int, bpp: int, targets: set[int]) -> dict[int, bytes]:

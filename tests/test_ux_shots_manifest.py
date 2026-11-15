@@ -176,3 +176,17 @@ def test_chrome_luminance_is_the_same_with_and_without_pillow(monkeypatch):
     with_pillow = manifest_mod._chrome_luminance(png)
     monkeypatch.setattr(manifest_mod, "_decoded_rows_pil", lambda *_args: None)
     assert manifest_mod._chrome_luminance(png) == with_pillow
+
+
+def test_pillow_failure_falls_back_to_the_pure_decoder(monkeypatch):
+    """A broken or stand-in PIL (test_pr_shots installs one) never decides a shot."""
+    import sys
+    import types
+
+    png, _ = _filtered_png(64, 60, 6)
+    expected = manifest_mod._chrome_luminance(png)
+    fake = types.ModuleType("PIL")
+    fake.Image = types.SimpleNamespace(open=lambda _file: (_ for _ in ()).throw(AttributeError("stand-in")))
+    monkeypatch.setitem(sys.modules, "PIL", fake)
+    assert manifest_mod._decoded_rows_pil(png, 64, 4, {0}) is None
+    assert manifest_mod._chrome_luminance(png) == expected
