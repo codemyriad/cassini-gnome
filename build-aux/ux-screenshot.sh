@@ -56,4 +56,11 @@ case "$scale" in
 esac
 export GDK_SCALE="$scale"
 exec_args=("$app")
-"$bounded" "$limit" dbus-run-session -- xvfb-run -a -s "-screen 0 $screen -nolisten tcp" "${exec_args[@]}"
+# parallel-jobs.py gives each worker its own display range: -n after -a starts
+# there, and -a still moves on to the next display if that one is taken.
+xvfb_from=()
+if [ -n "${CASSINI_XVFB_SERVERNUM:-}" ]; then
+  [[ $CASSINI_XVFB_SERVERNUM =~ ^[1-9][0-9]{0,4}$ ]] || { echo "CASSINI_XVFB_SERVERNUM must be a display number" >&2; exit 2; }
+  xvfb_from=(-n "$CASSINI_XVFB_SERVERNUM")
+fi
+"$bounded" "$limit" dbus-run-session -- xvfb-run -a "${xvfb_from[@]}" -s "-screen 0 $screen -nolisten tcp" "${exec_args[@]}"

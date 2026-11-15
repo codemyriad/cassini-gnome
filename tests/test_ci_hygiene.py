@@ -1264,7 +1264,8 @@ def test_nightly_and_full_ci_perf_gates_are_wired_and_forwarded():
 
     meeting_ui = (ROOT / "tests/ui/meeting.py").read_text()
     assert "CASSINI_PERF_GATE" not in meeting_ui
-    assert '\n    assert 7000 <= advance <= 9000, ("2× clock advance", advance)\n' in meeting_ui
+    # D-1062: the 2× rate is stream time over the pipeline clock, not a wall-clock window.
+    assert '\n    assert 1.75 <= rate <= 2.25, ("2× playback rate against the pipeline clock",' in meeting_ui
 
     browser_rec = (ROOT / "tests/recording/browser.mjs").read_text()
     assert "CASSINI_PERF_GATE" not in browser_rec

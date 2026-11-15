@@ -125,3 +125,54 @@ def test_scrimmed_light_modal_dialog_passes_chrome_luminance_check(tmp_path):
     _write(tmp_path, "dark/export.png", "dark", (width, height))
     manifest = manifest_mod.build_manifest(tmp_path)
     assert [row["key"] for row in manifest["shots"]] == ["export.light", "export.dark"]
+
+
+def _filtered_png(width: int, height: int, color_type: int) -> tuple[bytes, list[bytes]]:
+    """A PNG whose rows cycle through all five filter types, and its decoded rows."""
+    bpp = 4 if color_type == 6 else 3
+    pixels = [bytes((x * 7 + y * 13 + c * 29) & 0xFF for x in range(width) for c in range(bpp)) for y in range(height)]
+
+    def paeth(a: int, b: int, c: int) -> int:
+        p = a + b - c
+        pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+        return a if pa <= pb and pa <= pc else (b if pb <= pc else c)
+
+    raw, prev = bytearray(), bytes(width * bpp)
+    for y, row in enumerate(pixels):
+        kind = y % 5
+        out = bytearray([kind])
+        for i, value in enumerate(row):
+            a = row[i - bpp] if i >= bpp else 0
+            b, c = prev[i], (prev[i - bpp] if i >= bpp else 0)
+            predictor = (0, a, b, (a + b) >> 1, paeth(a, b, c))[kind]
+            out.append((value - predictor) & 0xFF)
+        raw += out
+        prev = row
+
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        return struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", zlib.crc32(tag + payload))
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0)
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b"")
+    return png, pixels
+
+
+@pytest.mark.parametrize("color_type", [2, 6])
+def test_pure_python_unfilter_matches_every_png_filter_and_pillow(color_type):
+    """D-1062: Pillow decodes in CI; the pure fallback must read the same rows."""
+    png, pixels = _filtered_png(40, 30, color_type)
+    bpp = 4 if color_type == 6 else 3
+    idat_start = 8 + 12 + 13 + 8
+    idat = png[idat_start : idat_start + struct.unpack(">I", png[idat_start - 8 : idat_start - 4])[0]]
+    targets = {0, 4, 15, 29}
+    assert manifest_mod._decoded_rows(idat, 40, bpp, targets) == {y: pixels[y] for y in targets}
+    pillow = manifest_mod._decoded_rows_pil(png, 40, bpp, targets)
+    if pillow is not None:
+        assert pillow == {y: pixels[y] for y in targets}
+
+
+def test_chrome_luminance_is_the_same_with_and_without_pillow(monkeypatch):
+    png, _ = _filtered_png(64, 60, 6)
+    with_pillow = manifest_mod._chrome_luminance(png)
+    monkeypatch.setattr(manifest_mod, "_decoded_rows_pil", lambda *_args: None)
+    assert manifest_mod._chrome_luminance(png) == with_pillow
