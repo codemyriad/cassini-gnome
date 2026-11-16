@@ -1,3 +1,67 @@
+Version 0.4.3
+~~~~~~~~~~~~~
+Released: 2026-11-16
+
+Highlights
+
+- A refreshed Cassini, with paper and graphite surfaces, navy accents, clearer
+  status badges and six distinct speaker colours. The first window introduces
+  recording with a new welcome screen, and the browser companion shares the look.
+- Read long meetings smoothly. Transcripts scroll without jumping, show short
+  interjections inline, and keep word playback, search and keyboard navigation
+  connected to the right speaker.
+- Bring more recordings into your Library. Import MP3, M4A, WAV and FLAC audio,
+  several meeting files at once, or a ZIP archive. Export selected meetings or
+  your Library as a ZIP, and written-down meetings as text or SRT/WebVTT subtitles
+  under More formats.
+- Find and organise meetings more easily. Search matches meeting titles as well
+  as spoken words, including recordings not yet written down. Star meetings,
+  switch between All and Starred, and narrow search results with shared filters.
+- Set up Saved voices with one question, or add your voice by reading a short
+  phrase aloud. Rename or delete saved voices, and use the revised Name a speaker
+  dialog while listening. Voiceprints stay on this computer.
+
+Before you update
+
+- After upgrading, log out and back in so the new version takes effect.
+- The bundled browser companion is now version 0.2.31. Follow the companion
+  setup instructions to refresh an older browser installation.
+- Once downloaded, the more accurate Parakeet Ultra model is used automatically.
+  Whistle remains built in. The Parakeet Ultra download suggestion now appears
+  in the Library sidebar, with model downloads managed in Preferences.
+
+Improvements
+
+- Recording and meeting details sit alongside the Library. Recording controls,
+  audio-source details and saving feedback are clearer, and stopping a recording
+  shows its saving state immediately.
+- See the steps and progress while a meeting is being written down. Stop and
+  keep the progress, then resume later; queued work resumes after recording ends.
+- Browser recordings can capture your voice directly from the call’s microphone
+  stream without opening another microphone. Automatic recording requires fresh,
+  verified call evidence and respects Stop and Stop All.
+- Browse Trash inside Cassini, restore a meeting or delete it permanently. Help
+  is available from the app menu, including offline, and Keyboard shortcuts lists
+  the current controls.
+- Imported recordings show progress and useful failure messages. Unsupported
+  files are reported as ignored; damaged files and a full disk have clear
+  explanations, with Try again when freeing space can resolve the problem.
+- Meeting rows, playback controls, speaker naming and search share a more
+  consistent layout, including narrow windows and translated status labels.
+
+Fixes
+
+- Imported and exported meetings keep their original recording date across
+  time zones.
+- Imported 16 kHz Opus voice notes can now be written down successfully.
+- Other people in browser recordings can be separated into speakers. Browser
+  reconnects and recording completion handle queued work more reliably.
+- Recording keeps audio-source updates and the explanation when browser sound
+  switches to computer audio. Stop remains effective during pending operations.
+- Naming a speaker no longer returns focus to an outdated listening selection.
+  Transcript colours, speaker attribution and playback links stay consistent
+  across the meeting view, search and the standalone reader.
+
 Version 0.4.2
 ~~~~~~~~~~~~~
 Released: 2026-11-08
