@@ -2,7 +2,7 @@
 # which makes the source tarball from the working tree and puts Source1-5
 # (from .whistle-cache) next to it.
 Name:           cassini-talk
-Version:        0.4.2
+Version:        0.4.3
 Release:        1%{?dist}
 # The package rename must remove the legacy files through the package manager.
 Obsoletes:      cassini-viewer < 0.4.0
@@ -239,6 +239,13 @@ python3 sherpa/fetch.py --cache .sherpa-cache --verify %{buildroot}%{_libdir}/ca
 %{_mandir}/man1/cassini-talk.1*
 
 %changelog
+* Mon Nov 16 2026 Silvio Tomatis <silviot@gmail.com> - 0.4.3-1
+- Refresh Library, recording, speaker naming and transcription progress.
+- Add title search, stars, in-app Trash, Saved voices and more import/export formats.
+- Improve long transcripts, recording dates and imported Opus voice notes.
+- Prefer downloaded Parakeet Ultra and bundle browser companion 0.2.31.
+- After upgrading, log out and back in so the new version takes effect.
+
 * Sun Nov 08 2026 Silvio Tomatis <silviot@gmail.com> - 0.4.2-1
 - Add listen-by-speaker playback, timeline/transcript actions and shortcuts.
 - Fix Nextcloud discovery; show participant names, companion health and fallback alerts.

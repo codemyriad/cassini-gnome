@@ -1,3 +1,14 @@
+cassini-talk (0.4.3) unstable; urgency=medium
+
+  * Refresh Library, recording, speaker naming and transcription progress.
+  * Add title search, stars, in-app Trash and Saved voices management.
+  * Import more audio formats and ZIP archives; export text, subtitles and ZIPs.
+  * Improve long transcripts, recording dates and imported Opus voice notes.
+  * Prefer downloaded Parakeet Ultra and bundle browser companion 0.2.31.
+  * After upgrading, log out and back in so the new version takes effect.
+
+ -- Silvio Tomatis <silviot@gmail.com>  Mon, 16 Nov 2026 14:30:00 +0100
+
 cassini-talk (0.4.2) unstable; urgency=medium
 
   * Add listen-by-speaker controls, transcript/timeline actions and shortcuts.

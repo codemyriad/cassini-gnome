@@ -81,6 +81,23 @@
   </screenshots>
 
   <releases>
+    <release version="0.4.3" date="2026-11-16">
+      <description>
+        <p>After upgrading, log out and back in so the new version takes effect.</p>
+        <ul>
+          <li>Refresh the Library, recording and meeting views with clearer controls, status badges and speaker colours</li>
+          <li>Read long transcripts smoothly, with short interjections inline and consistent playback and search links</li>
+          <li>Import MP3, M4A, WAV, FLAC and ZIP archives; export meetings as ZIPs, text or subtitles</li>
+          <li>Search meeting titles, star meetings and restore deleted meetings from Trash inside Cassini</li>
+          <li>Set up and manage Saved voices, including adding your voice by reading a short phrase aloud</li>
+          <li>See writing-down progress, stop and keep it, then resume later</li>
+          <li>Use downloaded Parakeet Ultra automatically, with Whistle still built in</li>
+          <li>Bundle browser companion 0.2.31 with direct call microphone capture and verified automatic recording</li>
+          <li>Preserve recording dates across time zones and write down imported 16 kHz Opus voice notes</li>
+          <li>Explain import failures clearly, including damaged files and a full disk</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.2" date="2026-11-08">
       <description>
         <p>After upgrading, log out and back in so the new version takes effect.</p>
