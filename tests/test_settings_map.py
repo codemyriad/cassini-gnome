@@ -5,15 +5,10 @@ import json
 import re
 from pathlib import Path
 
-import gi
-
-gi.require_version("Gtk", "4.0")
-gi.require_version("Adw", "1")
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = {
     name: (ROOT / "src/cassini_talk" / name).read_text()
-    for name in ("settings_dialog.py", "library_window.py", "record_first.py", "main.py")
+    for name in ("settings_dialog.py", "settings_map.py", "library_window.py", "record_first.py", "main.py")
 }
 D103_IDS = (
     "settings.recording.group.starting",
@@ -120,14 +115,14 @@ def test_about_links():
 
 def test_installed_speaker_models_read_on_with_their_size():
     from cassini_talk import i18n
-    from cassini_talk.settings_dialog import on_with_size
+    from cassini_talk.settings_map import on_with_size
 
     with i18n.using_language("en"):
         assert on_with_size(62 * 1048576) == "On · 62 MB"
 
 
 def test_library_size_skips_hidden_state_and_symlinks(tmp_path):
-    from cassini_talk.settings_dialog import library_usage
+    from cassini_talk.settings_map import library_usage
 
     (tmp_path / "a.opus").write_bytes(b"x" * 100)
     session = tmp_path / "Recording-1"

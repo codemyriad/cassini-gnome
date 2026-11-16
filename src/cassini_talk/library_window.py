@@ -1192,13 +1192,14 @@ class LibraryWindow(Adw.ApplicationWindow):
         hero.append(self.first_browser_status)
         # Privacy line (privacy.onDevice.computer, L-09 / D-938) and where the Library is
         # (firstRun.libraryLocation, L-60), first run only (L-30).
-        footer = Gtk.Box(spacing=8, halign=Gtk.Align.START, css_classes=["hero-privacy"])
+        footer = Gtk.Box(spacing=8, hexpand=True, css_classes=["hero-privacy"])
         footer.append(
             Gtk.Image(
                 icon_name="changes-prevent-symbolic", pixel_size=14, accessible_role=Gtk.AccessibleRole.PRESENTATION
             )
         )
-        self.privacy_line = label(self._privacy_text(), "small", "dim-label", xalign=0, wrap=True)
+        # It fills the 720 px column, so a long Library path wraps only past the column, as drawn.
+        self.privacy_line = label(self._privacy_text(), "small", "dim-label", xalign=0, wrap=True, hexpand=True)
         footer.append(self.privacy_line)
         self.privacy_footer = footer
         hero.append(footer)

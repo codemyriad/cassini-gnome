@@ -2,7 +2,6 @@
 """D15 native Preferences. Broker IO runs off GTK; every visible label is shared copy."""
 
 import logging
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -13,6 +12,7 @@ from gi.repository import Adw, Gio, GLib, Gtk
 from . import browser_service
 from .cairo_shadows import CairoShadows
 from .library import library_root
+from .settings_map import library_usage, on_with_size
 from .strings import plural, text
 
 LOG = logging.getLogger(__name__)
@@ -25,39 +25,6 @@ def path_caption(path):
     except ValueError:
         return str(path)
     return " › ".join(path.parts)
-
-
-def on_with_size(byte_count):
-    """L-58: an installed speaker model reads "On · 62 MB" beside Remove (size from the manifest)."""
-    from .ux_formats import size
-
-    return text("models.statusWithSize", status=text("models.status.on"), size=size(byte_count))
-
-
-def library_usage(root, cancelled=None):
-    """Bytes in the Library folder, without its hidden state (`.cassini`, which holds the Trash).
-
-    File IO: never call it on the GTK thread (bug class #2)."""
-    total = 0
-    pending = [Path(root)]
-    top = True
-    while pending:
-        if cancelled is not None and cancelled.is_set():
-            break
-        path = pending.pop()
-        try:
-            with os.scandir(path) as entries:
-                for entry in entries:
-                    if top and entry.name.startswith("."):
-                        continue
-                    if entry.is_dir(follow_symlinks=False):
-                        pending.append(Path(entry.path))
-                    elif entry.is_file(follow_symlinks=False):
-                        total += entry.stat(follow_symlinks=False).st_size
-        except OSError:
-            pass
-        top = False
-    return total
 
 
 class SettingsDialog(Adw.PreferencesDialog):
