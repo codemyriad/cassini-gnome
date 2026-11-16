@@ -314,7 +314,15 @@ with tempfile.TemporaryDirectory() as tmp:
     assert empty.root_box.get_visible_child_name() == "empty"
     labels = [w.get_label() for w in walk(empty) if isinstance(w, Gtk.Label)]
     assert text("firstRun.hero.title") in labels and text("firstRun.hero.subtitle") in labels
-    assert text("firstRun.body") in labels and text("firstRun.footer") in labels
+    assert text("firstRun.howTo") in labels
+    assert text("firstRun.shortcutLine", shortcut=text("common.shortcut.record")) in labels
+    # L-60: the privacy line names the Library folder in use.
+    from cassini_talk.library_location import folder_caption
+
+    location = text("firstRun.libraryLocation", folder=folder_caption(fixtures / "empty/root"))
+    privacy = text("privacy.onDevice.computer") + " " + location
+    assert privacy in labels, labels
+    assert text("firstRun.body") not in labels and text("firstRun.footer") not in labels
     assert (
         text("firstRun.title") not in labels
         and text("firstRun.shortcutHint", shortcut=text("common.shortcut.record")) not in labels
@@ -360,8 +368,8 @@ with tempfile.TemporaryDirectory() as tmp:
     until(lambda: empty.get_width() > 1000)
     clamp = next(w for w in walk(empty_view) if isinstance(w, Adw.Clamp))
     until(lambda: clamp.get_child().get_width() == 720)  # wide windows keep the 720 px column
-    # A sandbox fallback is the initial Library too, but its footer must not
-    # claim Music/Cassini. Settings/Show in Files use the actual primary path.
+    # A sandbox fallback is the initial Library too: the line names that folder,
+    # never Music/Cassini. Settings/Show in Files use the actual primary path.
     from cassini_talk import library_location
 
     fallback = Path(tmp) / "private-data/cassini/Library"
@@ -372,14 +380,20 @@ with tempfile.TemporaryDirectory() as tmp:
     ):
         os.environ.pop("CASSINI_LIBRARY_DIR", None)
         empty._updated(empty.snapshot)
-        assert not empty.privacy_footer.get_visible()
+        assert empty.privacy_line.get_label().endswith(
+            text("firstRun.libraryLocation", folder=folder_caption(fallback))
+        )
     empty._updated(empty.snapshot)
-    assert empty.privacy_footer.get_visible()
+    assert empty.privacy_footer.get_visible() and empty.privacy_line.get_label() == privacy
     app.on_about()
     until(lambda: isinstance(empty.get_visible_dialog(), Adw.AboutDialog))
     about = empty.get_visible_dialog()
     assert about.get_application_name() == "Cassini talk"
     assert about.get_application_icon() == "saturn-mid"
+    # L-65 (D103 §6): one line saying what the app does, cassini.talk, and no format link.
+    assert about.get_comments() == text("about.tagline.computer")
+    assert about.get_website() == "https://cassini.talk" and not about.get_support_url()
+    assert about.get_issue_url() == "https://github.com/codemyriad/cassini-gnome/issues"
     about.close()
     until(lambda: empty.get_visible_dialog() is None)
     app.activate_action("record", None)

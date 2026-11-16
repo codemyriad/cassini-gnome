@@ -171,14 +171,8 @@ msgstr "Abrir reunião"
 msgid "Recording a meeting"
 msgstr "Gravando uma reunião"
 
-msgid "Play meeting recordings and read along with the transcript stored inside them."
-msgstr "Ouça gravações de reuniões e acompanhe a transcrição contida nelas."
-
 msgid "translator-credits"
 msgstr "Colaboradores do Cassini"
-
-msgid "Cassini Portable Meeting Format"
-msgstr "Formato portátil de reunião Cassini"
 
 msgid "Recording browser meeting"
 msgstr "Gravando uma reunião no navegador"

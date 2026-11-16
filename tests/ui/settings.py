@@ -142,6 +142,37 @@ with tempfile.TemporaryDirectory() as temporary:
         page.set_title(ux_text("settings.tab." + page_name))
     until(lambda: dialog.pages["browserCompanion"].get_title() == "Browser companion")
     assert dialog.get_title() == "Preferences" and not dialog.get_search_enabled()
+    # L-58 (D103 §1): one map, grouped by question on each page.
+    shown = labels(dialog)
+    for key in (
+        "settings.recording.group.starting",
+        "settings.recording.firstRecord.subtitle",
+        "test.action",
+        "settings.recording.test.description",
+        "settings.transcription.privacyLine",
+        "models.keepTranscript",
+        "models.builtIn",
+        "settings.library.folder.descriptionShort",
+        "settings.library.group.keepingCopy",
+        "settings.library.backUp.title",
+        "settings.library.zip.subtitle",
+        "settings.library.group.deleted",
+        "settings.library.deleted.title",
+        "help.trash.body",
+        "companion.bodyShort",
+        "companion.worksWith",
+        "companion.without.heading",
+        "companion.without.body",
+    ):
+        assert ux_text(key) in shown, key
+    assert ux_text("settings.transcription.network.heading") not in shown
+    assert dialog.test_button.get_label() == "Test"
+    # "9 meetings · 263 MB": sized off the GTK thread, then shown under the folder path.
+    until(lambda: dialog.library_stats is not None)
+    meetings = len(window.snapshot.meetings)
+    assert dialog.library_stats.startswith(f"{meetings} meetings · "), dialog.library_stats
+    assert dialog.folder.get_subtitle().endswith("\n" + dialog.library_stats)
+    assert dialog.zip_button.get_sensitive() and not dialog.move_lines.get_visible()
     assert dialog.explain.get_active()
     dialog.explain.set_active(False)
     assert app.recording_settings.get_boolean("skip-record-first")

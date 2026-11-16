@@ -59,13 +59,13 @@ def retry_with_delayed_ready_notification(app, dialog):
             dispatch_until(
                 lambda: (
                     not models.snapshot()["busy"]
-                    and dialog.voice_status.get_label() == "On"
+                    and dialog.voice_status.get_label().startswith("On · ")
                     and dialog.voice_action.get_label() == "Remove"
                     and not dialog.voice_remove.get_visible()
                 ),
                 "the voice runtime retry did not reach its rendered ready state",
             )
-            assert dialog.voice_status.get_label() == "On" and not dialog.voice_remove.get_visible(), (
+            assert dialog.voice_status.get_label().startswith("On · ") and not dialog.voice_remove.get_visible(), (
                 "voice retry accepted the intermediate Downloaded state"
             )
         finally:
@@ -169,11 +169,11 @@ try:
             dispatch_until(
                 lambda: (
                     not app.voice_models.snapshot()["busy"]
-                    and dialog.voice_status.get_label() == "On"
+                    and dialog.voice_status.get_label().startswith("On · ")
                     and dialog.voice_action.get_label() == "Remove"
                 )
             )
-            assert dialog.voice_status.get_label() == "On" and dialog.voice_action.get_label() == "Remove"
+            assert dialog.voice_status.get_label().startswith("On · ") and dialog.voice_action.get_label() == "Remove"
             assert app.recording_settings.get_string("speech-model") == "whistle"
             assert (tmp / "models" / campplus_model.MODEL_ID / campplus_model.REVISION).is_dir()
             app.voice_models._change(ready=False, error=True, runtime_error=True)

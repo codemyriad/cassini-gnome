@@ -146,11 +146,14 @@ try:
             until(
                 lambda: (
                     not app.diarization_models.snapshot()["busy"]
-                    and dialog.nemotron_status.get_label() == "On"
+                    and dialog.nemotron_status.get_label().startswith("On · ")
                     and dialog.nemotron_action.get_label() == "Remove"
                 )
             )
-            assert dialog.nemotron_status.get_label() == "On" and dialog.nemotron_action.get_label() == "Remove"
+            assert (
+                dialog.nemotron_status.get_label().startswith("On · ")
+                and dialog.nemotron_action.get_label() == "Remove"
+            )
             assert app.recording_settings.get_string("speech-model") == "whistle"
             assert (tmp / "models" / nemotron_model.MODEL_ID / nemotron_model.REVISION).is_dir()
             app.diarization_models._change(ready=False, error=True, runtime_error=True)
@@ -160,11 +163,11 @@ try:
             until(
                 lambda: (
                     not app.diarization_models.snapshot()["busy"]
-                    and dialog.nemotron_status.get_label() == "On"
+                    and dialog.nemotron_status.get_label().startswith("On · ")
                     and not dialog.nemotron_remove.get_visible()
                 )
             )
-            assert dialog.nemotron_status.get_label() == "On" and not dialog.nemotron_remove.get_visible()
+            assert dialog.nemotron_status.get_label().startswith("On · ") and not dialog.nemotron_remove.get_visible()
             dialog.nemotron_action.emit("clicked")
             until(
                 lambda: (

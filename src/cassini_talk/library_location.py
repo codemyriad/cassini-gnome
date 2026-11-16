@@ -480,3 +480,12 @@ def _process(*, busy=(), activity=None, retry=False, cancelled=None, changed=lam
             value = load()  # A producer/request may have published newer routing while copying.
             save(value)
     return value
+
+
+def folder_caption(path):
+    """firstRun.libraryLocation names the folder as drawn: "Music/Cassini" under home."""
+    path = Path(path)
+    try:
+        return "/".join(path.relative_to(Path.home()).parts) or str(path)
+    except ValueError:
+        return str(path)

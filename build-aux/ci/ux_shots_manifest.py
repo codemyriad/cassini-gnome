@@ -14,14 +14,16 @@ PNG_SIG = b"\x89PNG\r\n\x1a\n"
 KEY_RE = re.compile(r"^[a-z0-9][a-z0-9.-]*$")
 CORE_ORDER = (
     "library", "first-run", "recording", "record-first", "meeting", "received",
-    "search", "export", "settings-recording", "settings-transcription", "speakers", "saved-voices",
+    "search", "export", "settings-recording", "settings-transcription", "settings-library", "settings-companion",
+    "speakers", "saved-voices",
 )  # fmt: skip
 BOARDS = frozenset(CORE_ORDER)
 GALLERY_BOARDS = {
     "library": "Main", "first-run": "LibraryEmpty", "received": "LibraryReceived", "search": "Search",
     "record-first": "RecordFirst", "recording": "Recording", "what-is-recorded-browser": "WhatIsRecorded",
     "background": "RecordHidden", "meeting": "Meeting", "speakers": "Speakers", "export": "Export",
-    "settings-recording": "Settings", "settings-transcription": "Settings", "saved-voices": "SavedVoices",
+    "settings-recording": "Settings", "settings-transcription": "Settings", "settings-library": "Settings",
+    "settings-companion": "Settings", "saved-voices": "SavedVoices",
     "companion-setup-pending": "CompanionSetup", "trash-undo": "Trash",
 }  # fmt: skip
 FLOW_SOURCES = (

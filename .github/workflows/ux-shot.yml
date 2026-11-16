@@ -84,7 +84,7 @@ jobs:
           assert struct.unpack('>II',Path('ux-artifacts/export.png').read_bytes()[16:24]) == (1120,720)
           assert struct.unpack('>II',Path('ux-artifacts/search.png').read_bytes()[16:24]) == (1120,720)
           assert struct.unpack('>II',Path('ux-artifacts/dark/search.png').read_bytes()[16:24]) == (1120,720)
-          for name in ['settings-recording','settings-transcription', 'saved-voices']:
+          for name in ['settings-recording','settings-transcription', 'settings-library', 'settings-companion', 'saved-voices']:
               for folder in ['ux-artifacts','ux-artifacts/dark']:
                   assert struct.unpack('>II',Path(folder,f'{name}.png').read_bytes()[16:24]) == (1120,720)
           for folder in ['ux-artifacts', 'ux-artifacts/dark']:

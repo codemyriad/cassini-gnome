@@ -2,6 +2,7 @@
 """D15 native Preferences. Broker IO runs off GTK; every visible label is shared copy."""
 
 import logging
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -24,6 +25,39 @@ def path_caption(path):
     except ValueError:
         return str(path)
     return " › ".join(path.parts)
+
+
+def on_with_size(byte_count):
+    """L-58: an installed speaker model reads "On · 62 MB" beside Remove (size from the manifest)."""
+    from .ux_formats import size
+
+    return text("models.statusWithSize", status=text("models.status.on"), size=size(byte_count))
+
+
+def library_usage(root, cancelled=None):
+    """Bytes in the Library folder, without its hidden state (`.cassini`, which holds the Trash).
+
+    File IO: never call it on the GTK thread (bug class #2)."""
+    total = 0
+    pending = [Path(root)]
+    top = True
+    while pending:
+        if cancelled is not None and cancelled.is_set():
+            break
+        path = pending.pop()
+        try:
+            with os.scandir(path) as entries:
+                for entry in entries:
+                    if top and entry.name.startswith("."):
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        pending.append(Path(entry.path))
+                    elif entry.is_file(follow_symlinks=False):
+                        total += entry.stat(follow_symlinks=False).st_size
+        except OSError:
+            pass
+        top = False
+    return total
 
 
 class SettingsDialog(Adw.PreferencesDialog):
@@ -84,39 +118,44 @@ class SettingsDialog(Adw.PreferencesDialog):
                 child = child.get_next_sibling()
 
     def _recording(self):
-        group = Adw.PreferencesGroup()
+        # L-58 (D103 §1): grouped by question.
+        group = Adw.PreferencesGroup(title=text("settings.recording.group.starting"))
         self.pages["recording"].add(group)
         self.shortcut = Adw.ActionRow(title=text("settings.recording.shortcut.title"), use_markup=False)
         self.change_shortcut = Gtk.Button(label=text("settings.recording.changeShortcut"), valign=Gtk.Align.CENTER)
         self.change_shortcut.connect("clicked", lambda *_: self.app.configure_global_shortcut())
         self.shortcut.add_suffix(self.change_shortcut)
         group.add(self.shortcut)
-        self.explain = Adw.SwitchRow(title=text("settings.recording.firstRecord.title"), use_markup=False)
-        self.settings.bind("skip-record-first", self.explain, "active", Gio.SettingsBindFlags.INVERT_BOOLEAN)
-        group.add(self.explain)
-        self.automatic = Adw.SwitchRow(
-            title=text("settings.recording.autoRecord.title"),
-            subtitle=text("settings.recording.autoRecord.subtitle"),
+        self.explain = Adw.SwitchRow(
+            title=text("settings.recording.firstRecord.title"),
+            subtitle=text("settings.recording.firstRecord.subtitle"),
             use_markup=False,
         )
-        self.automatic.set_visible(self.app.browser_companion_available)
-        self.automatic.connect("notify::active", self._automatic_changed)
-        group.add(self.automatic)
-        # D60: the test recording, disabled while any recording or test runs.
-        test = Adw.PreferencesGroup()
-        self.pages["recording"].add(test)
-        self.test_row = Adw.ActionRow(title=text("test.action"), subtitle=text("test.intro"), use_markup=False)
-        self.test_button = Gtk.Button(
-            icon_name="media-playback-start-symbolic",
-            tooltip_text=text("test.action"),
-            valign=Gtk.Align.CENTER,
-            css_classes=["flat"],
+        self.settings.bind("skip-record-first", self.explain, "active", Gio.SettingsBindFlags.INVERT_BOOLEAN)
+        group.add(self.explain)
+        self.browser_meetings = Adw.PreferencesGroup(
+            title=text("settings.recording.group.browser"),
+            description=text("settings.recording.group.browser.subtitle"),
         )
-        self.test_button.update_property([Gtk.AccessibleProperty.LABEL], [text("test.action")])
+        self.pages["recording"].add(self.browser_meetings)
+        self.automatic = Adw.SwitchRow(
+            title=text("settings.recording.autoRecord.title"),
+            subtitle=text("settings.recording.autoRecord.subtitleShort"),
+            use_markup=False,
+        )
+        self.automatic.connect("notify::active", self._automatic_changed)
+        self.browser_meetings.add(self.automatic)
+        self.browser_meetings.set_visible(self.app.browser_companion_available)
+        # D60: the test recording, disabled while any recording or test runs.
+        self.test_button = Gtk.Button(label=text("settings.recording.test.button"), valign=Gtk.Align.CENTER)
+        # Its accessible name is its text, "Test", read inside the "Test recording" group.
         self.test_button.connect("clicked", lambda *_: self.app.open_test_recording(self))
-        self.test_row.add_suffix(self.test_button)
-        self.test_row.set_activatable_widget(self.test_button)
-        test.add(self.test_row)
+        self.test_row = Adw.PreferencesGroup(
+            title=text("test.action"),
+            description=text("settings.recording.test.description"),
+            header_suffix=self.test_button,
+        )
+        self.pages["recording"].add(self.test_row)
         self._test_handler = self.app.sound_check.connect("changed", self.refresh_test) if self.app.sound_check else 0
 
     def _transcription(self):
@@ -124,12 +163,12 @@ class SettingsDialog(Adw.PreferencesDialog):
         privacy = Adw.PreferencesGroup()
         line = Gtk.Box(spacing=12)
         line.append(Gtk.Image(icon_name="security-high-symbolic", css_classes=["success"], valign=Gtk.Align.START))
-        line.append(Gtk.Label(label=text("settings.transcription.privacy"), wrap=True, xalign=0, hexpand=True))
+        line.append(Gtk.Label(label=text("settings.transcription.privacyLine"), wrap=True, xalign=0, hexpand=True))
         privacy.add(line)
         page.add(privacy)
         speech = Adw.PreferencesGroup(
             title=text("settings.transcription.speech.heading"),
-            description=text("settings.transcription.speech.description"),
+            description=text("models.keepTranscript"),
         )
         speech.update_property([Gtk.AccessibleProperty.LABEL], [text("settings.transcription.speech.a11y")])
         self.whistle = Adw.PreferencesRow(css_classes=["speech-model-selected"])
@@ -142,16 +181,13 @@ class SettingsDialog(Adw.PreferencesDialog):
         details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
         name = Gtk.Box(spacing=8)
         name.append(Gtk.Label(label=text("models.whistle.name"), xalign=0, css_classes=["heading"]))
-        from .transcription import bundle_path
-        from .ux_formats import size
-
-        weights = bundle_path() / "whistle.cact"
-        if weights.is_file():
-            name.append(Gtk.Label(label=size(weights.stat().st_size), css_classes=["dim-label", "caption"]))
         details.append(name)
         details.append(
             Gtk.Label(
-                label=text("models.whistle.description"), wrap=True, xalign=0, css_classes=["dim-label", "caption"]
+                label=text("models.whistle.description.short"),
+                wrap=True,
+                xalign=0,
+                css_classes=["dim-label", "caption"],
             )
         )
         self.whistle_status = Gtk.Label(
@@ -159,7 +195,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         details.append(self.whistle_status)
         row.append(details)
-        row.append(Gtk.Label(label=text("models.included"), css_classes=["dim-label", "caption"]))
+        row.append(Gtk.Label(label=text("models.builtIn"), css_classes=["dim-label", "caption"]))
         self.whistle.set_child(row)
         speech.add(self.whistle)
         if self.app.speech_models is not None:
@@ -167,7 +203,7 @@ class SettingsDialog(Adw.PreferencesDialog):
 
             self.parakeet = Adw.ActionRow(
                 title=text("models.parakeetUltra.name"),
-                subtitle=text("models.parakeetUltra.description"),
+                subtitle=text("models.parakeetUltra.description.short"),
                 use_markup=False,
                 subtitle_lines=0,
             )
@@ -204,16 +240,6 @@ class SettingsDialog(Adw.PreferencesDialog):
         self._speakers_models(page)
         # Source/unsupported-architecture builds never claim an absent bundle.
         self.whistle.set_visible(self.app.writing_available)
-        network = Adw.PreferencesGroup(title=text("settings.transcription.network.heading"))
-        network.add(
-            Gtk.Label(
-                label="• " + text("settings.transcription.network.download"),
-                wrap=True,
-                xalign=0,
-                css_classes=["dim-label"],
-            )
-        )
-        page.add(network)
 
     def _speakers_models(self, page):
         if self.app.diarization_models is None:
@@ -234,21 +260,20 @@ class SettingsDialog(Adw.PreferencesDialog):
         details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
         title = Gtk.Box(spacing=8)
         title.append(Gtk.Label(label=text("models.tellSpeakersApart.name"), xalign=0, css_classes=["heading"]))
-        title.append(
-            Gtk.Label(
-                label=text(
-                    "models.sizeWithEngine",
-                    model=text("models.nemotron.name"),
-                    size=text("format.size.download", size=size(DOWNLOAD_BYTES)),
-                ),
-                xalign=0,
-                css_classes=["dim-label", "caption"],
-            )
+        self.nemotron_size = Gtk.Label(
+            label=text(
+                "models.sizeWithEngine",
+                model=text("models.nemotron.name"),
+                size=text("format.size.download", size=size(DOWNLOAD_BYTES)),
+            ),
+            xalign=0,
+            css_classes=["dim-label", "caption"],
         )
+        title.append(self.nemotron_size)
         details.append(title)
         details.append(
             Gtk.Label(
-                label=text("models.tellSpeakersApart.description"),
+                label=text("models.tellSpeakersApart.description.short"),
                 xalign=0,
                 wrap=True,
                 css_classes=["dim-label", "caption"],
@@ -279,17 +304,16 @@ class SettingsDialog(Adw.PreferencesDialog):
         title.append(Gtk.Label(label=text("models.recogniseVoices.name"), xalign=0, css_classes=["heading"]))
         from .campplus_model import DOWNLOAD_BYTES as VOICE_BYTES
 
-        title.append(
-            Gtk.Label(
-                label=text("format.size.download", size=size(VOICE_BYTES)),
-                xalign=0,
-                css_classes=["dim-label", "caption"],
-            )
+        self.voice_size = Gtk.Label(
+            label=text("format.size.download", size=size(VOICE_BYTES)),
+            xalign=0,
+            css_classes=["dim-label", "caption"],
         )
+        title.append(self.voice_size)
         details.append(title)
         details.append(
             Gtk.Label(
-                label=text("models.recogniseVoices.description"),
+                label=text("models.recogniseVoices.description.short"),
                 xalign=0,
                 wrap=True,
                 css_classes=["dim-label", "caption"],
@@ -364,6 +388,8 @@ class SettingsDialog(Adw.PreferencesDialog):
             self.saved_voices_page.refresh()
         if not hasattr(self, "voice_action"):
             return
+        from .campplus_model import DOWNLOAD_BYTES as VOICE_BYTES
+
         models = self.app.voice_models
         state = (
             models.snapshot()
@@ -379,7 +405,7 @@ class SettingsDialog(Adw.PreferencesDialog):
                 text("models.remove" if state["downloaded"] else "models.download"),
             )
         elif state.get("ready"):
-            status, action = text("models.status.on"), text("models.remove")
+            status, action = on_with_size(VOICE_BYTES), text("models.remove")
         elif state["downloaded"]:
             status, action = (
                 text("models.status.downloaded"),
@@ -391,6 +417,7 @@ class SettingsDialog(Adw.PreferencesDialog):
                 text("common.tryAgain" if state["error"] else "models.download"),
             )
         self.voice_status.set_label(status)
+        self.voice_size.set_visible(not (enabled and state.get("ready")))
         self.voice_status.set_css_classes(
             ["success", "caption", "heading"] if enabled and state.get("ready") else ["dim-label", "caption"]
         )
@@ -428,6 +455,8 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.render_voices()
         if not hasattr(self, "nemotron"):
             return
+        from .nemotron_model import DOWNLOAD_BYTES as NEMOTRON_BYTES
+
         models = self.app.diarization_models
         state = (
             models.snapshot()
@@ -437,7 +466,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         if state["downloading"]:
             status, action = text("models.status.downloading", percent=state["percent"]), text("common.cancel")
         elif state.get("ready"):
-            status, action = text("models.status.on"), text("models.remove")
+            status, action = on_with_size(NEMOTRON_BYTES), text("models.remove")
         elif state["downloaded"]:
             status = text("models.status.downloaded")
             action = text("common.tryAgain" if state["error"] else "models.remove")
@@ -445,6 +474,7 @@ class SettingsDialog(Adw.PreferencesDialog):
             status = text("models.status.notDownloaded")
             action = text("common.tryAgain" if state["error"] else "models.download")
         self.nemotron_status.set_label(status)
+        self.nemotron_size.set_visible(not state.get("ready"))
         self.nemotron_status.set_css_classes(
             ["success", "caption", "heading"] if state.get("ready") else ["dim-label", "caption"]
         )
@@ -523,9 +553,10 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.model_line.set_visible(bool(line))
 
     def _library(self):
-        group = Adw.PreferencesGroup(description=text("settings.library.folder.description"))
-        self.pages["library"].add(group)
-        self.folder = Adw.ActionRow(title=text("settings.library.folder.title"), use_markup=False)
+        page = self.pages["library"]
+        group = Adw.PreferencesGroup(description=text("settings.library.folder.descriptionShort"))
+        page.add(group)
+        self.folder = Adw.ActionRow(title=text("settings.library.folder.title"), use_markup=False, subtitle_lines=0)
         self.show_folder = Gtk.Button(label=text("settings.library.show"), valign=Gtk.Align.CENTER)
         self.show_folder.connect("clicked", lambda *_: self._show_folder())
         self.move = Gtk.Button(label=text("settings.library.move"), valign=Gtk.Align.CENTER)
@@ -535,14 +566,96 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.folder.add_suffix(self.show_folder)
         self.folder.add_suffix(self.move)
         group.add(self.folder)
-        self.move_lines = Adw.PreferencesGroup()
-        self.pages["library"].add(self.move_lines)
+        self.move_lines = Adw.PreferencesGroup(visible=False)  # shown only while a move has lines
+        page.add(self.move_lines)
         self._move_rows = []
+        # "38 meetings · 2.4 GB": sizing walks the folders, so it runs on its own worker (bug class #2).
+        self.library_stats = None
+        self._stats_key = None
+        self._stats_future = None
+        self._stats_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-library-stats")
+        copy = Adw.PreferencesGroup(title=text("settings.library.group.keepingCopy"))
+        page.add(copy)
+        copy.add(
+            Adw.ActionRow(
+                title=text("settings.library.backUp.title"),
+                subtitle=text("settings.library.backUp.subtitle"),
+                use_markup=False,
+                subtitle_lines=0,
+            )
+        )
+        self.zip_row = Adw.ActionRow(
+            title=text("export.zip.all"), subtitle=text("settings.library.zip.subtitle"), use_markup=False
+        )
+        self.zip_row.set_subtitle_lines(0)
+        self.zip_button = Gtk.Button(label=text("common.exportEllipsis"), valign=Gtk.Align.CENTER, sensitive=False)
+        self.zip_button.connect("clicked", self._export_zip)
+        self.zip_row.add_suffix(self.zip_button)
+        copy.add(self.zip_row)
+        deleted = Adw.PreferencesGroup(title=text("settings.library.group.deleted"))
+        page.add(deleted)
+        # D103 §7: GNOME kept its in-app Trash (D101 §3), so the row says how to restore from it.
+        deleted.add(
+            Adw.ActionRow(
+                title=text("settings.library.deleted.title"),
+                subtitle=text("help.trash.body"),
+                use_markup=False,
+                subtitle_lines=0,
+            )
+        )
+
+    def _library_window(self):
+        windows = [self.app.get_active_window(), *self.app.get_windows()]
+        return next((window for window in windows if window is not None and hasattr(window, "snapshot")), None)
+
+    def _export_zip(self, *_):
+        window = self._library_window()
+        if window is not None:
+            window.activate_action("win.export-zip", None)
+
+    def refresh_library(self):
+        window = self._library_window()
+        action = window.lookup_action("export-zip") if window is not None else None
+        self.zip_button.set_sensitive(bool(action and action.get_enabled()))
+        snapshot = getattr(window, "snapshot", None)
+        if snapshot is None or snapshot.unavailable:
+            return
+        # Re-size only when the listing changes: a new, deleted or moved meeting, or a moved Library.
+        root = library_root()
+        key = (root, tuple(sorted((meeting.directory, meeting.lifecycle) for meeting in snapshot.meetings)))
+        if key == self._stats_key or self._stats_future is not None:
+            return
+        self._stats_key = key
+        count = len(snapshot.meetings)
+        self._stats_future = self._stats_executor.submit(library_usage, root, self.cancelled)
+        self._stats_future.add_done_callback(lambda future: GLib.idle_add(self._stats_ready, future, count))
+
+    def _stats_ready(self, future, count):
+        self._stats_future = None
+        if self.closed:
+            return False
+        try:
+            used = future.result()
+        except Exception:
+            LOG.exception("Could not size the Library")
+            return False
+        from .ux_formats import size
+
+        self.library_stats = text(
+            "settings.library.stats", meetings=plural("library.meetingCount", count), size=size(used)
+        )
+        self.render_folder()
+        return False
 
     def _browser(self):
-        group = Adw.PreferencesGroup(description=text("settings.browser.description"))
+        group = Adw.PreferencesGroup(description=text("companion.bodyShort"))
         self.pages["browserCompanion"].add(group)
-        self.browser = Adw.ActionRow(title=text("settings.browser.status.notSetUp"), use_markup=False)
+        self.browser = Adw.ActionRow(
+            title=text("settings.browser.status.notSetUp"),
+            subtitle=text("companion.worksWith"),
+            use_markup=False,
+            subtitle_lines=0,
+        )
         setup = self.browser_setup = Gtk.Button(
             label=text("common.tryAgain"),
             valign=Gtk.Align.CENTER,
@@ -559,6 +672,12 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.browser_add_local.connect("clicked", lambda *_: self.app.on_companion_add(parent=self, local=True))
         self.browser.add_suffix(self.browser_add_local)
         group.add(self.browser)
+        without = Adw.PreferencesGroup(title=text("companion.without.heading"))
+        self.pages["browserCompanion"].add(without)
+        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        for key in ("companion.without.body", "companion.privacy"):
+            lines.append(Gtk.Label(label=text(key), wrap=True, xalign=0, css_classes=["dim-label"]))
+        without.add(lines)
         self.render_browser()
 
     def render_browser(self):
@@ -571,8 +690,13 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.browser_setup.set_visible(bool(state and state["phase"] == "failed"))
         self.browser_add.set_visible(bool(state and state["phase"] in ("waiting", "needsBrowser")))
         self.browser_add.set_sensitive(bool(state and state["browser"]))
-        self.browser_add.set_label(add_text(state))
         from .companion_bundle import store_listing_public
+
+        browser = state.get("browser") if state else None
+        # L-58: one "Add to {browser}" button; before the store listing is public it is D39's local add.
+        self.browser_add.set_label(
+            text("companion.addTo", browser=browser.name) if browser and store_listing_public() else add_text(state)
+        )
 
         self.browser_add_local.set_visible(bool(state and (store_listing_public() or state["phase"] == "connected")))
         self.browser_add_local.set_sensitive(bool(state and state["browser"]))
@@ -700,7 +824,8 @@ class SettingsDialog(Adw.PreferencesDialog):
         mover = self.app.library_relocator
         self.render_moves(mover.state, moving=mover.running, error=mover._error)
         self.render_browser()
-        self.automatic.set_visible(self.app.browser_companion_available)
+        self.browser_meetings.set_visible(self.app.browser_companion_available)
+        self.refresh_library()
         self.refresh_test()
         self._request()
         return GLib.SOURCE_CONTINUE
@@ -710,8 +835,18 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.test_row.set_sensitive(allowed)
         self.test_button.set_sensitive(allowed)
 
+    def render_folder(self):
+        if getattr(self, "_moving", False):
+            self.folder.set_subtitle(text("settings.library.move.moving"))
+            return
+        lines = [path_caption(library_root())]
+        if self.library_stats:
+            lines.append(self.library_stats)
+        self.folder.set_subtitle("\n".join(lines))
+
     def render_moves(self, state, *, moving=False, error=None):
-        self.folder.set_subtitle(text("settings.library.move.moving") if moving else path_caption(library_root()))
+        self._moving = moving
+        self.render_folder()
         self.move.set_sensitive(not moving)
         for row in self._move_rows:
             self.move_lines.remove(row)
@@ -740,6 +875,7 @@ class SettingsDialog(Adw.PreferencesDialog):
             row.add_suffix(retry)
             self.move_lines.add(row)
             self._move_rows.append(row)
+        self.move_lines.set_visible(bool(self._move_rows))
 
     def do_snapshot(self, snapshot):
         self._cairo_shadows.snapshot(self, snapshot)
@@ -761,3 +897,4 @@ class SettingsDialog(Adw.PreferencesDialog):
         if getattr(self, "saved_voices_page", None):
             self.saved_voices_page.shutdown()
         self.executor.shutdown(wait=False)
+        self._stats_executor.shutdown(wait=False)

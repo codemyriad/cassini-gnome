@@ -1967,17 +1967,17 @@ class CassiniApplication(Adw.Application):
             application_icon=ensure_about_mark_icon(),
             developer_name="Codemyriad",
             version=self.version,
-            website="https://github.com/codemyriad/cassini-gnome",
+            website="https://cassini.talk",
             issue_url="https://github.com/codemyriad/cassini-gnome/issues",
-            support_url="https://format.gocassini.com/",
             developers=["Codemyriad <cassini@codemyriad.io>"],
             copyright="© 2026 Codemyriad OÜ",
             license_type=Gtk.License.GPL_3_0,
-            comments=_("Play meeting recordings and read along with the transcript stored inside them."),
+            comments=text("about.tagline.computer"),
         )
         # Translators: Replace "translator-credits" with your name/username, and optionally an email or URL.
         about.set_translator_credits(_("translator-credits"))
-        about.add_link(_("Cassini Portable Meeting Format"), "https://format.gocassini.com/")
+        # L-65 (D103 §6): Help opens the site in the browser; the app itself sends nothing.
+        about.add_link(text("about.help"), "https://cassini.talk/help")
 
         notice = model_root() / "NOTICE.txt"
         if notice.is_file() and has_downloaded_models():
