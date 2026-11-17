@@ -138,6 +138,43 @@ def test_library_size_skips_hidden_state_and_symlinks(tmp_path):
     assert library_usage(tmp_path / "missing") == 0
 
 
+def test_library_size_counts_v2_working_folders(tmp_path):
+    from cassini_talk.settings_map import library_usage
+
+    # Published v2 meeting: the root .opus plus the tracks kept in its working folder.
+    (tmp_path / "Standup.opus").write_bytes(b"x" * 100)
+    published = tmp_path / ".cassini/sessions/Recording-aaaa"
+    (published / "tracks").mkdir(parents=True)
+    (published / "session.json").write_bytes(b"x" * 5)
+    (published / "tracks/mic.opus").write_bytes(b"x" * 40)
+    # Unpublished v2 meeting (recording, interrupted, or low-disk WAVs kept): no root .opus at all.
+    unpublished = tmp_path / ".cassini/sessions/Recording-bbbb"
+    unpublished.mkdir()
+    (unpublished / "mic.wav").write_bytes(b"x" * 2000)
+    (unpublished / "system.wav").write_bytes(b"x" * 3000)
+    # Not meetings: Trash, staging, journal, a moved-away leftover in sessions.
+    for hidden in ("trash/entry/old.opus", "staging/op.opus.stage", "journal/op.json", "sessions/.cassini-moved-1/x"):
+        (tmp_path / ".cassini" / hidden).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".cassini" / hidden).write_bytes(b"x" * 10000)
+    assert library_usage(tmp_path) == 100 + 5 + 40 + 2000 + 3000
+
+
+def test_library_size_skips_symlinked_sessions(tmp_path):
+    from cassini_talk.settings_map import library_usage
+
+    elsewhere = tmp_path / "elsewhere"
+    (elsewhere / "Recording-1").mkdir(parents=True)
+    (elsewhere / "Recording-1/mic.wav").write_bytes(b"x" * 500)
+    library = tmp_path / "library"
+    (library / ".cassini").mkdir(parents=True)
+    (library / ".cassini/sessions").symlink_to(elsewhere)
+    assert library_usage(library) == 0
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / ".cassini").symlink_to(library / ".cassini")
+    assert library_usage(other) == 0
+
+
 def test_folder_caption_reads_like_the_board(monkeypatch, tmp_path):
     from cassini_talk.library_location import folder_caption
 

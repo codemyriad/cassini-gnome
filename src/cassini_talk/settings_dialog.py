@@ -586,20 +586,41 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.zip_button.set_sensitive(bool(action and action.get_enabled()))
         snapshot = getattr(window, "snapshot", None)
         if snapshot is None or snapshot.unavailable:
+            # An unplugged or missing Library must not keep showing its old "N meetings · size".
+            self._stats_key = None
+            if self.library_stats is not None:
+                self.library_stats = None
+                self.render_folder()
             return
-        # Re-size only when the listing changes: a new, deleted or moved meeting, or a moved Library.
+        # Re-size only when the listing changes (bug class #3): a new, deleted or moved meeting, a
+        # moved Library, or a v2 meeting whose root .opus was published, rewritten or removed while
+        # its working folder and lifecycle stayed the same.
         root = library_root()
-        key = (root, tuple(sorted((meeting.directory, meeting.lifecycle) for meeting in snapshot.meetings)))
+        key = (root, tuple(sorted(map(self._stats_fingerprint, snapshot.meetings), key=repr)))
         if key == self._stats_key or self._stats_future is not None:
             return
         self._stats_key = key
         count = len(snapshot.meetings)
         self._stats_future = self._stats_executor.submit(library_usage, root, self.cancelled)
-        self._stats_future.add_done_callback(lambda future: GLib.idle_add(self._stats_ready, future, count))
+        self._stats_future.add_done_callback(lambda future: GLib.idle_add(self._stats_ready, future, count, key))
 
-    def _stats_ready(self, future, count):
+    @staticmethod
+    def _stats_fingerprint(meeting):
+        return (
+            meeting.directory,
+            meeting.lifecycle,
+            meeting.published_file,
+            meeting.published_missing,
+            meeting.audio_size_bytes,
+            meeting.transcript,
+        )
+
+    def _stats_ready(self, future, count, key):
         self._stats_future = None
         if self.closed:
+            return False
+        if key != self._stats_key:
+            # The Library went away while it was being sized: drop the result.
             return False
         try:
             used = future.result()
@@ -612,6 +633,8 @@ class SettingsDialog(Adw.PreferencesDialog):
             "settings.library.stats", meetings=plural("library.meetingCount", count), size=size(used)
         )
         self.render_folder()
+        # A listing change that arrived while this size was computed is picked up now.
+        self.refresh_library()
         return False
 
     def _browser(self):

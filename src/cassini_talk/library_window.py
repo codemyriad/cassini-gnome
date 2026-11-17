@@ -241,6 +241,18 @@ class LibraryWindow(Adw.ApplicationWindow):
     def toast(self, message):
         self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(message)))
 
+    def visible_toasts(self):
+        """Where a toast is seen: the open Preferences dialog covers this window's overlay and its
+        scrim swallows clicks, so a toast for an action started there goes to the dialog."""
+        app = self.get_application()
+        dialog = getattr(app, "settings_dialog", None) if app is not None else None
+        if dialog is not None and not dialog.closed and dialog.get_mapped():
+            return dialog
+        return self.toasts
+
+    def visible_toast(self, message):
+        self.visible_toasts().add_toast(Adw.Toast(title=GLib.markup_escape_text(message)))
+
     def show_recording_details(self):
         from .capture_details_dialog import RecordingDetailsDialog
 
@@ -541,7 +553,6 @@ class LibraryWindow(Adw.ApplicationWindow):
             zip_action.set_enabled(
                 bool(
                     not self.recording_page
-                    and not self.search_page
                     and not self._external_meeting
                     and self.snapshot is not None
                     and not self.snapshot.unavailable
@@ -983,7 +994,6 @@ class LibraryWindow(Adw.ApplicationWindow):
         app = self.get_application()
         if (
             self.recording_page
-            or self.search_page
             or self._external_meeting
             or not exportable_meetings(self.snapshot, trash=app.meeting_trash if app else None)
         ):
@@ -992,7 +1002,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             try:
                 self.zip_export_dialog = ZipExportDialog(self)
             except OSError as error:
-                self.toast(_("Could not export: {error}").format(error=str(error)))
+                self.visible_toast(_("Could not export: {error}").format(error=str(error)))
                 return
         self.zip_export_dialog.present(self)
 

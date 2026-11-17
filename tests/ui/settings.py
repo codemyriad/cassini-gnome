@@ -104,6 +104,7 @@ with tempfile.TemporaryDirectory() as temporary:
     from gi.repository import Adw
 
     from cassini_talk import i18n
+    from cassini_talk.strings import plural
     from cassini_talk.strings import text as ux_text
 
     def switcher_tab_labels(root):
@@ -173,6 +174,39 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.library_stats.startswith(f"{meetings} meetings · "), dialog.library_stats
     assert dialog.folder.get_subtitle().endswith("\n" + dialog.library_stats)
     assert dialog.zip_button.get_sensitive() and not dialog.move_lines.get_visible()
+    # Export… from Preferences works while the sidebar search is open, and its toasts land on the
+    # Preferences dialog (the window's own overlay is behind it, under the modal scrim).
+    app.settings_dialog = dialog
+    preference_toasts = []
+    dialog.add_toast = preference_toasts.append
+    window._enter_search(focus=False)
+    assert window.search_page is not None
+    window._refresh_export()
+    dialog.refresh_library()
+    assert dialog.zip_button.get_sensitive(), "Search must not grey out Export All as ZIP…"
+    dialog.zip_button.emit("clicked")
+    until(lambda: window.zip_export_dialog is not None and window.zip_export_dialog.get_mapped())
+    zdialog = window.zip_export_dialog
+    assert zdialog.get_child() is zdialog.toasts, "Export errors need an overlay inside the ZIP dialog"
+    for check in zdialog.checks.values():
+        check.set_active(False)
+    first = zdialog.choices[0]
+    zdialog.checks[first.key].set_active(True)
+    zips = tmp / "zips"
+    zips.mkdir()
+    # Where the toast goes is under test here; batch-import.py drives the real export.
+    from cassini_talk import zip_export_dialog
+
+    with patch.object(zip_export_dialog, "export_meetings_zip", lambda targets, folder, **_: folder / "Cassini.zip"):
+        zdialog._start_export(zips, all_items=False)
+        until(lambda: not zdialog.busy)
+    assert zdialog.closed and zdialog.output is not None, (zdialog.closed, zdialog.output, zdialog.future)
+    assert preference_toasts == [zdialog.success_toast]
+    assert zdialog.success_toast.get_title() == plural("export.zip.done", 1)
+    window.visible_toast("Shown on Preferences")
+    assert preference_toasts[-1].get_title() == "Shown on Preferences"
+    window._close_search()
+    del dialog.add_toast
     assert dialog.explain.get_active()
     dialog.explain.set_active(False)
     assert app.recording_settings.get_boolean("skip-record-first")

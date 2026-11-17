@@ -112,7 +112,9 @@ def check_import_bindings():
         snapshot=LibrarySnapshot(meetings=fake_meetings),
         tz=None,
         toasts=SimpleNamespace(add_toast=added_toasts.append),
+        visible_toasts=lambda: SimpleNamespace(add_toast=added_toasts.append),
         toast=lambda msg: added_toasts.append(msg),
+        visible_toast=lambda msg: added_toasts.append(msg),
         _refresh_export=lambda: None,
         get_application=lambda: SimpleNamespace(
             recording_settings=SimpleNamespace(get_string=lambda _k: "", set_string=lambda _k, _v: None),
