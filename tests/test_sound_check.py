@@ -32,16 +32,19 @@ from cassini_talk import sound_check  # noqa: E402
 from cassini_talk.i18n import using_language  # noqa: E402
 from cassini_talk.refusals import entry  # noqa: E402
 from cassini_talk.sound_check import (  # noqa: E402
+    LIVE_FLOOR,
     REFUSED,
     SILENT,
     WORKING,
     Outcome,
     SoundCheck,
+    heard,
     judge,
     judge_streams,
     make_folder,
+    pill_text,
+    refusal_line,
     remove,
-    result_line,
     sweep,
 )
 
@@ -204,14 +207,34 @@ def test_a_track_without_frames_is_no_sound_heard(tmp_path):
     assert outcomes["microphone"] == Outcome(SILENT)
 
 
-def test_result_lines_use_the_catalog():
+def test_result_pills_and_refusal_lines_use_the_catalog():
+    """D104 §2: Working / No sound heard pills; a refused stream keeps its D58 line."""
     with using_language("en"):
-        assert result_line("microphone", Outcome(WORKING)) == "Your microphone: working"
-        assert result_line("system", Outcome(SILENT)) == "This computer’s sound: no sound heard"
+        assert pill_text(Outcome(WORKING)) == "Working"
+        assert pill_text(Outcome(SILENT)) == "No sound heard"
+        assert refusal_line("microphone", Outcome(WORKING)) is None
+        assert refusal_line("system", Outcome(SILENT)) is None
         refused = Outcome(REFUSED, entry(0, "me", "deviceUnavailable"))
-        assert result_line("microphone", refused) == "Your microphone: couldn’t be started."
+        assert pill_text(refused) == "No sound heard"
+        assert refusal_line("microphone", refused) == "Your microphone: couldn’t be started."
         denied = Outcome(REFUSED, entry(0, "others", "permissionDenied"))
-        assert result_line("system", denied) == "This computer’s sound: access wasn’t allowed."
+        assert refusal_line("system", denied) == "This computer’s sound: access wasn’t allowed."
+    with using_language("it"):
+        assert pill_text(Outcome(SILENT)) == "Nessun suono rilevato"
+
+
+def test_the_live_floor_is_the_d60_activity_floor_on_the_meter_scale():
+    # Meters map -60..0 dBFS to 0..1; ACTIVE_DBFS is -50 dBFS.
+    assert pytest.approx(10 / 60) == LIVE_FLOOR
+    assert heard(10 / 60) and heard(0.5)
+    assert not heard(9.9 / 60) and not heard(0.0)
+
+
+def test_levels_and_elapsed_are_quiet_unless_a_test_runs():
+    check = SoundCheck(root=Path("/nonexistent/cassini-talk/test"))
+    assert check.levels == (0.0, 0.0)
+    assert check.elapsed_ms == 0
+    check.shutdown()
 
 
 # The private folder.
@@ -533,6 +556,22 @@ def test_one_test_at_a_time_and_test_again_deletes_the_last_result(check):
     assert again is not recorder and again.parent != first
     spin_until(lambda: not first.exists())
     assert check.running and again.parent.exists()
+
+
+def test_live_levels_and_time_follow_the_running_test_only(tmp_path):
+    """D104 §2: the dialog reads the recorder's levels and the time since it started."""
+    FakeRecorder.made.clear()
+    check = SoundCheck(FakeRecorder, root=tmp_path / "cache/cassini-talk/test", duration_ms=60_000)
+    recorder = started(check)
+    assert check.elapsed_ms == 0, "No time before the recorder starts"
+    recorder.levels = [0.5, 0.0]
+    assert check.levels == (0.5, 0.0)
+    recorder.open(microphone=tone(-20), system=tone(-20))
+    assert 0 <= check.elapsed_ms <= check.duration_ms
+    check.cancel()
+    assert check.levels == (0.0, 0.0) and check.elapsed_ms == 0
+    spin_until(lambda: not check.busy)
+    check.shutdown()
 
 
 def test_a_discard_holds_the_app_until_its_folder_is_gone(tmp_path, off_gtk):

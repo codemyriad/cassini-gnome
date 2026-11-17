@@ -9949,13 +9949,14 @@
     "Main",
     "Library-mac",
     "States",
-    "States-mac"
+    "States-mac",
+    "P2RecordFirst-Desktop"
    ],
    "milestone": "W0.4 (L-26)",
    "placeholders": {
     "liveBadge": "HARMONY 6 badge/header-pill live timer (format-vectors liveBadge): 12:48, 1:02:48 from one hour on"
    },
-   "note": "L-26: red tone, record-tint/record-ink, dot glyph; timer unchanged. Exact glyph dimensions PROVISIONAL pending Alex; current canvas dot6.",
+   "note": "L-26: red tone, record-tint/record-ink, dot glyph; timer unchanged. Exact glyph dimensions PROVISIONAL pending Alex; current canvas dot6. D104 §2: also the pill under the Test recording title while testing.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -20070,7 +20071,7 @@
    "role": "caption",
    "boards": [],
    "milestone": "D60",
-   "note": "Coordinator (D60, R83). Under the Test recording action.",
+   "note": "Coordinator (D60, R83). Under the Test recording action. Superseded by D104 §2 in the test dialog (no intro line); kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -20100,7 +20101,7 @@
    "role": "status",
    "boards": [],
    "milestone": "D60",
-   "note": "Coordinator (D60, R83). While the 8 s test records.",
+   "note": "Coordinator (D60, R83). While the 8 s test records. Superseded by D104 §2 (row prompts, live levels, the Recording pill); kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -20130,7 +20131,7 @@
    "role": "status",
    "boards": [],
    "milestone": "D60",
-   "note": "Coordinator (D60, R83). Result line; {stream} is common.yourMicrophone or recordFirst.sound.title.",
+   "note": "Coordinator (D60, R83). Result line; {stream} is common.yourMicrophone or recordFirst.sound.title. Superseded by D104 §2 (test.pill.working); kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -20160,7 +20161,7 @@
    "role": "status",
    "boards": [],
    "milestone": "D60",
-   "note": "Coordinator (D60, R83). Result line when audio arrived but none was above the activity floor (a hint, not a failure).",
+   "note": "Coordinator (D60, R83). Result line when audio arrived but none was above the activity floor (a hint, not a failure). Superseded by D104 §2 (test.pill.silent); kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -20267,6 +20268,294 @@
     },
     "pt-PT": {
      "text": "Reproduza para verificar se o som está bom."
+    }
+   }
+  },
+  {
+   "id": "recordFirst.testRow.title",
+   "en": "Not sure it hears both?",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Before you record and Test recording (D104)",
+   "note": "D104 §1 (L-61 revised): title of the third source row in Before you record, under the two sources; the row's button is settings.recording.test.button and opens Test recording. Replaces recordFirst.test and the Mac far-left Test recording button.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Non sai se li sente entrambi?"
+    },
+    "fr": {
+     "text": "Vous ne savez pas s’il entend les deux ?"
+    },
+    "es": {
+     "text": "¿No sabes si oye los dos?"
+    },
+    "pt-BR": {
+     "text": "Não sabe se ele ouve os dois?"
+    },
+    "pt-PT": {
+     "text": "Não sabe se ouve os dois?"
+    }
+   }
+  },
+  {
+   "id": "recordFirst.testRow.body",
+   "en": "Record 8 seconds and play them back. Then they are deleted.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Before you record and Test recording (D104)",
+   "note": "D104 §1 (L-61 revised): line under recordFirst.testRow.title. The 8 seconds are the D60 test.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Registra 8 secondi e riascoltali. Poi vengono eliminati."
+    },
+    "fr": {
+     "text": "Enregistrez 8 secondes et réécoutez-les. Elles sont ensuite supprimées."
+    },
+    "es": {
+     "text": "Graba 8 segundos y reprodúcelos. Después se borran."
+    },
+    "pt-BR": {
+     "text": "Grave 8 segundos e reproduza. Depois eles são excluídos."
+    },
+    "pt-PT": {
+     "text": "Grave 8 segundos e reproduza-os. Depois são eliminados."
+    }
+   }
+  },
+  {
+   "id": "test.mic.prompt",
+   "en": "Say something",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Before you record and Test recording (D104)",
+   "note": "D104 §2: Test recording, microphone row title (what to do); common.yourMicrophone is the line under it, with the microphone icon.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Di’ qualcosa"
+    },
+    "fr": {
+     "text": "Dites quelque chose"
+    },
+    "es": {
+     "text": "Di algo"
+    },
+    "pt-BR": {
+     "text": "Diga algo"
+    },
+    "pt-PT": {
+     "text": "Diga algo"
+    }
+   }
+  },
+  {
+   "id": "test.sound.prompt",
+   "en": "Play a sound in your meeting app",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Before you record and Test recording (D104)",
+   "note": "D104 §2: Test recording, computer-sound row title (what to do); recordFirst.sound.title is the line under it, with the speaker icon.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riproduci un suono nella tua app per riunioni"
+    },
+    "fr": {
+     "text": "Lancez un son dans votre app de réunion"
+    },
+    "es": {
+     "text": "Reproduce un sonido en tu app de reuniones"
+    },
+    "pt-BR": {
+     "text": "Toque um som no seu app de reuniões"
+    },
+    "pt-PT": {
+     "text": "Reproduza um som na sua aplicação de reuniões"
+    }
+   }
+  },
+  {
+   "id": "test.live.hearing",
+   "en": "Hearing you",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Before you record and Test recording (D104)",
+   "note": "D104 §2: microphone row while testing, once the live level crosses the D60 activity floor. Plain text beside the live level, not a pill.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Ti sento"
+    },
+    "fr": {
+     "text": "On vous entend"
+    },
+    "es": {
+     "text": "Se te oye"
+    },
+    "pt-BR": {
+     "text": "Ouvindo você"
+    },
+    "pt-PT": {
+     "text": "A ouvir"
+    }
+   }
+  },
+  {
+   "id": "test.live.waiting",
+   "en": "Waiting for sound",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Before you record and Test recording (D104)",
+   "note": "D104 §2: either row while testing, until its stream crosses the D60 activity floor. Plain text beside the live level, not a pill.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "In attesa di un suono"
+    },
+    "fr": {
+     "text": "En attente d’un son"
+    },
+    "es": {
+     "text": "Esperando sonido"
+    },
+    "pt-BR": {
+     "text": "Aguardando som"
+    },
+    "pt-PT": {
+     "text": "À espera de som"
+    }
+   }
+  },
+  {
+   "id": "test.live.hearingSound",
+   "en": "Hearing sound",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Before you record and Test recording (D104)",
+   "note": "D104 §2, PROVISIONAL: computer-sound row while testing, once its level crosses the activity floor. Not drawn (the board shows this row only waiting); asked of Alex. Plain text, not a pill.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Suono rilevato"
+    },
+    "fr": {
+     "text": "Son détecté"
+    },
+    "es": {
+     "text": "Se oye sonido"
+    },
+    "pt-BR": {
+     "text": "Som detectado"
+    },
+    "pt-PT": {
+     "text": "Som detetado"
+    }
+   }
+  },
+  {
+   "id": "test.pill.working",
+   "en": "Working",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Before you record and Test recording (D104)",
+   "note": "D104 §2: result status pill for a row whose stream was heard: shared success badge (tint with a tick, STATUS-BADGES). Replaces test.result.working.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Funziona"
+    },
+    "fr": {
+     "text": "Fonctionne"
+    },
+    "es": {
+     "text": "Funciona"
+    },
+    "pt-BR": {
+     "text": "Funcionando"
+    },
+    "pt-PT": {
+     "text": "A funcionar"
+    }
+   }
+  },
+  {
+   "id": "test.pill.silent",
+   "en": "No sound heard",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "badge",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Before you record and Test recording (D104)",
+   "note": "D104 §2: result status pill for a row with audio but nothing above the activity floor: shared error badge (tint with an alert icon, STATUS-BADGES), a hint rather than a failure. Replaces test.result.silent.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Nessun suono rilevato"
+    },
+    "fr": {
+     "text": "Aucun son détecté"
+    },
+    "es": {
+     "text": "No se oyó ningún sonido"
+    },
+    "pt-BR": {
+     "text": "Nenhum som detectado"
+    },
+    "pt-PT": {
+     "text": "Nenhum som detetado"
     }
    }
   },
@@ -31677,7 +31966,7 @@
     "P2RecordFirst-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §4 (L-61): secondary button at the start of the action row, on both desktops (Mac gains the button). Runs the D60 test (test.*).",
+   "note": "D103 §4 (L-61): secondary button at the start of the action row, on both desktops (Mac gains the button). Runs the D60 test (test.*). Superseded by D104 §1 (recordFirst.testRow.*); kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31934,10 +32223,11 @@
    ],
    "role": "button",
    "boards": [
-    "P2PrefsRecording-Desktop"
+    "P2PrefsRecording-Desktop",
+    "P2RecordFirst-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1, 4 (L-58, L-61): button in the Test recording group.",
+   "note": "D103 §1, 4 (L-58, L-61): button in the Test recording group. D104 §1: also the button of the Test row in Before you record.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -34310,7 +34600,7 @@
   },
   {
    "id": "about.licenceLine.phone",
-   "en": "Free software under GPLv3. © {year} Codemyriad and contributors.",
+   "en": "Free software under GPLv3. © {year} Codemyriad OÜ and contributors.",
    "platforms": [
     "ios",
     "android"
@@ -34323,23 +34613,23 @@
    "placeholders": {
     "year": "copyright year, for example 2026"
    },
-   "note": "D103 §6 (L-65): footnote of phone About. PROVISIONAL: the copyright holder differs from the Mac board (QUESTIONS-FOR-ALEX q5).",
+   "note": "D103 §6 (L-65): footnote of phone About. Copyright holder is the legal entity per D81.1 (Silvio, 2026-11-09: \"Codemyriad OÜ and contributors\"), which settles QUESTIONS-FOR-ALEX q5; the phone board drew \"Codemyriad and contributors\". Derived, so draft.",
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Software libero con licenza GPLv3. © {year} Codemyriad e collaboratori."
+     "text": "Software libero con licenza GPLv3. © {year} Codemyriad OÜ e collaboratori."
     },
     "fr": {
-     "text": "Logiciel libre sous licence GPLv3. © {year} Codemyriad et contributeurs."
+     "text": "Logiciel libre sous licence GPLv3. © {year} Codemyriad OÜ et contributeurs."
     },
     "es": {
-     "text": "Software libre bajo GPLv3. © {year} Codemyriad y colaboradores."
+     "text": "Software libre bajo GPLv3. © {year} Codemyriad OÜ y colaboradores."
     },
     "pt-BR": {
-     "text": "Software livre sob a GPLv3. © {year} Codemyriad e colaboradores."
+     "text": "Software livre sob a GPLv3. © {year} Codemyriad OÜ e colaboradores."
     },
     "pt-PT": {
-     "text": "Software livre ao abrigo da GPLv3. © {year} Codemyriad e colaboradores."
+     "text": "Software livre ao abrigo da GPLv3. © {year} Codemyriad OÜ e colaboradores."
     }
    }
   },
@@ -34357,8 +34647,8 @@
    "placeholders": {
     "year": "copyright year, for example 2026"
    },
-   "note": "D103 §6 (L-65): last line of the Mac About panel. PROVISIONAL: the copyright holder differs from the phone board (QUESTIONS-FOR-ALEX q5).",
-   "status": "draft",
+   "note": "D103 §6 (L-65): last line of the Mac About panel. Verbatim from the board; the holder matches D81.1 (legal entity \"Codemyriad OÜ\"), which settles QUESTIONS-FOR-ALEX q5.",
+   "status": "drawn",
    "l10n": {
     "it": {
      "text": "© {year} Codemyriad OÜ · Software libero con licenza GPL-3.0"

@@ -194,6 +194,12 @@ text > placeholder {
 .badge-kind-transcribing .badge-glyph { color: var(--app-badge-transcribing-spinner); }
 .badge-kind-needsAttention, .badge-kind-interrupted, .library-window .badge-amber { background: var(--app-badge-amber-bg); color: var(--app-badge-amber-fg); }
 .badge-kind-received { background: transparent; color: var(--app-badge-received-fg); box-shadow: inset 0 0 0 1px var(--app-badge-received-ring); }
+/* D104 §2: Test recording result pills (STATUS-BADGES success / error tints) and the live level. */
+.test-pill-working { background: var(--cx-success-tint); color: var(--cx-success); }
+.test-pill-silent { background: var(--cx-error-tint); color: var(--cx-error); }
+levelbar.test-level trough { min-height: 6px; border-radius: 999px; }
+levelbar.test-level block { min-height: 6px; border-radius: 999px; }
+levelbar.test-level block.filled { background: var(--cx-accent); }
 .library-window .speaker-chip { border-radius: 100px; background: var(--app-wash-chip); padding: 5px 12px; }
 .library-window .speaker-chip-0 { background: var(--cx-avatar-0); color: var(--cx-speaker-0); }
 .library-window .speaker-chip-1 { background: var(--cx-avatar-1); color: var(--cx-speaker-1); }
@@ -401,7 +407,6 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .info-line { background: var(--app-accent-tint); }
 .info-line > label, .info-line > image, .info-line > spinner { color: var(--app-accent-ink); }
 .meeting-transcript .words { font-size: 15px; line-height: 1.5; }
-.responsibility-card { background: var(--app-wash-subtle); border-radius: 12px; padding: 16px; }
 
 /* UX6 & WP4 (L-12, L-20, L-47, L-48): right-pane live Recording view. */
 .recording-page { background: var(--cx-surface); color: var(--cx-ink); }

@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""D60 (R83): the test recording from Settings and the first-run step, through AT-SPI.
+"""D60 (R83), D104: the test recording from Settings and Before you record, through AT-SPI.
 
-A separate AT-SPI client finds and activates Test recording, Play back, Test
-again and Done by name, and reads the result lines. This display has no Pulse:
+A separate AT-SPI client finds and activates Test, Play back, Test again and
+Done by name, and reads each row's result (source, then its pill). This display has no Pulse:
 Settings tests use the recorder's synthetic sources (440/880 Hz), and the
 first-run test uses the real devices, so both streams are refused.
 """
@@ -22,9 +22,12 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = Path(os.environ["CASSINI_SCREENSHOT_OUT"]).with_suffix(".json")
 ACKS = OUTPUT.with_suffix(".ack")
 PRGNAME = "cassini-test-recording-test"
-WORKING = ["Your microphone: working", "This computer’s sound: working"]
-SILENT = ["Your microphone: working", "This computer’s sound: no sound heard"]
-REFUSED = ["Your microphone: couldn’t be started.", "This computer’s sound: couldn’t be started."]
+WORKING = ["Your microphone\nWorking", "This computer’s sound\nWorking"]
+SILENT = ["Your microphone\nWorking", "This computer’s sound\nNo sound heard"]
+REFUSED = [
+    "Your microphone: couldn’t be started.\nNo sound heard",
+    "This computer’s sound: couldn’t be started.\nNo sound heard",
+]
 
 
 def child():
@@ -159,15 +162,30 @@ def child():
         record_event("settings")
         until(lambda: check.state == "running" and app.sound_check_dialog is not None)
         dialog = app.sound_check_dialog
-        assert dialog.status.get_label() == "Testing… Say something and play a sound."
-        assert not dialog.buttons.get_visible() and not settings.test_row.get_sensitive()
+        # D104 §2: one screen. While testing: the Recording pill, live rows, greyed
+        # Play back and Test again, and Cancel in Done's place.
+        assert dialog.subline.get_visible_child_name() == "recording"
+        assert dialog.pill.get_label().startswith("Recording ")
+        assert not dialog.play_button.get_sensitive() and not dialog.again_button.get_sensitive()
+        assert dialog.done_button.get_label() == "Cancel" and not settings.test_row.get_sensitive()
+        rows = dialog.stream_rows
+        assert [rows[k].prompt.get_label() for k in rows] == ["Say something", "Play a sound in your meeting app"]
+        assert [rows[k].source.get_label() for k in rows] == ["Your microphone", "This computer’s sound"]
+        assert all(row.stack.get_visible_child_name() == "live" for row in rows.values())
+        # The synthetic tones cross the activity floor: each row hears its stream.
+        until(lambda: rows["microphone"].status.get_label() == "Hearing you")
+        until(lambda: rows["system"].status.get_label() == "Hearing sound")
         until(lambda: check.folder is not None and check.folder.exists())
         folder = check.folder
         assert folder.parent == root and private(folder)
         shots("running")
         assert result() == WORKING
-        assert dialog.buttons.get_visible() and dialog.play_button.get_sensitive()
+        assert dialog.play_button.get_sensitive() and dialog.again_button.get_sensitive()
+        assert dialog.done_button.get_label() == "Done"
+        assert dialog.subline.get_visible_child_name() == "note"
         assert dialog.note.get_label() == "Play it back to check that it sounds right."
+        assert all(row.stack.get_visible_child_name() == "pill" for row in rows.values())
+        assert {row.pill.label.get_label() for row in rows.values()} == {"Working"}
         assert dialog.done_button.has_focus(), "Done takes the keyboard focus with the result"
         assert not app.native_captures and not app.recorder, "A test is never a capture"
         assert sorted(library.iterdir()) == before, "Nothing reaches the Library"
@@ -260,14 +278,26 @@ def child():
         app.on_record()
         consent = app.record_first
         assert consent and consent.get_title() == "Before you record"
+        # D104 §1: the third row "Not sure it hears both?" carries Test.
+        assert consent.test_button.get_label() == "Test"
         until(lambda: consent.test_button.get_sensitive())
         shots("first-run")
         record_event("first-run")
         assert result() == REFUSED
         dialog, folder = app.sound_check_dialog, check.folder
-        assert not dialog.play_button.get_sensitive() and not dialog.note.get_visible(), "Nothing to play back"
+        assert not dialog.play_button.get_sensitive(), "Nothing to play back"
+        assert dialog.subline.get_visible_child_name() == "none"
+        assert {row.pill.label.get_label() for row in dialog.stream_rows.values()} == {"No sound heard"}
         shots("refused")
         record_event("refused")
+        until(lambda: dialog.closed and not folder.exists() and not check.busy)
+        assert app.record_first is consent
+        # Cancel (in Done's place while testing) closes and deletes the running test.
+        consent.test_button.emit("clicked")
+        until(lambda: check.state == "running" and check.folder is not None)
+        dialog, folder = app.sound_check_dialog, check.folder
+        assert dialog.done_button.get_label() == "Cancel"
+        dialog.done_button.emit("clicked")
         until(lambda: dialog.closed and not folder.exists() and not check.busy)
         assert app.record_first is consent
         # A test goes with the dialog it was started from.
@@ -392,7 +422,7 @@ def parent():
             button("Test", sensitive=False)
             ack("recording")
             wait("first-run", 60)
-            activate("Test recording first")
+            activate("Test")
             wait("refused", 30)
             lines(REFUSED)
             button("Play back", sensitive=False)
@@ -405,7 +435,10 @@ def parent():
             if process.poll() is None:
                 process.terminate()
                 process.wait(5)
-    print("PASS test recording: Settings and first run, result lines, Play back, Test again, Done, Record discards")
+    print(
+        "PASS test recording: Settings and Before you record, live rows, result pills, Play back, Test again,"
+        " Done, Cancel, Record discards"
+    )
 
 
 if "--child" in sys.argv:
