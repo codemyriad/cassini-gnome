@@ -28,7 +28,7 @@ msgid "Click any word to play from there"
 msgstr "Cliquez sur un mot pour lire à partir de là"
 
 msgid "See participants and who is speaking, and switch between transcripts"
-msgstr "Consultez les participants et la personne qui parle, et changez de transcription"
+msgstr "Affichez les participants, voyez qui parle et changez de transcription"
 
 msgid "Search the transcript"
 msgstr "Recherchez dans la transcription"
@@ -52,10 +52,10 @@ msgid "A meeting transcript following playback"
 msgstr "Une transcription de réunion qui suit la lecture"
 
 msgid "Keep recordings and received meetings in the Library, follow their transcripts, search across meetings, and import or export audio and transcripts."
-msgstr "Conservez les enregistrements et les réunions reçues dans la Bibliothèque, suivez leur transcription, recherchez dans les réunions et importez ou exportez l’audio et les transcriptions."
+msgstr "Conservez les enregistrements et les réunions reçues dans la bibliothèque, suivez leur transcription, recherchez dans les réunions et importez ou exportez l’audio et les transcriptions."
 
 msgid "Record browser meetings independently, choose what is recorded, and set up the companion in native packages or Flatpak"
-msgstr "Enregistrez les réunions du navigateur séparément, choisissez ce qui est enregistré et configurez l’extension avec les paquets natifs ou Flatpak"
+msgstr "Enregistrez séparément les réunions dans le navigateur, choisissez ce qui est enregistré et configurez l’extension avec les paquets natifs ou Flatpak"
 
 msgid "Write meetings down locally with bundled Whistle or optional Parakeet Ultra"
 msgstr "Transcrivez les réunions sur cet ordinateur avec Whistle inclus ou Parakeet Ultra en option"
@@ -64,10 +64,10 @@ msgid "Tell speakers apart, name and merge speakers, and remember saved voices l
 msgstr "Distinguez les intervenants, nommez-les et fusionnez-les, et mémorisez leurs voix sur cet ordinateur"
 
 msgid "Keep audio aligned through input interruptions without adding silence for gradual clock drift"
-msgstr "Gardez l’audio aligné lors des interruptions de l’entrée, sans ajouter de silence pour la dérive progressive de l’horloge"
+msgstr "Garde l’audio aligné lors des interruptions de l’entrée, sans ajouter de silence pour la dérive progressive de l’horloge"
 
 msgid "Record meetings: the microphone and desktop audio, and browser meetings source by source through the Cassini companion extension. Cassini now names missing libraries and plugins at startup instead of failing."
-msgstr "Enregistrez les réunions : le microphone et le son de cet ordinateur, et les réunions du navigateur source par source avec l’extension Cassini. Au démarrage, Cassini indique les bibliothèques et greffons manquants."
+msgstr "Enregistrez les réunions : le microphone et le son de cet ordinateur, et les réunions dans le navigateur source par source avec l’extension Cassini. Au démarrage, Cassini indique désormais les bibliothèques et greffons manquants au lieu d’échouer."
 
 msgid "Fix transcript-click crashes and label sizing warnings. Keep participants visible, rejoin interrupted speech with inline interjections, and preserve interjections in exports."
 msgstr "Corrige les plantages lors d’un clic dans la transcription et les avertissements de taille des libellés. Garde les participants visibles, réunit les paroles interrompues par des interjections et conserve celles-ci à l’exportation."
@@ -85,7 +85,7 @@ msgid "Desktop recording shortcut description"
 msgstr "Description du raccourci d’enregistrement du bureau"
 
 msgid "Browser companion has connected before"
-msgstr "L’extension du navigateur s’est déjà connectée"
+msgstr "L’extension de navigateur s’est déjà connectée"
 
 msgid "Windowless automatic recording notification shown"
 msgstr "Notification d’enregistrement automatique sans fenêtre affichée"
@@ -118,7 +118,7 @@ msgid "Follow along"
 msgstr "Suivre la lecture"
 
 msgid "Keep the word being spoken in view while playing."
-msgstr "Gardez le mot prononcé visible pendant la lecture."
+msgstr "Garde le mot prononcé visible pendant la lecture."
 
 msgid "_Keyboard Shortcuts"
 msgstr "_Raccourcis clavier"
@@ -160,7 +160,7 @@ msgid "Play or Pause"
 msgstr "Lire ou mettre en pause"
 
 msgid "Search"
-msgstr "Recherche"
+msgstr "Rechercher"
 
 msgid "[FILE…]"
 msgstr "[FICHIER…]"

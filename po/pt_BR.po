@@ -52,31 +52,31 @@ msgid "A meeting transcript following playback"
 msgstr "Uma transcrição de reunião acompanhando a reprodução"
 
 msgid "Keep recordings and received meetings in the Library, follow their transcripts, search across meetings, and import or export audio and transcripts."
-msgstr "Mantenha gravações e reuniões recebidas na Biblioteca, acompanhe as transcrições, busque em todas as reuniões e importe ou exporte áudio e transcrições."
+msgstr "Mantenha gravações e reuniões recebidas na biblioteca, acompanhe as transcrições, busque em todas as reuniões e importe ou exporte áudio e transcrições."
 
 msgid "Record browser meetings independently, choose what is recorded, and set up the companion in native packages or Flatpak"
-msgstr "Grave reuniões do navegador de forma independente, escolha o que é gravado e configure a extensão com pacotes nativos ou Flatpak"
+msgstr "Grave reuniões no navegador de forma independente, escolha o que é gravado e configure a extensão com pacotes nativos ou Flatpak"
 
 msgid "Write meetings down locally with bundled Whistle or optional Parakeet Ultra"
 msgstr "Transcreva reuniões no computador com o Whistle incluído ou o Parakeet Ultra opcional"
 
 msgid "Tell speakers apart, name and merge speakers, and remember saved voices locally"
-msgstr "Diferencie os locutores, dê nomes, mescle-os e memorize as vozes salvas no computador"
+msgstr "Distinga os locutores, nomeie-os, mescle-os e lembre as vozes salvas no computador"
 
 msgid "Keep audio aligned through input interruptions without adding silence for gradual clock drift"
-msgstr "Mantenha o áudio alinhado nas interrupções de entrada sem adicionar silêncio para a deriva gradual do relógio"
+msgstr "Mantenha o áudio alinhado nas interrupções de entrada sem adicionar silêncio para compensar a deriva gradual do relógio"
 
 msgid "Record meetings: the microphone and desktop audio, and browser meetings source by source through the Cassini companion extension. Cassini now names missing libraries and plugins at startup instead of failing."
-msgstr "Grave reuniões: o microfone e o áudio do computador, e reuniões do navegador fonte por fonte com a extensão do Cassini. Ao iniciar, o Cassini informa as bibliotecas e os plugins ausentes."
+msgstr "Grave reuniões: o microfone e o áudio do computador, e reuniões no navegador fonte por fonte com a extensão do Cassini. Ao iniciar, o Cassini agora informa as bibliotecas e os plugins ausentes em vez de falhar."
 
 msgid "Fix transcript-click crashes and label sizing warnings. Keep participants visible, rejoin interrupted speech with inline interjections, and preserve interjections in exports."
-msgstr "Corrige falhas ao clicar na transcrição e avisos de tamanho dos rótulos. Mantém os participantes visíveis, reúne a fala interrompida por interjeições e preserva as interjeições nas exportações."
+msgstr "Corrige falhas ao clicar na transcrição e avisos de tamanho dos rótulos. Mantém os participantes visíveis, reúne a fala interrompida mostrando as interjeições no texto e preserva as interjeições nas exportações."
 
 msgid "First release."
 msgstr "Primeira versão."
 
 msgid "Speech model for new jobs"
-msgstr "Modelo de fala para novas transcrições"
+msgstr "Modelo de voz para novas transcrições"
 
 msgid "Global recording shortcut explicitly enabled"
 msgstr "Atalho global de gravação ativado explicitamente"
@@ -115,7 +115,7 @@ msgid "Show the properties pane"
 msgstr "Mostrar o painel de propriedades"
 
 msgid "Follow along"
-msgstr "Acompanhar a leitura"
+msgstr "Acompanhar a reprodução"
 
 msgid "Keep the word being spoken in view while playing."
 msgstr "Mantenha a palavra falada visível durante a reprodução."

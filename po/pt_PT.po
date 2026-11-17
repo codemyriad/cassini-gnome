@@ -55,7 +55,7 @@ msgid "Keep recordings and received meetings in the Library, follow their transc
 msgstr "Guarde gravações e reuniões recebidas na Biblioteca, acompanhe as transcrições, pesquise nas reuniões e importe ou exporte áudio e transcrições."
 
 msgid "Record browser meetings independently, choose what is recorded, and set up the companion in native packages or Flatpak"
-msgstr "Grave reuniões do navegador de forma independente, escolha o que é gravado e configure a extensão com pacotes nativos ou Flatpak"
+msgstr "Grave reuniões no navegador de forma independente, escolha o que é gravado e configure a extensão com pacotes nativos ou Flatpak"
 
 msgid "Write meetings down locally with bundled Whistle or optional Parakeet Ultra"
 msgstr "Transcreva reuniões no computador com o Whistle incluído ou o Parakeet Ultra opcional"
@@ -64,19 +64,19 @@ msgid "Tell speakers apart, name and merge speakers, and remember saved voices l
 msgstr "Distinga os oradores, dê nomes, junte-os e memorize as vozes guardadas no computador"
 
 msgid "Keep audio aligned through input interruptions without adding silence for gradual clock drift"
-msgstr "Mantenha o áudio alinhado nas interrupções de entrada sem adicionar silêncio para o desvio gradual do relógio"
+msgstr "Mantenha o áudio alinhado durante as interrupções da entrada sem adicionar silêncio para compensar o desvio gradual do relógio"
 
 msgid "Record meetings: the microphone and desktop audio, and browser meetings source by source through the Cassini companion extension. Cassini now names missing libraries and plugins at startup instead of failing."
-msgstr "Grave reuniões: o microfone e o áudio do computador, e reuniões do navegador fonte por fonte com a extensão do Cassini. Ao iniciar, o Cassini indica as bibliotecas e os módulos em falta."
+msgstr "Grave reuniões: o microfone e o áudio do computador, e reuniões no navegador fonte por fonte com a extensão do Cassini. Ao iniciar, o Cassini indica agora as bibliotecas e os módulos em falta em vez de falhar."
 
 msgid "Fix transcript-click crashes and label sizing warnings. Keep participants visible, rejoin interrupted speech with inline interjections, and preserve interjections in exports."
-msgstr "Corrige falhas ao clicar na transcrição e avisos de tamanho das etiquetas. Mantém os participantes visíveis, reúne a fala interrompida por interjeições e preserva as interjeições nas exportações."
+msgstr "Corrige falhas ao clicar na transcrição e avisos de tamanho das etiquetas. Mantém os participantes visíveis, volta a juntar a fala interrompida com as interjeições inseridas no texto e preserva as interjeições nas exportações."
 
 msgid "First release."
 msgstr "Primeira versão."
 
 msgid "Speech model for new jobs"
-msgstr "Modelo de fala para novas transcrições"
+msgstr "Modelo de voz para novas transcrições"
 
 msgid "Global recording shortcut explicitly enabled"
 msgstr "Atalho global de gravação ativado explicitamente"
@@ -115,7 +115,7 @@ msgid "Show the properties pane"
 msgstr "Mostrar o painel de propriedades"
 
 msgid "Follow along"
-msgstr "Acompanhar a leitura"
+msgstr "Acompanhar a reprodução"
 
 msgid "Keep the word being spoken in view while playing."
 msgstr "Mantenha a palavra pronunciada visível durante a reprodução."
@@ -157,7 +157,7 @@ msgid "Playback"
 msgstr "Reprodução"
 
 msgid "Play or Pause"
-msgstr "Reproduzir ou pausar"
+msgstr "Reproduzir ou colocar em pausa"
 
 msgid "Search"
 msgstr "Pesquisar"

@@ -1718,11 +1718,11 @@
      }
     },
     "fr": {
-     "text": "Il ne reste que {n} minutes d’espace.",
+     "text": "Il ne reste de place que pour {n} minutes d’enregistrement.",
      "plural": {
-      "one": "Il ne reste que {n} minute d’espace.",
-      "many": "Il ne reste que {n} minutes d’espace.",
-      "other": "Il ne reste que {n} minutes d’espace."
+      "one": "Il ne reste de place que pour {n} minute d’enregistrement.",
+      "many": "Il ne reste de place que pour {n} minutes d’enregistrement.",
+      "other": "Il ne reste de place que pour {n} minutes d’enregistrement."
      }
     },
     "es": {
@@ -1734,11 +1734,11 @@
      }
     },
     "pt-BR": {
-     "text": "Restam só {n} minutos de espaço.",
+     "text": "Só resta espaço para {n} minutos de gravação.",
      "plural": {
-      "one": "Resta só {n} minuto de espaço.",
-      "many": "Restam só {n} minutos de espaço.",
-      "other": "Restam só {n} minutos de espaço."
+      "one": "Só resta espaço para {n} minuto de gravação.",
+      "many": "Só resta espaço para {n} minutos de gravação.",
+      "other": "Só resta espaço para {n} minutos de gravação."
      }
     },
     "pt-PT": {
@@ -1804,7 +1804,7 @@
      "text": "Cassini a arrêté l’enregistrement pour garder de l’espace libre sur cet ordinateur. Tout ce qui a été enregistré jusqu’ici est sauvegardé."
     },
     "es": {
-     "text": "Cassini dejó de grabar para dejar algo de espacio libre en este equipo. Todo lo grabado hasta ahora está guardado."
+     "text": "Cassini detuvo la grabación para dejar algo de espacio libre en este equipo. Todo lo grabado hasta ahora está guardado."
     },
     "pt-BR": {
      "text": "O Cassini parou de gravar para deixar um pouco de espaço livre neste computador. Tudo o que foi gravado até agora está salvo."
@@ -2639,7 +2639,7 @@
      "text": "La transcripción como archivo de texto, con hablantes y marcas de tiempo."
     },
     "pt-BR": {
-     "text": "A transcrição como arquivo de texto, com locutores e horários."
+     "text": "A transcrição como arquivo de texto, com locutores e tempos."
     },
     "pt-PT": {
      "text": "A transcrição como ficheiro de texto, com oradores e tempos."
@@ -3634,7 +3634,7 @@
      "text": "meno di 1 min"
     },
     "fr": {
-     "text": "moins d’1 min"
+     "text": "moins de 1 min"
     },
     "es": {
      "text": "menos de 1 min"
@@ -4172,7 +4172,7 @@
      "text": "download de {size}"
     },
     "pt-PT": {
-     "text": "Transferência de {size}"
+     "text": "transferência de {size}"
     }
    }
   },
@@ -5075,7 +5075,7 @@
      "text": "Quando Cassini ascolta nel browser, la voce di ogni persona arriva separata, così i nomi sono corretti più spesso. La configurazione richiede due clic."
     },
     "fr": {
-     "text": "Quand Cassini écoute directement dans le navigateur, la voix de chaque personne arrive séparément, et les noms sont plus souvent justes. La configuration prend deux clics."
+     "text": "Quand Cassini écoute directement dans le navigateur, la voix de chaque personne arrive séparément, et les noms sont plus souvent justes. La configuration se fait en deux clics."
     },
     "es": {
      "text": "Cuando Cassini escucha dentro del navegador, la voz de cada persona llega por separado, así que acierta más con los nombres. Se configura en dos clics."
@@ -6420,7 +6420,7 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Subito dopo, il desktop potrebbe chiederti di consentirlo.",
+     "text": "Subito dopo, il sistema potrebbe chiederti di consentirlo.",
      "mac": "macOS ti chiede di consentirlo."
     },
     "fr": {
@@ -6866,13 +6866,13 @@
      "text": "Enregistrement depuis {time} · sauvegardé au fur et à mesure"
     },
     "es": {
-     "text": "Grabando desde las {time} · se guarda mientras graba"
+     "text": "Grabando desde las {time} · se guarda a medida que se graba"
     },
     "pt-BR": {
      "text": "Gravando desde {time} · salvando enquanto grava"
     },
     "pt-PT": {
-     "text": "A gravar desde as {time} · guardado à medida que grava"
+     "text": "A gravar desde as {time} · a guardar em contínuo"
     }
    }
   },
@@ -6902,7 +6902,7 @@
      "text": "Título tomado de la ventana de la reunión. Cámbialo cuando quieras."
     },
     "pt-BR": {
-     "text": "Nome tirado da janela da reunião. Renomeie quando quiser."
+     "text": "Título extraído da janela da reunião. Renomeie quando quiser."
     },
     "pt-PT": {
      "text": "Nome obtido da janela da reunião. Pode mudá-lo quando quiser."
@@ -7276,7 +7276,7 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Dai di nuovo il nome in una riunione per continuare a riconoscerla."
+     "text": "Dai di nuovo un nome a questa voce in una riunione, così Cassini continuerà a riconoscerla."
     },
     "fr": {
      "text": "Nommez à nouveau cette personne dans une réunion pour que Cassini continue à la reconnaître."
@@ -8165,7 +8165,7 @@
      "text": "Cerca"
     },
     "fr": {
-     "text": "Recherche"
+     "text": "Rechercher"
     },
     "es": {
      "text": "Buscar"
@@ -8924,7 +8924,7 @@
      "text": "Chaque réunion est un dossier contenant son audio et sa transcription. Sauvegardez ce dossier comme n’importe quel autre."
     },
     "es": {
-     "text": "Cada reunión es una carpeta con su audio y su transcripción. Haz copias de seguridad como de cualquier otra carpeta."
+     "text": "Cada reunión es una carpeta con su audio y su transcripción. Haz copias de seguridad como con cualquier otra carpeta."
     },
     "pt-BR": {
      "text": "Cada reunião é uma pasta com o áudio e a transcrição. Faça backup dela como de qualquer outra pasta."
@@ -9632,7 +9632,7 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Le prossime riunioni riconosceranno {name} automaticamente. L’impronta vocale non lascia mai questo computer."
+     "text": "Nelle prossime riunioni, Cassini riconoscerà {name} automaticamente. L’impronta vocale non lascia mai questo computer."
     },
     "fr": {
      "text": "Cassini nommera {name} automatiquement dans les prochaines réunions. L’empreinte vocale ne quitte jamais cet ordinateur."
@@ -9709,7 +9709,7 @@
      "text": "Voces guardadas, la más parecida primero"
     },
     "pt-BR": {
-     "text": "Vozes salvas, mais próximas primeiro"
+     "text": "Vozes salvas, mais semelhantes primeiro"
     },
     "pt-PT": {
      "text": "Vozes guardadas, as mais parecidas primeiro"
@@ -10915,7 +10915,7 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Non ancora aggiunto"
+     "text": "Non ancora aggiunta"
     },
     "fr": {
      "text": "Pas encore ajoutée"
@@ -10924,10 +10924,10 @@
      "text": "Sin añadir todavía"
     },
     "pt-BR": {
-     "text": "Ainda não adicionado"
+     "text": "Ainda não adicionada"
     },
     "pt-PT": {
-     "text": "Ainda não adicionado"
+     "text": "Ainda não adicionada"
     }
    }
   },
@@ -10960,7 +10960,7 @@
      "text": "Listo. Cassini está en {browsers}."
     },
     "pt-BR": {
-     "text": "Pronto. O Cassini está em {browsers}."
+     "text": "Pronto. O Cassini está nos navegadores {browsers}."
     },
     "pt-PT": {
      "text": "Feito. O Cassini está em {browsers}."
@@ -11257,10 +11257,10 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Non è stato possibile raggiungere la tua riunione nel browser, quindi Cassini registra gli altri dall’audio di questo computer finché non fermi la registrazione."
+     "text": "Impossibile raggiungere la tua riunione nel browser. Cassini registra quindi gli altri dall’audio di questo computer finché non fermi la registrazione."
     },
     "fr": {
-     "text": "Votre réunion dans le navigateur n’a pas pu être jointe : Cassini enregistre donc les autres à partir du son de cet ordinateur jusqu’à la fin de l’enregistrement."
+     "text": "Impossible d’accéder à votre réunion dans le navigateur : Cassini enregistre donc les autres à partir du son de cet ordinateur jusqu’à ce que vous arrêtiez l’enregistrement."
     },
     "es": {
      "text": "No se pudo acceder a tu reunión en el navegador, así que Cassini graba a los demás desde el sonido de este equipo hasta que detengas la grabación."
@@ -11389,10 +11389,10 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Cassini non è riuscito a raggiungere la tua riunione nel browser. Succede quando la scheda della riunione viene ricaricata o chiusa, o quando il browser si chiude. Per non perdere nulla, Cassini è passato all’audio di questo computer. Tutti vengono ancora registrati, ma insieme, quindi la distinzione delle voci è meno precisa. Continua così finché non fermi la registrazione."
+     "text": "Cassini non è riuscito a raggiungere la tua riunione nel browser. Succede quando la scheda della riunione viene ricaricata o chiusa, o quando il browser si chiude. Per non perdere nulla, Cassini è passato all’audio di questo computer. Tutti vengono ancora registrati, ma insieme, quindi la distinzione delle voci è meno precisa. La registrazione continua così finché non la fermi."
     },
     "fr": {
-     "text": "Cassini n’a pas pu joindre votre réunion dans le navigateur. Cela arrive quand l’onglet de la réunion est rechargé ou fermé, ou quand le navigateur se ferme. Pour que rien ne soit perdu, Cassini est passé au son de cet ordinateur. Tout le monde est toujours enregistré, mais ensemble : les intervenants sont donc distingués moins précisément. Cela dure jusqu’à la fin de l’enregistrement."
+     "text": "Cassini n’a pas pu accéder à votre réunion dans le navigateur. Cela arrive quand l’onglet de la réunion est rechargé ou fermé, ou quand le navigateur se ferme. Pour que rien ne soit perdu, Cassini est passé au son de cet ordinateur. Tout le monde est toujours enregistré, mais ensemble : les intervenants sont donc distingués moins précisément. Cela dure jusqu’à ce que vous arrêtiez l’enregistrement."
     },
     "es": {
      "text": "Cassini no pudo acceder a tu reunión en el navegador. Esto pasa cuando la pestaña de la reunión se recarga o se cierra, o cuando el navegador se cierra. Para que no se pierda nada, Cassini pasó al sonido de este equipo. Se sigue grabando a todos, pero juntos, así que distinguir a los hablantes es menos exacto. Esto dura hasta que detengas la grabación."
@@ -12518,7 +12518,7 @@
      "text": "Impossibile aggiornare in modo sicuro i file di connessione del browser."
     },
     "fr": {
-     "text": "Les fichiers de connexion du navigateur n’ont pas pu être mis à jour en toute sécurité."
+     "text": "Impossible de mettre à jour les fichiers de connexion du navigateur en toute sécurité."
     },
     "es": {
      "text": "No se pudieron actualizar de forma segura los archivos de conexión del navegador."
@@ -14267,7 +14267,7 @@
      "text": "Informazione non registrata per questa riunione"
     },
     "fr": {
-     "text": "Non enregistré pour cette réunion"
+     "text": "Non consigné pour cette réunion"
     },
     "es": {
      "text": "No se registró en esta reunión"
@@ -14297,13 +14297,13 @@
      "text": "Tempi non registrati"
     },
     "fr": {
-     "text": "Minutage non enregistré"
+     "text": "Minutage non consigné"
     },
     "es": {
      "text": "Tiempos no registrados"
     },
     "pt-BR": {
-     "text": "Horário não registrado"
+     "text": "Tempo não registrado"
     },
     "pt-PT": {
      "text": "Tempo não registado"
@@ -14327,7 +14327,7 @@
      "text": "Nessun dettaglio registrato sulle sorgenti"
     },
     "fr": {
-     "text": "Aucun détail de source enregistré"
+     "text": "Aucun détail de source consigné"
     },
     "es": {
      "text": "No se registraron detalles de la fuente"
@@ -14384,19 +14384,19 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Altri intervalli sono inclusi in Copia i dettagli."
+     "text": "Gli altri intervalli sono inclusi in “Copia i dettagli”."
     },
     "fr": {
      "text": "« Copier les détails » inclut d’autres plages."
     },
     "es": {
-     "text": "Hay más tramos en Copiar detalles."
+     "text": "“Copiar detalles” incluye más tramos."
     },
     "pt-BR": {
      "text": "Mais trechos estão incluídos em Copiar detalhes."
     },
     "pt-PT": {
-     "text": "Há mais segmentos incluídos em Copiar detalhes."
+     "text": "«Copiar detalhes» inclui mais segmentos."
     }
    }
   },
@@ -14687,7 +14687,7 @@
      "text": "Sorgente audio non registrata"
     },
     "fr": {
-     "text": "Source audio non enregistrée"
+     "text": "Source audio non consignée"
     },
     "es": {
      "text": "Fuente de audio no registrada"
@@ -15170,7 +15170,7 @@
      "text": "Décalage du microphone"
     },
     "es": {
-     "text": "Desfase del micrófono"
+     "text": "Componente continua del micrófono"
     },
     "pt-BR": {
      "text": "Deslocamento do microfone"
@@ -15197,7 +15197,7 @@
      "text": "durata non registrata"
     },
     "fr": {
-     "text": "durée non enregistrée"
+     "text": "durée non consignée"
     },
     "es": {
      "text": "duración no registrada"
@@ -15320,7 +15320,7 @@
      "text": "Le microphone ajoute un décalage constant ({offset}). Cassini le corrige pour détecter la parole ; l’audio sauvegardé n’est pas modifié."
     },
     "es": {
-     "text": "El micrófono añade un desfase constante ({offset}). Cassini lo corrige al buscar la voz; el audio guardado no cambia."
+     "text": "El micrófono añade una componente continua ({offset}). Cassini la corrige al detectar el habla; el audio guardado no cambia."
     },
     "pt-BR": {
      "text": "O microfone adiciona um deslocamento constante ({offset}). O Cassini compensa isso ao procurar a fala; o áudio salvo não é alterado."
@@ -15350,7 +15350,7 @@
      "text": "Aucun décalage important dans l’échantillon audio du microphone"
     },
     "es": {
-     "text": "No hay un desfase grande en la muestra del audio del micrófono"
+     "text": "No hay una componente continua elevada en la muestra de audio del micrófono"
     },
     "pt-BR": {
      "text": "Nenhum deslocamento grande no trecho analisado do áudio do microfone"
@@ -15836,7 +15836,7 @@
      "text": "Distinguir locutores não estava instalado"
     },
     "pt-PT": {
-     "text": "Distinguir oradores não estava instalado"
+     "text": "O modelo «Distinguir oradores» não estava instalado"
     }
    }
   },
@@ -15866,7 +15866,7 @@
      "text": "Distinguir locutores não estava pronto"
     },
     "pt-PT": {
-     "text": "Distinguir oradores não estava pronto"
+     "text": "O modelo «Distinguir oradores» não estava pronto"
     }
    }
   },
@@ -15896,7 +15896,7 @@
      "text": "Distinguir locutores não estava disponível neste computador"
     },
     "pt-PT": {
-     "text": "Distinguir oradores não estava disponível neste computador"
+     "text": "O modelo «Distinguir oradores» não estava disponível neste computador"
     }
    }
   },
@@ -15977,10 +15977,10 @@
      "text": "Impossibile completare la distinzione delle voci. La trascrizione è stata conservata."
     },
     "fr": {
-     "text": "La distinction des intervenants n’a pas pu aboutir. La transcription a été conservée."
+     "text": "Impossible d’achever la distinction des intervenants. La transcription a été conservée."
     },
     "es": {
-     "text": "La separación de hablantes no pudo terminar. Se conservó la transcripción."
+     "text": "No se pudo completar la separación de hablantes. Se conservó la transcripción."
     },
     "pt-BR": {
      "text": "Não foi possível concluir a separação de locutores. A transcrição foi mantida."
@@ -16064,7 +16064,7 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Turni delle voci salvati riutilizzati"
+     "text": "Riutilizzati i turni di parola salvati"
     },
     "fr": {
      "text": "Tours de parole sauvegardés réutilisés"
@@ -16094,16 +16094,16 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Non è stato possibile separare parte dell’audio"
+     "text": "Impossibile separare parte dell’audio"
     },
     "fr": {
-     "text": "Une partie de l’audio n’a pas pu être séparée"
+     "text": "Impossible de séparer une partie de l’audio"
     },
     "es": {
      "text": "Parte del audio no se pudo separar"
     },
     "pt-BR": {
-     "text": "Parte do áudio não pôde ser separada"
+     "text": "Não foi possível separar parte do áudio"
     },
     "pt-PT": {
      "text": "Não foi possível separar parte do áudio"
@@ -16127,7 +16127,7 @@
      "text": "{filename} non è disponibile; alcuni dettagli non sono registrati."
     },
     "fr": {
-     "text": "{filename} est indisponible ; certains détails ne sont pas enregistrés."
+     "text": "{filename} est indisponible ; certains détails ne sont pas consignés."
     },
     "es": {
      "text": "{filename} no está disponible; algunos detalles no se registraron."
@@ -16157,7 +16157,7 @@
      "text": "Impossibile leggere {filename} in modo sicuro; alcuni dettagli non sono disponibili."
     },
     "fr": {
-     "text": "{filename} n’a pas pu être lu en toute sécurité ; certains détails sont indisponibles."
+     "text": "Impossible de lire {filename} en toute sécurité ; certains détails sont indisponibles."
     },
     "es": {
      "text": "{filename} no se pudo leer de forma segura; algunos detalles no están disponibles."
@@ -16247,7 +16247,7 @@
      "text": "I cambi di sorgente non sono stati registrati. La cronologia usa le tracce audio salvate; il motivo di un cambio di sorgente è sconosciuto."
     },
     "fr": {
-     "text": "Les changements de source n’ont pas été enregistrés. La chronologie s’appuie sur les pistes audio sauvegardées ; la raison d’un changement de source est inconnue."
+     "text": "Les changements de source n’ont pas été consignés. La chronologie s’appuie sur les pistes audio sauvegardées ; la raison d’un changement de source est inconnue."
     },
     "es": {
      "text": "No se registraron los cambios de fuente. La cronología usa las pistas de audio guardadas; se desconoce el motivo de cada cambio de fuente."
@@ -16514,7 +16514,7 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "La pagina della riunione non è tornata"
+     "text": "La pagina della riunione non è tornata disponibile"
     },
     "fr": {
      "text": "La page de la réunion n’est pas réapparue"
@@ -16544,7 +16544,7 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Registrazione fermata perché lo spazio stava finendo"
+     "text": "Registrazione interrotta perché lo spazio stava finendo"
     },
     "fr": {
      "text": "Enregistrement arrêté par manque d’espace"
@@ -16574,7 +16574,7 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Registrazione fermata a causa di un errore"
+     "text": "Registrazione interrotta a causa di un errore"
     },
     "fr": {
      "text": "Enregistrement arrêté à cause d’une erreur"
@@ -16607,7 +16607,7 @@
      "text": "Cassini è stato chiuso"
     },
     "fr": {
-     "text": "Cassini a été quitté"
+     "text": "Cassini a été fermé"
     },
     "es": {
      "text": "Se cerró Cassini"
@@ -17832,7 +17832,7 @@
    "note": "Coordinator (D34.2). Shown unobtrusively (menu bar menu status line or Library footer, never a modal) while a downloaded update waits for recording/transcription to finish (D34.2 Q2).",
    "l10n": {
     "it": {
-     "text": "Aggiornamento pronto. Verrà installato quando hai finito."
+     "text": "Aggiornamento pronto. Verrà installato quando avrai finito."
     },
     "fr": {
      "text": "Mise à jour prête. Elle s’installera quand vous aurez terminé."
@@ -17868,7 +17868,7 @@
      "text": "Vos haut-parleurs sont coupés : Cassini enregistre donc du silence pour le son de cet ordinateur. Réactivez-les pour l’enregistrer."
     },
     "es": {
-     "text": "Tus altavoces están silenciados, así que Cassini está grabando silencio en lugar del sonido de este equipo. Quítales el silencio para grabarlo."
+     "text": "Tus altavoces están silenciados, así que Cassini está grabando silencio en lugar del sonido de este equipo. Activa el sonido de los altavoces para grabarlo."
     },
     "pt-BR": {
      "text": "Seus alto-falantes estão silenciados, então o Cassini está gravando silêncio no lugar do som deste computador. Ative o som deles para gravá-lo."
@@ -18359,7 +18359,7 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "{source}: registrato per {duration}."
+     "text": "{source}: {duration} di audio registrato."
     },
     "fr": {
      "text": "{source} : {duration} d’enregistrement."
@@ -18435,7 +18435,7 @@
      "text": "{source}: solo se recibieron {duration} de audio."
     },
     "pt-BR": {
-     "text": "{source}: só {duration} de áudio recebidos."
+     "text": "{source}: só {duration} de áudio recebido."
     },
     "pt-PT": {
      "text": "{source}: só foram recebidos {duration} de áudio."
@@ -18462,7 +18462,7 @@
      "text": "{source}: ricevuto meno di un secondo di audio."
     },
     "fr": {
-     "text": "{source} : moins d'une seconde de son reçue."
+     "text": "{source} : moins d’une seconde de son reçue."
     },
     "es": {
      "text": "{source}: se recibió menos de un segundo de audio."
@@ -18495,7 +18495,7 @@
      "text": "{source}: nessun parlato rilevato."
     },
     "fr": {
-     "text": "{source} : aucune parole entendue."
+     "text": "{source} : aucune parole entendue."
     },
     "es": {
      "text": "{source}: no se detectó habla."
@@ -18521,13 +18521,13 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Se altri stavano parlando, verifica che Cassini possa registrare l'audio di questo computer."
+     "text": "Se altri stavano parlando, verifica che Cassini possa registrare l’audio di questo computer."
     },
     "fr": {
-     "text": "Si d'autres personnes parlaient, vérifiez que Cassini peut enregistrer le son de cet ordinateur."
+     "text": "Si d’autres personnes parlaient, vérifiez que Cassini peut enregistrer le son de cet ordinateur."
     },
     "es": {
-     "text": "Si otras personas estaban hablando, comprueba que Cassini pueda grabar el sonido de este ordenador."
+     "text": "Si otras personas estaban hablando, comprueba que Cassini pueda grabar el sonido de este equipo."
     },
     "pt-BR": {
      "text": "Se outras pessoas estavam falando, verifique se o Cassini pode gravar o som deste computador."
@@ -18554,7 +18554,7 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "{source}: non è stato possibile registrare l’audio."
+     "text": "{source}: impossibile registrare l’audio."
     },
     "fr": {
      "text": "{source} : impossible d’enregistrer le son."
@@ -18657,7 +18657,7 @@
      "text": "{source} : ne fait pas partie de l’enregistrement."
     },
     "es": {
-     "text": "{source}: no forma parte de la grabación."
+     "text": "{source}: no se seleccionó para grabar."
     },
     "pt-BR": {
      "text": "{source}: não faz parte da gravação."
@@ -18684,16 +18684,16 @@
      "text": "L’audio sovrapposto è stato tenuto come voci separate."
     },
     "fr": {
-     "text": "Les sons qui se chevauchaient ont été conservés comme intervenants distincts."
+     "text": "Les passages audio qui se chevauchaient ont été conservés et attribués à des intervenants distincts."
     },
     "es": {
-     "text": "El audio superpuesto se conservó como hablantes distintos."
+     "text": "El audio superpuesto se conservó y se asignó a hablantes distintos."
     },
     "pt-BR": {
      "text": "O áudio sobreposto foi mantido como locutores distintos."
     },
     "pt-PT": {
-     "text": "O áudio sobreposto foi mantido como oradores distintos."
+     "text": "Os excertos de áudio sobrepostos foram mantidos associados a oradores distintos."
     }
    }
   },
@@ -18714,7 +18714,7 @@
      "text": "La chiamata si è connessa, quindi Cassini ha iniziato a registrare ogni persona separatamente."
     },
     "fr": {
-     "text": "L’appel s’est connecté : Cassini a commencé à enregistrer chaque personne séparément."
+     "text": "L’appel a été établi : Cassini a commencé à enregistrer chaque personne séparément."
     },
     "es": {
      "text": "La llamada se conectó, así que Cassini empezó a grabar a cada persona por separado."
@@ -18723,7 +18723,7 @@
      "text": "A chamada foi conectada, então o Cassini começou a gravar cada pessoa separadamente."
     },
     "pt-PT": {
-     "text": "A chamada ligou-se, por isso o Cassini começou a gravar cada pessoa em separado."
+     "text": "A chamada foi estabelecida, por isso o Cassini começou a gravar cada pessoa em separado."
     }
    }
   },
@@ -18741,10 +18741,10 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Non è stato possibile registrare una parte dell’audio. Cassini continua a registrare il resto."
+     "text": "Impossibile registrare una parte dell’audio. Cassini continua a registrare il resto."
     },
     "fr": {
-     "text": "Une partie du son n’a pas pu être enregistrée. Cassini continue d’enregistrer le reste."
+     "text": "Impossible d’enregistrer une partie du son. Cassini continue d’enregistrer le reste."
     },
     "es": {
      "text": "No se pudo grabar parte del audio. Cassini sigue grabando el resto."
@@ -19687,13 +19687,13 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Nessun risultato per «{query}»"
+     "text": "Nessun risultato per “{query}”"
     },
     "fr": {
-     "text": "Aucun résultat pour « {query} »"
+     "text": "Aucun résultat pour « {query} »"
     },
     "es": {
-     "text": "No hay resultados para «{query}»"
+     "text": "No hay resultados para “{query}”"
     },
     "pt-BR": {
      "text": "Nenhum resultado para “{query}”"
@@ -19716,13 +19716,13 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "1 risultato per «{query}»"
+     "text": "1 risultato per “{query}”"
     },
     "fr": {
-     "text": "1 résultat pour « {query} »"
+     "text": "1 résultat pour « {query} »"
     },
     "es": {
-     "text": "1 resultado para «{query}»"
+     "text": "1 resultado para “{query}”"
     },
     "pt-BR": {
      "text": "1 resultado para “{query}”"
@@ -19745,13 +19745,13 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "{index} di {count} risultati per «{query}»"
+     "text": "{index} di {count} risultati per “{query}”"
     },
     "fr": {
-     "text": "{index} sur {count} résultats pour « {query} »"
+     "text": "{index} sur {count} résultats pour « {query} »"
     },
     "es": {
-     "text": "{index} de {count} resultados para «{query}»"
+     "text": "{index} de {count} resultados para “{query}”"
     },
     "pt-BR": {
      "text": "{index} de {count} resultados para “{query}”"
@@ -19805,10 +19805,10 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Il tuo microfono non viene registrato. Non è stato possibile avviarlo."
+     "text": "Il tuo microfono non viene registrato. Impossibile avviarlo."
     },
     "fr": {
-     "text": "Votre microphone n’est pas enregistré. Il n’a pas pu être démarré."
+     "text": "Votre microphone n’est pas enregistré. Impossible de le démarrer."
     },
     "es": {
      "text": "No se está grabando tu micrófono. No se pudo iniciar."
@@ -19834,16 +19834,16 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Gli altri non vengono registrati. Non è stato possibile avviare l’audio di questo computer."
+     "text": "Gli altri non vengono registrati. Impossibile avviare l’audio di questo computer."
     },
     "fr": {
-     "text": "Les autres ne sont pas enregistrés. Le son de cet ordinateur n’a pas pu être démarré."
+     "text": "Les autres ne sont pas enregistrés. Impossible de démarrer l’enregistrement du son de cet ordinateur."
     },
     "es": {
-     "text": "No se está grabando a los demás. No se pudo iniciar el sonido de este equipo."
+     "text": "No se está grabando a los demás. No se pudo empezar a grabar el sonido de este equipo."
     },
     "pt-BR": {
-     "text": "Os outros não estão sendo gravados. Não foi possível iniciar o som deste computador."
+     "text": "Os outros não estão sendo gravados. Não foi possível começar a gravar o som deste computador."
     },
     "pt-PT": {
      "text": "Os outros não estão a ser gravados. Não foi possível iniciar o som deste computador."
@@ -19957,7 +19957,7 @@
      "text": "{source}: l’accesso non è stato consentito."
     },
     "fr": {
-     "text": "{source} :l’accès n’a pas été autorisé."
+     "text": "{source} : l’accès n’a pas été autorisé."
     },
     "es": {
      "text": "{source}: no se permitió el acceso."
@@ -19984,10 +19984,10 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "{source}: non è stato possibile avviarlo."
+     "text": "{source}: impossibile avviare la registrazione."
     },
     "fr": {
-     "text": "{source} :n’a pas pu être démarré."
+     "text": "{source} : impossible de démarrer l’enregistrement."
     },
     "es": {
      "text": "{source}: no se pudo iniciar."
@@ -20017,7 +20017,7 @@
      "text": "{source}: il browser non ha avviato la registrazione."
     },
     "fr": {
-     "text": "{source} :le navigateur n’a pas démarré l’enregistrement."
+     "text": "{source} : le navigateur n’a pas démarré l’enregistrement."
     },
     "es": {
      "text": "{source}: el navegador no empezó a grabar."
@@ -20044,7 +20044,7 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Prova di registrazione"
+     "text": "Prova la registrazione"
     },
     "fr": {
      "text": "Tester l’enregistrement"
@@ -20083,10 +20083,10 @@
      "text": "Graba 8 segundos de tu micrófono y del sonido de este equipo y luego los borra. Nada sale de este equipo."
     },
     "pt-BR": {
-     "text": "Grava 8 segundos do seu microfone e do som deste computador e depois os apaga. Nada sai deste computador."
+     "text": "Grava 8 segundos do seu microfone e do som deste computador e depois exclui a gravação. Nada sai deste computador."
     },
     "pt-PT": {
-     "text": "Grava 8 segundos do seu microfone e do som deste computador e depois apaga-os. Nada sai deste computador."
+     "text": "Grava 8 segundos do seu microfone e do som deste computador e depois elimina a gravação. Nada sai deste computador."
     }
    }
   },
@@ -20107,7 +20107,7 @@
      "text": "Prova in corso… Di’ qualcosa e riproduci un suono."
     },
     "fr": {
-     "text": "Test en cours… Dites quelque chose et faites jouer un son."
+     "text": "Test en cours… Dites quelque chose et lancez la lecture d’un son."
     },
     "es": {
      "text": "Probando… Di algo y reproduce un sonido."
@@ -20288,7 +20288,7 @@
      "text": "Impossibile esportare questa riunione. Cassini non riesce a salvare le modifiche nella sua cartella della Libreria."
     },
     "fr": {
-     "text": "Impossible d’exporter cette réunion. Cassini ne peut pas enregistrer les modifications dans son dossier de votre bibliothèque."
+     "text": "Impossible d’exporter cette réunion. Cassini ne peut pas sauvegarder les modifications dans son dossier de votre bibliothèque."
     },
     "es": {
      "text": "No se pudo exportar esta reunión. Cassini no puede guardar cambios en su carpeta de tu biblioteca."
@@ -20297,7 +20297,7 @@
      "text": "Não foi possível exportar esta reunião. O Cassini não consegue salvar alterações na pasta dela na sua biblioteca."
     },
     "pt-PT": {
-     "text": "Não foi possível exportar esta reunião. O Cassini não consegue guardar alterações na pasta dela na sua biblioteca."
+     "text": "Não foi possível exportar esta reunião. O Cassini não consegue guardar alterações na respetiva pasta na sua Biblioteca."
     }
    }
   },
@@ -20319,13 +20319,13 @@
      "text": "Impossibile esportare questa riunione. È stata salvata da una versione più recente di Cassini. Aggiorna Cassini, poi riprova."
     },
     "fr": {
-     "text": "Impossible d’exporter cette réunion. Elle a été enregistrée par une version plus récente de Cassini. Mettez Cassini à jour, puis réessayez."
+     "text": "Impossible d’exporter cette réunion. Elle a été sauvegardée par une version plus récente de Cassini. Mettez Cassini à jour, puis réessayez."
     },
     "es": {
      "text": "No se pudo exportar esta reunión. Se guardó con una versión más reciente de Cassini. Actualiza Cassini y vuelve a intentarlo."
     },
     "pt-BR": {
-     "text": "Não foi possível exportar esta reunião. Ela foi salva por uma versão mais recente do Cassini. Atualize o Cassini e tente de novo."
+     "text": "Não foi possível exportar esta reunião. Ela foi salva por uma versão mais recente do Cassini. Atualize o Cassini e tente novamente."
     },
     "pt-PT": {
      "text": "Não foi possível exportar esta reunião. Foi guardada por uma versão mais recente do Cassini. Atualize o Cassini e tente novamente."
@@ -20387,7 +20387,7 @@
      "text": "Riproduci gli interventi di questa voce: {name}, {when}"
     },
     "fr": {
-     "text": "Lire les interventions de cet intervenant : {name}, {when}"
+     "text": "Lire les interventions de cet intervenant : {name}, {when}"
     },
     "es": {
      "text": "Reproducir las intervenciones de este hablante: {name}, {when}"
@@ -20431,7 +20431,7 @@
      "text": "uma vez, em {position}"
     },
     "pt-PT": {
-     "text": "uma vez, em {position}"
+     "text": "uma vez, aos {position}"
     }
    }
   },
@@ -20491,11 +20491,11 @@
      }
     },
     "pt-PT": {
-     "text": "{count} vezes, a primeira em {position}",
+     "text": "{count} vezes, a primeira aos {position}",
      "plural": {
-      "one": "{count} vez, em {position}",
-      "many": "{count} vezes, a primeira em {position}",
-      "other": "{count} vezes, a primeira em {position}"
+      "one": "{count} vez, aos {position}",
+      "many": "{count} vezes, a primeira aos {position}",
+      "other": "{count} vezes, a primeira aos {position}"
      }
     }
    }
@@ -21027,7 +21027,7 @@
      "text": "Intervención siguiente o anterior de este hablante"
     },
     "pt-BR": {
-     "text": "Próxima intervenção ou anterior deste locutor"
+     "text": "Intervenção seguinte ou anterior deste locutor"
     },
     "pt-PT": {
      "text": "Intervenção seguinte ou anterior deste orador"
@@ -21059,7 +21059,7 @@
      "text": "Hablante siguiente o anterior"
     },
     "pt-BR": {
-     "text": "Próximo locutor ou anterior"
+     "text": "Locutor seguinte ou anterior"
     },
     "pt-PT": {
      "text": "Orador seguinte ou anterior"
@@ -21295,10 +21295,10 @@
      "text": "{source}: mancano circa {duration} perché il computer era troppo occupato. Quel tratto è silenzioso."
     },
     "fr": {
-     "text": "{source} : environ {duration} manquent, car l’ordinateur était trop occupé. Ce passage est silencieux."
+     "text": "{source} : il manque environ {duration}, car l’ordinateur était trop occupé. Ce passage est silencieux."
     },
     "es": {
-     "text": "{source}: faltan unos {duration} porque el ordenador estaba demasiado ocupado. Esa parte está en silencio."
+     "text": "{source}: faltan alrededor de {duration} porque el equipo estaba demasiado ocupado. Esa parte está en silencio."
     },
     "pt-BR": {
      "text": "{source}: faltam cerca de {duration} porque o computador estava ocupado demais. Esse trecho está em silêncio."
@@ -21475,19 +21475,19 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Le voci separate si sono interrotte perché la pagina della riunione ha segnalato un errore. Cassini ha registrato tutto l’audio del computer."
+     "text": "La registrazione separata delle voci si è interrotta perché la pagina della riunione ha segnalato un errore. Cassini ha registrato invece tutto l’audio del computer."
     },
     "fr": {
-     "text": "Les voix séparées se sont arrêtées, car la page de la réunion a signalé une erreur. Cassini a enregistré tout le son de l’ordinateur."
+     "text": "L’enregistrement séparé des voix s’est arrêté, car la page de la réunion a signalé une erreur. Cassini a enregistré tout le son de l’ordinateur à la place."
     },
     "es": {
-     "text": "Las voces separadas se detuvieron porque la página de la reunión informó de un error. Cassini grabó todo el sonido del ordenador."
+     "text": "La grabación de voces por separado se detuvo porque la página de la reunión informó de un error. En su lugar, Cassini grabó todo el sonido del equipo."
     },
     "pt-BR": {
-     "text": "As vozes separadas pararam porque a página da reunião informou um erro. O Cassini gravou todo o som do computador."
+     "text": "A gravação separada das vozes foi interrompida porque a página da reunião informou um erro. Em vez disso, o Cassini gravou todo o som do computador."
     },
     "pt-PT": {
-     "text": "As vozes separadas pararam porque a página da reunião comunicou um erro. O Cassini gravou todo o som do computador."
+     "text": "A gravação de vozes em separado foi interrompida porque a página da reunião comunicou um erro. Em vez disso, o Cassini gravou todo o som do computador."
     }
    }
   },
@@ -21505,19 +21505,19 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Le voci separate si sono interrotte perché la pagina della riunione è stata chiusa o ricaricata. Cassini ha registrato tutto l’audio del computer."
+     "text": "La registrazione separata delle voci si è interrotta perché la pagina della riunione è stata chiusa o ricaricata. Cassini ha registrato invece tutto l’audio del computer."
     },
     "fr": {
-     "text": "Les voix séparées se sont arrêtées, car la page de la réunion a été fermée ou rechargée. Cassini a enregistré tout le son de l’ordinateur."
+     "text": "L’enregistrement séparé des voix s’est arrêté, car la page de la réunion a été fermée ou rechargée. Cassini a enregistré tout le son de l’ordinateur à la place."
     },
     "es": {
-     "text": "Las voces separadas se detuvieron porque la página de la reunión se cerró o se volvió a cargar. Cassini grabó todo el sonido del ordenador."
+     "text": "La grabación de voces por separado se detuvo porque la página de la reunión se cerró o se volvió a cargar. En su lugar, Cassini grabó todo el sonido del equipo."
     },
     "pt-BR": {
-     "text": "As vozes separadas pararam porque a página da reunião foi fechada ou recarregada. O Cassini gravou todo o som do computador."
+     "text": "A gravação separada das vozes foi interrompida porque a página da reunião foi fechada ou recarregada. Em vez disso, o Cassini gravou todo o som do computador."
     },
     "pt-PT": {
-     "text": "As vozes separadas pararam porque a página da reunião foi fechada ou recarregada. O Cassini gravou todo o som do computador."
+     "text": "A gravação de vozes em separado foi interrompida porque a página da reunião foi fechada ou recarregada. Em vez disso, o Cassini gravou todo o som do computador."
     }
    }
   },
@@ -21535,19 +21535,19 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Le voci separate si sono interrotte perché la scheda della riunione è stata chiusa. Cassini ha registrato tutto l’audio del computer."
+     "text": "La registrazione separata delle voci si è interrotta perché la scheda della riunione è stata chiusa. Cassini ha registrato invece tutto l’audio del computer."
     },
     "fr": {
-     "text": "Les voix séparées se sont arrêtées, car l’onglet de la réunion a été fermé. Cassini a enregistré tout le son de l’ordinateur."
+     "text": "L’enregistrement séparé des voix s’est arrêté, car l’onglet de la réunion a été fermé. Cassini a enregistré tout le son de l’ordinateur à la place."
     },
     "es": {
-     "text": "Las voces separadas se detuvieron porque se cerró la pestaña de la reunión. Cassini grabó todo el sonido del ordenador."
+     "text": "La grabación de voces por separado se detuvo porque se cerró la pestaña de la reunión. En su lugar, Cassini grabó todo el sonido del equipo."
     },
     "pt-BR": {
-     "text": "As vozes separadas pararam porque a aba da reunião foi fechada. O Cassini gravou todo o som do computador."
+     "text": "A gravação separada das vozes foi interrompida porque a aba da reunião foi fechada. Em vez disso, o Cassini gravou todo o som do computador."
     },
     "pt-PT": {
-     "text": "As vozes separadas pararam porque o separador da reunião foi fechado. O Cassini gravou todo o som do computador."
+     "text": "A gravação de vozes em separado foi interrompida porque o separador da reunião foi fechado. Em vez disso, o Cassini gravou todo o som do computador."
     }
    }
   },
@@ -21565,19 +21565,19 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Le voci separate si sono interrotte perché Cassini non riusciva a ricevere l’audio del browser. Cassini ha registrato tutto l’audio del computer."
+     "text": "La registrazione separata delle voci si è interrotta perché Cassini non riusciva a ricevere l’audio del browser. Cassini ha registrato invece tutto l’audio del computer."
     },
     "fr": {
-     "text": "Les voix séparées se sont arrêtées, car Cassini ne recevait plus le son du navigateur. Cassini a enregistré tout le son de l’ordinateur."
+     "text": "L’enregistrement séparé des voix s’est arrêté, car Cassini ne pouvait pas recevoir le son du navigateur. Cassini a enregistré tout le son de l’ordinateur à la place."
     },
     "es": {
-     "text": "Las voces separadas se detuvieron porque Cassini no podía recibir el audio del navegador. Cassini grabó todo el sonido del ordenador."
+     "text": "La grabación de voces por separado se detuvo porque Cassini no podía recibir el audio del navegador. En su lugar, Cassini grabó todo el sonido del equipo."
     },
     "pt-BR": {
-     "text": "As vozes separadas pararam porque o Cassini não conseguia receber o áudio do navegador. O Cassini gravou todo o som do computador."
+     "text": "A gravação separada das vozes foi interrompida porque o Cassini não conseguia receber o áudio do navegador. Em vez disso, o Cassini gravou todo o som do computador."
     },
     "pt-PT": {
-     "text": "As vozes separadas pararam porque o Cassini não conseguia receber o áudio do navegador. O Cassini gravou todo o som do computador."
+     "text": "A gravação de vozes em separado foi interrompida porque o Cassini não conseguia receber o áudio do navegador. Em vez disso, o Cassini gravou todo o som do computador."
     }
    }
   },
@@ -21595,19 +21595,19 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Non è stato possibile avviare le voci separate. Cassini ha registrato tutto l’audio del computer."
+     "text": "Impossibile avviare la registrazione separata delle voci. Cassini ha registrato invece tutto l’audio del computer."
     },
     "fr": {
-     "text": "Les voix séparées n’ont pas pu démarrer. Cassini a enregistré tout le son de l’ordinateur."
+     "text": "Impossible de démarrer l’enregistrement séparé des voix. Cassini a enregistré tout le son de l’ordinateur à la place."
     },
     "es": {
-     "text": "No se pudieron iniciar las voces separadas. Cassini grabó todo el sonido del ordenador."
+     "text": "No se pudo iniciar la grabación de voces por separado. En su lugar, Cassini grabó todo el sonido del equipo."
     },
     "pt-BR": {
-     "text": "Não foi possível iniciar as vozes separadas. O Cassini gravou todo o som do computador."
+     "text": "Não foi possível iniciar a gravação separada das vozes. Em vez disso, o Cassini gravou todo o som do computador."
     },
     "pt-PT": {
-     "text": "Não foi possível iniciar as vozes separadas. O Cassini gravou todo o som do computador."
+     "text": "Não foi possível iniciar a gravação de vozes em separado. Em vez disso, o Cassini gravou todo o som do computador."
     }
    }
   },
@@ -21625,19 +21625,19 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Le voci separate si sono interrotte perché il collegamento tra il browser e Cassini si è chiuso. Cassini ha registrato tutto l’audio del computer."
+     "text": "La registrazione separata delle voci si è interrotta perché il collegamento tra il browser e Cassini si è chiuso. Cassini ha registrato invece tutto l’audio del computer."
     },
     "fr": {
-     "text": "Les voix séparées se sont arrêtées, car la connexion entre le navigateur et Cassini s’est fermée. Cassini a enregistré tout le son de l’ordinateur."
+     "text": "L’enregistrement séparé des voix s’est arrêté, car la connexion entre le navigateur et Cassini a été fermée. Cassini a enregistré tout le son de l’ordinateur à la place."
     },
     "es": {
-     "text": "Las voces separadas se detuvieron porque se cerró la conexión entre el navegador y Cassini. Cassini grabó todo el sonido del ordenador."
+     "text": "La grabación de voces por separado se detuvo porque se cerró la conexión entre el navegador y Cassini. En su lugar, Cassini grabó todo el sonido del equipo."
     },
     "pt-BR": {
-     "text": "As vozes separadas pararam porque a conexão entre o navegador e o Cassini foi encerrada. O Cassini gravou todo o som do computador."
+     "text": "A gravação separada das vozes foi interrompida porque a conexão entre o navegador e o Cassini foi encerrada. Em vez disso, o Cassini gravou todo o som do computador."
     },
     "pt-PT": {
-     "text": "As vozes separadas pararam porque a ligação entre o navegador e o Cassini foi fechada. O Cassini gravou todo o som do computador."
+     "text": "A gravação de vozes em separado foi interrompida porque a ligação entre o navegador e o Cassini foi fechada. Em vez disso, o Cassini gravou todo o som do computador."
     }
    }
   },
@@ -21655,19 +21655,19 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Le voci separate si sono interrotte inaspettatamente. Cassini ha registrato tutto l’audio del computer."
+     "text": "La registrazione separata delle voci si è interrotta inaspettatamente. Cassini ha registrato invece tutto l’audio del computer."
     },
     "fr": {
-     "text": "Les voix séparées se sont arrêtées de façon inattendue. Cassini a enregistré tout le son de l’ordinateur."
+     "text": "L’enregistrement séparé des voix s’est arrêté de façon inattendue. Cassini a enregistré tout le son de l’ordinateur à la place."
     },
     "es": {
-     "text": "Las voces separadas se detuvieron de forma inesperada. Cassini grabó todo el sonido del ordenador."
+     "text": "La grabación de voces por separado se detuvo de forma inesperada. En su lugar, Cassini grabó todo el sonido del equipo."
     },
     "pt-BR": {
-     "text": "As vozes separadas pararam inesperadamente. O Cassini gravou todo o som do computador."
+     "text": "A gravação separada das vozes foi interrompida inesperadamente. Em vez disso, o Cassini gravou todo o som do computador."
     },
     "pt-PT": {
-     "text": "As vozes separadas pararam inesperadamente. O Cassini gravou todo o som do computador."
+     "text": "A gravação de vozes em separado foi interrompida inesperadamente. Em vez disso, o Cassini gravou todo o som do computador."
     }
    }
   },
@@ -21691,10 +21691,10 @@
      "text": "{site} unisce tutte le voci remote in un unico flusso, quindi Cassini le ha registrate dall’audio del computer."
     },
     "fr": {
-     "text": "{site} mélange toutes les voix distantes en un seul flux, donc Cassini les a enregistrées depuis le son de l’ordinateur."
+     "text": "{site} mélange toutes les voix distantes en un seul flux, donc Cassini les a enregistrées à partir du son de l’ordinateur."
     },
     "es": {
-     "text": "{site} mezcla todas las voces remotas en una sola señal, así que Cassini las grabó desde el audio del ordenador."
+     "text": "{site} mezcla todas las voces remotas en una sola señal, así que Cassini las grabó desde el audio del equipo."
     },
     "pt-BR": {
      "text": "{site} mistura todas as vozes remotas em um único fluxo, então o Cassini as gravou pelo áudio do computador."
@@ -21882,7 +21882,7 @@
      "text": "Riavvia il browser."
     },
     "fr": {
-     "text": "Redémarrez le navigateur."
+     "text": "Relancez le navigateur."
     },
     "es": {
      "text": "Reinicia el navegador."
@@ -21909,19 +21909,19 @@
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Il rilevamento automatico delle chiamate non è verificato con questo componente del browser. Puoi comunque registrare manualmente."
+     "text": "Il rilevamento automatico delle chiamate non è verificato con questa estensione per il browser. Puoi comunque registrare manualmente."
     },
     "fr": {
-     "text": "La détection automatique des appels n’est pas vérifiée avec ce compagnon de navigateur. Vous pouvez toujours enregistrer manuellement."
+     "text": "La détection automatique des appels n’est pas vérifiée avec cette extension de navigateur. Vous pouvez toujours enregistrer manuellement."
     },
     "es": {
-     "text": "La detección automática de llamadas no está verificada con este complemento del navegador. Aun así puedes grabar manualmente."
+     "text": "La detección automática de llamadas no está verificada con esta extensión del navegador. Aun así puedes grabar manualmente."
     },
     "pt-BR": {
-     "text": "A detecção automática de chamadas não está verificada com este complemento do navegador. Você ainda pode gravar manualmente."
+     "text": "A detecção automática de chamadas não está verificada com esta extensão do navegador. Você ainda pode gravar manualmente."
     },
     "pt-PT": {
-     "text": "A deteção automática de chamadas não está verificada com este complemento do navegador. Ainda pode gravar manualmente."
+     "text": "A deteção automática de chamadas não está verificada com esta extensão do navegador. Ainda pode gravar manualmente."
     }
    }
   },
@@ -21942,10 +21942,10 @@
      "text": "Questa chiamata univa tutte le voci remote in un unico flusso, quindi Cassini le ha registrate dall’audio del computer."
     },
     "fr": {
-     "text": "Cet appel mélangeait toutes les voix distantes en un seul flux, donc Cassini les a enregistrées depuis le son de l’ordinateur."
+     "text": "Cet appel mélangeait toutes les voix distantes en un seul flux, donc Cassini les a enregistrées à partir du son de l’ordinateur."
     },
     "es": {
-     "text": "Esta llamada mezclaba todas las voces remotas en una sola señal, así que Cassini las grabó desde el audio del ordenador."
+     "text": "Esta llamada mezclaba todas las voces remotas en una sola señal, así que Cassini las grabó desde el audio del equipo."
     },
     "pt-BR": {
      "text": "Esta chamada misturava todas as vozes remotas em um único fluxo, então o Cassini as gravou pelo áudio do computador."
@@ -22750,7 +22750,7 @@
      "text": "Cambio a un teléfono nuevo"
     },
     "pt-BR": {
-     "text": "Mudança para um novo celular"
+     "text": "Transferência para um novo celular"
     },
     "pt-PT": {
      "text": "Mudança para um telemóvel novo"
@@ -23003,19 +23003,19 @@
    "status": "retired",
    "l10n": {
     "it": {
-     "text": "Cassini trasferirà le tue note e le voci salvate su un nuovo telefono quando lo configuri a partire da questo. Puoi cambiare questa scelta nelle impostazioni."
+     "text": "Cassini trasferirà le tue riunioni e le voci salvate su un nuovo telefono quando lo configuri a partire da questo. Puoi cambiare questa scelta nelle impostazioni."
     },
     "fr": {
-     "text": "Cassini transférera vos notes et vos voix mémorisées vers un nouveau téléphone lorsque vous le configurerez à partir de celui-ci. Vous pouvez modifier ce choix dans les réglages."
+     "text": "Cassini transférera vos réunions et vos voix mémorisées vers un nouveau téléphone lorsque vous le configurerez à partir de celui-ci. Vous pouvez modifier ce choix dans les réglages."
     },
     "es": {
-     "text": "Cassini transferirá tus notas y voces guardadas a un teléfono nuevo cuando lo configures a partir de este. Puedes cambiarlo en Ajustes."
+     "text": "Cassini transferirá tus reuniones y voces guardadas a un teléfono nuevo cuando lo configures a partir de este. Puedes cambiarlo en Ajustes."
     },
     "pt-BR": {
-     "text": "O Cassini vai transferir suas notas e vozes salvas para um novo celular quando você o configurar a partir deste. Você pode alterar isso nos Ajustes."
+     "text": "O Cassini vai transferir suas reuniões e vozes salvas para um novo celular quando você o configurar a partir deste. Você pode alterar isso nos Ajustes."
     },
     "pt-PT": {
-     "text": "O Cassini passa as suas notas e vozes guardadas para um telemóvel novo quando este for configurado a partir deste telemóvel. Pode alterar isto nas definições."
+     "text": "O Cassini passa as suas reuniões e vozes guardadas para um telemóvel novo quando este for configurado a partir deste telemóvel. Pode alterar isto nas definições."
     }
    }
   },
@@ -23064,7 +23064,7 @@
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Le prossime riunioni riconosceranno {name} automaticamente."
+     "text": "Nelle prossime riunioni, Cassini riconoscerà {name} automaticamente."
     },
     "fr": {
      "text": "Cassini nommera {name} automatiquement dans les prochaines réunions."
@@ -23093,7 +23093,7 @@
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Le prossime riunioni riconosceranno questa persona automaticamente."
+     "text": "Nelle prossime riunioni, Cassini riconoscerà automaticamente questa persona."
     },
     "fr": {
      "text": "Cassini nommera cette personne automatiquement dans les prochaines réunions."
@@ -23151,16 +23151,16 @@
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Non è stato possibile usare Parakeet Ultra su questo dispositivo per questa registrazione, quindi l’ha trascritta Whistle."
+     "text": "Impossibile usare Parakeet Ultra su questo dispositivo per questa registrazione, quindi l’ha trascritta Whistle."
     },
     "fr": {
-     "text": "Parakeet Ultra n’a pas pu fonctionner sur cet appareil pour cet enregistrement : Whistle l’a donc transcrit."
+     "text": "Impossible d’utiliser Parakeet Ultra sur cet appareil pour cet enregistrement : Whistle l’a donc transcrit."
     },
     "es": {
      "text": "Parakeet Ultra no pudo funcionar en este dispositivo para esta grabación, así que la transcribió Whistle."
     },
     "pt-BR": {
-     "text": "O Parakeet Ultra não pôde ser executado neste dispositivo para esta gravação, então o Whistle a transcreveu."
+     "text": "Não foi possível executar o Parakeet Ultra neste dispositivo para esta gravação, então o Whistle a transcreveu."
     },
     "pt-PT": {
      "text": "O Parakeet Ultra não pôde ser executado neste dispositivo para esta gravação, por isso foi o Whistle a transcrevê-la."
@@ -23306,7 +23306,7 @@
      "text": "Não é possível importar “{file}”"
     },
     "pt-PT": {
-     "text": "Não é possível importar “{file}”"
+     "text": "Não é possível importar «{file}»"
     }
    }
   },
@@ -23396,7 +23396,7 @@
      "text": "file Cassini e audio Opus"
     },
     "fr": {
-     "text": "fichiers Cassini et audio Opus"
+     "text": "fichiers Cassini et fichiers audio Opus"
     },
     "es": {
      "text": "archivos Cassini y audio Opus"
@@ -23434,7 +23434,7 @@
      "text": "Soltar para importar"
     },
     "pt-BR": {
-     "text": "Soltar para importar"
+     "text": "Solte para importar"
     },
     "pt-PT": {
      "text": "Largar para importar"
@@ -23470,7 +23470,7 @@
      "text": "Arraste arquivos de áudio aqui para importar"
     },
     "pt-PT": {
-     "text": "Arraste ficheiros de áudio aqui para importar"
+     "text": "Largue ficheiros de áudio aqui para importar"
     }
    }
   },
@@ -23774,7 +23774,7 @@
     "pt-PT": {
      "text": "{n} oradores",
      "plural": {
-      "one": "1 orador",
+      "one": "{n} orador",
       "many": "{n} oradores",
       "other": "{n} oradores"
      }
@@ -24491,7 +24491,7 @@
     "es": {
      "text": "quedan unos {n} min",
      "plural": {
-      "one": "queda 1 min",
+      "one": "queda aprox. 1 min",
       "many": "quedan unos {n} min",
       "other": "quedan unos {n} min"
      }
@@ -24507,7 +24507,7 @@
     "pt-PT": {
      "text": "cerca de {n} min restantes",
      "plural": {
-      "one": "cerca de 1 min restante",
+      "one": "cerca de {n} min restante",
       "many": "cerca de {n} min restantes",
       "other": "cerca de {n} min restantes"
      }
@@ -24794,7 +24794,7 @@
      "text": "Environ {percent} %"
     },
     "es": {
-     "text": "Unos {percent} %"
+     "text": "Aprox. {percent} %"
     },
     "pt-BR": {
      "text": "Cerca de {percent}%"
@@ -24903,7 +24903,7 @@
     "pt-PT": {
      "text": "Cerca de {n} min",
      "plural": {
-      "one": "Cerca de 1 min",
+      "one": "Cerca de {n} min",
       "many": "Cerca de {n} min",
       "other": "Cerca de {n} min"
      }
@@ -24934,7 +24934,7 @@
      "text": "Parole fin qui"
     },
     "fr": {
-     "text": "Mots jusqu’ici"
+     "text": "Mots transcrits"
     },
     "es": {
      "text": "Palabras hasta ahora"
@@ -25054,7 +25054,7 @@
      "text": "Salvamento"
     },
     "pt-PT": {
-     "text": "Gravação"
+     "text": "A guardar"
     }
    }
   },
@@ -25082,7 +25082,7 @@
      "text": "Voci e riconoscimento"
     },
     "fr": {
-     "text": "Intervenants et correspondance"
+     "text": "Intervenants et reconnaissance"
     },
     "es": {
      "text": "Hablantes y reconocimiento"
@@ -25189,7 +25189,7 @@
      "text": "Trascrizione fin qui"
     },
     "fr": {
-     "text": "Transcription jusqu’ici"
+     "text": "Transcription partielle"
     },
     "es": {
      "text": "Transcripción hasta ahora"
@@ -25610,7 +25610,7 @@
      "text": "Trascritto su questo iPhone. Cassini non carica mai l’audio e lo contrassegna per escluderlo dal Backup iCloud."
     },
     "fr": {
-     "text": "Transcrit sur cet iPhone. Cassini ne met jamais l’audio en ligne et le marque pour l’exclure de Sauvegarde iCloud."
+     "text": "Transcrit sur cet iPhone. Cassini ne met jamais l’audio en ligne et le marque pour l’exclure de la Sauvegarde iCloud."
     },
     "es": {
      "text": "Transcrito en este iPhone. Cassini nunca sube el audio y lo marca para dejarlo fuera de Copia en iCloud."
@@ -25697,7 +25697,7 @@
      "text": "Trascritto su questo iPad. Cassini non carica mai l’audio e lo contrassegna per escluderlo dal Backup iCloud."
     },
     "fr": {
-     "text": "Transcrit sur cet iPad. Cassini ne met jamais l’audio en ligne et le marque pour l’exclure de Sauvegarde iCloud."
+     "text": "Transcrit sur cet iPad. Cassini ne met jamais l’audio en ligne et le marque pour l’exclure de la Sauvegarde iCloud."
     },
     "es": {
      "text": "Transcrito en este iPad. Cassini nunca sube el audio y lo marca para dejarlo fuera de Copia en iCloud."
@@ -25814,7 +25814,7 @@
      "text": "Escludile dal Backup iCloud"
     },
     "fr": {
-     "text": "Les exclure de Sauvegarde iCloud"
+     "text": "Les exclure de la Sauvegarde iCloud"
     },
     "es": {
      "text": "Excluirlas de Copia en iCloud"
@@ -25902,7 +25902,7 @@
      "text": "Escludi dal Backup iCloud"
     },
     "fr": {
-     "text": "Exclure de Sauvegarde iCloud"
+     "text": "Exclure de la Sauvegarde iCloud"
     },
     "es": {
      "text": "Excluir de Copia en iCloud"
@@ -26050,7 +26050,7 @@
      "text": "Le voci salvate sono impronte vocali create sul dispositivo per le persone a cui hai dato un nome, così un iPhone o iPad nuovo o ripristinato continua a riconoscerle automaticamente. Disattiva questa opzione per escludere le impronte vocali dal Backup iCloud."
     },
     "fr": {
-     "text": "Les voix mémorisées sont les empreintes vocales créées sur l’appareil pour les personnes que vous avez nommées, afin qu’un iPhone ou iPad neuf ou restauré continue à les reconnaître automatiquement. Désactivez cette option pour exclure les empreintes vocales de Sauvegarde iCloud."
+     "text": "Les voix mémorisées sont les empreintes vocales créées sur l’appareil pour les personnes que vous avez nommées, afin qu’un iPhone ou iPad neuf ou restauré continue à les reconnaître automatiquement. Désactivez cette option pour exclure les empreintes vocales de la Sauvegarde iCloud."
     },
     "es": {
      "text": "Las voces guardadas son huellas de voz creadas en el dispositivo para las personas a las que has puesto nombre, de modo que un iPhone o iPad nuevo o restaurado siga reconociéndolas automáticamente. Desactívalo para dejar las huellas de voz fuera de Copia en iCloud."
@@ -26079,7 +26079,7 @@
      "text": "Le voci salvate restano solo su questo telefono: non vengono incluse nei backup né copiate su un nuovo telefono. Su un telefono nuovo o ripristinato dovrai dare di nuovo un nome alle voci."
     },
     "fr": {
-     "text": "Les voix mémorisées restent uniquement sur ce téléphone : elles ne sont ni sauvegardées ni copiées vers un nouveau téléphone. Sur un téléphone neuf ou restauré, vous devrez nommer à nouveau les intervenants."
+     "text": "Les voix mémorisées restent uniquement sur ce téléphone : elles ne sont ni sauvegardées ni copiées vers un nouveau téléphone. Sur un téléphone neuf ou restauré, vous devrez nommer à nouveau les intervenants."
     },
     "es": {
      "text": "Las voces guardadas se quedan solo en este teléfono: no se incluyen en copias de seguridad ni se copian a un teléfono nuevo. En un teléfono nuevo o restaurado tendrás que volver a poner nombre a los hablantes."
@@ -26108,7 +26108,7 @@
      "text": "Le voci salvate sono contrassegnate per essere escluse dal Backup iCloud. Un trasferimento diretto a un nuovo iPhone o iPad potrebbe comunque copiarle. Dopo un ripristino dal Backup iCloud dovrai dare di nuovo un nome alle voci."
     },
     "fr": {
-     "text": "Les voix mémorisées sont marquées pour être exclues de Sauvegarde iCloud. Un transfert direct vers un nouvel iPhone ou iPad peut tout de même les copier. Après une restauration depuis Sauvegarde iCloud, vous devrez nommer à nouveau les intervenants."
+     "text": "Les voix mémorisées sont marquées pour être exclues de la Sauvegarde iCloud. Un transfert direct vers un nouvel iPhone ou iPad peut tout de même les copier. Après une restauration depuis la Sauvegarde iCloud, vous devrez nommer à nouveau les intervenants."
     },
     "es": {
      "text": "Las voces guardadas se marcan para quedar fuera de Copia en iCloud. Una transferencia directa a un iPhone o iPad nuevo podría copiarlas igualmente. Tras restaurar desde Copia en iCloud, tendrás que volver a poner nombre a los hablantes."
@@ -26195,10 +26195,10 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Le riunioni sono incluse nei backup del telefono e quando passi a un nuovo telefono. I modelli vocali scaricati non sono inclusi nel backup: il nuovo telefono li scarica di nuovo."
+     "text": "Le riunioni sono incluse nei backup del telefono e vengono copiate quando passi a un nuovo telefono. I modelli vocali scaricati non sono inclusi nel backup: il nuovo telefono li scarica di nuovo."
     },
     "fr": {
-     "text": "Les réunions sont incluses dans les sauvegardes de votre téléphone et lorsque vous passez à un nouveau téléphone. Les modèles vocaux téléchargés ne sont pas sauvegardés ; le nouveau téléphone les télécharge à nouveau."
+     "text": "Les réunions sont incluses dans les sauvegardes de votre téléphone et transférées lorsque vous passez à un nouveau téléphone. Les modèles vocaux téléchargés ne sont pas sauvegardés ; le nouveau téléphone les télécharge à nouveau."
     },
     "es": {
      "text": "Las reuniones se incluyen en las copias de seguridad de tu teléfono y al cambiar a un teléfono nuevo. Los modelos de voz descargados no se copian; el teléfono nuevo los descarga otra vez."
@@ -26256,7 +26256,7 @@
      "text": "Le riunioni sono contrassegnate per essere escluse dal Backup iCloud e Cassini non le carica mai. Un trasferimento diretto a un nuovo iPhone o iPad potrebbe comunque copiarle. Disattivare questa opzione non elimina i backup già salvati in iCloud."
     },
     "fr": {
-     "text": "Les réunions sont marquées pour être exclues de Sauvegarde iCloud, et Cassini ne les met jamais en ligne. Un transfert direct vers un nouvel iPhone ou iPad peut tout de même les copier. Désactiver cette option ne supprime pas les sauvegardes déjà stockées dans iCloud."
+     "text": "Les réunions sont marquées pour être exclues de la Sauvegarde iCloud, et Cassini ne les met jamais en ligne. Un transfert direct vers un nouvel iPhone ou iPad peut tout de même les copier. Désactiver cette option ne supprime pas les sauvegardes déjà stockées dans iCloud."
     },
     "es": {
      "text": "Las reuniones se marcan para quedar fuera de Copia en iCloud, y Cassini nunca las sube. Una transferencia directa a un iPhone o iPad nuevo podría copiarlas igualmente. Desactivar esta opción no elimina las copias ya guardadas en iCloud."
@@ -26408,7 +26408,7 @@
      "text": "Vos réunions, leurs transcriptions et les noms des intervenants sont sauvegardés tant que la sauvegarde est activée. Les voix mémorisées sont incluses tant que « Inclure les voix mémorisées dans les sauvegardes » est activé. Les modèles vocaux téléchargés ne sont jamais sauvegardés ; votre nouveau téléphone les télécharge à nouveau."
     },
     "es": {
-     "text": "Tus reuniones, transcripciones y nombres de hablantes se guardan mientras la copia de seguridad está activa. Las voces guardadas se incluyen mientras “Incluir las voces guardadas en las copias de seguridad” está activo. Los modelos de voz descargados nunca se copian; tu teléfono nuevo los descarga otra vez."
+     "text": "Tus reuniones, transcripciones y nombres de hablantes se guardan en la copia de seguridad mientras está activa. Las voces guardadas se incluyen mientras “Incluir las voces guardadas en las copias de seguridad” está activo. Los modelos de voz descargados nunca se copian; tu teléfono nuevo los descarga otra vez."
     },
     "pt-BR": {
      "text": "Suas reuniões, transcrições e nomes de locutores entram no backup enquanto ele estiver ativado. As vozes salvas são incluídas enquanto “Incluir as vozes salvas nos backups” estiver ativado. Os modelos de voz baixados nunca entram no backup; o seu novo celular os baixa novamente."
@@ -26460,10 +26460,10 @@
    "status": "harmony",
    "l10n": {
     "it": {
-     "text": "Se Backup iCloud è attivo, i backup vengono archiviati nel tuo account iCloud. Apple può leggere un backup iCloud a meno che tu non attivi Protezione dati avanzata nelle impostazioni del tuo Apple Account."
+     "text": "Se il Backup iCloud è attivo, i backup vengono archiviati nel tuo account iCloud. Apple può leggere un backup iCloud a meno che tu non attivi la Protezione avanzata dei dati nelle impostazioni del tuo Account Apple."
     },
     "fr": {
-     "text": "Si Sauvegarde iCloud est activée, les sauvegardes sont stockées dans votre compte iCloud. Apple peut lire une sauvegarde iCloud, sauf si vous activez la Protection avancée des données dans les réglages de votre compte Apple."
+     "text": "Si la Sauvegarde iCloud est activée, les sauvegardes sont stockées dans votre compte iCloud. Apple peut lire une sauvegarde iCloud, sauf si vous activez la Protection avancée des données dans les réglages de votre compte Apple."
     },
     "es": {
      "text": "Si Copia en iCloud está activada, las copias se guardan en tu cuenta de iCloud. Apple puede leer una copia en iCloud a menos que actives Protección avanzada de datos en los ajustes de tu cuenta de Apple."
@@ -26708,7 +26708,7 @@
      "text": "Cuando pones nombre a un hablante en una reunión, Cassini puede recordar su voz y ponerle nombre automáticamente en las próximas reuniones."
     },
     "pt-BR": {
-     "text": "Quando você dá nome a um locutor em uma reunião, o Cassini pode lembrar essa voz e nomeá-la automaticamente nas próximas reuniões."
+     "text": "Quando você dá nome a um locutor em uma reunião, o Cassini pode lembrar a voz dele e nomeá-lo automaticamente nas próximas reuniões."
     },
     "pt-PT": {
      "text": "Quando dá nome a um orador numa reunião, o Cassini pode memorizar essa voz e dar-lhe o nome automaticamente nas próximas reuniões."
@@ -27795,7 +27795,7 @@
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Meno di un giorno"
+     "text": "Manca meno di un giorno"
     },
     "fr": {
      "text": "Moins d’un jour restant"
@@ -27933,7 +27933,7 @@
      "text": "Eliminare definitivamente “{title}”?"
     },
     "fr": {
-     "text": "Supprimer définitivement « {title} » ?"
+     "text": "Supprimer définitivement « {title} » ?"
     },
     "es": {
      "text": "¿Eliminar definitivamente “{title}”?"
@@ -28025,8 +28025,8 @@
      "mac": "Eliminare tutte le riunioni eliminate di recente?"
     },
     "fr": {
-     "text": "Vider la corbeille ?",
-     "mac": "Supprimer toutes les réunions supprimées récemment ?"
+     "text": "Vider la corbeille ?",
+     "mac": "Supprimer toutes les réunions supprimées récemment ?"
     },
     "es": {
      "text": "¿Vaciar la papelera?",
@@ -28133,7 +28133,7 @@
      "text": "“{title}” ripristinata nella Libreria"
     },
     "fr": {
-     "text": "« {title} » restaurée dans la bibliothèque"
+     "text": "« {title} » restaurée dans la bibliothèque"
     },
     "es": {
      "text": "“{title}” restaurada en la biblioteca"
@@ -28740,7 +28740,7 @@
      "text": "Per aggiungere qualcuno, dai un nome a una voce in una riunione e lascia attivo “Ricorda questa voce”."
     },
     "fr": {
-     "text": "Pour ajouter quelqu’un, nommez un intervenant dans une réunion et laissez «\\u202FMémoriser cette voix\\u202F» activé."
+     "text": "Pour ajouter quelqu’un, nommez un intervenant dans une réunion et laissez « Mémoriser cette voix » activé."
     },
     "es": {
      "text": "Para añadir a alguien, pon nombre a un hablante en cualquier reunión y deja activado “Recordar esta voz”."
@@ -28921,7 +28921,7 @@
      "text": "Completamento della riunione precedente…"
     },
     "fr": {
-     "text": "Fin de la réunion précédente…"
+     "text": "Finalisation de la réunion précédente…"
     },
     "es": {
      "text": "Terminando la reunión anterior…"
@@ -29050,7 +29050,7 @@
      "text": "As reuniões em Apagados não são contadas. Elas são excluídas para sempre após 30 dias."
     },
     "pt-PT": {
-     "text": "As reuniões em Apagados não são contadas. São eliminadas definitivamente após 30 dias."
+     "text": "As reuniões em Apagados recentemente não são contadas. São eliminadas definitivamente após 30 dias."
     }
    }
   },
@@ -29096,19 +29096,19 @@
    "status": "draft",
    "l10n": {
     "es": {
-     "text": "Las próximas reuniones nombrarán a {name} automáticamente. La huella de voz nunca sale de este dispositivo."
+     "text": "En las próximas reuniones, Cassini reconocerá a {name} automáticamente. La huella de voz nunca sale de este dispositivo."
     },
     "fr": {
-     "text": "Les prochaines réunions nommeront {name} automatiquement. L’empreinte vocale ne quitte jamais cet appareil."
+     "text": "Cassini nommera {name} automatiquement dans les prochaines réunions. L’empreinte vocale ne quitte jamais cet appareil."
     },
     "it": {
-     "text": "Le prossime riunioni riconosceranno {name} automaticamente. L’impronta vocale non lascia mai il dispositivo."
+     "text": "Nelle prossime riunioni, Cassini riconoscerà {name} automaticamente. L’impronta vocale non lascia mai il dispositivo."
     },
     "pt-BR": {
-     "text": "As próximas reuniões vão nomear {name} automaticamente. A impressão de voz nunca sai deste dispositivo."
+     "text": "Nas próximas reuniões, o Cassini vai nomear {name} automaticamente. A impressão de voz nunca sai deste dispositivo."
     },
     "pt-PT": {
-     "text": "As próximas reuniões vão nomear {name} automaticamente. A impressão vocal nunca sai deste dispositivo."
+     "text": "Nas próximas reuniões, o Cassini reconhece {name} automaticamente. A impressão vocal nunca sai deste dispositivo."
     }
    },
    "placeholders": {
@@ -29128,19 +29128,19 @@
    "status": "draft",
    "l10n": {
     "es": {
-     "text": "Las próximas reuniones nombrarán a esta persona automáticamente. La huella de voz nunca sale de este dispositivo."
+     "text": "En las próximas reuniones, Cassini reconocerá a esta persona automáticamente. La huella de voz nunca sale de este dispositivo."
     },
     "fr": {
-     "text": "Les prochaines réunions nommeront cette personne automatiquement. L’empreinte vocale ne quitte jamais cet appareil."
+     "text": "Cassini nommera cette personne automatiquement dans les prochaines réunions. L’empreinte vocale ne quitte jamais cet appareil."
     },
     "it": {
-     "text": "Le prossime riunioni riconosceranno questa persona automaticamente. L’impronta vocale non lascia mai il dispositivo."
+     "text": "Nelle prossime riunioni, Cassini riconoscerà automaticamente questa persona. L’impronta vocale non lascia mai il dispositivo."
     },
     "pt-BR": {
-     "text": "As próximas reuniões vão nomear esta pessoa automaticamente. A impressão de voz nunca sai deste dispositivo."
+     "text": "Nas próximas reuniões, o Cassini vai nomear esta pessoa automaticamente. A impressão de voz nunca sai deste dispositivo."
     },
     "pt-PT": {
-     "text": "As próximas reuniões vão nomear esta pessoa automaticamente. A impressão vocal nunca sai deste dispositivo."
+     "text": "Nas próximas reuniões, o Cassini reconhece esta pessoa automaticamente. A impressão vocal nunca sai deste dispositivo."
     }
    }
   },
@@ -29157,19 +29157,19 @@
    "status": "draft",
    "l10n": {
     "es": {
-     "text": "Las próximas reuniones sugerirán a {name}. La huella de voz nunca sale de este dispositivo."
+     "text": "En las próximas reuniones, Cassini sugerirá a {name}. La huella de voz nunca sale de este dispositivo."
     },
     "fr": {
-     "text": "Les prochaines réunions suggéreront {name}. L’empreinte vocale ne quitte jamais cet appareil."
+     "text": "Cassini suggérera {name} dans les prochaines réunions. L’empreinte vocale ne quitte jamais cet appareil."
     },
     "it": {
-     "text": "Le prossime riunioni suggeriranno {name}. L’impronta vocale non lascia mai il dispositivo."
+     "text": "Nelle prossime riunioni, Cassini suggerirà {name}. L’impronta vocale non lascia mai il dispositivo."
     },
     "pt-BR": {
-     "text": "As próximas reuniões vão sugerir {name}. A impressão de voz nunca sai deste dispositivo."
+     "text": "Nas próximas reuniões, o Cassini vai sugerir {name}. A impressão de voz nunca sai deste dispositivo."
     },
     "pt-PT": {
-     "text": "As próximas reuniões vão sugerir {name}. A impressão vocal nunca sai deste dispositivo."
+     "text": "Nas próximas reuniões, o Cassini sugere {name}. A impressão vocal nunca sai deste dispositivo."
     }
    },
    "placeholders": {
@@ -29189,19 +29189,19 @@
    "status": "draft",
    "l10n": {
     "es": {
-     "text": "Las próximas reuniones sugerirán a esta persona. La huella de voz nunca sale de este dispositivo."
+     "text": "En las próximas reuniones, Cassini sugerirá a esta persona. La huella de voz nunca sale de este dispositivo."
     },
     "fr": {
-     "text": "Les prochaines réunions suggéreront cette personne. L’empreinte vocale ne quitte jamais cet appareil."
+     "text": "Cassini suggérera cette personne dans les prochaines réunions. L’empreinte vocale ne quitte jamais cet appareil."
     },
     "it": {
-     "text": "Le prossime riunioni suggeriranno questa persona. L’impronta vocale non lascia mai il dispositivo."
+     "text": "Nelle prossime riunioni, Cassini suggerirà questa persona. L’impronta vocale non lascia mai il dispositivo."
     },
     "pt-BR": {
-     "text": "As próximas reuniões vão sugerir esta pessoa. A impressão de voz nunca sai deste dispositivo."
+     "text": "Nas próximas reuniões, o Cassini vai sugerir esta pessoa. A impressão de voz nunca sai deste dispositivo."
     },
     "pt-PT": {
-     "text": "As próximas reuniões vão sugerir esta pessoa. A impressão vocal nunca sai deste dispositivo."
+     "text": "Nas próximas reuniões, o Cassini sugere esta pessoa. A impressão vocal nunca sai deste dispositivo."
     }
    }
   },
@@ -29293,11 +29293,11 @@
     },
     "it": {
      "plural": {
-      "many": "Non è stato possibile eliminare {n} riunioni. Restano in Eliminati di recente.",
-      "one": "Non è stato possibile eliminare {n} riunione. Resta in Eliminati di recente.",
-      "other": "Non è stato possibile eliminare {n} riunioni. Restano in Eliminati di recente."
+      "many": "Impossibile eliminare {n} riunioni. Restano in Eliminati di recente.",
+      "one": "Impossibile eliminare {n} riunione. Resta in Eliminati di recente.",
+      "other": "Impossibile eliminare {n} riunioni. Restano in Eliminati di recente."
      },
-     "text": "Non è stato possibile eliminare {n} riunioni. Restano in Eliminati di recente."
+     "text": "Impossibile eliminare {n} riunioni. Restano in Eliminati di recente."
     },
     "pt-BR": {
      "plural": {
@@ -29309,11 +29309,11 @@
     },
     "pt-PT": {
      "plural": {
-      "many": "Não foi possível eliminar {n} reuniões. Ficam em Apagados.",
-      "one": "Não foi possível eliminar {n} reunião. Fica em Apagados.",
-      "other": "Não foi possível eliminar {n} reuniões. Ficam em Apagados."
+      "many": "Não foi possível eliminar {n} reuniões. Ficam em Apagados recentemente.",
+      "one": "Não foi possível eliminar {n} reunião. Fica em Apagados recentemente.",
+      "other": "Não foi possível eliminar {n} reuniões. Ficam em Apagados recentemente."
      },
-     "text": "Não foi possível eliminar {n} reuniões. Ficam em Apagados."
+     "text": "Não foi possível eliminar {n} reuniões. Ficam em Apagados recentemente."
     }
    },
    "placeholders": {
@@ -29343,13 +29343,13 @@
      "text": "Impossible de supprimer « {title} ». La réunion reste dans Suppressions récentes."
     },
     "it": {
-     "text": "Non è stato possibile eliminare “{title}”. Resta in Eliminati di recente."
+     "text": "Impossibile eliminare “{title}”. Resta in Eliminati di recente."
     },
     "pt-BR": {
      "text": "Não foi possível excluir “{title}”. Ela continua em Apagados."
     },
     "pt-PT": {
-     "text": "Não foi possível eliminar «{title}». Fica em Apagados."
+     "text": "Não foi possível eliminar «{title}». Fica em Apagados recentemente."
     }
    },
    "placeholders": {
@@ -29664,7 +29664,7 @@
      "text": "Supprimés récemment"
     },
     "es": {
-     "text": "Eliminados"
+     "text": "Eliminado recientemente"
     },
     "pt-BR": {
      "text": "Apagados"
@@ -30299,7 +30299,7 @@
      "text": "Quando estiver desativado, o Cassini guarda o áudio e você escolhe quando transcrever."
     },
     "pt-PT": {
-     "text": "Quando estiver desativado, o Cassini guarda o áudio e escolhe quando transcrever."
+     "text": "Quando estiver desativado, o Cassini guarda o áudio e cabe-lhe a si escolher quando transcrever."
     }
    }
   },
@@ -30396,7 +30396,7 @@
      "text": "O Cassini só se conecta à internet para baixar um modelo que você pedir. Cada arquivo é verificado antes de ser usado."
     },
     "pt-PT": {
-     "text": "O Cassini só se liga à internet para descarregar um modelo que pedir. Cada ficheiro é verificado antes de ser usado."
+     "text": "O Cassini só se liga à internet para transferir um modelo que pedir. Cada ficheiro é verificado antes de ser usado."
     }
    }
   },
@@ -30428,7 +30428,7 @@
      "text": "Transcrito neste computador. O Cassini só se conecta à internet para baixar um modelo que você pedir, e cada arquivo é verificado antes."
     },
     "pt-PT": {
-     "text": "Transcrito neste computador. O Cassini só se liga à internet para descarregar um modelo que pedir, e cada ficheiro é verificado antes."
+     "text": "Transcrito neste computador. O Cassini só se liga à internet para transferir um modelo que pedir, e cada ficheiro é verificado antes."
     }
    }
   },
@@ -30531,10 +30531,10 @@
      "text": "Pone nombre a las personas guardadas en cuanto hablan."
     },
     "pt-BR": {
-     "text": "Dá nome às pessoas salvas assim que elas falam."
+     "text": "Dá nome às pessoas que você salvou assim que elas falam."
     },
     "pt-PT": {
-     "text": "Dá nome às pessoas guardadas assim que falam."
+     "text": "Dá nome às pessoas que guardou assim que falam."
     }
    }
   },
@@ -30715,7 +30715,7 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "La prossima volta Cassini darà loro il nome per te."
+     "text": "La prossima volta Cassini inserirà i loro nomi per te."
     },
     "fr": {
      "text": "La prochaine fois, Cassini les nommera pour vous."
@@ -30746,7 +30746,7 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Dai il nome automaticamente alle corrispondenze sicure"
+     "text": "Assegna automaticamente il nome alle corrispondenze affidabili"
     },
     "fr": {
      "text": "Nommer automatiquement les correspondances sûres"
@@ -30755,7 +30755,7 @@
      "text": "Poner nombre automáticamente a las coincidencias claras"
     },
     "pt-BR": {
-     "text": "Dar nome automaticamente às correspondências fortes"
+     "text": "Nomear automaticamente quando houver alta confiança"
     },
     "pt-PT": {
      "text": "Dar nome automaticamente às correspondências fortes"
@@ -30780,7 +30780,7 @@
      "text": "Le corrispondenze possono essere sbagliate, quindi è disattivato finché non scegli tu."
     },
     "fr": {
-     "text": "Une correspondance peut être fausse : cette option reste donc désactivée tant que vous ne l’activez pas."
+     "text": "Une correspondance peut être fausse : cette option reste donc désactivée tant que vous ne l’activez pas."
     },
     "es": {
      "text": "Las coincidencias pueden fallar, así que está desactivado hasta que tú lo elijas."
@@ -30822,7 +30822,7 @@
      "text": "Pulsa Grabar cuando empiece la reunión y Detener cuando termine. Cassini lo transcribe todo."
     },
     "pt-BR": {
-     "text": "Toque em Gravar quando a reunião começar e em Parar quando terminar. O Cassini transcreve tudo."
+     "text": "Pressione Gravar quando a reunião começar e Parar quando terminar. O Cassini transcreve tudo."
     },
     "pt-PT": {
      "text": "Carregue em Gravar quando a reunião começar e em Parar quando terminar. O Cassini transcreve tudo."
@@ -31016,13 +31016,13 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "È gentile chiedere alle persone prima di salvare la loro voce."
+     "text": "È cortese chiedere il permesso prima di salvare la voce di qualcuno."
     },
     "fr": {
-     "text": "Il est courtois de demander aux personnes avant de mémoriser leur voix."
+     "text": "Il est courtois de demander l’accord des personnes avant de mémoriser leur voix."
     },
     "es": {
-     "text": "Es amable preguntar a las personas antes de guardar su voz."
+     "text": "Es un gesto de cortesía preguntar antes de guardar la voz de alguien."
     },
     "pt-BR": {
      "text": "É gentil perguntar às pessoas antes de salvar a voz delas."
@@ -31351,10 +31351,10 @@
      "text": "Distinction des intervenants"
     },
     "es": {
-     "text": "Distinción de hablantes"
+     "text": "Separación de hablantes"
     },
     "pt-BR": {
-     "text": "Distinção de locutores"
+     "text": "Separação de locutores"
     },
     "pt-PT": {
      "text": "Distinção de oradores"
@@ -31456,7 +31456,7 @@
      "text": "Baixar e transcrever"
     },
     "pt-PT": {
-     "text": "Descarregar e transcrever"
+     "text": "Transferir e transcrever"
     }
    }
   },
@@ -31682,7 +31682,7 @@
    "l10n": {
     "it": {
      "text": "Prova prima la registrazione",
-     "mac": "Prova di registrazione"
+     "mac": "Prova la registrazione"
     },
     "fr": {
      "text": "Tester d’abord l’enregistrement",
@@ -31852,7 +31852,7 @@
      "text": "Démarre quand vous rejoignez une réunion dans votre navigateur, même si cette fenêtre est fermée. Vous pouvez l’arrêter à tout moment."
     },
     "es": {
-     "text": "Empieza cuando te unes a una reunión en el navegador, incluso con esta ventana cerrada. Puedes pararla cuando quieras."
+     "text": "Empieza cuando te unes a una reunión en el navegador, incluso con esta ventana cerrada. Puedes detenerla cuando quieras."
     },
     "pt-BR": {
      "text": "Começa quando você entra em uma reunião no navegador, mesmo com esta janela fechada. Você pode parar quando quiser."
@@ -31912,16 +31912,16 @@
      "text": "Registra 8 secondi dal microfono e dall’audio di questo computer, li riproduce e poi li elimina."
     },
     "fr": {
-     "text": "Enregistre 8 secondes de votre micro et du son de cet ordinateur, les relit, puis les supprime."
+     "text": "Enregistre 8 secondes de votre microphone et du son de cet ordinateur, les relit, puis les supprime."
     },
     "es": {
      "text": "Graba 8 segundos de tu micrófono y del sonido de este equipo, los reproduce y luego los borra."
     },
     "pt-BR": {
-     "text": "Grava 8 segundos do seu microfone e do som deste computador, reproduz e depois apaga."
+     "text": "Grava 8 segundos do seu microfone e do som deste computador, reproduz e depois exclui a gravação."
     },
     "pt-PT": {
-     "text": "Grava 8 segundos do seu microfone e do som deste computador, reproduz e depois apaga."
+     "text": "Grava 8 segundos de áudio do seu microfone e deste computador, reproduz a gravação e depois elimina-a."
     }
    }
   },
@@ -32079,13 +32079,13 @@
      "text": "Sauvegardez-le comme n’importe quel autre dossier"
     },
     "es": {
-     "text": "Haz copias de seguridad como de cualquier otra carpeta"
+     "text": "Haz copias de seguridad como con cualquier otra carpeta"
     },
     "pt-BR": {
      "text": "Faça backup dela como de qualquer outra pasta"
     },
     "pt-PT": {
-     "text": "Faça cópias de segurança como de qualquer outra pasta"
+     "text": "Faça cópias de segurança como com qualquer outra pasta"
     }
    }
   },
@@ -32216,10 +32216,10 @@
      "text": "Se mueven a la papelera"
     },
     "pt-BR": {
-     "text": "Vão para a lixeira"
+     "text": "Vão para a Lixeira"
     },
     "pt-PT": {
-     "text": "Vão para o lixo"
+     "text": "Vão para o Lixo"
     }
    }
   },
@@ -32252,12 +32252,12 @@
      "mac": "Las reuniones que eliminas van a la papelera del Finder. Recupéralas desde ahí o pulsa Deshacer enseguida."
     },
     "pt-BR": {
-     "text": "As reuniões que você exclui vão para a lixeira do sistema. Restaure-as por lá ou clique em Desfazer na hora.",
-     "mac": "As reuniões que você exclui vão para a lixeira do Finder. Restaure-as por lá ou clique em Desfazer na hora."
+     "text": "As reuniões que você exclui vão para a Lixeira do sistema. Restaure-as por lá ou clique em Desfazer na hora.",
+     "mac": "As reuniões que você exclui vão para a Lixeira do Finder. Restaure-as por lá ou clique em Desfazer na hora."
     },
     "pt-PT": {
-     "text": "As reuniões que eliminar vão para o lixo do sistema. Reponha-as a partir daí ou clique em Desfazer de imediato.",
-     "mac": "As reuniões que eliminar vão para o lixo do Finder. Reponha-as a partir daí ou clique em Desfazer de imediato."
+     "text": "As reuniões que eliminar vão para o Lixo do sistema. Reponha-as a partir daí ou clique em Desfazer de imediato.",
+     "mac": "As reuniões que eliminar vão para o Lixo do Finder. Reponha-as a partir daí ou clique em Desfazer de imediato."
     }
    }
   },
@@ -32283,13 +32283,13 @@
      "text": "Avec l’extension de navigateur, Cassini entend séparément chaque personne de votre réunion dans le navigateur, donc les noms sont plus souvent justes."
     },
     "es": {
-     "text": "Con la extensión del navegador, Cassini escucha por separado a cada persona de tu reunión en el navegador, así que los nombres aciertan más a menudo."
+     "text": "Con la extensión del navegador, Cassini escucha por separado a cada persona de tu reunión en el navegador, así que acierta más a menudo con los nombres."
     },
     "pt-BR": {
-     "text": "Com a extensão do navegador, o Cassini ouve separadamente cada pessoa da sua reunião no navegador, então os nomes acertam com mais frequência."
+     "text": "Com a extensão do navegador, o Cassini ouve separadamente cada pessoa da sua reunião no navegador, então os nomes ficam corretos com mais frequência."
     },
     "pt-PT": {
-     "text": "Com a extensão do navegador, o Cassini ouve separadamente cada pessoa da sua reunião no navegador, por isso os nomes acertam mais vezes."
+     "text": "Com a extensão do navegador, o Cassini ouve separadamente cada pessoa da sua reunião no navegador, por isso acerta nos nomes mais vezes."
     }
    }
   },
@@ -32570,7 +32570,7 @@
      "text": "Per aggiungere qualcuno, dai un nome a una voce in una riunione e lascia attivo “Ricorda questa voce”. Se dimentichi una voce, i nomi già presenti nelle tue riunioni restano."
     },
     "fr": {
-     "text": "Pour ajouter quelqu’un, nommez un intervenant dans une réunion et laissez « Mémoriser cette voix » activé. Oublier une voix conserve les noms déjà présents dans vos réunions."
+     "text": "Pour ajouter quelqu’un, nommez un intervenant dans une réunion et laissez « Mémoriser cette voix » activé. Si vous oubliez une voix, les noms déjà présents dans vos réunions sont conservés."
     },
     "es": {
      "text": "Para añadir a alguien, pon nombre a un hablante en una reunión y deja activado “Recordar esta voz”. Si olvidas una voz, los nombres que ya están en tus reuniones se mantienen."
@@ -32747,7 +32747,7 @@
      "text": "Suas reuniões vão com você para um celular novo"
     },
     "pt-PT": {
-     "text": "As suas reuniões acompanham-no para um telemóvel novo"
+     "text": "As suas reuniões vão consigo para um telemóvel novo"
     }
    }
   },
@@ -32797,7 +32797,7 @@
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Se il Backup iCloud è attivo nelle Impostazioni di iOS, tornano anche se questo iPhone viene perso o sostituito."
+     "text": "Se il Backup iCloud è attivo nelle Impostazioni di iOS, le ritrovi quando questo iPhone viene perso o sostituito."
     },
     "fr": {
      "text": "Si la Sauvegarde iCloud est activée dans les Réglages d’iOS, elles reviennent si cet iPhone est perdu ou remplacé."
@@ -32863,7 +32863,7 @@
      "text": "Audio, trascrizioni e chi ha parlato."
     },
     "fr": {
-     "text": "Audio, transcriptions et qui a parlé."
+     "text": "Audio, transcriptions et identification des intervenants."
     },
     "es": {
      "text": "Audio, transcripciones y quién habló."
@@ -33001,7 +33001,7 @@
      "text": "O que é transferido"
     },
     "pt-PT": {
-     "text": "O que é transferido"
+     "text": "O que é copiado"
     }
    }
   },
@@ -33089,7 +33089,7 @@
      "text": "Salva tutte le riunioni in una cartella, un’unità o un’altra app."
     },
     "fr": {
-     "text": "Enregistrez toutes les réunions dans un dossier, sur un disque ou dans une autre app."
+     "text": "Sauvegardez toutes les réunions dans un dossier, sur un disque ou dans une autre app."
     },
     "es": {
      "text": "Guarda todas las reuniones en una carpeta, una unidad u otra app."
@@ -33153,7 +33153,7 @@
      "text": "Audio, trascrizioni e chi ha parlato"
     },
     "fr": {
-     "text": "Audio, transcriptions et qui a parlé"
+     "text": "Audio, transcriptions et identification des intervenants"
     },
     "es": {
      "text": "Audio, transcripciones y quién habló"
@@ -33276,10 +33276,10 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "A scelta tua, qui sopra"
+     "text": "Come hai scelto qui sopra"
     },
     "fr": {
-     "text": "À vous de choisir, ci-dessus"
+     "text": "Selon votre choix ci-dessus"
     },
     "es": {
      "text": "Lo eliges arriba"
@@ -33288,7 +33288,7 @@
      "text": "Você escolhe, acima"
     },
     "pt-PT": {
-     "text": "É uma escolha sua, acima"
+     "text": "Conforme a sua escolha acima"
     }
    }
   },
@@ -33317,10 +33317,10 @@
      "text": "Modelos de voz"
     },
     "pt-BR": {
-     "text": "Modelos de fala"
+     "text": "Modelos de voz"
     },
     "pt-PT": {
-     "text": "Modelos de fala"
+     "text": "Modelos de voz"
     }
    }
   },
@@ -33351,7 +33351,7 @@
      "text": "Baixados de novo no celular novo"
     },
     "pt-PT": {
-     "text": "Descarregados de novo no telemóvel novo"
+     "text": "Transferidos novamente no telemóvel novo"
     }
    }
   },
@@ -33382,7 +33382,7 @@
      "text": "Baixados de novo em um iPhone novo"
     },
     "pt-PT": {
-     "text": "Descarregados de novo num iPhone novo"
+     "text": "Transferidos novamente num iPhone novo"
     }
    }
   },
@@ -33407,7 +33407,7 @@
      "text": "Copié"
     },
     "es": {
-     "text": "Se copia"
+     "text": "Se copian"
     },
     "pt-BR": {
      "text": "Copiado"
@@ -33438,7 +33438,7 @@
      "text": "Non copié"
     },
     "es": {
-     "text": "No se copia"
+     "text": "No se copian"
     },
     "pt-BR": {
      "text": "Não copiado"
@@ -33469,7 +33469,7 @@
      "text": "Inclus si la Sauvegarde iCloud est activée"
     },
     "es": {
-     "text": "Incluido si la Copia en iCloud está activada"
+     "text": "Se incluyen si la Copia en iCloud está activada"
     },
     "pt-BR": {
      "text": "Incluído se o Backup do iCloud estiver ativado"
@@ -33500,7 +33500,7 @@
      "text": "Marqué pour être exclu"
     },
     "es": {
-     "text": "Marcado para quedar fuera"
+     "text": "Se marcan para quedar fuera"
     },
     "pt-BR": {
      "text": "Marcado para ficar de fora"
@@ -33620,19 +33620,19 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Chiunque possa aprire il posto in cui lo metti."
+     "text": "Chiunque abbia accesso a dove lo salvi."
     },
     "fr": {
-     "text": "Toute personne qui peut ouvrir l’endroit où vous le placez."
+     "text": "Toute personne ayant accès à l’endroit où vous le placez."
     },
     "es": {
-     "text": "Quien pueda abrir el lugar donde lo guardes."
+     "text": "Quien pueda acceder al lugar donde lo guardes."
     },
     "pt-BR": {
-     "text": "Quem puder abrir o lugar onde você o colocar."
+     "text": "Quem puder acessar o local onde você o colocar."
     },
     "pt-PT": {
-     "text": "Quem puder abrir o local onde o colocar."
+     "text": "Quem tiver acesso ao local onde o guardar."
     }
    }
   },
@@ -33657,7 +33657,7 @@
      "text": "Apple peut la lire, sauf si la Protection avancée des données est activée dans votre compte Apple."
     },
     "es": {
-     "text": "Apple puede leerla, salvo que la Protección de datos avanzada esté activada en tu cuenta de Apple."
+     "text": "Apple puede leerla, salvo que la Protección avanzada de datos esté activada en tu cuenta de Apple."
     },
     "pt-BR": {
      "text": "A Apple pode ler, a menos que a Proteção Avançada de Dados esteja ativada na sua Conta Apple."
@@ -33776,13 +33776,13 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Trasforma il parlato in testo ricercabile e con i tempi, proprio qui sul tuo telefono."
+     "text": "Trasforma il parlato in testo ricercabile con riferimenti temporali, proprio qui sul tuo telefono."
     },
     "fr": {
      "text": "Transforme la parole en texte horodaté et consultable, ici même sur votre téléphone."
     },
     "es": {
-     "text": "Convierte la voz en texto con tiempos en el que puedes buscar, aquí mismo en tu teléfono."
+     "text": "Convierte la voz en texto con marcas de tiempo en el que puedes buscar, aquí mismo en tu teléfono."
     },
     "pt-BR": {
      "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu celular."
@@ -33807,13 +33807,13 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Trasforma il parlato in testo ricercabile e con i tempi, proprio qui sul tuo iPhone."
+     "text": "Trasforma il parlato in testo ricercabile con riferimenti temporali, proprio qui sul tuo iPhone."
     },
     "fr": {
      "text": "Transforme la parole en texte horodaté et consultable, ici même sur votre iPhone."
     },
     "es": {
-     "text": "Convierte la voz en texto con tiempos en el que puedes buscar, aquí mismo en tu iPhone."
+     "text": "Convierte la voz en texto con marcas de tiempo en el que puedes buscar, aquí mismo en tu iPhone."
     },
     "pt-BR": {
      "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu iPhone."
@@ -33838,13 +33838,13 @@
    "status": "draft",
    "l10n": {
     "it": {
-     "text": "Trasforma il parlato in testo ricercabile e con i tempi, proprio qui sul tuo iPad."
+     "text": "Trasforma il parlato in testo ricercabile con riferimenti temporali, proprio qui sul tuo iPad."
     },
     "fr": {
      "text": "Transforme la parole en texte horodaté et consultable, ici même sur votre iPad."
     },
     "es": {
-     "text": "Convierte la voz en texto con tiempos en el que puedes buscar, aquí mismo en tu iPad."
+     "text": "Convierte la voz en texto con marcas de tiempo en el que puedes buscar, aquí mismo en tu iPad."
     },
     "pt-BR": {
      "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu iPad."
@@ -33869,13 +33869,13 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Trasforma il parlato in testo ricercabile e con i tempi, proprio qui sul tuo computer."
+     "text": "Trasforma il parlato in testo ricercabile con riferimenti temporali, proprio qui sul tuo computer."
     },
     "fr": {
      "text": "Transforme la parole en texte horodaté et consultable, ici même sur votre ordinateur."
     },
     "es": {
-     "text": "Convierte la voz en texto con tiempos en el que puedes buscar, aquí mismo en tu equipo."
+     "text": "Convierte la voz en texto con marcas de tiempo en el que puedes buscar, aquí mismo en tu equipo."
     },
     "pt-BR": {
      "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu computador."
@@ -33900,13 +33900,13 @@
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Trasforma il parlato in testo ricercabile e con i tempi, proprio qui sul tuo Mac."
+     "text": "Trasforma il parlato in testo ricercabile con riferimenti temporali, proprio qui sul tuo Mac."
     },
     "fr": {
      "text": "Transforme la parole en texte horodaté et consultable, ici même sur votre Mac."
     },
     "es": {
-     "text": "Convierte la voz en texto con tiempos en el que puedes buscar, aquí mismo en tu Mac."
+     "text": "Convierte la voz en texto con marcas de tiempo en el que puedes buscar, aquí mismo en tu Mac."
     },
     "pt-BR": {
      "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu Mac."

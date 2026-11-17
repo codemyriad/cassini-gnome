@@ -47,7 +47,7 @@
   "status": "harmony",
   "l10n": {
    "it": {
-    "text": "{source}: registrato per {duration}."
+    "text": "{source}: {duration} di audio registrato."
    },
    "fr": {
     "text": "{source} : {duration} d’enregistrement."
@@ -123,7 +123,7 @@
     "text": "{source}: solo se recibieron {duration} de audio."
    },
    "pt-BR": {
-    "text": "{source}: só {duration} de áudio recebidos."
+    "text": "{source}: só {duration} de áudio recebido."
    },
    "pt-PT": {
     "text": "{source}: só foram recebidos {duration} de áudio."
@@ -147,7 +147,7 @@
   "status": "harmony",
   "l10n": {
    "it": {
-    "text": "{source}: non è stato possibile registrare l’audio."
+    "text": "{source}: impossibile registrare l’audio."
    },
    "fr": {
     "text": "{source} : impossible d’enregistrer le son."
@@ -250,7 +250,7 @@
     "text": "{source} : ne fait pas partie de l’enregistrement."
    },
    "es": {
-    "text": "{source}: no forma parte de la grabación."
+    "text": "{source}: no se seleccionó para grabar."
    },
    "pt-BR": {
     "text": "{source}: não faz parte da gravação."
@@ -277,16 +277,16 @@
     "text": "L’audio sovrapposto è stato tenuto come voci separate."
    },
    "fr": {
-    "text": "Les sons qui se chevauchaient ont été conservés comme intervenants distincts."
+    "text": "Les passages audio qui se chevauchaient ont été conservés et attribués à des intervenants distincts."
    },
    "es": {
-    "text": "El audio superpuesto se conservó como hablantes distintos."
+    "text": "El audio superpuesto se conservó y se asignó a hablantes distintos."
    },
    "pt-BR": {
     "text": "O áudio sobreposto foi mantido como locutores distintos."
    },
    "pt-PT": {
-    "text": "O áudio sobreposto foi mantido como oradores distintos."
+    "text": "Os excertos de áudio sobrepostos foram mantidos associados a oradores distintos."
    }
   }
  },
@@ -307,7 +307,7 @@
     "text": "La chiamata si è connessa, quindi Cassini ha iniziato a registrare ogni persona separatamente."
    },
    "fr": {
-    "text": "L’appel s’est connecté : Cassini a commencé à enregistrer chaque personne séparément."
+    "text": "L’appel a été établi : Cassini a commencé à enregistrer chaque personne séparément."
    },
    "es": {
     "text": "La llamada se conectó, así que Cassini empezó a grabar a cada persona por separado."
@@ -316,7 +316,7 @@
     "text": "A chamada foi conectada, então o Cassini começou a gravar cada pessoa separadamente."
    },
    "pt-PT": {
-    "text": "A chamada ligou-se, por isso o Cassini começou a gravar cada pessoa em separado."
+    "text": "A chamada foi estabelecida, por isso o Cassini começou a gravar cada pessoa em separado."
    }
   }
  },
@@ -334,10 +334,10 @@
   "status": "harmony",
   "l10n": {
    "it": {
-    "text": "Non è stato possibile registrare una parte dell’audio. Cassini continua a registrare il resto."
+    "text": "Impossibile registrare una parte dell’audio. Cassini continua a registrare il resto."
    },
    "fr": {
-    "text": "Une partie du son n’a pas pu être enregistrée. Cassini continue d’enregistrer le reste."
+    "text": "Impossible d’enregistrer une partie du son. Cassini continue d’enregistrer le reste."
    },
    "es": {
     "text": "No se pudo grabar parte del audio. Cassini sigue grabando el resto."
