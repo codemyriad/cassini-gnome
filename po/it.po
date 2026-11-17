@@ -16,10 +16,10 @@ msgid "meeting;transcript;recording;opus;captions;speech;"
 msgstr "riunione;trascrizione;registrazione;opus;sottotitoli;voce;"
 
 msgid "Read along with meeting recordings"
-msgstr "Segui le trascrizioni delle riunioni"
+msgstr "Ascolta le riunioni leggendone la trascrizione"
 
 msgid "Cassini plays meeting recordings in the Cassini portable meeting format: ordinary Ogg Opus files that carry their own word-by-word transcript, speaker names and summary."
-msgstr "Cassini riproduce le registrazioni delle riunioni nel formato portatile Cassini: normali file Ogg Opus che contengono la trascrizione parola per parola, i nomi delle voci e il riepilogo."
+msgstr "Cassini riproduce le registrazioni delle riunioni nel formato portatile Cassini: normali file Ogg Opus che contengono la trascrizione parola per parola, i nomi delle voci e il riassunto."
 
 msgid "Follow the transcript as it plays, with the spoken word highlighted"
 msgstr "Segui la trascrizione durante la riproduzione, con la parola pronunciata evidenziata"
@@ -34,7 +34,7 @@ msgid "Search the transcript"
 msgstr "Cerca nella trascrizione"
 
 msgid "Read the meeting summary and jump to its topics"
-msgstr "Leggi il riepilogo della riunione e passa ai suoi argomenti"
+msgstr "Leggi il riassunto della riunione e passa ai suoi argomenti"
 
 msgid "Check that the audio still matches the transcript recorded with it"
 msgstr "Verifica che l’audio corrisponda ancora alla trascrizione associata"
@@ -49,7 +49,7 @@ msgid "Codemyriad"
 msgstr "Codemyriad"
 
 msgid "A meeting transcript following playback"
-msgstr "Una trascrizione di riunione che segue la riproduzione"
+msgstr "La trascrizione di una riunione che segue la riproduzione"
 
 msgid "Keep recordings and received meetings in the Library, follow their transcripts, search across meetings, and import or export audio and transcripts."
 msgstr "Conserva le registrazioni e le riunioni ricevute nella Libreria, segui le trascrizioni, cerca in tutte le riunioni e importa o esporta audio e trascrizioni."
@@ -61,16 +61,16 @@ msgid "Write meetings down locally with bundled Whistle or optional Parakeet Ult
 msgstr "Trascrivi le riunioni sul computer con Whistle incluso o con Parakeet Ultra facoltativo"
 
 msgid "Tell speakers apart, name and merge speakers, and remember saved voices locally"
-msgstr "Distingui le voci, assegna nomi e uniscile e ricorda le voci salvate sul computer"
+msgstr "Distingui le voci, dai loro un nome, uniscile e ricorda le voci salvate sul computer"
 
 msgid "Keep audio aligned through input interruptions without adding silence for gradual clock drift"
-msgstr "Mantieni l’audio allineato durante le interruzioni, senza aggiungere silenzio per la deriva graduale dell’orologio"
+msgstr "Mantieni l’audio allineato durante le interruzioni dell’ingresso audio, senza aggiungere silenzio per la deriva graduale dell’orologio"
 
 msgid "Record meetings: the microphone and desktop audio, and browser meetings source by source through the Cassini companion extension. Cassini now names missing libraries and plugins at startup instead of failing."
-msgstr "Registra le riunioni: il microfono e l’audio del computer e le riunioni nel browser sorgente per sorgente con l’estensione Cassini. All’avvio Cassini indica le librerie e i plugin mancanti."
+msgstr "Registra le riunioni: il microfono e l’audio del computer e le riunioni nel browser sorgente per sorgente con l’estensione Cassini. All’avvio Cassini ora indica le librerie e i plugin mancanti anziché arrestarsi."
 
 msgid "Fix transcript-click crashes and label sizing warnings. Keep participants visible, rejoin interrupted speech with inline interjections, and preserve interjections in exports."
-msgstr "Corregge gli arresti anomali facendo clic nella trascrizione e gli avvisi sulle dimensioni delle etichette. Mantiene visibili i partecipanti, riunisce il parlato interrotto dalle interiezioni e conserva le interiezioni nelle esportazioni."
+msgstr "Corregge gli arresti anomali causati dai clic nella trascrizione e gli avvisi sulle dimensioni delle etichette. Mantiene visibili i partecipanti, ricompone il parlato interrotto inserendo le interiezioni nel testo e conserva le interiezioni nelle esportazioni."
 
 msgid "First release."
 msgstr "Prima versione."
@@ -85,7 +85,7 @@ msgid "Desktop recording shortcut description"
 msgstr "Descrizione della scorciatoia di registrazione del desktop"
 
 msgid "Browser companion has connected before"
-msgstr "L’estensione del browser si è già collegata"
+msgstr "L’estensione per il browser si è già connessa"
 
 msgid "Windowless automatic recording notification shown"
 msgstr "Notifica della registrazione automatica senza finestre mostrata"
@@ -115,7 +115,7 @@ msgid "Show the properties pane"
 msgstr "Mostra il pannello delle proprietà"
 
 msgid "Follow along"
-msgstr "Segui la lettura"
+msgstr "Segui la riproduzione"
 
 msgid "Keep the word being spoken in view while playing."
 msgstr "Mantieni visibile la parola pronunciata durante la riproduzione."

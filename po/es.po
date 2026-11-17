@@ -16,7 +16,7 @@ msgid "meeting;transcript;recording;opus;captions;speech;"
 msgstr "reunión;transcripción;grabación;opus;subtítulos;voz;"
 
 msgid "Read along with meeting recordings"
-msgstr "Sigue las transcripciones de las reuniones"
+msgstr "Sigue las transcripciones mientras escuchas las reuniones"
 
 msgid "Cassini plays meeting recordings in the Cassini portable meeting format: ordinary Ogg Opus files that carry their own word-by-word transcript, speaker names and summary."
 msgstr "Cassini reproduce grabaciones de reuniones en el formato portátil Cassini: archivos Ogg Opus normales que contienen su transcripción palabra por palabra, los nombres de los hablantes y el resumen."
@@ -52,25 +52,25 @@ msgid "A meeting transcript following playback"
 msgstr "Una transcripción de reunión que sigue la reproducción"
 
 msgid "Keep recordings and received meetings in the Library, follow their transcripts, search across meetings, and import or export audio and transcripts."
-msgstr "Conserva las grabaciones y las reuniones recibidas en la Biblioteca, sigue sus transcripciones, busca en todas las reuniones e importa o exporta audio y transcripciones."
+msgstr "Conserva las grabaciones y las reuniones recibidas en la biblioteca, sigue sus transcripciones, busca en todas las reuniones e importa o exporta audio y transcripciones."
 
 msgid "Record browser meetings independently, choose what is recorded, and set up the companion in native packages or Flatpak"
-msgstr "Graba reuniones del navegador de forma independiente, elige qué se graba y configura la extensión con los paquetes nativos o Flatpak"
+msgstr "Graba reuniones en el navegador de forma independiente, elige qué se graba y configura la extensión en paquetes nativos o Flatpak"
 
 msgid "Write meetings down locally with bundled Whistle or optional Parakeet Ultra"
 msgstr "Transcribe reuniones en este equipo con Whistle incluido o Parakeet Ultra opcional"
 
 msgid "Tell speakers apart, name and merge speakers, and remember saved voices locally"
-msgstr "Distingue hablantes, nómbralos y combínalos, y recuerda las voces guardadas en este equipo"
+msgstr "Distingue hablantes, ponles nombre y fusiónalos, y recuerda las voces guardadas en este equipo"
 
 msgid "Keep audio aligned through input interruptions without adding silence for gradual clock drift"
 msgstr "Mantén el audio alineado durante las interrupciones de entrada sin añadir silencio por la deriva gradual del reloj"
 
 msgid "Record meetings: the microphone and desktop audio, and browser meetings source by source through the Cassini companion extension. Cassini now names missing libraries and plugins at startup instead of failing."
-msgstr "Graba reuniones: el micrófono y el audio del equipo, y las reuniones del navegador fuente por fuente con la extensión de Cassini. Al iniciar, Cassini indica las bibliotecas y los complementos que faltan."
+msgstr "Graba reuniones: el micrófono y el audio del equipo, y las reuniones en el navegador fuente por fuente con la extensión de Cassini. Al iniciar, Cassini ahora indica las bibliotecas y los complementos que faltan en lugar de fallar."
 
 msgid "Fix transcript-click crashes and label sizing warnings. Keep participants visible, rejoin interrupted speech with inline interjections, and preserve interjections in exports."
-msgstr "Corrige cierres al hacer clic en la transcripción y avisos de tamaño de etiquetas. Mantiene visibles los participantes, reúne el habla interrumpida por interjecciones y conserva estas en las exportaciones."
+msgstr "Corrige cierres al hacer clic en la transcripción y avisos de tamaño de etiquetas. Mantiene visibles a los participantes, une el habla interrumpida con interjecciones intercaladas y conserva estas en las exportaciones."
 
 msgid "First release."
 msgstr "Primera versión."
@@ -115,7 +115,7 @@ msgid "Show the properties pane"
 msgstr "Mostrar el panel de propiedades"
 
 msgid "Follow along"
-msgstr "Seguir la lectura"
+msgstr "Seguir la reproducción"
 
 msgid "Keep the word being spoken in view while playing."
 msgstr "Mantén visible la palabra pronunciada durante la reproducción."

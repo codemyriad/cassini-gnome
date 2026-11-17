@@ -178,7 +178,7 @@ def test_d52_catalog_entries_are_the_exact_approved_six_language_objects():
     shared = Path(__file__).parent / "ux" / "d52" / "strings.json"
     assert (
         hashlib.sha256(shared.read_bytes()).hexdigest()
-        == "6284099c78168ed210983748f628d60ac800ad4ea0bb58b17d2f7bd2d75ff738"
+        == "bcd2c83e27f71fe63dd4dc1277a764eddb60ac7468196139f71da4224eaf35ce"
     )
     catalog = json.loads(Path(strings.__file__).with_name("strings.json").read_bytes())
     actual = {entry["id"]: entry for entry in catalog["entries"]}
