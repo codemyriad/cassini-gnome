@@ -229,6 +229,9 @@ def capture(application_id, version, profile):
             child = child.get_next_sibling()
 
     visible_copy(window)
+    from .strings import text
+
+    on_label = text("models.status.on") + " · "  # L-58: "On · 62 MB" (models.statusWithSize)
     target.with_suffix(".json").write_text(
         json.dumps(
             dict(
@@ -269,7 +272,7 @@ def capture(application_id, version, profile):
                     bool(
                         opened_settings
                         and hasattr(app.settings_dialog, "nemotron_status")
-                        and app.settings_dialog.nemotron_status.get_label() == "On"
+                        and app.settings_dialog.nemotron_status.get_label().startswith(on_label)
                     )
                 ),
                 limitations=[
