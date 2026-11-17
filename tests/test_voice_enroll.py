@@ -1005,3 +1005,90 @@ def test_desktop_draws_no_phone_backup_or_transfer_copy():
     )
     for path in (ROOT / "src/cassini_talk").glob("*.py"):
         assert not phone_only.search(path.read_text(encoding="utf-8")), path.name
+
+
+class _VoiceSettings:
+    """The two recording keys the voices question and Preferences share."""
+
+    def __init__(self):
+        self.values = {"voice-setup": "unanswered", "remember-voices": True}
+
+    def get_string(self, key):
+        return self.values[key]
+
+    set_string = set_boolean = lambda self, key, value: self.values.__setitem__(key, value)
+
+    def get_boolean(self, key):
+        return self.values[key]
+
+
+def _voices_question_and_preferences(preferences_closed=False):
+    """The real response, Preferences and app handlers, over fakes (no display, no sleeps)."""
+    from functools import partial
+
+    dialog_class = settings_dialog_class()
+    try:
+        from cassini_talk.main import CassiniApplication
+        from cassini_talk.voice_question import VoiceQuestion
+    except (ImportError, ValueError) as error:
+        pytest.skip(f"Application is unavailable: {error}")
+    settings, tell, voices = _VoiceSettings(), FakeModels(), FakeModels()
+    app = SimpleNamespace(
+        recording_settings=settings, diarization_models=tell, voice_models=voices, voice_setup=VoiceSetup()
+    )
+    app.answer_voice_setup = partial(CassiniApplication.answer_voice_setup, app)
+    app.close_voice_question = partial(CassiniApplication.close_voice_question, app)
+    switch = SimpleNamespace(active=True)
+    switch.get_active = lambda: switch.active
+    prefs = SimpleNamespace(app=app, settings=settings, remember_default=switch, closed=preferences_closed, renders=0)
+    prefs.render_models = lambda: setattr(prefs, "renders", prefs.renders + 1)
+    app.settings_dialog = prefs
+    question = SimpleNamespace(app=app, answered=None, dismissed=False, force_closed=0)
+    question.force_close = lambda: setattr(question, "force_closed", question.force_closed + 1)
+    question.dismiss = partial(VoiceQuestion.dismiss, question)
+    app.voice_question = question
+
+    def flip(active):  # Gio.Settings.bind writes the key, then notify::active runs the handler.
+        switch.active = active
+        settings.set_boolean("remember-voices", active)
+        dialog_class._remember_default_changed(prefs)
+
+    return app, settings, question, partial(VoiceQuestion._response, question, question), flip
+
+
+@pytest.mark.parametrize(("preference", "response"), [(False, "enable"), (True, "not-now"), (False, "not-now")])
+def test_preferences_answering_closes_the_open_voices_question_and_its_response_is_ignored(preference, response):
+    app, settings, question, respond, flip = _voices_question_and_preferences()
+    flip(preference)
+    assert settings.values == {"voice-setup": "enabled" if preference else "declined", "remember-voices": preference}
+    assert question.force_closed == 1 and app.voice_question is None
+    respond(response)  # Its button, Escape, or the close response the forced close may send.
+    assert settings.values == {"voice-setup": "enabled" if preference else "declined", "remember-voices": preference}
+    assert app.diarization_models.downloads + app.voice_models.downloads == 0
+    assert not app.voice_setup.active and question.answered is None
+
+
+def test_a_voices_response_after_another_answer_never_overwrites_it():
+    app, settings, question, respond, _flip = _voices_question_and_preferences()
+    settings.set_string("voice-setup", "declined")  # Answered elsewhere; this one was never dismissed.
+    settings.set_boolean("remember-voices", False)
+    respond("enable")
+    assert settings.values == {"voice-setup": "declined", "remember-voices": False}
+    assert app.diarization_models.downloads == 0 and question.answered is None
+
+
+def test_a_closed_preferences_never_answers_or_closes_the_voices_question():
+    app, settings, question, _respond, flip = _voices_question_and_preferences(preferences_closed=True)
+    flip(False)  # The binding outlives the closed dialog; e.g. a key written elsewhere.
+    assert settings.get_string("voice-setup") == "unanswered"
+    assert question.force_closed == 0 and app.voice_question is question
+
+
+def test_answering_the_open_voices_question_still_works():
+    app, settings, question, respond, _flip = _voices_question_and_preferences()
+    respond("enable")
+    assert settings.values == {"voice-setup": "enabled", "remember-voices": True}
+    assert app.diarization_models.downloads == 1 and app.voice_setup.active
+    assert app.settings_dialog.renders == 1
+    respond("not-now")  # Once only.
+    assert settings.get_string("voice-setup") == "enabled"

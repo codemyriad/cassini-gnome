@@ -17,6 +17,7 @@ class VoiceQuestion(Adw.AlertDialog):
         super().__init__(heading=text("voices.setup.title"), body=text("voices.setup.body.desktop"))
         self.app = app
         self.answered = None
+        self.dismissed = False
         self.footnote = Gtk.Label(
             label=text("voices.setup.kindness") + " " + text("voices.setup.changeLater.desktop"),
             wrap=True,
@@ -32,8 +33,17 @@ class VoiceQuestion(Adw.AlertDialog):
         self.connect("response", self._response)
         self.connect("closed", lambda *_: app._voice_question_closed(self))
 
+    def dismiss(self):
+        """Close without answering: Preferences › Remember people I name already did."""
+        self.dismissed = True
+        self.force_close()
+
     def _response(self, _dialog, response):
-        if self.answered is not None:
+        if self.answered is not None or self.dismissed:
+            return
+        if self.app.recording_settings.get_string("voice-setup") != "unanswered":
+            # Answered elsewhere (Preferences) while this was open: never overwrite it
+            # and never start downloads the person switched off.
             return
         self.answered = response == "enable"
         self.app.answer_voice_setup(self.answered)

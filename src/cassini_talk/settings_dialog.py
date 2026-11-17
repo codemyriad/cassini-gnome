@@ -318,9 +318,15 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.render_diarization()
 
     def _remember_default_changed(self, *_):
-        # Choosing here answers the voices question too: it is never asked after.
+        # Choosing here answers the voices question too: it is never asked after,
+        # and an open one closes so its later response cannot overwrite this.
+        if self.closed:
+            return  # The binding outlives a closed Preferences; only an open one answers.
         if self.settings.get_string("voice-setup") == "unanswered":
             self.settings.set_string("voice-setup", "enabled" if self.remember_default.get_active() else "declined")
+        close = getattr(self.app, "close_voice_question", None)
+        if close is not None:
+            close()
 
     def _saved_voices_row(self, group):
         self.saved_voices_row = Adw.ActionRow(title=text("common.savedVoices"), activatable=True, use_markup=False)

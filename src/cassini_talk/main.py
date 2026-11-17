@@ -1646,6 +1646,12 @@ class CassiniApplication(Adw.Application):
         self.voice_question.present(window)
         return True
 
+    def close_voice_question(self):
+        """Preferences answered the voices question: close it so it cannot answer again."""
+        dialog, self.voice_question = self.voice_question, None
+        if dialog is not None:
+            dialog.dismiss()
+
     def _voice_question_closed(self, dialog):
         if self.voice_question is dialog:
             self.voice_question = None
