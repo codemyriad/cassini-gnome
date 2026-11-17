@@ -146,7 +146,8 @@ def capture(application_id, version, profile):
                 if app.voice_models:
                     app.voice_models._change(downloaded=True, ready=True, busy=False, percent=100)
             app.on_preferences()
-            app.settings_dialog.set_visible_page_name(board.removeprefix("settings-"))
+            page = board.removeprefix("settings-")
+            app.settings_dialog.set_visible_page_name("browserCompanion" if page == "companion" else page)
             opened_settings = True
             settled_frame = None
         if window.meeting_page is not None and not window.meeting_page.list.ready:
@@ -158,6 +159,10 @@ def capture(application_id, version, profile):
             time.sleep(0.01)
             continue
         if board == "saved-voices" and opened_settings and app.settings_dialog.saved_voices_page._loading:
+            settled_frame = None
+            time.sleep(0.01)
+            continue
+        if board == "settings-library" and opened_settings and app.settings_dialog.library_stats is None:
             settled_frame = None
             time.sleep(0.01)
             continue
@@ -224,6 +229,9 @@ def capture(application_id, version, profile):
             child = child.get_next_sibling()
 
     visible_copy(window)
+    from .strings import text
+
+    on_label = text("models.status.on") + " · "  # L-58: "On · 62 MB" (models.statusWithSize)
     target.with_suffix(".json").write_text(
         json.dumps(
             dict(
@@ -264,7 +272,7 @@ def capture(application_id, version, profile):
                     bool(
                         opened_settings
                         and hasattr(app.settings_dialog, "nemotron_status")
-                        and app.settings_dialog.nemotron_status.get_label() == "On"
+                        and app.settings_dialog.nemotron_status.get_label().startswith(on_label)
                     )
                 ),
                 limitations=[

@@ -104,6 +104,7 @@ with tempfile.TemporaryDirectory() as temporary:
     from gi.repository import Adw
 
     from cassini_talk import i18n
+    from cassini_talk.strings import plural
     from cassini_talk.strings import text as ux_text
 
     def switcher_tab_labels(root):
@@ -142,6 +143,70 @@ with tempfile.TemporaryDirectory() as temporary:
         page.set_title(ux_text("settings.tab." + page_name))
     until(lambda: dialog.pages["browserCompanion"].get_title() == "Browser companion")
     assert dialog.get_title() == "Preferences" and not dialog.get_search_enabled()
+    # L-58 (D103 §1): one map, grouped by question on each page.
+    shown = labels(dialog)
+    for key in (
+        "settings.recording.group.starting",
+        "settings.recording.firstRecord.subtitle",
+        "test.action",
+        "settings.recording.test.description",
+        "settings.transcription.privacyLine",
+        "models.keepTranscript",
+        "models.builtIn",
+        "settings.library.folder.descriptionShort",
+        "settings.library.group.keepingCopy",
+        "settings.library.backUp.title",
+        "settings.library.zip.subtitle",
+        "settings.library.group.deleted",
+        "settings.library.deleted.title",
+        "help.trash.body",
+        "companion.bodyShort",
+        "companion.worksWith",
+        "companion.without.heading",
+        "companion.without.body",
+    ):
+        assert ux_text(key) in shown, key
+    assert ux_text("settings.transcription.network.heading") not in shown
+    assert dialog.test_button.get_label() == "Test"
+    # "9 meetings · 263 MB": sized off the GTK thread, then shown under the folder path.
+    until(lambda: dialog.library_stats is not None)
+    meetings = len(window.snapshot.meetings)
+    assert dialog.library_stats.startswith(f"{meetings} meetings · "), dialog.library_stats
+    assert dialog.folder.get_subtitle().endswith("\n" + dialog.library_stats)
+    assert dialog.zip_button.get_sensitive() and not dialog.move_lines.get_visible()
+    # Export… from Preferences works while the sidebar search is open, and its toasts land on the
+    # Preferences dialog (the window's own overlay is behind it, under the modal scrim).
+    app.settings_dialog = dialog
+    preference_toasts = []
+    dialog.add_toast = preference_toasts.append
+    window._enter_search(focus=False)
+    assert window.search_page is not None
+    window._refresh_export()
+    dialog.refresh_library()
+    assert dialog.zip_button.get_sensitive(), "Search must not grey out Export All as ZIP…"
+    dialog.zip_button.emit("clicked")
+    until(lambda: window.zip_export_dialog is not None and window.zip_export_dialog.get_mapped())
+    zdialog = window.zip_export_dialog
+    assert zdialog.get_child() is zdialog.toasts, "Export errors need an overlay inside the ZIP dialog"
+    for check in zdialog.checks.values():
+        check.set_active(False)
+    first = zdialog.choices[0]
+    zdialog.checks[first.key].set_active(True)
+    zips = tmp / "zips"
+    zips.mkdir()
+    # Where the toast goes is under test here; batch-import.py drives the real export.
+    from cassini_talk import zip_export_dialog
+
+    with patch.object(zip_export_dialog, "export_meetings_zip", lambda targets, folder, **_: folder / "Cassini.zip"):
+        zdialog._start_export(zips, all_items=False)
+        until(lambda: not zdialog.busy)
+    assert zdialog.closed and zdialog.output is not None, (zdialog.closed, zdialog.output, zdialog.future)
+    assert preference_toasts == [zdialog.success_toast]
+    assert zdialog.success_toast.get_title() == plural("export.zip.done", 1)
+    window.visible_toast("Shown on Preferences")
+    assert preference_toasts[-1].get_title() == "Shown on Preferences"
+    window._close_search()
+    del dialog.add_toast
     assert dialog.explain.get_active()
     dialog.explain.set_active(False)
     assert app.recording_settings.get_boolean("skip-record-first")

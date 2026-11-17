@@ -8,7 +8,9 @@ from pathlib import Path
 from PIL import Image
 
 root = Path(sys.argv[1])
-for name, region in [("library", (440, 85, 900, 120)), ("first-run", (330, 310, 790, 370))]:
+# The first-run box sits on the hero title ("Every word written down."): the hero is centred
+# vertically, so it must not depend on how many lines the privacy line below wraps to.
+for name, region in [("library", (440, 85, 900, 120)), ("first-run", (330, 270, 790, 320))]:
     image = Image.open(root / (name + ".png")).convert("RGB")
     assert image.size == (1120, 720)
     assert max(image.getpixel((1100, 650))) < 90, f"{name}: background is not dark"

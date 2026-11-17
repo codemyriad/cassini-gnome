@@ -93,7 +93,9 @@ class ZipExportDialog(Adw.Dialog):
         self.stack.add_named(progress_page, "progress")
 
         self.stack.set_visible_child_name("select")
-        self.set_child(self.stack)
+        # A failed export returns to the choices with its error shown here, in the dialog.
+        self.toasts = Adw.ToastOverlay(child=self.stack)
+        self.set_child(self.toasts)
         self.connect("closed", self._closed)
         self._rebuild_choices()
         self._sync_controls()
@@ -277,7 +279,7 @@ class ZipExportDialog(Adw.Dialog):
                 priority=Adw.ToastPriority.HIGH,
             )
             self.success_toast.connect("button-clicked", self._show_output)
-            self.window.toasts.add_toast(self.success_toast)
+            self.window.visible_toasts().add_toast(self.success_toast)
             self.force_close()
         return GLib.SOURCE_REMOVE
 
@@ -288,7 +290,8 @@ class ZipExportDialog(Adw.Dialog):
         self.stack.set_visible_child_name("select")
         self.update_snapshot(self.window.snapshot)
         self.window._refresh_export()
-        self.window.toast(_("Could not export: {error}").format(error=str(error)))
+        message = _("Could not export: {error}").format(error=str(error))
+        self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(message)))
 
     def _show_output(self, *_):
         launcher = Gtk.FileLauncher(file=Gio.File.new_for_path(str(self.output)))
@@ -299,7 +302,7 @@ class ZipExportDialog(Adw.Dialog):
             launcher.open_containing_folder_finish(result)
         except GLib.Error as error:
             if self.window.get_application() is not None:
-                self.window.toast(str(error))
+                self.window.visible_toast(str(error))
 
     def cancel(self, *_):
         self.cancelled.set()

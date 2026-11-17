@@ -22,7 +22,7 @@ class RecordFirst(Adw.Dialog):
         self.set_child(content)
         content.append(Gtk.Label(label=text("recordFirst.title"), css_classes=["title-2"], wrap=True))
         responsibility = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["responsibility-card"])
-        responsibility.append(Gtk.Label(label=text("recordFirst.responsibility"), xalign=0, wrap=True))
+        responsibility.append(Gtk.Label(label=text("recordFirst.lawPlain"), xalign=0, wrap=True))
         self.dont_show = Gtk.CheckButton(
             label=text("recordFirst.dontShowAgain"), active=self.settings.get_boolean("skip-record-first")
         )
@@ -40,14 +40,14 @@ class RecordFirst(Adw.Dialog):
                 (
                     "audio-input-microphone-symbolic",
                     "common.yourMicrophone",
-                    "recordFirst.mic.description",
-                    "recordFirst.mic.caption",
+                    "recordFirst.mic.plain",
+                    "recordFirst.mic.caption.plain",
                 ),
                 (
                     "video-display-symbolic",
                     "recordFirst.sound.title",
-                    "recordFirst.sound.description",
-                    "recordFirst.sound.caption",
+                    "recordFirst.sound.plain",
+                    "recordFirst.sound.caption.plain",
                 ),
             ]
         ):
@@ -70,17 +70,11 @@ class RecordFirst(Adw.Dialog):
                     self.permission_captions["microphone" if index == 0 else "system"] = (value, caption)
             row.append(body)
             content.append(row)
-        # D60: a test of both streams, disabled while any recording or test runs.
-        test = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self.test_button = Gtk.Button(
-            child=Adw.ButtonContent(icon_name="media-playback-start-symbolic", label=text("test.action")),
-            halign=Gtk.Align.START,
-        )
-        self.test_button.update_property([Gtk.AccessibleProperty.LABEL], [text("test.action")])
+        # D60 test of both streams (L-61: "Test recording first", flat, above the actions);
+        # disabled while any recording or test runs.
+        self.test_button = Gtk.Button(label=text("recordFirst.test"), halign=Gtk.Align.START, css_classes=["flat"])
         self.test_button.connect("clicked", lambda *_: self.app.open_test_recording(self))
-        test.append(self.test_button)
-        test.append(Gtk.Label(label=text("test.intro"), xalign=0, wrap=True, css_classes=["dim-label", "small"]))
-        content.append(test)
+        content.append(self.test_button)
         buttons = Gtk.Box(spacing=10, homogeneous=True)
         later = Gtk.Button(label=text("common.notNow"))
         later.connect("clicked", lambda *_: self.close())

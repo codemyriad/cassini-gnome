@@ -154,6 +154,12 @@ def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(t
         def set_visible(self, v):
             self.visible = v
 
+        def get_label(self):
+            return getattr(self, "label", "")
+
+        def set_label(self, value):
+            self.label = value
+
         def set_visible_child_name(self, name):
             self.visible_name = name
 
@@ -265,6 +271,7 @@ def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(t
         _selection_handler=1,
         _focused_editors=set(),
         privacy_footer=FakeWidget(),
+        privacy_line=FakeWidget(),
         received_hint=FakeWidget(),
         root_box=FakeWidget(),
         rows=FakeWidget(),
@@ -279,6 +286,7 @@ def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(t
         "_refresh_export",
         "_row_signature",
         "_updated",
+        "_privacy_text",
         "_begin_import_entries",
         "_finish_import_entries",
     ):

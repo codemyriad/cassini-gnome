@@ -71,7 +71,18 @@ def test_first_run_view_follows_harmony_section_10():
     assert "phoneBackupQualifier" not in block and "subtitlePhoneNote" not in block
     assert '"firstRun.title"' not in block and "firstRun.shortcutHint" not in block
     assert "capture_controls" not in block and "_header(record=True)" not in block
-    for key in ("firstRun.hero.title", "firstRun.hero.subtitle", "firstRun.body", "firstRun.footer", "library.title"):
+    # L-60: the header carries ☰ and Import audio…; the superseded copy is gone.
+    assert "self.import_button()" in block and "header.pack_start(self._primary_menu_button())" in block
+    assert '"firstRun.body"' not in block and '"firstRun.footer"' not in block
+    for key in (
+        "firstRun.hero.title",
+        "firstRun.hero.subtitle",
+        "firstRun.howTo",
+        "firstRun.shortcutLine",
+        "privacy.onDevice.computer",
+        "firstRun.libraryLocation",
+        "library.title",
+    ):
         assert f'"{key}"' in block, key
     assert "AccessibleRole.HEADING" in block
     assert "BrandMark(HERO_MARK_HEIGHT_PX)" in block

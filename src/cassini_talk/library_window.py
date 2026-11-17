@@ -241,6 +241,18 @@ class LibraryWindow(Adw.ApplicationWindow):
     def toast(self, message):
         self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(message)))
 
+    def visible_toasts(self):
+        """Where a toast is seen: the open Preferences dialog covers this window's overlay and its
+        scrim swallows clicks, so a toast for an action started there goes to the dialog."""
+        app = self.get_application()
+        dialog = getattr(app, "settings_dialog", None) if app is not None else None
+        if dialog is not None and not dialog.closed and dialog.get_mapped():
+            return dialog
+        return self.toasts
+
+    def visible_toast(self, message):
+        self.visible_toasts().add_toast(Adw.Toast(title=GLib.markup_escape_text(message)))
+
     def show_recording_details(self):
         from .capture_details_dialog import RecordingDetailsDialog
 
@@ -541,7 +553,6 @@ class LibraryWindow(Adw.ApplicationWindow):
             zip_action.set_enabled(
                 bool(
                     not self.recording_page
-                    and not self.search_page
                     and not self._external_meeting
                     and self.snapshot is not None
                     and not self.snapshot.unavailable
@@ -983,7 +994,6 @@ class LibraryWindow(Adw.ApplicationWindow):
         app = self.get_application()
         if (
             self.recording_page
-            or self.search_page
             or self._external_meeting
             or not exportable_meetings(self.snapshot, trash=app.meeting_trash if app else None)
         ):
@@ -992,7 +1002,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             try:
                 self.zip_export_dialog = ZipExportDialog(self)
             except OSError as error:
-                self.toast(_("Could not export: {error}").format(error=str(error)))
+                self.visible_toast(_("Could not export: {error}").format(error=str(error)))
                 return
         self.zip_export_dialog.present(self)
 
@@ -1095,7 +1105,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         return header
 
     def _first_run_header(self):
-        """L-27: primary menu and window close only; no header Record and no visible title."""
+        """L-27/L-60: primary menu, Import audio… and window close; no header Record and no visible title."""
         header = Adw.HeaderBar(
             show_start_title_buttons=False,
             show_end_title_buttons=True,
@@ -1103,8 +1113,17 @@ class LibraryWindow(Adw.ApplicationWindow):
             css_classes=["library-header", "first-run-header"],
         )
         header.set_title_widget(Gtk.Box())
-        header.pack_end(self._primary_menu_button())
+        # L-60: ☰ at the start and Import audio… at the end, as in the Library sidebar header.
+        header.pack_start(self._primary_menu_button())
+        header.pack_end(self.import_button())
         return header
+
+    def _privacy_text(self):
+        from .library_location import folder_caption, primary
+
+        return " ".join(
+            (text("privacy.onDevice.computer"), text("firstRun.libraryLocation", folder=folder_caption(primary())))
+        )
 
     def _build_empty(self):
         """L-27 first-run hero (HARMONY section 10, COMPONENTS.md section 8)."""
@@ -1154,9 +1173,19 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.hero_wave = HeroWave()
         wave_row.append(self.hero_wave)
         hero.append(wave_row)
-        body = label(text("firstRun.body"), "dim-label", "hero-body", xalign=0, halign=Gtk.Align.START, wrap=True)
+        # L-60 (D103 §3): one how-to line, then the in-app shortcut as a sentence.
+        body = label(text("firstRun.howTo"), "dim-label", "hero-body", xalign=0, halign=Gtk.Align.START, wrap=True)
         body.set_max_width_chars(60)
         hero.append(body)
+        shortcut = label(
+            text("firstRun.shortcutLine", shortcut=text("common.shortcut.record")),
+            "dim-label",
+            "small",
+            xalign=0,
+            halign=Gtk.Align.START,
+            wrap=True,
+        )
+        hero.append(shortcut)
         self.first_recording_lines = vertical(visible=False)
         hero.append(self.first_recording_lines)
         companion = self.first_companion = Gtk.Button(
@@ -1171,14 +1200,17 @@ class LibraryWindow(Adw.ApplicationWindow):
 
         self.first_browser_status = BrowserStatus(self.get_application(), self)
         hero.append(self.first_browser_status)
-        # Provisional privacy line (firstRun.footer until L-09 / D-938 closes), first run only (L-30).
-        footer = Gtk.Box(spacing=8, halign=Gtk.Align.START, css_classes=["hero-privacy"])
+        # Privacy line (privacy.onDevice.computer, L-09 / D-938) and where the Library is
+        # (firstRun.libraryLocation, L-60), first run only (L-30).
+        footer = Gtk.Box(spacing=8, hexpand=True, css_classes=["hero-privacy"])
         footer.append(
             Gtk.Image(
                 icon_name="changes-prevent-symbolic", pixel_size=14, accessible_role=Gtk.AccessibleRole.PRESENTATION
             )
         )
-        footer.append(label(text("firstRun.footer"), "small", "dim-label", xalign=0, wrap=True))
+        # It fills the 720 px column, so a long Library path wraps only past the column, as drawn.
+        self.privacy_line = label(self._privacy_text(), "small", "dim-label", xalign=0, wrap=True, hexpand=True)
+        footer.append(self.privacy_line)
         self.privacy_footer = footer
         hero.append(footer)
         center.append(clamp)
@@ -2093,15 +2125,10 @@ class LibraryWindow(Adw.ApplicationWindow):
             m.key: (m.lifecycle, m.capture_state, m.published_file is not None) for m in snapshot.meetings
         }
         self.snapshot = snapshot
-        from .library_location import initial_root, music_directory, primary
-
-        # This published caption names Music/Cassini literally. An unmounted
-        # Music directory uses private persistent app data in Flatpak instead.
-        default = initial_root()
-        music_caption = (
-            os.environ.get("CASSINI_LIBRARY_DIR") is not None or default == (music_directory() / "Cassini").absolute()
-        )
-        self.privacy_footer.set_visible(primary() == default and music_caption)
+        # The privacy line names the Library folder in use (firstRun.libraryLocation), so it follows a move.
+        privacy = self._privacy_text()
+        if self.privacy_line.get_label() != privacy:
+            self.privacy_line.set_label(privacy)
         loaded = next((m for m in snapshot.meetings if m.key == self._loaded_key), None)
         if loaded and not self._external_meeting and self._loaded_directory != loaded.directory:
             position, playing = self.player.position, self.player.playing

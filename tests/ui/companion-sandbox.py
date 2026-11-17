@@ -107,7 +107,7 @@ with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as clean
         settings_dialogs.append(dialog)
         dialog.present(window)
         assert dialog.browser.get_title() == "Not set up"
-        assert not dialog.browser_setup.get_visible() and not dialog.automatic.get_visible()
+        assert not dialog.browser_setup.get_visible() and not dialog.browser_meetings.get_visible()
         assert not dialog.browser_add.get_visible() and not dialog.browser_add_local.get_visible()
         assert dialog._future is None
         assert not dialog.move.get_visible(), "Unverified document-portal relocation must stay hidden"
@@ -186,7 +186,7 @@ with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as clean
                 recording_worker = app._record_start_executor.submit(threading.get_ident).result(timeout=1)
                 assert recording_worker != threads[0], "Blocked host probe occupied the recording executor"
                 assert not app.browser_companion_available
-                assert not settings.browser_setup.get_visible() and not settings.automatic.get_visible()
+                assert not settings.browser_setup.get_visible() and not settings.browser_meetings.get_visible()
                 assert not settings.browser_add.get_visible() and not settings.browser_add_local.get_visible()
                 assert not window.first_companion.get_visible()
                 release.set()
@@ -195,7 +195,7 @@ with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as clean
                 until(lambda: app.browser_companion_available)  # Actual scheduled retry.
                 assert len(threads) >= 3 and all(t != main_thread for t in threads)
                 assert not window.first_companion.get_visible(), "Setup belongs in Settings before the first connection"
-                assert settings.automatic.get_visible()
+                assert settings.browser_meetings.get_visible()
                 assert not settings.browser_setup.get_visible()
                 assert settings.browser.get_title() == "Browser meetings need Chrome, Edge, Brave or Chromium."
                 assert settings.browser_add.get_visible() and not settings.browser_add.get_sensitive()

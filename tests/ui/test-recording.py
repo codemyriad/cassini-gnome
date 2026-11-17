@@ -153,7 +153,8 @@ def child():
         app.on_preferences()
         settings = app.settings_dialog
         assert settings.test_row.get_title() == "Test recording"
-        assert settings.test_row.get_subtitle().startswith("Records 8 seconds from your microphone")
+        assert settings.test_row.get_description().startswith("Records 8 seconds of your microphone")
+        assert settings.test_button.get_label() == "Test"
         until(lambda: settings.test_row.get_sensitive() and settings.test_button.get_sensitive())
         record_event("settings")
         until(lambda: check.state == "running" and app.sound_check_dialog is not None)
@@ -208,7 +209,7 @@ def child():
         until(lambda: native.pipeline is None and not native._finishing and settings.test_row.get_sensitive())
 
         # A real Record during a test discards it and starts as usual.
-        settings.test_row.activate()
+        settings.test_button.emit("clicked")
         until(lambda: check.state == "running" and check.folder is not None and check.folder.exists())
         dialog, folder = app.sound_check_dialog, check.folder
         app.recording_settings.set_boolean("skip-record-first", True)
@@ -376,7 +377,7 @@ def parent():
         process = subprocess.Popen([sys.executable, __file__, "--child"], stdout=log, stderr=log)
         try:
             wait("settings", 30)
-            activate("Test recording")
+            activate("Test")
             wait("result")
             lines(WORKING)
             for name in ("Play back", "Test again", "Done"):
@@ -388,10 +389,10 @@ def parent():
             lines(SILENT)
             activate("Done")
             wait("recording", 30)
-            button("Test recording", sensitive=False)
+            button("Test", sensitive=False)
             ack("recording")
             wait("first-run", 60)
-            activate("Test recording")
+            activate("Test recording first")
             wait("refused", 30)
             lines(REFUSED)
             button("Play back", sensitive=False)

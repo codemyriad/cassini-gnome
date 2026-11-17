@@ -838,7 +838,9 @@
    "en": "Speakers",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "heading",
    "boards": [
@@ -848,7 +850,7 @@
     "Settings-mac"
    ],
    "milestone": "UX3",
-   "note": "Meeting sidebar: small bold dim section heading. Settings: full-size bold group title in the foreground colour (AdwPreferencesGroup title / Section header).",
+   "note": "Meeting sidebar: small bold dim section heading. Settings: full-size bold group title in the foreground colour (AdwPreferencesGroup title / Section header). D103 §1 (L-58): also used on the phone Settings top layer and Transcription / Speakers pages; text unchanged.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -4067,7 +4069,9 @@
    "en": "{n} MB",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "caption",
    "boards": [
@@ -4080,7 +4084,7 @@
    "placeholders": {
     "n": "size in MB per sizeRule"
    },
-   "note": "REFERENCE ONLY (HARMONY 6, format-vectors size and sizeRule). From 1000 MB it shows '{n} GB' with one decimal ('1.2 GB'). Sample: '17 MB' (Whistle row).",
+   "note": "REFERENCE ONLY (HARMONY 6, format-vectors size and sizeRule). From 1000 MB it shows '{n} GB' with one decimal ('1.2 GB'). Sample: '17 MB' (Whistle row). D103 §1 (L-58): also used on the phone Settings top layer and Transcription / Speakers pages; text unchanged.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -5389,7 +5393,9 @@
    "en": "Download",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
@@ -5397,7 +5403,7 @@
     "Settings-mac"
    ],
    "milestone": "UX8b",
-   "note": "Accent (suggested) button that trails the row of a model that is not downloaded. On the Recognise saved voices row it stays insensitive until Tell speakers apart is downloaded.",
+   "note": "Accent (suggested) button that trails the row of a model that is not downloaded. On the Recognise saved voices row it stays insensitive until Tell speakers apart is downloaded. D103 §1 (L-58): also used on the phone Settings top layer and Transcription / Speakers pages; text unchanged.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -5557,7 +5563,9 @@
    "en": "Parakeet Ultra",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -5565,7 +5573,7 @@
     "Settings-mac"
    ],
    "milestone": "UX8b",
-   "note": "Bold model row title. It is also the {model} sample in errors.modelDownloadFailed.line.",
+   "note": "Bold model row title. It is also the {model} sample in errors.modelDownloadFailed.line. D103 §1 (L-58): also used on the phone Settings top layer and Transcription / Speakers pages; text unchanged.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -5622,7 +5630,9 @@
    "en": "Recognise saved voices",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -5630,7 +5640,7 @@
     "Settings-mac"
    ],
    "milestone": "UX17",
-   "note": "Row title, en-GB 'Recognise'. Also the {model} value of models.downloading.a11y on this board. Size: format.size.download (real value per D4: '26 MB download').",
+   "note": "Row title, en-GB 'Recognise'. Also the {model} value of models.downloading.a11y on this board. Size: format.size.download (real value per D4: '26 MB download'). D103 §1 (L-58): also used on the phone Settings top layer and Transcription / Speakers pages; text unchanged.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -5926,7 +5936,9 @@
    "en": "On",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "status",
    "boards": [
@@ -5934,7 +5946,7 @@
     "Settings-mac"
    ],
    "milestone": "UX15",
-   "note": "Semibold green status on a downloaded speakers model that can be used. It is not a switch. models.remove trails the row.",
+   "note": "Semibold green status on a downloaded speakers model that can be used. It is not a switch. models.remove trails the row. D103 §1 (L-58): also used on the phone Settings top layer and Transcription / Speakers pages; text unchanged.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -5992,7 +6004,9 @@
    "en": "Tell speakers apart",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -6000,7 +6014,7 @@
     "Settings-mac"
    ],
    "milestone": "UX15",
-   "note": "Row title of the diarization model, the HARMONY 2 term. Quoted inside models.status.offUntilTellApart and models.status.needsTellApart; the text must match.",
+   "note": "Row title of the diarization model, the HARMONY 2 term. Quoted inside models.status.offUntilTellApart and models.status.needsTellApart; the text must match. D103 §1 (L-58): also used on the phone Settings top layer and Transcription / Speakers pages; text unchanged.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -6058,7 +6072,9 @@
    "en": "Whistle",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -6066,7 +6082,7 @@
     "Settings-mac"
    ],
    "milestone": "UX8b",
-   "note": "Bold model row title. models.json (S-8) becomes the source and must match. 'Whistle' is also literal inside errors.modelDownloadFailed.line.",
+   "note": "Bold model row title. models.json (S-8) becomes the source and must match. 'Whistle' is also literal inside errors.modelDownloadFailed.line. D103 §1 (L-58): also used on the phone Settings top layer and Transcription / Speakers pages; text unchanged.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -8389,7 +8405,9 @@
    "en": "Transcription",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "label",
    "boards": [
@@ -8397,7 +8415,7 @@
     "Settings-mac"
    ],
    "milestone": "UX8a",
-   "note": "Tab label with a text-lines icon above it. Selected on this board. An allowed vocabulary exception (HARMONY 2).",
+   "note": "Tab label with a text-lines icon above it. Selected on this board. An allowed vocabulary exception (HARMONY 2). D103 §1 (L-58): also used on the phone Settings top layer and Transcription / Speakers pages; text unchanged.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -29364,6 +29382,4998 @@
     },
     "pt-PT": {
      "text": "Os detalhes desta reunião não são suportados ou estão danificados. Os ficheiros foram mantidos."
+    }
+   }
+  },
+  {
+   "id": "settings.phone.group.transcripts",
+   "en": "Transcripts",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): first group of the phone Settings top layer (Transcription, Speakers, Saved voices), then the privacy line.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascrizioni"
+    },
+    "fr": {
+     "text": "Transcriptions"
+    },
+    "es": {
+     "text": "Transcripciones"
+    },
+    "pt-BR": {
+     "text": "Transcrições"
+    },
+    "pt-PT": {
+     "text": "Transcrições"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.group.meetings",
+   "en": "Your meetings",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): second group (Backup, then Trash on Android / Recently Deleted on iOS), then settings.phone.libraryStats.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le tue riunioni"
+    },
+    "fr": {
+     "text": "Vos réunions"
+    },
+    "es": {
+     "text": "Tus reuniones"
+    },
+    "pt-BR": {
+     "text": "Suas reuniões"
+    },
+    "pt-PT": {
+     "text": "As suas reuniões"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.group.app",
+   "en": "App",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): third group (Language), followed by the About card.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "App"
+    },
+    "fr": {
+     "text": "Application"
+    },
+    "es": {
+     "text": "Aplicación"
+    },
+    "pt-BR": {
+     "text": "App"
+    },
+    "pt-PT": {
+     "text": "Aplicação"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.backup",
+   "en": "Backup",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2Settings-Phones",
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1–2 (L-58, L-59): Settings row and the Backup page title. The row shows its answer on the right (settings.phone.backup.answer.*).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Backup"
+    },
+    "fr": {
+     "text": "Sauvegarde"
+    },
+    "es": {
+     "text": "Copia de seguridad"
+    },
+    "pt-BR": {
+     "text": "Backup"
+    },
+    "pt-PT": {
+     "text": "Cópia de segurança"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.backup.answer.transfer",
+   "en": "New phone",
+   "platforms": [
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): answer shown on the Backup row while device-to-device transfer is on. PROVISIONAL: the board predates D98 cloud backup; while encrypted cloud backup is also on (D98 default) Android shows backup.cloud.title until Alex draws a combined answer (QUESTIONS-FOR-ALEX q1).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Nuovo telefono"
+    },
+    "fr": {
+     "text": "Nouveau téléphone"
+    },
+    "es": {
+     "text": "Teléfono nuevo"
+    },
+    "pt-BR": {
+     "text": "Celular novo"
+    },
+    "pt-PT": {
+     "text": "Telemóvel novo"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.backup.answer.icloud",
+   "en": "iCloud",
+   "platforms": [
+    "ios"
+   ],
+   "role": "value",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): answer shown on the Backup row while meetings are not marked to be left out of iCloud Backup (D98).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "iCloud"
+    },
+    "fr": {
+     "text": "iCloud"
+    },
+    "es": {
+     "text": "iCloud"
+    },
+    "pt-BR": {
+     "text": "iCloud"
+    },
+    "pt-PT": {
+     "text": "iCloud"
+    }
+   }
+  },
+  {
+   "id": "settings.answer.off",
+   "en": "Off",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): generic answer for a top-layer row whose feature is off (pairs with models.status.on). Derived: the boards draw only the On state.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Disattivato"
+    },
+    "fr": {
+     "text": "Désactivé"
+    },
+    "es": {
+     "text": "Desactivado"
+    },
+    "pt-BR": {
+     "text": "Desativado"
+    },
+    "pt-PT": {
+     "text": "Desativado"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.trash",
+   "en": "Trash",
+   "platforms": [
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2Settings-Phones",
+    "P2Trash-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58, L-64, L-67): Android row and page title for deleted meetings. iOS uses settings.phone.trash.ios. The Phase 1 Android noun, now with a catalog id.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cestino"
+    },
+    "fr": {
+     "text": "Corbeille"
+    },
+    "es": {
+     "text": "Papelera"
+    },
+    "pt-BR": {
+     "text": "Lixeira"
+    },
+    "pt-PT": {
+     "text": "Lixo"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.trash.ios",
+   "en": "Recently Deleted",
+   "platforms": [
+    "ios"
+   ],
+   "role": "label",
+   "boards": [
+    "P2Settings-Phones",
+    "P2Trash-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58, L-64, L-67): iOS row and page title for deleted meetings (the iOS platform word, glossary).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Eliminati di recente"
+    },
+    "fr": {
+     "text": "Supprimés récemment"
+    },
+    "es": {
+     "text": "Eliminados"
+    },
+    "pt-BR": {
+     "text": "Apagados"
+    },
+    "pt-PT": {
+     "text": "Apagados recentemente"
+    }
+   }
+  },
+  {
+   "id": "library.meetingCount",
+   "en": "{n} meetings",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2Settings-Phones",
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "n": "number of meetings"
+   },
+   "plural": {
+    "one": "1 meeting",
+    "other": "{n} meetings"
+   },
+   "note": "D103 §1 (L-58): meeting count used by the phone Trash / Recently Deleted answer, settings.phone.libraryStats and settings.library.stats.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{n} riunioni",
+     "plural": {
+      "one": "1 riunione",
+      "many": "{n} riunioni",
+      "other": "{n} riunioni"
+     }
+    },
+    "fr": {
+     "text": "{n} réunions",
+     "plural": {
+      "one": "{n} réunion",
+      "many": "{n} réunions",
+      "other": "{n} réunions"
+     }
+    },
+    "es": {
+     "text": "{n} reuniones",
+     "plural": {
+      "one": "1 reunión",
+      "many": "{n} reuniones",
+      "other": "{n} reuniones"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} reuniões",
+     "plural": {
+      "one": "{n} reunião",
+      "many": "{n} reuniões",
+      "other": "{n} reuniões"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} reuniões",
+     "plural": {
+      "one": "{n} reunião",
+      "many": "{n} reuniões",
+      "other": "{n} reuniões"
+     }
+    }
+   }
+  },
+  {
+   "id": "settings.phone.audioHours",
+   "en": "{n} hours",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "n": "whole hours of audio in the Library, rounded down"
+   },
+   "plural": {
+    "one": "1 hour",
+    "other": "{n} hours"
+   },
+   "note": "D103 §1 (L-58): total audio length, whole hours, for settings.phone.libraryStats. Below one hour, apps use the HARMONY §6 duration format.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{n} ore",
+     "plural": {
+      "one": "1 ora",
+      "many": "{n} ore",
+      "other": "{n} ore"
+     }
+    },
+    "fr": {
+     "text": "{n} heures",
+     "plural": {
+      "one": "{n} heure",
+      "many": "{n} heures",
+      "other": "{n} heures"
+     }
+    },
+    "es": {
+     "text": "{n} horas",
+     "plural": {
+      "one": "1 hora",
+      "many": "{n} horas",
+      "other": "{n} horas"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} horas",
+     "plural": {
+      "one": "{n} hora",
+      "many": "{n} horas",
+      "other": "{n} horas"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} horas",
+     "plural": {
+      "one": "{n} hora",
+      "many": "{n} horas",
+      "other": "{n} horas"
+     }
+    }
+   }
+  },
+  {
+   "id": "settings.phone.libraryStats",
+   "en": "{meetings}, {hours} of audio.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "meetings": "library.meetingCount",
+    "hours": "settings.phone.audioHours"
+   },
+   "note": "D103 §1 (L-58): one line under the Your meetings group. Replaces the old “Your library” section (iOS); nothing else from it is removed. Drawn: “38 meetings, 41 hours of audio.”",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{meetings}, {hours} di audio."
+    },
+    "fr": {
+     "text": "{meetings}, {hours} d’audio."
+    },
+    "es": {
+     "text": "{meetings}, {hours} de audio."
+    },
+    "pt-BR": {
+     "text": "{meetings}, {hours} de áudio."
+    },
+    "pt-PT": {
+     "text": "{meetings}, {hours} de áudio."
+    }
+   }
+  },
+  {
+   "id": "settings.phone.language",
+   "en": "Language",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): App language row. The answer is the language’s own name, or settings.phone.language.system on Android when following the phone.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Lingua"
+    },
+    "fr": {
+     "text": "Langue"
+    },
+    "es": {
+     "text": "Idioma"
+    },
+    "pt-BR": {
+     "text": "Idioma"
+    },
+    "pt-PT": {
+     "text": "Idioma"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.language.system",
+   "en": "Phone",
+   "platforms": [
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): Android answer when the app follows the phone’s language (per-app language unset).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Telefono"
+    },
+    "fr": {
+     "text": "Téléphone"
+    },
+    "es": {
+     "text": "Teléfono"
+    },
+    "pt-BR": {
+     "text": "Celular"
+    },
+    "pt-PT": {
+     "text": "Telemóvel"
+    }
+   }
+  },
+  {
+   "id": "about.nameVersion",
+   "en": "Cassini talk {version}",
+   "platforms": [
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2Settings-Phones",
+    "P2PrefsUpdates-Mac"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "version": "marketing version, for example 0.4.0"
+   },
+   "note": "D103 §1, 6 (L-58, L-65): the About card at the end of phone Settings, and the version line in Mac Settings › Updates. Product name is never translated.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cassini talk {version}"
+    },
+    "fr": {
+     "text": "Cassini talk {version}"
+    },
+    "es": {
+     "text": "Cassini talk {version}"
+    },
+    "pt-BR": {
+     "text": "Cassini talk {version}"
+    },
+    "pt-PT": {
+     "text": "Cassini talk {version}"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.aboutRow.subtitle",
+   "en": "About, privacy and help",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1, 6 (L-58, L-65): second line of the About card; the card opens Settings › About.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Informazioni, privacy e aiuto"
+    },
+    "fr": {
+     "text": "À propos, confidentialité et aide"
+    },
+    "es": {
+     "text": "Información, privacidad y ayuda"
+    },
+    "pt-BR": {
+     "text": "Sobre, privacidade e ajuda"
+    },
+    "pt-PT": {
+     "text": "Acerca, privacidade e ajuda"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.peopleCount",
+   "en": "{n} people",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2Settings-Phones",
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "n": "number of saved voices"
+   },
+   "plural": {
+    "one": "1 person",
+    "other": "{n} people"
+   },
+   "note": "D103 §1, 5 (L-58, L-63): answer on the Saved voices rows. Desktop keeps settings.transcription.savedVoices.summary.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{n} persone",
+     "plural": {
+      "one": "1 persona",
+      "many": "{n} persone",
+      "other": "{n} persone"
+     }
+    },
+    "fr": {
+     "text": "{n} personnes",
+     "plural": {
+      "one": "{n} personne",
+      "many": "{n} personnes",
+      "other": "{n} personnes"
+     }
+    },
+    "es": {
+     "text": "{n} personas",
+     "plural": {
+      "one": "1 persona",
+      "many": "{n} personas",
+      "other": "{n} personas"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} pessoas",
+     "plural": {
+      "one": "{n} pessoa",
+      "many": "{n} pessoas",
+      "other": "{n} pessoas"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} pessoas",
+     "plural": {
+      "one": "{n} pessoa",
+      "many": "{n} pessoas",
+      "other": "{n} pessoas"
+     }
+    }
+   }
+  },
+  {
+   "id": "settings.phone.transcription.forNew",
+   "en": "For new meetings",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2Transcription-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): heading over the model choice (single choice, check mark on the model in use).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Per le nuove riunioni"
+    },
+    "fr": {
+     "text": "Pour les nouvelles réunions"
+    },
+    "es": {
+     "text": "Para reuniones nuevas"
+    },
+    "pt-BR": {
+     "text": "Para novas reuniões"
+    },
+    "pt-PT": {
+     "text": "Para novas reuniões"
+    }
+   }
+  },
+  {
+   "id": "models.whistle.description.short",
+   "en": "Fast. English, German, French, Spanish, Italian, Dutch and Polish.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [
+    "P2Transcription-Phones",
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): Phase 2 model description on all four. Supersedes models.whistle.description (kept for older pins).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Veloce. Inglese, tedesco, francese, spagnolo, italiano, olandese e polacco."
+    },
+    "fr": {
+     "text": "Rapide. Anglais, allemand, français, espagnol, italien, néerlandais et polonais."
+    },
+    "es": {
+     "text": "Rápido. Inglés, alemán, francés, español, italiano, neerlandés y polaco."
+    },
+    "pt-BR": {
+     "text": "Rápido. Inglês, alemão, francês, espanhol, italiano, holandês e polonês."
+    },
+    "pt-PT": {
+     "text": "Rápido. Inglês, alemão, francês, espanhol, italiano, neerlandês e polaco."
+    }
+   }
+  },
+  {
+   "id": "models.parakeetUltra.description.short",
+   "en": "More accurate. 25 European languages.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [
+    "P2Transcription-Phones",
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): Phase 2 model description on all four. Supersedes models.parakeetUltra.description (kept for older pins).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Più preciso. 25 lingue europee."
+    },
+    "fr": {
+     "text": "Plus précis. 25 langues européennes."
+    },
+    "es": {
+     "text": "Más preciso. 25 idiomas europeos."
+    },
+    "pt-BR": {
+     "text": "Mais preciso. 25 idiomas europeus."
+    },
+    "pt-PT": {
+     "text": "Mais preciso. 25 línguas europeias."
+    }
+   }
+  },
+  {
+   "id": "models.builtIn",
+   "en": "Built in",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2Transcription-Phones",
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): status of the bundled Whistle model, right of its row.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Integrato"
+    },
+    "fr": {
+     "text": "Intégré"
+    },
+    "es": {
+     "text": "Integrado"
+    },
+    "pt-BR": {
+     "text": "Integrado"
+    },
+    "pt-PT": {
+     "text": "Integrado"
+    }
+   }
+  },
+  {
+   "id": "models.keepTranscript",
+   "en": "Meetings already written down keep their transcript.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Transcription-Phones",
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): under the model choice (phones) or the “Writing down what was said” heading (desktop). Desktop: supersedes the second sentence of settings.transcription.speech.description.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni già trascritte mantengono la loro trascrizione."
+    },
+    "fr": {
+     "text": "Les réunions déjà transcrites gardent leur transcription."
+    },
+    "es": {
+     "text": "Las reuniones ya transcritas conservan su transcripción."
+    },
+    "pt-BR": {
+     "text": "As reuniões já transcritas mantêm a transcrição."
+    },
+    "pt-PT": {
+     "text": "As reuniões já transcritas mantêm a sua transcrição."
+    }
+   }
+  },
+  {
+   "id": "settings.phone.transcription.afterRecording",
+   "en": "After recording",
+   "platforms": [
+    "ios"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2Transcription-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): iOS only, over “Transcribe right away”.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Dopo la registrazione"
+    },
+    "fr": {
+     "text": "Après l’enregistrement"
+    },
+    "es": {
+     "text": "Después de grabar"
+    },
+    "pt-BR": {
+     "text": "Depois de gravar"
+    },
+    "pt-PT": {
+     "text": "Depois de gravar"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.transcription.rightAway",
+   "en": "Transcribe right away",
+   "platforms": [
+    "ios"
+   ],
+   "role": "switch",
+   "boards": [
+    "P2Transcription-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): the existing iOS auto-transcribe switch, renamed. Default unchanged.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascrivi subito"
+    },
+    "fr": {
+     "text": "Transcrire tout de suite"
+    },
+    "es": {
+     "text": "Transcribir enseguida"
+    },
+    "pt-BR": {
+     "text": "Transcrever na hora"
+    },
+    "pt-PT": {
+     "text": "Transcrever de imediato"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.transcription.rightAway.subtitle",
+   "en": "When this is off, Cassini keeps the audio and you choose when to transcribe.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Transcription-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): subtitle of settings.phone.transcription.rightAway.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Quando è disattivato, Cassini conserva l’audio e scegli tu quando trascrivere."
+    },
+    "fr": {
+     "text": "Quand cette option est désactivée, Cassini garde l’audio et vous choisissez quand transcrire."
+    },
+    "es": {
+     "text": "Si está desactivado, Cassini guarda el audio y tú eliges cuándo transcribir."
+    },
+    "pt-BR": {
+     "text": "Quando estiver desativado, o Cassini guarda o áudio e você escolhe quando transcrever."
+    },
+    "pt-PT": {
+     "text": "Quando estiver desativado, o Cassini guarda o áudio e escolhe quando transcrever."
+    }
+   }
+  },
+  {
+   "id": "settings.phone.transcription.goingOnline",
+   "en": "Going online",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2Transcription-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): last group on phone Settings › Transcription.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Connessione a Internet"
+    },
+    "fr": {
+     "text": "Connexion à Internet"
+    },
+    "es": {
+     "text": "Conexión a internet"
+    },
+    "pt-BR": {
+     "text": "Conexão à internet"
+    },
+    "pt-PT": {
+     "text": "Ligação à internet"
+    }
+   }
+  },
+  {
+   "id": "models.whereFrom",
+   "en": "Where the models come from",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "P2Transcription-Phones",
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1, 4 (L-58, L-61): link row / text button one layer down: the model source, sizes, checksums and licences (third layer).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Da dove arrivano i modelli"
+    },
+    "fr": {
+     "text": "D’où viennent les modèles"
+    },
+    "es": {
+     "text": "De dónde vienen los modelos"
+    },
+    "pt-BR": {
+     "text": "De onde vêm os modelos"
+    },
+    "pt-PT": {
+     "text": "De onde vêm os modelos"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.transcription.online",
+   "en": "Cassini goes online only to download a model you ask for. Each file is checked before it is used.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Transcription-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): under “Where the models come from”.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cassini si connette a Internet solo per scaricare un modello che hai chiesto. Ogni file viene verificato prima dell’uso."
+    },
+    "fr": {
+     "text": "Cassini ne se connecte à Internet que pour télécharger un modèle que vous avez demandé. Chaque fichier est vérifié avant d’être utilisé."
+    },
+    "es": {
+     "text": "Cassini solo se conecta a internet para descargar un modelo que hayas pedido. Cada archivo se comprueba antes de usarlo."
+    },
+    "pt-BR": {
+     "text": "O Cassini só se conecta à internet para baixar um modelo que você pedir. Cada arquivo é verificado antes de ser usado."
+    },
+    "pt-PT": {
+     "text": "O Cassini só se liga à internet para descarregar um modelo que pedir. Cada ficheiro é verificado antes de ser usado."
+    }
+   }
+  },
+  {
+   "id": "settings.transcription.privacyLine",
+   "en": "Written down on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): first line of desktop Settings › Transcription. Supersedes settings.transcription.privacy and the settings.transcription.network.* group (kept for older pins; update checks stay described in Mac Settings › Updates).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo computer. Cassini si connette a Internet solo per scaricare un modello che hai chiesto, e ogni file viene prima verificato."
+    },
+    "fr": {
+     "text": "Transcrit sur cet ordinateur. Cassini ne se connecte à Internet que pour télécharger un modèle que vous avez demandé, et chaque fichier est d’abord vérifié."
+    },
+    "es": {
+     "text": "Transcrito en este equipo. Cassini solo se conecta a internet para descargar un modelo que hayas pedido, y cada archivo se comprueba antes."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste computador. O Cassini só se conecta à internet para baixar um modelo que você pedir, e cada arquivo é verificado antes."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste computador. O Cassini só se liga à internet para descarregar um modelo que pedir, e cada ficheiro é verificado antes."
+    }
+   }
+  },
+  {
+   "id": "models.statusWithSize",
+   "en": "{status} · {size}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "value",
+   "boards": [
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "status": "models.status.on or settings.answer.off",
+    "size": "format.size"
+   },
+   "note": "D103 §1 (L-58): installed speaker model status with its size, for example “On · 62 MB”, left of Remove. Size from the manifest (HARMONY §12).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{status} · {size}"
+    },
+    "fr": {
+     "text": "{status} · {size}"
+    },
+    "es": {
+     "text": "{status} · {size}"
+    },
+    "pt-BR": {
+     "text": "{status} · {size}"
+    },
+    "pt-PT": {
+     "text": "{status} · {size}"
+    }
+   }
+  },
+  {
+   "id": "models.tellSpeakersApart.description.short",
+   "en": "Speaker 1, Speaker 2 and so on.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [
+    "P2Speakers-Phones",
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): Phase 2 description under “Tell speakers apart”. Uses the common.speaker.unnamed words. Supersedes models.tellSpeakersApart.description (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Voce 1, Voce 2 e così via."
+    },
+    "fr": {
+     "text": "Intervenant 1, Intervenant 2, etc."
+    },
+    "es": {
+     "text": "Hablante 1, Hablante 2, etc."
+    },
+    "pt-BR": {
+     "text": "Locutor 1, Locutor 2 e assim por diante."
+    },
+    "pt-PT": {
+     "text": "Orador 1, Orador 2 e assim por diante."
+    }
+   }
+  },
+  {
+   "id": "models.recogniseVoices.description.short",
+   "en": "Names people you saved as soon as they speak.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [
+    "P2Speakers-Phones",
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): Phase 2 description under “Recognise saved voices”. Supersedes models.recogniseVoices.description (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Dà il nome alle persone salvate appena parlano."
+    },
+    "fr": {
+     "text": "Nomme les personnes mémorisées dès qu’elles parlent."
+    },
+    "es": {
+     "text": "Pone nombre a las personas guardadas en cuanto hablan."
+    },
+    "pt-BR": {
+     "text": "Dá nome às pessoas salvas assim que elas falam."
+    },
+    "pt-PT": {
+     "text": "Dá nome às pessoas guardadas assim que falam."
+    }
+   }
+  },
+  {
+   "id": "settings.phone.speakers.whoIsSpeaking",
+   "en": "Who is speaking",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): first group on phone Settings › Speakers: Tell speakers apart, Recognise saved voices.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Chi sta parlando"
+    },
+    "fr": {
+     "text": "Qui parle"
+    },
+    "es": {
+     "text": "Quién habla"
+    },
+    "pt-BR": {
+     "text": "Quem está falando"
+    },
+    "pt-PT": {
+     "text": "Quem está a falar"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.speakers.runsOnDevice.phone",
+   "en": "Both run on this phone, after transcription.",
+   "platforms": [
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): under the Who is speaking group (Android).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Entrambi funzionano su questo telefono, dopo la trascrizione."
+    },
+    "fr": {
+     "text": "Les deux fonctionnent sur ce téléphone, après la transcription."
+    },
+    "es": {
+     "text": "Ambos funcionan en este teléfono, después de la transcripción."
+    },
+    "pt-BR": {
+     "text": "Os dois funcionam neste celular, depois da transcrição."
+    },
+    "pt-PT": {
+     "text": "Ambos funcionam neste telemóvel, depois da transcrição."
+    }
+   }
+  },
+  {
+   "id": "settings.phone.speakers.runsOnDevice.iphone",
+   "en": "Both run on this iPhone, after transcription.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): under the Who is speaking group (iPhone).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Entrambi funzionano su questo iPhone, dopo la trascrizione."
+    },
+    "fr": {
+     "text": "Les deux fonctionnent sur cet iPhone, après la transcription."
+    },
+    "es": {
+     "text": "Ambos funcionan en este iPhone, después de la transcripción."
+    },
+    "pt-BR": {
+     "text": "Os dois funcionam neste iPhone, depois da transcrição."
+    },
+    "pt-PT": {
+     "text": "Ambos funcionam neste iPhone, depois da transcrição."
+    }
+   }
+  },
+  {
+   "id": "settings.phone.speakers.runsOnDevice.ipad",
+   "en": "Both run on this iPad, after transcription.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): iPad variant, derived from the iPhone board (not drawn).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Entrambi funzionano su questo iPad, dopo la trascrizione."
+    },
+    "fr": {
+     "text": "Les deux fonctionnent sur cet iPad, après la transcription."
+    },
+    "es": {
+     "text": "Ambos funcionan en este iPad, después de la transcripción."
+    },
+    "pt-BR": {
+     "text": "Os dois funcionam neste iPad, depois da transcrição."
+    },
+    "pt-PT": {
+     "text": "Ambos funcionam neste iPad, depois da transcrição."
+    }
+   }
+  },
+  {
+   "id": "voices.rememberDefault.title",
+   "en": "Remember people I name",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "switch",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §3 (L-60): the default of “Remember this voice” in Name a speaker. Set by the answer to voices.setup.title; changeable here. Phones: Settings › Speakers › Saved voices group. Desktop: Settings › Transcription › Speakers group (not drawn; PROVISIONAL, QUESTIONS-FOR-ALEX q4).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Ricorda le persone a cui do un nome"
+    },
+    "fr": {
+     "text": "Mémoriser les personnes que je nomme"
+    },
+    "es": {
+     "text": "Recordar a las personas a las que pongo nombre"
+    },
+    "pt-BR": {
+     "text": "Lembrar as pessoas que eu nomear"
+    },
+    "pt-PT": {
+     "text": "Memorizar as pessoas a quem dou nome"
+    }
+   }
+  },
+  {
+   "id": "voices.rememberDefault.subtitle",
+   "en": "Next time, Cassini names them for you.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §3 (L-60): subtitle of voices.rememberDefault.title.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La prossima volta Cassini darà loro il nome per te."
+    },
+    "fr": {
+     "text": "La prochaine fois, Cassini les nommera pour vous."
+    },
+    "es": {
+     "text": "La próxima vez, Cassini les pondrá nombre por ti."
+    },
+    "pt-BR": {
+     "text": "Da próxima vez, o Cassini dá nome a elas para você."
+    },
+    "pt-PT": {
+     "text": "Da próxima vez, o Cassini dá-lhes nome por si."
+    }
+   }
+  },
+  {
+   "id": "settings.ios.speakers.autoName",
+   "en": "Name strong matches automatically",
+   "platforms": [
+    "ios"
+   ],
+   "role": "switch",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): iOS only, the existing auto-name switch with its Phase 2 label. Off by default.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Dai il nome automaticamente alle corrispondenze sicure"
+    },
+    "fr": {
+     "text": "Nommer automatiquement les correspondances sûres"
+    },
+    "es": {
+     "text": "Poner nombre automáticamente a las coincidencias claras"
+    },
+    "pt-BR": {
+     "text": "Dar nome automaticamente às correspondências fortes"
+    },
+    "pt-PT": {
+     "text": "Dar nome automaticamente às correspondências fortes"
+    }
+   }
+  },
+  {
+   "id": "settings.ios.speakers.autoName.subtitle",
+   "en": "Matches can be wrong, so this is off until you choose.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): subtitle of settings.ios.speakers.autoName.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le corrispondenze possono essere sbagliate, quindi è disattivato finché non scegli tu."
+    },
+    "fr": {
+     "text": "Une correspondance peut être fausse : cette option reste donc désactivée tant que vous ne l’activez pas."
+    },
+    "es": {
+     "text": "Las coincidencias pueden fallar, así que está desactivado hasta que tú lo elijas."
+    },
+    "pt-BR": {
+     "text": "As correspondências podem estar erradas, então fica desativado até você escolher."
+    },
+    "pt-PT": {
+     "text": "As correspondências podem estar erradas, por isso fica desativado até escolher."
+    }
+   }
+  },
+  {
+   "id": "firstRun.howTo",
+   "en": "Press Record when the meeting starts and Stop when it ends. Cassini writes it all down.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "body",
+   "boards": [
+    "P2FirstRun-Phones",
+    "P2FirstRun-Desktop",
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §3 (L-60, L-27): the one how-to line on all four, under the waveform. Supersedes firstRun.body on desktop (kept for older pins). Record and Stop are the button words (common.record, common.stop).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Premi Registra quando inizia la riunione e Ferma quando finisce. Cassini trascrive tutto."
+    },
+    "fr": {
+     "text": "Appuyez sur Enregistrer quand la réunion commence et sur Arrêter quand elle se termine. Cassini transcrit tout."
+    },
+    "es": {
+     "text": "Pulsa Grabar cuando empiece la reunión y Detener cuando termine. Cassini lo transcribe todo."
+    },
+    "pt-BR": {
+     "text": "Toque em Gravar quando a reunião começar e em Parar quando terminar. O Cassini transcreve tudo."
+    },
+    "pt-PT": {
+     "text": "Carregue em Gravar quando a reunião começar e em Parar quando terminar. O Cassini transcreve tudo."
+    }
+   }
+  },
+  {
+   "id": "firstRun.shortcutLine",
+   "en": "{shortcut} records from anywhere in Cassini.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2FirstRun-Desktop",
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "shortcut": "common.shortcut.record (Ctrl+R / ⌘R)"
+   },
+   "note": "D103 §3 (L-60): desktop first-run shortcut line, now a sentence. Supersedes firstRun.shortcutHint (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{shortcut} registra da qualsiasi punto di Cassini."
+    },
+    "fr": {
+     "text": "{shortcut} enregistre depuis n’importe où dans Cassini."
+    },
+    "es": {
+     "text": "{shortcut} graba desde cualquier parte de Cassini."
+    },
+    "pt-BR": {
+     "text": "{shortcut} grava de qualquer lugar do Cassini."
+    },
+    "pt-PT": {
+     "text": "{shortcut} grava a partir de qualquer ponto do Cassini."
+    }
+   }
+  },
+  {
+   "id": "firstRun.libraryLocation",
+   "en": "Your Library is {folder}.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2FirstRun-Desktop",
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "folder": "Library folder path as shown to the person, for example Music/Cassini"
+   },
+   "note": "D103 §3 (L-60): appended after the desktop privacy line on first run (“… The audio never leaves it. Your Library is Music/Cassini.”).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La tua Libreria è {folder}."
+    },
+    "fr": {
+     "text": "Votre bibliothèque se trouve dans {folder}."
+    },
+    "es": {
+     "text": "Tu biblioteca está en {folder}."
+    },
+    "pt-BR": {
+     "text": "Sua biblioteca fica em {folder}."
+    },
+    "pt-PT": {
+     "text": "A sua Biblioteca está em {folder}."
+    }
+   }
+  },
+  {
+   "id": "voices.setup.body.phone",
+   "en": "When you name a speaker, Cassini can remember their voice and name them for you in later meetings.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "body",
+   "boards": [
+    "P2Voices-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §3 (L-60): body of the one voices question on phones, shown over the first meeting with more than one speaker. Supersedes voices.setup.body (kept). The privacy line under it stays voices.setup.privacy.phone (D98: phone backups include saved voices by default), not the drawn “The voice stays on this phone. It is never shared.” (QUESTIONS-FOR-ALEX q2).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Quando dai un nome a una voce, Cassini può ricordarla e dare il nome a quella persona nelle riunioni successive."
+    },
+    "fr": {
+     "text": "Quand vous nommez un intervenant, Cassini peut mémoriser sa voix et le nommer pour vous dans les réunions suivantes."
+    },
+    "es": {
+     "text": "Cuando pones nombre a un hablante, Cassini puede recordar su voz y ponerle nombre por ti en reuniones posteriores."
+    },
+    "pt-BR": {
+     "text": "Quando você dá nome a um locutor, o Cassini pode lembrar a voz dele e dar o nome por você nas próximas reuniões."
+    },
+    "pt-PT": {
+     "text": "Quando dá nome a um orador, o Cassini pode memorizar a voz e dar-lhe nome por si nas reuniões seguintes."
+    }
+   }
+  },
+  {
+   "id": "voices.setup.body.desktop",
+   "en": "When you name a speaker, Cassini can remember their voice and name them for you in later meetings. The voice stays on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [
+    "P2Voices-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §3 (L-60): body of the one voices question on desktop (no cloud backup on desktop, HARMONY §12). Supersedes voices.setup.body + voices.setup.privacy.desktop in the question (both kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Quando dai un nome a una voce, Cassini può ricordarla e dare il nome a quella persona nelle riunioni successive. La voce resta su questo computer."
+    },
+    "fr": {
+     "text": "Quand vous nommez un intervenant, Cassini peut mémoriser sa voix et le nommer pour vous dans les réunions suivantes. La voix reste sur cet ordinateur."
+    },
+    "es": {
+     "text": "Cuando pones nombre a un hablante, Cassini puede recordar su voz y ponerle nombre por ti en reuniones posteriores. La voz se queda en este equipo."
+    },
+    "pt-BR": {
+     "text": "Quando você dá nome a um locutor, o Cassini pode lembrar a voz dele e dar o nome por você nas próximas reuniões. A voz fica neste computador."
+    },
+    "pt-PT": {
+     "text": "Quando dá nome a um orador, o Cassini pode memorizar a voz e dar-lhe nome por si nas reuniões seguintes. A voz fica neste computador."
+    }
+   }
+  },
+  {
+   "id": "voices.setup.enable.phone",
+   "en": "Yes, remember voices",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "P2Voices-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §3 (L-60): phone primary button. Desktop keeps voices.setup.enable (“Remember voices”). Secondary is common.notNow on all four.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Sì, ricorda le voci"
+    },
+    "fr": {
+     "text": "Oui, mémoriser les voix"
+    },
+    "es": {
+     "text": "Sí, recordar voces"
+    },
+    "pt-BR": {
+     "text": "Sim, lembrar vozes"
+    },
+    "pt-PT": {
+     "text": "Sim, memorizar vozes"
+    }
+   }
+  },
+  {
+   "id": "voices.setup.kindness",
+   "en": "It’s kind to ask people before you save their voice.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Voices-Phones",
+    "P2Voices-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §3 (L-60): under the buttons on phones; first sentence of the footnote on desktop.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "È gentile chiedere alle persone prima di salvare la loro voce."
+    },
+    "fr": {
+     "text": "Il est courtois de demander aux personnes avant de mémoriser leur voix."
+    },
+    "es": {
+     "text": "Es amable preguntar a las personas antes de guardar su voz."
+    },
+    "pt-BR": {
+     "text": "É gentil perguntar às pessoas antes de salvar a voz delas."
+    },
+    "pt-PT": {
+     "text": "É simpático perguntar às pessoas antes de guardar a voz delas."
+    }
+   }
+  },
+  {
+   "id": "voices.setup.changeLater.phone",
+   "en": "You can change this in Settings › Speakers.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Voices-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §3 (L-60): last line of the phone question. fr/pt-BR use the iOS Settings word; Android localises it as Paramètres / Configurações (copy review, D-1019).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Puoi cambiare questa scelta in Impostazioni › Voci."
+    },
+    "fr": {
+     "text": "Vous pouvez modifier ce choix dans Réglages › Intervenants."
+    },
+    "es": {
+     "text": "Puedes cambiarlo en Ajustes › Hablantes."
+    },
+    "pt-BR": {
+     "text": "Você pode mudar isso em Ajustes › Locutores."
+    },
+    "pt-PT": {
+     "text": "Pode alterar isto em Definições › Oradores."
+    }
+   }
+  },
+  {
+   "id": "voices.setup.changeLater.desktop",
+   "en": "You can change this in Preferences › Transcription.",
+   "mac": "You can change this in Settings › Transcription.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Voices-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §3 (L-60): second sentence of the desktop footnote.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Puoi cambiare questa scelta in Preferenze › Trascrizione.",
+     "mac": "Puoi cambiare questa scelta in Impostazioni › Trascrizione."
+    },
+    "fr": {
+     "text": "Vous pouvez modifier ce choix dans Préférences › Transcription.",
+     "mac": "Vous pouvez modifier ce choix dans Réglages › Transcription."
+    },
+    "es": {
+     "text": "Puedes cambiarlo en Preferencias › Transcripción.",
+     "mac": "Puedes cambiarlo en Ajustes › Transcripción."
+    },
+    "pt-BR": {
+     "text": "Você pode mudar isso em Preferências › Transcrição.",
+     "mac": "Você pode mudar isso em Ajustes › Transcrição."
+    },
+    "pt-PT": {
+     "text": "Pode alterar isto em Preferências › Transcrição.",
+     "mac": "Pode alterar isto em Definições › Transcrição."
+    }
+   }
+  },
+  {
+   "id": "models.offer.title.phone",
+   "en": "Transcribe on this phone",
+   "platforms": [
+    "android"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): title of the model download sheet. Opens when a model is missing (same states as today).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascrivi su questo telefono"
+    },
+    "fr": {
+     "text": "Transcrire sur ce téléphone"
+    },
+    "es": {
+     "text": "Transcribir en este teléfono"
+    },
+    "pt-BR": {
+     "text": "Transcrever neste celular"
+    },
+    "pt-PT": {
+     "text": "Transcrever neste telemóvel"
+    }
+   }
+  },
+  {
+   "id": "models.offer.title.iphone",
+   "en": "Transcribe on this iPhone",
+   "platforms": [
+    "ios"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): title of the model download sheet. Opens when a model is missing (same states as today).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascrivi su questo iPhone"
+    },
+    "fr": {
+     "text": "Transcrire sur cet iPhone"
+    },
+    "es": {
+     "text": "Transcribir en este iPhone"
+    },
+    "pt-BR": {
+     "text": "Transcrever neste iPhone"
+    },
+    "pt-PT": {
+     "text": "Transcrever neste iPhone"
+    }
+   }
+  },
+  {
+   "id": "models.offer.title.ipad",
+   "en": "Transcribe on this iPad",
+   "platforms": [
+    "ios"
+   ],
+   "role": "dialog-title",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): title of the model download sheet. Opens when a model is missing (same states as today). iPad variant derived (not drawn).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascrivi su questo iPad"
+    },
+    "fr": {
+     "text": "Transcrire sur cet iPad"
+    },
+    "es": {
+     "text": "Transcribir en este iPad"
+    },
+    "pt-BR": {
+     "text": "Transcrever neste iPad"
+    },
+    "pt-PT": {
+     "text": "Transcrever neste iPad"
+    }
+   }
+  },
+  {
+   "id": "models.offer.body.phone",
+   "en": "Cassini needs a one-time download of {size}. After that, everything happens on this phone, even offline.",
+   "platforms": [
+    "android"
+   ],
+   "role": "body",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "size": "total download size of the missing parts, format.size (for example 528 MB)"
+   },
+   "note": "D103 §4 (L-61): the one sentence. {size} is the total of the parts still missing, from the manifest (HARMONY §12), set in bold ink.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cassini ha bisogno di un unico download di {size}. Dopo, tutto avviene su questo telefono, anche offline."
+    },
+    "fr": {
+     "text": "Cassini a besoin d’un seul téléchargement de {size}. Ensuite, tout se passe sur ce téléphone, même hors ligne."
+    },
+    "es": {
+     "text": "Cassini necesita una única descarga de {size}. Después, todo ocurre en este teléfono, incluso sin conexión."
+    },
+    "pt-BR": {
+     "text": "O Cassini precisa de um único download de {size}. Depois disso, tudo acontece neste celular, mesmo offline."
+    },
+    "pt-PT": {
+     "text": "O Cassini precisa de uma única transferência de {size}. Depois disso, tudo acontece neste telemóvel, mesmo sem ligação."
+    }
+   }
+  },
+  {
+   "id": "models.offer.body.iphone",
+   "en": "Cassini needs a one-time download of {size}. After that, everything happens on this iPhone, even offline.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "body",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "size": "total download size of the missing parts, format.size (for example 528 MB)"
+   },
+   "note": "D103 §4 (L-61): the one sentence. {size} is the total of the parts still missing, from the manifest (HARMONY §12), set in bold ink.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cassini ha bisogno di un unico download di {size}. Dopo, tutto avviene su questo iPhone, anche offline."
+    },
+    "fr": {
+     "text": "Cassini a besoin d’un seul téléchargement de {size}. Ensuite, tout se passe sur cet iPhone, même hors ligne."
+    },
+    "es": {
+     "text": "Cassini necesita una única descarga de {size}. Después, todo ocurre en este iPhone, incluso sin conexión."
+    },
+    "pt-BR": {
+     "text": "O Cassini precisa de um único download de {size}. Depois disso, tudo acontece neste iPhone, mesmo offline."
+    },
+    "pt-PT": {
+     "text": "O Cassini precisa de uma única transferência de {size}. Depois disso, tudo acontece neste iPhone, mesmo sem ligação."
+    }
+   }
+  },
+  {
+   "id": "models.offer.body.ipad",
+   "en": "Cassini needs a one-time download of {size}. After that, everything happens on this iPad, even offline.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "body",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "size": "total download size of the missing parts, format.size (for example 528 MB)"
+   },
+   "note": "D103 §4 (L-61): the one sentence. {size} is the total of the parts still missing, from the manifest (HARMONY §12), set in bold ink. iPad variant derived (not drawn).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Cassini ha bisogno di un unico download di {size}. Dopo, tutto avviene su questo iPad, anche offline."
+    },
+    "fr": {
+     "text": "Cassini a besoin d’un seul téléchargement de {size}. Ensuite, tout se passe sur cet iPad, même hors ligne."
+    },
+    "es": {
+     "text": "Cassini necesita una única descarga de {size}. Después, todo ocurre en este iPad, incluso sin conexión."
+    },
+    "pt-BR": {
+     "text": "O Cassini precisa de um único download de {size}. Depois disso, tudo acontece neste iPad, mesmo offline."
+    },
+    "pt-PT": {
+     "text": "O Cassini precisa de uma única transferência de {size}. Depois disso, tudo acontece neste iPad, mesmo sem ligação."
+    }
+   }
+  },
+  {
+   "id": "models.offer.part.speech",
+   "en": "Speech recognition",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): part row with its size on the right; listed only while that part is missing.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riconoscimento vocale"
+    },
+    "fr": {
+     "text": "Reconnaissance vocale"
+    },
+    "es": {
+     "text": "Reconocimiento de voz"
+    },
+    "pt-BR": {
+     "text": "Reconhecimento de fala"
+    },
+    "pt-PT": {
+     "text": "Reconhecimento de fala"
+    }
+   }
+  },
+  {
+   "id": "models.offer.part.tellApart",
+   "en": "Telling speakers apart",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): part row (speaker separation model).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Distinzione delle voci"
+    },
+    "fr": {
+     "text": "Distinction des intervenants"
+    },
+    "es": {
+     "text": "Distinción de hablantes"
+    },
+    "pt-BR": {
+     "text": "Distinção de locutores"
+    },
+    "pt-PT": {
+     "text": "Distinção de oradores"
+    }
+   }
+  },
+  {
+   "id": "models.offer.part.recognise",
+   "en": "Recognising saved voices",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): part row (voice recognition model).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riconoscimento delle voci salvate"
+    },
+    "fr": {
+     "text": "Reconnaissance des voix mémorisées"
+    },
+    "es": {
+     "text": "Reconocimiento de voces guardadas"
+    },
+    "pt-BR": {
+     "text": "Reconhecimento de vozes salvas"
+    },
+    "pt-PT": {
+     "text": "Reconhecimento de vozes guardadas"
+    }
+   }
+  },
+  {
+   "id": "models.offer.spaceNeeded",
+   "en": "Needs about {size} free while it installs. Each file is checked before it is used.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "size": "peak free space needed while installing, format.size (for example 1.2 GB)"
+   },
+   "note": "D103 §4 (L-61): free space needed during install (from the manifest), then the checksum promise.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Servono circa {size} liberi durante l’installazione. Ogni file viene verificato prima dell’uso."
+    },
+    "fr": {
+     "text": "Il faut environ {size} d’espace libre pendant l’installation. Chaque fichier est vérifié avant d’être utilisé."
+    },
+    "es": {
+     "text": "Necesita unos {size} libres mientras se instala. Cada archivo se comprueba antes de usarlo."
+    },
+    "pt-BR": {
+     "text": "Precisa de cerca de {size} livres durante a instalação. Cada arquivo é verificado antes de ser usado."
+    },
+    "pt-PT": {
+     "text": "Precisa de cerca de {size} livres durante a instalação. Cada ficheiro é verificado antes de ser usado."
+    }
+   }
+  },
+  {
+   "id": "models.offer.download",
+   "en": "Download and transcribe",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): primary button of the sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Scarica e trascrivi"
+    },
+    "fr": {
+     "text": "Télécharger et transcrire"
+    },
+    "es": {
+     "text": "Descargar y transcribir"
+    },
+    "pt-BR": {
+     "text": "Baixar e transcrever"
+    },
+    "pt-PT": {
+     "text": "Descarregar e transcrever"
+    }
+   }
+  },
+  {
+   "id": "models.offer.recordingKept",
+   "en": "Your recording is kept either way.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): under “Not now” (common.notNow). Replaces “Not now — keep the audio”.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La registrazione viene conservata in ogni caso."
+    },
+    "fr": {
+     "text": "Votre enregistrement est conservé dans tous les cas."
+    },
+    "es": {
+     "text": "Tu grabación se conserva en cualquier caso."
+    },
+    "pt-BR": {
+     "text": "Sua gravação é mantida de qualquer forma."
+    },
+    "pt-PT": {
+     "text": "A sua gravação é mantida de qualquer forma."
+    }
+   }
+  },
+  {
+   "id": "recordFirst.lawPlain",
+   "en": "Tell the people you record. In many places the law requires it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): plainer words for the law line. Supersedes recordFirst.responsibility (kept for older pins).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Avvisa le persone che registri. In molti paesi è obbligatorio per legge."
+    },
+    "fr": {
+     "text": "Prévenez les personnes que vous enregistrez. Dans de nombreux pays, la loi l’exige."
+    },
+    "es": {
+     "text": "Avisa a las personas que grabas. En muchos lugares lo exige la ley."
+    },
+    "pt-BR": {
+     "text": "Avise as pessoas que você grava. Em muitos lugares, a lei exige isso."
+    },
+    "pt-PT": {
+     "text": "Avise as pessoas que grava. Em muitos sítios, a lei exige-o."
+    }
+   }
+  },
+  {
+   "id": "recordFirst.mic.plain",
+   "en": "What you say.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): microphone source line. Supersedes recordFirst.mic.description (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Ciò che dici."
+    },
+    "fr": {
+     "text": "Ce que vous dites."
+    },
+    "es": {
+     "text": "Lo que dices."
+    },
+    "pt-BR": {
+     "text": "O que você diz."
+    },
+    "pt-PT": {
+     "text": "O que diz."
+    }
+   }
+  },
+  {
+   "id": "recordFirst.sound.plain",
+   "en": "The others in your meeting app, so they are on the recording too.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): computer-sound source line. Supersedes recordFirst.sound.description (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Gli altri nella tua app per riunioni, così anche loro sono nella registrazione."
+    },
+    "fr": {
+     "text": "Les autres participants de votre app de réunion, pour qu’ils soient aussi dans l’enregistrement."
+    },
+    "es": {
+     "text": "Los demás en tu app de reuniones, para que también queden en la grabación."
+    },
+    "pt-BR": {
+     "text": "Os outros no seu app de reuniões, para que também fiquem na gravação."
+    },
+    "pt-PT": {
+     "text": "Os outros na sua aplicação de reuniões, para que também fiquem na gravação."
+    }
+   }
+  },
+  {
+   "id": "recordFirst.mic.caption.plain",
+   "en": "Your desktop may ask you to allow this.",
+   "mac": "macOS asks you to allow this.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): permission caption under “What you say.”, as drawn (GNOME without “next”). Supersedes recordFirst.mic.caption (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Il desktop potrebbe chiederti di consentirlo.",
+     "mac": "macOS ti chiede di consentirlo."
+    },
+    "fr": {
+     "text": "Votre bureau peut vous demander de l’autoriser.",
+     "mac": "macOS vous demande de l’autoriser."
+    },
+    "es": {
+     "text": "Puede que tu escritorio te pida permitirlo.",
+     "mac": "macOS te pide que lo permitas."
+    },
+    "pt-BR": {
+     "text": "Seu ambiente de trabalho pode pedir que você permita isso.",
+     "mac": "O macOS pede que você permita isso."
+    },
+    "pt-PT": {
+     "text": "O seu ambiente de trabalho pode pedir-lhe que o permita.",
+     "mac": "O macOS pede-lhe que o permita."
+    }
+   }
+  },
+  {
+   "id": "recordFirst.sound.caption.plain",
+   "en": "Nothing to allow on this computer.",
+   "mac": "macOS asks once more, for Screen & System Audio Recording.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): permission caption under the computer-sound line. Mac names the second macOS prompt (HARMONY §10 others-permission line, now with a catalog id). Supersedes recordFirst.sound.caption (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Niente da consentire su questo computer.",
+     "mac": "macOS lo chiede un’altra volta, per Registrazione schermo e audio di sistema."
+    },
+    "fr": {
+     "text": "Rien à autoriser sur cet ordinateur.",
+     "mac": "macOS le demande une seconde fois, pour Enregistrement de l’écran et de l’audio du système."
+    },
+    "es": {
+     "text": "No hay nada que permitir en este equipo.",
+     "mac": "macOS lo pide otra vez, para Grabación de pantalla y audio del sistema."
+    },
+    "pt-BR": {
+     "text": "Nada a permitir neste computador.",
+     "mac": "O macOS pede mais uma vez, para Gravação de Tela e Áudio do Sistema."
+    },
+    "pt-PT": {
+     "text": "Nada a permitir neste computador.",
+     "mac": "O macOS pede mais uma vez, para Gravação de ecrã e áudio do sistema."
+    }
+   }
+  },
+  {
+   "id": "recordFirst.test",
+   "en": "Test recording first",
+   "mac": "Test recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §4 (L-61): secondary button at the start of the action row, on both desktops (Mac gains the button). Runs the D60 test (test.*).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Prova prima la registrazione",
+     "mac": "Prova di registrazione"
+    },
+    "fr": {
+     "text": "Tester d’abord l’enregistrement",
+     "mac": "Tester l’enregistrement"
+    },
+    "es": {
+     "text": "Probar antes la grabación",
+     "mac": "Probar la grabación"
+    },
+    "pt-BR": {
+     "text": "Testar a gravação antes",
+     "mac": "Testar gravação"
+    },
+    "pt-PT": {
+     "text": "Testar a gravação primeiro",
+     "mac": "Testar a gravação"
+    }
+   }
+  },
+  {
+   "id": "settings.recording.group.starting",
+   "en": "Starting a recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2PrefsRecording-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): first group: global shortcut, then “Explain recording before the first one”.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Avviare una registrazione"
+    },
+    "fr": {
+     "text": "Démarrer un enregistrement"
+    },
+    "es": {
+     "text": "Iniciar una grabación"
+    },
+    "pt-BR": {
+     "text": "Iniciar uma gravação"
+    },
+    "pt-PT": {
+     "text": "Iniciar uma gravação"
+    }
+   }
+  },
+  {
+   "id": "settings.recording.firstRecord.subtitle",
+   "en": "Shows “Before you record” the next time you press Record.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsRecording-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): subtitle of settings.recording.firstRecord.title.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Mostra “Prima di registrare” la prossima volta che premi Registra."
+    },
+    "fr": {
+     "text": "Affiche « Avant d’enregistrer » la prochaine fois que vous cliquez sur Enregistrer."
+    },
+    "es": {
+     "text": "Muestra “Antes de grabar” la próxima vez que pulses Grabar."
+    },
+    "pt-BR": {
+     "text": "Mostra “Antes de gravar” na próxima vez que você clicar em Gravar."
+    },
+    "pt-PT": {
+     "text": "Mostra «Antes de gravar» da próxima vez que clicar em Gravar."
+    }
+   }
+  },
+  {
+   "id": "settings.recording.group.browser",
+   "en": "Browser meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2PrefsRecording-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): second group: auto-record, and on Mac the menu-bar switch under it.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riunioni nel browser"
+    },
+    "fr": {
+     "text": "Réunions dans le navigateur"
+    },
+    "es": {
+     "text": "Reuniones en el navegador"
+    },
+    "pt-BR": {
+     "text": "Reuniões no navegador"
+    },
+    "pt-PT": {
+     "text": "Reuniões no navegador"
+    }
+   }
+  },
+  {
+   "id": "settings.recording.group.browser.subtitle",
+   "en": "Needs the browser companion.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsRecording-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): under the Browser meetings heading.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Richiede l’estensione per il browser."
+    },
+    "fr": {
+     "text": "Nécessite l’extension de navigateur."
+    },
+    "es": {
+     "text": "Requiere la extensión del navegador."
+    },
+    "pt-BR": {
+     "text": "Requer a extensão do navegador."
+    },
+    "pt-PT": {
+     "text": "Requer a extensão do navegador."
+    }
+   }
+  },
+  {
+   "id": "settings.recording.autoRecord.subtitleShort",
+   "en": "Starts when you join a meeting in your browser, even with this window closed. You can stop any time.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsRecording-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): the auto-record subtitle as one short paragraph. Supersedes settings.recording.autoRecord.subtitle (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Parte quando entri in una riunione nel browser, anche con questa finestra chiusa. Puoi fermarla quando vuoi."
+    },
+    "fr": {
+     "text": "Démarre quand vous rejoignez une réunion dans votre navigateur, même si cette fenêtre est fermée. Vous pouvez l’arrêter à tout moment."
+    },
+    "es": {
+     "text": "Empieza cuando te unes a una reunión en el navegador, incluso con esta ventana cerrada. Puedes pararla cuando quieras."
+    },
+    "pt-BR": {
+     "text": "Começa quando você entra em uma reunião no navegador, mesmo com esta janela fechada. Você pode parar quando quiser."
+    },
+    "pt-PT": {
+     "text": "Começa quando entra numa reunião no navegador, mesmo com esta janela fechada. Pode parar quando quiser."
+    }
+   }
+  },
+  {
+   "id": "settings.general.menuBar.subtitle",
+   "en": "Needs automatic recording.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsRecording-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): Mac only. The menu-bar switch sits under auto-record and is dimmed while auto-record is off.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Richiede la registrazione automatica."
+    },
+    "fr": {
+     "text": "Nécessite l’enregistrement automatique."
+    },
+    "es": {
+     "text": "Requiere la grabación automática."
+    },
+    "pt-BR": {
+     "text": "Requer a gravação automática."
+    },
+    "pt-PT": {
+     "text": "Requer a gravação automática."
+    }
+   }
+  },
+  {
+   "id": "settings.recording.test.description",
+   "en": "Records 8 seconds of your microphone and this computer’s sound, plays it back, then deletes it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsRecording-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1, 4 (L-58, L-61): Test recording group on both desktops (heading test.action). Supersedes test.intro in Settings (kept for the test dialog).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Registra 8 secondi dal microfono e dall’audio di questo computer, li riproduce e poi li elimina."
+    },
+    "fr": {
+     "text": "Enregistre 8 secondes de votre micro et du son de cet ordinateur, les relit, puis les supprime."
+    },
+    "es": {
+     "text": "Graba 8 segundos de tu micrófono y del sonido de este equipo, los reproduce y luego los borra."
+    },
+    "pt-BR": {
+     "text": "Grava 8 segundos do seu microfone e do som deste computador, reproduz e depois apaga."
+    },
+    "pt-PT": {
+     "text": "Grava 8 segundos do seu microfone e do som deste computador, reproduz e depois apaga."
+    }
+   }
+  },
+  {
+   "id": "settings.recording.test.button",
+   "en": "Test",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "P2PrefsRecording-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1, 4 (L-58, L-61): button in the Test recording group.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Prova"
+    },
+    "fr": {
+     "text": "Tester"
+    },
+    "es": {
+     "text": "Probar"
+    },
+    "pt-BR": {
+     "text": "Testar"
+    },
+    "pt-PT": {
+     "text": "Testar"
+    }
+   }
+  },
+  {
+   "id": "settings.library.folder.descriptionShort",
+   "en": "Each meeting is a folder with its audio and transcript.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): first sentence only; the backup advice moves to the Keeping a copy group. Supersedes settings.library.folder.description (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Ogni riunione è una cartella con il suo audio e la trascrizione."
+    },
+    "fr": {
+     "text": "Chaque réunion est un dossier contenant son audio et sa transcription."
+    },
+    "es": {
+     "text": "Cada reunión es una carpeta con su audio y su transcripción."
+    },
+    "pt-BR": {
+     "text": "Cada reunião é uma pasta com o áudio e a transcrição."
+    },
+    "pt-PT": {
+     "text": "Cada reunião é uma pasta com o áudio e a transcrição."
+    }
+   }
+  },
+  {
+   "id": "settings.library.stats",
+   "en": "{meetings} · {size}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "value",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "meetings": "library.meetingCount",
+    "size": "total Library size, format.size"
+   },
+   "note": "D103 §1 (L-58): under the folder path, for example “38 meetings · 2.4 GB”.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{meetings} · {size}"
+    },
+    "fr": {
+     "text": "{meetings} · {size}"
+    },
+    "es": {
+     "text": "{meetings} · {size}"
+    },
+    "pt-BR": {
+     "text": "{meetings} · {size}"
+    },
+    "pt-PT": {
+     "text": "{meetings} · {size}"
+    }
+   }
+  },
+  {
+   "id": "settings.library.group.keepingCopy",
+   "en": "Keeping a copy",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): second group: back up the folder, then Export All as ZIP on both desktops.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Tenere una copia"
+    },
+    "fr": {
+     "text": "Garder une copie"
+    },
+    "es": {
+     "text": "Guardar una copia"
+    },
+    "pt-BR": {
+     "text": "Manter uma cópia"
+    },
+    "pt-PT": {
+     "text": "Guardar uma cópia"
+    }
+   }
+  },
+  {
+   "id": "settings.library.backUp.title",
+   "en": "Back it up like any other folder",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): first row of Keeping a copy (information only, no control).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Salvane una copia come per qualsiasi altra cartella"
+    },
+    "fr": {
+     "text": "Sauvegardez-le comme n’importe quel autre dossier"
+    },
+    "es": {
+     "text": "Haz copias de seguridad como de cualquier otra carpeta"
+    },
+    "pt-BR": {
+     "text": "Faça backup dela como de qualquer outra pasta"
+    },
+    "pt-PT": {
+     "text": "Faça cópias de segurança como de qualquer outra pasta"
+    }
+   }
+  },
+  {
+   "id": "settings.library.backUp.subtitle",
+   "en": "Your backup app, an external drive or a copy you make.",
+   "mac": "Time Machine, an external drive or a copy you make.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): subtitle; Mac names Time Machine.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La tua app di backup, un disco esterno o una copia fatta da te.",
+     "mac": "Time Machine, un disco esterno o una copia fatta da te."
+    },
+    "fr": {
+     "text": "Votre app de sauvegarde, un disque externe ou une copie que vous faites.",
+     "mac": "Time Machine, un disque externe ou une copie que vous faites."
+    },
+    "es": {
+     "text": "Tu app de copias de seguridad, un disco externo o una copia que hagas tú.",
+     "mac": "Time Machine, un disco externo o una copia que hagas tú."
+    },
+    "pt-BR": {
+     "text": "Seu app de backup, um disco externo ou uma cópia que você fizer.",
+     "mac": "Time Machine, um disco externo ou uma cópia que você fizer."
+    },
+    "pt-PT": {
+     "text": "A sua aplicação de cópias de segurança, um disco externo ou uma cópia que fizer.",
+     "mac": "Time Machine, um disco externo ou uma cópia que fizer."
+    }
+   }
+  },
+  {
+   "id": "settings.library.zip.subtitle",
+   "en": "One file with every meeting, to keep or move to another computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): under export.zip.all in Settings › Library, with the common.exportEllipsis button. GNOME keeps ☰ › Export All as ZIP… too.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Un unico file con tutte le riunioni, da conservare o spostare su un altro computer."
+    },
+    "fr": {
+     "text": "Un seul fichier avec toutes les réunions, à garder ou à déplacer vers un autre ordinateur."
+    },
+    "es": {
+     "text": "Un solo archivo con todas las reuniones, para guardarlo o llevarlo a otro equipo."
+    },
+    "pt-BR": {
+     "text": "Um único arquivo com todas as reuniões, para guardar ou levar para outro computador."
+    },
+    "pt-PT": {
+     "text": "Um único ficheiro com todas as reuniões, para guardar ou levar para outro computador."
+    }
+   }
+  },
+  {
+   "id": "settings.library.group.deleted",
+   "en": "Deleted meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58, L-64, D101): third group: says where deleted meetings go. No in-app list.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riunioni eliminate"
+    },
+    "fr": {
+     "text": "Réunions supprimées"
+    },
+    "es": {
+     "text": "Reuniones eliminadas"
+    },
+    "pt-BR": {
+     "text": "Reuniões excluídas"
+    },
+    "pt-PT": {
+     "text": "Reuniões eliminadas"
+    }
+   }
+  },
+  {
+   "id": "settings.library.deleted.title",
+   "en": "Moved to the Trash",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-64, D101): row title (information only).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Spostate nel Cestino"
+    },
+    "fr": {
+     "text": "Placées dans la corbeille"
+    },
+    "es": {
+     "text": "Se mueven a la papelera"
+    },
+    "pt-BR": {
+     "text": "Vão para a lixeira"
+    },
+    "pt-PT": {
+     "text": "Vão para o lixo"
+    }
+   }
+  },
+  {
+   "id": "settings.library.deleted.body",
+   "en": "Meetings you delete go to the system Trash. Put them back from there, or press Undo straight away.",
+   "mac": "Meetings you delete go to the Finder Trash. Put them back from there, or press Undo straight away.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-64, D101): row subtitle; Mac names the Finder Trash. Only for an app that keeps the system Trash; an app that kept its in-app Trash view (D101 §3, GNOME today) shows help.trash.body here instead.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni che elimini finiscono nel Cestino di sistema. Puoi ripristinarle da lì, oppure premi subito Annulla.",
+     "mac": "Le riunioni che elimini finiscono nel Cestino del Finder. Puoi ripristinarle da lì, oppure premi subito Annulla."
+    },
+    "fr": {
+     "text": "Les réunions que vous supprimez vont dans la corbeille du système. Restaurez-les depuis celle-ci, ou cliquez tout de suite sur Annuler.",
+     "mac": "Les réunions que vous supprimez vont dans la corbeille du Finder. Restaurez-les depuis celle-ci, ou cliquez tout de suite sur Annuler."
+    },
+    "es": {
+     "text": "Las reuniones que eliminas van a la papelera del sistema. Recupéralas desde ahí o pulsa Deshacer enseguida.",
+     "mac": "Las reuniones que eliminas van a la papelera del Finder. Recupéralas desde ahí o pulsa Deshacer enseguida."
+    },
+    "pt-BR": {
+     "text": "As reuniões que você exclui vão para a lixeira do sistema. Restaure-as por lá ou clique em Desfazer na hora.",
+     "mac": "As reuniões que você exclui vão para a lixeira do Finder. Restaure-as por lá ou clique em Desfazer na hora."
+    },
+    "pt-PT": {
+     "text": "As reuniões que eliminar vão para o lixo do sistema. Reponha-as a partir daí ou clique em Desfazer de imediato.",
+     "mac": "As reuniões que eliminar vão para o lixo do Finder. Reponha-as a partir daí ou clique em Desfazer de imediato."
+    }
+   }
+  },
+  {
+   "id": "companion.bodyShort",
+   "en": "With the browser companion, Cassini hears each person in your browser meeting separately, so names are right more often.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [
+    "P2PrefsCompanion-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): Browser companion page lead. Supersedes settings.browser.description in Settings (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Con l’estensione per il browser, Cassini sente separatamente ogni persona nella riunione nel browser, così i nomi sono giusti più spesso."
+    },
+    "fr": {
+     "text": "Avec l’extension de navigateur, Cassini entend séparément chaque personne de votre réunion dans le navigateur, donc les noms sont plus souvent justes."
+    },
+    "es": {
+     "text": "Con la extensión del navegador, Cassini escucha por separado a cada persona de tu reunión en el navegador, así que los nombres aciertan más a menudo."
+    },
+    "pt-BR": {
+     "text": "Com a extensão do navegador, o Cassini ouve separadamente cada pessoa da sua reunião no navegador, então os nomes acertam com mais frequência."
+    },
+    "pt-PT": {
+     "text": "Com a extensão do navegador, o Cassini ouve separadamente cada pessoa da sua reunião no navegador, por isso os nomes acertam mais vezes."
+    }
+   }
+  },
+  {
+   "id": "companion.worksWith",
+   "en": "Works with Chrome, Edge, Brave and Chromium.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsCompanion-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): under the status line (settings.browser.status.*).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Funziona con Chrome, Edge, Brave e Chromium."
+    },
+    "fr": {
+     "text": "Fonctionne avec Chrome, Edge, Brave et Chromium."
+    },
+    "es": {
+     "text": "Funciona con Chrome, Edge, Brave y Chromium."
+    },
+    "pt-BR": {
+     "text": "Funciona com Chrome, Edge, Brave e Chromium."
+    },
+    "pt-PT": {
+     "text": "Funciona com Chrome, Edge, Brave e Chromium."
+    }
+   }
+  },
+  {
+   "id": "companion.addTo",
+   "en": "Add to {browser}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "P2PrefsCompanion-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "browser": "browser product name, for example Chrome"
+   },
+   "note": "D103 §1 (L-58): the one button when not set up (drawn “Add to Chrome”). {browser} is the detected default browser’s name.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Aggiungi a {browser}"
+    },
+    "fr": {
+     "text": "Ajouter à {browser}"
+    },
+    "es": {
+     "text": "Añadir a {browser}"
+    },
+    "pt-BR": {
+     "text": "Adicionar ao {browser}"
+    },
+    "pt-PT": {
+     "text": "Adicionar ao {browser}"
+    }
+   }
+  },
+  {
+   "id": "companion.without.heading",
+   "en": "Without it",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2PrefsCompanion-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): what happens without the companion.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Senza estensione"
+    },
+    "fr": {
+     "text": "Sans l’extension"
+    },
+    "es": {
+     "text": "Sin la extensión"
+    },
+    "pt-BR": {
+     "text": "Sem a extensão"
+    },
+    "pt-PT": {
+     "text": "Sem a extensão"
+    }
+   }
+  },
+  {
+   "id": "companion.without.body",
+   "en": "Cassini still records any meeting app on this computer. The others share one voice track.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "body",
+   "boards": [
+    "P2PrefsCompanion-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): first line under “Without it”; companion.privacy follows.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cassini registra comunque qualsiasi app per riunioni su questo computer. Gli altri condividono un’unica traccia vocale."
+    },
+    "fr": {
+     "text": "Cassini enregistre quand même n’importe quelle app de réunion sur cet ordinateur. Les autres participants partagent une seule piste vocale."
+    },
+    "es": {
+     "text": "Cassini sigue grabando cualquier app de reuniones de este equipo. Los demás comparten una sola pista de voz."
+    },
+    "pt-BR": {
+     "text": "O Cassini continua gravando qualquer app de reuniões deste computador. Os outros dividem uma única faixa de voz."
+    },
+    "pt-PT": {
+     "text": "O Cassini continua a gravar qualquer aplicação de reuniões deste computador. Os outros partilham uma única faixa de voz."
+    }
+   }
+  },
+  {
+   "id": "settings.updates.privacy",
+   "en": "Checking sends no meeting data.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsUpdates-Mac"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): under the Updates heading. Updates is the last Settings tab on Mac.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Il controllo non invia dati delle riunioni."
+    },
+    "fr": {
+     "text": "La vérification n’envoie aucune donnée de réunion."
+    },
+    "es": {
+     "text": "La comprobación no envía datos de las reuniones."
+    },
+    "pt-BR": {
+     "text": "A verificação não envia dados das reuniões."
+    },
+    "pt-PT": {
+     "text": "A verificação não envia dados das reuniões."
+    }
+   }
+  },
+  {
+   "id": "settings.updates.automatic.phase2",
+   "en": "Check for updates automatically",
+   "platforms": [
+    "mac"
+   ],
+   "role": "switch",
+   "boards": [
+    "P2PrefsUpdates-Mac"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): Phase 2 wording. Supersedes settings.updates.automatic (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Controlla gli aggiornamenti automaticamente"
+    },
+    "fr": {
+     "text": "Rechercher les mises à jour automatiquement"
+    },
+    "es": {
+     "text": "Buscar actualizaciones automáticamente"
+    },
+    "pt-BR": {
+     "text": "Verificar atualizações automaticamente"
+    },
+    "pt-PT": {
+     "text": "Procurar atualizações automaticamente"
+    }
+   }
+  },
+  {
+   "id": "settings.updates.upToDate",
+   "en": "You have the latest version.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "P2PrefsUpdates-Mac"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): under about.nameVersion when no update is waiting.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Hai la versione più recente."
+    },
+    "fr": {
+     "text": "Vous avez la dernière version."
+    },
+    "es": {
+     "text": "Tienes la versión más reciente."
+    },
+    "pt-BR": {
+     "text": "Você tem a versão mais recente."
+    },
+    "pt-PT": {
+     "text": "Tem a versão mais recente."
+    }
+   }
+  },
+  {
+   "id": "settings.updates.checkNow",
+   "en": "Check now",
+   "platforms": [
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "P2PrefsUpdates-Mac"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §1 (L-58): button beside the version.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Controlla ora"
+    },
+    "fr": {
+     "text": "Vérifier maintenant"
+    },
+    "es": {
+     "text": "Comprobar ahora"
+    },
+    "pt-BR": {
+     "text": "Verificar agora"
+    },
+    "pt-PT": {
+     "text": "Verificar agora"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.howToAdd.short",
+   "en": "To add someone, name a speaker in a meeting and keep “Remember this voice” on. Forgetting a voice keeps the names already in your meetings.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2SavedVoices-Phones",
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §5 (L-63): footnote under the list on all four. Supersedes savedVoices.howToAdd and android.savedVoices.howToAdd (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Per aggiungere qualcuno, dai un nome a una voce in una riunione e lascia attivo “Ricorda questa voce”. Se dimentichi una voce, i nomi già presenti nelle tue riunioni restano."
+    },
+    "fr": {
+     "text": "Pour ajouter quelqu’un, nommez un intervenant dans une réunion et laissez « Mémoriser cette voix » activé. Oublier une voix conserve les noms déjà présents dans vos réunions."
+    },
+    "es": {
+     "text": "Para añadir a alguien, pon nombre a un hablante en una reunión y deja activado “Recordar esta voz”. Si olvidas una voz, los nombres que ya están en tus reuniones se mantienen."
+    },
+    "pt-BR": {
+     "text": "Para adicionar alguém, dê nome a um locutor em uma reunião e deixe “Lembrar esta voz” ativado. Esquecer uma voz mantém os nomes que já estão nas suas reuniões."
+    },
+    "pt-PT": {
+     "text": "Para adicionar alguém, dê nome a um orador numa reunião e deixe «Memorizar esta voz» ativado. Esquecer uma voz mantém os nomes que já estão nas suas reuniões."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.row.options.a11y",
+   "en": "Options for {name}",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "a11y",
+   "boards": [
+    "P2SavedVoices-Phones",
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "name": "saved voice name"
+   },
+   "note": "D103 §5 (L-63): accessible name of the row menu button (⋯; the board labels it “Options”, with the name added so screen readers can tell rows apart, as both phones already do). Menu: Play a sample (desktop only), Rename…, Forget….",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Opzioni per {name}"
+    },
+    "fr": {
+     "text": "Options pour {name}"
+    },
+    "es": {
+     "text": "Opciones de {name}"
+    },
+    "pt-BR": {
+     "text": "Opções de {name}"
+    },
+    "pt-PT": {
+     "text": "Opções de {name}"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.row.playSampleMenu",
+   "en": "Play a sample",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "menu-item",
+   "boards": [
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §5 (L-63): first item of the desktop row menu. The row’s play button keeps savedVoices.row.play as its accessible name. Not on phones.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riproduci un campione"
+    },
+    "fr": {
+     "text": "Lire un extrait"
+    },
+    "es": {
+     "text": "Reproducir una muestra"
+    },
+    "pt-BR": {
+     "text": "Reproduzir uma amostra"
+    },
+    "pt-PT": {
+     "text": "Reproduzir uma amostra"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.row.forgetEllipsis",
+   "en": "Forget…",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "menu-item",
+   "boards": [
+    "P2SavedVoices-Phones",
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §5 (L-63): last item of the row menu; opens the existing forget confirmation (confirm.deleteVoiceProfile.*). savedVoices.row.forget stays the confirm button word.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Dimentica…"
+    },
+    "fr": {
+     "text": "Oublier…"
+    },
+    "es": {
+     "text": "Olvidar…"
+    },
+    "pt-BR": {
+     "text": "Esquecer…"
+    },
+    "pt-PT": {
+     "text": "Esquecer…"
+    }
+   }
+  },
+  {
+   "id": "trash.phone.intro",
+   "en": "Meetings here are deleted for good after 30 days.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Trash-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §7 (L-64): the one-sentence intro on phone Trash / Recently Deleted. The voiceprint detail stays in the Delete now confirmation (android.trash.delete.body). Supersedes android.trash.retentionNote as the intro (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni qui vengono eliminate per sempre dopo 30 giorni."
+    },
+    "fr": {
+     "text": "Les réunions placées ici sont supprimées définitivement après 30 jours."
+    },
+    "es": {
+     "text": "Las reuniones de aquí se eliminan definitivamente tras 30 días."
+    },
+    "pt-BR": {
+     "text": "As reuniões aqui são excluídas para sempre após 30 dias."
+    },
+    "pt-PT": {
+     "text": "As reuniões aqui são eliminadas definitivamente após 30 dias."
+    }
+   }
+  },
+  {
+   "id": "backup.page.answer.transfer",
+   "en": "Your meetings move with you to a new phone",
+   "platforms": [
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): the answer first, while device-to-device transfer is on. Body: settings.transfer.body (D97). The drawn body ends “Nothing goes to a cloud account.”, which is true of transfer only; while encrypted cloud backup is on (D98 default) the page also shows the cloud switch with backup.cloud.body.on (QUESTIONS-FOR-ALEX q1).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le tue riunioni ti seguono su un nuovo telefono"
+    },
+    "fr": {
+     "text": "Vos réunions vous suivent sur un nouveau téléphone"
+    },
+    "es": {
+     "text": "Tus reuniones te acompañan a un teléfono nuevo"
+    },
+    "pt-BR": {
+     "text": "Suas reuniões vão com você para um celular novo"
+    },
+    "pt-PT": {
+     "text": "As suas reuniões acompanham-no para um telemóvel novo"
+    }
+   }
+  },
+  {
+   "id": "backup.page.answer.icloud",
+   "en": "Your meetings are included in iCloud Backup",
+   "platforms": [
+    "ios"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): the answer first, while meetings are not marked to be left out of iCloud Backup. Describes eligibility only: iOS cannot read whether iCloud Backup is on or has run, so it never says the meetings are backed up. Drawn: “Your meetings are in your iCloud backup” (QUESTIONS-FOR-ALEX q3; codex review on #47).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le tue riunioni sono incluse nel Backup iCloud"
+    },
+    "fr": {
+     "text": "Vos réunions sont incluses dans la Sauvegarde iCloud"
+    },
+    "es": {
+     "text": "Tus reuniones se incluyen en la Copia en iCloud"
+    },
+    "pt-BR": {
+     "text": "Suas reuniões estão incluídas no Backup do iCloud"
+    },
+    "pt-PT": {
+     "text": "As suas reuniões estão incluídas na Cópia em iCloud"
+    }
+   }
+  },
+  {
+   "id": "backup.page.answer.icloud.body",
+   "en": "When iCloud Backup is on in iOS Settings, they come back if this iPhone is lost or replaced.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "body",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): under backup.page.answer.icloud. Recovery is conditional on iCloud Backup, which the app cannot read. Drawn: “If this iPhone is lost or replaced, they come back with it. iCloud Backup is on in iOS Settings.” (QUESTIONS-FOR-ALEX q3; codex review on #47).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Se il Backup iCloud è attivo nelle Impostazioni di iOS, tornano anche se questo iPhone viene perso o sostituito."
+    },
+    "fr": {
+     "text": "Si la Sauvegarde iCloud est activée dans les Réglages d’iOS, elles reviennent si cet iPhone est perdu ou remplacé."
+    },
+    "es": {
+     "text": "Si la Copia en iCloud está activada en los Ajustes de iOS, vuelven si pierdes o cambias este iPhone."
+    },
+    "pt-BR": {
+     "text": "Se o Backup do iCloud estiver ativado nos Ajustes do iOS, elas voltam caso este iPhone seja perdido ou substituído."
+    },
+    "pt-PT": {
+     "text": "Se a Cópia em iCloud estiver ativada nas Definições do iOS, voltam caso este iPhone seja perdido ou substituído."
+    }
+   }
+  },
+  {
+   "id": "backup.meetings.switch",
+   "en": "Back up meetings",
+   "platforms": [
+    "ios"
+   ],
+   "role": "switch",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): iOS label of the meetings backup switch (was backup.cloud.title on iOS). Same switch, same D98 default (on), same off copy (backup.cloud.body.off.ios, never “this iPhone only”). Android keeps backup.cloud.title.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Esegui il backup delle riunioni"
+    },
+    "fr": {
+     "text": "Sauvegarder les réunions"
+    },
+    "es": {
+     "text": "Hacer copia de las reuniones"
+    },
+    "pt-BR": {
+     "text": "Fazer backup das reuniões"
+    },
+    "pt-PT": {
+     "text": "Fazer cópia de segurança das reuniões"
+    }
+   }
+  },
+  {
+   "id": "backup.meetings.switch.subtitle",
+   "en": "Audio, transcripts and who spoke.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): subtitle of the meetings switch (iOS) and of the cloud switch (Android).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Audio, trascrizioni e chi ha parlato."
+    },
+    "fr": {
+     "text": "Audio, transcriptions et qui a parlé."
+    },
+    "es": {
+     "text": "Audio, transcripciones y quién habló."
+    },
+    "pt-BR": {
+     "text": "Áudio, transcrições e quem falou."
+    },
+    "pt-PT": {
+     "text": "Áudio, transcrições e quem falou."
+    }
+   }
+  },
+  {
+   "id": "backup.savedVoices.switch",
+   "en": "Back up saved voices",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "switch",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): the saved-voices switch, moved from first run to the Backup page. Same setting as backup.includeSavedVoices.title (D98: default ON on both phones; Android covers cloud and transfer). Its on/off subtitles stay backup.includeSavedVoices.subtitle* (D98).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Esegui il backup delle voci salvate"
+    },
+    "fr": {
+     "text": "Sauvegarder les voix mémorisées"
+    },
+    "es": {
+     "text": "Hacer copia de las voces guardadas"
+    },
+    "pt-BR": {
+     "text": "Fazer backup das vozes salvas"
+    },
+    "pt-PT": {
+     "text": "Fazer cópia de segurança das vozes guardadas"
+    }
+   }
+  },
+  {
+   "id": "backup.savedVoices.switch.why",
+   "en": "A voice belongs to someone else, so this is its own choice.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): first line under the saved-voices switch.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Una voce appartiene a un’altra persona, quindi è una scelta a parte."
+    },
+    "fr": {
+     "text": "Une voix appartient à quelqu’un d’autre, c’est donc un choix à part."
+    },
+    "es": {
+     "text": "Una voz pertenece a otra persona, así que es una decisión aparte."
+    },
+    "pt-BR": {
+     "text": "Uma voz pertence a outra pessoa, então é uma escolha à parte."
+    },
+    "pt-PT": {
+     "text": "Uma voz pertence a outra pessoa, por isso é uma escolha à parte."
+    }
+   }
+  },
+  {
+   "id": "settings.moreDetail",
+   "en": "In more detail",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2Backup-Phones",
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): link row on Backup (with the two topic names under it) and the title of the detail page.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Più nel dettaglio"
+    },
+    "fr": {
+     "text": "Plus en détail"
+    },
+    "es": {
+     "text": "Con más detalle"
+    },
+    "pt-BR": {
+     "text": "Em mais detalhes"
+    },
+    "pt-PT": {
+     "text": "Com mais pormenor"
+    }
+   }
+  },
+  {
+   "id": "backup.info.moves.heading",
+   "en": "What moves",
+   "platforms": [
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2Backup-Phones",
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): Android detail section (iOS uses backup.info.what.heading).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cosa viene trasferito"
+    },
+    "fr": {
+     "text": "Ce qui est transféré"
+    },
+    "es": {
+     "text": "Qué se traslada"
+    },
+    "pt-BR": {
+     "text": "O que é transferido"
+    },
+    "pt-PT": {
+     "text": "O que é transferido"
+    }
+   }
+  },
+  {
+   "id": "backup.info.who.heading",
+   "en": "Who can read it",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2Backup-Phones",
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): detail section listing each place a copy can be and who can read it.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Chi può leggerlo"
+    },
+    "fr": {
+     "text": "Qui peut le lire"
+    },
+    "es": {
+     "text": "Quién puede leerlo"
+    },
+    "pt-BR": {
+     "text": "Quem pode ler"
+    },
+    "pt-PT": {
+     "text": "Quem pode ler"
+    }
+   }
+  },
+  {
+   "id": "backup.ownCopy.heading",
+   "en": "Your own copy",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "section-heading",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): last group on Backup: export.zip.all with backup.ownCopy.zip.subtitle.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "La tua copia"
+    },
+    "fr": {
+     "text": "Votre propre copie"
+    },
+    "es": {
+     "text": "Tu propia copia"
+    },
+    "pt-BR": {
+     "text": "Sua própria cópia"
+    },
+    "pt-PT": {
+     "text": "A sua própria cópia"
+    }
+   }
+  },
+  {
+   "id": "backup.ownCopy.zip.subtitle",
+   "en": "Save every meeting to a folder, a drive or another app.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): under export.zip.all on the Backup page.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Salva tutte le riunioni in una cartella, un’unità o un’altra app."
+    },
+    "fr": {
+     "text": "Enregistrez toutes les réunions dans un dossier, sur un disque ou dans une autre app."
+    },
+    "es": {
+     "text": "Guarda todas las reuniones en una carpeta, una unidad u otra app."
+    },
+    "pt-BR": {
+     "text": "Salve todas as reuniões em uma pasta, uma unidade ou outro app."
+    },
+    "pt-PT": {
+     "text": "Guarde todas as reuniões numa pasta, numa unidade ou noutra aplicação."
+    }
+   }
+  },
+  {
+   "id": "backup.info.row.meetings",
+   "en": "Meetings",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): detail row; status on the right (backup.info.status.*).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riunioni"
+    },
+    "fr": {
+     "text": "Réunions"
+    },
+    "es": {
+     "text": "Reuniones"
+    },
+    "pt-BR": {
+     "text": "Reuniões"
+    },
+    "pt-PT": {
+     "text": "Reuniões"
+    }
+   }
+  },
+  {
+   "id": "backup.info.row.meetings.detail",
+   "en": "Audio, transcripts and who spoke",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): detail row subtitle (no full stop, as drawn).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Audio, trascrizioni e chi ha parlato"
+    },
+    "fr": {
+     "text": "Audio, transcriptions et qui a parlé"
+    },
+    "es": {
+     "text": "Audio, transcripciones y quién habló"
+    },
+    "pt-BR": {
+     "text": "Áudio, transcrições e quem falou"
+    },
+    "pt-PT": {
+     "text": "Áudio, transcrições e quem falou"
+    }
+   }
+  },
+  {
+   "id": "backup.info.row.settings",
+   "en": "Settings",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): detail row. The status shows what the platform really copies: Android leaves app settings out of backup and transfer (LibraryBackup), so it shows backup.info.status.notCopied, not the drawn “Copied”.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Impostazioni"
+    },
+    "fr": {
+     "text": "Réglages"
+    },
+    "es": {
+     "text": "Ajustes"
+    },
+    "pt-BR": {
+     "text": "Ajustes"
+    },
+    "pt-PT": {
+     "text": "Definições"
+    }
+   }
+  },
+  {
+   "id": "backup.info.row.settings.detail",
+   "en": "Your choices in this app",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): detail row subtitle.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le tue scelte in questa app"
+    },
+    "fr": {
+     "text": "Vos choix dans cette app"
+    },
+    "es": {
+     "text": "Tus opciones en esta app"
+    },
+    "pt-BR": {
+     "text": "Suas escolhas neste app"
+    },
+    "pt-PT": {
+     "text": "As suas escolhas nesta aplicação"
+    }
+   }
+  },
+  {
+   "id": "backup.info.row.savedVoices.withMeetings",
+   "en": "Copied with your meetings",
+   "platforms": [
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): Android saved-voices detail while backup.savedVoices.switch is on; when it is off the row shows backup.info.status.notCopied.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Copiate con le tue riunioni"
+    },
+    "fr": {
+     "text": "Copiées avec vos réunions"
+    },
+    "es": {
+     "text": "Se copian con tus reuniones"
+    },
+    "pt-BR": {
+     "text": "Copiadas com suas reuniões"
+    },
+    "pt-PT": {
+     "text": "Copiadas com as suas reuniões"
+    }
+   }
+  },
+  {
+   "id": "backup.info.row.savedVoices.choice",
+   "en": "Your choice, above",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): iOS saved-voices detail; the status follows backup.savedVoices.switch (D98 default on).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "A scelta tua, qui sopra"
+    },
+    "fr": {
+     "text": "À vous de choisir, ci-dessus"
+    },
+    "es": {
+     "text": "Lo eliges arriba"
+    },
+    "pt-BR": {
+     "text": "Você escolhe, acima"
+    },
+    "pt-PT": {
+     "text": "É uma escolha sua, acima"
+    }
+   }
+  },
+  {
+   "id": "backup.info.row.models",
+   "en": "Speech models",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): detail row; models are never backed up or copied (D97, D98).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Modelli vocali"
+    },
+    "fr": {
+     "text": "Modèles vocaux"
+    },
+    "es": {
+     "text": "Modelos de voz"
+    },
+    "pt-BR": {
+     "text": "Modelos de fala"
+    },
+    "pt-PT": {
+     "text": "Modelos de fala"
+    }
+   }
+  },
+  {
+   "id": "backup.info.row.models.detail.phone",
+   "en": "Downloaded again on the new phone",
+   "platforms": [
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): Android models row subtitle.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Si scaricano di nuovo sul nuovo telefono"
+    },
+    "fr": {
+     "text": "Téléchargés à nouveau sur le nouveau téléphone"
+    },
+    "es": {
+     "text": "Se descargan de nuevo en el teléfono nuevo"
+    },
+    "pt-BR": {
+     "text": "Baixados de novo no celular novo"
+    },
+    "pt-PT": {
+     "text": "Descarregados de novo no telemóvel novo"
+    }
+   }
+  },
+  {
+   "id": "backup.info.row.models.detail.iphone",
+   "en": "Downloaded again on a new iPhone",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): iOS models row subtitle.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Si scaricano di nuovo su un nuovo iPhone"
+    },
+    "fr": {
+     "text": "Téléchargés à nouveau sur un nouvel iPhone"
+    },
+    "es": {
+     "text": "Se descargan de nuevo en un iPhone nuevo"
+    },
+    "pt-BR": {
+     "text": "Baixados de novo em um iPhone novo"
+    },
+    "pt-PT": {
+     "text": "Descarregados de novo num iPhone novo"
+    }
+   }
+  },
+  {
+   "id": "backup.info.status.copied",
+   "en": "Copied",
+   "platforms": [
+    "android"
+   ],
+   "role": "status",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): Android detail status while the channel copies that item.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Copiato"
+    },
+    "fr": {
+     "text": "Copié"
+    },
+    "es": {
+     "text": "Se copia"
+    },
+    "pt-BR": {
+     "text": "Copiado"
+    },
+    "pt-PT": {
+     "text": "Copiado"
+    }
+   }
+  },
+  {
+   "id": "backup.info.status.notCopied",
+   "en": "Not copied",
+   "platforms": [
+    "android"
+   ],
+   "role": "status",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): Android detail status.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Non copiato"
+    },
+    "fr": {
+     "text": "Non copié"
+    },
+    "es": {
+     "text": "No se copia"
+    },
+    "pt-BR": {
+     "text": "Não copiado"
+    },
+    "pt-PT": {
+     "text": "Não copiado"
+    }
+   }
+  },
+  {
+   "id": "backup.info.status.backedUp",
+   "en": "Included when iCloud Backup is on",
+   "platforms": [
+    "ios"
+   ],
+   "role": "status",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): iOS detail status while the item is not marked to be left out of iCloud Backup. Eligibility, not a completed backup: iOS cannot read whether iCloud Backup is on or has run. Drawn: “Backed up” (QUESTIONS-FOR-ALEX q3; codex review on #47).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Incluso se il Backup iCloud è attivo"
+    },
+    "fr": {
+     "text": "Inclus si la Sauvegarde iCloud est activée"
+    },
+    "es": {
+     "text": "Incluido si la Copia en iCloud está activada"
+    },
+    "pt-BR": {
+     "text": "Incluído se o Backup do iCloud estiver ativado"
+    },
+    "pt-PT": {
+     "text": "Incluído se a Cópia em iCloud estiver ativada"
+    }
+   }
+  },
+  {
+   "id": "backup.info.status.notBackedUp",
+   "en": "Marked to be left out",
+   "platforms": [
+    "ios"
+   ],
+   "role": "status",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): iOS detail status (speech models always; saved voices while their switch is off). Keeps D98 wording: NSURLIsExcludedFromBackupKey is guidance, not a guarantee, and a Quick Start transfer may still copy local files. Drawn: “Not backed up” (codex review on #47).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Contrassegnato per essere escluso"
+    },
+    "fr": {
+     "text": "Marqué pour être exclu"
+    },
+    "es": {
+     "text": "Marcado para quedar fuera"
+    },
+    "pt-BR": {
+     "text": "Marcado para ficar de fora"
+    },
+    "pt-PT": {
+     "text": "Marcado para ficar de fora"
+    }
+   }
+  },
+  {
+   "id": "backup.info.who.newPhone",
+   "en": "The new phone",
+   "platforms": [
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): Android Who can read it row for device-to-device transfer. While encrypted cloud backup is on, the page also lists backup.info.android.heading / .body (D98).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Il nuovo telefono"
+    },
+    "fr": {
+     "text": "Le nouveau téléphone"
+    },
+    "es": {
+     "text": "El teléfono nuevo"
+    },
+    "pt-BR": {
+     "text": "O celular novo"
+    },
+    "pt-PT": {
+     "text": "O telemóvel novo"
+    }
+   }
+  },
+  {
+   "id": "backup.info.who.newPhone.detail",
+   "en": "Copied phone to phone, by cable or Wi-Fi. Nothing goes to a cloud account.",
+   "platforms": [
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): describes the transfer channel only (true while transfer is the channel in use).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Copiato da telefono a telefono, via cavo o Wi-Fi. Niente va su un account cloud."
+    },
+    "fr": {
+     "text": "Copié de téléphone à téléphone, par câble ou Wi-Fi. Rien ne va sur un compte cloud."
+    },
+    "es": {
+     "text": "Se copia de teléfono a teléfono, por cable o wifi. Nada va a una cuenta en la nube."
+    },
+    "pt-BR": {
+     "text": "Copiado de celular para celular, por cabo ou Wi-Fi. Nada vai para uma conta na nuvem."
+    },
+    "pt-PT": {
+     "text": "Copiado de telemóvel para telemóvel, por cabo ou Wi-Fi. Nada vai para uma conta na nuvem."
+    }
+   }
+  },
+  {
+   "id": "backup.info.who.zip",
+   "en": "A ZIP you export",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): detail row.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Uno ZIP che esporti"
+    },
+    "fr": {
+     "text": "Un ZIP que vous exportez"
+    },
+    "es": {
+     "text": "Un ZIP que exportas"
+    },
+    "pt-BR": {
+     "text": "Um ZIP que você exporta"
+    },
+    "pt-PT": {
+     "text": "Um ZIP que exporta"
+    }
+   }
+  },
+  {
+   "id": "backup.info.who.zip.detail",
+   "en": "Whoever can open the place you put it.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): detail row subtitle.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Chiunque possa aprire il posto in cui lo metti."
+    },
+    "fr": {
+     "text": "Toute personne qui peut ouvrir l’endroit où vous le placez."
+    },
+    "es": {
+     "text": "Quien pueda abrir el lugar donde lo guardes."
+    },
+    "pt-BR": {
+     "text": "Quem puder abrir o lugar onde você o colocar."
+    },
+    "pt-PT": {
+     "text": "Quem puder abrir o local onde o colocar."
+    }
+   }
+  },
+  {
+   "id": "backup.info.who.icloud.detail",
+   "en": "Apple can read it, unless Advanced Data Protection is on in your Apple Account.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): subtitle of the iCloud Backup row (heading backup.info.icloud.heading). Short form of backup.info.icloud.body (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Apple può leggerlo, a meno che la Protezione avanzata dei dati non sia attiva nel tuo Account Apple."
+    },
+    "fr": {
+     "text": "Apple peut la lire, sauf si la Protection avancée des données est activée dans votre compte Apple."
+    },
+    "es": {
+     "text": "Apple puede leerla, salvo que la Protección de datos avanzada esté activada en tu cuenta de Apple."
+    },
+    "pt-BR": {
+     "text": "A Apple pode ler, a menos que a Proteção Avançada de Dados esteja ativada na sua Conta Apple."
+    },
+    "pt-PT": {
+     "text": "A Apple pode lê-la, a menos que a Proteção avançada de dados esteja ativada na sua Conta Apple."
+    }
+   }
+  },
+  {
+   "id": "backup.info.who.computer",
+   "en": "A backup on a computer",
+   "platforms": [
+    "ios"
+   ],
+   "role": "label",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): detail row. Short form of backup.info.icloud.computerHeading (kept).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Un backup su un computer"
+    },
+    "fr": {
+     "text": "Une sauvegarde sur un ordinateur"
+    },
+    "es": {
+     "text": "Una copia en un equipo"
+    },
+    "pt-BR": {
+     "text": "Um backup em um computador"
+    },
+    "pt-PT": {
+     "text": "Uma cópia de segurança num computador"
+    }
+   }
+  },
+  {
+   "id": "backup.info.who.computer.detail",
+   "en": "Anyone who uses that computer, unless the backup has a password.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): detail row subtitle.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Chiunque usi quel computer, a meno che il backup non abbia una password."
+    },
+    "fr": {
+     "text": "Toute personne qui utilise cet ordinateur, sauf si la sauvegarde a un mot de passe."
+    },
+    "es": {
+     "text": "Cualquiera que use ese equipo, salvo que la copia tenga contraseña."
+    },
+    "pt-BR": {
+     "text": "Qualquer pessoa que use esse computador, a menos que o backup tenha senha."
+    },
+    "pt-PT": {
+     "text": "Qualquer pessoa que use esse computador, a menos que a cópia de segurança tenha palavra-passe."
+    }
+   }
+  },
+  {
+   "id": "backup.info.cassiniNever",
+   "en": "Cassini itself never uploads or reads your meetings.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §2 (L-59): last line of the detail page.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cassini non carica né legge mai le tue riunioni."
+    },
+    "fr": {
+     "text": "Cassini lui-même ne met jamais en ligne ni ne lit vos réunions."
+    },
+    "es": {
+     "text": "Cassini nunca sube ni lee tus reuniones."
+    },
+    "pt-BR": {
+     "text": "O próprio Cassini nunca envia nem lê suas reuniões."
+    },
+    "pt-PT": {
+     "text": "O próprio Cassini nunca envia nem lê as suas reuniões."
+    }
+   }
+  },
+  {
+   "id": "about.tagline.phone",
+   "en": "Turns speech into searchable, timed text, right here on your phone.",
+   "platforms": [
+    "android"
+   ],
+   "role": "body",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): the one line under the name and version. GNOME: AdwAboutDialog comments. Mac: the About panel credits line. Replaces “Play meeting recordings and read along…” on GNOME.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trasforma il parlato in testo ricercabile e con i tempi, proprio qui sul tuo telefono."
+    },
+    "fr": {
+     "text": "Transforme la parole en texte horodaté et consultable, ici même sur votre téléphone."
+    },
+    "es": {
+     "text": "Convierte la voz en texto con tiempos en el que puedes buscar, aquí mismo en tu teléfono."
+    },
+    "pt-BR": {
+     "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu celular."
+    },
+    "pt-PT": {
+     "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu telemóvel."
+    }
+   }
+  },
+  {
+   "id": "about.tagline.iphone",
+   "en": "Turns speech into searchable, timed text, right here on your iPhone.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "body",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): the one line under the name and version. GNOME: AdwAboutDialog comments. Mac: the About panel credits line. Replaces “Play meeting recordings and read along…” on GNOME.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trasforma il parlato in testo ricercabile e con i tempi, proprio qui sul tuo iPhone."
+    },
+    "fr": {
+     "text": "Transforme la parole en texte horodaté et consultable, ici même sur votre iPhone."
+    },
+    "es": {
+     "text": "Convierte la voz en texto con tiempos en el que puedes buscar, aquí mismo en tu iPhone."
+    },
+    "pt-BR": {
+     "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu iPhone."
+    },
+    "pt-PT": {
+     "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu iPhone."
+    }
+   }
+  },
+  {
+   "id": "about.tagline.ipad",
+   "en": "Turns speech into searchable, timed text, right here on your iPad.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "body",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): the one line under the name and version. GNOME: AdwAboutDialog comments. Mac: the About panel credits line. Replaces “Play meeting recordings and read along…” on GNOME. iPad variant derived (not drawn).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trasforma il parlato in testo ricercabile e con i tempi, proprio qui sul tuo iPad."
+    },
+    "fr": {
+     "text": "Transforme la parole en texte horodaté et consultable, ici même sur votre iPad."
+    },
+    "es": {
+     "text": "Convierte la voz en texto con tiempos en el que puedes buscar, aquí mismo en tu iPad."
+    },
+    "pt-BR": {
+     "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu iPad."
+    },
+    "pt-PT": {
+     "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu iPad."
+    }
+   }
+  },
+  {
+   "id": "about.tagline.computer",
+   "en": "Turns speech into searchable, timed text, right here on your computer.",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "body",
+   "boards": [
+    "P2About-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): the one line under the name and version. GNOME: AdwAboutDialog comments. Mac: the About panel credits line. Replaces “Play meeting recordings and read along…” on GNOME.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trasforma il parlato in testo ricercabile e con i tempi, proprio qui sul tuo computer."
+    },
+    "fr": {
+     "text": "Transforme la parole en texte horodaté et consultable, ici même sur votre ordinateur."
+    },
+    "es": {
+     "text": "Convierte la voz en texto con tiempos en el que puedes buscar, aquí mismo en tu equipo."
+    },
+    "pt-BR": {
+     "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu computador."
+    },
+    "pt-PT": {
+     "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu computador."
+    }
+   }
+  },
+  {
+   "id": "about.tagline.mac",
+   "en": "Turns speech into searchable, timed text, right here on your Mac.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "body",
+   "boards": [
+    "P2About-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): the one line under the name and version. GNOME: AdwAboutDialog comments. Mac: the About panel credits line. Replaces “Play meeting recordings and read along…” on GNOME.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trasforma il parlato in testo ricercabile e con i tempi, proprio qui sul tuo Mac."
+    },
+    "fr": {
+     "text": "Transforme la parole en texte horodaté et consultable, ici même sur votre Mac."
+    },
+    "es": {
+     "text": "Convierte la voz en texto con tiempos en el que puedes buscar, aquí mismo en tu Mac."
+    },
+    "pt-BR": {
+     "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu Mac."
+    },
+    "pt-PT": {
+     "text": "Transforma a fala em texto pesquisável e com marcação de tempo, aqui mesmo no seu Mac."
+    }
+   }
+  },
+  {
+   "id": "about.title",
+   "en": "About",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): phone Settings › About page title.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Informazioni"
+    },
+    "fr": {
+     "text": "À propos"
+    },
+    "es": {
+     "text": "Información"
+    },
+    "pt-BR": {
+     "text": "Sobre"
+    },
+    "pt-PT": {
+     "text": "Acerca"
+    }
+   }
+  },
+  {
+   "id": "about.version",
+   "en": "Version {version}",
+   "platforms": [
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2About-Phones",
+    "P2About-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "version": "marketing version, for example 0.4.0"
+   },
+   "note": "D103 §6 (L-65): under the product name. GNOME shows the bare version in the AdwAboutDialog badge.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Versione {version}"
+    },
+    "fr": {
+     "text": "Version {version}"
+    },
+    "es": {
+     "text": "Versión {version}"
+    },
+    "pt-BR": {
+     "text": "Versão {version}"
+    },
+    "pt-PT": {
+     "text": "Versão {version}"
+    }
+   }
+  },
+  {
+   "id": "about.help",
+   "en": "Help",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2About-Phones",
+    "P2About-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): About link that opens https://cassini.talk/help in the browser (D-1044). User-initiated; the app itself sends nothing. The offline in-app Help (menu.help, D100) is unchanged.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Aiuto"
+    },
+    "fr": {
+     "text": "Aide"
+    },
+    "es": {
+     "text": "Ayuda"
+    },
+    "pt-BR": {
+     "text": "Ajuda"
+    },
+    "pt-PT": {
+     "text": "Ajuda"
+    }
+   }
+  },
+  {
+   "id": "about.help.subtitle",
+   "en": "Answers on cassini.talk",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): subtitle of the phone Help row.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Risposte su cassini.talk"
+    },
+    "fr": {
+     "text": "Réponses sur cassini.talk"
+    },
+    "es": {
+     "text": "Respuestas en cassini.talk"
+    },
+    "pt-BR": {
+     "text": "Respostas em cassini.talk"
+    },
+    "pt-PT": {
+     "text": "Respostas em cassini.talk"
+    }
+   }
+  },
+  {
+   "id": "about.privacy",
+   "en": "Privacy",
+   "platforms": [
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2About-Phones",
+    "P2About-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): opens the app’s privacy statement (the PRIVACY.md text published on cassini.talk). GNOME reaches it from AdwAboutDialog Legal.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Privacy"
+    },
+    "fr": {
+     "text": "Confidentialité"
+    },
+    "es": {
+     "text": "Privacidad"
+    },
+    "pt-BR": {
+     "text": "Privacidade"
+    },
+    "pt-PT": {
+     "text": "Privacidade"
+    }
+   }
+  },
+  {
+   "id": "about.privacy.subtitle.phone",
+   "en": "What stays on this phone, and what is sent",
+   "platforms": [
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): subtitle of the phone Privacy row.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cosa resta su questo telefono e cosa viene inviato"
+    },
+    "fr": {
+     "text": "Ce qui reste sur ce téléphone et ce qui est envoyé"
+    },
+    "es": {
+     "text": "Qué se queda en este teléfono y qué se envía"
+    },
+    "pt-BR": {
+     "text": "O que fica neste celular e o que é enviado"
+    },
+    "pt-PT": {
+     "text": "O que fica neste telemóvel e o que é enviado"
+    }
+   }
+  },
+  {
+   "id": "about.privacy.subtitle.iphone",
+   "en": "What stays on this iPhone, and what is sent",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): subtitle of the phone Privacy row.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cosa resta su questo iPhone e cosa viene inviato"
+    },
+    "fr": {
+     "text": "Ce qui reste sur cet iPhone et ce qui est envoyé"
+    },
+    "es": {
+     "text": "Qué se queda en este iPhone y qué se envía"
+    },
+    "pt-BR": {
+     "text": "O que fica neste iPhone e o que é enviado"
+    },
+    "pt-PT": {
+     "text": "O que fica neste iPhone e o que é enviado"
+    }
+   }
+  },
+  {
+   "id": "about.privacy.subtitle.ipad",
+   "en": "What stays on this iPad, and what is sent",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): subtitle of the phone Privacy row. iPad variant derived (not drawn).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Cosa resta su questo iPad e cosa viene inviato"
+    },
+    "fr": {
+     "text": "Ce qui reste sur cet iPad et ce qui est envoyé"
+    },
+    "es": {
+     "text": "Qué se queda en este iPad y qué se envía"
+    },
+    "pt-BR": {
+     "text": "O que fica neste iPad e o que é enviado"
+    },
+    "pt-PT": {
+     "text": "O que fica neste iPad e o que é enviado"
+    }
+   }
+  },
+  {
+   "id": "about.licences",
+   "en": "Licences",
+   "platforms": [
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "P2About-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): Mac About panel link (licences of Cassini, its libraries and downloaded models; about.modelNotices stays the heading inside).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Licenze"
+    },
+    "fr": {
+     "text": "Licences"
+    },
+    "es": {
+     "text": "Licencias"
+    },
+    "pt-BR": {
+     "text": "Licenças"
+    },
+    "pt-PT": {
+     "text": "Licenças"
+    }
+   }
+  },
+  {
+   "id": "about.licencesNotices",
+   "en": "Licences and notices",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): phone About row; replaces “Source code and notices”.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Licenze e avvisi"
+    },
+    "fr": {
+     "text": "Licences et mentions"
+    },
+    "es": {
+     "text": "Licencias y avisos"
+    },
+    "pt-BR": {
+     "text": "Licenças e avisos"
+    },
+    "pt-PT": {
+     "text": "Licenças e avisos"
+    }
+   }
+  },
+  {
+   "id": "about.licencesNotices.subtitle",
+   "en": "Cassini, its libraries and models",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): subtitle of about.licencesNotices.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cassini, le sue librerie e i suoi modelli"
+    },
+    "fr": {
+     "text": "Cassini, ses bibliothèques et ses modèles"
+    },
+    "es": {
+     "text": "Cassini, sus bibliotecas y sus modelos"
+    },
+    "pt-BR": {
+     "text": "O Cassini, suas bibliotecas e modelos"
+    },
+    "pt-PT": {
+     "text": "O Cassini, as suas bibliotecas e modelos"
+    }
+   }
+  },
+  {
+   "id": "about.sourceCode",
+   "en": "Source code",
+   "platforms": [
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2About-Phones",
+    "P2About-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "note": "D103 §6 (L-65): opens the app’s public repository (phones show the URL, for example github.com/codemyriad/cassini-ios, as the subtitle). GNOME: AdwAboutDialog Website / Report an issue.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Codice sorgente"
+    },
+    "fr": {
+     "text": "Code source"
+    },
+    "es": {
+     "text": "Código fuente"
+    },
+    "pt-BR": {
+     "text": "Código-fonte"
+    },
+    "pt-PT": {
+     "text": "Código-fonte"
+    }
+   }
+  },
+  {
+   "id": "about.licenceLine.phone",
+   "en": "Free software under GPLv3. © {year} Codemyriad and contributors.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "year": "copyright year, for example 2026"
+   },
+   "note": "D103 §6 (L-65): footnote of phone About. PROVISIONAL: the copyright holder differs from the Mac board (QUESTIONS-FOR-ALEX q5).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Software libero con licenza GPLv3. © {year} Codemyriad e collaboratori."
+    },
+    "fr": {
+     "text": "Logiciel libre sous licence GPLv3. © {year} Codemyriad et contributeurs."
+    },
+    "es": {
+     "text": "Software libre bajo GPLv3. © {year} Codemyriad y colaboradores."
+    },
+    "pt-BR": {
+     "text": "Software livre sob a GPLv3. © {year} Codemyriad e colaboradores."
+    },
+    "pt-PT": {
+     "text": "Software livre ao abrigo da GPLv3. © {year} Codemyriad e colaboradores."
+    }
+   }
+  },
+  {
+   "id": "about.licenceLine.mac",
+   "en": "© {year} Codemyriad OÜ · Free software under GPL-3.0",
+   "platforms": [
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2About-Desktop"
+   ],
+   "milestone": "Phase 2 second pass (D103)",
+   "placeholders": {
+    "year": "copyright year, for example 2026"
+   },
+   "note": "D103 §6 (L-65): last line of the Mac About panel. PROVISIONAL: the copyright holder differs from the phone board (QUESTIONS-FOR-ALEX q5).",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "© {year} Codemyriad OÜ · Software libero con licenza GPL-3.0"
+    },
+    "fr": {
+     "text": "© {year} Codemyriad OÜ · Logiciel libre sous licence GPL-3.0"
+    },
+    "es": {
+     "text": "© {year} Codemyriad OÜ · Software libre bajo GPL-3.0"
+    },
+    "pt-BR": {
+     "text": "© {year} Codemyriad OÜ · Software livre sob a GPL-3.0"
+    },
+    "pt-PT": {
+     "text": "© {year} Codemyriad OÜ · Software livre ao abrigo da GPL-3.0"
     }
    }
   }

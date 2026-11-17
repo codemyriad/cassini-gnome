@@ -225,6 +225,7 @@ talk_sources = files(
   'cassini_talk/capture_details_dialog.py',
   'cassini_talk/global_shortcut.py',
   'cassini_talk/settings_dialog.py',
+  'cassini_talk/settings_map.py',
   'cassini_talk/library_move.py',
   'cassini_talk/library_move_pair.py',
   'cassini_talk/library_location.py',
