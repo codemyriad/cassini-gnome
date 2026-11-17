@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/codemyriad/cassini-ux",
-  "commit": "c28b72461c7317ea0a4684183cb9103626aabf17",
+  "commit": "4e8f3608e7fc7e0bbe316d1ed0443b751b686c46",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -87,7 +87,7 @@
     "states-vectors.json": "2b946da58459452cb9fd17cacef58a3f10585a69142796cdd693e2f90fd9f497",
     "LIBRARY-RULES.md": "415d866eb4a098400c76a3975969d9764bb70eed905726fbdcf7e90e42f85ce8",
     "STATUS-BADGES.md": "ea4ff3050d91db4dd1e3297c3f49ce2df7741e980e29be58e824ef113f04c405",
-    "HARMONY.md": "a971a2a922fbd8cc249778c3c2fd2b498086d0c2d17a352f1c0ff93c4123b693",
+    "HARMONY.md": "7344cd98b957571021431b7117f21177625f8395d47d01b431c37485bf450ed8",
     "meeting.schema.json": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e",
     "library-vectors/verify.py": "d3d2a864c28f6b42d77e659f3b65f60a526a93dd3575d3b6a2d6f23f11cf2348",
     "library-vectors/README.md": "4ebeb57bd2b4df449f56a1fb4bf2c1679655fdf462566036c861f70fa359f1f4",
@@ -117,7 +117,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "06c869c175085b80cbdb8acb00c007d641fe7217724f5a9aa03d88ed8741c3a3",
+    "strings.json": "4f3d60c727004f5ef38cbe9409b43b6bb16a7178568a2bee1b64d2f2d6f60a3a",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",

@@ -21,36 +21,29 @@ class RecordFirst(Adw.Dialog):
         )
         self.set_child(content)
         content.append(Gtk.Label(label=text("recordFirst.title"), css_classes=["title-2"], wrap=True))
-        responsibility = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["responsibility-card"])
-        responsibility.append(Gtk.Label(label=text("recordFirst.lawPlain"), xalign=0, wrap=True))
-        self.dont_show = Gtk.CheckButton(
-            label=text("recordFirst.dontShowAgain"), active=self.settings.get_boolean("skip-record-first")
-        )
-        self.dont_show.connect(
-            "toggled", lambda button: self.settings.set_boolean("skip-record-first", button.get_active())
-        )
-        responsibility.append(self.dont_show)
-        content.append(responsibility)
+        # D104 §1: the law line is the plain line under the title, with no tinted box.
+        content.append(Gtk.Label(label=text("recordFirst.lawPlain"), xalign=0, wrap=True))
         content.append(
             Gtk.Label(label=text("recordFirst.willRecord"), xalign=0, css_classes=["heading", "dim-label", "small"])
         )
         self.permission_captions = {}
-        for index, (icon, title, description, caption) in enumerate(
-            [
-                (
-                    "audio-input-microphone-symbolic",
-                    "common.yourMicrophone",
-                    "recordFirst.mic.plain",
-                    "recordFirst.mic.caption.plain",
-                ),
-                (
-                    "video-display-symbolic",
-                    "recordFirst.sound.title",
-                    "recordFirst.sound.plain",
-                    "recordFirst.sound.caption.plain",
-                ),
-            ]
-        ):
+        rows = [
+            (
+                "audio-input-microphone-symbolic",
+                "common.yourMicrophone",
+                "recordFirst.mic.plain",
+                "recordFirst.mic.caption.plain",
+            ),
+            (
+                "video-display-symbolic",
+                "recordFirst.sound.title",
+                "recordFirst.sound.plain",
+                "recordFirst.sound.caption.plain",
+            ),
+            # D104 §1: the third row, "Not sure it hears both?", with Test (D60).
+            ("audio-volume-high-symbolic", "recordFirst.testRow.title", "recordFirst.testRow.body", None),
+        ]
+        for index, (icon, title, description, caption) in enumerate(rows):
             if index:
                 content.append(Gtk.Separator())
             row = Gtk.Box(spacing=14)
@@ -58,23 +51,36 @@ class RecordFirst(Adw.Dialog):
                 Gtk.Image(
                     icon_name=icon,
                     pixel_size=24,
-                    valign=Gtk.Align.START,
+                    valign=Gtk.Align.START,  # Icons top-aligned with the row's title.
                     accessible_role=Gtk.AccessibleRole.PRESENTATION,
                 )
             )
-            body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, hexpand=True)
             for key, classes in [(title, ["heading"]), (description, ["dim-label"]), (caption, ["dim-label", "small"])]:
+                if key is None:
+                    continue
                 value = Gtk.Label(label=text(key), xalign=0, wrap=True, css_classes=classes)
                 body.append(value)
                 if key == caption:
                     self.permission_captions["microphone" if index == 0 else "system"] = (value, caption)
             row.append(body)
+            if caption is None:
+                # Disabled while any recording or test runs.
+                self.test_button = Gtk.Button(label=text("settings.recording.test.button"), valign=Gtk.Align.START)
+                self.test_button.update_property(
+                    [Gtk.AccessibleProperty.DESCRIPTION], [text("recordFirst.testRow.title")]
+                )
+                self.test_button.connect("clicked", lambda *_: self.app.open_test_recording(self))
+                row.append(self.test_button)
             content.append(row)
-        # D60 test of both streams (L-61: "Test recording first", flat, above the actions);
-        # disabled while any recording or test runs.
-        self.test_button = Gtk.Button(label=text("recordFirst.test"), halign=Gtk.Align.START, css_classes=["flat"])
-        self.test_button.connect("clicked", lambda *_: self.app.open_test_recording(self))
-        content.append(self.test_button)
+        # D104 §1 (GNOME): "Don't show again" on its own line just above the buttons.
+        self.dont_show = Gtk.CheckButton(
+            label=text("recordFirst.dontShowAgain"), active=self.settings.get_boolean("skip-record-first")
+        )
+        self.dont_show.connect(
+            "toggled", lambda button: self.settings.set_boolean("skip-record-first", button.get_active())
+        )
+        content.append(self.dont_show)
         buttons = Gtk.Box(spacing=10, homogeneous=True)
         later = Gtk.Button(label=text("common.notNow"))
         later.connect("clicked", lambda *_: self.close())

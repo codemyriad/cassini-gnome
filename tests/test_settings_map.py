@@ -8,7 +8,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = {
     name: (ROOT / "src/cassini_talk" / name).read_text()
-    for name in ("settings_dialog.py", "settings_map.py", "library_window.py", "record_first.py", "main.py")
+    for name in (
+        "settings_dialog.py",
+        "settings_map.py",
+        "library_window.py",
+        "record_first.py",
+        "main.py",
+        "sound_check_dialog.py",
+        "sound_check.py",
+    )
 }
 D103_IDS = (
     "settings.recording.group.starting",
@@ -50,7 +58,6 @@ D103_IDS = (
     "recordFirst.sound.plain",
     "recordFirst.mic.caption.plain",
     "recordFirst.sound.caption.plain",
-    "recordFirst.test",
 )
 SUPERSEDED = (
     "settings.recording.autoRecord.subtitle",
@@ -74,6 +81,31 @@ SUPERSEDED = (
     "recordFirst.mic.caption",
     "recordFirst.sound.caption",
     "test.intro",
+    # D104 supersedes "Test recording first" and the D60 §4 dialog copy.
+    "recordFirst.test",
+    "test.running",
+    "test.result.working",
+    "test.result.silent",
+)
+# D104 (L-61 revised, Test recording): Before you record's Test row and the one-screen test.
+D104_SOURCES = ("record_first.py", "sound_check_dialog.py", "sound_check.py")
+D104_IDS = (
+    "recordFirst.testRow.title",
+    "recordFirst.testRow.body",
+    "settings.recording.test.button",
+    "test.mic.prompt",
+    "test.sound.prompt",
+    "test.live.hearing",
+    "test.live.waiting",
+    "test.live.hearingSound",
+    "test.pill.working",
+    "test.pill.silent",
+    "states.badge.recording",
+    "test.note",
+    "test.playBack",
+    "test.again",
+    "common.done",
+    "common.cancel",
 )
 
 
@@ -91,6 +123,17 @@ def test_every_d103_id_is_used_and_catalogued_in_all_six_languages():
         for lang in ("it", "fr", "es", "pt-BR", "pt-PT"):
             localized = entry["l10n"][lang]
             assert localized.get("text", "").strip() or localized.get("plural"), (identifier, lang)
+
+
+def test_every_d104_id_is_used_and_catalogued_in_all_six_languages():
+    entries = {e["id"]: e for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_text())["entries"]}
+    used = {m for name in D104_SOURCES for m in re.findall(r'"([a-zA-Z]+(?:\.[a-zA-Z0-9]+)+)"', SOURCES[name])}
+    for identifier in D104_IDS:
+        assert identifier in used, identifier
+        entry = entries[identifier]
+        assert "gnome" in entry["platforms"], identifier
+        for lang in ("it", "fr", "es", "pt-BR", "pt-PT"):
+            assert entry["l10n"][lang].get("text", "").strip(), (identifier, lang)
 
 
 def test_superseded_copy_is_gone_from_these_screens():

@@ -32,6 +32,8 @@ WORKING, SILENT, REFUSED = "working", "silent", "refused"
 # recognition_fallback's ACTIVE_DBFS, FRAME (512 at 16 kHz) and MIN_RUN_FRAMES;
 # that module needs numpy, so the values are repeated here and tested equal.
 ACTIVE_DBFS, FRAME_MS, MIN_RUN_FRAMES = -50.0, 32, 5
+# D104 §2: the live level's "Hearing" floor, ACTIVE_DBFS on the meters' -60..0 dBFS scale.
+LIVE_FLOOR = (ACTIVE_DBFS + 60) / 60
 # How long an exit waits for a discarded test's recorder: past NativeRecorder's
 # 10 s stop deadline. A folder still in use then is left for the next sweep.
 EXIT_BOUND_MS = 15_000
@@ -183,16 +185,27 @@ def judge_streams(directory, tracks, refusals, unheard=()):
     return outcomes
 
 
-def result_line(kind, outcome):
-    """The result line of one stream, in catalog copy."""
+def pill_text(outcome):
+    """D104 §2: the result pill of one stream, Working or No sound heard."""
+    from .strings import text
+
+    return text("test.pill.working" if outcome.state == WORKING else "test.pill.silent")
+
+
+def refusal_line(kind, outcome):
+    """The D58 line of a refused stream (built, not drawn), else None."""
     from .refusals import line
     from .strings import text
 
-    if outcome.state == REFUSED:
-        key, _origin = line(outcome.refusal)
-        return text(key, source=text(STREAMS[kind]))  # Named as on the other lines.
-    identifier = "test.result.working" if outcome.state == WORKING else "test.result.silent"
-    return text(identifier, stream=text(STREAMS[kind]))
+    if outcome.state != REFUSED:
+        return None
+    key, _origin = line(outcome.refusal)
+    return text(key, source=text(STREAMS[kind]))  # Named as on the other lines.
+
+
+def heard(level):
+    """Whether a live level (0..1 for -60..0 dBFS) is at or above the activity floor."""
+    return level >= LIVE_FLOOR - 1e-9
 
 
 class _Run:
@@ -231,6 +244,7 @@ class SoundCheck(GObject.Object):
         self.outcomes = None
         self._run = None
         self._timer = 0
+        self._started_us = None  # When the running test's recorder started.
         self._discarded = set()  # Discarded runs not yet deleted.
         self._application = application  # Held while any is.
         self._held = False
@@ -265,6 +279,22 @@ class SoundCheck(GObject.Object):
         return self._closed
 
     @property
+    def levels(self):
+        """The running test's live levels (microphone, system), 0..1; zeros otherwise."""
+        run = self._run
+        if self.state != "running" or run is None:
+            return (0.0, 0.0)
+        levels = getattr(run.recorder, "levels", None) or (0.0, 0.0)
+        return (float(levels[0]), float(levels[1]))
+
+    @property
+    def elapsed_ms(self):
+        """How long the running test has recorded, capped at its duration; 0 before it starts."""
+        if not self.running or self._started_us is None:
+            return 0
+        return max(0, min(self.duration_ms, (GLib.get_monotonic_time() - self._started_us) // 1000))
+
+    @property
     def folder(self):
         return self._run.folder if self._run else None
 
@@ -282,7 +312,7 @@ class SoundCheck(GObject.Object):
         run = self._run = _Run(None, recorder)
         recorder.connect("started", self._started, run)
         recorder.connect("finished", self._finished, run)
-        self.state, self.outcomes = "running", None
+        self.state, self.outcomes, self._started_us = "running", None, None
         future = self._executor.submit(make_folder, self.root)
         future.add_done_callback(lambda f: GLib.idle_add(self._made, f, run, test))
         self.emit("changed")
@@ -314,6 +344,7 @@ class SoundCheck(GObject.Object):
     def _started(self, _recorder, _path, run):
         # A Stop during the start can still see a side commit (late started).
         if run is self._run and self.state == "running" and not self._timer:
+            self._started_us = GLib.get_monotonic_time()
             self._timer = GLib.timeout_add(self.duration_ms, self._elapsed)
 
     def _elapsed(self):
