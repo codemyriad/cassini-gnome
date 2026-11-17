@@ -24,6 +24,7 @@ from cassini_talk.voice_enroll import (
     MIN_ENROL_MS,
     RATE,
     VoiceSetup,
+    carry_voice_answer,
     enrol_windows,
     judge,
     private_sample,
@@ -599,6 +600,70 @@ def test_voices_question_left_saved_voices_and_sets_the_remember_default():
     assert 'set_boolean("remember-voices", bool(enable))' in answer
     dialog = (ROOT / "src/cassini_talk/speakers_dialog.py").read_text()
     assert 'get_boolean("remember-voices")' in dialog and "active=True" not in dialog
+
+
+class _Settings:
+    def __init__(self, answer, remember=None):
+        self.values = {"voice-setup": answer}
+        if remember is not None:
+            self.values["remember-voices"] = remember
+
+    def get_user_value(self, key):
+        return self.values.get(key)
+
+    def get_string(self, key):
+        return self.values[key]
+
+    def set_boolean(self, key, value):
+        self.values[key] = value
+
+    def remembered(self):
+        return self.values.get("remember-voices", True)  # Schema default on.
+
+
+@pytest.mark.parametrize(
+    ("answer", "remember", "wrote", "after"),
+    [
+        ("declined", None, True, False),  # v0.4.3 `Not now`: carried across as off.
+        ("enabled", None, False, True),
+        ("unanswered", None, False, True),  # Asked later; the answer sets it.
+        ("declined", True, False, True),  # Turned back on in Preferences since.
+        ("enabled", False, False, False),
+    ],
+)
+def test_a_not_now_stored_before_remember_voices_existed_stores_off(answer, remember, wrote, after):
+    settings = _Settings(answer, remember)
+    assert carry_voice_answer(settings) is wrote
+    assert settings.remembered() is after
+    assert carry_voice_answer(settings) is False  # Once: the key now has a user value or needs none.
+
+
+def test_upgrading_a_declined_voice_setup_turns_remember_voices_off(tmp_path):
+    import subprocess
+
+    gio = pytest.importorskip("gi.repository.Gio")
+    from cassini_talk.identity import settings
+
+    schemas = tmp_path / "schemas"
+    schemas.mkdir()
+    source = ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml"
+    (schemas / source.name).write_bytes(source.read_bytes())
+    subprocess.run(["glib-compile-schemas", "--strict", str(schemas)], check=True)
+    schema_source = gio.SettingsSchemaSource.new_from_directory(str(schemas), None, False)
+    # The dconf state a v0.4.3 `Not now` left behind: only voice-setup was written.
+    keyfile = tmp_path / "preferences.ini"
+    keyfile.write_text("[io/codemyriad/CassiniTalk]\nvoice-setup='declined'\n")
+    backend = gio.keyfile_settings_backend_new(str(keyfile), "/", None)
+    current = settings(source=schema_source, backend=backend)
+    assert current.get_user_value("remember-voices") is None and current.get_boolean("remember-voices")
+    assert carry_voice_answer(current)
+    assert not current.get_boolean("remember-voices")
+
+
+def test_app_settings_carry_the_stored_voice_answer_on_first_use():
+    main = (ROOT / "src/cassini_talk/main.py").read_text()
+    prop = main[main.index("    def recording_settings") : main.index("    def recorder(self)")]
+    assert "carry_voice_answer(self._recording_settings)" in prop
 
 
 # Copy: Wave 6 catalog ids exist, and the GTK process never imports the engine.

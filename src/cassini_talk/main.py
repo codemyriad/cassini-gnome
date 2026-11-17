@@ -671,8 +671,10 @@ class CassiniApplication(Adw.Application):
     def recording_settings(self):
         if self._recording_settings is None:
             from .identity import settings
+            from .voice_enroll import carry_voice_answer
 
             self._recording_settings = settings()
+            carry_voice_answer(self._recording_settings)
         return self._recording_settings
 
     @property

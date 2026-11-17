@@ -58,6 +58,23 @@ def voice_question_due(answer, *, engine, speakers, editable, transcribing):
     return answer == "unanswered" and bool(engine) and editable and not transcribing and speakers > 1
 
 
+def carry_voice_answer(settings):
+    """D103 §3 upgrade: a `Not now` stored before `remember-voices` existed stores off.
+
+    v0.4.3 (D-977) persisted `voice-setup = 'declined'` without the
+    `remember-voices` key, whose schema default is on. Such a person is never
+    asked again, so their answer is carried across once: with no user value
+    for `remember-voices`, `declined` writes it off. A value set since (the
+    question's answer or Preferences) is left alone. Returns True if it wrote.
+    """
+    if settings.get_user_value("remember-voices") is not None:
+        return False
+    if settings.get_string("voice-setup") != "declined":
+        return False
+    settings.set_boolean("remember-voices", False)
+    return True
+
+
 class VoiceSetup:
     """D-977 `Remember voices`: one open request that chains both optional downloads.
 
