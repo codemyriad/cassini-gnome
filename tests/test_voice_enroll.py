@@ -24,12 +24,14 @@ from cassini_talk.voice_enroll import (
     MIN_ENROL_MS,
     RATE,
     VoiceSetup,
+    carry_voice_answer,
     enrol_windows,
     judge,
     private_sample,
     speech_ms,
     speech_segments,
     sweep,
+    voice_question_due,
     voice_setup_step,
 )
 from cassini_talk.voice_store import VoiceStore
@@ -562,11 +564,115 @@ def test_voice_setup_answer_is_a_settings_key_defaulting_to_unanswered():
     assert re.findall(r'<choice value="([^"]+)"', block) == ["unanswered", "enabled", "declined"]
 
 
+def test_remember_voices_default_is_a_settings_key_defaulting_on():
+    schema = (ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml").read_text()
+    block = re.search(r'<key name="remember-voices" type="b">(.*?)</key>', schema, re.S).group(1)
+    assert "<default>true</default>" in block  # Today's Name a speaker default until answered.
+
+
+@pytest.mark.parametrize(
+    ("answer", "engine", "speakers", "editable", "transcribing", "due"),
+    [
+        ("unanswered", True, 2, True, False, True),
+        ("unanswered", True, 1, True, False, False),  # One speaker: nothing to name apart.
+        ("unanswered", True, 0, True, False, False),
+        ("unanswered", False, 3, True, False, False),  # No voice engine in this build.
+        ("unanswered", True, 3, False, False, False),  # Speakers cannot be named here.
+        ("unanswered", True, 3, True, True, False),  # Still being written down.
+        ("enabled", True, 3, True, False, False),  # Asked once.
+        ("declined", True, 3, True, False, False),
+    ],
+)
+def test_voices_question_is_due_once_over_the_first_meeting_with_speakers(
+    answer, engine, speakers, editable, transcribing, due
+):
+    assert (
+        voice_question_due(answer, engine=engine, speakers=speakers, editable=editable, transcribing=transcribing)
+        is due
+    )
+
+
+def test_voices_question_left_saved_voices_and_sets_the_remember_default():
+    page = (ROOT / "src/cassini_talk/saved_voices_page.py").read_text()
+    assert "voices.setup.title" not in page and "answer_voice_setup" not in page
+    main = (ROOT / "src/cassini_talk/main.py").read_text()
+    answer = main[main.index("    def answer_voice_setup") : main.index("    def offer_voice_question")]
+    assert 'set_boolean("remember-voices", bool(enable))' in answer
+    dialog = (ROOT / "src/cassini_talk/speakers_dialog.py").read_text()
+    assert 'get_boolean("remember-voices")' in dialog and "active=True" not in dialog
+
+
+class _Settings:
+    def __init__(self, answer, remember=None):
+        self.values = {"voice-setup": answer}
+        if remember is not None:
+            self.values["remember-voices"] = remember
+
+    def get_user_value(self, key):
+        return self.values.get(key)
+
+    def get_string(self, key):
+        return self.values[key]
+
+    def set_boolean(self, key, value):
+        self.values[key] = value
+
+    def remembered(self):
+        return self.values.get("remember-voices", True)  # Schema default on.
+
+
+@pytest.mark.parametrize(
+    ("answer", "remember", "wrote", "after"),
+    [
+        ("declined", None, True, False),  # v0.4.3 `Not now`: carried across as off.
+        ("enabled", None, False, True),
+        ("unanswered", None, False, True),  # Asked later; the answer sets it.
+        ("declined", True, False, True),  # Turned back on in Preferences since.
+        ("enabled", False, False, False),
+    ],
+)
+def test_a_not_now_stored_before_remember_voices_existed_stores_off(answer, remember, wrote, after):
+    settings = _Settings(answer, remember)
+    assert carry_voice_answer(settings) is wrote
+    assert settings.remembered() is after
+    assert carry_voice_answer(settings) is False  # Once: the key now has a user value or needs none.
+
+
+def test_upgrading_a_declined_voice_setup_turns_remember_voices_off(tmp_path):
+    import subprocess
+
+    gio = pytest.importorskip("gi.repository.Gio")
+    from cassini_talk.identity import settings
+
+    schemas = tmp_path / "schemas"
+    schemas.mkdir()
+    source = ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml"
+    (schemas / source.name).write_bytes(source.read_bytes())
+    subprocess.run(["glib-compile-schemas", "--strict", str(schemas)], check=True)
+    schema_source = gio.SettingsSchemaSource.new_from_directory(str(schemas), None, False)
+    # The dconf state a v0.4.3 `Not now` left behind: only voice-setup was written.
+    keyfile = tmp_path / "preferences.ini"
+    keyfile.write_text("[io/codemyriad/CassiniTalk]\nvoice-setup='declined'\n")
+    backend = gio.keyfile_settings_backend_new(str(keyfile), "/", None)
+    current = settings(source=schema_source, backend=backend)
+    assert current.get_user_value("remember-voices") is None and current.get_boolean("remember-voices")
+    assert carry_voice_answer(current)
+    assert not current.get_boolean("remember-voices")
+
+
+def test_app_settings_carry_the_stored_voice_answer_on_first_use():
+    main = (ROOT / "src/cassini_talk/main.py").read_text()
+    prop = main[main.index("    def recording_settings") : main.index("    def recorder(self)")]
+    assert "carry_voice_answer(self._recording_settings)" in prop
+
+
 # Copy: Wave 6 catalog ids exist, and the GTK process never imports the engine.
 
 WAVE6_IDS = [
     "voices.setup.title",
-    "voices.setup.body",
+    "voices.setup.body.desktop",
+    "voices.setup.kindness",
+    "voices.setup.changeLater.desktop",
     "voices.setup.privacy.desktop",
     "voices.setup.enable",
     "common.notNow",
@@ -581,10 +687,7 @@ WAVE6_IDS = [
     "voices.enroll.ready",
     "voices.enroll.save",
     "voices.enroll.fromTranscriptHint",
-    "savedVoices.privacy",
     "savedVoices.row.meta",
-    "savedVoices.row.sampleCount",
-    "savedVoices.row.status.ready",
     "savedVoices.row.stale",
     "savedVoices.row.play",
     "savedVoices.row.stopSample",
@@ -592,7 +695,12 @@ WAVE6_IDS = [
     "savedVoices.rename.title",
     "savedVoices.rename.save",
     "savedVoices.rename.blank",
-    "savedVoices.row.delete",
+    "savedVoices.row.options.a11y",
+    "savedVoices.row.playSampleMenu",
+    "savedVoices.row.forgetEllipsis",
+    "savedVoices.howToAdd.short",
+    "voices.rememberDefault.title",
+    "voices.rememberDefault.subtitle",
     "savedVoices.forgetEveryone",
     "confirm.deleteVoiceProfile.title",
     "confirm.deleteVoiceProfile.body",
@@ -606,7 +714,13 @@ WAVE6_IDS = [
 def test_every_wave6_id_is_vendored_for_gnome_and_used():
     entries = {e["id"]: e for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_text())["entries"]}
     sources = "".join(
-        (ROOT / "src/cassini_talk" / name).read_text() for name in ("saved_voices_page.py", "voice_enroll_dialog.py")
+        (ROOT / "src/cassini_talk" / name).read_text()
+        for name in (
+            "saved_voices_page.py",
+            "voice_enroll_dialog.py",
+            "voice_question.py",
+            "settings_dialog.py",
+        )
     )
     for identifier in WAVE6_IDS:
         assert "gnome" in entries[identifier]["platforms"], identifier
@@ -891,3 +1005,90 @@ def test_desktop_draws_no_phone_backup_or_transfer_copy():
     )
     for path in (ROOT / "src/cassini_talk").glob("*.py"):
         assert not phone_only.search(path.read_text(encoding="utf-8")), path.name
+
+
+class _VoiceSettings:
+    """The two recording keys the voices question and Preferences share."""
+
+    def __init__(self):
+        self.values = {"voice-setup": "unanswered", "remember-voices": True}
+
+    def get_string(self, key):
+        return self.values[key]
+
+    set_string = set_boolean = lambda self, key, value: self.values.__setitem__(key, value)
+
+    def get_boolean(self, key):
+        return self.values[key]
+
+
+def _voices_question_and_preferences(preferences_closed=False):
+    """The real response, Preferences and app handlers, over fakes (no display, no sleeps)."""
+    from functools import partial
+
+    dialog_class = settings_dialog_class()
+    try:
+        from cassini_talk.main import CassiniApplication
+        from cassini_talk.voice_question import VoiceQuestion
+    except (ImportError, ValueError) as error:
+        pytest.skip(f"Application is unavailable: {error}")
+    settings, tell, voices = _VoiceSettings(), FakeModels(), FakeModels()
+    app = SimpleNamespace(
+        recording_settings=settings, diarization_models=tell, voice_models=voices, voice_setup=VoiceSetup()
+    )
+    app.answer_voice_setup = partial(CassiniApplication.answer_voice_setup, app)
+    app.close_voice_question = partial(CassiniApplication.close_voice_question, app)
+    switch = SimpleNamespace(active=True)
+    switch.get_active = lambda: switch.active
+    prefs = SimpleNamespace(app=app, settings=settings, remember_default=switch, closed=preferences_closed, renders=0)
+    prefs.render_models = lambda: setattr(prefs, "renders", prefs.renders + 1)
+    app.settings_dialog = prefs
+    question = SimpleNamespace(app=app, answered=None, dismissed=False, force_closed=0)
+    question.force_close = lambda: setattr(question, "force_closed", question.force_closed + 1)
+    question.dismiss = partial(VoiceQuestion.dismiss, question)
+    app.voice_question = question
+
+    def flip(active):  # Gio.Settings.bind writes the key, then notify::active runs the handler.
+        switch.active = active
+        settings.set_boolean("remember-voices", active)
+        dialog_class._remember_default_changed(prefs)
+
+    return app, settings, question, partial(VoiceQuestion._response, question, question), flip
+
+
+@pytest.mark.parametrize(("preference", "response"), [(False, "enable"), (True, "not-now"), (False, "not-now")])
+def test_preferences_answering_closes_the_open_voices_question_and_its_response_is_ignored(preference, response):
+    app, settings, question, respond, flip = _voices_question_and_preferences()
+    flip(preference)
+    assert settings.values == {"voice-setup": "enabled" if preference else "declined", "remember-voices": preference}
+    assert question.force_closed == 1 and app.voice_question is None
+    respond(response)  # Its button, Escape, or the close response the forced close may send.
+    assert settings.values == {"voice-setup": "enabled" if preference else "declined", "remember-voices": preference}
+    assert app.diarization_models.downloads + app.voice_models.downloads == 0
+    assert not app.voice_setup.active and question.answered is None
+
+
+def test_a_voices_response_after_another_answer_never_overwrites_it():
+    app, settings, question, respond, _flip = _voices_question_and_preferences()
+    settings.set_string("voice-setup", "declined")  # Answered elsewhere; this one was never dismissed.
+    settings.set_boolean("remember-voices", False)
+    respond("enable")
+    assert settings.values == {"voice-setup": "declined", "remember-voices": False}
+    assert app.diarization_models.downloads == 0 and question.answered is None
+
+
+def test_a_closed_preferences_never_answers_or_closes_the_voices_question():
+    app, settings, question, _respond, flip = _voices_question_and_preferences(preferences_closed=True)
+    flip(False)  # The binding outlives the closed dialog; e.g. a key written elsewhere.
+    assert settings.get_string("voice-setup") == "unanswered"
+    assert question.force_closed == 0 and app.voice_question is question
+
+
+def test_answering_the_open_voices_question_still_works():
+    app, settings, question, respond, _flip = _voices_question_and_preferences()
+    respond("enable")
+    assert settings.values == {"voice-setup": "enabled", "remember-voices": True}
+    assert app.diarization_models.downloads == 1 and app.voice_setup.active
+    assert app.settings_dialog.renders == 1
+    respond("not-now")  # Once only.
+    assert settings.get_string("voice-setup") == "enabled"

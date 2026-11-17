@@ -76,6 +76,10 @@ class CassiniApplication(Adw.Application):
         from .voice_enroll import VoiceSetup
 
         self.voice_setup = VoiceSetup()
+        # D103 §3: the voices question over the first meeting with speakers.
+        # Screenshot runs keep it away unless a test turns it on.
+        self.voice_question_enabled = os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1"
+        self.voice_question = None
         self._transcription_holds = 0
         self._transcription_stops = set()
         self._transcription_generation = 0
@@ -667,8 +671,10 @@ class CassiniApplication(Adw.Application):
     def recording_settings(self):
         if self._recording_settings is None:
             from .identity import settings
+            from .voice_enroll import carry_voice_answer
 
             self._recording_settings = settings()
+            carry_voice_answer(self._recording_settings)
         return self._recording_settings
 
     @property
@@ -1609,10 +1615,46 @@ class CassiniApplication(Adw.Application):
         rows stay the way to turn recognition on later.
         """
         self.recording_settings.set_string("voice-setup", "enabled" if enable else "declined")
+        # D103 §3: the answer is also the default of `Remember this voice`.
+        self.recording_settings.set_boolean("remember-voices", bool(enable))
         if enable:
             self.voice_setup.begin(self.diarization_models, self.voice_models)
         else:
             self.voice_setup.end()
+
+    def offer_voice_question(self, page):
+        """D103 §3 (L-60): `Recognise people you name?` once, over the open meeting `page`."""
+        from .voice_enroll import voice_question_due
+
+        if not self.voice_question_enabled or self.voice_question is not None:
+            return False
+        meeting = page.meeting
+        if not voice_question_due(
+            self.recording_settings.get_string("voice-setup"),
+            engine=self.diarization_models is not None and self.voice_models is not None,
+            speakers=len(meeting.speakers),
+            editable=bool(meeting.metadata_editable),
+            transcribing=meeting.transcript in ("queued", "running"),
+        ):
+            return False
+        window = page.window
+        if not page.get_mapped() or window.get_visible_dialog() is not None:
+            return False
+        from .voice_question import VoiceQuestion
+
+        self.voice_question = VoiceQuestion(self)
+        self.voice_question.present(window)
+        return True
+
+    def close_voice_question(self):
+        """Preferences answered the voices question: close it so it cannot answer again."""
+        dialog, self.voice_question = self.voice_question, None
+        if dialog is not None:
+            dialog.dismiss()
+
+    def _voice_question_closed(self, dialog):
+        if self.voice_question is dialog:
+            self.voice_question = None
 
     def _advance_voice_setup(self):
         self.voice_setup.advance(self.diarization_models, self.voice_models)

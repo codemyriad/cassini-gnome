@@ -102,6 +102,11 @@
       <summary>Answer to the one-question voice setup</summary>
       <description>Whether “Recognise people you name?” was answered with Remember voices or Not now (D-977).</description>
     </key>
+    <key name="remember-voices" type="b">
+      <default>true</default>
+      <summary>Remember people I name</summary>
+      <description>The default of “Remember this voice” in Name a speaker. Set by the answer to “Recognise people you name?” and changeable in Preferences › Transcription (D103 §3).</description>
+    </key>
     <key name="follow-along" type="b">
       <default>true</default>
       <summary>Follow along</summary>

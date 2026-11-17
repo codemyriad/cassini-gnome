@@ -47,6 +47,34 @@ def voice_setup_step(tell, voices):
     return "wait" if voices.get("busy") or voices.get("error") else "download-voices"
 
 
+def voice_question_due(answer, *, engine, speakers, editable, transcribing):
+    """D103 §3 (L-60): ask `Recognise people you name?` once, over the first meeting with speakers.
+
+    `answer` is the `voice-setup` key; the question is due only while it is
+    `unanswered`, in a build that has the optional voice engine, over a
+    meeting whose speakers can be named and that has more than one of them
+    (not while it is still being written down).
+    """
+    return answer == "unanswered" and bool(engine) and editable and not transcribing and speakers > 1
+
+
+def carry_voice_answer(settings):
+    """D103 §3 upgrade: a `Not now` stored before `remember-voices` existed stores off.
+
+    v0.4.3 (D-977) persisted `voice-setup = 'declined'` without the
+    `remember-voices` key, whose schema default is on. Such a person is never
+    asked again, so their answer is carried across once: with no user value
+    for `remember-voices`, `declined` writes it off. A value set since (the
+    question's answer or Preferences) is left alone. Returns True if it wrote.
+    """
+    if settings.get_user_value("remember-voices") is not None:
+        return False
+    if settings.get_string("voice-setup") != "declined":
+        return False
+    settings.set_boolean("remember-voices", False)
+    return True
+
+
 class VoiceSetup:
     """D-977 `Remember voices`: one open request that chains both optional downloads.
 

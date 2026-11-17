@@ -121,6 +121,7 @@ talk_sources = files(
   'cassini_talk/voice_enroll.py',
   'cassini_talk/phrase_recorder.py',
   'cassini_talk/voice_enroll_dialog.py',
+  'cassini_talk/voice_question.py',
   'cassini_talk/worker_voices.py',
   'cassini_talk/diarization.py',
   'cassini_talk/diarization_abi.py',

@@ -164,8 +164,9 @@ class SpeakersDialog(Adw.Dialog):
         remember_copy.append(self.remember_title)
         remember_copy.append(self.remember_description)
         remember_copy.append(self.voice_settings)
+        # D103 §3: the default follows the voices question / "Remember people I name".
         self.remember = Gtk.Switch(
-            active=True,
+            active=self.window.get_application().recording_settings.get_boolean("remember-voices"),
             sensitive=False,
             valign=Gtk.Align.START,
             css_classes=["speaker-remember-switch"],

@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """UX17 / D-977 Saved voices page; private-store IO uses the Settings worker.
 
-Wave 6 (PARITY §5, HARMONY §§10, 12, D98): one-question voice setup, guided
-test-phrase enrollment, rename, delete, sample count and status, sample
-playback, and the local-only privacy line. Nothing here touches the network.
+Wave 6 (PARITY §5, HARMONY §§10, 12, D98) with L-63 (D103 §5): one row per
+voice with a play button and one Options menu (Play a sample, Rename…,
+Forget…), Forget everyone…, the footnote, guided test-phrase enrollment and the
+local-only privacy line. The voices question moved over the first meeting with
+speakers (D103 §3, `voice_question.py`). Nothing here touches the network.
 """
 
 import logging
 from concurrent.futures import CancelledError
 
-from gi.repository import Adw, GLib, Gtk
+from gi.repository import Adw, Gio, GLib, Gtk
 
 from .speaker_edits import name_value
 from .strings import plural, text
@@ -40,33 +42,11 @@ class SavedVoicesPage(Adw.NavigationPage):
         group = Adw.PreferencesGroup()
         line = Gtk.Box(spacing=12)
         line.append(Gtk.Image(icon_name="security-high-symbolic", css_classes=["success"], valign=Gtk.Align.START))
-        line.append(Gtk.Label(label=text("savedVoices.privacy"), wrap=True, xalign=0, hexpand=True))
+        # L-63 (D103 §5): the desktop board's privacy line; the voices question
+        # itself is asked over the first meeting with speakers (D103 §3).
+        line.append(Gtk.Label(label=text("voices.setup.privacy.desktop"), wrap=True, xalign=0, hexpand=True))
         group.add(line)
         page.add(group)
-        self.setup = Adw.PreferencesGroup(visible=False, css_classes=["voice-setup"])
-        setup_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.setup_title = Gtk.Label(
-            label=text("voices.setup.title"),
-            wrap=True,
-            xalign=0,
-            css_classes=["title-4"],
-            accessible_role=Gtk.AccessibleRole.HEADING,
-        )
-        setup_box.append(self.setup_title)
-        setup_box.append(Gtk.Label(label=text("voices.setup.body"), wrap=True, xalign=0))
-        setup_box.append(
-            Gtk.Label(label=text("voices.setup.privacy.desktop"), wrap=True, xalign=0, css_classes=["dim-label"])
-        )
-        setup_actions = Gtk.Box(spacing=8, margin_top=4)
-        self.setup_enable = Gtk.Button(label=text("voices.setup.enable"), css_classes=["suggested-action"])
-        self.setup_enable.connect("clicked", lambda *_: self.answer_setup(True))
-        self.setup_later = Gtk.Button(label=text("common.notNow"))
-        self.setup_later.connect("clicked", lambda *_: self.answer_setup(False))
-        setup_actions.append(self.setup_enable)
-        setup_actions.append(self.setup_later)
-        setup_box.append(setup_actions)
-        self.setup.add(setup_box)
-        page.add(self.setup)
         self.people = Adw.PreferencesGroup()
         page.add(self.people)
         self.newer = Gtk.Label(label=text("savedVoices.newerVersion"), wrap=True, xalign=0, visible=False)
@@ -82,14 +62,28 @@ class SavedVoicesPage(Adw.NavigationPage):
         self.error.add_suffix(self.again)
         self.error_group.add(self.error)
         page.add(self.error_group)
-        footer = Adw.PreferencesGroup(description=text("savedVoices.howToAdd"))
-        actions = Gtk.Box(spacing=8, margin_top=16)
+        # Board: one footnote at the start, Forget everyone… at the end. Add a
+        # voice… (D-977 guided test phrase, PARITY "Remembered voices") stays
+        # beside it: the board does not draw it, but nothing is removed (L-58).
+        footer = Adw.PreferencesGroup()
+        actions = Gtk.Box(spacing=20, css_classes=["saved-voices-footer"])
+        self.footnote = Gtk.Label(
+            label=text("savedVoices.howToAdd.short"),
+            wrap=True,
+            xalign=0,
+            hexpand=True,
+            valign=Gtk.Align.START,
+            css_classes=["dim-label", "saved-voices-footnote"],
+        )
+        actions.append(self.footnote)
+        buttons = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, valign=Gtk.Align.START)
+        self.everyone = Gtk.Button(label=text("savedVoices.forgetEveryone"), css_classes=["saved-voices-forget-all"])
+        self.everyone.connect("clicked", lambda *_: self.confirm(None))
+        buttons.append(self.everyone)
         self.add_voice = Gtk.Button(label=text("voices.enroll.addAction"))
         self.add_voice.connect("clicked", lambda *_: self.enroll())
-        actions.append(self.add_voice)
-        self.everyone = Gtk.Button(label=text("savedVoices.forgetEveryone"))
-        self.everyone.connect("clicked", lambda *_: self.confirm(None))
-        actions.append(self.everyone)
+        buttons.append(self.add_voice)
+        actions.append(buttons)
         footer.add(actions)
         self.models_needed = Gtk.Label(
             label=text("speakers.rememberVoice.modelsNeeded"),
@@ -107,18 +101,6 @@ class SavedVoicesPage(Adw.NavigationPage):
         self.set_child(toolbar)
         self.connect("hidden", lambda *_: self._stop_sample())
         self.timer = GLib.timeout_add(50, self._tick)
-
-    def setup_offered(self):
-        """`Recognise people you name?` until answered, unless recognition is already On."""
-        app = self.app
-        if app.diarization_models is None or app.voice_models is None or app.recognition_ready():
-            return False
-        return app.recording_settings.get_string("voice-setup") == "unanswered"
-
-    def answer_setup(self, enable):
-        self.app.answer_voice_setup(enable)
-        self.refresh()
-        self.settings.render_models()
 
     def can_enroll(self):
         return self.app.recognition_ready()
@@ -142,10 +124,9 @@ class SavedVoicesPage(Adw.NavigationPage):
         self.newer.set_visible(state["readOnly"])
         self.empty.set_visible(not state["voices"])
         self.everyone.set_sensitive(bool(state["voices"]) and writable)
-        self.setup.set_visible(self.setup_offered())
         ready = self.can_enroll()
         self.add_voice.set_sensitive(ready and writable)
-        self.models_needed.set_visible(not ready and not self.setup.get_visible())
+        self.models_needed.set_visible(not ready)
         if signature != self._signature:
             self._signature = signature
             for row in self.rows.values():
@@ -348,7 +329,7 @@ class SavedVoicesPage(Adw.NavigationPage):
             return GLib.SOURCE_REMOVE
         for identifier, row in self.rows.items():
             row.show_playing(self.player is not None and self._sample_voice == identifier)
-            row.play.set_sensitive(identifier in self.samples and not self.busy)
+            row.set_sample_available(identifier in self.samples and not self.busy)
         if self.player is not None and self._sample_pending and self.player._prerolled:
             start, end = self._sample_pending
             self._sample_pending = None
@@ -387,50 +368,77 @@ def initials(name):
 
 
 class VoiceRow:
-    """One saved voice: fixed save-order colour (L-41), meta, samples, status, Play, Rename, Delete."""
+    """One saved voice (L-63): save-order colour (L-41), name, meta, amber stale hint, Play, Options menu."""
 
     def __init__(self, page, voice, writable):
         self.voice = voice
         name = voice["name"]
-        self.row = Adw.ActionRow(title=name, use_markup=False, css_classes=["saved-voice-row"])
-        lines = [
-            text(
-                "savedVoices.row.meta",
-                meetingCount=plural("savedVoices.row.meetingCount", len(voice["meetings"])),
-                confirmedSpeech=confirmed_speech(voice["seconds"] * 1000),
-            ),
-            plural("savedVoices.row.sampleCount", voice["count"]),
-        ]
-        self.stale = stale(voice)
-        if self.stale:
-            lines.append(text("savedVoices.row.stale"))
-        self.row.set_subtitle("\n".join(lines))
+        self.row = Adw.PreferencesRow(title=name, use_markup=False, css_classes=["saved-voice-row"])
+        box = Gtk.Box(spacing=12, margin_top=10, margin_bottom=10, margin_start=14, margin_end=14)
         self.avatar = Gtk.Label(
             label=initials(name),
             valign=Gtk.Align.CENTER,
             css_classes=["speaker-avatar", f"speaker-avatar-{saved_voice_slot(voice)}"],
         )
-        self.row.add_prefix(self.avatar)
-        self.status = Gtk.Label(
-            label=text("savedVoices.row.status.ready"),
-            valign=Gtk.Align.CENTER,
-            visible=not self.stale,
-            css_classes=["saved-voice-ready"],
+        box.append(self.avatar)
+        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True, valign=Gtk.Align.CENTER)
+        self.name = Gtk.Label(label=name, xalign=0, wrap=True, css_classes=["saved-voice-name"])
+        lines.append(self.name)
+        self.meta = Gtk.Label(
+            label=text(
+                "savedVoices.row.meta",
+                meetingCount=plural("savedVoices.row.meetingCount", len(voice["meetings"])),
+                confirmedSpeech=confirmed_speech(voice["seconds"] * 1000),
+            ),
+            xalign=0,
+            wrap=True,
+            css_classes=["dim-label", "saved-voice-meta"],
         )
-        self.row.add_suffix(self.status)
-        self.play = Gtk.Button(css_classes=["circular", "flat"], valign=Gtk.Align.CENTER)
+        lines.append(self.meta)
+        self.stale = stale(voice)
+        self.stale_line = Gtk.Label(
+            label=text("savedVoices.row.stale"),
+            xalign=0,
+            wrap=True,
+            visible=self.stale,
+            css_classes=["saved-voice-meta", "saved-voice-stale"],
+        )
+        lines.append(self.stale_line)
+        box.append(lines)
+        self.play = Gtk.Button(css_classes=["circular", "saved-voice-play"], valign=Gtk.Align.CENTER)
         self.play.connect("clicked", lambda *_: page._toggle_sample(voice["id"]))
         self._playing = None
         self.show_playing(False)
-        self.row.add_suffix(self.play)
-        self.rename = Gtk.Button(
-            label=text("savedVoices.row.rename"), valign=Gtk.Align.CENTER, sensitive=writable, css_classes=["flat"]
+        box.append(self.play)
+        self.actions = Gio.SimpleActionGroup()
+        for action_name, callback, enabled in (
+            ("play", lambda: page._play(voice["id"]), False),
+            ("rename", lambda: page.rename(voice), writable),
+            ("forget", lambda: page.confirm(voice), writable),
+        ):
+            action = Gio.SimpleAction(name=action_name, enabled=enabled)
+            action.connect("activate", lambda _action, _value, run=callback: run())
+            self.actions.add_action(action)
+        self.row.insert_action_group("voice", self.actions)
+        self.menu = Gio.Menu()
+        self.menu.append(text("savedVoices.row.playSampleMenu"), "voice.play")
+        self.menu.append(text("savedVoices.row.rename"), "voice.rename")
+        self.menu.append(text("savedVoices.row.forgetEllipsis"), "voice.forget")
+        options = text("savedVoices.row.options.a11y", name=name)
+        self.options = Gtk.MenuButton(
+            icon_name="view-more-symbolic",
+            menu_model=self.menu,
+            tooltip_text=options,
+            valign=Gtk.Align.CENTER,
+            css_classes=["circular", "flat"],
         )
-        self.rename.connect("clicked", lambda *_: page.rename(voice))
-        self.row.add_suffix(self.rename)
-        self.delete = Gtk.Button(label=text("savedVoices.row.delete"), valign=Gtk.Align.CENTER, sensitive=writable)
-        self.delete.connect("clicked", lambda *_: page.confirm(voice))
-        self.row.add_suffix(self.delete)
+        self.options.update_property([Gtk.AccessibleProperty.LABEL], [options])
+        box.append(self.options)
+        self.row.set_child(box)
+
+    def set_sample_available(self, available):
+        self.play.set_sensitive(available)
+        self.actions.lookup_action("play").set_enabled(available)
 
     def show_playing(self, playing):
         if playing == self._playing:

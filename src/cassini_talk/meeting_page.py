@@ -349,6 +349,10 @@ class MeetingPage(Adw.NavigationPage):
 
         self._listen_origin = None
         self.speakers.connect("map", self._schedule_rows_ready)
+        # D103 §3: the voices question waits for this pane to show and no dialog to be open.
+        self._voice_question_idle = 0
+        self.connect("map", self._queue_voice_question)
+        self._voice_question_handler = window.connect("notify::visible-dialog", self._queue_voice_question)
         self._merge_transition = None
         self._dialog_focus = None
         self._dialog_focus_idle = 0
@@ -1300,6 +1304,7 @@ class MeetingPage(Adw.NavigationPage):
         self._updating_transcript = True
         self._updating_rows = True
         self.meeting = meeting
+        self._queue_voice_question()
         self._sync_back_button()
         is_transcribing = meeting.transcript in ("queued", "running")
         if is_transcribing and self._header_scrolled:
@@ -1956,8 +1961,25 @@ class MeetingPage(Adw.NavigationPage):
         self.window.listen.stop()
         self._listening_changed()
 
+    def _queue_voice_question(self, *_):
+        if not self._closed and not getattr(self, "_voice_question_idle", 1):
+            self._voice_question_idle = GLib.idle_add(self._offer_voice_question)
+
+    def _offer_voice_question(self):
+        self._voice_question_idle = 0
+        offer = getattr(self.window.get_application(), "offer_voice_question", None)
+        if not self._closed and offer is not None:
+            offer(self)
+        return GLib.SOURCE_REMOVE
+
     def close(self):
         self._closed = True
+        if self._voice_question_idle:
+            GLib.source_remove(self._voice_question_idle)
+            self._voice_question_idle = 0
+        if self._voice_question_handler:
+            self.window.disconnect(self._voice_question_handler)
+            self._voice_question_handler = 0
         self.transcribing_row.popdown()
         if hasattr(self, "listening_keys"):
             self.listening_keys.close()
