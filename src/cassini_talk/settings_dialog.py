@@ -304,9 +304,23 @@ class SettingsDialog(Adw.PreferencesDialog):
         group.add(self.recognise)
         self.voice_line = Gtk.Label(wrap=True, xalign=0, css_classes=["dim-label"], visible=False)
         group.add(self.voice_line)
+        # D103 §3 (PROVISIONAL placement, D-1044 q4): the default of Remember this voice.
+        self.remember_default = Adw.SwitchRow(
+            title=text("voices.rememberDefault.title"),
+            subtitle=text("voices.rememberDefault.subtitle"),
+            use_markup=False,
+        )
+        self.settings.bind("remember-voices", self.remember_default, "active", Gio.SettingsBindFlags.DEFAULT)
+        self.remember_default.connect("notify::active", self._remember_default_changed)
+        group.add(self.remember_default)
         self._saved_voices_row(group)
         page.add(group)
         self.render_diarization()
+
+    def _remember_default_changed(self, *_):
+        # Choosing here answers the voices question too: it is never asked after.
+        if self.settings.get_string("voice-setup") == "unanswered":
+            self.settings.set_string("voice-setup", "enabled" if self.remember_default.get_active() else "declined")
 
     def _saved_voices_row(self, group):
         self.saved_voices_row = Adw.ActionRow(title=text("common.savedVoices"), activatable=True, use_markup=False)

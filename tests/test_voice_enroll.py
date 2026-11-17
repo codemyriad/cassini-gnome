@@ -30,6 +30,7 @@ from cassini_talk.voice_enroll import (
     speech_ms,
     speech_segments,
     sweep,
+    voice_question_due,
     voice_setup_step,
 )
 from cassini_talk.voice_store import VoiceStore
@@ -562,11 +563,51 @@ def test_voice_setup_answer_is_a_settings_key_defaulting_to_unanswered():
     assert re.findall(r'<choice value="([^"]+)"', block) == ["unanswered", "enabled", "declined"]
 
 
+def test_remember_voices_default_is_a_settings_key_defaulting_on():
+    schema = (ROOT / "data/io.codemyriad.CassiniTalk.gschema.xml").read_text()
+    block = re.search(r'<key name="remember-voices" type="b">(.*?)</key>', schema, re.S).group(1)
+    assert "<default>true</default>" in block  # Today's Name a speaker default until answered.
+
+
+@pytest.mark.parametrize(
+    ("answer", "engine", "speakers", "editable", "transcribing", "due"),
+    [
+        ("unanswered", True, 2, True, False, True),
+        ("unanswered", True, 1, True, False, False),  # One speaker: nothing to name apart.
+        ("unanswered", True, 0, True, False, False),
+        ("unanswered", False, 3, True, False, False),  # No voice engine in this build.
+        ("unanswered", True, 3, False, False, False),  # Speakers cannot be named here.
+        ("unanswered", True, 3, True, True, False),  # Still being written down.
+        ("enabled", True, 3, True, False, False),  # Asked once.
+        ("declined", True, 3, True, False, False),
+    ],
+)
+def test_voices_question_is_due_once_over_the_first_meeting_with_speakers(
+    answer, engine, speakers, editable, transcribing, due
+):
+    assert (
+        voice_question_due(answer, engine=engine, speakers=speakers, editable=editable, transcribing=transcribing)
+        is due
+    )
+
+
+def test_voices_question_left_saved_voices_and_sets_the_remember_default():
+    page = (ROOT / "src/cassini_talk/saved_voices_page.py").read_text()
+    assert "voices.setup.title" not in page and "answer_voice_setup" not in page
+    main = (ROOT / "src/cassini_talk/main.py").read_text()
+    answer = main[main.index("    def answer_voice_setup") : main.index("    def offer_voice_question")]
+    assert 'set_boolean("remember-voices", bool(enable))' in answer
+    dialog = (ROOT / "src/cassini_talk/speakers_dialog.py").read_text()
+    assert 'get_boolean("remember-voices")' in dialog and "active=True" not in dialog
+
+
 # Copy: Wave 6 catalog ids exist, and the GTK process never imports the engine.
 
 WAVE6_IDS = [
     "voices.setup.title",
-    "voices.setup.body",
+    "voices.setup.body.desktop",
+    "voices.setup.kindness",
+    "voices.setup.changeLater.desktop",
     "voices.setup.privacy.desktop",
     "voices.setup.enable",
     "common.notNow",
@@ -581,10 +622,7 @@ WAVE6_IDS = [
     "voices.enroll.ready",
     "voices.enroll.save",
     "voices.enroll.fromTranscriptHint",
-    "savedVoices.privacy",
     "savedVoices.row.meta",
-    "savedVoices.row.sampleCount",
-    "savedVoices.row.status.ready",
     "savedVoices.row.stale",
     "savedVoices.row.play",
     "savedVoices.row.stopSample",
@@ -592,7 +630,12 @@ WAVE6_IDS = [
     "savedVoices.rename.title",
     "savedVoices.rename.save",
     "savedVoices.rename.blank",
-    "savedVoices.row.delete",
+    "savedVoices.row.options.a11y",
+    "savedVoices.row.playSampleMenu",
+    "savedVoices.row.forgetEllipsis",
+    "savedVoices.howToAdd.short",
+    "voices.rememberDefault.title",
+    "voices.rememberDefault.subtitle",
     "savedVoices.forgetEveryone",
     "confirm.deleteVoiceProfile.title",
     "confirm.deleteVoiceProfile.body",
@@ -606,7 +649,13 @@ WAVE6_IDS = [
 def test_every_wave6_id_is_vendored_for_gnome_and_used():
     entries = {e["id"]: e for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_text())["entries"]}
     sources = "".join(
-        (ROOT / "src/cassini_talk" / name).read_text() for name in ("saved_voices_page.py", "voice_enroll_dialog.py")
+        (ROOT / "src/cassini_talk" / name).read_text()
+        for name in (
+            "saved_voices_page.py",
+            "voice_enroll_dialog.py",
+            "voice_question.py",
+            "settings_dialog.py",
+        )
     )
     for identifier in WAVE6_IDS:
         assert "gnome" in entries[identifier]["platforms"], identifier

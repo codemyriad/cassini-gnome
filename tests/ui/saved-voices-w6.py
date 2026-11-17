@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Private GTK (D-977, Wave 6): voice setup, guided test phrase, rename, delete, status and sample toggle."""
+"""Private GTK (D-977, Wave 6; D-1078 D103): voices question, guided test phrase, row menu, rename, delete, sample toggle."""
 
 import math
 import os
@@ -187,25 +187,68 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: len(page.rows) == 4 and not page._loading)
     shown = labels(page)
 
-    # Privacy line: local only, no cloud claim on the desktop (HARMONY §12, D25).
-    assert text("savedVoices.privacy") in shown
+    # Privacy line: local only, no cloud claim on the desktop (HARMONY §12, D25, L-63).
+    assert text("voices.setup.privacy.desktop") in shown
     assert not any("iCloud" in value or "backup" in value.lower() for value in shown)
-
-    # 1. One-question voice setup.
-    assert page.setup.get_visible()
-    for identifier in ("voices.setup.title", "voices.setup.body", "voices.setup.privacy.desktop"):
-        assert text(identifier) in shown, identifier
-    assert page.setup_enable.get_label() == "Remember voices" and page.setup_later.get_label() == "Not now"
+    # The voices question left Saved voices (D103 §3); one footnote remains (L-63).
+    assert text("voices.setup.title") not in shown and not hasattr(page, "setup")
+    assert text("savedVoices.howToAdd.short") in shown
+    assert page.everyone.get_label() == "Forget everyone…"
     assert not page.add_voice.get_sensitive() and page.add_voice.get_label() == "Add a voice…"
-    page.setup_later.emit("clicked")
+    assert page.models_needed.get_visible()
+
+    # 1. One voices question over the first meeting with more than one speaker (D103 §3).
+    from cassini_talk.voice_question import VoiceQuestion
+
+    settings.force_close()
+    assert not app.offer_voice_question(window.meeting_page or SimpleNamespace(meeting=meeting, window=window))
+    app.voice_question_enabled = True  # Screenshot runs keep it off unless asked.
+    talk = next(
+        m
+        for m in window.snapshot.meetings
+        if len(m.speakers) > 1 and m.metadata_editable and m.transcript not in ("queued", "running")
+    )
+    transcribing = next(m for m in window.snapshot.meetings if m.transcript in ("queued", "running") and m.speakers)
+    window.open_meeting(transcribing)  # Not while it is still being written down.
+    until(lambda: window.meeting_page is not None and not window.meeting_page._voice_question_idle)
+    assert app.voice_question is None
+    window.open_meeting(talk)
+    until(lambda: isinstance(app.voice_question, VoiceQuestion) and app.voice_question.get_mapped())
+    question = app.voice_question
+    assert question.get_heading() == text("voices.setup.title") == "Recognise people you name?"
+    assert question.get_body() == text("voices.setup.body.desktop")
+    assert question.footnote.get_text() == (
+        "It’s kind to ask people before you save their voice. You can change this in Preferences › Transcription."
+    )
+    assert question.get_response_label("not-now") == "Not now"
+    assert question.get_response_label("enable") == "Remember voices"
+    assert question.get_default_response() == "enable" and question.get_close_response() == "not-now"
+    question.emit("response", "not-now")
+    question.force_close()
+    until(lambda: app.voice_question is None)
     assert app.recording_settings.get_string("voice-setup") == "declined"
-    assert not page.setup.get_visible() and page.models_needed.get_visible()
+    assert app.recording_settings.get_boolean("remember-voices") is False  # Not now stores off.
     assert tell.downloads == voices_model.downloads == 0  # Not now downloads nothing.
+    # Asked once: reopening the meeting never asks again.
+    window.meeting_page.update(window.meeting_page.meeting)
+    until(lambda: not window.meeting_page._voice_question_idle)
+    assert app.voice_question is None
+    # Name a speaker follows the answer.
+    window.meeting_page.name_speakers()
+    speakers = window.meeting_page.speakers_dialog
+    assert speakers.remember.get_active() is False
+    speakers.force_close()
+    until(lambda: speakers.closed)
+    # Remember voices: the default turns on and both optional models are asked for.
     app.recording_settings.set_string("voice-setup", "unanswered")
-    page.refresh()
-    assert page.setup.get_visible()
-    page.setup_enable.emit("clicked")
+    window.meeting_page.update(window.meeting_page.meeting)
+    until(lambda: app.voice_question is not None and app.voice_question.get_mapped())
+    question = app.voice_question
+    question.emit("response", "enable")
+    question.force_close()
+    until(lambda: app.voice_question is None)
     assert app.recording_settings.get_string("voice-setup") == "enabled"
+    assert app.recording_settings.get_boolean("remember-voices") is True
     assert tell.downloads == 1 and voices_model.downloads == 0  # Tell speakers apart first.
     tell.state = dict(ON)
     app._models_changed()
@@ -213,26 +256,64 @@ with tempfile.TemporaryDirectory() as temporary:
     voices_model.state = dict(ON)
     app._models_changed()
     assert tell.downloads == 1 and voices_model.downloads == 1  # Never repeats.
-    page.refresh()
-    assert not page.setup.get_visible() and not page.models_needed.get_visible()
-    assert page.add_voice.get_sensitive()
-    # With recognition already On, the question is never asked again.
-    app.recording_settings.set_string("voice-setup", "unanswered")
-    page.refresh()
-    assert not page.setup.get_visible()
+    window.meeting_page.name_speakers()
+    speakers = window.meeting_page.speakers_dialog
+    assert speakers.remember.get_active() is True
+    speakers.force_close()
+    until(lambda: speakers.closed)
 
-    # 2. Saved voices rows: slot colours, meta, samples, Ready / stale, actions.
+    # Preferences › Transcription › Speakers: Remember people I name (PROVISIONAL, D-1044 q4).
+    settings = app.settings_dialog = SettingsDialog(app)
+    settings.present(window)
+    settings.set_visible_page_name("transcription")
+    remember = settings.remember_default
+    assert remember.get_title() == "Remember people I name"
+    assert remember.get_subtitle() == text("voices.rememberDefault.subtitle")
+    assert remember.get_active()
+    remember.set_active(False)
+    assert app.recording_settings.get_boolean("remember-voices") is False
+    assert app.recording_settings.get_string("voice-setup") == "enabled"  # Already answered stays.
+    app.recording_settings.set_string("voice-setup", "unanswered")
+    remember.set_active(True)
+    assert app.recording_settings.get_string("voice-setup") == "enabled"  # Choosing here answers it.
+    settings._show_voices()
+    page = settings.saved_voices_page
+    until(lambda: len(page.rows) == 4 and not page._loading)
+    page.refresh()
+    assert not page.models_needed.get_visible() and page.add_voice.get_sensitive()
+
+    # 2. Saved voices rows (L-63): slot colours, meta, amber stale line, play, one Options menu.
     snapshot = app.voice_store.snapshot()["voices"]
     by_name = {v["name"]: v for v in snapshot}
     marta, nina = page.rows[by_name["Marta"]["id"]], page.rows[by_name["Nina"]["id"]]
     assert marta.avatar.has_css_class("speaker-avatar-1") and nina.avatar.has_css_class("speaker-avatar-4")
-    subtitle = marta.row.get_subtitle().split("\n")
-    assert subtitle[1] == f"{by_name['Marta']['count']} samples"
-    assert marta.status.get_visible() and marta.status.get_label() == "Ready"
-    assert not nina.status.get_visible()
-    assert nina.row.get_subtitle().endswith(text("savedVoices.row.stale"))
-    assert marta.rename.get_label() == "Rename…" and marta.delete.get_label() == "Delete…"
+    assert marta.row.get_title() == "Marta" and marta.name.get_text() == "Marta"
+    assert marta.meta.get_text().endswith("confirmed speech") and "samples" not in " ".join(labels(marta.row))
+    assert "Ready" not in labels(marta.row)
+    assert not marta.stale_line.get_visible()
+    assert nina.stale_line.get_visible() and nina.stale_line.get_text() == text("savedVoices.row.stale")
+    assert nina.stale_line.has_css_class("saved-voice-stale")
+    assert not hasattr(marta, "rename") and not hasattr(marta, "delete")  # No inline buttons.
     assert marta.play.get_tooltip_text() == "Play a sample of Marta"
+    assert marta.options.get_tooltip_text() == "Options for Marta"
+    menu = marta.options.get_menu_model()
+    items = [
+        (
+            menu.get_item_attribute_value(i, "label", None).get_string(),
+            menu.get_item_attribute_value(i, "action", None).get_string(),
+        )
+        for i in range(menu.get_n_items())
+    ]
+    assert items == [("Play a sample", "voice.play"), ("Rename…", "voice.rename"), ("Forget…", "voice.forget")]
+    assert marta.actions.lookup_action("rename").get_enabled() and marta.actions.lookup_action("forget").get_enabled()
+    marta.actions.activate_action("forget", None)
+    assert page.confirmation.get_heading() == "Delete Marta’s voice profile?"
+    page.confirmation.force_close()
+    marta.actions.activate_action("rename", None)
+    assert page.rename_dialog.get_heading() == "Rename saved voice"
+    page.rename_dialog.force_close()
+    page._tick()
+    assert marta.actions.lookup_action("play").get_enabled() == marta.play.get_sensitive()
 
     # Sample toggle: Play becomes Stop sample while it plays.
     stopped = []
@@ -300,7 +381,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert bea["meetings"] == [] and bea["count"] == 1 and bea["saveOrder"] == 4
         bea_row = page.rows[bea["id"]]
         assert bea_row.avatar.has_css_class("speaker-avatar-5")
-        assert bea_row.row.get_subtitle().split("\n")[0].startswith("0 meetings")
+        assert bea_row.meta.get_text().startswith("0 meetings")
         assert not bea_row.play.get_sensitive()  # No audio is stored for a voice.
         # Same person adds a sample to the existing voice.
         before = by_name["Marta"]["count"]
@@ -372,6 +453,7 @@ with tempfile.TemporaryDirectory() as temporary:
     window.close()
     app.do_shutdown()
     print(
-        "PASS D-977 GTK: voice setup (Remember voices / Not now), guided test phrase (too short, ready, duplicate, "
-        "same person, cancel), rename, delete, forget everyone, Ready/stale status, sample toggle, privacy line"
+        "PASS D-977/D-1078 GTK: voices question over the meeting (Not now / Remember voices, asked once), "
+        "Remember people I name, guided test phrase (too short, ready, duplicate, same person, cancel), Options menu, "
+        "rename, delete, forget everyone, stale line, sample toggle, privacy line"
     )

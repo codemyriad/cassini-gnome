@@ -47,6 +47,17 @@ def voice_setup_step(tell, voices):
     return "wait" if voices.get("busy") or voices.get("error") else "download-voices"
 
 
+def voice_question_due(answer, *, engine, speakers, editable, transcribing):
+    """D103 §3 (L-60): ask `Recognise people you name?` once, over the first meeting with speakers.
+
+    `answer` is the `voice-setup` key; the question is due only while it is
+    `unanswered`, in a build that has the optional voice engine, over a
+    meeting whose speakers can be named and that has more than one of them
+    (not while it is still being written down).
+    """
+    return answer == "unanswered" and bool(engine) and editable and not transcribing and speakers > 1
+
+
 class VoiceSetup:
     """D-977 `Remember voices`: one open request that chains both optional downloads.
 

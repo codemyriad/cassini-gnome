@@ -96,7 +96,7 @@ def capture(application_id, version, profile):
             opened_recording = True
             settled_frame = None
         if (
-            os.environ.get("CASSINI_SCREENSHOT_BOARD") in ("meeting", "export", "speakers")
+            os.environ.get("CASSINI_SCREENSHOT_BOARD") in ("meeting", "export", "speakers", "voices-question")
             and not window._pending
             and not opened_meeting
         ):
@@ -109,7 +109,7 @@ def capture(application_id, version, profile):
             window._connect_player()
             chosen = (
                 "Budget review"
-                if os.environ.get("CASSINI_SCREENSHOT_BOARD") == "export"
+                if os.environ.get("CASSINI_SCREENSHOT_BOARD") in ("export", "voices-question")
                 else "Client call, Rossi & Partners"
             )
             meeting = next(m for m in window.snapshot.meetings if m.title == chosen)
@@ -119,6 +119,14 @@ def capture(application_id, version, profile):
             else:
                 window.player.seek(192000)
                 window.player.play()
+            if board == "voices-question":
+                # D103 §3: the question over the first meeting with speakers.
+                # The board does not depend on optional engines being bundled.
+                from .voice_question import VoiceQuestion
+
+                window.player.pause()
+                app.voice_question = VoiceQuestion(app)
+                app.voice_question.present(window)
             if board == "speakers":
                 window.player.pause()
                 window.meeting_page.name_speakers("guest")

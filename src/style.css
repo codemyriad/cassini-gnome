@@ -638,15 +638,19 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
   background: var(--app-likely-tag-bg);
   color: var(--cx-ink);
 }
-/* D-977: Saved voices readiness tag reads like Likely (ink at 10%, HARMONY 10.15). */
-.saved-voice-ready {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 7px;
-  background: var(--app-likely-tag-bg);
-  color: var(--cx-ink);
-}
+/* L-63 (D103 §5): one Saved voices row: 30 px avatar, 15/13 px lines, amber stale hint. */
+.saved-voice-row .speaker-avatar { min-width: 30px; min-height: 30px; font-size: 12px; font-weight: 600; }
+.saved-voice-row .saved-voice-name { font-size: 15px; font-weight: 500; }
+.saved-voice-row .saved-voice-meta { font-size: 13px; }
+.saved-voice-row .saved-voice-play { min-width: 30px; min-height: 30px; padding: 0; }
+.saved-voice-row label.saved-voice-stale { color: var(--app-warn-line-fg); }
+.saved-voices-footnote { font-size: 13px; }
+/* Board: destructive text on a 12% error wash, not a filled button. */
+button.saved-voices-forget-all { background: color-mix(in srgb, var(--cx-error) 12%, transparent); color: var(--cx-error); }
+button.saved-voices-forget-all:hover { background: color-mix(in srgb, var(--cx-error) 18%, transparent); }
+button.saved-voices-forget-all:disabled { opacity: 0.5; }
+/* D103 §3: the voices question's footnote sits a step under the body. */
+.voice-question-footnote { font-size: 14px; }
 .speakers-dialog .speaker-remember-card {
   padding: 10px 12px;
   border-radius: 12px;
