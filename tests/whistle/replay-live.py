@@ -12,12 +12,19 @@ from contextlib import ExitStack
 from pathlib import Path
 from queue import Empty
 
-from cassini_talk.live_transcription import CapturedPCM, DraftTranscript, LiveAudio, LiveTranscription
+from cassini_talk.live_transcription import (
+    BlockCoalescer,
+    CapturedPCM,
+    DraftTranscript,
+    LiveAudio,
+    LiveTranscription,
+)
 from cassini_talk.parakeet_client import ParakeetClient
 from cassini_talk.whistle_client import WhistleClient
 
 
 def replay(paths, feed, started):
+    coalesce = BlockCoalescer(feed.offer)
     with ExitStack() as stack:
         streams = [stack.enter_context(wave.open(str(path), "rb")) for path in paths]
         while any(wav.tell() < wav.getnframes() for wav in streams):
@@ -26,13 +33,14 @@ def replay(paths, feed, started):
                 rate, channels, first = wav.getframerate(), wav.getnchannels(), wav.tell()
                 if wav.getsampwidth() != 2 or rate not in (16000, 48000) or channels not in (1, 2):
                     raise ValueError("Replay expects 16 or 48 kHz PCM16 WAVs")
-                pcm = wav.readframes(rate // 10)
+                pcm = wav.readframes(rate // 100)
                 if pcm:
                     blocks.append(CapturedPCM(str(source), 0, first, rate, channels, pcm))
             deadline = started + max((block.frame + block.frames) / block.rate for block in blocks)
             time.sleep(max(0, deadline - time.monotonic()))
             for block in blocks:
-                feed.offer(block)
+                coalesce.offer(block)
+        coalesce.flush()
 
 
 def tokens(value):
@@ -118,7 +126,7 @@ def main():
     parser.add_argument("--model", type=Path)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--interval", default=1.5, type=float)
-    parser.add_argument("--capacity", default=32, type=int)
+    parser.add_argument("--capacity", default=256, type=int)
     parser.add_argument("--reference", action="append", type=Path)
     parser.add_argument("wav", nargs="+", type=Path)
     args = parser.parse_args()

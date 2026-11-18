@@ -95,3 +95,28 @@ def test_adjacent_repair_does_not_replace_next_range_words():
     transcript.apply(DraftUpdate("mic", 1000, 2000, 2000, (LiveWord(1000, 1000, "next"),)))
     transcript.apply(DraftUpdate("mic", 0, 1000, 1000, (LiveWord(200, 400, "repair"),)))
     assert [word.text for word in transcript.snapshot()["mic"][0]] == ["repair", "next"]
+
+
+def test_ten_ms_capture_blocks_coalesce_without_filling_the_consumer_queue():
+    from cassini_talk.live_transcription import BlockCoalescer
+
+    audio = LiveAudio(capacity=32)
+    coalesce = BlockCoalescer(audio.offer)
+    for frame in range(0, 16_000, 160):
+        for source in ("mic", "remote"):
+            coalesce.offer(block(source, frame, 160))
+    coalesce.flush()
+    result = LiveTranscription(Recognizer()).drain(audio)
+    assert audio.dropped_blocks == 0
+    assert not result.needs_saved_audio
+    assert {update.source for update in result.updates} == {"mic", "remote"}
+
+
+def test_discontinuity_does_not_decode_a_tiny_fragment():
+    audio = LiveAudio()
+    audio.offer(block("mic", 0, 160))
+    audio.offer(block("mic", 16_000, 16_000))
+    recognizer = Recognizer()
+    result = LiveTranscription(recognizer).drain(audio)
+    assert result.needs_saved_audio
+    assert recognizer.windows == [16_000]

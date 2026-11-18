@@ -44,8 +44,10 @@ using it to choose a live decoding policy.
 
 For an in-app development run, set `CASSINI_LIVE_PREVIEW` to `whistle` or
 `parakeet` in the environment of Cassini and its Companion service. Normal
-native and Companion recordings start one preview worker on their first audio
-block when the preview budget is free. The preview is available in memory to a
+native and Companion recordings can start a preview worker on the first audio
+block when their process has a free preview slot. Contiguous short writes are
+coalesced by source before enqueueing, so capture buffer size does not dictate
+the inference backlog. The preview is available in memory to a
 consumer via the capture's `CapturePreview.snapshot()`. Stop closes the preview
 input while the existing saved-audio workflow publishes the final transcript.
 

@@ -3,6 +3,7 @@
 
 import os
 import threading
+import time
 import wave
 from dataclasses import dataclass
 from queue import Empty, Full, Queue
@@ -144,6 +145,7 @@ class LiveTranscription:
         self.window = window
         self.sources = {}
         self.unsupported_sources = set()
+        self.skipped_fragments = False
         self.finished = False
 
     def accept(self, block):
@@ -167,6 +169,8 @@ class LiveTranscription:
                 if block.frame < state.end:
                     raise ValueError("Live audio frames moved backwards")
                 updates.extend(self._decode(block.source, state, final=True))
+            if state is None and block.frame > 0:
+                self.skipped_fragments = True
             state = self.sources[block.source] = _Window(block)
         stride = max(1, round(self.interval * block.rate))
         first = 0
@@ -195,11 +199,16 @@ class LiveTranscription:
                 break
             updates.extend(self.accept(block))
         updates.extend(self.finish())
-        needs_saved_audio = bool(self.unsupported_sources)
+        needs_saved_audio = bool(self.unsupported_sources) or self.skipped_fragments
         for source, gaps in audio.missing.items():
             path = saved_tracks.get(source) if saved_tracks is not None else None
             for gap in gaps:
-                if path is None or gap.rate not in (16000, 48000) or gap.channels not in (1, 2):
+                if (
+                    path is None
+                    or gap.rate not in (16000, 48000)
+                    or gap.channels not in (1, 2)
+                    or (gap.end - gap.first) * 2 < gap.rate
+                ):
                     needs_saved_audio = True
                     continue
                 try:
@@ -235,6 +244,12 @@ class LiveTranscription:
     def _decode(self, source, state, *, final=False):
         if state.end == state.start:
             return []
+        length = state.end - state.start
+        if final and length * 2 < state.rate:
+            self.skipped_fragments = True
+            state.pcm.clear()
+            state.start = state.end
+            return []
         base = state.offset_ms + state.start * 1000 / state.rate
         end = state.offset_ms + state.end * 1000 / state.rate
         replace = state.settled
@@ -264,6 +279,44 @@ class LiveTranscription:
         return [DraftUpdate(source, replace, end, state.settled, tuple(words))]
 
 
+class BlockCoalescer:
+    """Coalesce small writer buffers by source without waiting for inference."""
+
+    def __init__(self, emit):
+        self._emit = emit
+        self._pending = {}
+
+    def offer(self, block):
+        previous = self._pending.pop(block.source, None)
+        if previous is not None:
+            if (
+                block.frame == previous.frame + previous.frames
+                and block.rate == previous.rate
+                and block.channels == previous.channels
+                and block.offset_ms == previous.offset_ms
+            ):
+                block = CapturedPCM(
+                    block.source,
+                    block.offset_ms,
+                    previous.frame,
+                    block.rate,
+                    block.channels,
+                    previous.data + block.data,
+                )
+            else:
+                self._emit(previous)
+        if block.frames * 10 >= block.rate:
+            self._emit(block)
+        else:
+            self._pending[block.source] = block
+
+    def flush(self):
+        pending = self._pending
+        self._pending = {}
+        for block in pending.values():
+            self._emit(block)
+
+
 class CapturePreview:
     """Optional, in-memory preview owned by one normal app capture."""
 
@@ -276,7 +329,9 @@ class CapturePreview:
 
     def __init__(self, model):
         self.model = model
-        self.audio = LiveAudio()
+        self.audio = LiveAudio(capacity=256)
+        self._chunks = BlockCoalescer(self.audio.offer)
+        self._retry_at = 0
         self._stopped = threading.Event()
         self._lock = threading.Lock()
         self._draft = DraftTranscript()
@@ -284,11 +339,16 @@ class CapturePreview:
         self._state = "waiting"
 
     def offer(self, block):
-        if not self._started:
-            self._started = True
+        if not self._started and self._state in ("waiting", "busy"):
+            now = time.monotonic()
+            if now < self._retry_at:
+                return
             if not self._admission.acquire(blocking=False):
+                self._retry_at = now + 1
                 self._status("busy")
                 return
+            self._started = True
+            self._status("running")
             try:
                 worker = threading.Thread(target=self._run, name="cassini-live-preview", daemon=True)
                 worker.start()
@@ -296,11 +356,11 @@ class CapturePreview:
                 self._admission.release()
                 self._status("unavailable")
                 return
-            self._status("running", from_state="waiting")
         if self._state == "running":
-            self.audio.offer(block)
+            self._chunks.offer(block)
 
     def close(self):
+        self._chunks.flush()
         self._stopped.set()
         self._status("finished", from_state="waiting")
 
