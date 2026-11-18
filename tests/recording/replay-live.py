@@ -52,17 +52,21 @@ def error_rate(reference, hypothesis):
 def measure(client, paths, references, args):
     audio, draft = LiveAudio(args.capacity), DraftTranscript()
     live = LiveTranscription(client, interval=args.interval)
-    first_ms = None
+    first_ms = first_settled_ms = None
     revisions = 0
 
     def apply(update):
-        nonlocal first_ms, revisions
+        nonlocal first_ms, first_settled_ms, revisions
         prior, _ = draft.snapshot().get(update.source, ((), 0))
         old = [word.text for word in prior if update.replace_from_ms <= word.midpoint_ms <= update.through_ms]
         new = [word.text for word in update.words]
         revisions += bool(old and old != new[:len(old)])
         if first_ms is None and new:
             first_ms = round((time.monotonic() - started) * 1000)
+        if first_settled_ms is None and any(
+            word.midpoint_ms < update.settled_through_ms for word in update.words
+        ):
+            first_settled_ms = round((time.monotonic() - started) * 1000)
         draft.apply(update)
 
     started = time.monotonic()
@@ -80,7 +84,8 @@ def measure(client, paths, references, args):
     for update in result.updates:
         apply(update)
     elapsed = time.monotonic() - started
-    report = dict(firstWordsMs=first_ms, tailRevisions=revisions, droppedBlocks=audio.dropped_blocks,
+    report = dict(firstWordsMs=first_ms, firstSettledWordsMs=first_settled_ms,
+                  tailRevisions=revisions, droppedBlocks=audio.dropped_blocks,
                   needsSavedAudio=result.needs_saved_audio, seconds=round(elapsed, 3))
     if references:
         source_words = draft.snapshot()

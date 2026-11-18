@@ -37,6 +37,7 @@ PYTHONPATH=src python3 tests/recording/replay-live.py \
 Omit the Parakeet paths for a Whistle-only run. Pass multiple WAVs for sources
 that start together and one reference per WAV to compare live and batch word
 error rates. Lower the queue capacity to exercise recovery. The report includes
-time to first words, draft revisions, overload and elapsed time. The fixture
+time to first words, time to first settled words, draft revisions, overload
+and elapsed time. The fixture
 checks the integration. Measure representative calls and device budgets before
 using it to choose a live decoding policy.
