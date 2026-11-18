@@ -50,9 +50,7 @@ D103_IDS = (
     "companion.without.body",
     "about.tagline.computer",
     "about.help",
-    "firstRun.howTo",
     "firstRun.shortcutLine",
-    "firstRun.libraryLocation",
     "recordFirst.lawPlain",
     "recordFirst.mic.plain",
     "recordFirst.sound.plain",
@@ -86,6 +84,10 @@ SUPERSEDED = (
     "test.running",
     "test.result.working",
     "test.result.silent",
+    # D105 §4 (L-71): desktop first run has no how-to line, and the privacy line names the folder.
+    "firstRun.howTo",
+    "firstRun.libraryLocation",
+    "firstRun.hero.subtitle",
 )
 # D104 (L-61 revised, Test recording): Before you record's Test row and the one-screen test.
 D104_SOURCES = ("record_first.py", "sound_check_dialog.py", "sound_check.py")
@@ -106,6 +108,22 @@ D104_IDS = (
     "test.again",
     "common.done",
     "common.cancel",
+)
+
+# D105 (L-69, L-70, L-71): GNOME's first run, and the ids whose English became "transcribe".
+D105_IDS = (
+    "firstRun.hero.subtitle.computer",
+    "firstRun.privacy.computer",
+    "firstRun.openFolder.tooltip",
+    "firstRun.changeFolder",
+    "firstRun.changeFolder.tooltip",
+)
+# D105 §6: the macOS/iPhone permission-prompt lines stay pending (D-1095) and are never shipped here.
+D105_PENDING = (
+    "permissionPrompt.microphone.mac",
+    "permissionPrompt.systemAudio.mac",
+    "permissionPrompt.microphone.iphone",
+    "permissionPrompt.microphone.ipad",
 )
 
 
@@ -134,6 +152,56 @@ def test_every_d104_id_is_used_and_catalogued_in_all_six_languages():
         assert "gnome" in entry["platforms"], identifier
         for lang in ("it", "fr", "es", "pt-BR", "pt-PT"):
             assert entry["l10n"][lang].get("text", "").strip(), (identifier, lang)
+
+
+def test_every_d105_id_is_used_and_catalogued_in_all_six_languages():
+    entries = {e["id"]: e for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_text())["entries"]}
+    used = used_ids()
+    for identifier in D105_IDS:
+        assert identifier in used, identifier
+        entry = entries[identifier]
+        assert entry["milestone"] == "Phase 2 first run (D105)" and entry["status"] == "drawn", identifier
+        assert "gnome" in entry["platforms"], identifier
+        for lang in ("it", "fr", "es", "pt-BR", "pt-PT"):
+            assert entry["l10n"][lang].get("text", "").strip(), (identifier, lang)
+
+
+def test_pending_permission_prompt_lines_are_not_shipped():
+    entries = {e["id"]: e for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_text())["entries"]}
+    sources = "".join(path.read_text() for path in (ROOT / "src/cassini_talk").rglob("*.py"))
+    for identifier in D105_PENDING:
+        assert entries[identifier]["status"] == "pending", identifier
+        assert f'"{identifier}"' not in sources, identifier
+    milestone = [e["id"] for e in entries.values() if e.get("milestone") == "Permission prompt lines (L-68, D105 §6)"]
+    assert sorted(milestone) == sorted(D105_PENDING)
+
+
+def test_the_process_is_transcribe_in_english_l69():
+    # D105 §1: "written down" stays only in the first-run hero; the process is "transcribe" everywhere else.
+    entries = {e["id"]: e for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_text())["entries"]}
+    english = {
+        "settings.transcription.speech.heading": "Transcription",
+        "settings.transcription.speech.description": (
+            "Choose the model for new meetings. Meetings already transcribed keep their transcript."
+        ),
+        "models.keepTranscript": "Meetings already transcribed keep their transcript.",
+        "common.writeDown": "Transcribe",
+        "transcript.writeDownAgain": "Transcribe again",
+        "details.writing.title": "Transcribing",
+        "errors.transcribeFailed.line": "Could not transcribe this meeting. The audio is fine.",
+        "settings.transcription.privacyLine": (
+            "Transcribed on this computer. Cassini goes online only to download a model you ask for,"
+            " and each file is checked first."
+        ),
+    }
+    for identifier, value in english.items():
+        assert entries[identifier]["en"] == value, identifier
+    # Every catalog id any GNOME source uses (not just these screens) is checked.
+    sources = "".join(path.read_text() for path in (ROOT / "src/cassini_talk").rglob("*.py"))
+    used = set(re.findall(r'"([a-zA-Z]+(?:\.[a-zA-Z0-9]+)+)"', sources)) & set(entries)
+    process = re.compile(r"\bwrit(?:e|es|ten|ing)\b(?: [a-z]+){0,2} down\b", re.IGNORECASE)
+    leftovers = sorted(i for i in used if i != "firstRun.hero.title" and process.search(entries[i]["en"]))
+    assert leftovers == [], leftovers
 
 
 def test_superseded_copy_is_gone_from_these_screens():

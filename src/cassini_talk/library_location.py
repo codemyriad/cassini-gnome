@@ -483,7 +483,7 @@ def _process(*, busy=(), activity=None, retry=False, cancelled=None, changed=lam
 
 
 def folder_caption(path):
-    """firstRun.libraryLocation names the folder as drawn: "Music/Cassini" under home."""
+    """The first-run privacy line (firstRun.privacy.computer) names the folder as drawn: "Music/Cassini" under home."""
     path = Path(path)
     try:
         return "/".join(path.relative_to(Path.home()).parts) or str(path)

@@ -190,7 +190,7 @@ try:
         assert hashes(native.directory) == native_hash and hashes(browser.directory) == browser_hash
         first_child = app.transcriber.client.process
         window.back_to_library()
-        # A received plain Opus uses the same worker, on explicit Write it down.
+        # A received plain Opus uses the same worker, on explicit Transcribe.
         received = library / f"Received-{uuid4()}"
         received.mkdir()
         original = received / "original.opus"
@@ -235,7 +235,7 @@ try:
         row = next(w for w in walk(window.rows) if getattr(w, "meeting", None) and w.meeting.key == received_model.key)
         window.rows.select_row(row)
         write = next(
-            w for w in walk(window.meeting_page) if isinstance(w, Gtk.Button) and w.get_label() == "Write it down"
+            w for w in walk(window.meeting_page) if isinstance(w, Gtk.Button) and w.get_label() == "Transcribe"
         )
         write.emit("clicked")
         received_model = until(

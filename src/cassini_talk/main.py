@@ -1923,6 +1923,25 @@ class CassiniApplication(Adw.Application):
         self.meeting_trash.executor.shutdown(wait=False, cancel_futures=False)
         Adw.Application.do_shutdown(self)
 
+    def choose_library_folder(self, parent=None):
+        """Move…: pick a folder and move the Library there (Preferences › Library and the first-run pencil, D105 §4)."""
+        from .library_location import primary
+        from .strings import text
+
+        chooser = Gtk.FileDialog(
+            title=text("settings.library.move"), initial_folder=Gio.File.new_for_path(str(primary()))
+        )
+
+        def chosen(dialog, result):
+            try:
+                file = dialog.select_folder_finish(result)
+            except GLib.Error:
+                return
+            if file.get_path():
+                self.move_library(Path(file.get_path()), parent)
+
+        chooser.select_folder(self.get_active_window(), None, chosen)
+
     def move_library(self, destination, parent):
         if self.meeting_trash.flush(lambda: self.move_library(destination, parent)):
             return

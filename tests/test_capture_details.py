@@ -152,7 +152,7 @@ def test_symlink_fifo_and_oversized_metadata_are_bounded_and_leave_files_alone(m
     transcript.write_bytes(b" " * (1024 * 1024 + 1))
     report = read_details(meeting)
     assert report.notes and report.ended == UNKNOWN
-    assert "The language used to write it down couldn’t be read." in report.notes
+    assert "The language used to transcribe it couldn’t be read." in report.notes
     session.unlink()
     outside = tmp_path / "outside.json"
     outside.write_text('{"secret":"PRIVATE_PRINT_SENTINEL"}')
