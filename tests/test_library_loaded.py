@@ -286,7 +286,7 @@ def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(t
         "_refresh_export",
         "_row_signature",
         "_updated",
-        "_privacy_text",
+        "_privacy_markup",
         "_begin_import_entries",
         "_finish_import_entries",
     ):

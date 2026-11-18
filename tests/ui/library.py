@@ -313,15 +313,40 @@ with tempfile.TemporaryDirectory() as tmp:
     until(lambda: not empty._pending)
     assert empty.root_box.get_visible_child_name() == "empty"
     labels = [w.get_label() for w in walk(empty) if isinstance(w, Gtk.Label)]
-    assert text("firstRun.hero.title") in labels and text("firstRun.hero.subtitle") in labels
-    assert text("firstRun.howTo") in labels
-    assert text("firstRun.shortcutLine", shortcut=text("common.shortcut.record")) in labels
-    # L-60: the privacy line names the Library folder in use.
+    assert text("firstRun.hero.title") in labels and text("firstRun.hero.subtitle.computer") in labels
+    # D105 §4: no how-to line on desktop; the shortcut is key chips beside Record.
+    assert text("firstRun.howTo") not in labels and text("firstRun.hero.subtitle") not in labels
+    keys = [w.get_label() for w in walk(empty.hero_shortcut) if "hero-keycap" in w.get_css_classes()]
+    assert keys == text("common.shortcut.record").split("+") == ["Ctrl", "R"], keys
+    assert empty.hero_shortcut.get_parent() is empty.hero_record.get_parent()
+    assert empty.hero_shortcut.get_prev_sibling() is empty.hero_record
+    # D105 §4: "Transcribed on this computer, kept in {folder}", no full stop, the folder a link.
     from cassini_talk.library_location import folder_caption
 
-    location = text("firstRun.libraryLocation", folder=folder_caption(fixtures / "empty/root"))
-    privacy = text("privacy.onDevice.computer") + " " + location
-    assert privacy in labels, labels
+    privacy = text("firstRun.privacy.computer", folder=folder_caption(fixtures / "empty/root"))
+    assert empty.privacy_line.get_text() == privacy and not privacy.endswith("."), empty.privacy_line.get_text()
+    assert text("privacy.onDevice.computer") not in labels
+    opened = []
+    real_open = type(empty)._open_library_folder
+    type(empty)._open_library_folder = lambda self: opened.append(self) or True
+    try:
+        assert 'title="' + text("firstRun.openFolder.tooltip") + '"' in empty.privacy_line.get_label()
+        assert empty.privacy_line.emit("activate-link", "cassini:library-folder")
+    finally:
+        type(empty)._open_library_folder = real_open
+    assert opened == [empty], "the folder link opens the Library folder in Files"
+    change = empty.change_folder
+    assert change.get_tooltip_text() == text("firstRun.changeFolder.tooltip")
+    assert change.get_visible() == (not app.in_flatpak)
+    assert change.get_parent().get_first_child() is empty.privacy_line
+    chosen = []
+    real_choose = type(app).choose_library_folder
+    type(app).choose_library_folder = lambda self, parent=None: chosen.append(parent)
+    try:
+        change.emit("clicked")
+    finally:
+        type(app).choose_library_folder = real_choose
+    assert chosen == [None], "the pencil opens Preferences › Library's Move… flow"
     assert text("firstRun.body") not in labels and text("firstRun.footer") not in labels
     assert (
         text("firstRun.title") not in labels
@@ -338,14 +363,15 @@ with tempfile.TemporaryDirectory() as tmp:
     assert empty.first_run_heading.get_label() == text("library.title")
     assert empty.first_run_heading.get_accessible_role() == Gtk.AccessibleRole.HEADING
     assert empty.first_run_heading.get_visible() and empty.first_run_heading.get_opacity() == 0.0
-    # Big Record pill sits at the start of the wave, in the hero block.
+    # D105 §4: the mark and the grey waveform on one row; the big Record pill on its own row.
     from cassini_talk.brand_mark import NAV_MARK_RESOURCE, BrandMark
     from cassini_talk.first_run_hero import HeroWave
 
-    wave_row = empty.hero_wave.get_parent()
-    record = wave_row.get_first_child()
+    mark_row = empty.hero_wave.get_parent()
+    assert isinstance(mark_row.get_first_child(), BrandMark) and isinstance(empty.hero_wave, HeroWave)
+    assert mark_row.get_first_child().get_next_sibling() is empty.hero_wave
+    record = empty.hero_record
     assert record.get_action_name() == "app.record" and "big-record" in record.get_css_classes()
-    assert record.get_next_sibling() is empty.hero_wave and isinstance(empty.hero_wave, HeroWave)
     marks = [w for w in walk(empty_view) if isinstance(w, BrandMark)]
     assert len(marks) == 1 and marks[0].resource_path == NAV_MARK_RESOURCE and marks[0].height_px == 40
     assert empty.hero_title.get_label() == text("firstRun.hero.title")
@@ -367,7 +393,12 @@ with tempfile.TemporaryDirectory() as tmp:
     empty.set_default_size(1120, 720)
     until(lambda: empty.get_width() > 1000)
     clamp = next(w for w in walk(empty_view) if isinstance(w, Adw.Clamp))
-    until(lambda: clamp.get_child().get_width() == 720)  # wide windows keep the 720 px column
+    until(lambda: clamp.get_child().get_width() == 860)  # wide windows keep the 860 px column (as drawn)
+    # One left edge (D105 §4): mark, hero, Record and the privacy line all start at the column's x.
+    column = clamp.get_child().compute_bounds(empty)[1].get_x()
+    for widget in (marks[0], empty.hero_title, empty.hero_subtitle, record, empty.privacy_footer):
+        ok, bounds = widget.compute_bounds(empty)
+        assert ok and round(bounds.get_x()) == round(column), (widget, bounds.get_x(), column)
     # A sandbox fallback is the initial Library too: the line names that folder,
     # never Music/Cassini. Settings/Show in Files use the actual primary path.
     from cassini_talk import library_location
@@ -380,11 +411,9 @@ with tempfile.TemporaryDirectory() as tmp:
     ):
         os.environ.pop("CASSINI_LIBRARY_DIR", None)
         empty._updated(empty.snapshot)
-        assert empty.privacy_line.get_label().endswith(
-            text("firstRun.libraryLocation", folder=folder_caption(fallback))
-        )
+        assert empty.privacy_line.get_text() == text("firstRun.privacy.computer", folder=folder_caption(fallback))
     empty._updated(empty.snapshot)
-    assert empty.privacy_footer.get_visible() and empty.privacy_line.get_label() == privacy
+    assert empty.privacy_footer.get_visible() and empty.privacy_line.get_text() == privacy
     app.on_about()
     until(lambda: isinstance(empty.get_visible_dialog(), Adw.AboutDialog))
     about = empty.get_visible_dialog()

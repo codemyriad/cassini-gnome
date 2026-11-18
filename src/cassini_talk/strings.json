@@ -981,7 +981,7 @@
   },
   {
    "id": "common.writeDown",
-   "en": "Write it down",
+   "en": "Transcribe",
    "platforms": [
     "gnome",
     "mac"
@@ -990,7 +990,7 @@
    "boards": [],
    "milestone": "UX13",
    "status": "harmony",
-   "note": "D11 / R9: shown only when canWriteDown is true and the transcript is none (for example a received meeting without a transcript, or an own meeting whose automatic start was skipped). Secondary button in the Library preview next to Play, and in the Meeting view header. Starts writing down; the row then shows the Transcribing badge. Not used for failed transcripts: those show the errors.transcribeFailed line with Try again.",
+   "note": "D11 / R9: shown only when canWriteDown is true and the transcript is none (for example a received meeting without a transcript, or an own meeting whose automatic start was skipped). Secondary button in the Library preview next to Play, and in the Meeting view header. Starts writing down; the row then shows the Transcribing badge. Not used for failed transcripts: those show the errors.transcribeFailed line with Try again. L-69 (D105 §1): English was “Write it down”. Translations already used the transcribe verb.",
    "l10n": {
     "it": {
      "text": "Trascrivi"
@@ -2080,7 +2080,7 @@
   },
   {
    "id": "errors.modelDownloadFailed.line",
-   "en": "Could not download {model}. Whistle keeps writing down your meetings.",
+   "en": "Could not download {model}. Whistle keeps transcribing your meetings.",
    "platforms": [
     "gnome",
     "mac"
@@ -2094,7 +2094,7 @@
    "placeholders": {
     "model": "speech model display label from models.json (sample: Parakeet Ultra)"
    },
-   "note": "HARMONY 5 model-download-failed, amber. Its action is common.retry. 'Whistle' is literal, as in HARMONY 5; if S-8/Q7 changes the fallback model it becomes a placeholder. Live from UX8b.",
+   "note": "HARMONY 5 model-download-failed, amber. Its action is common.retry. 'Whistle' is literal, as in HARMONY 5; if S-8/Q7 changes the fallback model it becomes a placeholder. Live from UX8b. L-69 (D105 §1): English was “Could not download {model}. Whistle keeps writing down your meetings.”. HARMONY 5 updated.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -2342,7 +2342,7 @@
   },
   {
    "id": "errors.transcribeFailed.line",
-   "en": "Could not write this meeting down. The audio is fine.",
+   "en": "Could not transcribe this meeting. The audio is fine.",
    "platforms": [
     "gnome",
     "mac"
@@ -2353,7 +2353,7 @@
     "States-mac"
    ],
    "milestone": "UX2",
-   "note": "HARMONY 5 transcribe-failed, amber. Its action is common.tryAgain. Live from UX13.",
+   "note": "HARMONY 5 transcribe-failed, amber. Its action is common.tryAgain. Live from UX13. L-69 (D105 §1): English was “Could not write this meeting down. The audio is fine.”. HARMONY 5 updated.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -3260,7 +3260,7 @@
     "LibraryEmpty-mac"
    ],
    "milestone": "UX1b",
-   "note": "How-to line on desktop first run (below the L-27 hero waveform in Phase 2 D-956 / D-972 / D-973; previously under firstRun.title in UX1b). 'Record' and 'Stop' are inline words, not separate strings. Follows the 'writes it down' vocabulary.",
+   "note": "How-to line on desktop first run (below the L-27 hero waveform in Phase 2 D-956 / D-972 / D-973; previously under firstRun.title in UX1b). 'Record' and 'Stop' are inline words, not separate strings. Follows the 'writes it down' vocabulary. L-69 (D105 §1): not reworded because it is superseded (D103 §8 keeps superseded text); D105 §4 drops the desktop how-to line.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -8586,7 +8586,7 @@
     "Settings-mac"
    ],
    "milestone": "UX8b",
-   "note": "Intro line at the top of the Transcription tab, after a green shield icon. PROVISIONAL wording kept untouched until L-09 (D-938) closes.",
+   "note": "Intro line at the top of the Transcription tab, after a green shield icon. PROVISIONAL wording kept untouched until L-09 (D-938) closes. L-69 (D105 §1): not reworded because it is superseded by settings.transcription.privacyLine (D103 §8 keeps superseded text), which carries the transcribe wording.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -8739,7 +8739,7 @@
   },
   {
    "id": "settings.transcription.speech.description",
-   "en": "Choose the model for new meetings. Meetings already written down keep their transcript.",
+   "en": "Choose the model for new meetings. Meetings already transcribed keep their transcript.",
    "platforms": [
     "gnome",
     "mac"
@@ -8767,11 +8767,12 @@
     "pt-PT": {
      "text": "Escolha o modelo para novas reuniões. As reuniões já transcritas mantêm a sua transcrição."
     }
-   }
+   },
+   "note": "L-69 (D105 §1): English was “Choose the model for new meetings. Meetings already written down keep their transcript.”."
   },
   {
    "id": "settings.transcription.speech.heading",
-   "en": "Writing down what was said",
+   "en": "Transcription",
    "platforms": [
     "gnome",
     "mac"
@@ -8779,26 +8780,27 @@
    "role": "heading",
    "boards": [
     "Settings",
-    "Settings-mac"
+    "Settings-mac",
+    "P2PrefsTranscription-Desktop"
    ],
    "milestone": "UX8b",
-   "note": "Title of the speech model group.",
+   "note": "Title of the speech model group. L-69 (D105 §1): English was “Writing down what was said”. Desktop Settings › Transcription group heading, as drawn on P2PrefsTranscription-Desktop.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Trascrizione del parlato"
+     "text": "Trascrizione"
     },
     "fr": {
-     "text": "Transcrire ce qui a été dit"
+     "text": "Transcription"
     },
     "es": {
-     "text": "Transcribir lo que se dijo"
+     "text": "Transcripción"
     },
     "pt-BR": {
-     "text": "Transcrever o que foi dito"
+     "text": "Transcrição"
     },
     "pt-PT": {
-     "text": "Transcrever o que foi dito"
+     "text": "Transcrição"
     }
    }
   },
@@ -10245,7 +10247,7 @@
   },
   {
    "id": "states.gallery.can.received",
-   "en": "Everything except writing it down again.",
+   "en": "Everything except transcribing it again.",
    "platforms": [
     "gnome",
     "mac"
@@ -10256,7 +10258,7 @@
     "States-mac"
    ],
    "milestone": "UX2",
-   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product.",
+   "note": "Designer annotation on the States board. Only the hidden states-gallery debug board shows it; never in the product. L-69 (D105 §1): English was “Everything except writing it down again.”.",
    "status": "galleryOnly",
    "l10n": {
     "it": {
@@ -11957,7 +11959,7 @@
   },
   {
    "id": "transcript.writeDownAgain",
-   "en": "Write it down again",
+   "en": "Transcribe again",
    "platforms": [
     "gnome",
     "mac"
@@ -11969,7 +11971,7 @@
    ],
    "milestone": "D26",
    "status": "harmony",
-   "note": "Coordinator (D26). Shown only with transcript.noSpeech (status done, zero words, audio present, canWriteDown). Re-queues the normal write-down job with the current models. Nothing is lost because the transcript is empty.",
+   "note": "Coordinator (D26). Shown only with transcript.noSpeech (status done, zero words, audio present, canWriteDown). Re-queues the normal write-down job with the current models. Nothing is lost because the transcript is empty. L-69 (D105 §1): English was “Write it down again”. Translations already used the transcribe verb.",
    "l10n": {
     "it": {
      "text": "Trascrivi di nuovo"
@@ -14043,9 +14045,9 @@
   },
   {
    "id": "details.writing.title",
-   "en": "Writing down",
+   "en": "Transcribing",
    "role": "section-heading",
-   "note": "GNOME proposal R41, published by the coordinator. Processing section, dialog and copied report.",
+   "note": "GNOME proposal R41, published by the coordinator. Processing section, dialog and copied report. L-69 (D105 §1): English was “Writing down”. Translations keep the noun (GLOSSARY).",
    "platforms": [
     "gnome",
     "mac"
@@ -16173,9 +16175,9 @@
   },
   {
    "id": "details.metadata.languageReadFailed",
-   "en": "The language used to write it down couldn’t be read.",
+   "en": "The language used to transcribe it couldn’t be read.",
    "role": "note",
-   "note": "GNOME proposal R41, published by the coordinator. Malformed/unsupported bounded header; never load the full timed-word array. Coordinator edited the proposed English (R41).",
+   "note": "GNOME proposal R41, published by the coordinator. Malformed/unsupported bounded header; never load the full timed-word array. Coordinator edited the proposed English (R41). L-69 (D105 §1): English was “The language used to write it down couldn’t be read.”.",
    "platforms": [
     "gnome",
     "mac"
@@ -20556,6 +20558,128 @@
     },
     "pt-PT": {
      "text": "Nenhum som detetado"
+    }
+   }
+  },
+  {
+   "id": "permissionPrompt.microphone.mac",
+   "en": "For what you say. It’s transcribed on this Mac.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Permission prompt lines (L-68, D105 §6)",
+   "note": "L-68 (D105 §6), awaiting Silvio on D-1095: do not ship until it is decided. Line under the system permission prompt; the prompt title already names Cassini, so the line does not repeat it. Info.plist usage descriptions via InfoPlist.strings. NSMicrophoneUsageDescription; replaces “Cassini records your microphone as a separate local meeting track.”",
+   "status": "pending",
+   "l10n": {
+    "it": {
+     "text": "Per quello che dici. Viene trascritto su questo Mac."
+    },
+    "fr": {
+     "text": "Pour ce que vous dites. C’est transcrit sur ce Mac."
+    },
+    "es": {
+     "text": "Para lo que dices. Se transcribe en este Mac."
+    },
+    "pt-BR": {
+     "text": "Para o que você diz. É transcrito neste Mac."
+    },
+    "pt-PT": {
+     "text": "Para o que diz. É transcrito neste Mac."
+    }
+   }
+  },
+  {
+   "id": "permissionPrompt.systemAudio.mac",
+   "en": "For the others in your meeting app, so they are on the recording too.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Permission prompt lines (L-68, D105 §6)",
+   "note": "L-68 (D105 §6), awaiting Silvio on D-1095: do not ship until it is decided. Line under the system permission prompt; the prompt title already names Cassini, so the line does not repeat it. Info.plist usage descriptions via InfoPlist.strings. The system-audio usage description the Mac app sets today (“Cassini records selected application or system audio locally when you start recording.”). Same words as recordFirst.sound.plain with “For”.",
+   "status": "pending",
+   "l10n": {
+    "it": {
+     "text": "Per gli altri nella tua app per riunioni, così anche loro sono nella registrazione."
+    },
+    "fr": {
+     "text": "Pour les autres participants de votre app de réunion, afin qu’ils soient aussi dans l’enregistrement."
+    },
+    "es": {
+     "text": "Para los demás en tu app de reuniones, de modo que también queden en la grabación."
+    },
+    "pt-BR": {
+     "text": "Para os outros no seu app de reuniões, assim eles também ficam na gravação."
+    },
+    "pt-PT": {
+     "text": "Para os outros na sua aplicação de reuniões, de modo a que também fiquem na gravação."
+    }
+   }
+  },
+  {
+   "id": "permissionPrompt.microphone.iphone",
+   "en": "For what you say. It’s transcribed on this iPhone.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Permission prompt lines (L-68, D105 §6)",
+   "note": "L-68 (D105 §6), awaiting Silvio on D-1095: do not ship until it is decided. Line under the system permission prompt; the prompt title already names Cassini, so the line does not repeat it. Info.plist usage descriptions via InfoPlist.strings. NSMicrophoneUsageDescription. True with iCloud Backup on, since transcription always runs on the device (no “stays on this iPhone” claim, D98).",
+   "status": "pending",
+   "l10n": {
+    "it": {
+     "text": "Per quello che dici. Viene trascritto su questo iPhone."
+    },
+    "fr": {
+     "text": "Pour ce que vous dites. C’est transcrit sur cet iPhone."
+    },
+    "es": {
+     "text": "Para lo que dices. Se transcribe en este iPhone."
+    },
+    "pt-BR": {
+     "text": "Para o que você diz. É transcrito neste iPhone."
+    },
+    "pt-PT": {
+     "text": "Para o que diz. É transcrito neste iPhone."
+    }
+   }
+  },
+  {
+   "id": "permissionPrompt.microphone.ipad",
+   "en": "For what you say. It’s transcribed on this iPad.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "description",
+   "boards": [],
+   "milestone": "Permission prompt lines (L-68, D105 §6)",
+   "note": "L-68 (D105 §6), awaiting Silvio on D-1095: do not ship until it is decided. Line under the system permission prompt; the prompt title already names Cassini, so the line does not repeat it. Info.plist usage descriptions via InfoPlist.strings. iPad variant of permissionPrompt.microphone.iphone (InfoPlist.strings keys can be device-specific: NSMicrophoneUsageDescription~ipad). Named on the notes board, not drawn.",
+   "status": "pending",
+   "l10n": {
+    "it": {
+     "text": "Per quello che dici. Viene trascritto su questo iPad."
+    },
+    "fr": {
+     "text": "Pour ce que vous dites. C’est transcrit sur cet iPad."
+    },
+    "es": {
+     "text": "Para lo que dices. Se transcribe en este iPad."
+    },
+    "pt-BR": {
+     "text": "Para o que você diz. É transcrito neste iPad."
+    },
+    "pt-PT": {
+     "text": "Para o que diz. É transcrito neste iPad."
     }
    }
   },
@@ -25646,7 +25770,7 @@
     "LibraryEmpty-mac"
    ],
    "milestone": "W0.5 (L-27)",
-   "note": "L-27 (D-956, D-937): primary line of the first-run empty-state hero in ink, bold, left-aligned, always one sentence on its own line (platform font, 64 px desktop / 32 px phones), directly above dimmed firstRun.hero.subtitle (desktop D-972 / D-973; phones D-974 / D-975).",
+   "note": "L-27 (D-956, D-937): primary line of the first-run empty-state hero in ink, bold, left-aligned, always one sentence on its own line (platform font, 64 px desktop / 32 px phones), directly above dimmed firstRun.hero.subtitle (desktop D-972 / D-973; phones D-974 / D-975). D105 §2 (L-70): unchanged on all four apps; “written down” stays here as brand voice (L-69). Line 2 is now firstRun.hero.subtitle.{phone,iphone,ipad,computer}. Phones set it at 28 px with normal letter spacing, one line per sentence; desktop 64 px. The app hero now differs from the cassini.talk hero (L-27).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -25681,7 +25805,7 @@
     "LibraryEmpty-mac"
    ],
    "milestone": "W0.5 (L-27)",
-   "note": "L-27 (D-956, D-937): dimmed second line of the first-run empty-state hero directly under firstRun.hero.title, bold, left-aligned, always one sentence on its own line (platform font, 64 px desktop / 32 px phones). Desktop shows this unqualified; phones pair it with firstRun.hero.phoneBackupQualifier (or use firstRun.hero.subtitlePhoneNote) while encrypted OS cloud backup is enabled (D-937, D-974, D-975).",
+   "note": "L-27 (D-956, D-937): dimmed second line of the first-run empty-state hero directly under firstRun.hero.title, bold, left-aligned, always one sentence on its own line (platform font, 64 px desktop / 32 px phones). Desktop shows this unqualified; phones pair it with firstRun.hero.phoneBackupQualifier (or use firstRun.hero.subtitlePhoneNote) while encrypted OS cloud backup is enabled (D-937, D-974, D-975). Superseded by D105 §2 (L-70) on all four apps: firstRun.hero.subtitle.phone / .iphone / .ipad / .computer (“Right here, on this …”), because it is untrue on phones with backups on by default. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -25711,7 +25835,7 @@
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (D-937)",
-   "note": "D-937 / L-27 / L-28: parenthetical qualifier paired with firstRun.hero.subtitle ('None of it uploaded.') on phone first run (D-974 iOS, D-975 Android) whenever encrypted OS cloud backup is enabled (the default). Omitted on desktop (HARMONY §§10, 12) and when the user opts out to phone-only storage.",
+   "note": "D-937 / L-27 / L-28: parenthetical qualifier paired with firstRun.hero.subtitle ('None of it uploaded.') on phone first run (D-974 iOS, D-975 Android) whenever encrypted OS cloud backup is enabled (the default). Omitted on desktop (HARMONY §§10, 12) and when the user opts out to phone-only storage. Removed from first run by D105 §2 (L-70): the new hero line and the two-line privacy line are true with backups on or off. Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -25741,7 +25865,7 @@
    "role": "heading",
    "boards": [],
    "milestone": "W6.0 (D-937)",
-   "note": "D-937 / L-27 / L-28: combined phone first-run hero second line pairing firstRun.hero.subtitle with firstRun.hero.phoneBackupQualifier when encrypted OS cloud backup is enabled, so phone layouts and screen readers never concatenate strings in code.",
+   "note": "D-937 / L-27 / L-28: combined phone first-run hero second line pairing firstRun.hero.subtitle with firstRun.hero.phoneBackupQualifier when encrypted OS cloud backup is enabled, so phone layouts and screen readers never concatenate strings in code. Removed from first run by D105 §2 (L-70). Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -25763,7 +25887,7 @@
   },
   {
    "id": "privacy.onDevice.computer",
-   "en": "Written down on this computer. The audio never leaves it.",
+   "en": "Transcribed on this computer. The audio never leaves it.",
    "platforms": [
     "gnome",
     "mac"
@@ -25774,7 +25898,7 @@
     "LibraryEmpty-mac"
    ],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): desktop first-run on-device privacy line for GNOME and macOS (shown on first run only per L-27, L-30). Legacy firstRun.footer and settings.transcription.privacy stay in the catalog so existing pins never break.",
+   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): desktop first-run on-device privacy line for GNOME and macOS (shown on first run only per L-27, L-30). Legacy firstRun.footer and settings.transcription.privacy stay in the catalog so existing pins never break. L-69 (D105 §1): English was “Written down on this computer. The audio never leaves it.”. D98 logic unchanged. Desktop first run no longer shows it: D105 §4 uses firstRun.privacy.computer; desktop Settings uses settings.transcription.privacyLine. Kept for older pins.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -25796,7 +25920,7 @@
   },
   {
    "id": "privacy.onDevice.mac",
-   "en": "Written down on this Mac. The audio never leaves it.",
+   "en": "Transcribed on this Mac. The audio never leaves it.",
    "platforms": [
     "mac"
    ],
@@ -25805,7 +25929,7 @@
     "LibraryEmpty-mac"
    ],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): Mac-specific first-run on-device privacy line (shown on first run only per L-27, L-30).",
+   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): Mac-specific first-run on-device privacy line (shown on first run only per L-27, L-30). L-69 (D105 §1): English was “Written down on this Mac. The audio never leaves it.”. D98 logic unchanged. Desktop first run no longer shows it: D105 §4 uses firstRun.privacy.computer; desktop Settings uses settings.transcription.privacyLine. Kept for older pins.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -25827,14 +25951,14 @@
   },
   {
    "id": "privacy.onDevice.iphone",
-   "en": "Written down on this iPhone. The audio never leaves it.",
+   "en": "Transcribed on this iPhone. The audio never leaves it.",
    "platforms": [
     "ios"
    ],
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): the decided L-09 iphone wording, kept for copy review. D98: NOT shown on iOS — no iOS mechanism guarantees the audio never leaves the device (it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'.). While cloud backup is on (the default) show privacy.onDevice.iphone.withBackup; with backup off show privacy.onDevice.iphone.backupExcluded. The unqualified 'never leaves' line is reserved for the Android phone-only state (privacy.onDevice.phone).",
+   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): the decided L-09 iphone wording, kept for copy review. D98: NOT shown on iOS — no iOS mechanism guarantees the audio never leaves the device (it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'.). While cloud backup is on (the default) show privacy.onDevice.iphone.withBackup; with backup off show privacy.onDevice.iphone.backupExcluded. The unqualified 'never leaves' line is reserved for the Android phone-only state (privacy.onDevice.phone). L-69 (D105 §1): English was “Written down on this iPhone. The audio never leaves it.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -25856,14 +25980,14 @@
   },
   {
    "id": "privacy.onDevice.iphone.withBackup",
-   "en": "Written down on this iPhone. Never uploaded, except to your encrypted cloud backup.",
+   "en": "Transcribed on this iPhone. Never uploaded, except to your encrypted cloud backup.",
    "platforms": [
     "ios"
    ],
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.iphone (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30.",
+   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.iphone (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this iPhone. Never uploaded, except to your encrypted cloud backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -25885,14 +26009,14 @@
   },
   {
    "id": "privacy.onDevice.iphone.backupExcluded",
-   "en": "Written down on this iPhone. Cassini never uploads the audio and marks it to be left out of iCloud Backup.",
+   "en": "Transcribed on this iPhone. Cassini never uploads the audio and marks it to be left out of iCloud Backup.",
    "platforms": [
     "ios"
    ],
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938 / D-979 / D98; async copy review tracked in D-1019): iOS first-run privacy line while cloud backup is OFF (NSURLIsExcludedFromBackupKey = true). Processing-only plus iCloud-exclusion wording: never claims the audio never leaves the device. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Shown on first run only per L-27, L-30.",
+   "note": "PROVISIONAL (L-09 / D-938 / D-979 / D98; async copy review tracked in D-1019): iOS first-run privacy line while cloud backup is OFF (NSURLIsExcludedFromBackupKey = true). Processing-only plus iCloud-exclusion wording: never claims the audio never leaves the device. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this iPhone. Cassini never uploads the audio and marks it to be left out of iCloud Backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -25914,14 +26038,14 @@
   },
   {
    "id": "privacy.onDevice.ipad",
-   "en": "Written down on this iPad. The audio never leaves it.",
+   "en": "Transcribed on this iPad. The audio never leaves it.",
    "platforms": [
     "ios"
    ],
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): the decided L-09 ipad wording, kept for copy review. D98: NOT shown on iOS — no iOS mechanism guarantees the audio never leaves the device (it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'.). While cloud backup is on (the default) show privacy.onDevice.ipad.withBackup; with backup off show privacy.onDevice.ipad.backupExcluded. The unqualified 'never leaves' line is reserved for the Android phone-only state (privacy.onDevice.phone).",
+   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): the decided L-09 ipad wording, kept for copy review. D98: NOT shown on iOS — no iOS mechanism guarantees the audio never leaves the device (it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'.). While cloud backup is on (the default) show privacy.onDevice.ipad.withBackup; with backup off show privacy.onDevice.ipad.backupExcluded. The unqualified 'never leaves' line is reserved for the Android phone-only state (privacy.onDevice.phone). L-69 (D105 §1): English was “Written down on this iPad. The audio never leaves it.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -25943,14 +26067,14 @@
   },
   {
    "id": "privacy.onDevice.ipad.withBackup",
-   "en": "Written down on this iPad. Never uploaded, except to your encrypted cloud backup.",
+   "en": "Transcribed on this iPad. Never uploaded, except to your encrypted cloud backup.",
    "platforms": [
     "ios"
    ],
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.ipad (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30.",
+   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.ipad (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this iPad. Never uploaded, except to your encrypted cloud backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -25972,14 +26096,14 @@
   },
   {
    "id": "privacy.onDevice.ipad.backupExcluded",
-   "en": "Written down on this iPad. Cassini never uploads the audio and marks it to be left out of iCloud Backup.",
+   "en": "Transcribed on this iPad. Cassini never uploads the audio and marks it to be left out of iCloud Backup.",
    "platforms": [
     "ios"
    ],
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938 / D-979 / D98; async copy review tracked in D-1019): iOS first-run privacy line while cloud backup is OFF (NSURLIsExcludedFromBackupKey = true). Processing-only plus iCloud-exclusion wording: never claims the audio never leaves the device. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Shown on first run only per L-27, L-30.",
+   "note": "PROVISIONAL (L-09 / D-938 / D-979 / D98; async copy review tracked in D-1019): iOS first-run privacy line while cloud backup is OFF (NSURLIsExcludedFromBackupKey = true). Processing-only plus iCloud-exclusion wording: never claims the audio never leaves the device. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this iPad. Cassini never uploads the audio and marks it to be left out of iCloud Backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -26001,14 +26125,14 @@
   },
   {
    "id": "privacy.onDevice.phone",
-   "en": "Written down on this phone. The audio never leaves it.",
+   "en": "Transcribed on this phone. The audio never leaves it.",
    "platforms": [
     "android"
    ],
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): Android first-run on-device privacy line (shown on first run only per L-27, L-30). Legacy android.privacy.processing stays intact in the catalog. D98: Android phone-only state ONLY — shown when cloud backup is off and automatic device-to-device transfer is off; while cloud backup is on (the default) show privacy.onDevice.phone.withBackup instead. Not used on iOS: iOS shows privacy.onDevice.{iphone,ipad}.backupExcluded when backup is off.",
+   "note": "PROVISIONAL (L-09 / D-938; async copy review tracked in D-1019): Android first-run on-device privacy line (shown on first run only per L-27, L-30). Legacy android.privacy.processing stays intact in the catalog. D98: Android phone-only state ONLY — shown when cloud backup is off and automatic device-to-device transfer is off; while cloud backup is on (the default) show privacy.onDevice.phone.withBackup instead. Not used on iOS: iOS shows privacy.onDevice.{iphone,ipad}.backupExcluded when backup is off. L-69 (D105 §1): English was “Written down on this phone. The audio never leaves it.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -26030,7 +26154,7 @@
   },
   {
    "id": "privacy.onDevice.phone.withBackup",
-   "en": "Written down on this phone. Never uploaded, except to your encrypted cloud backup.",
+   "en": "Transcribed on this phone. Never uploaded, except to your encrypted cloud backup.",
    "platforms": [
     "android",
     "ios"
@@ -26038,7 +26162,7 @@
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.phone (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30.",
+   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.phone (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this phone. Never uploaded, except to your encrypted cloud backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -28669,7 +28793,7 @@
   },
   {
    "id": "help.record.body",
-   "en": "Press Record, or {shortcut} from anywhere. When you press Stop, Cassini writes the meeting down on this computer.",
+   "en": "Press Record, or {shortcut} from anywhere. When you press Stop, Cassini transcribes the meeting on this computer.",
    "platforms": [
     "gnome",
     "mac"
@@ -28677,7 +28801,7 @@
    "role": "body",
    "boards": [],
    "milestone": "Phase 2 menu (D-1000)",
-   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 1 body. {shortcut} is common.shortcut.recordAnywhere (Ctrl+Alt+R / ⌥⌘R, or the person's own choice from Settings › Recording).",
+   "note": "D100 (D-1000; GNOME D-1032, Mac D-1033): Help view topic 1 body. {shortcut} is common.shortcut.recordAnywhere (Ctrl+Alt+R / ⌥⌘R, or the person's own choice from Settings › Recording). L-69 (D105 §1): English was “Press Record, or {shortcut} from anywhere. When you press Stop, Cassini writes the meeting down on this computer.”.",
    "status": "draft",
    "placeholders": {
     "shortcut": "common.shortcut.recordAnywhere or the configured global shortcut"
@@ -30466,7 +30590,7 @@
   },
   {
    "id": "models.keepTranscript",
-   "en": "Meetings already written down keep their transcript.",
+   "en": "Meetings already transcribed keep their transcript.",
    "platforms": [
     "gnome",
     "mac",
@@ -30479,7 +30603,7 @@
     "P2PrefsTranscription-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): under the model choice (phones) or the “Writing down what was said” heading (desktop). Desktop: supersedes the second sentence of settings.transcription.speech.description.",
+   "note": "D103 §1 (L-58): under the model choice (phones) or the “Writing down what was said” heading (desktop). Desktop: supersedes the second sentence of settings.transcription.speech.description. L-69 (D105 §1): English was “Meetings already written down keep their transcript.”. Desktop: under the “Transcription” heading (settings.transcription.speech.heading).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -30691,7 +30815,7 @@
   },
   {
    "id": "settings.transcription.privacyLine",
-   "en": "Written down on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.",
+   "en": "Transcribed on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.",
    "platforms": [
     "gnome",
     "mac"
@@ -30701,7 +30825,7 @@
     "P2PrefsTranscription-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): first line of desktop Settings › Transcription. Supersedes settings.transcription.privacy and the settings.transcription.network.* group (kept for older pins; update checks stay described in Mac Settings › Updates).",
+   "note": "D103 §1 (L-58): first line of desktop Settings › Transcription. Supersedes settings.transcription.privacy and the settings.transcription.network.* group (kept for older pins; update checks stay described in Mac Settings › Updates). L-69 (D105 §1): English was “Written down on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.”. Verbatim from P2PrefsTranscription-Desktop.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31098,7 +31222,7 @@
     "P2RecordFirst-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §3 (L-60, L-27): the one how-to line on all four, under the waveform. Supersedes firstRun.body on desktop (kept for older pins). Record and Stop are the button words (common.record, common.stop).",
+   "note": "D103 §3 (L-60, L-27): the one how-to line on all four, under the waveform. Supersedes firstRun.body on desktop (kept for older pins). Record and Stop are the button words (common.record, common.stop). Superseded by D105: phones use firstRun.howTo.phone (§3); desktop has no how-to line (§4). Kept for older pins; “Cassini writes it all down.” is allowed brand voice (L-69).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31134,7 +31258,7 @@
    "placeholders": {
     "shortcut": "common.shortcut.record (Ctrl+R / ⌘R)"
    },
-   "note": "D103 §3 (L-60): desktop first-run shortcut line, now a sentence. Supersedes firstRun.shortcutHint (kept).",
+   "note": "D103 §3 (L-60): desktop first-run shortcut line, now a sentence. Supersedes firstRun.shortcutHint (kept). D105 §4 (L-71): beside Record on desktop first run. {shortcut} renders as key chips: ⌘R as one chip (Mac), Ctrl and R as two chips with “+” between them (GNOME, “Ctrl + R”).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31170,7 +31294,7 @@
    "placeholders": {
     "folder": "Library folder path as shown to the person, for example Music/Cassini"
    },
-   "note": "D103 §3 (L-60): appended after the desktop privacy line on first run (“… The audio never leaves it. Your Library is Music/Cassini.”).",
+   "note": "D103 §3 (L-60): appended after the desktop privacy line on first run (“… The audio never leaves it. Your Library is Music/Cassini.”). Superseded by D105 §4 (L-71): desktop first run shows firstRun.privacy.computer (“Transcribed on this computer, kept in {folder}”) instead of the device privacy line plus this line. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31187,6 +31311,445 @@
     },
     "pt-PT": {
      "text": "A sua Biblioteca está em {folder}."
+    }
+   }
+  },
+  {
+   "id": "firstRun.hero.subtitle.phone",
+   "en": "Right here, on this phone.",
+   "platforms": [
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2FirstRun-Phones"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §2 (L-70): grey second line of the first-run hero under firstRun.hero.title, 28 px, normal letter spacing, one line. True with backups on or off: transcription always runs on the device. Replaces firstRun.hero.subtitle and the backup qualifier.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Proprio qui, su questo telefono."
+    },
+    "fr": {
+     "text": "Ici même, sur ce téléphone."
+    },
+    "es": {
+     "text": "Aquí mismo, en este teléfono."
+    },
+    "pt-BR": {
+     "text": "Aqui mesmo, neste celular."
+    },
+    "pt-PT": {
+     "text": "Aqui mesmo, neste telemóvel."
+    }
+   }
+  },
+  {
+   "id": "firstRun.hero.subtitle.iphone",
+   "en": "Right here, on this iPhone.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2FirstRun-Phones"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §2 (L-70): iPhone hero second line (see firstRun.hero.subtitle.phone).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Proprio qui, su questo iPhone."
+    },
+    "fr": {
+     "text": "Ici même, sur cet iPhone."
+    },
+    "es": {
+     "text": "Aquí mismo, en este iPhone."
+    },
+    "pt-BR": {
+     "text": "Aqui mesmo, neste iPhone."
+    },
+    "pt-PT": {
+     "text": "Aqui mesmo, neste iPhone."
+    }
+   }
+  },
+  {
+   "id": "firstRun.hero.subtitle.ipad",
+   "en": "Right here, on this iPad.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "heading",
+   "boards": [],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §2 (L-70): iPad variant of firstRun.hero.subtitle.iphone. Derived, not drawn.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Proprio qui, su questo iPad."
+    },
+    "fr": {
+     "text": "Ici même, sur cet iPad."
+    },
+    "es": {
+     "text": "Aquí mismo, en este iPad."
+    },
+    "pt-BR": {
+     "text": "Aqui mesmo, neste iPad."
+    },
+    "pt-PT": {
+     "text": "Aqui mesmo, neste iPad."
+    }
+   }
+  },
+  {
+   "id": "firstRun.hero.subtitle.computer",
+   "en": "Right here, on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2FirstRun-Desktop"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §2 (L-70): desktop hero second line, 64 px, grey; Mac and GNOME both say “computer”. Replaces firstRun.hero.subtitle.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Proprio qui, su questo computer."
+    },
+    "fr": {
+     "text": "Ici même, sur cet ordinateur."
+    },
+    "es": {
+     "text": "Aquí mismo, en este equipo."
+    },
+    "pt-BR": {
+     "text": "Aqui mesmo, neste computador."
+    },
+    "pt-PT": {
+     "text": "Aqui mesmo, neste computador."
+    }
+   }
+  },
+  {
+   "id": "firstRun.howTo.phone",
+   "en": "Record something, or import an audio file.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "body",
+   "boards": [
+    "P2FirstRun-Phones"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §3 (L-71): the how-to line on both phones (Android takes iOS’s line), under the hero, above the privacy line. Supersedes firstRun.howTo on phones. Record and Import audio are the buttons below it.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Registra qualcosa o importa un file audio."
+    },
+    "fr": {
+     "text": "Enregistrez quelque chose ou importez un fichier audio."
+    },
+    "es": {
+     "text": "Graba algo o importa un archivo de audio."
+    },
+    "pt-BR": {
+     "text": "Grave algo ou importe um arquivo de áudio."
+    },
+    "pt-PT": {
+     "text": "Grave algo ou importe um ficheiro de áudio."
+    }
+   }
+  },
+  {
+   "id": "firstRun.privacy.phone",
+   "en": "Transcribed on this phone.",
+   "platforms": [
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2FirstRun-Phones"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §3 (L-71): first line of the two-line first-run privacy line on Android, after the accent shield aligned to this line; second line firstRun.privacy.backups.phone. Always true, so no backup-state variant on first run (amends D98 §§1, 3 for first run only). Settings keeps privacy.onDevice.phone* with its D98 variants.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo telefono."
+    },
+    "fr": {
+     "text": "Transcrit sur ce téléphone."
+    },
+    "es": {
+     "text": "Transcrito en este teléfono."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste celular."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste telemóvel."
+    }
+   }
+  },
+  {
+   "id": "firstRun.privacy.backups.phone",
+   "en": "Backups follow your phone’s settings.",
+   "platforms": [
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2FirstRun-Phones"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §3 (L-71): second line of the Android first-run privacy line. The backup notice and Settings › Backup carry the detail (D98, D103 §2).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "I backup seguono le impostazioni del telefono."
+    },
+    "fr": {
+     "text": "Les sauvegardes suivent les paramètres de votre téléphone."
+    },
+    "es": {
+     "text": "Las copias de seguridad siguen los ajustes de tu teléfono."
+    },
+    "pt-BR": {
+     "text": "Os backups seguem as configurações do seu celular."
+    },
+    "pt-PT": {
+     "text": "As cópias de segurança seguem as definições do seu telemóvel."
+    }
+   }
+  },
+  {
+   "id": "firstRun.privacy.iphone",
+   "en": "Transcribed on this iPhone.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2FirstRun-Phones"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §3 (L-71): first line of the two-line first-run privacy line on iPhone, after the accent shield; second line firstRun.privacy.backups.ios. Always true (no “never leaves” or “this iPhone only” claim, D98). Settings keeps privacy.onDevice.iphone.withBackup / .backupExcluded.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo iPhone."
+    },
+    "fr": {
+     "text": "Transcrit sur cet iPhone."
+    },
+    "es": {
+     "text": "Transcrito en este iPhone."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste iPhone."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste iPhone."
+    }
+   }
+  },
+  {
+   "id": "firstRun.privacy.ipad",
+   "en": "Transcribed on this iPad.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §3 (L-71): iPad variant of firstRun.privacy.iphone. Derived, not drawn.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo iPad."
+    },
+    "fr": {
+     "text": "Transcrit sur cet iPad."
+    },
+    "es": {
+     "text": "Transcrito en este iPad."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste iPad."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste iPad."
+    }
+   }
+  },
+  {
+   "id": "firstRun.privacy.backups.ios",
+   "en": "Backups follow your iCloud settings.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2FirstRun-Phones"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §3 (L-71): second line of the iOS first-run privacy line, on iPhone and iPad. Describes eligibility, never a completed backup (D103 §2). The backup notice and Settings › Backup carry the detail.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "I backup seguono le impostazioni di iCloud."
+    },
+    "fr": {
+     "text": "Les sauvegardes suivent vos réglages iCloud."
+    },
+    "es": {
+     "text": "Las copias de seguridad siguen tus ajustes de iCloud."
+    },
+    "pt-BR": {
+     "text": "Os backups seguem os seus ajustes do iCloud."
+    },
+    "pt-PT": {
+     "text": "As cópias de segurança seguem as suas definições de iCloud."
+    }
+   }
+  },
+  {
+   "id": "firstRun.privacy.computer",
+   "en": "Transcribed on this computer, kept in {folder}",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2FirstRun-Desktop"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "placeholders": {
+    "folder": "Library folder as shown to the person, for example Music/Cassini; rendered as an accent link that opens it"
+   },
+   "note": "D105 §4 (L-71): desktop first-run privacy line after the accent shield, no full stop (as drawn). {folder} is an accent link that opens the Library folder in Finder / Files (tooltip firstRun.openFolder.tooltip); a small grey pencil follows it (firstRun.changeFolder, tooltip firstRun.changeFolder.tooltip) and opens the Settings › Library Move… flow. Replaces privacy.onDevice.computer / .mac plus firstRun.libraryLocation on first run.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo computer, conservato in {folder}"
+    },
+    "fr": {
+     "text": "Transcrit sur cet ordinateur, conservé dans {folder}"
+    },
+    "es": {
+     "text": "Transcrito en este equipo, guardado en {folder}"
+    },
+    "pt-BR": {
+     "text": "Transcrito neste computador, salvo em {folder}"
+    },
+    "pt-PT": {
+     "text": "Transcrito neste computador, guardado em {folder}"
+    }
+   }
+  },
+  {
+   "id": "firstRun.openFolder.tooltip",
+   "en": "Opens the folder",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "tooltip",
+   "boards": [
+    "P2FirstRun-Desktop"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §4 (L-71): tooltip (title= / Mac .help) of the {folder} link in firstRun.privacy.computer.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Apre la cartella"
+    },
+    "fr": {
+     "text": "Ouvre le dossier"
+    },
+    "es": {
+     "text": "Abre la carpeta"
+    },
+    "pt-BR": {
+     "text": "Abre a pasta"
+    },
+    "pt-PT": {
+     "text": "Abre a pasta"
+    }
+   }
+  },
+  {
+   "id": "firstRun.changeFolder",
+   "en": "Change Library folder",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "a11y",
+   "boards": [
+    "P2FirstRun-Desktop"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §4 (L-71): accessible name of the small grey pencil after the folder link (icon-only button, no suffix per the A11Y SUFFIX RULE). Opens the same Move… flow as Settings › Library (settings.library.move, confirm.moveLibrary.* while recording).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cambia la cartella della Libreria"
+    },
+    "fr": {
+     "text": "Changer le dossier de la bibliothèque"
+    },
+    "es": {
+     "text": "Cambiar la carpeta de la biblioteca"
+    },
+    "pt-BR": {
+     "text": "Alterar a pasta da biblioteca"
+    },
+    "pt-PT": {
+     "text": "Alterar a pasta da Biblioteca"
+    }
+   }
+  },
+  {
+   "id": "firstRun.changeFolder.tooltip",
+   "en": "Change folder…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "tooltip",
+   "boards": [
+    "P2FirstRun-Desktop"
+   ],
+   "milestone": "Phase 2 first run (D105)",
+   "note": "D105 §4 (L-71): tooltip of the pencil (firstRun.changeFolder). The ellipsis says it opens a chooser.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cambia cartella…"
+    },
+    "fr": {
+     "text": "Changer de dossier…"
+    },
+    "es": {
+     "text": "Cambiar carpeta…"
+    },
+    "pt-BR": {
+     "text": "Alterar pasta…"
+    },
+    "pt-PT": {
+     "text": "Alterar pasta…"
     }
    }
   },

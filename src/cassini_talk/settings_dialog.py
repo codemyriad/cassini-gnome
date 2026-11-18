@@ -732,18 +732,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         future.add_done_callback(ready)
 
     def _choose_folder(self):
-        chooser = Gtk.FileDialog(
-            title=text("settings.library.move"), initial_folder=Gio.File.new_for_path(str(library_root()))
-        )
-        chooser.select_folder(self.app.get_active_window(), None, self._folder_chosen)
-
-    def _folder_chosen(self, chooser, result):
-        try:
-            file = chooser.select_folder_finish(result)
-        except GLib.Error:
-            return
-        if file.get_path():
-            self.app.move_library(Path(file.get_path()), self)
+        self.app.choose_library_folder(self)
 
     def _automatic_changed(self, *_):
         if not self._updating:

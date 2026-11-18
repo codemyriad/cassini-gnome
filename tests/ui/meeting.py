@@ -350,7 +350,7 @@ with tempfile.TemporaryDirectory() as temporary:
         sync_snapshot(stopped_partial)
         assert not page.transcribing_row.get_visible()
         assert page.stop_transcription_button is None
-        assert page.write_button.get_visible() and page.write_button.get_label() == "Write it down"
+        assert page.write_button.get_visible() and page.write_button.get_label() == "Transcribe"
         assert not page.transcribing_blank.get_visible() and page.scroller.get_opacity() == 1.0
         assert page._turns == stopped_partial.turns, "Stopping transcription must keep partial words visible"
         shot(window, "-stopped")
@@ -368,7 +368,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert not any(value.startswith("Transcribing") for value in labels(page.lines))
         assert "Interrupted at 00:41:12" not in labels(page.lines)
 
-        # Library preview also offers Stop while queued/running and restores Write it down once stopped.
+        # Library preview also offers Stop while queued/running and restores Transcribe once stopped.
         settings = Gtk.Settings.get_default()
         previous_anim = settings.props.gtk_enable_animations
         settings.props.gtk_enable_animations = False
@@ -395,7 +395,7 @@ with tempfile.TemporaryDirectory() as temporary:
             assert window.stop_transcription_button is None
             assert (
                 window.meeting_page.write_button.get_visible()
-                and window.meeting_page.write_button.get_label() == "Write it down"
+                and window.meeting_page.write_button.get_label() == "Transcribe"
             )
             window._source_snapshot = base_snapshot
             window._updated(base_snapshot)
@@ -419,7 +419,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.update(empty)
             assert "No speech was found in this meeting." in labels(page.lines)
             again = next(w for w in widgets(page.lines) if isinstance(w, Gtk.Button))
-            assert again.get_label() == "Write it down again"
+            assert again.get_label() == "Transcribe again"
             again.emit("clicked")
             retry.assert_called_once_with(empty)
             retry.reset_mock()
@@ -428,7 +428,7 @@ with tempfile.TemporaryDirectory() as temporary:
             again = next(
                 w
                 for w in widgets(window.meeting_page.lines)
-                if isinstance(w, Gtk.Button) and w.get_label() == "Write it down again"
+                if isinstance(w, Gtk.Button) and w.get_label() == "Transcribe again"
             )
             again.emit("clicked")
             retry.assert_called_once_with(empty)
@@ -617,7 +617,7 @@ with tempfile.TemporaryDirectory() as temporary:
     value["etaMinutes"] = None
     metadata.write_text(json.dumps(value))
     until(lambda: window.meeting_page.meeting.transcript == "failed")
-    assert "Could not write this meeting down. The audio is fine." in labels(page.lines)
+    assert "Could not transcribe this meeting. The audio is fine." in labels(page.lines)
     start_listening(window)
     window.toggle_search()
     until(lambda: window.search_page is not None and window.meeting_page is None)

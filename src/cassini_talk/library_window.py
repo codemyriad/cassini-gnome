@@ -30,6 +30,7 @@ from .strings import plural, text
 from .tokens import speaker_slot
 
 LOG = logging.getLogger(__name__)
+LIBRARY_FOLDER_LINK = "cassini:library-folder"  # the first-run privacy line's folder link (D105 §4)
 
 
 def label(value, *classes, **kwargs):
@@ -1118,17 +1119,57 @@ class LibraryWindow(Adw.ApplicationWindow):
         header.pack_end(self.import_button())
         return header
 
-    def _privacy_text(self):
+    def _privacy_markup(self):
+        """D105 §4: "Transcribed on this computer, kept in {folder}", the folder an accent link (no full stop)."""
         from .library_location import folder_caption, primary
 
-        return " ".join(
-            (text("privacy.onDevice.computer"), text("firstRun.libraryLocation", folder=folder_caption(primary())))
+        before, _, after = text("firstRun.privacy.computer", folder="\0").partition("\0")
+        link = GLib.markup_escape_text(text("firstRun.openFolder.tooltip"))
+        folder = GLib.markup_escape_text(folder_caption(primary()))
+        return (
+            f'{GLib.markup_escape_text(before)}<a href="{LIBRARY_FOLDER_LINK}" title="{link}">'
+            f'<span weight="semibold">{folder}</span></a>{GLib.markup_escape_text(after)}'
         )
 
+    def _open_library_folder(self):
+        """The first-run folder link opens the Library folder in Files, as Preferences › Library does."""
+        from .library_location import primary
+
+        root = primary()
+        future = self.monitor._executor.submit(root.mkdir, parents=True, exist_ok=True)
+
+        def launch():
+            try:
+                future.result()
+            except OSError:
+                LOG.exception("Could not open Library folder")
+                return False
+            Gtk.FileLauncher(file=Gio.File.new_for_path(str(root))).launch(self, None, None, None)
+            return False
+
+        future.add_done_callback(lambda _future: GLib.idle_add(launch))
+        return True
+
+    def _shortcut_line(self):
+        """D105 §4: "Ctrl + R" as two key chips, then "records from anywhere in Cassini." (firstRun.shortcutLine)."""
+        shortcut = text("common.shortcut.record")
+        line = Gtk.Box(valign=Gtk.Align.CENTER, css_classes=["hero-shortcut"])
+        line.update_property([Gtk.AccessibleProperty.LABEL], [text("firstRun.shortcutLine", shortcut=shortcut)])
+        before, _, after = text("firstRun.shortcutLine", shortcut="\0").partition("\0")
+        if before:
+            line.append(label(before))
+        for index, key in enumerate(shortcut.split("+")):
+            if index:
+                line.append(label("+", "hero-keycap-plus"))
+            line.append(label(key, "hero-keycap"))
+        if after:
+            line.append(label(after))
+        return line
+
     def _build_empty(self):
-        """L-27 first-run hero (HARMONY section 10, COMPONENTS.md section 8)."""
+        """D105 (L-70, L-71) first run, left-aligned on one edge (HARMONY section 10, COMPONENTS.md section 8)."""
         from .brand_mark import HERO_MARK_HEIGHT_PX, BrandMark
-        from .first_run_hero import HeroWave
+        from .first_run_hero import HeroWave, LineGlyph
 
         view = Adw.ToolbarView()
         view.add_top_bar(self._first_run_header())
@@ -1147,45 +1188,40 @@ class LibraryWindow(Adw.ApplicationWindow):
         heading.set_opacity(0.0)
         overlay.add_overlay(heading)
         center = vertical(valign=Gtk.Align.CENTER, vexpand=True, hexpand=True, css_classes=["first-run"])
-        # A 720 px column on wide windows that shrinks with narrow ones: a clamp caps
+        # An 860 px column on wide windows that shrinks with narrow ones: a clamp caps
         # the width without making it the window's minimum (the header must stay on screen).
-        hero = vertical(hexpand=True, css_classes=["first-run-hero"])
-        clamp = Adw.Clamp(maximum_size=720, tightening_threshold=720, hexpand=True, child=hero)
+        hero = vertical(spacing=24, hexpand=True, css_classes=["first-run-hero"])
+        clamp = Adw.Clamp(maximum_size=860, tightening_threshold=860, hexpand=True, child=hero)
+        # Top row: the mark, then the grey conversation waveform as tall as the mark.
+        mark_row = Gtk.Box(spacing=32, halign=Gtk.Align.START, css_classes=["hero-mark-row"])
         mark = BrandMark(HERO_MARK_HEIGHT_PX)
-        mark.set_halign(Gtk.Align.START)
+        mark.set_valign(Gtk.Align.CENTER)
         mark.add_css_class("hero-mark")
-        hero.append(mark)
-        # One sentence per line, left-aligned, 64 px bold platform font; the second line dimmed.
+        mark_row.append(mark)
+        self.hero_wave = HeroWave()
+        mark_row.append(self.hero_wave)
+        hero.append(mark_row)
+        # L-70: one sentence per line, 64 px bold platform font; the second line in grey.
+        titles = vertical(spacing=2, css_classes=["hero-titles"])
         for key, classes in (
             ("firstRun.hero.title", ["hero-title"]),
-            ("firstRun.hero.subtitle", ["hero-title", "hero-subtitle"]),
+            ("firstRun.hero.subtitle.computer", ["hero-title", "hero-subtitle"]),
         ):
             # No wrap (drawn): ellipsize rather than reflow if a translation outgrows the column.
             line = label(text(key), *classes, xalign=0, halign=Gtk.Align.START, ellipsize=Pango.EllipsizeMode.END)
-            hero.append(line)
-        self.hero_title, self.hero_subtitle = hero.get_last_child().get_prev_sibling(), hero.get_last_child()
-        wave_row = Gtk.Box(spacing=16, halign=Gtk.Align.START, css_classes=["hero-wave-row"])
-        record = self._record(big=True)
+            titles.append(line)
+        self.hero_title, self.hero_subtitle = titles.get_first_child(), titles.get_last_child()
+        hero.append(titles)
+        # Record with its shortcut beside it; no how-to line on desktop (D105 §4).
+        record_row = Gtk.Box(spacing=14, halign=Gtk.Align.START, css_classes=["hero-record-row"])
+        record = self.hero_record = self._record(big=True)
         record.add_css_class("hero-record")
         record.set_halign(Gtk.Align.START)
         record.set_valign(Gtk.Align.CENTER)
-        wave_row.append(record)
-        self.hero_wave = HeroWave()
-        wave_row.append(self.hero_wave)
-        hero.append(wave_row)
-        # L-60 (D103 §3): one how-to line, then the in-app shortcut as a sentence.
-        body = label(text("firstRun.howTo"), "dim-label", "hero-body", xalign=0, halign=Gtk.Align.START, wrap=True)
-        body.set_max_width_chars(60)
-        hero.append(body)
-        shortcut = label(
-            text("firstRun.shortcutLine", shortcut=text("common.shortcut.record")),
-            "dim-label",
-            "small",
-            xalign=0,
-            halign=Gtk.Align.START,
-            wrap=True,
-        )
-        hero.append(shortcut)
+        record_row.append(record)
+        self.hero_shortcut = self._shortcut_line()
+        record_row.append(self.hero_shortcut)
+        hero.append(record_row)
         self.first_recording_lines = vertical(visible=False)
         hero.append(self.first_recording_lines)
         companion = self.first_companion = Gtk.Button(
@@ -1200,17 +1236,27 @@ class LibraryWindow(Adw.ApplicationWindow):
 
         self.first_browser_status = BrowserStatus(self.get_application(), self)
         hero.append(self.first_browser_status)
-        # Privacy line (privacy.onDevice.computer, L-09 / D-938) and where the Library is
-        # (firstRun.libraryLocation, L-60), first run only (L-30).
-        footer = Gtk.Box(spacing=8, hexpand=True, css_classes=["hero-privacy"])
-        footer.append(
-            Gtk.Image(
-                icon_name="changes-prevent-symbolic", pixel_size=14, accessible_role=Gtk.AccessibleRole.PRESENTATION
-            )
+        # D105 §4-5: accent shield on the first line, the line with the Library folder as a link
+        # (it follows a move), then a grey pencil that opens Preferences › Library's Move… flow.
+        footer = Gtk.Box(spacing=6, halign=Gtk.Align.START, css_classes=["hero-privacy"])
+        footer.append(LineGlyph("shield", 15, valign=Gtk.Align.START, css_classes=["hero-shield"]))
+        self.privacy_line = label(self._privacy_markup(), use_markup=True, xalign=0, wrap=True, valign=Gtk.Align.START)
+        self.privacy_line.connect("activate-link", lambda *_: self._open_library_folder())
+        # The pencil follows the folder 3 px after it, as drawn; the shield keeps the 6 px gap.
+        line = Gtk.Box(spacing=3, valign=Gtk.Align.START)
+        line.append(self.privacy_line)
+        footer.append(line)
+        change = self.change_folder = Gtk.Button(
+            child=LineGlyph("pencil", 12),
+            valign=Gtk.Align.START,
+            tooltip_text=text("firstRun.changeFolder.tooltip"),
+            css_classes=["hero-change-folder"],
+            # The same Move… flow as Preferences › Library, which a Flatpak does not offer.
+            visible=not self.get_application().in_flatpak,
         )
-        # It fills the 720 px column, so a long Library path wraps only past the column, as drawn.
-        self.privacy_line = label(self._privacy_text(), "small", "dim-label", xalign=0, wrap=True, hexpand=True)
-        footer.append(self.privacy_line)
+        change.update_property([Gtk.AccessibleProperty.LABEL], [text("firstRun.changeFolder")])
+        change.connect("clicked", lambda *_: self.get_application().choose_library_folder())
+        line.append(change)
         self.privacy_footer = footer
         hero.append(footer)
         center.append(clamp)
@@ -2125,8 +2171,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             m.key: (m.lifecycle, m.capture_state, m.published_file is not None) for m in snapshot.meetings
         }
         self.snapshot = snapshot
-        # The privacy line names the Library folder in use (firstRun.libraryLocation), so it follows a move.
-        privacy = self._privacy_text()
+        # The privacy line names the Library folder in use (firstRun.privacy.computer), so it follows a move.
+        privacy = self._privacy_markup()
         if self.privacy_line.get_label() != privacy:
             self.privacy_line.set_label(privacy)
         loaded = next((m for m in snapshot.meetings if m.key == self._loaded_key), None)
