@@ -30,7 +30,6 @@ TRACK = dict(type="track", id="one", label=None, kind="remote", sampleRate=48000
 AUDIO = dict(type="audio", id="one", sequence=0, offsetMs=0, pcm=base64.b64encode(b"\x01\x00" * 480).decode())
 
 
-
 def test_companion_hands_written_pcm_to_live_consumer(tmp_path):
     feed = LiveAudio()
     host = BrowserHost(tmp_path, live_audio=feed)
@@ -40,6 +39,7 @@ def test_companion_hands_written_pcm_to_live_consumer(tmp_path):
     assert (block.source, block.frame, block.frames, block.rate) == ("one", 0, 480, 48000)
     assert block.data == base64.b64decode(AUDIO["pcm"])
     host.handle({"type": "stop"})
+
 
 def invoke(tmp_path, messages, **options):
     incoming, outgoing = io.BytesIO(), io.BytesIO()

@@ -117,9 +117,7 @@ def emit_window(model, message):
     if not 0 < len(pcm) <= 8 * 16000 * 2 or len(pcm) % 2:
         raise ValueError("Expected at most eight seconds of PCM16 mono audio")
     samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / np.float32(32768)
-    _, words, _, _ = recognise_segment(
-        model, None, dict(startSample=0, endSample=len(samples)), samples=samples
-    )
+    _, words, _, _ = recognise_segment(model, None, dict(startSample=0, endSample=len(samples)), samples=samples)
     emit("window", words=words)
 
 

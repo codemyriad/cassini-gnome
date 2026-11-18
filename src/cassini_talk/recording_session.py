@@ -654,9 +654,16 @@ class RecordingSession:
         if self.live_audio is not None and input_frames:
             from .live_transcription import CapturedPCM
 
-            self.live_audio.offer(CapturedPCM(
-                identifier, start, writer.frames - input_frames, writer.rate, writer.channels, data,
-            ))
+            self.live_audio.offer(
+                CapturedPCM(
+                    identifier,
+                    start,
+                    writer.frames - input_frames,
+                    writer.rate,
+                    writer.channels,
+                    data,
+                )
+            )
         if self.clock() - self._last_checkpoint >= 1:
             self.checkpoint()
 
@@ -1051,7 +1058,9 @@ class BrowserHost:
                 or len(set(features)) != len(features)
             ):
                 raise ProtocolError("version", "Invalid recording features")
-            self.session = RecordingSession(self.directory, title, clock=self.clock, started_at=started_at, live_audio=self.live_audio)
+            self.session = RecordingSession(
+                self.directory, title, clock=self.clock, started_at=started_at, live_audio=self.live_audio
+            )
             self.source_outcomes = "source-outcomes-v1" in features
             self.capture_id = message.get("captureId")
             result = {"type": "started", "path": str(self.session.directory)}

@@ -60,12 +60,10 @@ def measure(client, paths, references, args):
         prior, _ = draft.snapshot().get(update.source, ((), 0))
         old = [word.text for word in prior if update.replace_from_ms <= word.midpoint_ms <= update.through_ms]
         new = [word.text for word in update.words]
-        revisions += bool(old and old != new[:len(old)])
+        revisions += bool(old and old != new[: len(old)])
         if first_ms is None and new:
             first_ms = round((time.monotonic() - started) * 1000)
-        if first_settled_ms is None and any(
-            word.midpoint_ms < update.settled_through_ms for word in update.words
-        ):
+        if first_settled_ms is None and any(word.midpoint_ms < update.settled_through_ms for word in update.words):
             first_settled_ms = round((time.monotonic() - started) * 1000)
         draft.apply(update)
 
@@ -84,9 +82,14 @@ def measure(client, paths, references, args):
     for update in result.updates:
         apply(update)
     elapsed = time.monotonic() - started
-    report = dict(firstWordsMs=first_ms, firstSettledWordsMs=first_settled_ms,
-                  tailRevisions=revisions, droppedBlocks=audio.dropped_blocks,
-                  needsSavedAudio=result.needs_saved_audio, seconds=round(elapsed, 3))
+    report = dict(
+        firstWordsMs=first_ms,
+        firstSettledWordsMs=first_settled_ms,
+        tailRevisions=revisions,
+        droppedBlocks=audio.dropped_blocks,
+        needsSavedAudio=result.needs_saved_audio,
+        seconds=round(elapsed, 3),
+    )
     if references:
         source_words = draft.snapshot()
         report["liveWordErrorRate"] = [
@@ -99,8 +102,9 @@ def measure(client, paths, references, args):
             if event["type"] == "progress" and "words" in event:
                 batch[event["trackId"]].extend(event["words"])
 
-        client.process_tracks([dict(id=str(i), path=str(path), startOffsetMs=0)
-                               for i, path in enumerate(paths)], collect)
+        client.process_tracks(
+            [dict(id=str(i), path=str(path), startOffsetMs=0) for i, path in enumerate(paths)], collect
+        )
         report["batchWordErrorRate"] = [
             error_rate(reference, tokens(" ".join(word["text"] for word in batch[str(index)])))
             for index, reference in enumerate(references)

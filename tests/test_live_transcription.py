@@ -1,6 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import pytest
+
 from cassini_talk.live_transcription import CapturedPCM, DraftTranscript, LiveAudio, LiveTranscription
 from cassini_talk.recording_session import RecordingSession
+
+
+@pytest.fixture(autouse=True)
+def numpy_available():
+    pytest.importorskip("numpy")
 
 
 class Recognizer:
