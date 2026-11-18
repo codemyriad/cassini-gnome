@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Headless draft transcription. Capture offers PCM; one consumer owns inference."""
 
+import os
+import threading
 import wave
 from dataclasses import dataclass
 from queue import Empty, Full, Queue
@@ -121,7 +123,8 @@ class _Window:
         self.settled = block.offset_ms + block.frame * 1000 / block.rate
         self.offset_ms = block.offset_ms
         self.rate = block.rate
-        self.pcm = None
+        self.frame_bytes = 2 * block.channels
+        self.pcm = bytearray()
         self.decoded = self.end
 
 
@@ -151,7 +154,9 @@ class LiveTranscription:
             raise ValueError("Invalid live audio frames")
         state = self.sources.get(block.source)
         updates = []
-        if state is not None and (state.rate != block.rate or state.offset_ms != block.offset_ms):
+        if state is not None and (
+            state.rate != block.rate or state.offset_ms != block.offset_ms or state.frame_bytes != 2 * block.channels
+        ):
             raise ValueError("Live source geometry changed within a capture span")
         if state is None or state.end != block.frame:
             if state is not None:
@@ -159,16 +164,11 @@ class LiveTranscription:
                     raise ValueError("Live audio frames moved backwards")
                 updates.extend(self._decode(block.source, state, final=True))
             state = self.sources[block.source] = _Window(block)
-        import numpy as np
-
-        pcm = np.frombuffer(block.data, dtype="<i2").reshape(-1, block.channels)
-        pcm = pcm.mean(axis=1, dtype=np.float32) / np.float32(32768)
         stride = max(1, round(self.interval * block.rate))
         first = 0
-        while first < len(pcm):
-            count = min(len(pcm) - first, stride - (state.end - state.decoded))
-            part = pcm[first : first + count]
-            state.pcm = part if state.pcm is None else np.concatenate((state.pcm, part))
+        while first < block.frames:
+            count = min(block.frames - first, stride - (state.end - state.decoded))
+            state.pcm.extend(block.data[first * state.frame_bytes : (first + count) * state.frame_bytes])
             first += count
             state.end += count
             if state.end - state.decoded == stride:
@@ -229,38 +229,120 @@ class LiveTranscription:
         return updates + repair.finish()
 
     def _decode(self, source, state, *, final=False):
-        import numpy as np
-
-        from .speech_pipeline import fir_values
-
         if state.end == state.start:
             return []
-        pcm = state.pcm
-        if state.rate == 48000:
-            pcm = fir_values(pcm, 0, 0, (len(pcm) + 2) // 3)
         base = state.offset_ms + state.start * 1000 / state.rate
         end = state.offset_ms + state.end * 1000 / state.rate
         replace = state.settled
         words = []
-        if np.any(pcm):
-            for word in self.recognizer.decode_window(pcm):
-                start_ms = min(end, max(base, base + word["startMs"]))
-                end_ms = min(end, max(start_ms, base + word["endMs"]))
-                if (start_ms + end_ms) / 2 >= replace:
-                    words.append(LiveWord(start_ms, end_ms, word["text"]))
+        for word in self.recognizer.decode_window(state.pcm, state.rate, state.frame_bytes // 2):
+            start_ms = min(end, max(base, base + word["startMs"]))
+            end_ms = min(end, max(start_ms, base + word["endMs"]))
+            if (start_ms + end_ms) / 2 >= replace:
+                words.append(LiveWord(start_ms, end_ms, word["text"]))
         state.decoded = state.end
         # Retain room for the next decode and keep at least the requested context.
-        advance = max(0, len(state.pcm) - (round(self.window * state.rate) - round(self.interval * state.rate)))
+        advance = max(
+            0, state.end - state.start - (round(self.window * state.rate) - round(self.interval * state.rate))
+        )
         if final:
             state.settled = end
-            state.pcm = np.empty(0, dtype=np.float32)
+            state.pcm.clear()
             state.start = state.end
         else:
             boundary = max(replace, end - self.context * 1000)
             state.settled = boundary
             if state.rate == 48000:
-                advance = min(len(state.pcm), ((advance + 2) // 3) * 3)
+                advance = min(state.end - state.start, ((advance + 2) // 3) * 3)
             if advance:
-                state.pcm = state.pcm[advance:].copy()
+                del state.pcm[: advance * state.frame_bytes]
                 state.start += advance
         return [DraftUpdate(source, replace, end, state.settled, tuple(words))]
+
+
+class CapturePreview:
+    """Optional, in-memory preview owned by one normal app capture."""
+
+    _admission = threading.BoundedSemaphore(1)
+
+    @classmethod
+    def configured(cls):
+        model = os.environ.get("CASSINI_LIVE_PREVIEW")
+        return cls(model) if model in ("whistle", "parakeet") else None
+
+    def __init__(self, model):
+        self.model = model
+        self.audio = LiveAudio()
+        self._stopped = threading.Event()
+        self._lock = threading.Lock()
+        self._draft = DraftTranscript()
+        self._started = False
+        self._state = "waiting"
+
+    def offer(self, block):
+        if not self._started:
+            self._started = True
+            if not self._admission.acquire(blocking=False):
+                self._status("busy")
+                return
+            try:
+                worker = threading.Thread(target=self._run, name="cassini-live-preview", daemon=True)
+                worker.start()
+            except RuntimeError:
+                self._admission.release()
+                self._status("unavailable")
+                return
+            self._status("running", from_state="waiting")
+        if self._state == "running":
+            self.audio.offer(block)
+
+    def close(self):
+        self._stopped.set()
+        self._status("finished", from_state="waiting")
+
+    def snapshot(self):
+        with self._lock:
+            return self._state, self._draft.snapshot()
+
+    def _status(self, value, *, from_state=None):
+        with self._lock:
+            if from_state is None or self._state == from_state:
+                self._state = value
+
+    def _apply(self, updates):
+        with self._lock:
+            for update in updates:
+                self._draft.apply(update)
+
+    def _client(self):
+        from .transcription import bundle_path
+
+        if self.model == "whistle":
+            from .whistle_client import WhistleClient
+
+            return WhistleClient(bundle_path(), timeout=10)
+        from .parakeet_client import ParakeetClient
+        from .parakeet_model import model_path
+        from .sherpa_runtime import runtime_path
+
+        return ParakeetClient(bundle_path(), model_path(), runtime_path(), timeout=15)
+
+    def _run(self):
+        try:
+            with self._client() as client:
+                live = LiveTranscription(client)
+                while not self._stopped.is_set():
+                    try:
+                        block = self.audio.get(timeout=0.1)
+                    except Empty:
+                        continue
+                    self._apply(live.accept(block))
+                # The real saved-audio job owns publication. In particular it
+                # can map rotated spans or repair any skipped preview.
+                result = live.drain(self.audio)
+                self._apply(result.updates)
+                self._status("incomplete" if result.needs_saved_audio else "finished")
+        except Exception:
+            self._status("unavailable")
+        finally:
+            self._admission.release()

@@ -72,7 +72,11 @@ class Readiness:
 
 class BrowserCapture:
     def __init__(self, changed, *, parent=None, tap_factory=None, live_audio=None):
-        self.host = BrowserHost(parent, live_audio=live_audio)
+        from .live_transcription import CapturePreview
+
+        self.host = BrowserHost(
+            parent, live_audio=live_audio if live_audio is not None else CapturePreview.configured()
+        )
         self.changed = changed
         self.tap_factory = tap_factory
         self.lock = threading.RLock()

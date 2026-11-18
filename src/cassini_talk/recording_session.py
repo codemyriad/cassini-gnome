@@ -785,6 +785,7 @@ class RecordingSession:
         if self.capture_record is not None:
             self.capture_record.close()  # #230: every admitted Stop's summary first.
         self.finished = True
+        self._close_preview()
         failure = None
         for identifier, writer in self.writers.items():
             try:
@@ -842,6 +843,12 @@ class RecordingSession:
         if failure:
             raise failure
 
+    def _close_preview(self):
+        from .live_transcription import CapturePreview
+
+        if isinstance(self.live_audio, CapturePreview):
+            self.live_audio.close()
+
     def refuse(self, *items):
         """D58: append refusals in one checkpoint. They never change any other record."""
         from .refusals import append
@@ -879,6 +886,7 @@ class RecordingSession:
                 if typed or any(e.name not in allowed or e.is_symlink() or not e.is_file() for e in entries):
                     return False
                 self.finished = True
+                self._close_preview()
                 for writer in self.writers.values():
                     with suppress(OSError):
                         writer.close()

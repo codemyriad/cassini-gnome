@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """One persistent recognition child; bounded replies and deterministic teardown."""
 
-import base64
 import contextlib
 import json
 import logging
@@ -112,17 +111,17 @@ class WhistleClient:
             raise RuntimeError("Whistle worker stopped accepting requests") from error
         return self._receive("result")
 
-    def decode_window(self, samples):
-        """Decode a short, already resampled 16 kHz window on the active worker."""
-        import numpy as np
-
+    def decode_window(self, pcm, rate, channels):
+        """Send bounded PCM16 to the worker; it owns the resampler and inference."""
         if self.process is None or self.process.poll() is not None:
             raise RuntimeError(self.worker_name + " worker is not running")
-        if samples.ndim != 1 or not 0 < len(samples) <= 8 * 16000:
-            raise ValueError("Expected at most eight seconds of mono audio")
-        pcm = np.clip(np.rint(samples * 32768), -32768, 32767).astype("<i2")
-        message = dict(type="decode-window", pcm=base64.b64encode(pcm.tobytes()).decode("ascii"))
+        if rate not in (16000, 48000) or channels not in (1, 2):
+            raise ValueError("Unsupported live PCM geometry")
+        if not 0 < len(pcm) <= 8 * rate * channels * 2 or len(pcm) % (channels * 2):
+            raise ValueError("Expected at most eight seconds of whole PCM frames")
+        message = dict(type="decode-window", bytes=len(pcm), rate=rate, channels=channels)
         self.process.stdin.write(json.dumps(message).encode() + b"\n")
+        self.process.stdin.write(pcm)
         self.process.stdin.flush()
         return self._receive("window")["words"]
 

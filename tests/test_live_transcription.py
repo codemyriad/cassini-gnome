@@ -1,21 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import pytest
-
 from cassini_talk.live_transcription import CapturedPCM, DraftTranscript, LiveAudio, LiveTranscription
 from cassini_talk.recording_session import RecordingSession
-
-
-@pytest.fixture(autouse=True)
-def numpy_available():
-    pytest.importorskip("numpy")
 
 
 class Recognizer:
     def __init__(self):
         self.windows = []
 
-    def decode_window(self, pcm):
-        self.windows.append(len(pcm))
+    def decode_window(self, pcm, rate, channels):
+        self.windows.append(len(pcm) // (2 * channels))
         return [{"startMs": 0, "endMs": 400, "text": "word"}]
 
 
@@ -55,3 +48,31 @@ def test_full_queue_repairs_only_missing_audio_from_capture(tmp_path):
     for update in result.updates:
         transcript.apply(update)
     assert [word.start_ms for word in transcript.snapshot()["mic"][0]] == [100, 2100]
+
+
+def test_recording_owns_preview_lifetime(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from threading import Event
+
+    from cassini_talk.live_transcription import CapturePreview
+
+    fixture = Recognizer()
+    preview = CapturePreview("whistle")
+    done = Event()
+    original_status = preview._status
+
+    def status(value, **kwargs):
+        original_status(value, **kwargs)
+        if value in ("finished", "incomplete", "unavailable"):
+            done.set()
+
+    monkeypatch.setattr(preview, "_client", lambda: nullcontext(fixture))
+    monkeypatch.setattr(preview, "_status", status)
+    capture = RecordingSession(tmp_path, live_audio=preview)
+    capture.add_track("mic", "Mic", "microphone", 16000, 1)
+    capture.append("mic", block("mic", 0).data, 100)
+    capture.finish()
+    assert done.wait(5)
+    state, draft = preview.snapshot()
+    assert state == "finished"
+    assert [word.text for word in draft["mic"][0]] == ["word"]

@@ -107,17 +107,25 @@ def emit(kind, **values):
 
 
 def emit_window(model, message):
-    import base64
-
     import numpy as np
 
-    from cassini_talk.speech_pipeline import recognise_segment
+    from cassini_talk.speech_pipeline import fir_values, recognise_segment
 
-    pcm = base64.b64decode(message["pcm"], validate=True)
-    if not 0 < len(pcm) <= 8 * 16000 * 2 or len(pcm) % 2:
-        raise ValueError("Expected at most eight seconds of PCM16 mono audio")
-    samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / np.float32(32768)
-    _, words, _, _ = recognise_segment(model, None, dict(startSample=0, endSample=len(samples)), samples=samples)
+    size, rate, channels = message["bytes"], message["rate"], message["channels"]
+    if type(rate) is not int or rate not in (16000, 48000) or type(channels) is not int or channels not in (1, 2):
+        raise ValueError("Unsupported live PCM geometry")
+    if type(size) is not int or not 0 < size <= 8 * rate * channels * 2 or size % (2 * channels):
+        raise ValueError("Expected at most eight seconds of whole PCM frames")
+    pcm = sys.stdin.buffer.read(size)
+    if len(pcm) != size:
+        raise ValueError("Incomplete live audio request")
+    samples = np.frombuffer(pcm, dtype="<i2").reshape(-1, channels).mean(axis=1, dtype=np.float32)
+    samples /= np.float32(32768)
+    if rate == 48000:
+        samples = fir_values(samples, 0, 0, (len(samples) + 2) // 3)
+    words = []
+    if np.any(samples):
+        _, words, _, _ = recognise_segment(model, None, dict(startSample=0, endSample=len(samples)), samples=samples)
     emit("window", words=words)
 
 

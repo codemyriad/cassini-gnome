@@ -1136,10 +1136,12 @@ class CassiniApplication(Adw.Application):
         return False
 
     def start_native(self, *, test=False):
+        from .live_transcription import CapturePreview
         from .native_recorder import NativeRecorder
 
         self.discard_test_recording()  # Also the native fallback and direct callers.
-        recorder = NativeRecorder()
+        preview = None if test else CapturePreview.configured()
+        recorder = NativeRecorder() if preview is None else NativeRecorder(live_audio=preview)
         self.native_captures[str(uuid4())] = recorder
         self._last_native = recorder
         recorder.connect("started", self._native_started)
