@@ -28,7 +28,7 @@ native Whistle partials or a speech-gated Parakeet schedule.
 Run from the GNOME checkout with the pinned model assets available:
 
 ```sh
-PYTHONPATH=src python3 tests/recording/replay-live.py \
+PYTHONPATH=src python3 tests/whistle/replay-live.py \
   --bundle /path/to/whistle \
   --model /path/to/parakeet-ultra-int8-v2 --runtime /path/to/sherpa \
   --reference tests/whistle/jfk.txt tests/whistle/jfk.wav

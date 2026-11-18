@@ -194,7 +194,10 @@ class NativeRecorder(GObject.Object):
         self.unheard = set()
         self._discard = self.discarded = False
         self._observe_output = observe_output
-        future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None, self.live_audio)
+        args = (Path(parent) if parent is not None else None,)
+        if self.live_audio is not None:
+            args += (self.live_audio,)
+        future = self._executor.submit(self._prepare, *args)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
     @staticmethod
