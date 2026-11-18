@@ -120,9 +120,12 @@ class WhistleClient:
         if not 0 < len(pcm) <= 8 * rate * channels * 2 or len(pcm) % (channels * 2):
             raise ValueError("Expected at most eight seconds of whole PCM frames")
         message = dict(type="decode-window", bytes=len(pcm), rate=rate, channels=channels)
-        self.process.stdin.write(json.dumps(message).encode() + b"\n")
-        self.process.stdin.write(pcm)
-        self.process.stdin.flush()
+        try:
+            self.process.stdin.write(json.dumps(message).encode() + b"\n")
+            self.process.stdin.write(pcm)
+            self.process.stdin.flush()
+        except OSError as error:
+            raise RuntimeError(self.worker_name + " worker stopped accepting requests") from error
         return self._receive("window")["words"]
 
     def process_tracks(self, tracks, progress):

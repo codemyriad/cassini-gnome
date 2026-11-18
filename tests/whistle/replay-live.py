@@ -58,7 +58,7 @@ def measure(client, paths, references, args):
     def apply(update):
         nonlocal first_ms, first_settled_ms, revisions
         prior, _ = draft.snapshot().get(update.source, ((), 0))
-        old = [word.text for word in prior if update.replace_from_ms <= word.midpoint_ms <= update.through_ms]
+        old = [word.text for word in prior if update.replace_from_ms <= word.midpoint_ms < update.through_ms]
         new = [word.text for word in update.words]
         revisions += bool(old and old != new[: len(old)])
         if first_ms is None and new:

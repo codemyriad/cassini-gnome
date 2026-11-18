@@ -103,7 +103,7 @@ class DraftTranscript:
         words = self._words.get(update.source, ())
         self._words[update.source] = tuple(
             sorted(
-                [word for word in words if not update.replace_from_ms <= word.midpoint_ms <= update.through_ms]
+                [word for word in words if not update.replace_from_ms <= word.midpoint_ms < update.through_ms]
                 + list(update.words),
                 key=lambda word: word.midpoint_ms,
             )
@@ -143,13 +143,17 @@ class LiveTranscription:
         self.context = context
         self.window = window
         self.sources = {}
+        self.unsupported_sources = set()
         self.finished = False
 
     def accept(self, block):
         if self.finished:
             raise RuntimeError("Live transcription is finished")
         if block.rate not in (16000, 48000) or block.channels not in (1, 2):
-            raise ValueError("Invalid live PCM format")
+            # Companion accepts a wider range than preview's pinned resampler.
+            # Keep other sources live and leave this one to the saved-audio job.
+            self.unsupported_sources.add(block.source)
+            return []
         if block.frame < 0 or len(block.data) % (2 * block.channels) or block.frames == 0:
             raise ValueError("Invalid live audio frames")
         state = self.sources.get(block.source)
@@ -191,11 +195,11 @@ class LiveTranscription:
                 break
             updates.extend(self.accept(block))
         updates.extend(self.finish())
-        needs_saved_audio = False
+        needs_saved_audio = bool(self.unsupported_sources)
         for source, gaps in audio.missing.items():
             path = saved_tracks.get(source) if saved_tracks is not None else None
             for gap in gaps:
-                if path is None:
+                if path is None or gap.rate not in (16000, 48000) or gap.channels not in (1, 2):
                     needs_saved_audio = True
                     continue
                 try:
@@ -238,7 +242,7 @@ class LiveTranscription:
         for word in self.recognizer.decode_window(state.pcm, state.rate, state.frame_bytes // 2):
             start_ms = min(end, max(base, base + word["startMs"]))
             end_ms = min(end, max(start_ms, base + word["endMs"]))
-            if (start_ms + end_ms) / 2 >= replace:
+            if replace <= (start_ms + end_ms) / 2 < end:
                 words.append(LiveWord(start_ms, end_ms, word["text"]))
         state.decoded = state.end
         # Retain room for the next decode and keep at least the requested context.

@@ -48,3 +48,8 @@ native and Companion recordings start one preview worker on their first audio
 block when the preview budget is free. The preview is available in memory to a
 consumer via the capture's `CapturePreview.snapshot()`. Stop closes the preview
 input while the existing saved-audio workflow publishes the final transcript.
+
+Live timestamps use the source's nominal sample clock. The final job applies
+the saved drift mapping and can revise alignment. The single-WAV repair helper
+falls back to the saved-audio job for rotated or compacted audio and for
+unsupported capture rates while preview continues for the other sources.

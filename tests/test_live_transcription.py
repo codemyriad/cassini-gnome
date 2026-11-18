@@ -76,3 +76,22 @@ def test_recording_owns_preview_lifetime(tmp_path, monkeypatch):
     state, draft = preview.snapshot()
     assert state == "finished"
     assert [word.text for word in draft["mic"][0]] == ["word"]
+
+
+def test_unsupported_companion_rate_does_not_hide_supported_sources():
+    audio = LiveAudio()
+    audio.offer(CapturedPCM("remote", 0, 0, 44_100, 1, b"\x01\x00" * 44_100))
+    audio.offer(block("mic", 0))
+    result = LiveTranscription(Recognizer()).drain(audio)
+    assert result.needs_saved_audio
+    assert [update.source for update in result.updates] == ["mic"]
+    assert result.updates[0].words
+
+
+def test_adjacent_repair_does_not_replace_next_range_words():
+    from cassini_talk.live_transcription import DraftUpdate, LiveWord
+
+    transcript = DraftTranscript()
+    transcript.apply(DraftUpdate("mic", 1000, 2000, 2000, (LiveWord(1000, 1000, "next"),)))
+    transcript.apply(DraftUpdate("mic", 0, 1000, 1000, (LiveWord(200, 400, "repair"),)))
+    assert [word.text for word in transcript.snapshot()["mic"][0]] == ["repair", "next"]
