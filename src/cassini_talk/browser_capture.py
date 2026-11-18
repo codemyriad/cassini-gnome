@@ -71,8 +71,8 @@ class Readiness:
 
 
 class BrowserCapture:
-    def __init__(self, changed, *, parent=None, tap_factory=None):
-        self.host = BrowserHost(parent)
+    def __init__(self, changed, *, parent=None, tap_factory=None, live_audio=None):
+        self.host = BrowserHost(parent, live_audio=live_audio)
         self.changed = changed
         self.tap_factory = tap_factory
         self.lock = threading.RLock()

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """One persistent recognition child; bounded replies and deterministic teardown."""
 
+import base64
 import contextlib
 import json
 import logging
@@ -110,6 +111,20 @@ class WhistleClient:
         except OSError as error:
             raise RuntimeError("Whistle worker stopped accepting requests") from error
         return self._receive("result")
+
+    def decode_window(self, samples):
+        """Decode a short, already resampled 16 kHz window on the active worker."""
+        import numpy as np
+
+        if self.process is None or self.process.poll() is not None:
+            raise RuntimeError(self.worker_name + " worker is not running")
+        if samples.ndim != 1 or not 0 < len(samples) <= 8 * 16000:
+            raise ValueError("Expected at most eight seconds of mono audio")
+        pcm = np.clip(np.rint(samples * 32768), -32768, 32767).astype("<i2")
+        message = dict(type="decode-window", pcm=base64.b64encode(pcm.tobytes()).decode("ascii"))
+        self.process.stdin.write(json.dumps(message).encode() + b"\n")
+        self.process.stdin.flush()
+        return self._receive("window")["words"]
 
     def process_tracks(self, tracks, progress):
         if self.process is None or self.process.poll() is not None:

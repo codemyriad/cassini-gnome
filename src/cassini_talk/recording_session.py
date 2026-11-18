@@ -317,6 +317,7 @@ class RecordingSession:
         clock=time.monotonic,
         writer_factory=WAVWriter,
         started_at=None,
+        live_audio=None,
     ):
         from contextlib import nullcontext
 
@@ -336,6 +337,7 @@ class RecordingSession:
                 parent = capture_parent(primary())
             self.clock = clock
             self.writer_factory = writer_factory
+            self.live_audio = live_audio
             identifier = str(uuid4())
             self.directory = Path(parent) / f"Recording-{identifier}"
             self.directory.mkdir(mode=0o700, parents=True)
@@ -649,6 +651,12 @@ class RecordingSession:
         track["frames"] = writer.frames
         if self.capture_record is not None:
             self.capture_record.admit(identifier, input_frames)
+        if self.live_audio is not None and input_frames:
+            from .live_transcription import CapturedPCM
+
+            self.live_audio.offer(CapturedPCM(
+                identifier, start, writer.frames - input_frames, writer.rate, writer.channels, data,
+            ))
         if self.clock() - self._last_checkpoint >= 1:
             self.checkpoint()
 
@@ -897,8 +905,9 @@ class RecordingSession:
 
 
 class BrowserHost:
-    def __init__(self, directory=None, *, clock=time.monotonic):
+    def __init__(self, directory=None, *, clock=time.monotonic, live_audio=None):
         self.directory = Path(directory) if directory is not None else None
+        self.live_audio = live_audio
         self.clock = clock
         self.session = None
         self.sequences = {}
@@ -1042,7 +1051,7 @@ class BrowserHost:
                 or len(set(features)) != len(features)
             ):
                 raise ProtocolError("version", "Invalid recording features")
-            self.session = RecordingSession(self.directory, title, clock=self.clock, started_at=started_at)
+            self.session = RecordingSession(self.directory, title, clock=self.clock, started_at=started_at, live_audio=self.live_audio)
             self.source_outcomes = "source-outcomes-v1" in features
             self.capture_id = message.get("captureId")
             result = {"type": "started", "path": str(self.session.directory)}

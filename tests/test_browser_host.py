@@ -14,13 +14,32 @@ from pathlib import Path
 import pytest
 
 from cassini_talk.browser_host import main
-from cassini_talk.recording_session import ProtocolError, RecordingSession, WAVWriter, read_message, write_message
+from cassini_talk.live_transcription import LiveAudio
+from cassini_talk.recording_session import (
+    BrowserHost,
+    ProtocolError,
+    RecordingSession,
+    WAVWriter,
+    read_message,
+    write_message,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 START = {"type": "start"}
 TRACK = dict(type="track", id="one", label=None, kind="remote", sampleRate=48000, channels=1)
 AUDIO = dict(type="audio", id="one", sequence=0, offsetMs=0, pcm=base64.b64encode(b"\x01\x00" * 480).decode())
 
+
+
+def test_companion_hands_written_pcm_to_live_consumer(tmp_path):
+    feed = LiveAudio()
+    host = BrowserHost(tmp_path, live_audio=feed)
+    for message in (START, TRACK, AUDIO):
+        host.handle(message)
+    block = feed.get(timeout=0)
+    assert (block.source, block.frame, block.frames, block.rate) == ("one", 0, 480, 48000)
+    assert block.data == base64.b64decode(AUDIO["pcm"])
+    host.handle({"type": "stop"})
 
 def invoke(tmp_path, messages, **options):
     incoming, outgoing = io.BytesIO(), io.BytesIO()

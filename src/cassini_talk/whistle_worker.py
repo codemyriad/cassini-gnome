@@ -106,6 +106,23 @@ def emit(kind, **values):
     print(json.dumps(dict(type=kind, **values), ensure_ascii=False), flush=True)
 
 
+def emit_window(model, message):
+    import base64
+
+    import numpy as np
+
+    from cassini_talk.speech_pipeline import recognise_segment
+
+    pcm = base64.b64decode(message["pcm"], validate=True)
+    if not 0 < len(pcm) <= 8 * 16000 * 2 or len(pcm) % 2:
+        raise ValueError("Expected at most eight seconds of PCM16 mono audio")
+    samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / np.float32(32768)
+    _, words, _, _ = recognise_segment(
+        model, None, dict(startSample=0, endSample=len(samples)), samples=samples
+    )
+    emit("window", words=words)
+
+
 def main(bundle):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from cassini_talk.speech_threads import background_worker_priority
@@ -127,6 +144,9 @@ def main(bundle):
         message = json.loads(line)
         if message.get("type") == "quit":
             return 0
+        if message.get("type") == "decode-window":
+            emit_window(model, message)
+            continue
         if message.get("type") == "voiceprints":
             from cassini_talk.worker_voices import request
 

@@ -76,8 +76,9 @@ class NativeRecorder(GObject.Object):
         "changed": (GObject.SignalFlags.RUN_LAST, None, ()),
     }
 
-    def __init__(self):
+    def __init__(self, *, live_audio=None):
         super().__init__()
+        self.live_audio = live_audio
         self.pipeline = None
         self.session = None
         self.stopping = False
@@ -193,12 +194,12 @@ class NativeRecorder(GObject.Object):
         self.unheard = set()
         self._discard = self.discarded = False
         self._observe_output = observe_output
-        future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None)
+        future = self._executor.submit(self._prepare, Path(parent) if parent is not None else None, self.live_audio)
         future.add_done_callback(lambda f: GLib.idle_add(self._prepared, f, test))
 
     @staticmethod
-    def _prepare(parent):
-        session = RecordingSession(parent, source="gnome", title="")
+    def _prepare(parent, live_audio=None):
+        session = RecordingSession(parent, source="gnome", title="", live_audio=live_audio)
         try:
             # The start selection records what was requested; a side's track
             # is added only when that side opens.

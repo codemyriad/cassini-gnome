@@ -134,6 +134,7 @@ talk_sources = files(
   'cassini_talk/parakeet_abi.py',
   'cassini_talk/parakeet_model.py',
   'cassini_talk/parakeet_client.py',
+  'cassini_talk/live_transcription.py',
   'cassini_talk/parakeet_worker.py',
   'cassini_talk/sherpa_runtime.py',
   'cassini_talk/sherpa-pins.json',
