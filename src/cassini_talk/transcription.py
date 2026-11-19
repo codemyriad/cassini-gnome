@@ -1112,11 +1112,14 @@ class TranscriptionQueue:
         if notify:
             self.progress_changed(directory)
 
-    def _clear_progress_locked(self, directory, *, key: Path | None = None) -> None:
+    def _clear_progress_locked(self, directory, *, key: Path | None = None, aliases=()) -> None:
         path = Path(directory)
         self._progress.pop(path, None)
         self._progress.pop(path.absolute(), None)
-        self._progress.pop(key if key is not None else self._progress_key(path), None)
+        if key is not None:
+            self._progress.pop(key, None)
+        for alias in aliases:
+            self._progress.pop(alias, None)
 
     def transcribing(self, directory):
         """Whether a job for this meeting is queued or running (it may re-diarize)."""
@@ -1133,7 +1136,9 @@ class TranscriptionQueue:
                     self._resume_pending.add(directory)
                 return False
             self.pending.add(directory)
-            self._set_progress(directory, TranscriptionProgress(step="reading"), notify=False, reset=True)
+            self._set_progress(
+                directory, TranscriptionProgress(step="reading"), key=directory, notify=False, reset=True
+            )
             if self._active_directory in self._background_voices and self.client:
                 self.client.cancel()
             future = self.preparer.submit(self._mark_queued, directory, resume)
@@ -1182,6 +1187,8 @@ class TranscriptionQueue:
         self._record_job_alias(raw_directory, canonical)
         dir_aliases = frozenset((raw_directory, canonical))
         with self.lock:
+            if (initial := self._progress.get(raw_directory)) is not None:
+                self._progress.setdefault(canonical, initial)
             if self._follow_directory is not None and not self._any_alias_in(dir_aliases, self._follow_aliases):
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
         directory = canonical
@@ -1302,8 +1309,8 @@ class TranscriptionQueue:
         self._resume_pending.discard(directory)
         self._prepare_futures.pop(directory, None)
         self._job_futures.pop(directory, None)
-        self._job_aliases.pop(directory, None)
-        self._clear_progress_locked(directory, key=progress_key)
+        aliases = self._job_aliases.pop(directory, ())
+        self._clear_progress_locked(directory, key=progress_key, aliases=aliases)
         self._idle.notify_all()
         return True
 

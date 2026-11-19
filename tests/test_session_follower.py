@@ -4268,3 +4268,160 @@ def test_session_follower_completed_manifest_without_per_track_ended_drains(tmp_
         pass
     assert follower.all_drained() is True
     assert len(emitted) == 1
+
+
+# ---------------------------------------------------------------------------
+# 28. Review regressions (round 17): Trash maintenance journal replay before
+#     LibraryRecovery, and zero Path.resolve() on GTK in enqueue/_set_progress
+# ---------------------------------------------------------------------------
+
+
+def test_trash_maintenance_before_recovery_resumes_queued_transcript_once_without_window(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _ensure_gi_for_main(monkeypatch)
+    monkeypatch.setattr("cassini_talk.library_location.owned_directory", lambda d: Path(d).resolve())
+    from gi.repository import GLib
+
+    from cassini_talk.library_recovery import LibraryRecovery
+    from cassini_talk.main import CassiniApplication
+    from cassini_talk.meeting_store import update_metadata
+    from cassini_talk.meeting_trash import MeetingTrash
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    sessions_dir = capture_parent(lib)
+    session = RecordingSession(sessions_dir, "Trash replay before recovery", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(0.5, 440.0, 0.3)]), 0.0)
+    session.finish()
+    update_metadata(
+        session.directory,
+        transcript=dict(read_metadata(session.directory)["transcript"], status="queued"),
+    )
+    _stage_journaled_publish(lib, session.directory, title="Trash replay before recovery")
+
+    enqueued = []
+    app = SimpleNamespace(
+        transcription_enabled=True,
+        transcription_mode="recordOnly",
+        _quitting=False,
+        _capture_exiting=False,
+        _observed_saving_directories=(str(session.directory),),
+        transcriber=None,
+        voice_store=None,
+        native_captures={},
+        _browser_snapshot={},
+        get_windows=lambda: [],
+        _transcription_changed=lambda: False,
+        _sync_live_follower=lambda **_kw: None,
+        write_down=lambda directory, resume=False: enqueued.append((Path(directory).resolve(), resume)),
+    )
+    app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
+    app._on_recovery_result = lambda directory, error, *, transcript_status=None: (
+        CassiniApplication._on_recovery_result(app, directory, error, transcript_status=transcript_status)
+    )
+
+    trash_stub = SimpleNamespace(app=app)
+    trash_stub._published_recovered = lambda d, s: MeetingTrash._published_recovered(trash_stub, d, s)
+
+    recovery_stub = SimpleNamespace(
+        app=app,
+        cancelled=threading.Event(),
+        lock=threading.Lock(),
+        _activity={},
+        failures={},
+        attempted=set(),
+        started_revision=0,
+        _requested={},
+        _retry_paths=lambda _roots: None,
+        _phase=lambda _path, _saving: None,
+    )
+    recovery_stub._result_finished = lambda d, e, s=None: LibraryRecovery._result_finished(recovery_stub, d, e, s)
+    monkeypatch.setattr("cassini_talk.library_location.roots", lambda: [lib])
+
+    def drain_glib():
+        if hasattr(GLib, "MainContext"):
+            ctx = GLib.MainContext.default()
+            while ctx.iteration(False):
+                pass
+
+    # 1. Trash maintenance runs FIRST and replays the staged publish entry.
+    assert MeetingTrash._maintain(trash_stub) is True
+    drain_glib()
+
+    # 2. LibraryRecovery runs SECOND (journal entry already retired) -> must not double-enqueue.
+    LibraryRecovery._sweep(recovery_stub)
+    drain_glib()
+
+    assert read_metadata(session.directory)["published"] is True
+    assert app._observed_saving_directories == ()
+    assert enqueued == [(session.directory.resolve(), True)]
+
+
+def test_enqueue_from_recovery_does_not_call_path_resolve_on_gtk_thread(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _ensure_gi_for_main(monkeypatch)
+    monkeypatch.setattr("cassini_talk.library_location.owned_directory", lambda d: Path(d).resolve())
+    from cassini_talk.main import CassiniApplication
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    finished = Finished()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.RECORD_ONLY,
+    )
+    session = RecordingSession(lib, "GTK no-resolve enqueue", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(0.8, 440.0, 0.3), (0.6, 0.0, 0.0)]), 0.0)
+    session.finish()
+
+    app = SimpleNamespace(
+        transcription_enabled=True,
+        transcription_mode="recordOnly",
+        _quitting=False,
+        _capture_exiting=False,
+        _observed_saving_directories=(str(session.directory),),
+        transcriber=queue,
+        native_captures={},
+        _browser_snapshot={},
+        get_windows=lambda: [],
+        _ensure_transcriber=lambda: queue,
+        write_down=lambda directory, resume=False: queue.enqueue(directory, resume=resume),
+    )
+    app.follower_capture_directories = lambda: CassiniApplication.follower_capture_directories(app)
+    app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
+    app._sync_live_follower = lambda **kw: CassiniApplication._sync_live_follower(app, **kw)
+
+    gtk_tid = threading.get_ident()
+    orig_resolve = Path.resolve
+    gtk_resolves = []
+
+    def poisoned_gtk_resolve(self, *args, **kwargs):
+        if threading.get_ident() == gtk_tid:
+            gtk_resolves.append(str(self))
+        return orig_resolve(self, *args, **kwargs)
+
+    try:
+        monkeypatch.setattr(Path, "resolve", poisoned_gtk_resolve)
+        CassiniApplication._on_recovery_result(app, session.directory, None, transcript_status="queued")
+        assert not gtk_resolves, f"Path.resolve() called on GTK thread during recovery enqueue: {gtk_resolves}"
+        assert app._observed_saving_directories == ()
+        monkeypatch.setattr(Path, "resolve", orig_resolve)
+        finished.wait(1, bound=30)
+        assert read_metadata(session.directory)["transcript"]["status"] == "done"
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
