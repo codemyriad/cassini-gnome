@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """D15.1 worker lifecycle. GTK only observes status and submits explicit moves."""
 
+import contextlib
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Event
 
 from gi.repository import GLib
@@ -85,8 +87,9 @@ class LibraryRelocator:
                 from .capture_activity import read_browser_activity
 
                 activity.update(read_browser_activity())
+                work_busy = self._prepare_relocation_busy(value["pending"], busy, activity, retry=retry)
                 return location.process(
-                    busy=busy,
+                    busy=work_busy,
                     activity=activity,
                     retry=retry,
                     cancelled=self.cancelled,
@@ -102,6 +105,52 @@ class LibraryRelocator:
         self.future = self.executor.submit(work)
         self.future.add_done_callback(lambda f: GLib.idle_add(self._complete, f))
         self._render()
+
+    def _prepare_relocation_busy(self, pending, busy, activity, *, retry=False):
+        from .library import meeting_id
+        from .meeting_store import read_metadata
+
+        work_busy = {Path(p).resolve() for p in busy}
+        transcriber = self.app.transcriber
+        if not transcriber:
+            return work_busy
+        with transcriber.lock:
+            pending_paths = list(transcriber.pending)
+            voice_paths = list(getattr(transcriber, "voice_pending", ()))
+            follow_dir = getattr(transcriber, "_follow_directory", None)
+            warm_dir = getattr(transcriber, "_warm_directory", None)
+        work_busy.update(Path(p).resolve() for p in pending_paths)
+        work_busy.update(Path(p).resolve() for p in voice_paths)
+        follow_resolved = Path(follow_dir).resolve() if follow_dir is not None else None
+        warm_resolved = Path(warm_dir).resolve() if warm_dir is not None else None
+        if (
+            not self.cancelled.is_set()
+            and (follow_resolved is not None or warm_resolved is not None)
+            and hasattr(transcriber, "preempt_follower")
+        ):
+            runnable = [
+                entry for entry in pending if (entry["state"] == "failed" if retry else entry["state"] != "failed")
+            ]
+            for entry in runnable:
+                source = Path(entry["source"]).resolve()
+                if source not in (follow_resolved, warm_resolved):
+                    continue
+                identifier = meeting_id(source)
+                if source in work_busy or (
+                    identifier is not None
+                    and (activity.get(identifier) in ("recording", "saving") or location.capture_busy(identifier))
+                ):
+                    continue
+                with contextlib.suppress(OSError, ValueError):
+                    if read_metadata(source)["transcript"]["status"] in ("queued", "running"):
+                        continue
+                transcriber.preempt_follower(drain=False, wait=True)
+                break
+        with transcriber.lock:
+            remaining_follow = getattr(transcriber, "_follow_directory", None)
+        if remaining_follow is not None:
+            work_busy.add(Path(remaining_follow).resolve())
+        return work_busy
 
     def _complete(self, future):
         self.future = None

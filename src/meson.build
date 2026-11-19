@@ -141,6 +141,7 @@ talk_sources = files(
   'cassini_talk/speech_threads.py',
   'cassini_talk/whistle_worker.py',
   'cassini_talk/speech_pipeline.py',
+  'cassini_talk/session_follower.py',
   'cassini_talk/recognition_cache.py',
   'cassini_talk/recognition_fallback.py',
   'cassini_talk/scratch_budget.py',

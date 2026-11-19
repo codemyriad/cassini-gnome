@@ -103,10 +103,15 @@ class SpeechModels:
                 and not self._state["downloaded"]
             ):
                 return False
+            previous = self._selected
+            notice_changed = self._state.get("notice") is not None
             self.preference = value
             self.persist_preference(value)
             self._choice(value)
-        self._change(notice=None)
+            if notice_changed:
+                self._state["notice"] = None
+        if (value != previous or notice_changed) and not self.cancelled.is_set():
+            self.changed()
         return True
 
     def _launch(self, operation):

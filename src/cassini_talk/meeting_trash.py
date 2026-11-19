@@ -436,14 +436,31 @@ class MeetingTrash:
                 if not (root / journal.META).is_dir():
                     continue
                 if journal.pending(journal.Layout(root), cleanup=False).entries:
-                    journal.recover(root)
+                    report = journal.recover(root)
                     changed = True
+                    if report.published:
+                        from .library_recovery import read_transcript_status
+
+                        for directory in report.published:
+                            status = read_transcript_status(directory)
+                            GLib.idle_add(self._published_recovered, directory, status)
                 purged = storage.expire(root)
                 forget_purged(voices, root, purged)
                 changed = changed or bool(purged)
             except (OSError, ValueError, journal.LockBusy):
                 LOG.exception("Trash maintenance for %s will be retried", root)
         return changed
+
+    def _published_recovered(self, directory, transcript_status):
+        if not getattr(self.app, "_quitting", False):
+            recovery = getattr(self.app, "library_recovery", None)
+            if recovery is not None:
+                with recovery.lock:
+                    recovery.failures.pop(directory, None)
+            handler = getattr(self.app, "_on_recovery_result", None)
+            if handler is not None:
+                handler(directory, None, transcript_status=transcript_status)
+        return False
 
     def _maintained(self, future):
         with contextlib.suppress(Exception):

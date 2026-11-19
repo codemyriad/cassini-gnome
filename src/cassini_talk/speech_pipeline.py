@@ -24,6 +24,7 @@ import numpy as np
 from . import placement
 
 RATE = 16000
+PREFIX_BLOCK_SAMPLES = 8192  # 16 exact 512-sample Silero/ActivityMeter frames (512 ms)
 FIR = json.loads(Path(__file__).with_name("fir-48k-16k.json").read_text())
 TAPS = np.asarray(FIR["coefficients"], dtype="<f4")
 
@@ -76,27 +77,52 @@ def fir_values(samples, low, first, last):
     return output.astype("<f4")
 
 
-def resampled_stream(blocks):
-    """The same centred FIR, with <=one block plus 96 context samples resident."""
-    samples = np.empty(0, dtype="<f4")
-    low = total = first = 0
-    for block in blocks:
+class IncrementalResampler:
+    """Stateful centred 97-tap 48 kHz -> 16 kHz FIR keeping <=1 block + 96 context samples."""
+
+    def __init__(self):
+        self.samples = np.empty(0, dtype="<f4")
+        self.low = 0
+        self.total = 0
+        self.first = 0
+
+    def feed(self, block):
+        block = np.asarray(block, dtype="<f4")
+        if not len(block):
+            return []
         if len(block) > 48000:
             raise ValueError("PCM source exceeded its one-second block limit")
-        samples = np.concatenate((samples, block))
-        total += len(block)
-        available = max(0, (total - 49) // 3 + 1)
-        while first < available:
-            last = min(first + RATE, available)
-            yield fir_values(samples, low, first, last)
-            first = last
-        keep = max(0, first * 3 - 48)
-        samples = samples[keep - low :]
-        low = keep
-    while first < (total + 2) // 3:
-        last = min(first + RATE, (total + 2) // 3)
-        yield fir_values(samples, low, first, last)
-        first = last
+        self.samples = np.concatenate((self.samples, block))
+        self.total += len(block)
+        available = max(0, (self.total - 49) // 3 + 1)
+        out = []
+        while self.first < available:
+            last = min(self.first + RATE, available)
+            out.append(fir_values(self.samples, self.low, self.first, last))
+            self.first = last
+        keep = max(0, self.first * 3 - 48)
+        self.samples = self.samples[keep - self.low :]
+        self.low = keep
+        return out
+
+    def flush(self):
+        out = []
+        target = (self.total + 2) // 3
+        while self.first < target:
+            last = min(self.first + RATE, target)
+            out.append(fir_values(self.samples, self.low, self.first, last))
+            self.first = last
+        self.samples = np.empty(0, dtype="<f4")
+        self.low = self.total
+        return out
+
+
+def resampled_stream(blocks):
+    """The same centred FIR, with <=one block plus 96 context samples resident."""
+    resampler = IncrementalResampler()
+    for block in blocks:
+        yield from resampler.feed(block)
+    yield from resampler.flush()
 
 
 def streamed(track):
@@ -207,6 +233,15 @@ class SpeechDetector:
         self.hpf = (0.0, 0.0, 0.0, 0.0)
         self.state = np.zeros((2, 1, 128), dtype=np.float32)
         self.context = np.zeros((1, 64), dtype=np.float32)
+
+    def snapshot(self):
+        return (self.hpf, self.state.copy(), self.context.copy())
+
+    def restore(self, snap):
+        hpf, state, context = snap
+        self.hpf = tuple(hpf)
+        self.state = state.copy()
+        self.context = context.copy()
 
     def probability(self, frame):
         # D26.1: WebRTC APM's capture high-pass, for Silero only. Preserve
@@ -320,6 +355,50 @@ class SpeechGate:
                 self.buffer = self.buffer[16000:]
         return chunks
 
+    def snapshot(self):
+        return (
+            self.tail.copy(),
+            tuple(frame.copy() for frame in self.pre),
+            tuple(self.votes),
+            self.active,
+            self.quiet,
+            self.duration,
+            self.cursor,
+            self.buffer.copy(),
+            self.pause_cut,
+            self.segment_start,
+            self.emitted,
+            self.max_samples,
+        )
+
+    def restore(self, snap):
+        (
+            tail,
+            pre,
+            votes,
+            active,
+            quiet,
+            duration,
+            cursor,
+            buffer,
+            pause_cut,
+            segment_start,
+            emitted,
+            max_samples,
+        ) = snap
+        self.tail = tail.copy()
+        self.pre = deque((frame.copy() for frame in pre), maxlen=5120 // self.frame_size)
+        self.votes = deque(votes, maxlen=3)
+        self.active = active
+        self.quiet = quiet
+        self.duration = duration
+        self.cursor = cursor
+        self.buffer = buffer.copy()
+        self.pause_cut = pause_cut
+        self.segment_start = segment_start
+        self.emitted = emitted
+        self.max_samples = max_samples
+
     def flush(self):
         chunks = []
         if self.active:
@@ -333,6 +412,58 @@ class SpeechGate:
         self.__init__(self.detector)
         self.max_samples = maximum
         return chunks
+
+
+@dataclass(frozen=True)
+class SegmentationPrefix:
+    """Block-verified 16 kHz PCM prefix + VAD/SpeechGate/ActivityMeter checkpoint."""
+
+    samples: int
+    block_hashes: tuple[bytes, ...]
+    ownership_windows: tuple | None
+    offset_ms: int | float
+    vad_input_stage: str
+    max_samples: int
+    detector_state: tuple
+    gate_state: tuple
+    meter_codes: bytes
+    closed_ranges: tuple[dict, ...]
+    open_start: int | None
+
+
+def ownership_prefix_compatible(prefix: SegmentationPrefix, final_ownership, final_offset) -> bool:
+    """Check whether final ownershipWindows makes zero retroactive cuts inside [0, prefix.samples)."""
+    from .source_ownership import FrameMask
+
+    if prefix.samples <= 0:
+        return False
+    try:
+        before = FrameMask(prefix.ownership_windows, RATE, placement.frame(prefix.offset_ms, RATE) / 16)
+        after = FrameMask(final_ownership, RATE, placement.frame(final_offset, RATE) / 16)
+    except ValueError:
+        return False
+    return before.sections(0, prefix.samples) == after.sections(0, prefix.samples)
+
+
+def _lookup_prefix(prefix_store, track):
+    if not prefix_store:
+        return None
+    path = Path(track["path"])
+    session_dir = Path(track["sessionDirectory"]) if "sessionDirectory" in track else path.parent
+    try:
+        resolved = str(session_dir.resolve())
+    except OSError:
+        resolved = str(session_dir.absolute())
+    candidates = []
+    if track.get("captureTrackId") is not None:
+        candidates.append((resolved, track["captureTrackId"]))
+    candidates.append((resolved, track["id"]))
+    candidates.append((resolved, path.name))
+    for key in candidates:
+        found = prefix_store.get(key)
+        if isinstance(found, SegmentationPrefix):
+            return found
+    return None
 
 
 def segment_ranges(path, detector, heartbeat=None, *, chunks=None):
@@ -362,6 +493,108 @@ def segment_ranges(path, detector, heartbeat=None, *, chunks=None):
             last_notice = time.monotonic()
     collect(gate.flush())
     return ranges
+
+
+def segment_ranges_with_prefix(track, detector, meter, offset, heartbeat=None, *, prefix=None):
+    """Plan segments, reusing a cryptographically verified SegmentationPrefix when exact.
+
+    Verifies every PREFIX_BLOCK_SAMPLES block of audio_chunks(track) over
+    [0, prefix.samples) via SHA-256 and checks ownershipWindows compatibility.
+    On any mismatch or missing snapshot capability, falls back cleanly to full
+    segment_ranges. Returns (ranges, prefix_reused).
+    """
+    import time
+
+    path = Path(track["path"])
+    can_try = (
+        isinstance(prefix, SegmentationPrefix)
+        and prefix.samples > 0
+        and prefix.samples == len(prefix.block_hashes) * PREFIX_BLOCK_SAMPLES
+        and hasattr(detector, "restore")
+        and getattr(detector, "input_stage", None) == prefix.vad_input_stage
+        and prefix.max_samples == SpeechGate(detector).max_samples
+        and ownership_prefix_compatible(prefix, track.get("ownershipWindows"), offset)
+    )
+    if not can_try:
+        return (
+            segment_ranges(path, detector, heartbeat, chunks=meter.wrap(audio_chunks(track))),
+            False,
+        )
+
+    last_notice = time.monotonic()
+    matched = True
+    consumed = 0
+    block_index = 0
+    pending = np.empty(0, dtype="<f4")
+    leftover = np.empty(0, dtype="<f4")
+    with closing(audio_chunks(track)) as source:
+        for block in source:
+            block = np.asarray(block, dtype="<f4")
+            if heartbeat is not None and time.monotonic() - last_notice >= 1:
+                heartbeat()
+                last_notice = time.monotonic()
+            if not len(block):
+                continue
+            pending = np.concatenate((pending, block)) if len(pending) else block
+            while len(pending) >= PREFIX_BLOCK_SAMPLES and block_index < len(prefix.block_hashes):
+                piece = pending[:PREFIX_BLOCK_SAMPLES]
+                pending = pending[PREFIX_BLOCK_SAMPLES:]
+                if hashlib.sha256(piece.tobytes()).digest() != prefix.block_hashes[block_index]:
+                    matched = False
+                    break
+                consumed += PREFIX_BLOCK_SAMPLES
+                block_index += 1
+            if not matched:
+                break
+            if block_index == len(prefix.block_hashes):
+                leftover = pending
+                pending = np.empty(0, dtype="<f4")
+                break
+        if not matched or block_index != len(prefix.block_hashes) or consumed != prefix.samples:
+            meter.codes.clear()
+            meter.samples = 0
+            meter._tail = np.empty(0, dtype="<f4")
+            meter._inside = []
+            return (
+                segment_ranges(path, detector, heartbeat, chunks=meter.wrap(audio_chunks(track))),
+                False,
+            )
+
+        # Prefix matched bit-for-bit: restore VAD/gate/meter state and gate only the tail.
+        detector.restore(prefix.detector_state)
+        gate = SpeechGate(detector)
+        gate.restore(prefix.gate_state)
+        meter.codes = bytearray(prefix.meter_codes)
+        meter.samples = prefix.samples
+        meter._tail = np.empty(0, dtype="<f4")
+        meter._inside = []
+        ranges = [dict(item) for item in prefix.closed_ranges]
+        start = prefix.open_start
+
+        def collect(chunks):
+            nonlocal start
+            for chunk in chunks:
+                if start is None:
+                    start = chunk.start_sample
+                if chunk.end:
+                    ranges.append(
+                        dict(startSample=start, endSample=chunk.start_sample + len(chunk.samples), reason=chunk.reason)
+                    )
+                    start = None
+
+        if len(leftover):
+            meter._feed(leftover)
+            collect(gate.feed(leftover))
+        for block in source:
+            block = np.asarray(block, dtype="<f4")
+            if len(block):
+                meter._feed(block)
+                collect(gate.feed(block))
+            if heartbeat is not None and time.monotonic() - last_notice >= 1:
+                heartbeat()
+                last_notice = time.monotonic()
+        collect(gate.flush())
+        return ranges, True
 
 
 def read_recognition_cache(options):
@@ -424,7 +657,7 @@ def recognise_segment(
     return value, words, language, input_hash
 
 
-def present_words(words, presence):
+def present_words(words, presence, *, starts=None):
     """D63 #3: the words whose midpoint lies in one of the track's presence ranges.
 
     `presence` holds merged, sorted 16 kHz [start, end) ranges from the session
@@ -433,7 +666,8 @@ def present_words(words, presence):
     """
     if presence is None:
         return words
-    starts = [start for start, _end in presence]
+    if starts is None:
+        starts = [start for start, _end in presence]
     kept = []
     for word in words:
         middle = 8 * (word["startMs"] + word["endMs"])
@@ -478,7 +712,17 @@ def placed_offset(track, diagnostics):
     return offset
 
 
-def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recognition_cache=None):
+def process_tracks(
+    model,
+    tracks,
+    vad_model,
+    notify,
+    *,
+    extra_seconds=0,
+    recognition_cache=None,
+    detector=None,
+    prefix_store=None,
+):
     """One complete queue job; all inference and floating PCM stay in the child."""
     import time
 
@@ -487,32 +731,38 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recogni
 
     # D-1120: segments are keyed on their own PCM and the model alone; a hit
     # replaces only `model.transcribe`, never what follows it.
+    cache_model = recognition_cache.get("model") if isinstance(recognition_cache, dict) else None
     cache_enabled = (
         isinstance(recognition_cache, dict)
         and isinstance(recognition_cache.get("path"), str)
         and bool(recognition_cache["path"])
-        and isinstance(recognition_cache.get("model"), str)
-        and bool(recognition_cache["model"])
+        and cache.is_valid_model_identity(cache_model)
     )
     cached_segments = read_recognition_cache(recognition_cache) if cache_enabled else {}
-    detector = SpeechDetector(vad_model)
+    detector = detector if detector is not None else SpeechDetector(vad_model)
     plan = []
     meters = {}
     diagnostics = []
     decided = {}  # R71/D52.4 provenance by track order: the tracks of each firing speaker
+    prefixes_reused = 0
     # D56: the parent measured these; they are never decoded, planned or recognised.
     audible = [(order, track) for order, track in enumerate(tracks) if track.get("silent") is not True]
     for order, track in audible:
-        path = Path(track["path"])
         offset = placed_offset(track, diagnostics)
         meter = fallback.ActivityMeter(fallback.track_ranges(track.get("sessionPresence"), offset))
         meters[order] = meter
-        for segment in segment_ranges(
-            path,
+        prefix = _lookup_prefix(prefix_store, track)
+        segments, reused = segment_ranges_with_prefix(
+            track,
             detector,
+            meter,
+            offset,
             lambda track=track: notify("planning", trackId=track["id"]),
-            chunks=meter.wrap(audio_chunks(track)),
-        ):
+            prefix=prefix,
+        )
+        if reused:
+            prefixes_reused += 1
+        for segment in segments:
             plan.append((order, track, segment, offset))
     remaining = sum((s["endSample"] - s["startSample"]) / RATE for _, _, s, _ in plan)
     initial_factor = getattr(model, "initial_realtime_factor", 0.15)
@@ -521,6 +771,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recogni
         etaMinutes=math.ceil((remaining * initial_factor + extra_seconds) / 60),
         segments=len(plan),
         diagnostics=diagnostics,
+        prefixesReused=prefixes_reused,
     )
     elapsed = processed = 0.0
     language = "und"
@@ -537,8 +788,15 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recogni
         # A held event goes out after later tracks: its ETA is the one when sent.
         notify("progress", **dict(event, etaMinutes=eta()))
 
+    presence_starts = {
+        order: [start for start, _end in p]
+        for order, track in audible
+        if (p := track.get("sessionPresence")) is not None
+    }
+
     def recognise(order, track, segment, offset, samples, audio_end):
         nonlocal elapsed, processed, remaining
+        samples = np.asarray(samples, dtype="<f4")
         input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
         presence = track.get("sessionPresence")
         cache_key = cache.segment_key(input_hash, len(samples))
@@ -567,7 +825,7 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recogni
         factor = elapsed / processed if processed else initial_factor
         # D63 #3: a word outside its track's presence is never written, on either
         # path, so it neither counts as a VAD word nor joins a fallback window.
-        kept = present_words(words, presence)
+        kept = present_words(words, presence, starts=presence_starts.get(order))
         if len(kept) != len(words):
             words, value = kept, dict(value, text=" ".join(word["text"] for word in kept))
         return dict(

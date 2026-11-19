@@ -273,6 +273,7 @@ class Report:
     completed: list = field(default_factory=list)  # op ids that finished or were safely discarded
     kept: list = field(default_factory=list)  # (op id or file name, reason): still pending, never deleted
     orphans: list = field(default_factory=list)  # staging files no entry names; kept
+    published: list = field(default_factory=list)  # Recording session directories whose initial publication completed
 
     def blocks(self, origin, session_id):
         identities = (dict(origin=origin, sessionId=session_id), dict(session=f"{origin}-{session_id}"))
@@ -304,6 +305,12 @@ def replay(layout, *, identity=None):
             report.kept.append((entry, str(error)))
             continue
         report.completed.append(entry["op"])
+        if (
+            entry.get("kind") == "publish"
+            and entry.get("phase") == "staged"
+            and entry["identity"]["origin"] == "Recording"
+        ):
+            report.published.append(layout.session("Recording", entry["identity"]["sessionId"]))
     if identity is None:
         named = {entry["op"] for entry in pending(layout).entries}
         try:

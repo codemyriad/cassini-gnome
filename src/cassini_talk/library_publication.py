@@ -7,7 +7,9 @@ must remain held from its first checkpoint through publication, so a second
 process never finalizes its still-saving session.
 """
 
+import logging
 import os
+import threading
 from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +18,48 @@ from .export_audio import check_cancel
 from .library_v2 import journal
 from .library_v2.fsutil import fsync_dir
 
+LOG = logging.getLogger(__name__)
 _ENCODER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-library-publish")
+_PUBLISH_OBSERVERS_LOCK = threading.Lock()
+_PUBLISH_OBSERVERS: list = []
+_PUBLISH_FAILURE_OBSERVERS: list = []
+
+
+def register_publish_observer(callback, *, failed=None):
+    """Register read-only listeners notified when publish_stopped starts or fails."""
+    with _PUBLISH_OBSERVERS_LOCK:
+        if callback is not None and callback not in _PUBLISH_OBSERVERS:
+            _PUBLISH_OBSERVERS.append(callback)
+        if failed is not None and failed not in _PUBLISH_FAILURE_OBSERVERS:
+            _PUBLISH_FAILURE_OBSERVERS.append(failed)
+
+
+def unregister_publish_observer(callback, *, failed=None):
+    with _PUBLISH_OBSERVERS_LOCK:
+        if callback is not None and callback in _PUBLISH_OBSERVERS:
+            _PUBLISH_OBSERVERS.remove(callback)
+        if failed is not None and failed in _PUBLISH_FAILURE_OBSERVERS:
+            _PUBLISH_FAILURE_OBSERVERS.remove(failed)
+
+
+def _notify_publish_started(directory):
+    with _PUBLISH_OBSERVERS_LOCK:
+        observers = tuple(_PUBLISH_OBSERVERS)
+    for callback in observers:
+        try:
+            callback(Path(directory))
+        except Exception:
+            LOG.exception("Publish observer failed; continuing audio publication")
+
+
+def _notify_publish_failed(directory):
+    with _PUBLISH_OBSERVERS_LOCK:
+        observers = tuple(_PUBLISH_FAILURE_OBSERVERS)
+    for callback in observers:
+        try:
+            callback(Path(directory))
+        except Exception:
+            LOG.exception("Publish failure observer failed")
 
 
 def submit_stopped(session, *, cancel=None):
@@ -75,7 +118,12 @@ def publish_stopped(session, *, cancel=None):
 
     record_capture(session.directory, session.manifest)
     check_cancel(cancel)
-    return finalize.finalize(root, session.manifest["id"], cancel=cancel)
+    _notify_publish_started(session.directory)
+    try:
+        return finalize.finalize(root, session.manifest["id"], cancel=cancel)
+    except BaseException:
+        _notify_publish_failed(session.directory)
+        raise
 
 
 @dataclass(frozen=True)
@@ -106,6 +154,9 @@ def recover_completed(
         raise ValueError("Unsafe Library metadata path")
     check_cancel(cancel)
     report = journal.recover(root)
+    for directory in report.published:
+        check_cancel(cancel)
+        yield RecoveryResult(directory, published=True)
     for directory in sorted(layout.sessions.iterdir()):
         check_cancel(cancel)
         identity = journal.identity_of(directory)

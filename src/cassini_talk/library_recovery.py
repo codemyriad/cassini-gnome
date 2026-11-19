@@ -13,6 +13,19 @@ from .library_publication import recover_completed
 LOG = logging.getLogger(__name__)
 
 
+def read_transcript_status(directory):
+    """Read durable transcript.status off-GTK so recovery can resume explicit intent."""
+    from . import meeting_store
+
+    try:
+        with meeting_store.LOCK:
+            metadata = meeting_store.read_metadata(directory)
+        tx = metadata.get("transcript")
+        return tx.get("status") if isinstance(tx, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
 class LibraryRecovery:
     def __init__(self, app):
         self.app = app
@@ -44,6 +57,14 @@ class LibraryRecovery:
 
     def _changed(self):
         if not self.cancelled.is_set():
+            self.app._transcription_changed()
+        return False
+
+    def _result_finished(self, directory, error, transcript_status=None):
+        if not self.cancelled.is_set():
+            handler = getattr(self.app, "_on_recovery_result", None)
+            if handler is not None:
+                handler(directory, error, transcript_status=transcript_status)
             self.app._transcription_changed()
         return False
 
@@ -177,7 +198,8 @@ class LibraryRecovery:
                             self.failures[result.directory] = result.error
                         else:
                             self.failures.pop(result.directory, None)
-                    GLib.idle_add(self._changed)
+                    transcript_status = None if result.error else read_transcript_status(result.directory)
+                    GLib.idle_add(self._result_finished, result.directory, result.error, transcript_status)
             except CancelledError:
                 break
             except (OSError, ValueError):
