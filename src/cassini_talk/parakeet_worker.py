@@ -31,11 +31,11 @@ def main(bundle, model_path, runtime_path):
     from cassini_talk.session_follower import StdinLineReader, run_follow_loop
     from cassini_talk.speech_pipeline import process_tracks
 
+    model_identity = parakeet_identity(MODEL_TAG, Path(__file__).with_name("sherpa-pins.json"))
     model = Parakeet(model_path, runtime_path)
     reader = StdinLineReader(sys.stdin)
     detector = None
     prefix_store = {}
-    model_identity = parakeet_identity(MODEL_TAG, Path(__file__).with_name("sherpa-pins.json"))
     try:
         emit("ready", pid=os.getpid(), model=MODEL_TAG, modelIdentity=model_identity, version=model.version)
         while line := reader.readline():

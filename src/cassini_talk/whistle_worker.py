@@ -25,9 +25,10 @@ def guarded_load(loader):
     return loader()
 
 
-def verify_bundle(bundle):
+def verify_bundle_with_identity(bundle):
     bundle = Path(bundle).resolve()
-    pins = json.loads((bundle / "pins.json").read_text())
+    pins_bytes = (bundle / "pins.json").read_bytes()
+    pins = json.loads(pins_bytes)
     manifest = json.loads((bundle / "manifest.json").read_text())
     if pins["platform"] != "manylinux2014_x86_64" or platform.machine() != "x86_64" or sys.platform != "linux":
         raise RuntimeError("This spike bundles only the pinned Linux glibc x86_64 engine")
@@ -39,7 +40,11 @@ def verify_bundle(bundle):
     for name, expected in manifest.items():
         if hashlib.sha256((bundle / name).read_bytes()).hexdigest() != expected:
             raise ValueError(f"Whistle bundle SHA256 mismatch: {name}")
-    return bundle
+    return bundle, "whistle@" + hashlib.sha256(pins_bytes).hexdigest()
+
+
+def verify_bundle(bundle):
+    return verify_bundle_with_identity(bundle)[0]
 
 
 def onnxruntime_dir(config=None):
@@ -108,13 +113,12 @@ def emit(kind, **values):
 
 def main(bundle):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from cassini_talk.recognition_cache import whistle_identity
     from cassini_talk.session_follower import StdinLineReader, run_follow_loop
     from cassini_talk.speech_threads import background_worker_priority
 
     background_worker_priority()
     # Guard wraps the actual wrapper/model constructor, not just the command entry.
-    bundle = verify_bundle(bundle)
+    bundle, model_identity = verify_bundle_with_identity(bundle)
     runtime = onnxruntime_dir()
     if runtime is not None:
         sys.path.insert(0, str(verify_onnxruntime(runtime)))
@@ -126,7 +130,7 @@ def main(bundle):
         "ready",
         pid=os.getpid(),
         threads=len(list(Path("/proc/self/task").iterdir())),
-        modelIdentity=whistle_identity(bundle),
+        modelIdentity=model_identity,
     )
     reader = StdinLineReader(sys.stdin)
     detector = None

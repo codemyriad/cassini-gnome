@@ -552,6 +552,7 @@ class TranscriptionQueue:
         self._follow_poll_interval_ms = int(follow_poll_interval_ms)
         self._follow_generation = 0
         self._follow_directory: Path | None = None
+        self._follow_aliases: frozenset[Path] = frozenset()
         self._follow_thread: threading.Thread | None = None
         self._follow_stop_event: threading.Event | None = None
         self._follow_drain_requested = False
@@ -561,6 +562,7 @@ class TranscriptionQueue:
         self._warm_client = None
         self._warm_client_model: str | None = None
         self._warm_directory: Path | None = None
+        self._warm_aliases: frozenset[Path] = frozenset()
 
     @property
     def mode(self) -> TranscriptionMode:
@@ -633,6 +635,7 @@ class TranscriptionQueue:
             generation = self._follow_generation
             stop_event = threading.Event()
             self._follow_directory = target
+            self._follow_aliases = frozenset((target,))
             self._follow_stop_event = stop_event
             self._follow_drain_requested = False
             self._follow_drained = threading.Event()
@@ -646,13 +649,10 @@ class TranscriptionQueue:
             thread.start()
             return True
 
-    def _matches_dir(self, stored: Path | None, directory) -> bool:
-        if stored is None:
-            return False
-        raw = Path(directory).absolute()
-        if stored == raw:
-            return True
-        return self._canonical_follow_dir(stored) == self._canonical_follow_dir(raw)
+    @staticmethod
+    def _matches_aliases(aliases: frozenset[Path], directory) -> bool:
+        """Pure in-memory path check (never calls Path.resolve() under lock or on GTK)."""
+        return bool(aliases) and Path(directory).absolute() in aliases
 
     def _client_identity_matches(self, client, selected: str) -> bool:
         reported = _worker_reported_identity(client)
@@ -663,7 +663,8 @@ class TranscriptionQueue:
         """Observe live recording directories; never spawns workers outside speed mode.
 
         When `directories` is empty, releases any active follower or warm worker whose
-        session is not actively `saving` (e.g. discarded capture or failed publication).
+        session is neither actively `saving` nor already queued/active for post-Stop
+        transcription. Purely in-memory under `self.lock` (no Path.resolve() on GTK).
         """
         warm = None
         with self.lock:
@@ -671,18 +672,22 @@ class TranscriptionQueue:
                 return
             live = [Path(d).absolute() for d in directories]
             if not live:
-                saving_paths = [Path(d).absolute() for d in saving]
-                follow_dir = self._follow_directory
-                warm_dir = self._warm_directory
-                if follow_dir is not None and not any(self._matches_dir(follow_dir, s) for s in saving_paths):
+                protected = [Path(d).absolute() for d in saving]
+                protected.extend(self.pending)
+                if self._active_directory is not None:
+                    protected.append(self._active_directory)
+                if self._follow_directory is not None and not any(
+                    self._matches_aliases(self._follow_aliases, p) for p in protected
+                ):
                     self._signal_follower_stop_locked(drain=False, cancel_client=True)
-                if warm_dir is not None and not any(self._matches_dir(warm_dir, s) for s in saving_paths):
+                if self._warm_directory is not None and not any(
+                    self._matches_aliases(self._warm_aliases, p) for p in protected
+                ):
                     warm = self._discard_warm_client_locked()
             else:
-                current = self._follow_directory
                 if (
-                    current is not None
-                    and any(self._matches_dir(current, d) for d in live)
+                    self._follow_directory is not None
+                    and any(self._matches_aliases(self._follow_aliases, d) for d in live)
                     and self._follow_thread is not None
                     and self._follow_thread.is_alive()
                 ):
@@ -713,9 +718,9 @@ class TranscriptionQueue:
     def release_failed_publication(self, directory) -> None:
         """Release any tail follower or warm worker held for a session whose publication failed or was discarded."""
         with self.lock:
-            if self._matches_dir(self._follow_directory, directory):
+            if self._matches_aliases(self._follow_aliases, directory):
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
-            warm = self._discard_warm_client_locked() if self._matches_dir(self._warm_directory, directory) else None
+            warm = self._discard_warm_client_locked() if self._matches_aliases(self._warm_aliases, directory) else None
         if warm is not None:
             self._close_client_async(warm)
 
@@ -724,6 +729,7 @@ class TranscriptionQueue:
         self._warm_client = None
         self._warm_client_model = None
         self._warm_directory = None
+        self._warm_aliases = frozenset()
         return warm
 
     def _signal_follower_stop_locked(self, *, drain: bool, cancel_client: bool = False):
@@ -768,7 +774,7 @@ class TranscriptionQueue:
     def _wait_follower_stopped(self, *, drain_for: Path | None = None) -> None:
         """Wait off-GTK for the follower thread to hand off or terminate before _run()."""
         with self.lock:
-            same = drain_for is not None and self._follow_directory == drain_for
+            same = drain_for is not None and self._matches_aliases(self._follow_aliases, drain_for)
             thread = self._signal_follower_stop_locked(drain=same, cancel_client=not same)
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=max(1.0, self._follow_stop_timeout + 5.0))
@@ -786,6 +792,7 @@ class TranscriptionQueue:
             self._warm_client = None
             self._warm_client_model = None
             self._warm_directory = None
+            self._warm_aliases = frozenset()
         if warm is None:
             return None
         if (
@@ -888,6 +895,9 @@ class TranscriptionQueue:
                 canonical = self._owned(directory)
             except ValueError:
                 return
+            with self.lock:
+                if self._follow_generation == generation:
+                    self._follow_aliases = frozenset((directory, canonical))
             selected = self.models.choice_for_job() if self.models else "whistle"
             if not self._follow_still_valid(directory, stop_event, generation):
                 return
@@ -996,6 +1006,7 @@ class TranscriptionQueue:
                             self._warm_client = client
                             self._warm_client_model = client_model
                             self._warm_directory = directory
+                            self._warm_aliases = frozenset((directory, canonical))
                             client = None
                         else:
                             old_warm = None
@@ -1016,6 +1027,7 @@ class TranscriptionQueue:
             with self.lock:
                 if self._follow_generation == generation:
                     self._follow_directory = None
+                    self._follow_aliases = frozenset()
                     self._follow_client = None
                     self._follow_client_model = None
                     self._follow_stop_event = None

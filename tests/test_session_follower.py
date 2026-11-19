@@ -2314,3 +2314,174 @@ def test_warm_worker_restarts_when_bundle_identity_changes_on_disk(tmp_path):
         queue.executor.shutdown(wait=True)
         if getattr(queue, "_close_thread", None) is not None:
             queue._close_thread.join(timeout=5.0)
+
+
+# ---------------------------------------------------------------------------
+# 17. Review regressions (round 4): protect queued/active post-Stop handoff
+#     from empty sync_recordings, zero Path.resolve() on GTK/lock, and
+#     whistle_worker ready.modelIdentity pinned to verified pins.json bytes
+# ---------------------------------------------------------------------------
+
+
+def test_enqueue_plus_empty_sync_recordings_preserves_warm_worker_handoff(tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+
+    finished = Finished()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=20,
+    )
+    session = RecordingSession(lib, "Post-stop warm handoff", source="gnome")
+    try:
+        session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session.checkpoint()
+
+        assert queue.follow_recording(session.directory)
+        wait_on_queue(
+            queue,
+            lambda: cached_segment_count(session.directory, "whistle", bundle) >= 1,
+            message="Follower did not cache segment before Stop",
+        )
+        session.finish()
+
+        # Reproduce _native_finished() -> write_down() -> _native_changed() -> sync_recordings([], saving=[]):
+        # the queued post-Stop job MUST protect the follower/warm worker and reuse the same PID + prefix!
+        assert queue.enqueue(session.directory)
+        queue.sync_recordings([], saving=[])
+        finished.wait(1, bound=30)
+
+        assert len(tracker["pids"]) == 1, "Empty sync_recordings must not cancel follower for a queued post-Stop job"
+        assert tracker["planned"] and tracker["planned"][-1].get("prefixesReused", 0) >= 1
+        assert read_metadata(session.directory)["transcript"]["status"] == "done"
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+
+
+def test_sync_recordings_and_release_never_call_path_resolve_on_gtk(tmp_path, monkeypatch):
+    real_lib = tmp_path / "real-lib"
+    real_lib.mkdir()
+    link_lib = tmp_path / "link-lib"
+    link_lib.symlink_to(real_lib)
+
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=link_lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=20,
+    )
+    session = RecordingSession(link_lib, "No resolve on GTK", source="gnome")
+    other_dir = link_lib / "other-meeting"
+    other_dir.mkdir()
+    resolved_dir = session.directory.resolve()
+    try:
+        session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session.checkpoint()
+
+        assert queue.follow_recording(session.directory)
+        wait_on_queue(queue, lambda: queue._follow_client_model == "whistle", message="Follower did not start")
+
+        def forbid_resolve(self, *args, **kwargs):
+            raise AssertionError("Path.resolve() must never run on GTK or under transcriber.lock")
+
+        monkeypatch.setattr(Path, "resolve", forbid_resolve)
+
+        # All of these must succeed with ZERO Path.resolve() calls!
+        queue.sync_recordings([session.directory])
+        queue.sync_recordings([resolved_dir])
+        queue.sync_recordings([], saving=[resolved_dir])
+        assert queue._follow_directory is not None
+        queue.release_failed_publication(other_dir)
+        assert queue._follow_directory is not None
+        queue.release_failed_publication(resolved_dir)
+        wait_on_queue(queue, lambda: queue._follow_directory is None, message="Symlink alias did not release follower")
+    finally:
+        monkeypatch.undo()
+        session.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+
+
+def test_whistle_worker_ready_identity_uses_verified_pins_not_reread_after_load(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    import zipfile
+
+    from cassini_talk import whistle_worker
+
+    bundle = tmp_path / "whistle-bundle"
+    bundle.mkdir()
+    weights = bundle / "whistle.cact"
+    weights.write_bytes(b"fake-weights-v1")
+    libneedle = bundle / "libneedle3.so"
+    libneedle.write_bytes(b"fake-libneedle3")
+    libcpu = bundle / "libcassini_whistle_cpu.so"
+    libcpu.write_bytes(b"fake-libcpu")
+    wheel = bundle / "wrapper.whl"
+    with zipfile.ZipFile(wheel, "w") as zf:
+        zf.writestr("needle.py", "class Whistle:\n    def __init__(self, weights):\n        self.weights = weights\n")
+
+    def sha(p: Path) -> str:
+        return hashlib.sha256(p.read_bytes()).hexdigest()
+
+    installed = {
+        "whistle.cact": sha(weights),
+        "libneedle3.so": sha(libneedle),
+        "wrapper.whl": sha(wheel),
+    }
+    manifest = dict(installed, **{"libcassini_whistle_cpu.so": sha(libcpu)})
+    pins_v1 = json.dumps(dict(platform="manylinux2014_x86_64", installed=installed)).encode("utf-8")
+    (bundle / "pins.json").write_bytes(pins_v1)
+    (bundle / "manifest.json").write_text(json.dumps(manifest))
+    expected_v1 = "whistle@" + hashlib.sha256(pins_v1).hexdigest()
+
+    for k, v in whistle_worker.PRIVACY.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(whistle_worker, "onnxruntime_dir", lambda: None)
+    monkeypatch.setattr(sys, "addaudithook", lambda _fn: None)
+
+    emitted = []
+    monkeypatch.setattr(whistle_worker, "emit", lambda kind, **kw: emitted.append(dict(type=kind, **kw)))
+    monkeypatch.setattr(sys, "stdin", io.BytesIO(b'{"type":"quit"}\n'))
+
+    # Mutate pins.json on disk DURING model load (after verify_bundle, before emit("ready")).
+    def loading_with_upgrade(loader):
+        model = loader()
+        (bundle / "pins.json").write_text(json.dumps(dict(platform="manylinux2014_x86_64", installed={"v": 2})))
+        return model
+
+    monkeypatch.setattr(whistle_worker, "guarded_load", loading_with_upgrade)
+    sys.modules.pop("needle", None)
+    try:
+        assert whistle_worker.main(bundle) == 0
+    finally:
+        sys.modules.pop("needle", None)
+
+    ready_events = [e for e in emitted if e.get("type") == "ready"]
+    assert len(ready_events) == 1
+    assert ready_events[0]["modelIdentity"] == expected_v1, (
+        "ready.modelIdentity must come from the verified pins.json bytes, not a post-load reread"
+    )
