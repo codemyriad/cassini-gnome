@@ -86,15 +86,25 @@ def _number(value):
     return type(value) in (int, float) and math.isfinite(value)
 
 
+def _utf8_str(value, max_len):
+    if not isinstance(value, str) or len(value) > max_len:
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def valid_entry(key, entry):
     if not isinstance(key, str) or not _KEY.match(key) or not isinstance(entry, dict):
         return False
     if set(entry) != {"text", "language", "words"}:
         return False
     text, language, words = entry["text"], entry["language"], entry["words"]
-    if not isinstance(text, str) or len(text) > MAX_TEXT:
+    if not _utf8_str(text, MAX_TEXT):
         return False
-    if not isinstance(language, str) or not 0 < len(language) <= 32:
+    if not language or not _utf8_str(language, 32):
         return False
     if not isinstance(words, list) or len(words) > MAX_WORDS:
         return False
@@ -105,8 +115,7 @@ def valid_entry(key, entry):
         and _number(word["start"])
         and _number(word["end"])
         and 0 <= word["start"] <= word["end"] <= limit
-        and isinstance(word["text"], str)
-        and len(word["text"]) <= MAX_TEXT
+        and _utf8_str(word["text"], MAX_TEXT)
         for word in words
     )
 

@@ -1882,6 +1882,7 @@ def test_failed_publication_releases_tail_follower_and_does_not_preempt_new_reco
             voice_store=None,
             settings_dialog=None,
             get_windows=lambda: [],
+            _browser_snapshot=dict(statuses=[dict(recording=True, path=str(new_session.directory))]),
             live_recording_directories=lambda: [str(new_session.directory)],
             _ensure_transcriber=lambda: queue,
             write_down=lambda *_a, **_k: None,
@@ -2712,12 +2713,15 @@ def test_observe_library_saving_plus_live_keeps_stable_single_follower(tmp_path,
             voice_store=None,
             settings_dialog=None,
             transcriber=queue,
-            native_captures={},
+            native_captures={
+                "native-a": SimpleNamespace(pipeline=object(), stopping=True, _finishing=True, session=saving_session)
+            },
+            _browser_snapshot=dict(statuses=[dict(recording=True, stopping=False, path=str(live_session.directory))]),
             get_windows=lambda: [],
-            live_recording_directories=lambda: [str(live_session.directory)],
             _ensure_transcriber=lambda: queue,
             write_down=lambda *_a, **_k: None,
         )
+        app.follower_capture_directories = lambda: CassiniApplication.follower_capture_directories(app)
         app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
         app._sync_live_follower = lambda **kw: CassiniApplication._sync_live_follower(app, **kw)
 
@@ -3248,3 +3252,154 @@ def test_stop_via_canonical_cancels_and_waits_for_symlink_enqueued_job(tmp_path)
         release_job.set()
         queue.close()
         queue.executor.shutdown(wait=True)
+
+
+# ---------------------------------------------------------------------------
+# 22. Review regressions (round 10): moved-meeting destination alias across
+#     Trash & Stop, and unpaired Unicode surrogate rejection in cache
+# ---------------------------------------------------------------------------
+
+
+def test_moved_meeting_destination_alias_preserved_across_trash_and_stop(tmp_path, monkeypatch):
+    from concurrent.futures import CancelledError
+
+    old_lib = tmp_path / "old-lib"
+    dest_lib = tmp_path / "dest-lib"
+    old_lib.mkdir()
+    dest_lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+
+    # Create the actual meeting in dest_lib, while enqueue() is called with the pre-move path in old_lib.
+    session = RecordingSession(dest_lib, "Moved meeting", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+    session.finish()
+    dest_dir = session.directory.resolve()
+    old_dir = (old_lib / dest_dir.name).absolute()
+
+    state = dict(
+        job_entered=threading.Event(),
+        release_job=threading.Event(),
+        client_cancelled=threading.Event(),
+        raise_on_release=False,
+    )
+
+    class GatedMovedClient:
+        def __init__(self, *_args, **_kw):
+            self.recognition_cache = None
+            self.diarization = None
+            self.keep_for_voices = False
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def cancel(self):
+            state["client_cancelled"].set()
+
+        def process_tracks(self, tracks, progress):
+            progress(dict(type="planned", etaMinutes=0, segments=1))
+            state["job_entered"].set()
+            durable(state["release_job"], "Moved job was not released")
+            if state["raise_on_release"]:
+                raise CancelledError()
+            progress(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=0, endMs=300, text="ShouldNotCommit")],
+                )
+            )
+            return dict(diagnostics=[], segments=1)
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=dest_lib,
+        client_factory=GatedMovedClient,
+        mode=TranscriptionMode.AFTER_STOP,
+    )
+    # Simulate Library relocation routing old_dir -> dest_dir via _owned() and transaction().
+    monkeypatch.setattr(queue, "_owned", lambda d: dest_dir if Path(d).absolute() in (old_dir, dest_dir) else Path(d))
+    monkeypatch.setattr("cassini_talk.library_location.owned_directory", lambda d: dest_dir)
+    try:
+        # Part A: Trash via destination path must cancel and wait for job enqueued via old_dir.
+        assert queue.enqueue(old_dir)
+        durable(state["job_entered"], "Moved job did not enter process_tracks (Trash)")
+        trash_entered = threading.Event()
+        trash_done = threading.Event()
+
+        def run_trash():
+            with queue.cancel_meeting(dest_dir):
+                trash_entered.set()
+                assert queue._active_directory is None
+                assert not queue.pending
+            trash_done.set()
+
+        t_trash = threading.Thread(target=run_trash, daemon=True)
+        t_trash.start()
+        durable(state["client_cancelled"], "Trash via dest_dir did not cancel job enqueued via old_dir")
+        assert not trash_entered.is_set(), "Trash entered while moved job was still active"
+        state["release_job"].set()
+        durable(trash_entered, "Trash did not enter after moved job exited")
+        durable(trash_done, "Trash did not finish")
+        t_trash.join(timeout=5.0)
+        assert read_metadata(dest_dir)["transcript"]["status"] != "done"
+
+        # Part B: Stop via destination path must cancel and wait for job enqueued via old_dir.
+        state["job_entered"] = threading.Event()
+        state["release_job"] = threading.Event()
+        state["client_cancelled"] = threading.Event()
+        state["raise_on_release"] = True
+        stop_done = threading.Event()
+
+        assert queue.enqueue(old_dir, resume=True)
+        durable(state["job_entered"], "Moved job did not enter process_tracks (Stop)")
+        assert queue.stop(dest_dir, done=stop_done.set)
+        durable(state["client_cancelled"], "Stop via dest_dir did not cancel job enqueued via old_dir")
+        assert not stop_done.is_set(), "Stop completed while moved job was still active"
+        state["release_job"].set()
+        durable(stop_done, "Stop did not complete after moved job retired")
+        assert read_metadata(dest_dir)["transcript"]["status"] == "none"
+    finally:
+        state["release_job"].set()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+
+
+def test_recognition_cache_rejects_unpaired_surrogates_and_keeps_valid_entries(tmp_path):
+    model_id = "whistle@" + ("a" * 64)
+    good_key = recognition_cache.segment_key("1" * 64, 16000)
+    bad_key = recognition_cache.segment_key("2" * 64, 16000)
+    good_entry = dict(text="valid words", language="en", words=[dict(start=0.0, end=0.5, text="valid")])
+    # Raw JSON with an escaped unpaired UTF-16 surrogate (\ud800) that json.loads decodes into a str.
+    raw = (
+        '{"format":"cassini.recognition-cache.v2","model":"'
+        + model_id
+        + '","segments":{"'
+        + good_key
+        + '":'
+        + json.dumps(good_entry)
+        + ',"'
+        + bad_key
+        + '":{"text":"bad\\ud800text","language":"en","words":[{"start":0.0,"end":0.4,"text":"bad\\ud800"}]}}}'
+    ).encode("utf-8")
+    cache_path = tmp_path / RECOGNITION_CACHE_FILE
+    cache_path.write_bytes(raw)
+
+    loaded = recognition_cache.read(cache_path, model_id)
+    assert list(loaded) == [good_key]
+
+    # CacheBudget must initialize and accept additional valid entries without UnicodeEncodeError.
+    budget = recognition_cache.CacheBudget(model_id, loaded)
+    extra_key = recognition_cache.segment_key("3" * 64, 16000)
+    assert budget.try_add(extra_key, good_entry)
+    assert not budget.try_add(
+        bad_key, dict(text="bad\ud800text", language="en", words=[dict(start=0.0, end=0.4, text="ok")])
+    )

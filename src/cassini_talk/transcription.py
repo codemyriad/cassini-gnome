@@ -588,7 +588,7 @@ class TranscriptionQueue:
         path = Path(directory)
         try:
             return path.resolve()
-        except OSError:
+        except (OSError, RuntimeError):
             return path.absolute()
 
     def _follow_still_valid(self, directory: Path, stop_event: threading.Event, generation: int) -> bool:
@@ -1167,13 +1167,21 @@ class TranscriptionQueue:
         with self._job_scope(directory), transaction(directory):
             return self._mark_queued_locked(directory, resume)
 
+    def _record_job_alias(self, token: Path, destination: Path) -> None:
+        extra = frozenset((Path(destination).absolute(), self._canonical_follow_dir(destination)))
+        with self.lock:
+            merged = self._job_aliases.get(token, frozenset((token,))) | extra
+            self._job_aliases[token] = merged
+            if getattr(self._context, "directory", None) == token:
+                self._context.aliases = getattr(self._context, "aliases", frozenset()) | merged
+
     def _mark_queued_locked(self, directory, resume):
         self._check_open()
         raw_directory = directory
         canonical = self._owned(directory)
+        self._record_job_alias(raw_directory, canonical)
         dir_aliases = frozenset((raw_directory, canonical))
         with self.lock:
-            self._job_aliases[raw_directory] = dir_aliases
             if self._follow_directory is not None and not self._any_alias_in(dir_aliases, self._follow_aliases):
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
         directory = canonical
@@ -1343,6 +1351,7 @@ class TranscriptionQueue:
         try:
             if self.closed:
                 return
+            self._record_job_alias(directory, meeting.directory)
             self._run(meeting, metadata)
         except CancelledError:
             if self.client:
@@ -1974,6 +1983,8 @@ class TranscriptionQueue:
             self.voice_pending.remove(token)
             self._voice_futures.pop(token, None)
             self._voice_reruns.pop(token, None)
+            if token not in self.pending:
+                self._job_aliases.pop(token, None)
             background = self._background_voices.pop(token, None)
             preempted = background is not None and bool(self.pending)
             self._idle.notify_all()
@@ -2000,6 +2011,7 @@ class TranscriptionQueue:
                     warm.close()
             self._check_open()
             directory = self._owned(directory)
+            self._record_job_alias(token, directory)
             state = self.voice_store.refresh()
             if state["readOnly"]:
                 return
@@ -2097,7 +2109,9 @@ class TranscriptionQueue:
         self._context.background = owner and directory in self._background_voices
         try:
             with self.lock:
-                self._job_aliases[directory] = aliases
+                merged = self._job_aliases.get(directory, frozenset()) | aliases
+                self._job_aliases[directory] = merged
+                self._context.aliases = merged
                 self._check_open()
                 if owner:
                     self._active_directory = directory
@@ -2111,6 +2125,12 @@ class TranscriptionQueue:
                 self._context.background = False
                 self._idle.notify_all()
 
+    def _expand_job_aliases_locked(self, dir_aliases: set[Path]) -> None:
+        for token, aliases in self._job_aliases.items():
+            if token in dir_aliases or self._any_alias_in(dir_aliases, aliases):
+                dir_aliases.add(token)
+                dir_aliases.update(aliases)
+
     @contextlib.contextmanager
     def cancel_meeting(self, directory):
         """Worker-only exclusion: cancel this meeting, wait, keep it blocked during Trash."""
@@ -2122,6 +2142,7 @@ class TranscriptionQueue:
         try:
             while True:
                 with self.lock:
+                    self._expand_job_aliases_locked(dir_aliases)
                     for alias in dir_aliases:
                         self._cancelled_meetings.add(alias)
                         self._resume_pending.discard(alias)
@@ -2235,17 +2256,24 @@ class TranscriptionQueue:
         target = None
         changed = False
         dir_aliases: set[Path] = set(stop_aliases)
-        dir_aliases.add(self._canonical_follow_dir(directory))
         checked: set[Path] = set()
+        warm = None
         try:
+            dir_aliases.add(self._canonical_follow_dir(directory))
             while True:
                 with self.lock:
+                    self._expand_job_aliases_locked(dir_aliases)
                     for alias in dir_aliases:
                         self._stopping_meetings.add(alias)
                         self._resume_pending.discard(alias)
+                    snap_follow, snap_warm = self._follow_directory, self._warm_directory
                     candidates = list(self.pending)
                     if self._active_directory is not None:
                         candidates.append(self._active_directory)
+                    if snap_follow is not None:
+                        candidates.append(snap_follow)
+                    if snap_warm is not None:
+                        candidates.append(snap_warm)
                     unseen = [p for p in candidates if p not in checked]
                     if not unseen:
                         futures = [
@@ -2255,6 +2283,13 @@ class TranscriptionQueue:
                         ]
                         if self._active_directory in dir_aliases and self.client and hasattr(self.client, "cancel"):
                             self.client.cancel()
+                        if self._any_alias_in(dir_aliases, self._follow_aliases):
+                            self._signal_follower_stop_locked(drain=False, cancel_client=True)
+                        warm = (
+                            self._discard_warm_client_locked()
+                            if self._any_alias_in(dir_aliases, self._warm_aliases)
+                            else None
+                        )
                         break
                 resolved = {p: self._canonical_follow_dir(p) for p in unseen}
                 checked.update(unseen)
@@ -2262,6 +2297,13 @@ class TranscriptionQueue:
                     if raw_path in dir_aliases or canon_path in dir_aliases:
                         dir_aliases.add(raw_path)
                         dir_aliases.add(canon_path)
+                with self.lock:
+                    if snap_follow in resolved and self._follow_directory == snap_follow:
+                        self._follow_aliases = self._follow_aliases | frozenset((resolved[snap_follow],))
+                    if snap_warm in resolved and self._warm_directory == snap_warm:
+                        self._warm_aliases = self._warm_aliases | frozenset((resolved[snap_warm],))
+            if warm is not None:
+                self._close_client_async(warm)
             for future in futures:
                 if future is not None:
                     future.cancel()
@@ -2272,6 +2314,7 @@ class TranscriptionQueue:
                         or (
                             not any(alias in self.pending for alias in dir_aliases)
                             and self._active_directory not in dir_aliases
+                            and not self._any_alias_in(dir_aliases, self._follow_aliases)
                         )
                     )
                 )

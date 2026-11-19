@@ -1435,14 +1435,14 @@ class CassiniApplication(Adw.Application):
         )
         if mode is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
             return
-        live_dirs = self.live_recording_directories()
-        active_saving = list(saving)
-        for recorder in tuple(getattr(self, "native_captures", {}).values()):
-            session = getattr(recorder, "session", None)
-            if session is not None and getattr(session, "finished", False):
-                active_saving.append(session.directory)
-        if live_dirs or active_saving:
-            self._ensure_transcriber().sync_recordings(live_dirs, saving=active_saving)
+        recording_dirs, capture_saving = (
+            self.follower_capture_directories()
+            if hasattr(self, "follower_capture_directories")
+            else CassiniApplication.follower_capture_directories(self)
+        )
+        active_saving = [*capture_saving, *saving]
+        if recording_dirs or active_saving:
+            self._ensure_transcriber().sync_recordings(recording_dirs, saving=active_saving)
             return
         transcriber = getattr(self, "transcriber", None)
         if transcriber is not None and hasattr(transcriber, "sync_recordings"):
@@ -1457,8 +1457,12 @@ class CassiniApplication(Adw.Application):
             return
         transcriber = self.transcriber
         if transcriber is not None:
-            live_dirs = self.live_recording_directories()
-            transcriber.sync_recordings(live_dirs, saving=[directory])
+            recording_dirs, capture_saving = (
+                self.follower_capture_directories()
+                if hasattr(self, "follower_capture_directories")
+                else CassiniApplication.follower_capture_directories(self)
+            )
+            transcriber.sync_recordings(recording_dirs, saving=[*capture_saving, directory])
 
     def _on_publish_failed(self, directory):
         transcriber = getattr(self, "transcriber", None)
@@ -1546,6 +1550,28 @@ class CassiniApplication(Adw.Application):
             if browser_capture_busy(status) and isinstance(status.get("path"), str):
                 folders.append(status["path"])
         return folders
+
+    def follower_capture_directories(self):
+        """Return (actively_recording_dirs, saving_dirs) for live-first follower scheduling."""
+        from .capture_guard import browser_capture_busy, recorder_busy, recorder_stopping
+
+        recording, saving = [], []
+        for recorder in tuple(getattr(self, "native_captures", {}).values()):
+            session = getattr(recorder, "session", None)
+            if not recorder_busy(recorder) or session is None:
+                continue
+            if recorder_stopping(recorder) or getattr(session, "finished", False):
+                saving.append(str(session.directory))
+            else:
+                recording.append(str(session.directory))
+        for status in getattr(self, "_browser_snapshot", {}).get("statuses", ()):
+            if not browser_capture_busy(status) or not isinstance(status.get("path"), str):
+                continue
+            if status.get("stopping") or not status.get("recording"):
+                saving.append(status["path"])
+            else:
+                recording.append(status["path"])
+        return recording, saving
 
     def recompute_voices(self, directory, affected):
         if self._quitting or self._capture_exiting or self.meeting_trash.hides(directory):
