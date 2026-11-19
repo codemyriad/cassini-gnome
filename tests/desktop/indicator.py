@@ -583,7 +583,9 @@ appids = (
 for appid in appids:
     flatpak = appid.endswith(".Devel")
     command = ["flatpak", "run", "--user", "--command=gsettings", appid] if flatpak else ["gsettings"]
-    subprocess.run([*command, "set", "io.codemyriad.CassiniTalk", "skip-record-first", "true"], check=True)
+    # D107 §1: Preferences greys automatic recording until the browser companion has been set up.
+    for key in ("skip-record-first", "browser-ever-connected"):
+        subprocess.run([*command, "set", "io.codemyriad.CassiniTalk", key, "true"], check=True)
     subprocess.run([*command, "set", "io.codemyriad.CassiniTalk", "background-notification-shown", "false"], check=True)
     if flatpak:
         subprocess.run(["flatpak", "permission-set", "background", "background", appid, "yes"], check=True)
