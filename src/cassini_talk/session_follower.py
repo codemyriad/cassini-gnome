@@ -469,7 +469,7 @@ class _PrefixCheckpoint:
 class TrackFollower:
     """Incremental read-only follower for one logical session.json track."""
 
-    def __init__(self, track_id: str, order: int, track: dict, events: list, detector):
+    def __init__(self, track_id: str, order: int, track: dict, events: list, detector, *, session_ended: bool = False):
         import numpy as np
 
         from . import recognition_fallback as fallback
@@ -496,7 +496,7 @@ class TrackFollower:
         # Snapshot of latest session.json metadata for this track.
         self._rows: list[dict] = _span_rows(track)
         self._track_ended = bool(track.get("ended"))
-        self._session_ended = False
+        self._session_ended = bool(session_ended)
         self.ever_clock_anchored = _has_clock_anchors(self._rows)
         self._ownership = ownership_windows(self.kind, events) if self.offset_ms is not None else None
         self._mask = FrameMask(self._ownership, RATE_16K, self.origin_16k / 16)
@@ -985,7 +985,9 @@ class SessionFollower:
                 continue
             follower = self.tracks.get(track_id)
             if follower is None:
-                follower = TrackFollower(track_id, order, track, events, self.detector)
+                follower = TrackFollower(
+                    track_id, order, track, events, self.detector, session_ended=self.session_ended
+                )
                 self.tracks[track_id] = follower
             else:
                 follower.order = order

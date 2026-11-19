@@ -1483,7 +1483,7 @@ class CassiniApplication(Adw.Application):
         if transcriber is not None and hasattr(transcriber, "release_failed_publication"):
             transcriber.release_failed_publication(directory)
 
-    def _on_recovery_result(self, directory, error):
+    def _on_recovery_result(self, directory, error, *, transcript_status=None):
         if error is not None:
             CassiniApplication._drop_observed_saving(self, directory)
             transcriber = getattr(self, "transcriber", None)
@@ -1494,8 +1494,12 @@ class CassiniApplication(Adw.Application):
             else:
                 CassiniApplication._sync_live_follower(self)
             return
+        explicit_intent = transcript_status in ("queued", "running")
+        should_enqueue = bool(getattr(self, "transcription_enabled", False)) and (
+            explicit_intent or _auto_write_enabled(self)
+        )
         if (
-            _auto_write_enabled(self)
+            should_enqueue
             and not self._quitting
             and not self._capture_exiting
             and not (

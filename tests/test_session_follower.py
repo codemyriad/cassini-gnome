@@ -3976,7 +3976,9 @@ def test_windowless_recovery_completion_handles_warm_handoff_and_failure(tmp_pat
     app.follower_capture_directories = lambda: CassiniApplication.follower_capture_directories(app)
     app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
     app._sync_live_follower = lambda **kw: CassiniApplication._sync_live_follower(app, **kw)
-    app._on_recovery_result = lambda directory, error: CassiniApplication._on_recovery_result(app, directory, error)
+    app._on_recovery_result = lambda directory, error, **kw: CassiniApplication._on_recovery_result(
+        app, directory, error, **kw
+    )
 
     recovery_stub = SimpleNamespace(app=app, cancelled=threading.Event())
 
@@ -4054,3 +4056,215 @@ def test_windowless_recovery_completion_handles_warm_handoff_and_failure(tmp_pat
         queue.executor.shutdown(wait=True)
         if getattr(queue, "_close_thread", None) is not None:
             queue._close_thread.join(timeout=5.0)
+
+
+# ---------------------------------------------------------------------------
+# 27. Review regressions (round 16): journaled-checkpoint windowless recovery,
+#     recordOnly explicit-intent resume on recovery, and completed-manifest drain
+# ---------------------------------------------------------------------------
+
+
+def _stage_journaled_publish(lib: Path, session_dir: Path, title: str = "Journaled recovery"):
+    from cassini_talk.library_v2 import journal
+
+    layout = journal.Layout(lib)
+    layout.ensure()
+    origin, sid = journal.identity_of(session_dir)
+    op = "11111111-2222-3333-4444-555555555555"
+    stage_rel = f"{journal.META}/staging/{op}.opus.stage"
+    (lib / stage_rel).write_bytes(b"OggS-staged-opus-payload")
+    entry = journal.new_entry(
+        "publish",
+        origin=origin,
+        session_id=sid,
+        op=op,
+        phase="staged",
+        session=f"{journal.META}/sessions/{origin}-{sid}",
+        stage=stage_rel,
+        baseRevision=0,
+        newRevision=1,
+        fileRevision=None,
+        meetingUpdate=dict(published=True),
+        name=dict(prefix="2026-11-19--10.00-", title=title, untitled="Untitled"),
+        oldPath=None,
+        newPath=None,
+    )
+    journal.write(layout, entry)
+    return entry
+
+
+def test_journaled_checkpoint_recovery_delivers_result_without_open_window(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _ensure_gi_for_main(monkeypatch)
+    from gi.repository import GLib
+
+    from cassini_talk.library_recovery import LibraryRecovery
+    from cassini_talk.main import CassiniApplication
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    sessions_dir = capture_parent(lib)
+    session = RecordingSession(sessions_dir, "Journaled crash recovery", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(0.6, 440.0, 0.3), (0.4, 0.0, 0.0)]), 0.0)
+    session.finish()
+    _stage_journaled_publish(lib, session.directory, title="Journaled crash recovery")
+
+    enqueued = []
+    synced = []
+    app = SimpleNamespace(
+        transcription_enabled=True,
+        transcription_mode="transcribeWhileRecording",
+        _quitting=False,
+        _capture_exiting=False,
+        _observed_saving_directories=(str(session.directory),),
+        transcriber=None,
+        native_captures={},
+        _browser_snapshot={},
+        get_windows=lambda: [],
+        _transcription_changed=lambda: False,
+        _sync_live_follower=lambda **kw: synced.append(kw),
+        write_down=lambda directory, resume=False: enqueued.append((Path(directory).resolve(), resume)),
+    )
+    app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
+    app._on_recovery_result = lambda directory, error, *, transcript_status=None: (
+        CassiniApplication._on_recovery_result(app, directory, error, transcript_status=transcript_status)
+    )
+
+    recovery = SimpleNamespace(
+        app=app,
+        cancelled=threading.Event(),
+        lock=threading.Lock(),
+        _activity={},
+        failures={},
+        attempted=set(),
+        started_revision=0,
+        _requested={},
+        _retry_paths=lambda _roots: None,
+        _phase=lambda _path, _saving: None,
+    )
+    recovery._result_finished = lambda d, e, s=None: LibraryRecovery._result_finished(recovery, d, e, s)
+    monkeypatch.setattr("cassini_talk.library_location.roots", lambda: [lib])
+
+    LibraryRecovery._sweep(recovery)
+    if hasattr(GLib, "MainContext"):
+        ctx = GLib.MainContext.default()
+        while ctx.iteration(False):
+            pass
+
+    assert list(lib.glob("*.opus")), "Journal replay did not publish the staged Opus file"
+    assert read_metadata(session.directory)["published"] is True
+    assert app._observed_saving_directories == ()
+    assert enqueued == [(session.directory.resolve(), True)]
+    assert synced, "_sync_live_follower was not called after journaled recovery completed"
+
+
+def test_windowless_recovery_record_only_resumes_explicit_intent_only(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _ensure_gi_for_main(monkeypatch)
+    monkeypatch.setattr("cassini_talk.library_location.owned_directory", lambda d: Path(d).resolve())
+    from gi.repository import GLib
+
+    from cassini_talk.library_recovery import LibraryRecovery
+    from cassini_talk.main import CassiniApplication
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    sessions_dir = capture_parent(lib)
+
+    session_queued = RecordingSession(sessions_dir, "RecordOnly queued", source="gnome")
+    session_queued.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session_queued.append("microphone", make_speech_pcm16(16000, 1, [(0.5, 440.0, 0.3)]), 0.0)
+    session_queued.finish()
+    from cassini_talk.meeting_store import update_metadata
+
+    update_metadata(
+        session_queued.directory,
+        transcript=dict(read_metadata(session_queued.directory)["transcript"], status="queued"),
+    )
+    _stage_journaled_publish(lib, session_queued.directory, title="RecordOnly queued")
+
+    enqueued = []
+    app = SimpleNamespace(
+        transcription_enabled=True,
+        transcription_mode="recordOnly",
+        _quitting=False,
+        _capture_exiting=False,
+        _observed_saving_directories=(str(session_queued.directory),),
+        transcriber=None,
+        native_captures={},
+        _browser_snapshot={},
+        get_windows=lambda: [],
+        _transcription_changed=lambda: False,
+        _sync_live_follower=lambda **_kw: None,
+        write_down=lambda directory, resume=False: enqueued.append((Path(directory).resolve(), resume)),
+    )
+    app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
+    app._on_recovery_result = lambda directory, error, *, transcript_status=None: (
+        CassiniApplication._on_recovery_result(app, directory, error, transcript_status=transcript_status)
+    )
+
+    recovery = SimpleNamespace(
+        app=app,
+        cancelled=threading.Event(),
+        lock=threading.Lock(),
+        _activity={},
+        failures={},
+        attempted=set(),
+        started_revision=0,
+        _requested={},
+        _retry_paths=lambda _roots: None,
+        _phase=lambda _path, _saving: None,
+    )
+    recovery._result_finished = lambda d, e, s=None: LibraryRecovery._result_finished(recovery, d, e, s)
+    monkeypatch.setattr("cassini_talk.library_location.roots", lambda: [lib])
+
+    # Persisted `queued` intent MUST resume even in recordOnly mode.
+    LibraryRecovery._sweep(recovery)
+    if hasattr(GLib, "MainContext"):
+        ctx = GLib.MainContext.default()
+        while ctx.iteration(False):
+            pass
+    assert enqueued == [(session_queued.directory.resolve(), True)]
+    assert app._observed_saving_directories == ()
+
+    # Persisted `running` intent also resumes; `none` does NOT auto-start in recordOnly mode.
+    enqueued.clear()
+    CassiniApplication._on_recovery_result(app, session_queued.directory, None, transcript_status="running")
+    assert enqueued == [(session_queued.directory.resolve(), True)]
+
+    enqueued.clear()
+    CassiniApplication._on_recovery_result(app, session_queued.directory, None, transcript_status="none")
+    assert enqueued == []
+
+
+def test_session_follower_completed_manifest_without_per_track_ended_drains(tmp_path):
+    session = RecordingSession(tmp_path, "Completed without track ended", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(0.8, 440.0, 0.3), (0.6, 0.0, 0.0)]), 0.0)
+    session.finish()
+
+    # Strip per-track `ended` flags from session.json (matching `simple_session` fixtures).
+    manifest_path = session.directory / "session.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["state"] == "completed"
+    for track in manifest["tracks"]:
+        track.pop("ended", None)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    emitted = []
+    follower = SessionFollower(
+        session.directory,
+        DeterministicRecognizer("whistle"),
+        "whistle@" + ("a" * 64),
+        DeterministicDetector(),
+        on_cache_entry=emitted.append,
+    )
+    assert follower.refresh()
+    assert follower.session_ended is True
+    while follower.step():
+        pass
+    assert follower.all_drained() is True
+    assert len(emitted) == 1

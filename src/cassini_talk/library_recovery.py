@@ -47,11 +47,11 @@ class LibraryRecovery:
             self.app._transcription_changed()
         return False
 
-    def _result_finished(self, directory, error):
+    def _result_finished(self, directory, error, transcript_status=None):
         if not self.cancelled.is_set():
             handler = getattr(self.app, "_on_recovery_result", None)
             if handler is not None:
-                handler(directory, error)
+                handler(directory, error, transcript_status=transcript_status)
             self.app._transcription_changed()
         return False
 
@@ -185,7 +185,19 @@ class LibraryRecovery:
                             self.failures[result.directory] = result.error
                         else:
                             self.failures.pop(result.directory, None)
-                    GLib.idle_add(self._result_finished, result.directory, result.error)
+                    transcript_status = None
+                    if not result.error:
+                        from . import meeting_store
+
+                        try:
+                            with meeting_store.LOCK:
+                                metadata = meeting_store.read_metadata(result.directory)
+                            tx = metadata.get("transcript")
+                            if isinstance(tx, dict):
+                                transcript_status = tx.get("status")
+                        except (OSError, ValueError):
+                            transcript_status = None
+                    GLib.idle_add(self._result_finished, result.directory, result.error, transcript_status)
             except CancelledError:
                 break
             except (OSError, ValueError):

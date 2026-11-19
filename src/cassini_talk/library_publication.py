@@ -154,6 +154,9 @@ def recover_completed(
         raise ValueError("Unsafe Library metadata path")
     check_cancel(cancel)
     report = journal.recover(root)
+    for directory in report.published:
+        check_cancel(cancel)
+        yield RecoveryResult(directory, published=True)
     for directory in sorted(layout.sessions.iterdir()):
         check_cancel(cancel)
         identity = journal.identity_of(directory)
