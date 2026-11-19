@@ -405,12 +405,21 @@ def place_words(raw, segment, sample_count, offset_ms=0, audio_end_ms=None):
     return dict(segment, text=raw["text"]), words, raw["language"]
 
 
-def recognise_segment(model, path, segment, offset_ms=0, *, samples=None, audio_end_ms=None, input_hash=None):
+def recognise_segment(
+    model, path, segment, offset_ms=0, *, samples=None, audio_end_ms=None, input_hash=None, raw=None, recognised=None
+):
+    """Recognise (or reuse `raw` for) one segment, then place it: the one path for both.
+
+    `recognised(raw)` receives output the model produced here, never a reused one.
+    """
     if samples is None:
         samples = np.concatenate(list(resampled_chunks(path, segment["startSample"], segment["endSample"])))
     if input_hash is None:
         input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
-    raw = transcribe_raw(model, samples)
+    if raw is None:
+        raw = transcribe_raw(model, samples)
+        if recognised is not None:
+            recognised(raw)
     value, words, language = place_words(raw, segment, len(samples), offset_ms, audio_end_ms)
     return value, words, language, input_hash
 
@@ -533,20 +542,29 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recogni
         input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
         presence = track.get("sessionPresence")
         cache_key = cache.segment_key(input_hash, len(samples))
-        raw = cached_segments.get(cache_key) if cache_enabled else None
         seconds = (segment["endSample"] - segment["startSample"]) / RATE
-        if raw is None:
-            started = time.monotonic()
-            raw = transcribe_raw(model, samples)
+        fresh = []
+        started = time.monotonic()
+        value, words, detected, input_hash = recognise_segment(
+            model,
+            track["path"],
+            segment,
+            offset,
+            samples=samples,
+            audio_end_ms=audio_end,
+            input_hash=input_hash,
+            raw=cached_segments.get(cache_key) if cache_enabled else None,
+            recognised=fresh.append,
+        )
+        if fresh:
             elapsed += time.monotonic() - started
             processed += seconds
             # Output a later read would reject is never offered for reuse.
-            if cache_enabled and cache.valid_entry(cache_key, raw):
-                cached_segments[cache_key] = raw
-                notify("planning", trackId=track["id"], cacheEntry=dict(raw, key=cache_key))
+            if cache_enabled and cache.valid_entry(cache_key, fresh[0]):
+                cached_segments[cache_key] = fresh[0]
+                notify("planning", trackId=track["id"], cacheEntry=dict(fresh[0], key=cache_key))
         remaining = max(0, remaining - seconds)
         factor = elapsed / processed if processed else initial_factor
-        value, words, detected = place_words(raw, segment, len(samples), offset, audio_end)
         # D63 #3: a word outside its track's presence is never written, on either
         # path, so it neither counts as a VAD word nor joins a fallback window.
         kept = present_words(words, presence)
