@@ -2,6 +2,7 @@
 """D15 native Preferences. Broker IO runs off GTK; every visible label is shared copy."""
 
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -27,6 +28,66 @@ def path_caption(path):
     return " › ".join(path.parts)
 
 
+def first_line(widget):
+    """D107 §1: on a multi-line row a switch, radio, "Built in" or button aligns to the first line."""
+    widget.set_valign(Gtk.Align.START)
+    widget.add_css_class("first-line")
+    return widget
+
+
+def first_line_switch(row):
+    """The switch of a multi-line Adw.SwitchRow, aligned to the row's first line (D107 §1)."""
+    stack = [row]
+    while stack:
+        widget = stack.pop()
+        if isinstance(widget, Gtk.Switch):
+            first_line(widget)
+            return row
+        child = widget.get_first_child()
+        while child is not None:
+            stack.append(child)
+            child = child.get_next_sibling()
+    return row
+
+
+def status_dot(connected):
+    """D107 §1: the companion's status dot, green when connected, red when not set up."""
+    dot = Gtk.Box(valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.PRESENTATION)
+    set_dot(dot, connected)
+    return dot
+
+
+def set_dot(dot, connected):
+    dot.set_css_classes(["status-dot", "status-dot-connected" if connected else "status-dot-off"])
+
+
+def footnote(key):
+    """D107 §1: a privacy footnote, one centred line with the accent lock at the foot of the page,
+    as on Saved voices (D106 §5)."""
+    from .first_run_hero import LineGlyph
+
+    group = Adw.PreferencesGroup(css_classes=["preferences-footnote"])
+    line = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+    line.append(LineGlyph("shield", 14, valign=Gtk.Align.CENTER, css_classes=["saved-voices-shield"]))
+    label = Gtk.Label(
+        label=text(key), wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label", "saved-voices-footnote"]
+    )
+    line.append(label)
+    group.add(line)
+    group.label = label
+    return group
+
+
+def caption(key):
+    """D107 §1: information under the card it belongs to; cards hold only what you can act on."""
+    return Gtk.Label(label=text(key), wrap=True, xalign=0, css_classes=["dim-label", "preferences-caption"])
+
+
+# D107 §1: settings.browser.remove.howTo is a draft Alex has not worded yet; it is said here only,
+# so it is easy to change.
+REMOVE_HOW_TO = "settings.browser.remove.howTo"
+
+
 class SettingsDialog(Adw.PreferencesDialog):
     def __init__(self, app, *, service_path=None):
         super().__init__(
@@ -45,6 +106,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.closed = False
         self.cancelled = Event()
         self._updating = False
+        self._writing = False
         self._future = None
         self._queued = None
         self._snapshot = {}
@@ -89,7 +151,9 @@ class SettingsDialog(Adw.PreferencesDialog):
         group = Adw.PreferencesGroup(title=text("settings.recording.group.starting"))
         self.pages["recording"].add(group)
         self.shortcut = Adw.ActionRow(title=text("settings.recording.shortcut.title"), use_markup=False)
-        self.change_shortcut = Gtk.Button(label=text("settings.recording.changeShortcut"), valign=Gtk.Align.CENTER)
+        self.change_shortcut = Gtk.Button(
+            label=text("settings.recording.changeShortcut"), valign=Gtk.Align.START, css_classes=["first-line"]
+        )
         self.change_shortcut.connect("clicked", lambda *_: self.app.configure_global_shortcut())
         self.shortcut.add_suffix(self.change_shortcut)
         group.add(self.shortcut)
@@ -99,10 +163,21 @@ class SettingsDialog(Adw.PreferencesDialog):
             use_markup=False,
         )
         self.settings.bind("skip-record-first", self.explain, "active", Gio.SettingsBindFlags.INVERT_BOOLEAN)
-        group.add(self.explain)
+        group.add(first_line_switch(self.explain))
+        # D107 §1: the status sits right of the heading. Not set up: "Needs the browser companion · Set it
+        # up" (the link opens Browser companion) and the switch greyed; connected: a green dot and the browser.
+        status = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+        self.browser_meetings_dot = status_dot(connected=True)
+        status.append(self.browser_meetings_dot)
+        self.browser_meetings_status = Gtk.Label(xalign=1, wrap=True, css_classes=["dim-label"])
+        status.append(self.browser_meetings_status)
+        self.browser_set_up = Gtk.Button(
+            label=text("settings.recording.browser.setUp"), css_classes=["link", "preferences-link"]
+        )
+        self.browser_set_up.connect("clicked", lambda *_: self.set_visible_page_name("browserCompanion"))
+        status.append(self.browser_set_up)
         self.browser_meetings = Adw.PreferencesGroup(
-            title=text("settings.recording.group.browser"),
-            description=text("settings.recording.group.browser.subtitle"),
+            title=text("settings.recording.group.browser"), header_suffix=status
         )
         self.pages["recording"].add(self.browser_meetings)
         self.automatic = Adw.SwitchRow(
@@ -111,15 +186,16 @@ class SettingsDialog(Adw.PreferencesDialog):
             use_markup=False,
         )
         self.automatic.connect("notify::active", self._automatic_changed)
-        self.browser_meetings.add(self.automatic)
+        self.browser_meetings.add(first_line_switch(self.automatic))
         self.browser_meetings.set_visible(self.app.browser_companion_available)
-        # D60: the test recording, disabled while any recording or test runs.
-        self.test_button = Gtk.Button(label=text("settings.recording.test.button"), valign=Gtk.Align.CENTER)
+        # D60, D107 §1: Test recording on its own at the foot, not in a card; disabled while any
+        # recording or test runs.
+        self.test_button = Gtk.Button(label=text("settings.recording.test.button"), valign=Gtk.Align.START)
         # Its accessible name is its text, "Test", read inside the "Test recording" group.
         self.test_button.connect("clicked", lambda *_: self.app.open_test_recording(self))
         self.test_row = Adw.PreferencesGroup(
             title=text("test.action"),
-            description=text("settings.recording.test.description"),
+            description=text("settings.recording.test.descriptionShort"),
             header_suffix=self.test_button,
         )
         self.pages["recording"].add(self.test_row)
@@ -127,12 +203,7 @@ class SettingsDialog(Adw.PreferencesDialog):
 
     def _transcription(self):
         page = self.pages["transcription"]
-        privacy = Adw.PreferencesGroup()
-        line = Gtk.Box(spacing=12)
-        line.append(Gtk.Image(icon_name="security-high-symbolic", css_classes=["success"], valign=Gtk.Align.START))
-        line.append(Gtk.Label(label=text("settings.transcription.privacyLine"), wrap=True, xalign=0, hexpand=True))
-        privacy.add(line)
-        page.add(privacy)
+        # D107 §1: no line above Transcription; its privacy footnote sits at the foot of the page.
         speech = Adw.PreferencesGroup(
             title=text("settings.transcription.speech.heading"),
             description=text("models.keepTranscript"),
@@ -144,7 +215,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         radio = self.whistle_radio = Gtk.CheckButton(group=self._speech_group, active=True)
         radio.connect("toggled", self._speech_selected, "whistle")
         radio.update_property([Gtk.AccessibleProperty.LABEL], [text("models.whistle.name")])
-        row.append(radio)
+        row.append(first_line(radio))
         details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
         name = Gtk.Box(spacing=8)
         name.append(Gtk.Label(label=text("models.whistle.name"), xalign=0, css_classes=["heading"]))
@@ -162,36 +233,43 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         details.append(self.whistle_status)
         row.append(details)
-        row.append(Gtk.Label(label=text("models.builtIn"), css_classes=["dim-label", "caption"]))
+        row.append(first_line(Gtk.Label(label=text("models.builtIn"), css_classes=["dim-label", "caption"])))
         self.whistle.set_child(row)
         speech.add(self.whistle)
         if self.app.speech_models is not None:
             from .parakeet_model import MODEL_ID
 
-            self.parakeet = Adw.ActionRow(
-                title=text("models.parakeetUltra.name"),
-                subtitle=text("models.parakeetUltra.description.short"),
-                use_markup=False,
-                subtitle_lines=0,
-            )
+            # D107 §1: the same layout as Whistle; radio and Download top-aligned with the name.
+            self.parakeet = Adw.PreferencesRow()
+            self.parakeet.update_property([Gtk.AccessibleProperty.LABEL], [text("models.parakeetUltra.name")])
+            row = Gtk.Box(spacing=12, margin_top=12, margin_bottom=12, margin_start=16, margin_end=16)
             self.parakeet_radio = Gtk.CheckButton(group=self._speech_group)
             self.parakeet_radio.update_property([Gtk.AccessibleProperty.LABEL], [text("models.parakeetUltra.name")])
             self.parakeet_radio.connect("toggled", self._speech_selected, MODEL_ID)
-            self.parakeet.add_prefix(self.parakeet_radio)
-            self.parakeet.set_activatable_widget(self.parakeet_radio)
-            controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, valign=Gtk.Align.CENTER)
+            row.append(first_line(self.parakeet_radio))
+            details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
+            details.append(Gtk.Label(label=text("models.parakeetUltra.name"), xalign=0, css_classes=["heading"]))
+            details.append(
+                Gtk.Label(
+                    label=text("models.parakeetUltra.description.short"),
+                    wrap=True,
+                    xalign=0,
+                    css_classes=["dim-label", "caption"],
+                )
+            )
             self.parakeet_status = Gtk.Label(xalign=0)
-            controls.append(self.parakeet_status)
+            details.append(self.parakeet_status)
             self.parakeet_progress = Gtk.ProgressBar()
             self.parakeet_progress.update_property(
                 [Gtk.AccessibleProperty.LABEL],
                 [text("models.downloading.a11y", model=text("models.parakeetUltra.name"))],
             )
-            controls.append(self.parakeet_progress)
-            self.parakeet.add_suffix(controls)
-            self.parakeet_action = Gtk.Button(valign=Gtk.Align.CENTER)
+            details.append(self.parakeet_progress)
+            row.append(details)
+            self.parakeet_action = first_line(Gtk.Button())
             self.parakeet_action.connect("clicked", self._model_action)
-            self.parakeet.add_suffix(self.parakeet_action)
+            row.append(self.parakeet_action)
+            self.parakeet.set_child(row)
             speech.add(self.parakeet)
             self.model_line = Gtk.Label(wrap=True, xalign=0, css_classes=["dim-label"])
             speech.add(self.model_line)
@@ -205,6 +283,8 @@ class SettingsDialog(Adw.PreferencesDialog):
             self.render_models()
         page.add(speech)
         self._speakers_models(page)
+        self.transcription_footnote = footnote("settings.transcription.footnote")
+        page.add(self.transcription_footnote)
         # Source/unsupported-architecture builds never claim an absent bundle.
         self.whistle.set_visible(self.app.writing_available)
 
@@ -254,10 +334,12 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         details.append(self.nemotron_progress)
         row.append(details)
-        self.nemotron_remove = Gtk.Button(label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False)
+        self.nemotron_remove = Gtk.Button(
+            label=text("models.remove"), valign=Gtk.Align.START, css_classes=["first-line"], visible=False
+        )
         self.nemotron_remove.connect("clicked", lambda *_: self._remove_optional(self.app.diarization_models))
         row.append(self.nemotron_remove)
-        self.nemotron_action = Gtk.Button(valign=Gtk.Align.CENTER)
+        self.nemotron_action = Gtk.Button(valign=Gtk.Align.START, css_classes=["first-line"])
         self.nemotron_action.connect("clicked", self._nemotron_action)
         row.append(self.nemotron_action)
         self.nemotron.set_child(row)
@@ -280,7 +362,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         details.append(title)
         details.append(
             Gtk.Label(
-                label=text("models.recogniseVoices.description.short"),
+                label=text("settings.phone.speakers.recognise.subtitle"),
                 xalign=0,
                 wrap=True,
                 css_classes=["dim-label", "caption"],
@@ -294,10 +376,14 @@ class SettingsDialog(Adw.PreferencesDialog):
         details.append(self.voice_status)
         details.append(self.voice_progress)
         row.append(details)
-        self.voice_remove = Gtk.Button(label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False)
+        self.voice_remove = Gtk.Button(
+            label=text("models.remove"), valign=Gtk.Align.START, css_classes=["first-line"], visible=False
+        )
         self.voice_remove.connect("clicked", lambda *_: self._remove_optional(self.app.voice_models))
         row.append(self.voice_remove)
-        self.voice_action = Gtk.Button(label=text("models.download"), valign=Gtk.Align.CENTER)
+        self.voice_action = Gtk.Button(
+            label=text("models.download"), valign=Gtk.Align.START, css_classes=["first-line"]
+        )
         self.voice_action.connect("clicked", self._voice_action)
         row.append(self.voice_action)
         self.recognise.set_child(row)
@@ -312,7 +398,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         self.settings.bind("remember-voices", self.remember_default, "active", Gio.SettingsBindFlags.DEFAULT)
         self.remember_default.connect("notify::active", self._remember_default_changed)
-        group.add(self.remember_default)
+        group.add(first_line_switch(self.remember_default))
         self._saved_voices_row(group)
         page.add(group)
         self.render_diarization()
@@ -366,10 +452,11 @@ class SettingsDialog(Adw.PreferencesDialog):
         snapshot = self.app.voice_store.snapshot()
         count = len(snapshot["voices"])
         if hasattr(self, "saved_voices_row"):
+            # D107 §1: the Saved voices wording, "Voiceprints are made on this computer."
             self.saved_voices_row.set_subtitle(
-                plural("settings.transcription.savedVoices.summary", count)
+                plural("settings.transcription.savedVoices.summary.madeOn", count)
                 if count
-                else text("settings.transcription.savedVoices.summary.none")
+                else text("settings.transcription.savedVoices.summary.madeOn.none")
             )
         if self.saved_voices_page is not None:
             self.saved_voices_page.refresh()
@@ -540,19 +627,27 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.model_line.set_visible(bool(line))
 
     def _library(self):
+        # D107 §1: two sections. "Library folder": the folder card, the Trash caption under it.
         page = self.pages["library"]
-        group = Adw.PreferencesGroup(description=text("settings.library.folder.descriptionShort"))
+        group = Adw.PreferencesGroup(
+            title=text("settings.library.folder.title"), description=text("settings.library.folder.descriptionShort")
+        )
         page.add(group)
-        self.folder = Adw.ActionRow(title=text("settings.library.folder.title"), use_markup=False, subtitle_lines=0)
-        self.show_folder = Gtk.Button(label=text("settings.library.show"), valign=Gtk.Align.CENTER)
+        self.folder = Adw.ActionRow(use_markup=False, subtitle_lines=0)
+        self.show_folder = Gtk.Button(
+            label=text("settings.library.show"), valign=Gtk.Align.START, css_classes=["first-line"]
+        )
         self.show_folder.connect("clicked", lambda *_: self._show_folder())
-        self.move = Gtk.Button(label=text("settings.library.move"), valign=Gtk.Align.CENTER)
+        self.move = Gtk.Button(label=text("settings.library.move"), valign=Gtk.Align.START, css_classes=["first-line"])
         self.move.connect("clicked", lambda *_: self._choose_folder())
         self.move.set_sensitive(True)
         self.move.set_visible(not self.app.in_flatpak)
         self.folder.add_suffix(self.show_folder)
         self.folder.add_suffix(self.move)
         group.add(self.folder)
+        # D101 §3: GNOME keeps its in-app Trash; the caption says how to restore (Help keeps help.trash.body).
+        self.deleted_caption = caption("settings.library.deleted.caption")
+        group.add(self.deleted_caption)
         self.move_lines = Adw.PreferencesGroup(visible=False)  # shown only while a move has lines
         page.add(self.move_lines)
         self._move_rows = []
@@ -561,35 +656,21 @@ class SettingsDialog(Adw.PreferencesDialog):
         self._stats_key = None
         self._stats_future = None
         self._stats_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-library-stats")
+        # "Keeping a copy": Export all as ZIP, with the backup caption under the card.
         copy = Adw.PreferencesGroup(title=text("settings.library.group.keepingCopy"))
         page.add(copy)
-        copy.add(
-            Adw.ActionRow(
-                title=text("settings.library.backUp.title"),
-                subtitle=text("settings.library.backUp.subtitle"),
-                use_markup=False,
-                subtitle_lines=0,
-            )
-        )
         self.zip_row = Adw.ActionRow(
-            title=text("export.zip.all"), subtitle=text("settings.library.zip.subtitle"), use_markup=False
+            title=text("settings.library.zip.title"), subtitle=text("settings.library.zip.subtitle"), use_markup=False
         )
         self.zip_row.set_subtitle_lines(0)
-        self.zip_button = Gtk.Button(label=text("common.exportEllipsis"), valign=Gtk.Align.CENTER, sensitive=False)
+        self.zip_button = Gtk.Button(
+            label=text("common.exportEllipsis"), valign=Gtk.Align.START, css_classes=["first-line"], sensitive=False
+        )
         self.zip_button.connect("clicked", self._export_zip)
         self.zip_row.add_suffix(self.zip_button)
         copy.add(self.zip_row)
-        deleted = Adw.PreferencesGroup(title=text("settings.library.group.deleted"))
-        page.add(deleted)
-        # D103 §7: GNOME kept its in-app Trash (D101 §3), so the row says how to restore from it.
-        deleted.add(
-            Adw.ActionRow(
-                title=text("settings.library.deleted.title"),
-                subtitle=text("help.trash.body"),
-                use_markup=False,
-                subtitle_lines=0,
-            )
-        )
+        self.backup_caption = caption("settings.library.backUp.caption")
+        copy.add(self.backup_caption)
 
     def _library_window(self):
         windows = [self.app.get_active_window(), *self.app.get_windows()]
@@ -658,58 +739,148 @@ class SettingsDialog(Adw.PreferencesDialog):
         return False
 
     def _browser(self):
-        group = Adw.PreferencesGroup(description=text("companion.bodyShort"))
-        self.pages["browserCompanion"].add(group)
+        # D107 §1: heading and description above the companion card; "Works with…" in the card.
+        page = self.pages["browserCompanion"]
+        group = Adw.PreferencesGroup(title=text("settings.browser.heading"), description=text("settings.browser.body"))
+        page.add(group)
         self.browser = Adw.ActionRow(
             title=text("settings.browser.status.notSetUp"),
             subtitle=text("companion.worksWith"),
             use_markup=False,
             subtitle_lines=0,
         )
+        self.browser_dot = status_dot(connected=False)
+        self.browser.add_prefix(self.browser_dot)
         setup = self.browser_setup = Gtk.Button(
             label=text("common.tryAgain"),
-            valign=Gtk.Align.CENTER,
+            valign=Gtk.Align.START,
+            css_classes=["first-line"],
             visible=False,
         )
         setup.connect("clicked", self.app.retry_browser_connection)
         self.browser.add_suffix(setup)
-        self.browser_add = Gtk.Button(label=text("browser.state.addGeneric"), valign=Gtk.Align.CENTER, visible=False)
+        self.browser_add = Gtk.Button(
+            label=text("browser.state.addGeneric"), valign=Gtk.Align.START, css_classes=["first-line"], visible=False
+        )
         self.browser_add.connect("clicked", lambda *_: self.app.on_companion_add(parent=self))
         self.browser.add_suffix(self.browser_add)
         self.browser_add_local = Gtk.Button(
-            label=text("companion.local.add"), valign=Gtk.Align.CENTER, css_classes=["flat"], visible=False
+            label=text("companion.local.add"),
+            valign=Gtk.Align.START,
+            css_classes=["flat", "first-line"],
+            visible=False,
         )
         self.browser_add_local.connect("clicked", lambda *_: self.app.on_companion_add(parent=self, local=True))
         self.browser.add_suffix(self.browser_add_local)
+        # New in D107: Remove… opens the browser's Extensions page; Cassini can't remove the extension itself.
+        self.browser_remove = Gtk.Button(
+            label=text("settings.browser.remove"), valign=Gtk.Align.START, css_classes=["first-line"], visible=False
+        )
+        self.browser_remove.connect("clicked", self._remove_companion)
+        self.browser.add_suffix(self.browser_remove)
         group.add(self.browser)
-        without = Adw.PreferencesGroup(title=text("companion.without.heading"))
-        self.pages["browserCompanion"].add(without)
-        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        for key in ("companion.without.body", "companion.privacy"):
-            lines.append(Gtk.Label(label=text(key), wrap=True, xalign=0, css_classes=["dim-label"]))
-        without.add(lines)
+        # Shown after Remove…: the one-line how-to, then where the copied address goes (D39.1).
+        self.remove_help = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, visible=False)
+        self.remove_help.append(caption(REMOVE_HOW_TO))
+        self.remove_paste = caption("companion.local.extensionsPasteHint")
+        self.remove_help.append(self.remove_paste)
+        group.add(self.remove_help)
+        self._removing = False
+        page.add(footnote("companion.privacy"))
         self.render_browser()
+
+    def _companion(self):
+        """(state, connected, set up, names): the controller's view, else the broker's last answer."""
+        controller = self.app.browser_connection
+        available = self.app.browser_companion_available
+        if controller and available:
+            state = controller.snapshot()
+            connected = state["phase"] == "connected"
+            return state, connected, connected or bool(state.get("everConnected")), state["names"]
+        names = self._snapshot.get("browserNames", []) if available else []
+        connected = available and bool(self._snapshot.get("connectedBrowsers", self._snapshot.get("browsers")))
+        return None, connected, connected, names
 
     def render_browser(self):
         from .browser_connection import add_text, state_text
+        from .companion_bundle import store_listing_public
 
-        controller = self.app.browser_connection
-        available = self.app.browser_companion_available
-        state = controller.snapshot() if controller and available else None
-        self.browser.set_title(state_text(state))
+        state, connected, set_up, names = self._companion()
+        if connected:
+            title = (
+                text("settings.browser.status.connected", browser=", ".join(names))
+                if names
+                else text("settings.browser.status.connectedGeneric")
+            )
+        elif state is None or (state["phase"] == "waiting" and not set_up):
+            title = text("settings.browser.status.notSetUp")
+        else:
+            title = state_text(state)
+        self.browser.set_title(title)
+        set_dot(self.browser_dot, connected)
         self.browser_setup.set_visible(bool(state and state["phase"] == "failed"))
         self.browser_add.set_visible(bool(state and state["phase"] in ("waiting", "needsBrowser")))
         self.browser_add.set_sensitive(bool(state and state["browser"]))
-        from .companion_bundle import store_listing_public
-
         browser = state.get("browser") if state else None
         # L-58: one "Add to {browser}" button; before the store listing is public it is D39's local add.
         self.browser_add.set_label(
             text("companion.addTo", browser=browser.name) if browser and store_listing_public() else add_text(state)
         )
-
-        self.browser_add_local.set_visible(bool(state and (store_listing_public() or state["phase"] == "connected")))
+        self.browser_add_local.set_visible(bool(state and store_listing_public() and not connected))
         self.browser_add_local.set_sensitive(bool(state and state["browser"]))
+        self.browser_remove.set_visible(connected)
+        self.browser_remove.set_sensitive(not self._removing)
+        if not connected:
+            self.remove_help.set_visible(False)
+        self.render_browser_meetings(title, connected, set_up)
+
+    def render_browser_meetings(self, title, connected, set_up):
+        # D107 §1: connected, a green dot and "Connected to Chrome" (no full stop); never set up,
+        # "Needs the browser companion · Set it up" and the switch greyed.
+        self.browser_meetings_dot.set_visible(connected)
+        self.browser_set_up.set_visible(not set_up)
+        if connected:
+            self.browser_meetings_status.set_label(title)
+        elif not set_up:
+            self.browser_meetings_status.set_label(text("settings.recording.group.browser.subtitle") + " ·")
+        else:
+            self.browser_meetings_status.set_label(title)
+        self._browser_set_up = set_up
+        self._sync_automatic()
+
+    def _sync_automatic(self):
+        self.automatic.set_sensitive(getattr(self, "_browser_set_up", False) and not self._writing)
+
+    def _remove_companion(self, *_):
+        """Copy the Extensions page address and open a new tab (D39.1); the person removes it there."""
+        from . import companion
+
+        state, _connected, _set_up, names = self._companion()
+        browsers = list(getattr(self.app.browser_connection, "browsers", ()) or ())
+        browser = next((b for b in browsers if b.name in names), state.get("browser") if state else None)
+        self.remove_help.set_visible(True)
+        self.remove_paste.set_visible(browser is not None)
+        if browser is None or self._removing:
+            return
+        self.get_display().get_clipboard().set(companion.extensions_address(browser))
+        self.add_toast(Adw.Toast.new(text("companion.local.extensionsCopied")))
+        self._removing = True
+        self.browser_remove.set_sensitive(False)
+
+        def work():
+            try:
+                companion.check_browser_launch(companion.open_new_tab(browser))
+            except Exception as problem:  # The address is copied; the person can open the browser.
+                LOG.warning("Could not open the browser: %s", problem)
+            GLib.idle_add(self._remove_opened)
+
+        threading.Thread(target=work, name="cassini-open-extensions", daemon=True).start()
+
+    def _remove_opened(self):
+        self._removing = False
+        if not self.closed:
+            self.browser_remove.set_sensitive(True)
+        return GLib.SOURCE_REMOVE
 
     def _show_folder(self):
         root = library_root()
@@ -742,17 +913,19 @@ class SettingsDialog(Adw.PreferencesDialog):
 
     def _request(self, action="status", **values):
         if not self.app.browser_companion_available:
-            self.browser.set_title(text("settings.browser.status.notSetUp"))
+            self.render_browser()
             return
         if self.closed:
             return
         if self._future:
             if action != "status":
                 self._queued = (action, values)
-                self.automatic.set_sensitive(False)
+                self._writing = True
+                self._sync_automatic()
             return
         if action != "status":
-            self.automatic.set_sensitive(False)
+            self._writing = True
+            self._sync_automatic()
 
         self._future = self.executor.submit(self._call, action, values)
         self._future.add_done_callback(lambda future: GLib.idle_add(self._received, future))
@@ -789,19 +962,11 @@ class SettingsDialog(Adw.PreferencesDialog):
             LOG.exception("Could not update browser preferences")
         self._updating = True
         self.automatic.set_active(self._snapshot.get("autoRecord", False))
-        self.automatic.set_sensitive(True)
+        self._writing = False
         self._updating = False
-        names = self._snapshot.get("browserNames", [])
         if self.app.browser_connection:
             self.app.browser_connection.observe(self._snapshot)
-            self.render_browser()
-        elif self._snapshot.get("connectedBrowsers", self._snapshot.get("browsers")):
-            if names:
-                self.browser.set_title(text("settings.browser.status.connected", browser=", ".join(names)))
-            else:
-                self.browser.set_title(text("settings.browser.status.connectedGeneric"))
-        else:
-            self.browser.set_title(text("settings.browser.status.notSetUp"))
+        self.render_browser()
         if self._queued:
             (action, values), self._queued = self._queued, None
             self._request(action, **values)
@@ -835,13 +1000,12 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.test_button.set_sensitive(allowed)
 
     def render_folder(self):
+        # D107 §1: the card is the folder ("Music › Cassini") over its meetings and size.
+        self.folder.set_title(path_caption(library_root()))
         if getattr(self, "_moving", False):
             self.folder.set_subtitle(text("settings.library.move.moving"))
             return
-        lines = [path_caption(library_root())]
-        if self.library_stats:
-            lines.append(self.library_stats)
-        self.folder.set_subtitle("\n".join(lines))
+        self.folder.set_subtitle(self.library_stats or "")
 
     def render_moves(self, state, *, moving=False, error=None):
         self._moving = moving

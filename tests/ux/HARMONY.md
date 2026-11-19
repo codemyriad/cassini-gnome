@@ -289,7 +289,7 @@ Until an app's slice merges, that app keeps D29 (system Trash) unchanged. After 
 - In-meeting find (`Find in this meeting`, `Ctrl+F` / `⌘F`) is restored on both desktop apps inside the open meeting pane (L-44), matching the phones; clicking a Library search result opens the meeting on the matching line.
 - Removed on both platforms: New Window, New Recording…, Browser Meetings shortcut, Follow along, Jump to current,
   Inspector, speed shortcuts, 5 s and 15 s skips, Ctrl+E.
-- The GNOME shortcuts dialog and the Mac menus list exactly this table. The GNOME dialog groups the rows as General and Listening (`L-66`, D-1046, `D103` §7).
+- The GNOME shortcuts dialog and the Mac menus list exactly this table. The GNOME dialog groups the rows under two titles (`L-66`, D-1046, `D103` §7; membership approved by Alex, `D107` §2): **General** (`shortcuts.group.general`: Record, Record anywhere, Find, Import audio…, Export…, Preferences, Back to Library, Close window, Quit, Move to Trash, Delete permanently…, Help) and **Listening** (`shortcuts.group.listening`: Play/Pause, Back and Forward 10 s, Next / previous turn, Next / previous speaker, Play this turn, Stop listening). Same rows and keys as the table.
 
 ## 9. Export (boards 21/22)
 

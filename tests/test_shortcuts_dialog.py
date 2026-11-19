@@ -2,7 +2,8 @@
 """L-66 (D-1046): the Keyboard shortcuts dialog lists exactly HARMONY section 8.
 
 Parses the GNOME column of the vendored cassini-ux contract and compares it,
-row for row and in order, with the accelerators in shortcuts-dialog.ui. Set
+row for row and in order, with the accelerators in shortcuts-dialog.ui, whose
+rows sit in two titled groups, General and Listening (D107 §2). Set
 CASSINI_UX_DIR to a cassini-ux checkout to compare against it instead.
 """
 
@@ -14,7 +15,7 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from cassini_talk.shortcuts_table import SUBTITLES, TITLES
+from cassini_talk.shortcuts_table import GROUPS, SUBTITLES, TITLES
 
 ROOT = Path(__file__).resolve().parents[1]
 VENDORED = ROOT / "tests/ux"  # pinned by build-aux/check-ux-vectors.py
@@ -70,17 +71,30 @@ def gtk_accelerators(gnome_cell):
     return accelerators
 
 
-def dialog_items():
+def dialog_sections():
+    """[(section id, [(item id, accelerators), ...]), ...] in dialog order."""
     tree = ET.parse(ROOT / "src/shortcuts-dialog.ui")
-    items = []
-    for item in tree.iter("object"):
-        if item.get("class") == "AdwShortcutsItem":
-            properties = {p.get("name"): (p.text or "") for p in item.findall("property")}
-            assert "action-name" not in properties, "List the contract accelerator, not whatever an action has bound"
-            items.append((item.get("id"), properties["accelerator"].split()))
-    sections = [o for o in tree.iter("object") if o.get("class") == "AdwShortcutsSection"]
-    assert len(sections) == 1, "HARMONY section 8 is one table in one order"
-    return items
+    sections = []
+    for section in tree.iter("object"):
+        if section.get("class") != "AdwShortcutsSection":
+            continue
+        items = []
+        for item in section.iter("object"):
+            if item.get("class") == "AdwShortcutsItem":
+                properties = {p.get("name"): (p.text or "") for p in item.findall("property")}
+                assert "action-name" not in properties, (
+                    "List the contract accelerator, not whatever an action has bound"
+                )
+                items.append((item.get("id"), properties["accelerator"].split()))
+        sections.append((section.get("id"), items))
+    return sections
+
+
+def dialog_items():
+    """Every row in HARMONY table order, whichever group shows it."""
+    items = dict(item for _section, rows in dialog_sections() for item in rows)
+    assert set(items) == set(TITLES), "Every dialog row has a catalog title"
+    return [(name, items[name]) for name in TITLES]
 
 
 def test_vendored_harmony_matches_its_pin():
@@ -106,6 +120,30 @@ def test_dialog_lists_exactly_harmony_section_8_in_order():
     assert [name for name, _ in items] == list(TITLES), "Every dialog row has a catalog title, in table order"
 
 
+def test_dialog_shows_general_then_listening_each_in_table_order():
+    """D107 §2: two titled groups with HARMONY §8's membership; same 19 rows and keys."""
+    sections = dialog_sections()
+    assert [name for name, _ in sections] == list(GROUPS) == ["general", "listening"]
+    for name, rows in sections:
+        assert tuple(item for item, _ in rows) == GROUPS[name][1], name
+        order = [list(TITLES).index(item) for item, _ in rows]
+        assert order == sorted(order), f"{name} keeps the table order"
+    assert sum(len(rows) for _, rows in sections) == len(TITLES) == 19
+    listening = set(GROUPS["listening"][1])
+    assert listening == {
+        "play_pause",
+        "skip_back",
+        "skip_forward",
+        "listen_turns",
+        "listen_speakers",
+        "play_turn",
+        "listen_stop",
+    }
+    section = harmony().split("\n## 8. Keyboard\n", 1)[1].split("\n## 9.", 1)[0]
+    for name, (identifier, _items) in GROUPS.items():
+        assert f"`{identifier}`" in section, f"HARMONY §8 names the {name} group"
+
+
 def test_withheld_rows_are_still_in_the_contract():
     actions = {action for action, _gnome in keyboard_rows(harmony())}
     assert actions >= WITHHELD and set(ITEMS_PER_ROW) <= actions
@@ -113,7 +151,9 @@ def test_withheld_rows_are_still_in_the_contract():
 
 def test_titles_come_from_the_shared_catalog():
     catalog = {e["id"]: e["en"] for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_text())["entries"]}
-    for identifier in [*TITLES.values(), *SUBTITLES.values()]:
+    groups = [identifier for identifier, _items in GROUPS.values()]
+    assert [catalog[identifier] for identifier in groups] == ["General", "Listening"]
+    for identifier in [*TITLES.values(), *SUBTITLES.values(), *groups]:
         assert identifier is None or identifier in catalog, identifier
     assert catalog[TITLES["import"]] == "Import audio…" and catalog[TITLES["export"]] == "Export…"
 

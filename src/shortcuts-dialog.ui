@@ -3,20 +3,31 @@
   SPDX-License-Identifier: GPL-3.0-or-later
 
   L-66: exactly the GNOME column of cassini-ux contract/HARMONY.md section 8,
-  in table order (vendored in tests/ux; tests/test_shortcuts_dialog.py).
-  Titles come from the shared catalog (cassini_talk/shortcuts_table.py).
+  grouped as General and Listening (D107 §2), each group in table order
+  (vendored in tests/ux; tests/test_shortcuts_dialog.py). Titles, including
+  the two group titles, come from the shared catalog (cassini_talk/shortcuts_table.py).
 -->
 <interface>
   <requires lib="Adw" version="1.0"/>
   <object class="AdwShortcutsDialog" id="shortcuts_dialog">
     <child>
-      <object class="AdwShortcutsSection">
+      <object class="AdwShortcutsSection" id="general">
         <child><object class="AdwShortcutsItem" id="record"><property name="accelerator">&lt;Control&gt;r</property></object></child>
         <child><object class="AdwShortcutsItem" id="record_anywhere"><property name="accelerator">&lt;Control&gt;&lt;Alt&gt;r</property></object></child>
         <child><object class="AdwShortcutsItem" id="find"><property name="accelerator">&lt;Control&gt;f</property></object></child>
         <child><object class="AdwShortcutsItem" id="import"><property name="accelerator">&lt;Control&gt;o</property></object></child>
         <child><object class="AdwShortcutsItem" id="export"><property name="accelerator">&lt;Control&gt;&lt;Shift&gt;e</property></object></child>
         <child><object class="AdwShortcutsItem" id="preferences"><property name="accelerator">&lt;Control&gt;comma</property></object></child>
+        <child><object class="AdwShortcutsItem" id="back_library"><property name="accelerator">&lt;Alt&gt;Left</property></object></child>
+        <child><object class="AdwShortcutsItem" id="close_window"><property name="accelerator">&lt;Control&gt;w</property></object></child>
+        <child><object class="AdwShortcutsItem" id="quit"><property name="accelerator">&lt;Control&gt;q</property></object></child>
+        <child><object class="AdwShortcutsItem" id="move_to_trash"><property name="accelerator">Delete</property></object></child>
+        <child><object class="AdwShortcutsItem" id="delete_permanently"><property name="accelerator">Delete</property></object></child>
+        <child><object class="AdwShortcutsItem" id="help"><property name="accelerator">F1</property></object></child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection" id="listening">
         <child><object class="AdwShortcutsItem" id="play_pause"><property name="accelerator">space</property></object></child>
         <child><object class="AdwShortcutsItem" id="skip_back"><property name="accelerator">Left</property></object></child>
         <child><object class="AdwShortcutsItem" id="skip_forward"><property name="accelerator">Right</property></object></child>
@@ -24,12 +35,6 @@
         <child><object class="AdwShortcutsItem" id="listen_speakers"><property name="accelerator">&lt;Alt&gt;&lt;Shift&gt;Down &lt;Alt&gt;&lt;Shift&gt;Up</property></object></child>
         <child><object class="AdwShortcutsItem" id="play_turn"><property name="accelerator">&lt;Shift&gt;Return</property></object></child>
         <child><object class="AdwShortcutsItem" id="listen_stop"><property name="accelerator">Escape</property></object></child>
-        <child><object class="AdwShortcutsItem" id="back_library"><property name="accelerator">&lt;Alt&gt;Left</property></object></child>
-        <child><object class="AdwShortcutsItem" id="close_window"><property name="accelerator">&lt;Control&gt;w</property></object></child>
-        <child><object class="AdwShortcutsItem" id="quit"><property name="accelerator">&lt;Control&gt;q</property></object></child>
-        <child><object class="AdwShortcutsItem" id="move_to_trash"><property name="accelerator">Delete</property></object></child>
-        <child><object class="AdwShortcutsItem" id="delete_permanently"><property name="accelerator">Delete</property></object></child>
-        <child><object class="AdwShortcutsItem" id="help"><property name="accelerator">F1</property></object></child>
       </object>
     </child>
   </object>

@@ -1983,9 +1983,11 @@ class CassiniApplication(Adw.Application):
         if window is None or self.shortcuts_dialog is not None:
             return
         builder = Gtk.Builder.new_from_resource(RESOURCE + "/shortcuts-dialog.ui")
-        from .shortcuts_table import SUBTITLES, TITLES
+        from .shortcuts_table import GROUPS, SUBTITLES, TITLES
         from .strings import text
 
+        for name, (identifier, _items) in GROUPS.items():
+            builder.get_object(name).set_title(text(identifier))
         for name, identifier in TITLES.items():
             item = builder.get_object(name)
             item.set_title(text(identifier) if identifier else _("Play or Pause"))

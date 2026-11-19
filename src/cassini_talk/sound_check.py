@@ -185,22 +185,41 @@ def judge_streams(directory, tracks, refusals, unheard=()):
     return outcomes
 
 
-def pill_text(outcome):
-    """D104 §2: the result pill of one stream, Working or No sound heard."""
+def not_allowed(kind, outcome):
+    """D107 §4: the microphone refused for permission. GNOME asks nothing for computer sound."""
+    return kind == "microphone" and outcome.state == REFUSED and outcome.code == "permissionDenied"
+
+
+def pill_text(outcome, kind="microphone"):
+    """D104 §2, D107 §4: Working, No sound heard, Not allowed or Couldn't start."""
     from .strings import text
 
-    return text("test.pill.working" if outcome.state == WORKING else "test.pill.silent")
+    if outcome.state == WORKING:
+        return text("test.pill.working")
+    if outcome.state == SILENT:
+        return text("test.pill.silent")
+    return text("test.pill.notAllowed" if not_allowed(kind, outcome) else "test.pill.couldNotStart")
 
 
-def refusal_line(kind, outcome):
-    """The D58 line of a refused stream (built, not drawn), else None."""
-    from .refusals import line
+def refused_line(outcomes):
+    """D107 §4 (strip 6b): the line under the title for a refused source, else None.
+
+    Returns (line, settings): settings is True when the line is followed by Open
+    Settings. The microphone comes first. A source that couldn't start keeps
+    details.sources.refused.deviceUnavailable until its own line is drawn
+    (catalog note on test.pill.couldNotStart); no other details.sources.refused.*
+    line is used here.
+    """
     from .strings import text
 
-    if outcome.state != REFUSED:
-        return None
-    key, _origin = line(outcome.refusal)
-    return text(key, source=text(STREAMS[kind]))  # Named as on the other lines.
+    for kind in KINDS:
+        outcome = outcomes.get(kind)
+        if outcome is None or outcome.state != REFUSED:
+            continue
+        if not_allowed(kind, outcome):
+            return text("test.refused.mic"), True
+        return text("details.sources.refused.deviceUnavailable", source=text(STREAMS[kind])), False
+    return None
 
 
 def heard(level):

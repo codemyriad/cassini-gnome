@@ -173,7 +173,7 @@ with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as clean
     from cassini_talk.settings_dialog import SettingsDialog
 
     settings = app.settings_dialog = SettingsDialog(app, service_path=path)
-    assert settings.browser.get_title() == "Waiting for the browser companion"
+    assert settings.browser.get_title() == "Not set up"  # D107 §1: never connected
     assert settings.browser_add.get_visible() and not settings.browser_setup.get_visible()
     dialog = app.companion_setup = CompanionSetup(app, service_path=path)
     setup_dialogs.append(dialog)
@@ -337,12 +337,15 @@ with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as clean
         companion_bundle.store_listing_public = lambda: False
         dialog.render()
         settings.render_browser()
-        assert dialog.local_add.get_visible() and settings.browser_add_local.get_visible()
+        assert dialog.local_add.get_visible()
+        # D107 §1: Preferences' connected card is a green dot and Remove… only.
+        assert not settings.browser_add_local.get_visible() and settings.browser_remove.get_visible()
+        assert settings.browser_dot.has_css_class("status-dot-connected")
         dialog.force_close()
         until(lambda: dialog.closed)
         settings.present(window)
         until(settings.get_mapped)
-        settings.browser_add_local.emit("clicked")
+        app.on_companion_add(parent=settings, local=True)
         dialog = app.companion_setup
         setup_dialogs.append(dialog)
         dialog.service_path = path

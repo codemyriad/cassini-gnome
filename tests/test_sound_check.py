@@ -43,7 +43,7 @@ from cassini_talk.sound_check import (  # noqa: E402
     judge_streams,
     make_folder,
     pill_text,
-    refusal_line,
+    refused_line,
     remove,
     sweep,
 )
@@ -208,17 +208,38 @@ def test_a_track_without_frames_is_no_sound_heard(tmp_path):
 
 
 def test_result_pills_and_refusal_lines_use_the_catalog():
-    """D104 §2: Working / No sound heard pills; a refused stream keeps its D58 line."""
+    """D104 §2 pills; D107 §4: a refused source's pill and the one line under the title."""
     with using_language("en"):
         assert pill_text(Outcome(WORKING)) == "Working"
         assert pill_text(Outcome(SILENT)) == "No sound heard"
-        assert refusal_line("microphone", Outcome(WORKING)) is None
-        assert refusal_line("system", Outcome(SILENT)) is None
-        refused = Outcome(REFUSED, entry(0, "me", "deviceUnavailable"))
-        assert pill_text(refused) == "No sound heard"
-        assert refusal_line("microphone", refused) == "Your microphone: couldn’t be started."
-        denied = Outcome(REFUSED, entry(0, "others", "permissionDenied"))
-        assert refusal_line("system", denied) == "This computer’s sound: access wasn’t allowed."
+        assert refused_line({"microphone": Outcome(WORKING), "system": Outcome(SILENT)}) is None
+        unavailable = Outcome(REFUSED, entry(0, "me", "deviceUnavailable"))
+        assert pill_text(unavailable) == "Couldn’t start"
+        # Couldn't start keeps the deviceUnavailable line until its own is drawn; no Open Settings.
+        assert refused_line({"microphone": unavailable, "system": Outcome(WORKING)}) == (
+            "Your microphone: couldn’t be started.",
+            False,
+        )
+        denied = Outcome(REFUSED, entry(0, "me", "permissionDenied"))
+        assert pill_text(denied, "microphone") == "Not allowed"
+        assert refused_line({"microphone": denied, "system": Outcome(WORKING)}) == (
+            "Your microphone isn’t allowed.",
+            True,
+        )
+        # The microphone's line wins when both are refused.
+        others = Outcome(REFUSED, entry(0, "others", "deviceUnavailable"))
+        assert refused_line({"microphone": denied, "system": others})[0] == "Your microphone isn’t allowed."
+        assert refused_line({"microphone": Outcome(WORKING), "system": others}) == (
+            "This computer’s sound: couldn’t be started.",
+            False,
+        )
+        # GNOME asks nothing for computer sound: it is never "Not allowed" here.
+        others_denied = Outcome(REFUSED, entry(0, "others", "permissionDenied"))
+        assert pill_text(others_denied, "system") == "Couldn’t start"
+        folder = Path(sound_check.__file__).parent
+        for name in ("sound_check.py", "sound_check_dialog.py"):
+            for code in ("permissionDenied", "startRejected"):
+                assert "details.sources.refused." + code not in (folder / name).read_text(encoding="utf-8")
     with using_language("it"):
         assert pill_text(Outcome(SILENT)) == "Nessun suono rilevato"
 
