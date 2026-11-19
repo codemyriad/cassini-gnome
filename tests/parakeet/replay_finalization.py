@@ -195,7 +195,13 @@ def run(args, library, live):
             tracks[kind] = wav
         system = tracks["system"]
         duration = max(w.getnframes() / w.getframerate() for w in tracks.values())
-        env = WhistleClient(args.bundle).worker_environment() if live else None
+        if live:
+            client = (
+                ParakeetClient(args.bundle, args.parakeet, args.runtime)
+                if args.parakeet
+                else WhistleClient(args.bundle)
+            )
+            env = client.worker_environment()
         started = time.monotonic()
         worker = None
         if live:
