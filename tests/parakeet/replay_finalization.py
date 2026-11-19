@@ -35,7 +35,7 @@ from cassini_talk.speech_threads import background_worker_priority
 from cassini_talk.transcription import TranscriptionQueue
 from cassini_talk.voice_store import VoiceStore
 from cassini_talk.whistle_client import WhistleClient
-from cassini_talk.whistle_worker import PRIVACY, verify_bundle
+from cassini_talk.whistle_worker import PRIVACY, onnxruntime_dir, verify_bundle, verify_onnxruntime
 
 WATERMARK = struct.Struct("<Q")
 
@@ -117,6 +117,8 @@ def precompute(args, path):
     import numpy as np
 
     background_worker_priority()
+    if runtime := onnxruntime_dir():
+        sys.path.insert(0, str(verify_onnxruntime(runtime)))
     with wave.open(str(path)) as wav:
         rate, channels = wav.getframerate(), wav.getnchannels()
     gate = speech.SpeechGate(speech.SpeechDetector(args.bundle / "silero_vad.onnx"))
@@ -373,9 +375,18 @@ def main():
     parser.add_argument("--microphone", type=Path, help="Record a simultaneous mic track and finalize it at Stop")
     parser.add_argument("--reuse-first", action="store_true", help="Reverse order to expose warm-cache effects")
     parser.add_argument("--follow", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--expect-no-hits", action="store_true", help="Check the negative control on a warped speech fixture"
+    )
     args = parser.parse_args()
     if args.fixed_clock_interval and args.native_drift_ppm is None:
         parser.error("--fixed-clock-interval requires --native-drift-ppm")
+    if args.expect_no_hits and (not args.native_drift_ppm or args.fixed_clock_interval):
+        parser.error("--expect-no-hits requires the raw, nonzero-drift control")
+    if args.fixed_clock_interval:
+        with wave.open(str(args.audio)) as audio:
+            if audio.getnframes() / audio.getframerate() <= 61:
+                parser.error("The fixed interval needs over 61 seconds of system audio")
     os.environ.update(PRIVACY)
     verify_bundle(args.bundle)
     if args.follow:
@@ -407,6 +418,10 @@ def main():
         raise SystemExit("Published Opus payload digest differs")
     if embedded != other_embedded or words != other_words or turns != other_turns:
         raise SystemExit("Final words, speakers or turns differ")
+    if args.expect_no_hits and (
+        not live["completedBeforeStop"] or live["postStopCacheMisses"] != batch["postStopCacheMisses"]
+    ):
+        raise SystemExit("Expected nominal-clock candidates and zero hits on the warped speech fixture")
     if (args.fixed_clock_interval or not args.native_drift_ppm) and live["postStopCacheMisses"] >= batch[
         "postStopCacheMisses"
     ]:
