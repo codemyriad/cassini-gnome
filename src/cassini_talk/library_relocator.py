@@ -66,9 +66,13 @@ class LibraryRelocator:
             busy.add(recorder.session.directory)
         transcriber = self.app.transcriber
         if transcriber:
+            if hasattr(transcriber, "preempt_follower"):
+                transcriber.preempt_follower(drain=False, wait=False)
             with transcriber.lock:
                 busy.update(transcriber.pending)
                 busy.update(getattr(transcriber, "voice_pending", ()))
+                if getattr(transcriber, "_follow_directory", None) is not None:
+                    busy.add(transcriber._follow_directory)
         for window in self.app.get_windows():
             activity.update(getattr(window, "_activity", {}))
         editor = self.app.comfort.editor if self.app.comfort else None

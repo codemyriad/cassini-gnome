@@ -108,6 +108,8 @@ def emit(kind, **values):
 
 def main(bundle):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from cassini_talk.recognition_cache import whistle_model_identity
+    from cassini_talk.session_follower import StdinLineReader, run_follow_loop
     from cassini_talk.speech_threads import background_worker_priority
 
     background_worker_priority()
@@ -120,60 +122,86 @@ def main(bundle):
     sys.addaudithook(block_network)
     sys.path.insert(0, str(bundle / "wrapper.whl"))
     model = guarded_load(lambda: importlib.import_module("needle").Whistle(weights=bundle / "whistle.cact"))
-    emit("ready", pid=os.getpid(), threads=len(list(Path("/proc/self/task").iterdir())))
-    for line in iter(lambda: sys.stdin.buffer.readline(512 * 1024 + 1), b""):
-        if len(line) > 512 * 1024:
-            raise ValueError("Worker request exceeds limit")
-        message = json.loads(line)
-        if message.get("type") == "quit":
-            return 0
-        if message.get("type") == "voiceprints":
-            from cassini_talk.worker_voices import request
+    emit(
+        "ready",
+        pid=os.getpid(),
+        threads=len(list(Path("/proc/self/task").iterdir())),
+        modelIdentity=whistle_model_identity(bundle),
+    )
+    reader = StdinLineReader(sys.stdin)
+    detector = None
+    prefix_store = {}
+    try:
+        while line := reader.readline():
+            message = json.loads(line)
+            msg_type = message.get("type")
+            if msg_type == "quit":
+                return 0
+            if msg_type == "follow":
+                action, detector = run_follow_loop(
+                    model, bundle, message, emit, reader=reader, detector=detector, prefix_store=prefix_store
+                )
+                if action != "continue":
+                    return 0
+                continue
+            if msg_type == "follow-stop":
+                emit("follow-stopped", directory=message.get("directory"), segments=0, prefixes=len(prefix_store))
+                continue
+            if msg_type == "voiceprints":
+                from cassini_talk.worker_voices import request
 
-            request(message, emit)
-            continue
-        if message.get("type") == "pipeline":
-            tracks = message.get("tracks")
-            if not isinstance(tracks, list) or not 1 <= len(tracks) <= 64:
-                raise ValueError("Expected one to 64 capture tracks")
-            for track in tracks:
-                if (
-                    not isinstance(track, dict)
-                    or not isinstance(track.get("id"), str)
-                    or not isinstance(track.get("path"), str)
-                ):
-                    raise ValueError("Invalid capture track")
-            sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-            from cassini_talk.speech_pipeline import process_tracks
-            from cassini_talk.worker_diarization import complete, estimate
+                request(message, emit)
+                continue
+            if msg_type == "pipeline":
+                tracks = message.get("tracks")
+                if not isinstance(tracks, list) or not 1 <= len(tracks) <= 64:
+                    raise ValueError("Expected one to 64 capture tracks")
+                for track in tracks:
+                    if (
+                        not isinstance(track, dict)
+                        or not isinstance(track.get("id"), str)
+                        or not isinstance(track.get("path"), str)
+                    ):
+                        raise ValueError("Invalid capture track")
+                from cassini_talk.speech_pipeline import SpeechDetector, process_tracks
+                from cassini_talk.worker_diarization import complete, estimate
 
-            options = message.get("diarization")
-            summary = process_tracks(
-                model,
-                tracks,
-                bundle / "silero_vad.onnx",
-                emit,
-                extra_seconds=estimate(tracks, options),
-                recognition_cache=message.get("recognitionCache"),
-            )
-            summary = complete(summary, tracks, options, emit)
-            emit("complete", **summary)
-            continue
-        if message.get("type") != "transcribe" or not isinstance(message.get("path"), str):
-            raise ValueError("Expected transcribe request with local WAV path")
-        path = message["path"]
-        with wave.open(path, "rb") as audio:
-            if (audio.getnchannels(), audio.getsampwidth(), audio.getframerate(), audio.getcomptype()) != (
-                1,
-                2,
-                16000,
-                "NONE",
-            ) or not 0 < audio.getnframes() <= MAX_SECONDS * 16000:
-                raise ValueError("Expected at most 30 seconds of PCM16 mono 16 kHz")
-        started = time.monotonic()
-        result = model.transcribe(path, language=None)
-        emit("result", text=result["text"], pid=os.getpid(), seconds=time.monotonic() - started)
-    return 0
+                if detector is None:
+                    detector = SpeechDetector(bundle / "silero_vad.onnx")
+                options = message.get("diarization")
+                try:
+                    summary = process_tracks(
+                        model,
+                        tracks,
+                        bundle / "silero_vad.onnx",
+                        emit,
+                        extra_seconds=estimate(tracks, options),
+                        recognition_cache=message.get("recognitionCache"),
+                        detector=detector,
+                        prefix_store=prefix_store,
+                    )
+                finally:
+                    prefix_store.clear()
+                summary = complete(summary, tracks, options, emit)
+                emit("complete", **summary)
+                continue
+            if msg_type != "transcribe" or not isinstance(message.get("path"), str):
+                raise ValueError("Expected transcribe request with local WAV path")
+            path = message["path"]
+            with wave.open(path, "rb") as audio:
+                if (audio.getnchannels(), audio.getsampwidth(), audio.getframerate(), audio.getcomptype()) != (
+                    1,
+                    2,
+                    16000,
+                    "NONE",
+                ) or not 0 < audio.getnframes() <= MAX_SECONDS * 16000:
+                    raise ValueError("Expected at most 30 seconds of PCM16 mono 16 kHz")
+            started = time.monotonic()
+            result = model.transcribe(path, language=None)
+            emit("result", text=result["text"], pid=os.getpid(), seconds=time.monotonic() - started)
+        return 0
+    finally:
+        reader.close()
 
 
 if __name__ == "__main__":

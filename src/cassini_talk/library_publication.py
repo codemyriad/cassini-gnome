@@ -7,7 +7,9 @@ must remain held from its first checkpoint through publication, so a second
 process never finalizes its still-saving session.
 """
 
+import logging
 import os
+import threading
 from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +18,33 @@ from .export_audio import check_cancel
 from .library_v2 import journal
 from .library_v2.fsutil import fsync_dir
 
+LOG = logging.getLogger(__name__)
 _ENCODER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-library-publish")
+_PUBLISH_OBSERVERS_LOCK = threading.Lock()
+_PUBLISH_OBSERVERS: list = []
+
+
+def register_publish_observer(callback):
+    """Register a read-only listener notified when publish_stopped starts encoding."""
+    with _PUBLISH_OBSERVERS_LOCK:
+        if callback not in _PUBLISH_OBSERVERS:
+            _PUBLISH_OBSERVERS.append(callback)
+
+
+def unregister_publish_observer(callback):
+    with _PUBLISH_OBSERVERS_LOCK:
+        if callback in _PUBLISH_OBSERVERS:
+            _PUBLISH_OBSERVERS.remove(callback)
+
+
+def _notify_publish_started(directory):
+    with _PUBLISH_OBSERVERS_LOCK:
+        observers = tuple(_PUBLISH_OBSERVERS)
+    for callback in observers:
+        try:
+            callback(Path(directory))
+        except Exception:
+            LOG.exception("Publish observer failed; continuing audio publication")
 
 
 def submit_stopped(session, *, cancel=None):
@@ -75,6 +103,7 @@ def publish_stopped(session, *, cancel=None):
 
     record_capture(session.directory, session.manifest)
     check_cancel(cancel)
+    _notify_publish_started(session.directory)
     return finalize.finalize(root, session.manifest["id"], cancel=cancel)
 
 

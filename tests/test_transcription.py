@@ -834,8 +834,9 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
                             trackId=tracks[0]["id"],
                             cacheEntry=dict(
                                 key="b" * 64,
+                                sampleCount=16000,
                                 text="remarks.",
-                                words=[dict(startMs=400, endMs=800, text="remarks.")],
+                                relativeWords=[dict(startMs=400, endMs=800, text="remarks.")],
                                 language="en",
                             ),
                         )
@@ -857,8 +858,9 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
                         trackId=tracks[0]["id"],
                         cacheEntry=dict(
                             key="a" * 64,
+                            sampleCount=16000,
                             text="Opening",
-                            words=[dict(startMs=0, endMs=300, text="Opening")],
+                            relativeWords=[dict(startMs=0, endMs=300, text="Opening")],
                             language="en",
                         ),
                     )
@@ -977,8 +979,9 @@ def test_stop_queued_and_published_library_v2_transcription(tmp_path, monkeypatc
                         trackId=tracks[0]["id"],
                         cacheEntry=dict(
                             key="c" * 64,
+                            sampleCount=16000,
                             text="Published",
-                            words=[dict(startMs=0, endMs=300, text="Published")],
+                            relativeWords=[dict(startMs=0, endMs=300, text="Published")],
                             language="en",
                         ),
                     )
@@ -1085,8 +1088,9 @@ def test_stop_during_voice_extraction_preserves_dirty_recognition_cache_and_word
                             trackId=tracks[0]["id"],
                             cacheEntry=dict(
                                 key=key,
+                                sampleCount=16000,
                                 text=word,
-                                words=[dict(startMs=start_ms, endMs=end_ms, text=word)],
+                                relativeWords=[dict(startMs=start_ms, endMs=end_ms, text=word)],
                                 language="en",
                             ),
                         )

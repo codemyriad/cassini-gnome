@@ -75,15 +75,23 @@ class WhistleClient:
             raise
         return self
 
-    def _receive(self, expected=None):
-        deadline = time.monotonic() + self.timeout
+    def is_alive(self):
+        with self._process_lock:
+            return self.process is not None and self.process.poll() is None and not self.cancelled.is_set()
+
+    def _receive_line(self, timeout, *, raise_on_timeout=True):
+        deadline = time.monotonic() + max(0.0, timeout)
         while b"\n" not in self._buffer:
-            remaining = max(0, deadline - time.monotonic())
+            remaining = max(0.0, deadline - time.monotonic())
             if self.cancelled.is_set():
                 raise CancelledError()
+            if self.selector is None or self.process is None:
+                raise RuntimeError(self.worker_name + " worker is not running")
             if not self.selector.select(min(remaining, 0.2)):
                 if time.monotonic() < deadline:
                     continue
+                if not raise_on_timeout:
+                    return None
                 self.cancel()
                 self.close()
                 raise RuntimeError(self.worker_name + " worker timed out")
@@ -94,10 +102,79 @@ class WhistleClient:
         line, self._buffer = self._buffer.split(b"\n", 1)
         if self.cancelled.is_set():
             raise CancelledError()
-        result = json.loads(line)
+        return json.loads(line)
+
+    def _receive(self, expected=None):
+        result = self._receive_line(self.timeout, raise_on_timeout=True)
         if expected is not None and result.get("type") != expected:
             raise RuntimeError(self.worker_name + " worker failed: " + str(result.get("message", "invalid reply")))
         return result
+
+    def start_follow(self, directory, model_identity, *, poll_interval_ms=50):
+        if not self.is_alive():
+            raise RuntimeError(self.worker_name + " worker is not running")
+        packet = (
+            json.dumps(
+                dict(
+                    type="follow",
+                    directory=str(Path(directory).resolve()),
+                    model=model_identity,
+                    pollIntervalMs=poll_interval_ms,
+                )
+            ).encode()
+            + b"\n"
+        )
+        if len(packet) > 512 * 1024:
+            raise ValueError("Worker request exceeds limit")
+        try:
+            self.process.stdin.write(packet)
+            self.process.stdin.flush()
+        except OSError as error:
+            raise RuntimeError(self.worker_name + " worker stopped accepting requests") from error
+
+    def poll_follow_event(self, timeout=0.05):
+        return self._receive_line(timeout, raise_on_timeout=False)
+
+    def stop_follow(self, *, drain=True, timeout=3.0, on_event=None):
+        """Drain or stop follow mode within a bounded deadline; return summary if warm, else None."""
+        if not self.is_alive():
+            self.close()
+            return None
+        try:
+            packet = (json.dumps(dict(type="follow-stop", drain=bool(drain))) + "\n").encode()
+            self.process.stdin.write(packet)
+            self.process.stdin.flush()
+        except OSError:
+            self.cancel()
+            self.close()
+            return None
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self.cancel()
+                self.close()
+                return None
+            try:
+                value = self._receive_line(remaining, raise_on_timeout=False)
+            except (CancelledError, OSError, RuntimeError, ValueError):
+                self.cancel()
+                self.close()
+                return None
+            if value is None:
+                self.cancel()
+                self.close()
+                return None
+            msg_type = value.get("type")
+            if msg_type == "follow-stopped":
+                return value
+            if msg_type in ("follow-cache", "follow-idle"):
+                if on_event is not None:
+                    on_event(value)
+                continue
+            self.cancel()
+            self.close()
+            return None
 
     def transcribe(self, path):
         if self.process is None or self.process.poll() is not None:

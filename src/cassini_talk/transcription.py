@@ -16,6 +16,16 @@ from pathlib import Path
 from .library import LibraryScanner, library_root, meeting_id, track_identity, track_rows
 from .library_edits import mutation, transaction
 from .meeting_store import atomic_json, read_metadata, transcript_snapshot, update_metadata
+from .recognition_cache import (
+    RECOGNITION_CACHE_FILE,
+    RECOGNITION_CACHE_FORMAT,
+    TranscriptionMode,
+    cache_entry_payload,
+    normalize_transcription_mode,
+    read_recognition_cache_file,
+    valid_cached_entry,
+    whistle_model_identity,
+)
 from .strings import text
 from .transcript_publish import TranscriptPublisher
 from .whistle_client import WhistleClient
@@ -23,38 +33,10 @@ from .whistle_worker import onnxruntime_dir
 
 LOG = logging.getLogger(__name__)
 REFERENCE = dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
-RECOGNITION_CACHE_FILE = ".recognition-cache.json"
-RECOGNITION_CACHE_FORMAT = "cassini.recognition-cache.v1"
 
 
 def _read_recognition_cache_entries(directory, model):
-    try:
-        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    except OSError:
-        return {}
-    try:
-        from .meeting_store import regular, strict_json
-
-        with regular(descriptor, RECOGNITION_CACHE_FILE) as (stream, _info):
-            raw = stream.read(16 * 1024 * 1024 + 1)
-    except OSError:
-        return {}
-    finally:
-        os.close(descriptor)
-    if len(raw) > 16 * 1024 * 1024:
-        return {}
-    try:
-        value = strict_json(raw)
-    except ValueError:
-        return {}
-    if (
-        not isinstance(value, dict)
-        or value.get("format") != RECOGNITION_CACHE_FORMAT
-        or value.get("model") != model
-        or not isinstance(value.get("segments"), dict)
-    ):
-        return {}
-    return dict(value["segments"])
+    return read_recognition_cache_file(Path(directory) / RECOGNITION_CACHE_FILE, model)
 
 
 def bundle_path():
@@ -94,7 +76,9 @@ def track_speaker(track):
     return "others", text("common.theOthers"), "source"
 
 
-def should_auto_write(meeting, previous):
+def should_auto_write(meeting, previous, *, mode=TranscriptionMode.AFTER_STOP):
+    if normalize_transcription_mode(mode) is TranscriptionMode.RECORD_ONLY:
+        return False
     if (
         previous is None
         or meeting.origin != "own"
@@ -457,6 +441,9 @@ class TranscriptionQueue:
         recordings=tuple,
         completed=lambda _model: None,
         progress_changed=lambda _directory: None,
+        mode=TranscriptionMode.AFTER_STOP,
+        follow_stop_timeout=3.0,
+        follow_poll_interval_ms=50,
     ):
         self.changed, self.finished = changed, finished
         self.completed = completed
@@ -491,6 +478,323 @@ class TranscriptionQueue:
         self._active_directory = None
         self._prepare_futures, self._job_futures, self._voice_futures = {}, {}, {}
         self.closed = False
+        self._mode = normalize_transcription_mode(mode)
+        self._follow_stop_timeout = float(follow_stop_timeout)
+        self._follow_poll_interval_ms = int(follow_poll_interval_ms)
+        self._follow_generation = 0
+        self._follow_directory: Path | None = None
+        self._follow_thread: threading.Thread | None = None
+        self._follow_stop_event: threading.Event | None = None
+        self._follow_drain_requested = False
+        self._follow_client = None
+        self._follow_client_model: str | None = None
+        self._follow_drained = threading.Event()
+        self._warm_client = None
+        self._warm_client_model: str | None = None
+        self._warm_directory: Path | None = None
+
+    @property
+    def mode(self) -> TranscriptionMode:
+        with self.lock:
+            return self._mode
+
+    def set_mode(self, mode) -> TranscriptionMode:
+        resolved = normalize_transcription_mode(mode)
+        with self.lock:
+            self._mode = resolved
+        if resolved is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
+            self.preempt_follower()
+        return resolved
+
+    def _cache_model_for(self, client_model: str | None) -> str:
+        from .parakeet_model import MODEL_ID, MODEL_TAG
+
+        if client_model == MODEL_ID:
+            return MODEL_TAG
+        return whistle_model_identity(self.bundle)
+
+    def _canonical_follow_dir(self, directory) -> Path:
+        path = Path(directory)
+        try:
+            return path.resolve()
+        except OSError:
+            return path.absolute()
+
+    def _follow_still_valid(self, directory: Path, stop_event: threading.Event, generation: int) -> bool:
+        with self.lock:
+            return (
+                not self.closed
+                and self._mode is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
+                and self._follow_generation == generation
+                and self._follow_directory == directory
+                and not stop_event.is_set()
+                and directory not in self._cancelled_meetings
+                and directory not in self._stopping_meetings
+                and not self.pending
+                and not self.voice_pending
+                and self._active_directory is None
+            )
+
+    def follow_recording(self, directory) -> bool:
+        """Start or attach the read-only session follower in transcribe_while_recording mode."""
+        target = Path(directory).absolute()
+        with self.lock:
+            if (
+                self.closed
+                or self._mode is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
+                or self.pending
+                or self.voice_pending
+                or self._active_directory is not None
+                or target in self._cancelled_meetings
+                or target in self._stopping_meetings
+            ):
+                return False
+            if self._follow_directory == target and self._follow_thread is not None and self._follow_thread.is_alive():
+                return True
+            if self._warm_directory == target and self._warm_client is not None:
+                if getattr(self._warm_client, "is_alive", lambda: False)():
+                    return True
+                self._discard_warm_client_locked()
+            if self._follow_thread is not None and self._follow_thread.is_alive():
+                self._signal_follower_stop_locked(drain=False, cancel_client=True)
+            self._follow_generation += 1
+            generation = self._follow_generation
+            stop_event = threading.Event()
+            self._follow_directory = target
+            self._follow_stop_event = stop_event
+            self._follow_drain_requested = False
+            self._follow_drained = threading.Event()
+            thread = threading.Thread(
+                target=self._follow_worker,
+                args=(target, stop_event, generation),
+                name="cassini-session-follow",
+                daemon=True,
+            )
+            self._follow_thread = thread
+            thread.start()
+            return True
+
+    def sync_recordings(self, directories) -> None:
+        """Observe live recording directories; never spawns workers outside speed mode."""
+        with self.lock:
+            if self._mode is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
+                return
+            live = [Path(d).absolute() for d in directories]
+            if not live:
+                return
+            current = self._follow_directory
+            if current in live and self._follow_thread is not None and self._follow_thread.is_alive():
+                return
+        self.follow_recording(live[0])
+
+    def notify_session_finished(self, directory) -> bool:
+        """Overlap read-only tail planning/ASR with Opus publication in speed mode."""
+        return self.follow_recording(directory)
+
+    def _discard_warm_client_locked(self):
+        warm = self._warm_client
+        self._warm_client = None
+        self._warm_client_model = None
+        self._warm_directory = None
+        return warm
+
+    def _signal_follower_stop_locked(self, *, drain: bool, cancel_client: bool = False):
+        if self._follow_stop_event is not None:
+            if drain:
+                self._follow_drain_requested = True
+            else:
+                self._follow_drain_requested = False
+            self._follow_stop_event.set()
+        client = self._follow_client
+        if cancel_client and client is not None and hasattr(client, "cancel"):
+            client.cancel()
+        return self._follow_thread
+
+    def preempt_follower(self, *, drain: bool = False, wait: bool = False) -> None:
+        """Stop any active recording-time follower and discard mismatched warm workers."""
+        with self.lock:
+            thread = self._signal_follower_stop_locked(drain=drain, cancel_client=not drain)
+            warm = self._discard_warm_client_locked() if not drain else None
+        if warm is not None:
+            if hasattr(warm, "cancel"):
+                warm.cancel()
+            with contextlib.suppress(Exception):
+                warm.close()
+        if wait and thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=max(1.0, self._follow_stop_timeout + 2.0))
+
+    def model_changed(self) -> None:
+        """Preempt the follower if the user switched speech models in Preferences."""
+        if self.models is None:
+            return
+        selected = self.models.snapshot().get("selected")
+        with self.lock:
+            follow_mismatch = self._follow_client_model is not None and self._follow_client_model != selected
+            warm_mismatch = self._warm_client_model is not None and self._warm_client_model != selected
+        if follow_mismatch or warm_mismatch:
+            self.preempt_follower(drain=False, wait=False)
+
+    def _wait_follower_stopped(self, *, drain_for: Path | None = None) -> None:
+        """Wait off-GTK for the follower thread to hand off or terminate before _run()."""
+        with self.lock:
+            same = drain_for is not None and self._follow_directory == drain_for
+            thread = self._signal_follower_stop_locked(drain=same, cancel_client=not same)
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=max(1.0, self._follow_stop_timeout + 5.0))
+            if thread.is_alive():
+                with self.lock:
+                    client = self._follow_client
+                if client is not None and hasattr(client, "cancel"):
+                    client.cancel()
+                thread.join(timeout=2.0)
+
+    def _claim_warm_client(self, selected: str, directory: Path):
+        with self.lock:
+            warm = self._warm_client
+            warm_model = self._warm_client_model
+            self._warm_client = None
+            self._warm_client_model = None
+            self._warm_directory = None
+        if warm is None:
+            return None
+        if warm_model == selected and getattr(warm, "is_alive", lambda: False)():
+            return warm
+        with contextlib.suppress(Exception):
+            warm.close()
+        return None
+
+    def _follow_worker(self, directory: Path, stop_event: threading.Event, generation: int) -> None:
+        from .parakeet_model import MODEL_ID
+
+        client = None
+        client_model = None
+        cache_entries: dict[str, dict] = {}
+        cache_model = None
+        canonical = directory
+
+        def check_cache_writable():
+            with self.lock:
+                if self.closed or directory in self._cancelled_meetings:
+                    raise CancelledError()
+
+        def handle_follow_event(event):
+            if not isinstance(event, dict):
+                return
+            ev_type = event.get("type")
+            if ev_type == "follow-idle":
+                self._follow_drained.set()
+                return
+            if ev_type != "follow-cache":
+                return
+            entry = event.get("cacheEntry")
+            if not isinstance(entry, dict) or not valid_cached_entry(entry.get("key"), entry):
+                return
+            cache_entries[entry["key"]] = cache_entry_payload(entry)
+            try:
+                check_cache_writable()
+                if not canonical.is_dir():
+                    return
+                atomic_json(
+                    canonical / RECOGNITION_CACHE_FILE,
+                    dict(format=RECOGNITION_CACHE_FORMAT, model=cache_model, segments=cache_entries),
+                    before_commit=check_cache_writable,
+                )
+            except (CancelledError, OSError, ValueError):
+                pass
+
+        def register_follow_client(candidate):
+            nonlocal client
+            with self.lock:
+                if not self._follow_still_valid(directory, stop_event, generation):
+                    raise CancelledError()
+                self._follow_client = candidate
+                client = candidate
+
+        try:
+            if not self._follow_still_valid(directory, stop_event, generation):
+                return
+            try:
+                canonical = self._owned(directory)
+            except ValueError:
+                return
+            selected = self.models.choice_for_job() if self.models else "whistle"
+            if not self._follow_still_valid(directory, stop_event, generation):
+                return
+            if selected == MODEL_ID and self.models is not None:
+                started = self.models.start_parakeet(self.bundle, register=register_follow_client)
+                if started is not None:
+                    client = started
+                    client_model = MODEL_ID
+            if client is None:
+                if not self._follow_still_valid(directory, stop_event, generation):
+                    return
+                candidate = self.client_factory(self.bundle, timeout=120)
+                register_follow_client(candidate)
+                client_model = "whistle"
+                candidate.start()
+            with self.lock:
+                if self._follow_generation == generation:
+                    self._follow_client_model = client_model
+            if not all(hasattr(client, name) for name in ("start_follow", "poll_follow_event", "stop_follow")):
+                return
+            cache_model = self._cache_model_for(client_model)
+            cache_entries = _read_recognition_cache_entries(canonical, cache_model)
+            client.start_follow(canonical, cache_model, poll_interval_ms=self._follow_poll_interval_ms)
+            while not stop_event.is_set() and not self.closed:
+                event = client.poll_follow_event(timeout=0.05)
+                if event is None:
+                    continue
+                if event.get("type") == "error":
+                    raise RuntimeError(str(event.get("message", "Follower worker failed")))
+                handle_follow_event(event)
+            with self.lock:
+                drain = (
+                    self._follow_drain_requested
+                    and not self.closed
+                    and directory not in self._cancelled_meetings
+                    and directory not in self._stopping_meetings
+                )
+            if drain and client is not None and getattr(client, "is_alive", lambda: False)():
+                stopped = client.stop_follow(
+                    drain=True, timeout=self._follow_stop_timeout, on_event=handle_follow_event
+                )
+                if stopped is not None and getattr(client, "is_alive", lambda: False)():
+                    with self.lock:
+                        if (
+                            not self.closed
+                            and self._follow_generation == generation
+                            and directory not in self._cancelled_meetings
+                            and directory not in self._stopping_meetings
+                        ):
+                            old_warm = self._discard_warm_client_locked()
+                            self._warm_client = client
+                            self._warm_client_model = client_model
+                            self._warm_directory = directory
+                            client = None
+                        else:
+                            old_warm = None
+                    if old_warm is not None:
+                        with contextlib.suppress(Exception):
+                            old_warm.close()
+        except CancelledError:
+            pass
+        except Exception as error:
+            LOG.warning("Session follower stopped cleanly (capture unaffected): %s", error)
+        finally:
+            if client is not None:
+                if hasattr(client, "cancel"):
+                    client.cancel()
+                with contextlib.suppress(Exception):
+                    client.close()
+            with self.lock:
+                if self._follow_generation == generation:
+                    self._follow_directory = None
+                    self._follow_client = None
+                    self._follow_client_model = None
+                    self._follow_stop_event = None
+                    self._follow_thread = None
+                    self._follow_drain_requested = False
+                    self._idle.notify_all()
 
     @staticmethod
     def _progress_key(directory) -> Path:
@@ -567,6 +871,8 @@ class TranscriptionQueue:
             self._set_progress(directory, TranscriptionProgress(step="reading"), notify=False, reset=True)
             if self._active_directory in self._background_voices and self.client:
                 self.client.cancel()
+            if self._follow_directory is not None and self._follow_directory != directory:
+                self._signal_follower_stop_locked(drain=False, cancel_client=True)
             future = self.preparer.submit(self._mark_queued, directory, resume)
             self._prepare_futures[directory] = future
         future.add_done_callback(lambda f: self._prepared(directory, f))
@@ -807,6 +1113,8 @@ class TranscriptionQueue:
             eta_minutes=None,
         )
         self._set_progress(directory, run_progress, key=progress_key, notify=False, reset=True)
+        # Drain/handoff a matching session follower cleanly, or preempt any other follower.
+        self._wait_follower_stopped(drain_for=directory)
         # Select on this owner thread when the job starts, never at enqueue.
         from .parakeet_model import MODEL_ID, MODEL_TAG
 
@@ -821,17 +1129,25 @@ class TranscriptionQueue:
             before_commit=self._check_open,
         )
         self.changed(directory)
-        if self.client and (self.client_model != selected or selected == MODEL_ID):
-            self.client.close()
-            self.client = None
-        if selected == MODEL_ID:
-            self.client = self.models.start_parakeet(self.bundle, register=self._register_client)
-            self.client_model = MODEL_ID if self.client else None
-        if self.client is None:
-            client = self.client_factory(self.bundle, timeout=120)
-            self._register_client(client)
-            self.client_model = "whistle"
-            self.client.start()
+        warm = self._claim_warm_client(selected, directory)
+        if warm is not None:
+            if self.client is not None and self.client is not warm:
+                self.client.close()
+                self.client = None
+            self._register_client(warm)
+            self.client_model = selected
+        else:
+            if self.client and (self.client_model != selected or selected == MODEL_ID):
+                self.client.close()
+                self.client = None
+            if selected == MODEL_ID:
+                self.client = self.models.start_parakeet(self.bundle, register=self._register_client)
+                self.client_model = MODEL_ID if self.client else None
+            if self.client is None:
+                client = self.client_factory(self.bundle, timeout=120)
+                self._register_client(client)
+                self.client_model = "whistle"
+                self.client.start()
         if self.client_model != selected:
             tag = "whistle"
             update_metadata(
@@ -889,18 +1205,15 @@ class TranscriptionQueue:
                 ),
                 default=0,
             )
-        cache_entries = _read_recognition_cache_entries(directory, tag)
+        cache_model = self._cache_model_for(self.client_model)
+        cache_entries = _read_recognition_cache_entries(directory, cache_model)
         cache_dirty = False
 
         def record_cache(entry):
             nonlocal cache_dirty
-            if not isinstance(entry, dict) or not isinstance(entry.get("key"), str) or len(entry["key"]) != 64:
+            if not isinstance(entry, dict) or not valid_cached_entry(entry.get("key"), entry):
                 return
-            cache_entries[entry["key"]] = {
-                "text": entry["text"],
-                "words": entry["words"],
-                "language": entry["language"],
-            }
+            cache_entries[entry["key"]] = cache_entry_payload(entry)
             cache_dirty = True
 
         def flush_cache():
@@ -910,7 +1223,7 @@ class TranscriptionQueue:
             self._check_not_trashed()
             atomic_json(
                 directory / RECOGNITION_CACHE_FILE,
-                dict(format=RECOGNITION_CACHE_FORMAT, model=tag, segments=cache_entries),
+                dict(format=RECOGNITION_CACHE_FORMAT, model=cache_model, segments=cache_entries),
                 before_commit=self._check_not_trashed,
             )
             cache_dirty = False
@@ -942,7 +1255,7 @@ class TranscriptionQueue:
                 LOG.exception("Saved voices unavailable; keeping ordinary speaker names")
         self.client.keep_for_voices = voices_options is not None
         self.client.diarization = diarization
-        self.client.recognition_cache = dict(path=str(directory / RECOGNITION_CACHE_FILE), model=tag)
+        self.client.recognition_cache = dict(path=str(directory / RECOGNITION_CACHE_FILE), model=cache_model)
         turn_groups = {}
         reused_groups = set()
         recognised_summary = None
@@ -1330,6 +1643,8 @@ class TranscriptionQueue:
                 self._voice_reruns[token] = previous | set(affected), failed
                 return False
             self.voice_pending.add(token)
+            if self._follow_directory is not None:
+                self._signal_follower_stop_locked(drain=False, cancel_client=True)
             self._submit_voice(token, set(affected), failed)
         return True
 
@@ -1346,6 +1661,7 @@ class TranscriptionQueue:
                 self.closed
                 or self.pending
                 or self.voice_pending
+                or self._follow_directory is not None
                 or token in self._cancelled_meetings
                 or self.voice_models is None
                 or self.diarization_models is None
@@ -1388,6 +1704,12 @@ class TranscriptionQueue:
     def _voice_job_body(self, token, affected, failed):
         directory = token
         try:
+            self._wait_follower_stopped(drain_for=None)
+            with self.lock:
+                warm = self._discard_warm_client_locked()
+            if warm is not None:
+                with contextlib.suppress(Exception):
+                    warm.close()
             self._check_open()
             directory = self._owned(directory)
             state = self.voice_store.refresh()
@@ -1512,6 +1834,14 @@ class TranscriptionQueue:
             # advance to another meeting between this identity check and cancel.
             if self._active_directory == directory and self.client and hasattr(self.client, "cancel"):
                 self.client.cancel()
+            if self._follow_directory == directory:
+                self._signal_follower_stop_locked(drain=False, cancel_client=True)
+            warm = self._discard_warm_client_locked() if self._warm_directory == directory else None
+        if warm is not None:
+            if hasattr(warm, "cancel"):
+                warm.cancel()
+            with contextlib.suppress(Exception):
+                warm.close()
         for future in futures:
             if future is not None:
                 future.cancel()
@@ -1522,6 +1852,7 @@ class TranscriptionQueue:
                         directory not in self.pending
                         and directory not in self.voice_pending
                         and self._active_directory != directory
+                        and self._follow_directory != directory
                     )
                 )
             yield
@@ -1540,6 +1871,14 @@ class TranscriptionQueue:
             futures = [mapping.get(directory) for mapping in (self._prepare_futures, self._job_futures)]
             if self._active_directory == directory and self.client and hasattr(self.client, "cancel"):
                 self.client.cancel()
+            if self._follow_directory == directory:
+                self._signal_follower_stop_locked(drain=False, cancel_client=True)
+            warm = self._discard_warm_client_locked() if self._warm_directory == directory else None
+        if warm is not None:
+            if hasattr(warm, "cancel"):
+                warm.cancel()
+            with contextlib.suppress(Exception):
+                warm.close()
         for future in futures:
             if future is not None:
                 future.cancel()
@@ -1631,9 +1970,13 @@ class TranscriptionQueue:
             self._resume_pending.clear()
             self._progress.clear()
             client = self.client
+            follow_thread = self._signal_follower_stop_locked(drain=False, cancel_client=True)
+            warm = self._discard_warm_client_locked()
             self._idle.notify_all()
         if client and hasattr(client, "cancel"):
             client.cancel()
+        if warm and hasattr(warm, "cancel"):
+            warm.cancel()
         self.preparer.shutdown(wait=False, cancel_futures=True)
         self.executor.shutdown(wait=False, cancel_futures=True)
         self._stopper.shutdown(wait=False, cancel_futures=True)
@@ -1641,13 +1984,19 @@ class TranscriptionQueue:
         # This cleanup is queued on the owner thread so selector/pipe mutation
         # cannot race process_tracks. It also reaps an idle persistent child.
         def reap():
+            if follow_thread is not None and follow_thread is not threading.current_thread():
+                follow_thread.join(timeout=5.0)
+            if warm is not None:
+                with contextlib.suppress(Exception):
+                    warm.close()
             if self.client:
                 self.client.close()
                 self.client = None
 
-        threading.Thread(
+        self._close_thread = threading.Thread(
             target=self._reap_after_jobs, args=(reap,), name="cassini-transcription-close", daemon=True
-        ).start()
+        )
+        self._close_thread.start()
 
     def _reap_after_jobs(self, reap):
         self.preparer.shutdown(wait=True, cancel_futures=True)

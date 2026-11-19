@@ -295,8 +295,9 @@ def test_recognition_cache_skips_cached_segments_and_invalidates_on_model_mismat
                 model="whistle",
                 segments={
                     first_entry["key"]: {
+                        "sampleCount": first_entry["sampleCount"],
                         "text": first_entry["text"],
-                        "words": first_entry["words"],
+                        "relativeWords": first_entry["relativeWords"],
                         "language": first_entry["language"],
                     }
                 },

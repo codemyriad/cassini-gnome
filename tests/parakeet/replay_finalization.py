@@ -30,6 +30,8 @@ from cassini_talk.library_publication import capture_parent, publish_stopped
 from cassini_talk.meeting_store import atomic_json, read_metadata
 from cassini_talk.parakeet import Parakeet
 from cassini_talk.parakeet_client import ParakeetClient
+from cassini_talk.parakeet_model import MODEL_TAG
+from cassini_talk.recognition_cache import cache_entry_payload, whistle_model_identity
 from cassini_talk.recording_session import RecordingSession
 from cassini_talk.speech_threads import background_worker_priority
 from cassini_talk.transcription import TranscriptionQueue
@@ -128,6 +130,7 @@ def precompute(args, path):
         os.environ["NEEDLE3_LIB_PATH"] = str(args.bundle / "libneedle3.so")
         sys.path.insert(0, str(args.bundle / "wrapper.whl"))
         model = importlib.import_module("needle").Whistle(weights=args.bundle / "whistle.cact")
+    model_identity = MODEL_TAG if args.parakeet else whistle_model_identity(args.bundle)
     pieces = []
     try:
 
@@ -149,29 +152,22 @@ def precompute(args, path):
                 if chunk.end:
                     samples = np.concatenate(pieces)
                     segment = dict(startSample=start, endSample=start + len(samples), reason=chunk.reason)
-                    value, words, lang, digest = speech.recognise_segment(model, None, segment, samples=samples)
-                    print(json.dumps([segment, value["text"], words, lang, digest, time.monotonic()]), flush=True)
+                    raw = model.transcribe(samples, language=None, word_timestamps=True)
+                    entry, _digest = speech.raw_result_to_cache_entry(model_identity, samples, raw)
+                    if entry is not None:
+                        print(json.dumps([segment, entry, time.monotonic()]), flush=True)
                     pieces.clear()
     finally:
         if args.parakeet:
             model.close()
 
 
-def cache_entries(track, completed, stop):
-    # The probe creates one continuous system track at offset zero. The final
-    # worker independently replans it and checks every key against saved PCM.
-    if track["offsetMs"] != 0:
-        raise ValueError("Probe requires zero track offset")
-    presence, end = track.get("sessionPresence"), speech._source_end(track)
+def cache_entries(completed, stop):
     entries = {}
-    for segment, text, words, lang, digest, finished in completed:
-        if finished > stop or end is not None and words and max(w["endMs"] for w in words) > end:
+    for _segment, entry, finished in completed:
+        if finished > stop:
             continue
-        kept = speech.present_words(words, presence)
-        key = speech._segment_cache_key(digest, track["offsetMs"], segment, end, presence)
-        entries[key] = dict(
-            text=text if kept == words else " ".join(w["text"] for w in kept), words=kept, language=lang
-        )
+        entries[entry["key"]] = cache_entry_payload(entry)
     return entries
 
 
@@ -263,8 +259,7 @@ def run(args, library, live):
     class Client(ParakeetClient if args.parakeet else WhistleClient):
         def process_tracks(self, tracks, progress):
             nonlocal offered
-            system_track = next(track for track in tracks if track["kind"] == "system")
-            entries = cache_entries(system_track, completed, stop)
+            entries = cache_entries(completed, stop)
             offered = len(entries)
             if entries:
                 opts = self.recognition_cache

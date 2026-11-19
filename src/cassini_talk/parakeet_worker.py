@@ -27,54 +27,75 @@ def main(bundle, model_path, runtime_path):
         sys.path.insert(0, str(verify_onnxruntime(runtime)))
     sys.addaudithook(block_network)
     from cassini_talk.parakeet import Parakeet
+    from cassini_talk.session_follower import StdinLineReader, run_follow_loop
     from cassini_talk.speech_pipeline import process_tracks
 
     model = Parakeet(model_path, runtime_path)
+    reader = StdinLineReader(sys.stdin)
+    detector = None
+    prefix_store = {}
     try:
-        emit("ready", pid=os.getpid(), model=MODEL_TAG, version=model.version)
-        line = sys.stdin.buffer.readline(512 * 1024 + 1)
-        if len(line) > 512 * 1024:
-            raise ValueError("Worker request exceeds limit")
-        message = json.loads(line)
-        if message.get("type") == "quit":
+        emit("ready", pid=os.getpid(), model=MODEL_TAG, modelIdentity=MODEL_TAG, version=model.version)
+        while line := reader.readline():
+            message = json.loads(line)
+            msg_type = message.get("type")
+            if msg_type == "quit":
+                return 0
+            if msg_type == "follow":
+                action, detector = run_follow_loop(
+                    model, bundle, message, emit, reader=reader, detector=detector, prefix_store=prefix_store
+                )
+                if action != "continue":
+                    return 0
+                continue
+            if msg_type == "follow-stop":
+                emit("follow-stopped", directory=message.get("directory"), segments=0, prefixes=len(prefix_store))
+                continue
+            tracks = message.get("tracks")
+            if msg_type != "pipeline" or not isinstance(tracks, list) or not 1 <= len(tracks) <= 64:
+                raise ValueError("Expected one to 64 capture tracks")
+            if any(
+                not isinstance(t, dict) or not isinstance(t.get("id"), str) or not isinstance(t.get("path"), str)
+                for t in tracks
+            ):
+                raise ValueError("Invalid capture track")
+            from cassini_talk.speech_pipeline import SpeechDetector
+            from cassini_talk.worker_diarization import complete, estimate
+
+            if detector is None:
+                detector = SpeechDetector(bundle / "silero_vad.onnx")
+            options = message.get("diarization")
+            try:
+                summary = process_tracks(
+                    model,
+                    tracks,
+                    bundle / "silero_vad.onnx",
+                    emit,
+                    extra_seconds=estimate(tracks, options),
+                    recognition_cache=message.get("recognitionCache"),
+                    detector=detector,
+                    prefix_store=prefix_store,
+                )
+            finally:
+                prefix_store.clear()
+            summary = complete(summary, tracks, options, emit)
+            emit("complete", model=MODEL_TAG, **summary)
+            if message.get("keepForVoices"):
+                model.close()
+                model = None
+                followup_line = reader.readline()
+                if followup_line:
+                    followup = json.loads(followup_line)
+                    if followup.get("type") == "voiceprints":
+                        from cassini_talk.worker_voices import request
+
+                        request(followup, emit)
+                    elif followup.get("type") != "quit":
+                        raise ValueError("Expected voiceprint request")
             return 0
-        tracks = message.get("tracks")
-        if message.get("type") != "pipeline" or not isinstance(tracks, list) or not 1 <= len(tracks) <= 64:
-            raise ValueError("Expected one to 64 capture tracks")
-        if any(
-            not isinstance(t, dict) or not isinstance(t.get("id"), str) or not isinstance(t.get("path"), str)
-            for t in tracks
-        ):
-            raise ValueError("Invalid capture track")
-        from cassini_talk.worker_diarization import complete, estimate
-
-        options = message.get("diarization")
-        summary = process_tracks(
-            model,
-            tracks,
-            bundle / "silero_vad.onnx",
-            emit,
-            extra_seconds=estimate(tracks, options),
-            recognition_cache=message.get("recognitionCache"),
-        )
-        summary = complete(summary, tracks, options, emit)
-        emit("complete", model=MODEL_TAG, **summary)
-        if message.get("keepForVoices"):
-            model.close()
-            model = None
-            line = sys.stdin.buffer.readline(512 * 1024 + 1)
-            if len(line) > 512 * 1024:
-                raise ValueError("Voice request exceeds limit")
-            if line:
-                followup = json.loads(line)
-                if followup.get("type") == "voiceprints":
-                    from cassini_talk.worker_voices import request
-
-                    request(followup, emit)
-                elif followup.get("type") != "quit":
-                    raise ValueError("Expected voiceprint request")
         return 0
     finally:
+        reader.close()
         if model is not None:
             model.close()
 
