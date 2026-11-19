@@ -295,7 +295,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert marta.avatar.get_valign() == Gtk.Align.START
     assert marta.play.get_valign() == Gtk.Align.START and marta.options.get_valign() == Gtk.Align.START
     assert marta.row.get_title() == "Marta" and marta.name.get_text() == "Marta"
-    assert marta.meta.get_text() == "31 meetings · 24 min" and "confirmed speech" not in marta.meta.get_text()
+    assert marta.meta.get_text() == "1 meeting · 24 min" and "confirmed speech" not in marta.meta.get_text()
     assert "samples" not in " ".join(labels(marta.row))
     assert "Ready" not in labels(marta.row)
     assert not marta.stale_pill.get_visible()

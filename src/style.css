@@ -658,7 +658,8 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .saved-voices-stale-icon { color: var(--cx-warn-ink); margin-top: 2px; }
 .saved-voices-stale-title { font-size: 14px; font-weight: 600; color: var(--cx-warn-ink); }
 .saved-voices-stale-body { font-size: 13px; color: var(--cx-warn-ink); }
-.saved-voices-list-group label.title { color: var(--cx-ink-2); font-size: 13px; font-weight: 600; }
+.saved-voices-list-group label.title,
+.saved-voices-list-group label.heading { color: var(--cx-ink-2); font-size: 13px; font-weight: 600; }
 button.saved-voices-add { color: var(--cx-accent-ink); font-size: 13px; font-weight: 600; min-height: 28px; padding: 0 8px; }
 .saved-voice-row .speaker-avatar { min-width: 30px; min-height: 30px; font-size: 12px; font-weight: 600; }
 .saved-voice-row .saved-voice-name { font-size: 15px; font-weight: 500; }

@@ -136,7 +136,7 @@ class SavedVoicesPage(Adw.NavigationPage):
             spacing=10,
             halign=Gtk.Align.CENTER,
             valign=Gtk.Align.CENTER,
-            margin_top=48,
+            margin_top=140,
             margin_bottom=32,
         )
         self.empty = Gtk.Label(
@@ -175,18 +175,26 @@ class SavedVoicesPage(Adw.NavigationPage):
         self.empty_group.add(empty_box)
         page.add(self.empty_group)
         # Bottom privacy footnote: one centred line with the shield icon, same with voices and empty.
-        self.privacy_group = Adw.PreferencesGroup()
-        privacy = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER, css_classes=["saved-voices-privacy"])
-        privacy.append(LineGlyph("shield", 14, valign=Gtk.Align.CENTER, css_classes=["saved-voices-shield"]))
+        self.privacy_group = Gtk.Box(
+            spacing=6,
+            halign=Gtk.Align.CENTER,
+            margin_top=10,
+            margin_bottom=16,
+            margin_start=24,
+            margin_end=24,
+            css_classes=["saved-voices-privacy"],
+        )
+        shield = LineGlyph("shield", 14, valign=Gtk.Align.CENTER, css_classes=["saved-voices-shield"])
+        self.privacy_group.append(shield)
         self.footnote = Gtk.Label(
             label=text("savedVoices.footnote.computer"),
             wrap=True,
             justify=Gtk.Justification.CENTER,
             css_classes=["dim-label", "saved-voices-footnote"],
         )
-        privacy.append(self.footnote)
-        self.privacy_group.add(privacy)
-        page.add(self.privacy_group)
+        self.privacy_group.append(self.footnote)
+        toolbar.set_bottom_bar_style(Adw.ToolbarStyle.FLAT)
+        toolbar.add_bottom_bar(self.privacy_group)
         self.enroll_dialog = None
         self.rename_dialog = None
         toolbar.set_content(page)
