@@ -110,6 +110,7 @@ class CassiniApplication(Adw.Application):
         self._shortcut_saved_pending = set()
         self.native_captures = {}
         self._last_native = None
+        self._observed_saving_directories: tuple[str, ...] = ()
         self._browser_snapshot = {}
         # Monotonic receive time of the broker reply _browser_snapshot holds,
         # on this clock (broker_silent); _browser_expiry tokens the timer that
@@ -1440,13 +1441,21 @@ class CassiniApplication(Adw.Application):
             if hasattr(self, "follower_capture_directories")
             else CassiniApplication.follower_capture_directories(self)
         )
-        active_saving = [*capture_saving, *saving]
+        observed_saving = getattr(self, "_observed_saving_directories", ())
+        active_saving = [*capture_saving, *observed_saving, *saving]
         if recording_dirs or active_saving:
             self._ensure_transcriber().sync_recordings(recording_dirs, saving=active_saving)
             return
         transcriber = getattr(self, "transcriber", None)
         if transcriber is not None and hasattr(transcriber, "sync_recordings"):
             transcriber.sync_recordings([], saving=[])
+
+    def _drop_observed_saving(self, directory):
+        observed = getattr(self, "_observed_saving_directories", ())
+        if not observed:
+            return
+        target = Path(directory).absolute()
+        self._observed_saving_directories = tuple(p for p in observed if Path(p).absolute() != target)
 
     def _on_publish_started(self, directory):
         if self._quitting or self._capture_exiting or not getattr(self, "transcription_enabled", False):
@@ -1462,9 +1471,11 @@ class CassiniApplication(Adw.Application):
                 if hasattr(self, "follower_capture_directories")
                 else CassiniApplication.follower_capture_directories(self)
             )
-            transcriber.sync_recordings(recording_dirs, saving=[*capture_saving, directory])
+            observed_saving = getattr(self, "_observed_saving_directories", ())
+            transcriber.sync_recordings(recording_dirs, saving=[*capture_saving, *observed_saving, directory])
 
     def _on_publish_failed(self, directory):
+        CassiniApplication._drop_observed_saving(self, directory)
         transcriber = getattr(self, "transcriber", None)
         if transcriber is not None and hasattr(transcriber, "release_failed_publication"):
             transcriber.release_failed_publication(directory)
@@ -1852,6 +1863,7 @@ class CassiniApplication(Adw.Application):
         if self.settings_dialog and not self.settings_dialog.closed and self.settings_dialog.saved_voices_page:
             self.settings_dialog.saved_voices_page.refresh()
         if not self.transcription_enabled:
+            self._observed_saving_directories = ()
             return
         from .transcription import TranscriptionMode, should_auto_write
 
@@ -1896,15 +1908,19 @@ class CassiniApplication(Adw.Application):
                 and m.capture_state in ("completed", "interrupted")
                 and m.transcript in ("none", "queued", "running")
             ]
+            self._observed_saving_directories = tuple(str(d) for d in saving_dirs)
             if hasattr(self, "_sync_live_follower"):
                 self._sync_live_follower(saving=saving_dirs)
             else:
                 CassiniApplication._sync_live_follower(self, saving=saving_dirs)
+        else:
+            self._observed_saving_directories = ()
 
     def discard_meeting_paths(self, directory):
         """No completed recorder or hidden-window callback may re-save a trashed path."""
         directory = Path(directory)
         path = str(directory)
+        CassiniApplication._drop_observed_saving(self, directory)
         if self._pending_recording == path:
             self._pending_recording = None
         if self._browser_seen_saved is not None:

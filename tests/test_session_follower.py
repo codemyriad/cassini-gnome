@@ -3761,3 +3761,135 @@ def test_native_changed_before_finished_preserves_warm_worker_handoff(tmp_path, 
         queue.executor.shutdown(wait=True)
         if getattr(queue, "_close_thread", None) is not None:
             queue._close_thread.join(timeout=5.0)
+
+
+# ---------------------------------------------------------------------------
+# 25. Review regression (round 13): idle browser poll during Library recovery
+#     preserves observed `saving` follower worker across handoff
+# ---------------------------------------------------------------------------
+
+
+def test_idle_browser_poll_during_recovery_saving_preserves_warm_worker_handoff(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _ensure_gi_for_main(monkeypatch)
+    monkeypatch.setattr("cassini_talk.library_location.owned_directory", lambda d: Path(d).resolve())
+    from cassini_talk.main import CassiniApplication
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    sessions_dir = capture_parent(lib)
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    finished = Finished()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=bundle,
+        root=sessions_dir,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+    )
+
+    session = RecordingSession(sessions_dir, "Recovery saving session", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    pcm = make_speech_pcm16(
+        16000,
+        1,
+        [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0), (1.0, 520.0, 0.3), (0.8, 0.0, 0.0)],
+    )
+    session.append("microphone", pcm, 0.0)
+    session.finish()
+
+    app = SimpleNamespace(
+        transcription_enabled=True,
+        transcription_mode="transcribeWhileRecording",
+        _quitting=False,
+        _capture_exiting=False,
+        _voice_library_keys=frozenset(),
+        voice_backfill=None,
+        voice_store=None,
+        settings_dialog=None,
+        transcriber=queue,
+        native_captures={},
+        _last_native=None,
+        _browser_snapshot={},
+        _permission_sources=set(),
+        record_first=None,
+        comfort=None,
+        windowless_background=SimpleNamespace(refresh=lambda: None),
+        build_refresh=None,
+        get_windows=lambda: [],
+        recording_active=lambda: False,
+        discard_test_recording=lambda: None,
+        _ensure_transcriber=lambda: queue,
+        write_down=lambda meeting, resume=False: queue.enqueue(getattr(meeting, "directory", meeting), resume=resume),
+    )
+    app.follower_capture_directories = lambda: CassiniApplication.follower_capture_directories(app)
+    app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
+    app._sync_live_follower = lambda **kw: CassiniApplication._sync_live_follower(app, **kw)
+
+    saving_meeting = SimpleNamespace(
+        key="m-recovery",
+        directory=session.directory,
+        published_file=None,
+        origin="own",
+        metadata_editable=True,
+        lifecycle="saving",
+        capture_state="completed",
+        transcript="none",
+        audio_ready=True,
+    )
+    saved_meeting = SimpleNamespace(
+        key="m-recovery",
+        directory=session.directory,
+        published_file=lib / "recovery.ogg",
+        origin="own",
+        metadata_editable=True,
+        lifecycle="saved",
+        capture_state="completed",
+        transcript="none",
+        audio_ready=True,
+    )
+
+    try:
+        # 1. observe_library sees the recovery session in `saving` and starts the follower.
+        CassiniApplication.observe_library(app, SimpleNamespace(meetings=[saving_meeting], unavailable=False), {})
+        assert app._observed_saving_directories == (str(session.directory),)
+        wait_on_queue(
+            queue,
+            lambda: len(tracker["pids"]) == 1 and cached_segment_count(session.directory, "whistle", bundle) >= 2,
+            message="Recovery saving follower did not precompute segments",
+        )
+
+        # 2. Idle browser poll / _native_changed() calls _sync_live_follower() with saving=():
+        #    it must NOT cancel the active recovery follower.
+        CassiniApplication._native_changed(app)
+        CassiniApplication._sync_live_follower(app)
+        with queue.lock:
+            assert queue._follow_directory is not None or queue._warm_client is not None, (
+                "Idle browser poll cancelled the recovery saving follower prematurely"
+            )
+
+        # 3. Publication completes (`saving` -> `saved`): observe_library enqueues and hands off warm worker.
+        monkeypatch.setattr("cassini_talk.library_publication.root_for", lambda _d: None)
+        previous = {"m-recovery": ("saving", "none", False)}
+        CassiniApplication.observe_library(app, SimpleNamespace(meetings=[saved_meeting], unavailable=False), previous)
+        assert app._observed_saving_directories == ()
+        finished.wait(1, bound=30)
+
+        assert len(tracker["pids"]) == 1, f"Expected 1 warm worker PID, got {tracker['pids']}"
+        assert tracker["completes"][0]["workerPid"] == tracker["pids"][0]
+        assert tracker["planned"][0]["prefixesReused"] >= 1
+
+        # 4. _on_publish_failed drops the failed directory from _observed_saving_directories.
+        app._observed_saving_directories = (str(session.directory),)
+        CassiniApplication._on_publish_failed(app, session.directory)
+        assert app._observed_saving_directories == ()
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
