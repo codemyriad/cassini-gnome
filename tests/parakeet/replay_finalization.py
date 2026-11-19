@@ -16,6 +16,7 @@ import threading
 import time
 import wave
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from pathlib import Path
 
 from queue_models import Models
@@ -128,19 +129,39 @@ def run(args, library, live):
     library.mkdir()
     session = RecordingSession(library, "Replay", source="gnome")
     growing = GrowingTrack(session.directory / "track-system.wav")
-    with wave.open(str(args.audio)) as wav, ThreadPoolExecutor(max_workers=1) as pool:
-        rate, channels = wav.getframerate(), wav.getnchannels()
-        if rate not in (16000, 48000) or channels not in (1, 2) or wav.getsampwidth() != 2:
-            raise ValueError("Supply a mono or stereo 16/48 kHz PCM16 WAV")
-        session.add_track("system", None, "system", rate, channels, filename="track-system.wav")
+    max_capture_lag = 0.0
+    with ExitStack() as stack, ThreadPoolExecutor(max_workers=1) as pool:
+        tracks = {}
+        for kind, path in (("system", args.audio), ("microphone", args.microphone)):
+            if path is None:
+                continue
+            wav = stack.enter_context(wave.open(str(path)))
+            rate, channels = wav.getframerate(), wav.getnchannels()
+            if rate not in (16000, 48000) or channels not in (1, 2) or wav.getsampwidth() != 2:
+                raise ValueError("Supply a mono or stereo 16/48 kHz PCM16 WAV")
+            session.add_track(kind, None, kind, rate, channels, filename=f"track-{kind}.wav")
+            tracks[kind] = wav
+        system = tracks["system"]
+        duration = max(w.getnframes() / w.getframerate() for w in tracks.values())
         started = time.monotonic()
-        worker = pool.submit(precompute, growing, args, rate, channels) if live else None
+        worker = pool.submit(precompute, growing, args, system.getframerate(), system.getnchannels()) if live else None
         try:
-            while pcm := wav.readframes(rate // 4):
+            while any(w.tell() < w.getnframes() for w in tracks.values()):
+                blocks = []
+                for kind, wav in tracks.items():
+                    first, rate = wav.tell(), wav.getframerate()
+                    pcm = wav.readframes(rate // 4)
+                    if pcm:
+                        blocks.append((kind, pcm, first * 1000 / rate, wav.tell() / rate))
+                if not blocks:
+                    raise ValueError("Truncated input WAV")
+                deadline = started + max(end for _, _, _, end in blocks)
                 if live:
-                    time.sleep(max(0, started + wav.tell() / rate - time.monotonic()))
-                session.append("system", pcm, (wav.tell() - len(pcm) // (2 * channels)) * 1000 / rate)
-                growing.advance(wav.tell())
+                    time.sleep(max(0, deadline - time.monotonic()))
+                for kind, pcm, offset, _ in blocks:
+                    session.append(kind, pcm, offset)
+                growing.advance(system.tell())
+                max_capture_lag = max(max_capture_lag, time.monotonic() - deadline)
         finally:
             stop = time.monotonic()
             growing.stop()
@@ -151,8 +172,8 @@ def run(args, library, live):
     class Client(ParakeetClient if args.parakeet else WhistleClient):
         def process_tracks(self, tracks, progress):
             nonlocal misses
-            (track,) = tracks
-            entries = cache_entries(track, completed, stop)
+            system_track = next(track for track in tracks if track["kind"] == "system")
+            entries = cache_entries(system_track, completed, stop)
             if entries:
                 opts = self.recognition_cache
                 atomic_json(
@@ -208,6 +229,9 @@ def run(args, library, live):
         if not groups or not any(g["turns"] for g in groups):
             raise RuntimeError("No diarization turns to compare")
         report = dict(
+            audioSeconds=duration,
+            tracks=len(tracks),
+            maxWriterLagMs=round(max_capture_lag * 1000, 1) if live else None,
             secondsAfterStop=round(published - stop, 3),
             stopThroughPlanning=round(marks["planned"] - stop, 3),
             recognition=round(marks["recognised"] - marks["planned"], 3),
@@ -219,10 +243,14 @@ def run(args, library, live):
             speakers=len({w["speaker"] for w in json.loads(words)["items"]}),
             turns=sum(len(group["turns"]) for group in groups),
         )
+        if not report["words"]:
+            raise RuntimeError("Empty transcript")
         if voice_store:
             prints = voice_store.meeting(session.directory)["speakers"]
             if not prints or "voiceEnd" not in marks:
                 raise RuntimeError("Voice extraction did not complete")
+            if not marks["diarized"] <= marks["voiceStart"] <= marks["voiceEnd"] <= published:
+                raise RuntimeError("Voice extraction overlapped the reported stages")
             report["voicePrints"] = len(prints)
             report["voiceExtraction"] = round(marks["voiceEnd"] - marks["voiceStart"], 3)
             report["remainingPublication"] = round(report["remainingPublication"] - report["voiceExtraction"], 3)
@@ -238,12 +266,17 @@ def main():
         parser.add_argument(name, type=Path)
     parser.add_argument("--parakeet", type=Path)
     parser.add_argument("--campplus", type=Path)
+    parser.add_argument("--microphone", type=Path, help="Record a simultaneous mic track and finalize it at Stop")
+    parser.add_argument("--reuse-first", action="store_true", help="Reverse order to expose warm-cache effects")
     args = parser.parse_args()
     os.environ.update(PRIVACY)
     verify_bundle(args.bundle)
     with tempfile.TemporaryDirectory() as root:
-        batch, words, turns = run(args, Path(root) / "batch", False)
-        live, other_words, other_turns = run(args, Path(root) / "live", True)
+        results = {}
+        for use_live in (args.reuse_first, not args.reuse_first):
+            results[use_live] = run(args, Path(root) / ("live" if use_live else "batch"), use_live)
+        batch, words, turns = results[False]
+        live, other_words, other_turns = results[True]
     print(
         json.dumps(
             dict(batch=batch, reuse=live, identicalWords=words == other_words, identicalTurns=turns == other_turns),
