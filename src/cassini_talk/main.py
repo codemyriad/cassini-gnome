@@ -1475,10 +1475,41 @@ class CassiniApplication(Adw.Application):
             transcriber.sync_recordings(recording_dirs, saving=[*capture_saving, *observed_saving, directory])
 
     def _on_publish_failed(self, directory):
-        CassiniApplication._drop_observed_saving(self, directory)
+        if hasattr(GLib, "idle_add"):
+            GLib.idle_add(lambda: (CassiniApplication._drop_observed_saving(self, directory), False)[1])
+        else:
+            CassiniApplication._drop_observed_saving(self, directory)
         transcriber = getattr(self, "transcriber", None)
         if transcriber is not None and hasattr(transcriber, "release_failed_publication"):
             transcriber.release_failed_publication(directory)
+
+    def _on_recovery_result(self, directory, error):
+        if error is not None:
+            CassiniApplication._drop_observed_saving(self, directory)
+            transcriber = getattr(self, "transcriber", None)
+            if transcriber is not None and hasattr(transcriber, "release_failed_publication"):
+                transcriber.release_failed_publication(directory)
+            if hasattr(self, "_sync_live_follower"):
+                self._sync_live_follower()
+            else:
+                CassiniApplication._sync_live_follower(self)
+            return
+        if (
+            _auto_write_enabled(self)
+            and not self._quitting
+            and not self._capture_exiting
+            and not (
+                self.transcription_stopping(directory)
+                if hasattr(self, "transcription_stopping")
+                else CassiniApplication.transcription_stopping(self, directory)
+            )
+        ):
+            self.write_down(directory, resume=True)
+        CassiniApplication._drop_observed_saving(self, directory)
+        if hasattr(self, "_sync_live_follower"):
+            self._sync_live_follower()
+        else:
+            CassiniApplication._sync_live_follower(self)
 
     def _ensure_transcriber(self):
         import threading

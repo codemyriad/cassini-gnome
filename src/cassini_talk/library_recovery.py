@@ -47,6 +47,14 @@ class LibraryRecovery:
             self.app._transcription_changed()
         return False
 
+    def _result_finished(self, directory, error):
+        if not self.cancelled.is_set():
+            handler = getattr(self.app, "_on_recovery_result", None)
+            if handler is not None:
+                handler(directory, error)
+            self.app._transcription_changed()
+        return False
+
     def project(self, snapshot):
         from dataclasses import replace
 
@@ -177,7 +185,7 @@ class LibraryRecovery:
                             self.failures[result.directory] = result.error
                         else:
                             self.failures.pop(result.directory, None)
-                    GLib.idle_add(self._changed)
+                    GLib.idle_add(self._result_finished, result.directory, result.error)
             except CancelledError:
                 break
             except (OSError, ValueError):
