@@ -874,6 +874,7 @@ def run_follow_loop(model, bundle: Path, message: dict, emit, *, reader: StdinLi
 
     if detector is None:
         detector = SpeechDetector(bundle / "silero_vad.onnx")
+    prefix_store.clear()
 
     def on_cache(entry):
         emit("follow-cache", directory=directory, cacheEntry=entry)

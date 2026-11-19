@@ -535,6 +535,14 @@ class TranscriptionQueue:
                 and self._active_directory is None
             )
 
+    @staticmethod
+    def _client_can_follow(candidate) -> bool:
+        return (
+            candidate is not None
+            and getattr(candidate, "is_alive", lambda: False)()
+            and all(hasattr(candidate, name) for name in ("start_follow", "poll_follow_event", "stop_follow"))
+        )
+
     def follow_recording(self, directory) -> bool:
         """Start or attach the read-only session follower in transcribe_while_recording mode."""
         target = Path(directory).absolute()
@@ -551,12 +559,14 @@ class TranscriptionQueue:
                 return False
             if self._follow_directory == target and self._follow_thread is not None and self._follow_thread.is_alive():
                 return True
+            stale_warm = None
             if self._warm_directory == target and self._warm_client is not None:
                 if getattr(self._warm_client, "is_alive", lambda: False)():
                     return True
-                self._discard_warm_client_locked()
+                stale_warm = self._discard_warm_client_locked()
+            previous_thread = None
             if self._follow_thread is not None and self._follow_thread.is_alive():
-                self._signal_follower_stop_locked(drain=False, cancel_client=True)
+                previous_thread = self._signal_follower_stop_locked(drain=False, cancel_client=True)
             self._follow_generation += 1
             generation = self._follow_generation
             stop_event = threading.Event()
@@ -566,7 +576,7 @@ class TranscriptionQueue:
             self._follow_drained = threading.Event()
             thread = threading.Thread(
                 target=self._follow_worker,
-                args=(target, stop_event, generation),
+                args=(target, stop_event, generation, previous_thread, stale_warm),
                 name="cassini-session-follow",
                 daemon=True,
             )
@@ -663,7 +673,14 @@ class TranscriptionQueue:
             warm.close()
         return None
 
-    def _follow_worker(self, directory: Path, stop_event: threading.Event, generation: int) -> None:
+    def _follow_worker(
+        self,
+        directory: Path,
+        stop_event: threading.Event,
+        generation: int,
+        previous_thread: threading.Thread | None = None,
+        stale_warm=None,
+    ) -> None:
         from .parakeet_model import MODEL_ID
 
         client = None
@@ -711,6 +728,11 @@ class TranscriptionQueue:
                 client = candidate
 
         try:
+            if stale_warm is not None:
+                with contextlib.suppress(Exception):
+                    stale_warm.close()
+            if previous_thread is not None and previous_thread is not threading.current_thread():
+                previous_thread.join(timeout=max(1.0, self._follow_stop_timeout + 5.0))
             if not self._follow_still_valid(directory, stop_event, generation):
                 return
             try:
@@ -720,18 +742,46 @@ class TranscriptionQueue:
             selected = self.models.choice_for_job() if self.models else "whistle"
             if not self._follow_still_valid(directory, stop_event, generation):
                 return
-            if selected == MODEL_ID and self.models is not None:
-                started = self.models.start_parakeet(self.bundle, register=register_follow_client)
-                if started is not None:
-                    client = started
-                    client_model = MODEL_ID
+            # Enforce the one-child invariant: claim any idle/warm client under lock,
+            # transferring a compatible live worker or reaping incompatible ones off GTK.
+            to_close = []
+            with self.lock:
+                if not self._follow_still_valid(directory, stop_event, generation):
+                    return
+                candidates = []
+                if self._warm_client is not None:
+                    candidates.append((self._warm_client, self._warm_client_model))
+                    self._discard_warm_client_locked()
+                if self.client is not None:
+                    candidates.append((self.client, self.client_model))
+                    self.client = None
+                    self.client_model = None
+                for candidate, candidate_model in candidates:
+                    if client is None and candidate_model == selected and self._client_can_follow(candidate):
+                        self._follow_client = candidate
+                        self._follow_client_model = candidate_model
+                        client = candidate
+                        client_model = candidate_model
+                    else:
+                        to_close.append(candidate)
+            for stale in to_close:
+                with contextlib.suppress(Exception):
+                    stale.close()
             if client is None:
                 if not self._follow_still_valid(directory, stop_event, generation):
                     return
-                candidate = self.client_factory(self.bundle, timeout=120)
-                register_follow_client(candidate)
-                client_model = "whistle"
-                candidate.start()
+                if selected == MODEL_ID and self.models is not None:
+                    started = self.models.start_parakeet(self.bundle, register=register_follow_client)
+                    if started is not None:
+                        client = started
+                        client_model = MODEL_ID
+                if client is None:
+                    if not self._follow_still_valid(directory, stop_event, generation):
+                        return
+                    candidate = self.client_factory(self.bundle, timeout=120)
+                    register_follow_client(candidate)
+                    client_model = "whistle"
+                    candidate.start()
             with self.lock:
                 if self._follow_generation == generation:
                     self._follow_client_model = client_model
@@ -739,14 +789,17 @@ class TranscriptionQueue:
                 return
             cache_model = self._cache_model_for(client_model)
             cache_entries = _read_recognition_cache_entries(canonical, cache_model)
-            client.start_follow(canonical, cache_model, poll_interval_ms=self._follow_poll_interval_ms)
-            while not stop_event.is_set() and not self.closed:
-                event = client.poll_follow_event(timeout=0.05)
-                if event is None:
-                    continue
-                if event.get("type") == "error":
-                    raise RuntimeError(str(event.get("message", "Follower worker failed")))
-                handle_follow_event(event)
+            follow_started = False
+            if not stop_event.is_set() and not self.closed:
+                client.start_follow(canonical, cache_model, poll_interval_ms=self._follow_poll_interval_ms)
+                follow_started = True
+                while not stop_event.is_set() and not self.closed:
+                    event = client.poll_follow_event(timeout=0.05)
+                    if event is None:
+                        continue
+                    if event.get("type") == "error":
+                        raise RuntimeError(str(event.get("message", "Follower worker failed")))
+                    handle_follow_event(event)
             with self.lock:
                 drain = (
                     self._follow_drain_requested
@@ -755,8 +808,10 @@ class TranscriptionQueue:
                     and directory not in self._stopping_meetings
                 )
             if drain and client is not None and getattr(client, "is_alive", lambda: False)():
-                stopped = client.stop_follow(
-                    drain=True, timeout=self._follow_stop_timeout, on_event=handle_follow_event
+                stopped = (
+                    client.stop_follow(drain=True, timeout=self._follow_stop_timeout, on_event=handle_follow_event)
+                    if follow_started
+                    else dict(type="follow-stopped")
                 )
                 if stopped is not None and getattr(client, "is_alive", lambda: False)():
                     with self.lock:
@@ -1134,7 +1189,12 @@ class TranscriptionQueue:
             if self.client is not None and self.client is not warm:
                 self.client.close()
                 self.client = None
-            self._register_client(warm)
+            try:
+                self._register_client(warm)
+            except BaseException:
+                with contextlib.suppress(Exception):
+                    warm.close()
+                raise
             self.client_model = selected
         else:
             if self.client and (self.client_model != selected or selected == MODEL_ID):

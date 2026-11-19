@@ -112,6 +112,9 @@ class SubprocessTestClient(WhistleClient):
         return env
 
     def start(self):
+        if self._tracker is not None:
+            alive_before = [c.process.pid for c in self._tracker["clients"] if c is not self and c.is_alive()]
+            self._tracker.setdefault("concurrent_alive_at_start", []).append(alive_before)
         super().start()
         if self._tracker is not None and self.process is not None:
             self._tracker["pids"].append(self.process.pid)
@@ -1035,6 +1038,7 @@ def test_preemption_manual_enqueue_model_change_trash_and_close(tmp_path):
         # 2) Re-attach follower, then switch model -> model_changed() preempts follower!
         assert queue.follow_recording(live_session.directory)
         wait_until(lambda: queue._follow_client_model == "whistle", message="Follower did not reattach")
+        assert sum(1 for c in tracker["clients"] if c.is_alive()) == 1
         models.select_for_test(PARAKEET_MODEL_ID)
         queue.model_changed()
         wait_until(lambda: queue._follow_directory is None, message="model_changed did not preempt follower")
@@ -1042,6 +1046,8 @@ def test_preemption_manual_enqueue_model_change_trash_and_close(tmp_path):
         # 3) Re-attach follower on Parakeet, then Trash (cancel_meeting) cancels & waits cleanly!
         assert queue.follow_recording(live_session.directory)
         wait_until(lambda: queue._follow_client_model == PARAKEET_MODEL_ID, message="Parakeet follower did not start")
+        assert sum(1 for c in tracker["clients"] if c.is_alive()) == 1
+        assert all(not alive for alive in tracker["concurrent_alive_at_start"])
         with queue.cancel_meeting(live_session.directory):
             assert queue._follow_directory is None
             assert queue._warm_client is None
@@ -1159,3 +1165,235 @@ def test_long_input_11h_v2_cache_and_prefix_linear_scaling():
     t_2n = run_workload(20_000)
     # 2N must scale near-linearly (well below quadratic 4x; generous 3.2x margin prevents flake on busy CI).
     assert t_2n <= max(t_n * 3.2, t_n + 0.25), f"Non-linear scaling: t(10k)={t_n:.4f}s, t(20k)={t_2n:.4f}s"
+
+
+# ---------------------------------------------------------------------------
+# 13. Review regressions: idle LibraryRelocator polls & consecutive one-child invariant
+# ---------------------------------------------------------------------------
+
+
+def test_library_relocator_idle_polls_preserve_follower_and_relocation_preempts_when_needed(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from gi.repository import GLib
+
+    from cassini_talk import library_location as location
+    from cassini_talk.library_relocator import LibraryRelocator
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(lib))
+    monkeypatch.setattr(location, "_PRIMARY_CACHE", None)
+
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=15,
+    )
+    session = RecordingSession(lib, "Idle Poll Meeting", source="gnome")
+    relocator = None
+    try:
+        session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session.checkpoint()
+
+        assert queue.follow_recording(session.directory)
+        wait_until(
+            lambda: (
+                len(tracker["pids"]) == 1
+                and (session.directory / RECOGNITION_CACHE_FILE).is_file()
+                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 1
+            ),
+            message="Follower did not cache initial segment",
+        )
+        initial_pid = tracker["pids"][0]
+        initial_thread = queue._follow_thread
+
+        recorder = SimpleNamespace(pipeline=object(), session=session)
+        app = SimpleNamespace(
+            meeting_trash=SimpleNamespace(hidden=set()),
+            recorder=recorder,
+            transcriber=queue,
+            comfort=None,
+            settings_dialog=None,
+            get_windows=lambda: [],
+            hold=lambda: None,
+            release=lambda: None,
+        )
+
+        # Avoid relying on a running GLib MainLoop or leaving idle callbacks on the shared MainContext.
+        monkeypatch.setattr(GLib, "timeout_add_seconds", lambda _secs, _cb: 0)
+        monkeypatch.setattr(GLib, "idle_add", lambda *_args: 0)
+        monkeypatch.setattr(GLib, "source_remove", lambda _tid: True)
+
+        def drive_poll():
+            relocator.poll()
+            fut = relocator.future
+            assert fut is not None
+            fut.result(timeout=15)
+            relocator._complete(fut)
+
+        relocator = LibraryRelocator(app)
+        # Complete the initial poll triggered by __init__, then run several more idle polls with pending=[].
+        init_future = relocator.future
+        assert init_future is not None
+        init_future.result(timeout=15)
+        relocator._complete(init_future)
+        for _ in range(3):
+            drive_poll()
+
+        assert queue._follow_directory == session.directory.absolute()
+        assert queue._follow_thread is initial_thread and initial_thread.is_alive()
+        assert tracker["pids"] == [initial_pid]
+        assert tracker["clients"][0].is_alive()
+
+        # A failed pending move with retry=False must also leave the follower untouched.
+        dest = tmp_path / "moved-lib"
+        dest.mkdir()
+        state = location.load()
+        state["pending"] = [
+            dict(source=str(session.directory.resolve()), target=str(dest / session.directory.name), state="failed")
+        ]
+        location.save(state)
+        drive_poll()
+        assert queue._follow_directory == session.directory.absolute()
+        assert tracker["clients"][0].is_alive()
+
+        # A waiting move for the actively recording session is blocked by recorder_busy and must NOT kill the follower.
+        state = location.load()
+        state["pending"] = [
+            dict(source=str(session.directory.resolve()), target=str(dest / session.directory.name), state="waiting")
+        ]
+        location.save(state)
+        drive_poll()
+        assert queue._follow_directory == session.directory.absolute()
+        assert tracker["clients"][0].is_alive()
+        assert session.directory.exists()
+
+        # Once recording finishes and the meeting is no longer busy, relocation preempts the follower and moves it.
+        session.finish()
+        recorder.pipeline = None
+        recorder.session = None
+        drive_poll()
+        assert queue._follow_directory is None
+        assert not tracker["clients"][0].is_alive()
+        assert (dest / session.directory.name).is_dir()
+        assert not session.directory.exists()
+    finally:
+        if relocator is not None:
+            relocator.close()
+        if session.manifest.get("state") == "recording":
+            session.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+
+
+def test_consecutive_whistle_job_and_follower_preserves_one_child_invariant(tmp_path):
+    bundle = FakeBundle.create(tmp_path)
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    models = FakeSpeechModels("whistle", tracker)
+    finished = Finished()
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=bundle,
+        root=lib,
+        models=models,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=15,
+    )
+    sessions = []
+    try:
+        # Cycle 1: Completed Whistle batch job leaves persistent self.client alive.
+        saved_1 = RecordingSession(lib, "Cycle 1 Batch", source="gnome")
+        sessions.append(saved_1)
+        saved_1.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        saved_1.append("microphone", make_speech_pcm16(16000, 1, [(0.9, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        saved_1.finish()
+
+        assert queue.enqueue(saved_1.directory)
+        finished.wait(1, bound=30)
+        assert read_metadata(saved_1.directory)["transcript"]["status"] == "done"
+        assert len(tracker["pids"]) == 1
+        assert queue.client is not None and queue.client.is_alive()
+        whistle_pid = tracker["pids"][0]
+
+        # Cycle 2: Starting a follower transfers ownership of the persistent Whistle child (zero second process).
+        live_2 = RecordingSession(lib, "Cycle 2 Follow", source="gnome")
+        sessions.append(live_2)
+        live_2.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        live_2.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 520.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        live_2.checkpoint()
+
+        assert queue.follow_recording(live_2.directory)
+        wait_until(
+            lambda: (
+                (live_2.directory / RECOGNITION_CACHE_FILE).is_file()
+                and len(json.loads((live_2.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 1
+            ),
+            message="Cycle 2 follower did not cache segment using transferred Whistle worker",
+        )
+        assert queue.client is None
+        assert queue._follow_client is not None and queue._follow_client.process.pid == whistle_pid
+        assert tracker["pids"] == [whistle_pid]
+        assert sum(1 for c in tracker["clients"] if c.is_alive()) == 1
+
+        # Stop & finalize Cycle 2 -> same single Whistle PID hands back warm to queue.client.
+        live_2.finish()
+        assert queue.enqueue(live_2.directory)
+        finished.wait(2, bound=30)
+        assert read_metadata(live_2.directory)["transcript"]["status"] == "done"
+        assert tracker["pids"] == [whistle_pid]
+        assert queue.client is not None and queue.client.process.pid == whistle_pid
+        assert sum(1 for c in tracker["clients"] if c.is_alive()) == 1
+
+        # Cycle 3: Switch model from Whistle -> Parakeet while idle Whistle self.client is alive,
+        # then start a follower: Whistle must be closed & reaped BEFORE Parakeet spawns.
+        models.select_for_test(PARAKEET_MODEL_ID)
+        live_3 = RecordingSession(lib, "Cycle 3 Parakeet Follow", source="gnome")
+        sessions.append(live_3)
+        live_3.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        live_3.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 610.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        live_3.checkpoint()
+
+        assert queue.follow_recording(live_3.directory)
+        wait_until(
+            lambda: (
+                queue._follow_client_model == PARAKEET_MODEL_ID
+                and (live_3.directory / RECOGNITION_CACHE_FILE).is_file()
+                and len(json.loads((live_3.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 1
+            ),
+            message="Cycle 3 Parakeet follower did not start and cache segment",
+        )
+        assert len(tracker["pids"]) == 2
+        assert not tracker["clients"][0].is_alive(), "Idle Whistle child must be closed and reaped before Parakeet"
+        assert tracker["clients"][1].is_alive()
+        assert sum(1 for c in tracker["clients"] if c.is_alive()) == 1
+        assert all(not alive for alive in tracker["concurrent_alive_at_start"])
+    finally:
+        for s in sessions:
+            if s.manifest.get("state") == "recording":
+                s.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+    for client in tracker["clients"]:
+        assert client.process is None or client.process.poll() is not None
