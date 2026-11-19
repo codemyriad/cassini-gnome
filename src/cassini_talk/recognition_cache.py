@@ -216,11 +216,7 @@ def read_recognition_cache_file(path: str | Path, model: str) -> dict[str, dict]
         value = json.loads(raw)
     except (ValueError, UnicodeError):
         return {}
-    if (
-        not isinstance(value, dict)
-        or value.get("format") != RECOGNITION_CACHE_FORMAT
-        or value.get("model") != model
-    ):
+    if not isinstance(value, dict) or value.get("format") != RECOGNITION_CACHE_FORMAT or value.get("model") != model:
         return {}
     segments = value.get("segments")
     if not isinstance(segments, dict) or len(segments) > MAX_CACHE_SEGMENTS:

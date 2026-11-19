@@ -493,9 +493,11 @@ def test_paired_replay_single_and_two_track_warm_handoff(tmp_path, engine, two_t
         if live:
             # Wait deterministically until pre-Stop follower caches at least 2 segments (no wall-clock sleep).
             wait_until(
-                lambda: (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
-                >= (3 if two_tracks else 2),
+                lambda: (
+                    (session.directory / RECOGNITION_CACHE_FILE).is_file()
+                    and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
+                    >= (3 if two_tracks else 2)
+                ),
                 message="Follower did not precompute closed segments before Stop",
             )
 
@@ -614,8 +616,11 @@ def test_native_clock_drift_multi_minute_and_negative_control(tmp_path, engine):
         if live:
             # Expect segments from BOTH minute 1 (t=0..1s) AND spanning/minute 2 (t=58.5..63s) cached BEFORE Stop!
             wait_until(
-                lambda: (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 3,
+                lambda: (
+                    (session.directory / RECOGNITION_CACHE_FILE).is_file()
+                    and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
+                    >= 3
+                ),
                 timeout=20.0,
                 message="Drifted multi-minute follower did not decode across consecutive 60 s fixed intervals",
             )
@@ -701,8 +706,11 @@ def test_rotating_wav_mid_utterance_paired_equivalence(tmp_path, engine):
         assert len(session.manifest["tracks"][0].get("spans", [])) >= 3, "Expected >=3 rotated physical spans"
         if live:
             wait_until(
-                lambda: (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 2,
+                lambda: (
+                    (session.directory / RECOGNITION_CACHE_FILE).is_file()
+                    and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
+                    >= 2
+                ),
                 message="RotatingWAV follower did not decode across mid-utterance rotation",
             )
 
@@ -725,9 +733,9 @@ def test_companion_ownership_windows_and_nonzero_offset(tmp_path, engine):
     # Track starts at non-zero offsetMs=15325.5. Ownership switches off at 17500 ms and back on at 19500 ms!
     spec = [
         (1.0, 440.0, 0.3),  # 15325.5..16325.5 ms (owned)
-        (0.9, 0.0, 0.0),    # 16325.5..17225.5 ms
+        (0.9, 0.0, 0.0),  # 16325.5..17225.5 ms
         (1.2, 520.0, 0.3),  # 17225.5..18425.5 ms (cut by ownership off at 17500 ms!)
-        (1.2, 0.0, 0.0),    # 18425.5..19625.5 ms (ownership back on at 19500 ms)
+        (1.2, 0.0, 0.0),  # 18425.5..19625.5 ms (ownership back on at 19500 ms)
         (1.0, 620.0, 0.3),  # 19625.5..20625.5 ms (owned)
         (0.9, 0.0, 0.0),
     ]
@@ -765,8 +773,11 @@ def test_companion_ownership_windows_and_nonzero_offset(tmp_path, engine):
         session.checkpoint()
         if live:
             wait_until(
-                lambda: (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 2,
+                lambda: (
+                    (session.directory / RECOGNITION_CACHE_FILE).is_file()
+                    and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
+                    >= 2
+                ),
                 message="Companion follower did not precompute non-zero offsetMs segments",
             )
 
@@ -861,8 +872,11 @@ def test_mid_recording_sigkill_and_sigstop_recovery(tmp_path, engine, sig):
         session.checkpoint()
         if live and inject_sig is not None:
             wait_until(
-                lambda: (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 1,
+                lambda: (
+                    (session.directory / RECOGNITION_CACHE_FILE).is_file()
+                    and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
+                    >= 1
+                ),
                 message="Follower did not cache first segment before signal injection",
             )
             pid = tracker["pids"][0]
@@ -912,6 +926,7 @@ def test_overlap_readonly_planning_asr_with_opus_publication(tmp_path, monkeypat
         mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
         follow_poll_interval_ms=15,
     )
+
     def on_publish(directory):
         queue.notify_session_finished(directory)
 
@@ -944,9 +959,11 @@ def test_overlap_readonly_planning_asr_with_opus_publication(tmp_path, monkeypat
 
         # While Opus encoding is STILL paused, the read-only follower finishes ALL tail ASR!
         wait_until(
-            lambda: queue._follow_drained.is_set()
-            and (session.directory / RECOGNITION_CACHE_FILE).is_file()
-            and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) == 2,
+            lambda: (
+                queue._follow_drained.is_set()
+                and (session.directory / RECOGNITION_CACHE_FILE).is_file()
+                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) == 2
+            ),
             message="Tail planning/ASR did not overlap Opus publication",
         )
         # Final metadata MUST NOT be committed while Opus publication is still running!
@@ -1087,8 +1104,10 @@ def test_capture_stress_two_simultaneous_tracks_zero_frame_loss(tmp_path):
                 session.checkpoint()
         session.checkpoint()
         wait_until(
-            lambda: (session.directory / RECOGNITION_CACHE_FILE).is_file()
-            and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 4,
+            lambda: (
+                (session.directory / RECOGNITION_CACHE_FILE).is_file()
+                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 4
+            ),
             message="Stress follower did not cache segments from simultaneous 2-track capture",
         )
         session.finish()

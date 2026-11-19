@@ -24,6 +24,8 @@ import numpy as np
 from . import placement
 from .recognition_cache import (
     RECOGNITION_CACHE_FORMAT as RECOGNITION_CACHE_FORMAT,
+)
+from .recognition_cache import (
     cache_entry_payload,
     derive_segment_cache_key,
     is_valid_model_identity,
