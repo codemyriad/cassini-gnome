@@ -20,7 +20,6 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from cassini_talk.parakeet_model import MODEL_TAG as PARAKEET_MODEL_TAG  # noqa: E402
 from cassini_talk.session_follower import StdinLineReader, run_follow_loop  # noqa: E402
 from cassini_talk.speech_pipeline import process_tracks  # noqa: E402
 from cassini_talk.speech_threads import background_worker_priority  # noqa: E402
@@ -136,10 +135,13 @@ def _emit_fake_diarization(tracks, options, emit_fn):
 
 
 def main():
+    from cassini_talk.parakeet_model import MODEL_ID as PARAKEET_MODEL_ID
+    from cassini_talk.transcription import recognition_cache_model
+
     engine = sys.argv[1]
     bundle = Path(sys.argv[2])
     background_worker_priority()
-    model_identity = PARAKEET_MODEL_TAG if engine == "parakeet" else "whistle@" + ("a" * 64)
+    model_identity = recognition_cache_model(PARAKEET_MODEL_ID if engine == "parakeet" else "whistle", bundle)
     model = DeterministicRecognizer(engine)
     detector = DeterministicDetector()
     prefix_store = {}

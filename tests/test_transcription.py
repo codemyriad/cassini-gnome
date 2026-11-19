@@ -817,7 +817,7 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
             if Path(tracks[0]["path"]).parent == first.directory:
                 if self.recognition_cache and Path(self.recognition_cache["path"]).is_file():
                     cached = json.loads(Path(self.recognition_cache["path"]).read_text())["segments"]
-                    assert "a" * 64 in cached
+                    assert "a" * 64 + ":16000" in cached
                     notify(
                         dict(
                             type="progress",
@@ -833,10 +833,9 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
                             type="planning",
                             trackId=tracks[0]["id"],
                             cacheEntry=dict(
-                                key="b" * 64,
-                                sampleCount=16000,
+                                key="b" * 64 + ":16000",
                                 text="remarks.",
-                                relativeWords=[dict(startMs=400, endMs=800, text="remarks.")],
+                                words=[dict(start=0.4, end=0.8, text="remarks.")],
                                 language="en",
                             ),
                         )
@@ -857,10 +856,9 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
                         type="planning",
                         trackId=tracks[0]["id"],
                         cacheEntry=dict(
-                            key="a" * 64,
-                            sampleCount=16000,
+                            key="a" * 64 + ":16000",
                             text="Opening",
-                            relativeWords=[dict(startMs=0, endMs=300, text="Opening")],
+                            words=[dict(start=0.0, end=0.3, text="Opening")],
                             language="en",
                         ),
                     )
@@ -892,6 +890,7 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
             )
             return dict(diagnostics=[], segments=1)
 
+    (tmp_path / "pins.json").write_text("{}")  # The cache's Whistle identity.
     queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
     try:
         assert queue.enqueue(first.directory)
@@ -911,7 +910,7 @@ def test_stop_running_transcription_preserves_partial_words_and_cache_and_lets_q
         assert [w.text for w in stopped.words] == ["Opening"]
         cache_path = first.directory / ".recognition-cache.json"
         assert cache_path.is_file()
-        assert set(json.loads(cache_path.read_text())["segments"]) == {"a" * 64}
+        assert set(json.loads(cache_path.read_text())["segments"]) == {"a" * 64 + ":16000"}
         assert completed.transcript == "done"
         assert [w.text for w in completed.words] == ["Second meeting finished."]
 
@@ -978,10 +977,9 @@ def test_stop_queued_and_published_library_v2_transcription(tmp_path, monkeypatc
                         type="planning",
                         trackId=tracks[0]["id"],
                         cacheEntry=dict(
-                            key="c" * 64,
-                            sampleCount=16000,
+                            key="c" * 64 + ":16000",
                             text="Published",
-                            relativeWords=[dict(startMs=0, endMs=300, text="Published")],
+                            words=[dict(start=0.0, end=0.3, text="Published")],
                             language="en",
                         ),
                     )
@@ -1000,6 +998,7 @@ def test_stop_queued_and_published_library_v2_transcription(tmp_path, monkeypatc
                 raise CancelledError()
             raise CancelledError()
 
+    (tmp_path / "pins.json").write_text("{}")  # The cache's Whistle identity.
     queue = TranscriptionQueue(lambda _: None, finished, client_factory=Client, bundle=tmp_path)
     try:
         assert queue.enqueue(blocker.directory)
@@ -1076,11 +1075,11 @@ def test_stop_during_voice_extraction_preserves_dirty_recognition_cache_and_word
         def process_tracks(self, tracks, notify):
             if self.recognition_cache and Path(self.recognition_cache["path"]).is_file():
                 cached = json.loads(Path(self.recognition_cache["path"]).read_text())["segments"]
-                assert set(cached) == {"1" * 64, "2" * 64}
+                assert set(cached) == {"1" * 64 + ":16000", "2" * 64 + ":16000"}
             else:
                 for key, start_ms, end_ms, word in (
-                    ("1" * 64, 0, 250, "First"),
-                    ("2" * 64, 300, 550, "Second"),
+                    ("1" * 64 + ":16000", 0, 250, "First"),
+                    ("2" * 64 + ":16000", 300, 550, "Second"),
                 ):
                     notify(
                         dict(
@@ -1088,9 +1087,8 @@ def test_stop_during_voice_extraction_preserves_dirty_recognition_cache_and_word
                             trackId=tracks[0]["id"],
                             cacheEntry=dict(
                                 key=key,
-                                sampleCount=16000,
                                 text=word,
-                                relativeWords=[dict(startMs=start_ms, endMs=end_ms, text=word)],
+                                words=[dict(start=start_ms / 1000, end=end_ms / 1000, text=word)],
                                 language="en",
                             ),
                         )
@@ -1130,6 +1128,7 @@ def test_stop_during_voice_extraction_preserves_dirty_recognition_cache_and_word
             vec[0] = 1.0
             return {"others": dict(embedding=vec, seconds=8)}
 
+    (tmp_path / "pins.json").write_text("{}")  # The cache's Whistle identity.
     queue = TranscriptionQueue(
         lambda _: None,
         finished,
@@ -1149,7 +1148,7 @@ def test_stop_during_voice_extraction_preserves_dirty_recognition_cache_and_word
 
         cache_path = session.directory / ".recognition-cache.json"
         assert cache_path.is_file()
-        assert set(json.loads(cache_path.read_text())["segments"]) == {"1" * 64, "2" * 64}
+        assert set(json.loads(cache_path.read_text())["segments"]) == {"1" * 64 + ":16000", "2" * 64 + ":16000"}
         assert not (store.root / "meetings" / (session.directory.name + ".json")).exists()
 
         stopped = LibraryScanner(tmp_path).scan().meetings[0]

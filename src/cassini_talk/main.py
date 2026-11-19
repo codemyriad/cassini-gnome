@@ -38,8 +38,18 @@ from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 RESOURCE = "/io/codemyriad/CassiniTalk"
 
 
+def _auto_write_enabled(app):
+    """Whether a stopped capture is written down without the user's Transcribe (not in `recordOnly`)."""
+    from .transcription import auto_write_enabled
+
+    return auto_write_enabled(app)
+
+
 class CassiniApplication(Adw.Application):
     """The application: one window per open meeting."""
+
+    # D-1117/D-1120: no UI chooses this yet; the shipped behaviour is the default.
+    transcription_mode = "afterStop"
 
     def __init__(self, application_id, version, profile, *, installed_build=None):
         super().__init__(
@@ -1279,7 +1289,7 @@ class CassiniApplication(Adw.Application):
         if self._pending_recording == _path:
             self._pending_recording = None
         if (
-            self.transcription_enabled
+            _auto_write_enabled(self)
             and not self._quitting
             and not self._capture_exiting
             and _recorder.session is not None
@@ -1357,7 +1367,7 @@ class CassiniApplication(Adw.Application):
                                 phases[identifier] = "stopping"
                     for path in paths:
                         self._notify_shortcut_saved(path)
-                    if self.transcription_enabled:
+                    if _auto_write_enabled(self):
                         for path in paths:
                             self.write_down(path, resume=True)
                 except (OSError, ValueError) as error:
@@ -1401,20 +1411,22 @@ class CassiniApplication(Adw.Application):
         """Whether to offer "Write it down" and "Try again" at all."""
         return self.writing_unavailable is None
 
-    def transcription_mode(self):
-        from .recognition_cache import normalize_transcription_mode
+    def _effective_transcription_mode(self):
+        from .transcription import TranscriptionMode
 
-        raw = getattr(self, "_transcription_mode", None)
-        if raw is None:
-            raw = os.environ.get("CASSINI_TRANSCRIPTION_MODE")
-        return normalize_transcription_mode(raw)
+        raw = getattr(self, "transcription_mode", None)
+        if raw is None or (
+            raw == CassiniApplication.transcription_mode and os.environ.get("CASSINI_TRANSCRIPTION_MODE")
+        ):
+            raw = os.environ.get("CASSINI_TRANSCRIPTION_MODE") or CassiniApplication.transcription_mode
+        return TranscriptionMode.parse(raw)
 
     def _on_publish_started(self, directory):
         if self._quitting or self._capture_exiting or not getattr(self, "transcription_enabled", False):
             return
-        from .recognition_cache import TranscriptionMode
+        from .transcription import TranscriptionMode
 
-        if self.transcription_mode() is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
+        if self._effective_transcription_mode() is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
             return
         transcriber = self.transcriber
         if transcriber is not None:
@@ -1460,7 +1472,7 @@ class CassiniApplication(Adw.Application):
                 recordings=self.live_recording_directories,
                 completed=lambda model: GLib.idle_add(self._model_completed, model),
                 progress_changed=progress_changed,
-                mode=self.transcription_mode(),
+                mode=self._effective_transcription_mode(),
             )
             library_publication.register_publish_observer(self._on_publish_started)
         return self.transcriber
@@ -1774,13 +1786,12 @@ class CassiniApplication(Adw.Application):
             self.settings_dialog.saved_voices_page.refresh()
         if not self.transcription_enabled:
             return
-        from .recognition_cache import TranscriptionMode
-        from .transcription import should_auto_write
+        from .transcription import TranscriptionMode, should_auto_write
 
         mode = (
-            self.transcription_mode()
-            if hasattr(self, "transcription_mode")
-            else CassiniApplication.transcription_mode(self)
+            self._effective_transcription_mode()
+            if hasattr(self, "_effective_transcription_mode")
+            else CassiniApplication._effective_transcription_mode(self)
         )
         if mode is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
             live_dirs = self.live_recording_directories()
@@ -1815,7 +1826,7 @@ class CassiniApplication(Adw.Application):
                 )
             ):
                 self.write_down(meeting, resume=True)
-            elif should_auto_write(meeting, previous, mode=mode):
+            elif should_auto_write(meeting, previous, mode):
                 self.write_down(meeting)
 
     def discard_meeting_paths(self, directory):
@@ -1853,16 +1864,7 @@ class CassiniApplication(Adw.Application):
                     ]
 
     def observe_browser_recordings(self, snapshot, previous):
-        if not self.transcription_enabled or previous is None:
-            return
-        from .recognition_cache import TranscriptionMode
-
-        mode = (
-            self.transcription_mode()
-            if hasattr(self, "transcription_mode")
-            else CassiniApplication.transcription_mode(self)
-        )
-        if mode is TranscriptionMode.RECORD_ONLY:
+        if not _auto_write_enabled(self) or previous is None:
             return
         for recording in snapshot.get("recordings", []):
             path = recording.get("path")

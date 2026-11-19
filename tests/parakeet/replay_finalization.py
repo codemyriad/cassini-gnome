@@ -24,14 +24,12 @@ from pathlib import Path
 
 from queue_models import Models
 
-from cassini_talk import portable
+from cassini_talk import portable, recognition_cache
 from cassini_talk import speech_pipeline as speech
 from cassini_talk.library_publication import capture_parent, publish_stopped
 from cassini_talk.meeting_store import atomic_json, read_metadata
 from cassini_talk.parakeet import Parakeet
 from cassini_talk.parakeet_client import ParakeetClient
-from cassini_talk.parakeet_model import MODEL_TAG
-from cassini_talk.recognition_cache import cache_entry_payload, whistle_model_identity
 from cassini_talk.recording_session import RecordingSession
 from cassini_talk.speech_threads import background_worker_priority
 from cassini_talk.transcription import TranscriptionQueue
@@ -130,7 +128,6 @@ def precompute(args, path):
         os.environ["NEEDLE3_LIB_PATH"] = str(args.bundle / "libneedle3.so")
         sys.path.insert(0, str(args.bundle / "wrapper.whl"))
         model = importlib.import_module("needle").Whistle(weights=args.bundle / "whistle.cact")
-    model_identity = MODEL_TAG if args.parakeet else whistle_model_identity(args.bundle)
     pieces = []
     try:
 
@@ -152,10 +149,10 @@ def precompute(args, path):
                 if chunk.end:
                     samples = np.concatenate(pieces)
                     segment = dict(startSample=start, endSample=start + len(samples), reason=chunk.reason)
-                    raw = model.transcribe(samples, language=None, word_timestamps=True)
-                    entry, _digest = speech.raw_result_to_cache_entry(model_identity, samples, raw)
-                    if entry is not None:
-                        print(json.dumps([segment, entry, time.monotonic()]), flush=True)
+                    # The same pure recogniser call the final worker caches: no placement here.
+                    raw = speech.transcribe_raw(model, samples)
+                    key = recognition_cache.samples_key(samples)
+                    print(json.dumps([segment, key, raw, time.monotonic()]), flush=True)
                     pieces.clear()
     finally:
         if args.parakeet:
@@ -163,12 +160,14 @@ def precompute(args, path):
 
 
 def cache_entries(completed, stop):
-    entries = {}
-    for _segment, entry, finished in completed:
-        if finished > stop:
-            continue
-        entries[entry["key"]] = cache_entry_payload(entry)
-    return entries
+    # D-1120: entries are raw recogniser output keyed on segment PCM alone. The
+    # final worker replans every track and places, clamps, filters and falls back
+    # on its own, so any offset, presence or end is handled after Stop.
+    return {
+        key: raw
+        for _segment, key, raw, finished in completed
+        if finished <= stop and recognition_cache.valid_entry(key, raw)
+    }
 
 
 def run(args, library, live):
@@ -265,7 +264,7 @@ def run(args, library, live):
                 opts = self.recognition_cache
                 atomic_json(
                     Path(opts["path"]),
-                    dict(format=speech.RECOGNITION_CACHE_FORMAT, model=opts["model"], segments=entries),
+                    recognition_cache.document(opts["model"], entries),
                 )
 
             def observed(event):

@@ -27,6 +27,7 @@ def main(bundle, model_path, runtime_path):
         sys.path.insert(0, str(verify_onnxruntime(runtime)))
     sys.addaudithook(block_network)
     from cassini_talk.parakeet import Parakeet
+    from cassini_talk.recognition_cache import parakeet_identity
     from cassini_talk.session_follower import StdinLineReader, run_follow_loop
     from cassini_talk.speech_pipeline import process_tracks
 
@@ -34,8 +35,9 @@ def main(bundle, model_path, runtime_path):
     reader = StdinLineReader(sys.stdin)
     detector = None
     prefix_store = {}
+    model_identity = parakeet_identity(MODEL_TAG, Path(__file__).with_name("sherpa-pins.json"))
     try:
-        emit("ready", pid=os.getpid(), model=MODEL_TAG, modelIdentity=MODEL_TAG, version=model.version)
+        emit("ready", pid=os.getpid(), model=MODEL_TAG, modelIdentity=model_identity, version=model.version)
         while line := reader.readline():
             message = json.loads(line)
             msg_type = message.get("type")

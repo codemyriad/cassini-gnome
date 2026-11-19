@@ -798,7 +798,10 @@ class SessionFollower:
 
     def step(self) -> bool:
         """Perform one bounded unit of work for the earliest-session-time ready track."""
-        from .speech_pipeline import raw_result_to_cache_entry
+        import numpy as np
+
+        from . import recognition_cache
+        from .speech_pipeline import transcribe_raw
 
         if not self.tracks:
             return False
@@ -828,11 +831,13 @@ class SessionFollower:
         # Recognize outside any open capture file descriptor.
         ready = chosen.pop_ready_segment()
         self.schedule_trace.append((chosen.track_id, "recognize", ready.session_ms))
-        result = self.model.transcribe(ready.samples, language=None, word_timestamps=True)
-        entry, _digest = raw_result_to_cache_entry(self.model_identity, ready.samples, result)
-        if entry is not None:
-            self.segments_decoded += 1
-            self.on_cache_entry(entry)
+        samples = np.asarray(ready.samples, dtype="<f4")
+        if len(samples) and np.isfinite(samples).all():
+            raw = transcribe_raw(self.model, samples)
+            key = recognition_cache.samples_key(samples)
+            if recognition_cache.valid_entry(key, raw):
+                self.segments_decoded += 1
+                self.on_cache_entry(dict(raw, key=key))
         return True
 
     def all_drained(self) -> bool:

@@ -373,7 +373,10 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: window.export_dialog is not None)
     dialog = window.export_dialog
     assert dialog.cassini.get_active() and not dialog.markdown.get_active()
-    assert dialog.names.get_text() == "The file carries the names in this meeting. Voiceprints are never exported."
+    # D106 §1 (L-62): drop export.subtitle and the Speaker names section.
+    assert not hasattr(dialog, "names")
+    shown = labels(dialog)
+    assert text("export.subtitle") not in shown and text("export.speakerNames.heading") not in shown
     from cassini_talk.meeting_store import update_metadata
 
     update_metadata(
@@ -449,27 +452,8 @@ with tempfile.TemporaryDirectory() as temporary:
     window.back_to_library()
     budget = next(m for m in window.snapshot.meetings if m.title == "Budget review")
     window.open_meeting(budget)
-    window.show_export()
-    dialog = window.export_dialog
-    assert "<b>Dario</b>" in dialog.names.get_label() and dialog.names.get_label().count("<b>") == 1
-    dialog.close()
-    until(lambda: dialog.closed)
-    many = replace(
-        budget,
-        speakers=tuple(
-            replace(s, name=name, provenance="recognised")
-            for s, name in zip(budget.speakers, ("Marta", "Dario & Co", "Ana"), strict=True)
-        ),
-    )
-    window.meeting_page.update(many)
-    window.show_export()
-    dialog = window.export_dialog
-    assert "Marta, Dario & Co and Ana, who were recognised automatically" in dialog.names.get_text()
-    assert dialog.names.get_label().count("<b>") == 3 and "&amp;" in dialog.names.get_label()
-    dialog.close()
-    until(lambda: dialog.closed)
-    # L-11 (D99 §2, PARITY §2): a transcribed meeting offers Cassini file and Markdown,
-    # then Plain text, SRT and WebVTT under a collapsed More formats disclosure.
+    # L-11 / L-62 (D99 §2, D106 §1, PARITY §2): a transcribed meeting offers Cassini file .opus
+    # and Markdown .md, then Plain text .txt and Subtitles .srt / .vtt under a collapsed More formats disclosure.
     from cassini_talk.export_dialog import ExportDialog
 
     transcribed = window.meeting_page.meeting
@@ -480,12 +464,21 @@ with tempfile.TemporaryDirectory() as temporary:
         dialog = window.export_dialog
         assert dialog.rows["markdown"].get_visible() and dialog.more.get_visible()
         assert not dialog.audio_only_note.get_visible()
-        assert labels(dialog.rows["audio"])[0] == text("export.cassiniFile.label")
+        assert labels(dialog.rows["audio"])[:3] == [
+            text("export.cassiniFile.label"),
+            ".opus",
+            text("export.cassiniFile.description.short"),
+        ]
+        assert labels(dialog.rows["markdown"])[:3] == [
+            text("export.markdown.label"),
+            ".md",
+            text("export.markdown.description.short"),
+        ]
         assert dialog.more.get_label() == text("export.moreFormats") and not dialog.more.get_expanded()
-        assert [labels(dialog.rows[k])[:2] for k in ("txt", "srt", "vtt")] == [
-            [text("export.plainText.label"), text("export.plainText.description")],
-            [text("export.srt.label"), text("export.srt.description")],
-            [text("export.vtt.label"), text("export.vtt.description")],
+        assert [labels(dialog.rows[k])[:3] for k in ("txt", "srt", "vtt")] == [
+            [text("export.plainText.label"), ".txt", text("export.plainText.description.short")],
+            [text("export.subtitles.label"), ".srt", text("export.srt.description.short")],
+            [text("export.subtitles.label"), ".vtt", text("export.vtt.description.short")],
         ]
         assert not any(dialog.rows[k].get_mapped() for k in ("txt", "srt", "vtt")), "collapsed by default"
         assert dialog.cassini.get_active() and dialog.selected_format() == "cassini"
@@ -543,10 +536,11 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog = ExportDialog(window, plain)
     dialog.present(window)
     until(lambda: dialog.cassini.get_mapped())
-    assert labels(dialog.rows["audio"])[:2] == [
+    assert labels(dialog.rows["audio"], visible=True)[:2] == [
         text("export.originalAudio.label"),
         text("export.originalAudio.description"),
     ]
+    assert not dialog.audio_ext.get_visible()
     assert text("export.cassiniFile.label") not in labels(dialog, visible=True)
     assert dialog.audio_only_note.get_mapped() and not dialog.more.get_visible()
     assert dialog.selected_format() == "original"

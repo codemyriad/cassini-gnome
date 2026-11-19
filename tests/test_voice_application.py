@@ -401,3 +401,107 @@ def test_both_library_refresh_paths_keep_recovery_and_stopping_activity(applicat
         refresh(window)
         assert window._activity == expected
     assert len(scans) == 1, "Unchanged activity must not churn Library scans"
+
+
+@pytest.mark.parametrize(("mode", "queues"), [("afterStop", True), ("recordOnly", False)])
+def test_record_only_keeps_every_capture_stop_path_audio_only(application_class, tmp_path, monkeypatch, mode, queues):
+    from gi.repository import GLib
+    from test_library import capture
+
+    from cassini_talk import capture_guard
+
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(tmp_path))
+    session = capture(tmp_path)
+    path = str(session.directory)
+    written = []
+
+    def write_down(target, resume=False):
+        written.append((str(target), resume))
+
+    expected = [(path, True)] if queues else []
+
+    # 1. The native recorder's finished callback.
+    recorder = SimpleNamespace(session=session, close=lambda: None)
+    native = SimpleNamespace(
+        native_captures={"finished": recorder},
+        _notify_shortcut_saved=lambda _path: None,
+        build_refresh=None,
+        _pending_recording=None,
+        transcription_enabled=True,
+        transcription_mode=mode,
+        _quitting=False,
+        _capture_exiting=False,
+        write_down=write_down,
+        _release_native=lambda: None,
+        _native_changed=lambda: None,
+    )
+    application_class._native_finished(native, recorder, path)
+    assert written == expected
+    written.clear()
+
+    # 2. A browser recording that appears saved.
+    browser = SimpleNamespace(transcription_enabled=True, transcription_mode=mode, write_down=write_down)
+    application_class.observe_browser_recordings(browser, dict(recordings=[dict(path=path)]), set())
+    assert written == expected
+    written.clear()
+
+    # 3. An explicit browser Stop.
+    monkeypatch.setattr(capture_guard, "stop_browser_captures", lambda *_a, **_kw: [path])
+    loop = GLib.MainLoop()
+    timed_out = []
+    timeout_id = GLib.timeout_add_seconds(5, lambda: timed_out.append(True) or loop.quit() or GLib.SOURCE_REMOVE)
+    stopping = SimpleNamespace(
+        _browser_stops=set(),
+        _browser_stop_repeats={},
+        _record_start_group=None,
+        hold=lambda: None,
+        release=loop.quit,
+        _notify_shortcut_saved=lambda _path: None,
+        transcription_enabled=True,
+        transcription_mode=mode,
+        write_down=write_down,
+        _native_changed=lambda: None,
+        build_refresh=None,
+    )
+    stopping.stop_browser_recordings = application_class.stop_browser_recordings.__get__(stopping)
+    try:
+        stopping.stop_browser_recordings(session.directory)
+        loop.run()
+        assert not timed_out, "stop_browser_recordings did not deliver on the main loop"
+    finally:
+        if not timed_out:
+            GLib.source_remove(timeout_id)
+    assert written == expected
+    written.clear()
+
+    # 4. The last hidden window retiring after capture saved: no queued intent is persisted.
+    persisted = []
+    monkeypatch.setattr(capture_guard, "queue_saved_for_later", lambda target: persisted.append(str(target)) or True)
+    monkeypatch.setattr(capture_guard, "capture_targets", lambda _app: ([], False))
+    monkeypatch.setattr(capture_guard, "remember_capture_paths", lambda _app: None)
+    monkeypatch.setattr(capture_guard, "finish_close", lambda *_a, **_kw: None)
+    loop = GLib.MainLoop()
+    timed_out = []
+    timeout_id = GLib.timeout_add_seconds(5, lambda: timed_out.append(True) or loop.quit() or GLib.SOURCE_REMOVE)
+    hidden = SimpleNamespace(
+        _capture_background=True,
+        _capture_confirmation=None,
+        _capture_hidden_windows=set(),
+        _capture_paths={path},
+        _quitting=False,
+        build_refresh=None,
+        get_windows=lambda: [],
+        release=loop.quit,
+        transcription_enabled=True,
+        transcription_mode=mode,
+        write_down=write_down,
+    )
+    try:
+        assert capture_guard.refresh_capture_background(hidden) is False
+        loop.run()
+        assert not timed_out, "the hidden save did not complete on the main loop"
+    finally:
+        if not timed_out:
+            GLib.source_remove(timeout_id)
+    assert persisted == ([path] if queues else [])
+    assert written == expected

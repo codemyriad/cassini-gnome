@@ -108,7 +108,7 @@ def emit(kind, **values):
 
 def main(bundle):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from cassini_talk.recognition_cache import whistle_model_identity
+    from cassini_talk.recognition_cache import whistle_identity
     from cassini_talk.session_follower import StdinLineReader, run_follow_loop
     from cassini_talk.speech_threads import background_worker_priority
 
@@ -126,7 +126,7 @@ def main(bundle):
         "ready",
         pid=os.getpid(),
         threads=len(list(Path("/proc/self/task").iterdir())),
-        modelIdentity=whistle_model_identity(bundle),
+        modelIdentity=whistle_identity(bundle),
     )
     reader = StdinLineReader(sys.stdin)
     detector = None

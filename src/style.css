@@ -463,12 +463,13 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .imported-toast image { color: var(--cx-on-inverse); }
 .imported-toast button.flat { color: var(--cx-on-inverse); min-width: 24px; min-height: 24px; padding: 0; }
 .export-dialog { font-size: 15px; }
-.export-heading { font-size: 20px; font-weight: 700; }
-.export-choices { border: 1px solid var(--app-export-border); border-radius: 10px; }
+.export-heading { font-size: 17px; font-weight: 700; }
+.export-choices { background: var(--cx-surface); border: 1px solid var(--app-export-border); border-radius: 10px; }
 .export-choice { padding: 14px; min-height: 48px; }
 .export-choice + .export-choice { border-top: 1px solid var(--app-hairline); }
 .export-choice.selected { background: var(--app-accent-tint); border-radius: 9px; }
-.export-destination { background: var(--app-wash-subtle); border-radius: 10px; padding: 12px; }
+.export-ext { font-size: 13px; font-weight: 400; color: var(--cx-ink-2); }
+.export-destination { background: var(--cx-surface); border: 1px solid var(--app-export-border); border-radius: 10px; padding: 12px; }
 .export-dialog .small { font-size: 13px; }
 .export-choice:last-child { min-height: 32px; }
 /* L-11 (D99): More formats disclosure below Markdown, inside the same bordered group. */
@@ -652,12 +653,25 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
   background: var(--app-likely-tag-bg);
   color: var(--cx-ink);
 }
-/* L-63 (D103 §5): one Saved voices row: 30 px avatar, 15/13 px lines, amber stale hint. */
+/* L-63 (D106 §5): Saved voices stale notice/pill, grey list heading, top-aligned rows, caption, empty state and footnote. */
+.saved-voices-stale-notice { background: var(--cx-warn-tint); color: var(--cx-warn-ink); border-radius: 12px; padding: 12px 14px; }
+.saved-voices-stale-icon { color: var(--cx-warn-ink); margin-top: 2px; }
+.saved-voices-stale-title { font-size: 14px; font-weight: 600; color: var(--cx-warn-ink); }
+.saved-voices-stale-body { font-size: 13px; color: var(--cx-warn-ink); }
+.saved-voices-list-group label.title,
+.saved-voices-list-group label.heading { color: var(--cx-ink-2); font-size: 13px; font-weight: 600; }
+button.saved-voices-add { color: var(--cx-accent-ink); font-size: 13px; font-weight: 600; min-height: 28px; padding: 0 8px; }
 .saved-voice-row .speaker-avatar { min-width: 30px; min-height: 30px; font-size: 12px; font-weight: 600; }
 .saved-voice-row .saved-voice-name { font-size: 15px; font-weight: 500; }
 .saved-voice-row .saved-voice-meta { font-size: 13px; }
+.saved-voice-row .saved-voice-stale-pill { margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--cx-warn-tint); color: var(--cx-warn-ink); }
 .saved-voice-row .saved-voice-play { min-width: 30px; min-height: 30px; padding: 0; }
-.saved-voice-row label.saved-voice-stale { color: var(--app-warn-line-fg); }
+.saved-voice-row .saved-voice-options > button { min-width: 30px; min-height: 30px; padding: 0; }
+.saved-voices-caption-group { margin-top: -14px; }
+.saved-voices-caption { font-size: 13px; }
+.saved-voices-empty-title { font-size: 20px; font-weight: 700; color: var(--cx-ink); }
+.saved-voices-empty-body { font-size: 14px; }
+.saved-voices-shield { color: var(--cx-accent); }
 .saved-voices-footnote { font-size: 13px; }
 /* Board: destructive text on a 12% error wash, not a filled button. */
 button.saved-voices-forget-all { background: color-mix(in srgb, var(--cx-error) 12%, transparent); color: var(--cx-error); }

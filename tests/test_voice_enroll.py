@@ -673,7 +673,6 @@ WAVE6_IDS = [
     "voices.setup.body.desktop",
     "voices.setup.kindness",
     "voices.setup.changeLater.desktop",
-    "voices.setup.privacy.desktop",
     "voices.setup.enable",
     "common.notNow",
     "voices.enroll.addAction",
@@ -687,8 +686,11 @@ WAVE6_IDS = [
     "voices.enroll.ready",
     "voices.enroll.save",
     "voices.enroll.fromTranscriptHint",
+    "savedVoices.footnote.computer",
+    "savedVoices.stale.title",
+    "savedVoices.stale.body",
     "savedVoices.row.meta",
-    "savedVoices.row.stale",
+    "savedVoices.row.needsNaming",
     "savedVoices.row.play",
     "savedVoices.row.stopSample",
     "savedVoices.row.rename",
@@ -698,7 +700,9 @@ WAVE6_IDS = [
     "savedVoices.row.options.a11y",
     "savedVoices.row.playSampleMenu",
     "savedVoices.row.forgetEllipsis",
-    "savedVoices.howToAdd.short",
+    "savedVoices.caption",
+    "savedVoices.empty",
+    "savedVoices.empty.body",
     "voices.rememberDefault.title",
     "voices.rememberDefault.subtitle",
     "savedVoices.forgetEveryone",
@@ -730,13 +734,43 @@ def test_every_wave6_id_is_vendored_for_gnome_and_used():
         ), identifier
     # Phone-only privacy copy is never drawn on the desktop (HARMONY §12).
     assert "privacy.phone" not in sources and "savedVoices.privacy.mac" not in sources
+    assert "savedVoices.footnote.mac" not in sources and "savedVoices.footnote.madeOn" not in sources
+    # D106 §5: Forget confirmation uses Forget, not Delete / voice profile.
+    assert entries["confirm.deleteVoiceProfile.title"]["en"] == "Forget {name}’s voice?"
+    assert entries["confirm.deleteVoiceProfile.primary"]["en"] == "Forget"
+    assert entries["savedVoices.empty"]["en"] == "No saved voices yet"
 
 
 def test_desktop_privacy_copy_claims_no_upload_and_no_export():
     entries = {e["id"]: e["en"] for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_text())["entries"]}
+    footnote = entries["savedVoices.footnote.computer"]
+    assert "this computer" in footnote and "names only" in footnote
+    assert "backup" not in footnote.lower() and "iCloud" not in footnote
     for identifier in ("savedVoices.privacy", "voices.setup.privacy.desktop"):
         assert "never uploaded" in entries[identifier] and "exported" in entries[identifier]
         assert "backup" not in entries[identifier].lower() and "iCloud" not in entries[identifier]
+
+
+def test_d106_saved_voices_helpers_format_meta_and_stale_notice():
+    gi = pytest.importorskip("gi")
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Adw", "1")
+    from cassini_talk import i18n
+    from cassini_talk.saved_voices_page import stale_notice_text, voice_row_meta
+
+    with i18n.using_language("en"):
+        assert voice_row_meta({"meetings": ["a"] * 31, "seconds": 4 * 3600 + 12 * 60}) == "31 meetings · 4 h 12 min"
+        assert voice_row_meta({"meetings": ["a"], "seconds": 250}) == "1 meeting · 4 min"
+        assert "confirmed speech" not in voice_row_meta({"meetings": ["a"], "seconds": 250})
+        title, body = stale_notice_text(["Luca"])
+        assert title == "1 voice needs naming again"
+        assert body == (
+            "Voice recognition was updated, and voices saved before the update can’t be recognised. "
+            "Name Luca in a meeting to save their voice again."
+        )
+        title2, body2 = stale_notice_text(["Luca", "Nina"])
+        assert title2 == "2 voices need naming again"
+        assert "Name Luca and Nina in a meeting" in body2
 
 
 def test_enrollment_modules_import_neither_numpy_nor_the_engine():

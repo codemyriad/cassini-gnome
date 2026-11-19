@@ -19,7 +19,7 @@ np = pytest.importorskip("numpy")
 
 from fake_follow_worker import DeterministicDetector, DeterministicRecognizer  # noqa: E402
 
-from cassini_talk import portable  # noqa: E402
+from cassini_talk import portable, recognition_cache  # noqa: E402
 from cassini_talk import speech_pipeline as pipeline  # noqa: E402
 from cassini_talk.library import LibraryScanner  # noqa: E402
 from cassini_talk.library_publication import (  # noqa: E402
@@ -32,18 +32,15 @@ from cassini_talk.library_v2 import finalize  # noqa: E402
 from cassini_talk.meeting_store import read_metadata  # noqa: E402
 from cassini_talk.parakeet_model import MODEL_ID as PARAKEET_MODEL_ID  # noqa: E402
 from cassini_talk.parakeet_model import MODEL_TAG as PARAKEET_MODEL_TAG  # noqa: E402
-from cassini_talk.recognition_cache import (  # noqa: E402
-    RECOGNITION_CACHE_FILE,
-    RECOGNITION_CACHE_FORMAT,
-    TranscriptionMode,
-    derive_segment_cache_key,
-    normalize_transcription_mode,
-    read_recognition_cache_file,
-)
 from cassini_talk.recording_session import RecordingSession, WAVWriter  # noqa: E402
 from cassini_talk.rotating_wav import RotatingWAV  # noqa: E402
 from cassini_talk.session_follower import SessionFollower  # noqa: E402
-from cassini_talk.transcription import TranscriptionQueue, should_auto_write  # noqa: E402
+from cassini_talk.transcription import (  # noqa: E402
+    RECOGNITION_CACHE_FILE,
+    TranscriptionMode,
+    TranscriptionQueue,
+    should_auto_write,
+)
 from cassini_talk.whistle_client import WhistleClient  # noqa: E402
 
 WORKER_SCRIPT = Path(__file__).with_name("fake_follow_worker.py")
@@ -82,7 +79,7 @@ class FakeBundle:
     def create(root: Path) -> Path:
         bundle = root / "fake-bundle"
         bundle.mkdir(exist_ok=True)
-        (bundle / "manifest.json").write_text(json.dumps({"whistle.cact": "a" * 64}))
+        (bundle / "pins.json").write_text(json.dumps({"installed": {"whistle.cact": "a" * 64}}))
         return bundle
 
 
@@ -255,17 +252,15 @@ def _assert_lanes_byte_identical(batch: dict, live: dict):
 
 
 def test_transcription_mode_normalization_and_record_only_policy(tmp_path):
-    assert normalize_transcription_mode("recordOnly") is TranscriptionMode.RECORD_ONLY
-    assert normalize_transcription_mode("record_only") is TranscriptionMode.RECORD_ONLY
-    assert normalize_transcription_mode("RECORD_ONLY") is TranscriptionMode.RECORD_ONLY
-    assert normalize_transcription_mode("afterStop") is TranscriptionMode.AFTER_STOP
-    assert normalize_transcription_mode("after_stop") is TranscriptionMode.AFTER_STOP
-    assert normalize_transcription_mode("AFTER_STOP") is TranscriptionMode.AFTER_STOP
-    assert normalize_transcription_mode("transcribeWhileRecording") is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
-    assert normalize_transcription_mode("transcribe_while_recording") is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
-    assert normalize_transcription_mode("TRANSCRIBE_WHILE_RECORDING") is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
-    for bad in (None, "", "fast", "AFTER_STOP ", "RecordOnly", 42, True):
-        assert normalize_transcription_mode(bad) is TranscriptionMode.AFTER_STOP
+    assert TranscriptionMode.parse("recordOnly") is TranscriptionMode.RECORD_ONLY
+    assert TranscriptionMode.parse("record_only") is TranscriptionMode.RECORD_ONLY
+    assert TranscriptionMode.parse("afterStop") is TranscriptionMode.AFTER_STOP
+    assert TranscriptionMode.parse("after_stop") is TranscriptionMode.AFTER_STOP
+    assert TranscriptionMode.parse("transcribeWhileRecording") is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
+    assert TranscriptionMode.parse("transcribe_while_recording") is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
+    for bad in (None, "", "fast", "AFTER_STOP", "RecordOnly", 42, True):
+        with pytest.raises(ValueError):
+            TranscriptionMode.parse(bad)
 
     lib = tmp_path / "lib"
     lib.mkdir()
@@ -369,18 +364,9 @@ def test_v2_pure_cache_finalization_and_rejection(tmp_path, monkeypatch):
     assert len(entries) == 2 and model_a.calls == 2
     cache_path.write_text(
         json.dumps(
-            dict(
-                format=RECOGNITION_CACHE_FORMAT,
-                model=model_id,
-                segments={
-                    k: {
-                        "sampleCount": v["sampleCount"],
-                        "text": v["text"],
-                        "language": v["language"],
-                        "relativeWords": v["relativeWords"],
-                    }
-                    for k, v in entries.items()
-                },
+            recognition_cache.document(
+                model_id,
+                {k: {name: v[name] for name in ("text", "language", "words")} for k, v in entries.items()},
             )
         )
     )
@@ -432,32 +418,30 @@ def test_v2_pure_cache_finalization_and_rejection(tmp_path, monkeypatch):
     # Reject legacy v1 format (D51), model mismatch, corrupted JSON, and invalid word timestamps.
     v1_path = tmp_path / "v1.json"
     v1_path.write_text(json.dumps(dict(format="cassini.recognition-cache.v1", model=model_id, segments={})))
-    assert read_recognition_cache_file(v1_path, model_id) == {}
-    assert read_recognition_cache_file(cache_path, PARAKEET_MODEL_TAG) == {}
+    assert recognition_cache.read(v1_path, model_id) == {}
+    assert recognition_cache.read(cache_path, PARAKEET_MODEL_TAG) == {}
 
     corrupt = tmp_path / "corrupt.json"
     corrupt.write_text("{truncated")
-    assert read_recognition_cache_file(corrupt, model_id) == {}
+    assert recognition_cache.read(corrupt, model_id) == {}
 
     bad_words_path = tmp_path / "bad_words.json"
-    bad_key = derive_segment_cache_key(model_id, "0" * 64, 16000)
+    bad_key = recognition_cache.segment_key("0" * 64, 16000)
     bad_words_path.write_text(
         json.dumps(
-            dict(
-                format=RECOGNITION_CACHE_FORMAT,
-                model=model_id,
-                segments={
+            recognition_cache.document(
+                model_id,
+                {
                     bad_key: dict(
-                        sampleCount=16000,
                         text="bad",
                         language="en",
-                        relativeWords=[dict(startMs=500, endMs=200, text="bad")],
+                        words=[dict(start=0.5, end=0.2, text="bad")],
                     )
                 },
             )
         )
     )
-    assert read_recognition_cache_file(bad_words_path, model_id) == {}
+    assert recognition_cache.read(bad_words_path, model_id) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -1141,22 +1125,23 @@ def test_capture_stress_two_simultaneous_tracks_zero_frame_loss(tmp_path):
 
 def test_long_input_11h_v2_cache_and_prefix_linear_scaling():
     # 11 hours ~ 40,000 segments/words; verify O(N) scaling with time.thread_time() (never wall clock).
-    model_id = PARAKEET_MODEL_TAG
-
     def run_workload(n_segments: int) -> float:
         presence = [[i * 32000, i * 32000 + 24000] for i in range(n_segments)]
         starts = [p[0] for p in presence]
         start = time.thread_time()
         for i in range(n_segments):
             pcm_hash = f"{i:064x}"
-            key = derive_segment_cache_key(model_id, pcm_hash, 16000)
-            assert len(key) == 64
+            key = recognition_cache.segment_key(pcm_hash, 16000)
+            assert key.endswith(":16000")
             segment = dict(startSample=i * 32000, endSample=i * 32000 + 16000, reason="silence")
-            rel = [dict(startMs=50, endMs=300, text="alpha"), dict(startMs=350, endMs=700, text="beta")]
-            _val, words, _lang = pipeline.place_and_clamp_words(
-                segment, 0, 16000, "alpha beta", rel, "en", presence=presence, presence_starts=starts
+            raw = dict(
+                text="alpha beta",
+                language="en",
+                words=[dict(start=0.05, end=0.3, text="alpha"), dict(start=0.35, end=0.7, text="beta")],
             )
-            assert len(words) == 2
+            _val, words, _lang = pipeline.place_words(raw, segment, 16000, 0)
+            kept = pipeline.present_words(words, presence, starts=starts)
+            assert len(kept) == 2
         return time.thread_time() - start
 
     # Warm up bytecode/allocators.

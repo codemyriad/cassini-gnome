@@ -1,202 +1,151 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Pure-stdlib TranscriptionMode seam and cassini.recognition-cache.v2 helpers (D109).
+"""D-1120: a content-addressed cache of raw recogniser output per segment PCM.
 
-Kept free of NumPy, ONNX Runtime, and GStreamer so both the GTK parent process
-and background speech workers share one exact cache key and validation schema.
+`model.transcribe(samples)` is a pure function of the verified model and the
+exact float32 little-endian samples, so an entry is keyed on those alone:
+`<sha256 of the samples>:<sample count>` in a file whose header names the
+model identity. An entry holds the recogniser's own segment-relative words
+(seconds from the segment's first sample), text and language, before any
+D55 placement, G11 clamping, D63 presence filtering or R71 fallback; those
+run after Stop on one codepath whether or not a segment came from here.
+
+Pure Python: the GTK-side queue merges and writes the file, the recognition
+child reads it. Any other format (including v1) reads as empty (D51).
 """
-
-from __future__ import annotations
 
 import hashlib
 import json
 import math
 import os
 import re
-from enum import StrEnum
 from pathlib import Path
 
-from .library_files import regular
-
+FILE = ".recognition-cache.json"
+FORMAT = "cassini.recognition-cache.v2"
+MAX_BYTES = 16 * 1024 * 1024
+MAX_SEGMENTS = 100000
+MAX_WORDS = 10000
+MAX_TEXT = 1024 * 1024
 RATE = 16000
-RECOGNITION_CACHE_FILE = ".recognition-cache.json"
-RECOGNITION_CACHE_FORMAT = "cassini.recognition-cache.v2"
-
-MAX_CACHE_FILE_BYTES = 16 * 1024 * 1024
-MAX_CACHE_SEGMENTS = 100_000
-MAX_CACHED_WORDS = 10_000
-MAX_MODEL_IDENTITY_BYTES = 256
-MAX_LANGUAGE_BYTES = 32
-MAX_SEGMENT_SAMPLES = RATE * 86_400
-MAX_RELATIVE_WORD_MS = 86_400_000
-
-_HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+# A recogniser may place its last word a little past the PCM it was given;
+# the placement clamps that. Anything further is not a timestamp it produced.
+SLACK_SECONDS = 30
+_KEY = re.compile(r"\A[0-9a-f]{64}:[1-9][0-9]{0,11}\Z")
 
 
-class TranscriptionMode(StrEnum):
-    RECORD_ONLY = "record_only"
-    AFTER_STOP = "after_stop"
-    TRANSCRIBE_WHILE_RECORDING = "transcribe_while_recording"
+def segment_key(pcm_sha256, sample_count):
+    return f"{pcm_sha256}:{sample_count}"
 
 
-_MODE_ALIASES: dict[str, TranscriptionMode] = {
-    "recordOnly": TranscriptionMode.RECORD_ONLY,
-    "record_only": TranscriptionMode.RECORD_ONLY,
-    "RECORD_ONLY": TranscriptionMode.RECORD_ONLY,
-    "afterStop": TranscriptionMode.AFTER_STOP,
-    "after_stop": TranscriptionMode.AFTER_STOP,
-    "AFTER_STOP": TranscriptionMode.AFTER_STOP,
-    "transcribeWhileRecording": TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
-    "transcribe_while_recording": TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
-    "TRANSCRIBE_WHILE_RECORDING": TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
-}
+def samples_key(samples):
+    """The key of float32 little-endian samples (a NumPy array or raw bytes)."""
+    raw = (
+        samples if isinstance(samples, bytes | bytearray | memoryview) else samples.astype("<f4", copy=False).tobytes()
+    )
+    if len(raw) % 4:
+        raise ValueError("float32 samples expected")
+    return segment_key(hashlib.sha256(raw).hexdigest(), len(raw) // 4)
 
 
-def normalize_transcription_mode(raw: object) -> TranscriptionMode:
-    """Resolve persisted or caller-supplied mode values safely; default after_stop."""
-    if isinstance(raw, TranscriptionMode):
-        return raw
-    if isinstance(raw, str):
-        found = _MODE_ALIASES.get(raw)
-        if found is not None:
-            return found
-    return TranscriptionMode.AFTER_STOP
+def whistle_identity(bundle):
+    """Whistle's identity is its verified bundle pin set (weights, library, wrapper)."""
+    try:
+        pins = (Path(bundle) / "pins.json").read_bytes()
+    except OSError:
+        return None
+    return "whistle@" + hashlib.sha256(pins).hexdigest()
 
 
-def is_valid_model_identity(model_identity: object) -> bool:
+def parakeet_identity(model_tag, runtime_pins):
+    """Parakeet's identity is its checkpoint plus the pinned Sherpa/ONNX Runtime binaries.
+
+    A runtime upgrade (decoding, timestamps, INT8 kernels) can change the output
+    of the same checkpoint, so the hash of `sherpa-pins.json` is part of it.
+    """
+    try:
+        pins = Path(runtime_pins).read_bytes()
+    except OSError:
+        return None
+    return f"{model_tag}+sherpa@{hashlib.sha256(pins).hexdigest()}"
+
+
+def is_valid_model_identity(model_identity):
     if not isinstance(model_identity, str) or not model_identity:
         return False
     if any(ch in model_identity for ch in ("\n", "\r", "\0")):
         return False
     try:
-        return len(model_identity.encode("utf-8")) <= MAX_MODEL_IDENTITY_BYTES
+        return len(model_identity.encode("utf-8")) <= 256
     except UnicodeError:
         return False
 
 
-def is_hex64(value: object) -> bool:
-    return isinstance(value, str) and bool(_HEX64_RE.fullmatch(value))
+def _number(value):
+    return type(value) in (int, float) and math.isfinite(value)
 
 
-def derive_segment_cache_key(model_identity: str, pcm_sha256: str, sample_count: int) -> str:
-    """Derive the canonical cassini.recognition-cache.v2 64-hex key."""
-    if not is_valid_model_identity(model_identity):
-        raise ValueError("Invalid recognition cache model identity")
-    if not is_hex64(pcm_sha256):
-        raise ValueError("Invalid segment PCM SHA-256")
-    if type(sample_count) is not int or not (1 <= sample_count <= MAX_SEGMENT_SAMPLES):
-        raise ValueError("Invalid segment sample count")
-    preimage = f"{RECOGNITION_CACHE_FORMAT}\n{model_identity}\n{pcm_sha256}\n{sample_count}"
-    return hashlib.sha256(preimage.encode("utf-8")).hexdigest()
-
-
-def normalize_language(language: object) -> str:
-    if isinstance(language, str) and language:
-        try:
-            encoded = language.encode("utf-8")
-        except UnicodeError:
-            return "und"
-        if 0 < len(encoded) <= MAX_LANGUAGE_BYTES:
-            return language
-    return "und"
-
-
-def raw_seconds_to_relative_words(raw_words: object) -> list[dict] | None:
-    """Convert raw recognizer seconds to validated integer relativeWords, or None if invalid."""
-    if not isinstance(raw_words, list) or len(raw_words) > MAX_CACHED_WORDS:
-        return None
-    out: list[dict] = []
-    for word in raw_words:
-        if not isinstance(word, dict):
-            return None
-        start_s = word.get("start")
-        end_s = word.get("end")
-        word_text = word.get("word", word.get("text"))
-        if (
-            type(start_s) not in (int, float)
-            or type(end_s) not in (int, float)
-            or not math.isfinite(start_s)
-            or not math.isfinite(end_s)
-            or start_s < 0
-            or end_s < start_s
-            or end_s > 86400.0
-            or not isinstance(word_text, str)
-            or not word_text
-        ):
-            return None
-        start_ms = round(start_s * 1000)
-        end_ms = max(start_ms, round(end_s * 1000))
-        if not (0 <= start_ms <= end_ms <= MAX_RELATIVE_WORD_MS):
-            return None
-        out.append(dict(startMs=start_ms, endMs=end_ms, text=word_text))
-    return out
-
-
-def valid_cached_entry(
-    key: object,
-    entry: object,
-    *,
-    model: str | None = None,
-    pcm_sha256: str | None = None,
-    sample_count: int | None = None,
-) -> bool:
-    """Validate one cassini.recognition-cache.v2 entry strictly per D109 §4.3."""
-    if not is_hex64(key) or not isinstance(entry, dict):
+def valid_entry(key, entry):
+    if not isinstance(key, str) or not _KEY.match(key) or not isinstance(entry, dict):
         return False
-    count = entry.get("sampleCount")
-    text = entry.get("text")
-    language = entry.get("language")
-    words = entry.get("relativeWords")
-    if (
-        type(count) is not int
-        or not (1 <= count <= MAX_SEGMENT_SAMPLES)
-        or not isinstance(text, str)
-        or not isinstance(language, str)
-        or not language
-        or not isinstance(words, list)
-        or len(words) > MAX_CACHED_WORDS
-    ):
+    if set(entry) != {"text", "language", "words"}:
         return False
-    try:
-        if len(language.encode("utf-8")) > MAX_LANGUAGE_BYTES:
-            return False
-    except UnicodeError:
+    text, language, words = entry["text"], entry["language"], entry["words"]
+    if not isinstance(text, str) or len(text) > MAX_TEXT:
         return False
-    for word in words:
-        if (
-            not isinstance(word, dict)
-            or type(word.get("startMs")) is not int
-            or type(word.get("endMs")) is not int
-            or not (0 <= word["startMs"] <= word["endMs"] <= MAX_RELATIVE_WORD_MS)
-            or not isinstance(word.get("text"), str)
-            or not word["text"]
-        ):
-            return False
-    if sample_count is not None and count != sample_count:
+    if not isinstance(language, str) or not 0 < len(language) <= 32:
         return False
-    if model is not None and pcm_sha256 is not None and sample_count is not None:
-        try:
-            expected = derive_segment_cache_key(model, pcm_sha256, sample_count)
-        except ValueError:
-            return False
-        if key != expected:
-            return False
-    return True
+    if not isinstance(words, list) or len(words) > MAX_WORDS:
+        return False
+    limit = int(key.rsplit(":", 1)[1]) / RATE + SLACK_SECONDS
+    return all(
+        isinstance(word, dict)
+        and set(word) == {"start", "end", "text"}
+        and _number(word["start"])
+        and _number(word["end"])
+        and 0 <= word["start"] <= word["end"] <= limit
+        and isinstance(word["text"], str)
+        and len(word["text"]) <= MAX_TEXT
+        for word in words
+    )
 
 
-def cache_entry_payload(entry: dict) -> dict:
-    return {
-        "sampleCount": entry["sampleCount"],
-        "text": entry["text"],
-        "language": entry["language"],
-        "relativeWords": [
-            {"startMs": w["startMs"], "endMs": w["endMs"], "text": w["text"]} for w in entry["relativeWords"]
+def entry(result):
+    """The cacheable form of one `model.transcribe` result."""
+    return dict(
+        text=result["text"],
+        language=result.get("language") or "und",
+        words=[
+            dict(start=float(word["start"]), end=float(word["end"]), text=word.get("word", word.get("text", "")))
+            for word in result.get("words", [])
         ],
-    }
+    )
 
 
-def read_recognition_cache_file(path: str | Path, model: str) -> dict[str, dict]:
-    """Read and validate a cassini.recognition-cache.v2 file safely (O_NOFOLLOW)."""
-    if not isinstance(path, (str, Path)) or not str(path) or not is_valid_model_identity(model):
+def _reject_constant(name):
+    raise ValueError("non-finite JSON number: " + name)
+
+
+def parse(raw, model):
+    """The valid segments of a cache file for exactly this model, else {}."""
+    if not isinstance(model, str) or not model or len(raw) > MAX_BYTES:
+        return {}
+    try:
+        value = json.loads(raw, parse_constant=_reject_constant)
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        return {}
+    if not isinstance(value, dict) or value.get("format") != FORMAT or value.get("model") != model:
+        return {}
+    segments = value.get("segments")
+    if not isinstance(segments, dict) or len(segments) > MAX_SEGMENTS:
+        return {}
+    return {key: item for key, item in segments.items() if valid_entry(key, item)}
+
+
+def read(path, model):
+    """Read `path` without following links; unreadable or foreign reads as {}."""
+    from .library_files import regular
+
+    if not isinstance(path, str | os.PathLike) or not str(path) or not isinstance(model, str) or not model:
         return {}
     target = Path(path)
     try:
@@ -205,36 +154,13 @@ def read_recognition_cache_file(path: str | Path, model: str) -> dict[str, dict]
         return {}
     try:
         with regular(descriptor, target.name) as (stream, _info):
-            raw = stream.read(MAX_CACHE_FILE_BYTES + 1)
+            raw = stream.read(MAX_BYTES + 1)
     except (OSError, ValueError):
         return {}
     finally:
         os.close(descriptor)
-    if len(raw) > MAX_CACHE_FILE_BYTES:
-        return {}
-    try:
-        value = json.loads(raw)
-    except (ValueError, UnicodeError):
-        return {}
-    if not isinstance(value, dict) or value.get("format") != RECOGNITION_CACHE_FORMAT or value.get("model") != model:
-        return {}
-    segments = value.get("segments")
-    if not isinstance(segments, dict) or len(segments) > MAX_CACHE_SEGMENTS:
-        return {}
-    return {k: cache_entry_payload(v) for k, v in segments.items() if valid_cached_entry(k, v)}
+    return parse(raw, model)
 
 
-def whistle_model_identity(bundle: str | Path | None) -> str:
-    """Return the verified Whistle weights identity (`whistle@<sha256>`) when present."""
-    if bundle is None:
-        return "whistle"
-    manifest_path = Path(bundle) / "manifest.json"
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, UnicodeError):
-        return "whistle"
-    if isinstance(manifest, dict):
-        digest = manifest.get("whistle.cact")
-        if is_hex64(digest):
-            return f"whistle@{digest}"
-    return "whistle"
+def document(model, segments):
+    return dict(format=FORMAT, model=model, segments=segments)
