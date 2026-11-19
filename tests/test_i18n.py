@@ -342,32 +342,23 @@ def test_join_list_localizes_conjunctions_across_all_ui_languages(lang, items, e
 @pytest.mark.parametrize(
     ("lang", "expected_list"),
     [
-        ("en", "<b>Marta</b>, <b>Rossi &amp; Co</b> and <b>Isabel</b>"),
-        ("it", "<b>Marta</b>, <b>Rossi &amp; Co</b> e <b>Isabel</b>"),
-        ("fr", "<b>Marta</b>, <b>Rossi &amp; Co</b> et <b>Isabel</b>"),
-        ("es", "<b>Marta</b>, <b>Rossi &amp; Co</b> e <b>Isabel</b>"),
-        ("pt-BR", "<b>Marta</b>, <b>Rossi &amp; Co</b> e <b>Isabel</b>"),
-        ("pt-PT", "<b>Marta</b>, <b>Rossi &amp; Co</b> e <b>Isabel</b>"),
+        ("en", "Marta, Rossi & Co and Isabel"),
+        ("it", "Marta, Rossi & Co e Isabel"),
+        ("fr", "Marta, Rossi & Co et Isabel"),
+        ("es", "Marta, Rossi & Co e Isabel"),
+        ("pt-BR", "Marta, Rossi & Co e Isabel"),
+        ("pt-PT", "Marta, Rossi & Co e Isabel"),
     ],
 )
-def test_export_speaker_names_markup_uses_localized_list_conjunctions(lang, expected_list):
-    from types import SimpleNamespace
-
+def test_saved_voices_stale_notice_uses_localized_list_conjunctions(lang, expected_list):
     gi = pytest.importorskip("gi")
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")
-    from cassini_talk.export_dialog import speaker_names_markup
+    from cassini_talk.saved_voices_page import stale_notice_text
 
-    meeting = SimpleNamespace(
-        speakers=[
-            SimpleNamespace(name="Marta", provenance="recognised"),
-            SimpleNamespace(name="Rossi & Co", provenance="recognised"),
-            SimpleNamespace(name="Speaker 3", provenance="typed"),
-            SimpleNamespace(name="Isabel", provenance="recognised"),
-        ]
-    )
     with i18n.using_language(lang):
-        markup = speaker_names_markup(meeting)
-        assert expected_list in markup
+        title, body = stale_notice_text(["Marta", "Rossi & Co", "Isabel"])
+        assert "3" in title
+        assert expected_list in body
         if lang != "en":
-            assert " and " not in markup
+            assert " and " not in body

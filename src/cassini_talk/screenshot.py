@@ -63,7 +63,18 @@ def capture(application_id, version, profile):
             chosen = next(m for m in window.snapshot.meetings if m.title == "Client call, Rossi & Partners")
             window.monitor._executor.submit(seed, app, chosen).result(timeout=5)
             seeded_voices = True
-        if board == "saved-voices" and not window._pending and not opened_settings:
+        if board in ("saved-voices", "saved-voices-empty") and not window._pending and not opened_settings:
+            if app.diarization_models:
+                if (
+                    app.diarization_models.snapshot()["busy"]
+                    or app.voice_models
+                    and app.voice_models.snapshot()["busy"]
+                ):
+                    time.sleep(0.01)
+                    continue
+                app.diarization_models._change(downloaded=True, ready=True, busy=False, percent=100)
+                if app.voice_models:
+                    app.voice_models._change(downloaded=True, ready=True, busy=False, percent=100)
             app.on_preferences()
             app.settings_dialog.set_visible_page_name("transcription")
             app.settings_dialog._show_voices()
@@ -166,7 +177,11 @@ def capture(application_id, version, profile):
             settled_frame = None
             time.sleep(0.01)
             continue
-        if board == "saved-voices" and opened_settings and app.settings_dialog.saved_voices_page._loading:
+        if (
+            board in ("saved-voices", "saved-voices-empty")
+            and opened_settings
+            and app.settings_dialog.saved_voices_page._loading
+        ):
             settled_frame = None
             time.sleep(0.01)
             continue

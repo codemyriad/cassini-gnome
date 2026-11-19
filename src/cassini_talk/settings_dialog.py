@@ -304,7 +304,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         group.add(self.recognise)
         self.voice_line = Gtk.Label(wrap=True, xalign=0, css_classes=["dim-label"], visible=False)
         group.add(self.voice_line)
-        # D103 §3 (PROVISIONAL placement, D-1044 q4): the default of Remember this voice.
+        # L-60 (D106 §3): the default of Remember this voice, between Recognise saved voices and Saved voices.
         self.remember_default = Adw.SwitchRow(
             title=text("voices.rememberDefault.title"),
             subtitle=text("voices.rememberDefault.subtitle"),
