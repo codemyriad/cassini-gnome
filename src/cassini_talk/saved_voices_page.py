@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """UX17 / D-977 Saved voices page; private-store IO uses the Settings worker.
 
-Wave 6 (PARITY §5, HARMONY §§10, 12, D98) with L-63 (D103 §5): one row per
-voice with a play button and one Options menu (Play a sample, Rename…,
-Forget…), Forget everyone…, the footnote, guided test-phrase enrollment and the
-local-only privacy line. The voices question moved over the first meeting with
-speakers (D103 §3, `voice_question.py`). Nothing here touches the network.
+Wave 6 (PARITY §5, HARMONY §§10, 12, D98) with L-63 (D106 §5): amber stale
+notice above the list, grey people-count heading with flat "+ Add a voice…",
+top-aligned rows ("31 meetings · 4 h 12 min", amber "Needs naming again" pill,
+play button, Options menu), caption under the list, Forget everyone… apart,
+centred empty state with primary "Add a voice…", and a one-line shield privacy
+footnote at the bottom. Nothing here touches the network.
 """
 
 import logging
@@ -13,18 +14,38 @@ from concurrent.futures import CancelledError
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
+from .i18n import join_list
 from .speaker_edits import name_value
 from .strings import plural, text
 from .tokens import saved_voice_slot
-from .ux_formats import confirmed_speech
+from .ux_formats import meeting_duration
 from .voice_store import sample_window
 from .voices_logic import stale
 
 LOG = logging.getLogger(__name__)
 
 
+def stale_notice_text(names):
+    """Title and body of the D106 §5 amber stale-voices notice; names use the locale list formatter."""
+    return (
+        plural("savedVoices.stale.title", len(names)),
+        text("savedVoices.stale.body", name=join_list(names)),
+    )
+
+
+def voice_row_meta(voice):
+    """D106 §5 (L-63): '31 meetings · 4 h 12 min', without 'confirmed speech'."""
+    return text(
+        "savedVoices.row.meta",
+        meetingCount=plural("savedVoices.row.meetingCount", len(voice["meetings"])),
+        confirmedSpeech=meeting_duration(voice["seconds"] * 1000),
+    )
+
+
 class SavedVoicesPage(Adw.NavigationPage):
     def __init__(self, settings):
+        from .first_run_hero import LineGlyph
+
         super().__init__(title=text("common.savedVoices"))
         self.settings, self.app = settings, settings.app
         self.busy, self.closed, self.retry = False, False, None
@@ -39,21 +60,57 @@ class SavedVoicesPage(Adw.NavigationPage):
         header = Adw.HeaderBar()
         toolbar.add_top_bar(header)
         page = Adw.PreferencesPage()
-        group = Adw.PreferencesGroup()
-        line = Gtk.Box(spacing=12)
-        line.append(Gtk.Image(icon_name="security-high-symbolic", css_classes=["success"], valign=Gtk.Align.START))
-        # L-63 (D103 §5): the desktop board's privacy line; the voices question
-        # itself is asked over the first meeting with speakers (D103 §3).
-        line.append(Gtk.Label(label=text("voices.setup.privacy.desktop"), wrap=True, xalign=0, hexpand=True))
-        group.add(line)
-        page.add(group)
-        self.people = Adw.PreferencesGroup()
-        page.add(self.people)
+        self.newer_group = Adw.PreferencesGroup(visible=False)
         self.newer = Gtk.Label(label=text("savedVoices.newerVersion"), wrap=True, xalign=0, visible=False)
-        self.people.add(self.newer)
-        self.empty = Gtk.Label(label=text("savedVoices.empty"), wrap=True, xalign=0, css_classes=["dim-label"])
-        self.people.add(self.empty)
-        self.error_group = Adw.PreferencesGroup()
+        self.newer_group.add(self.newer)
+        page.add(self.newer_group)
+        # D106 §5 (L-63): one amber notice above the list when any voice is stale.
+        self.stale_group = Adw.PreferencesGroup(visible=False)
+        self.stale_notice = Gtk.Box(spacing=10, css_classes=["saved-voices-stale-notice"])
+        self.stale_notice.append(
+            Gtk.Image(
+                icon_name="dialog-warning-symbolic",
+                valign=Gtk.Align.START,
+                accessible_role=Gtk.AccessibleRole.PRESENTATION,
+                css_classes=["saved-voices-stale-icon"],
+            )
+        )
+        stale_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
+        self.stale_title = Gtk.Label(xalign=0, wrap=True, css_classes=["saved-voices-stale-title"])
+        self.stale_body = Gtk.Label(xalign=0, wrap=True, css_classes=["saved-voices-stale-body"])
+        stale_text.append(self.stale_title)
+        stale_text.append(self.stale_body)
+        self.stale_notice.append(stale_text)
+        self.stale_group.add(self.stale_notice)
+        page.add(self.stale_group)
+        # Grey list label with a flat "+ Add a voice…" button on its right.
+        self.add_voice = Gtk.Button(
+            child=Adw.ButtonContent(icon_name="list-add-symbolic", label=text("voices.enroll.addAction")),
+            valign=Gtk.Align.CENTER,
+            css_classes=["flat", "saved-voices-add"],
+        )
+        self.add_voice.connect("clicked", lambda *_: self.enroll())
+        self.people = Adw.PreferencesGroup(header_suffix=self.add_voice, css_classes=["saved-voices-list-group"])
+        page.add(self.people)
+        self.caption_group = Adw.PreferencesGroup(css_classes=["saved-voices-caption-group"])
+        self.caption = Gtk.Label(
+            label=text("savedVoices.caption"),
+            wrap=True,
+            xalign=0,
+            css_classes=["dim-label", "saved-voices-caption"],
+        )
+        self.caption_group.add(self.caption)
+        self.models_needed = Gtk.Label(
+            label=text("speakers.rememberVoice.modelsNeeded"),
+            wrap=True,
+            xalign=0,
+            margin_top=6,
+            visible=False,
+            css_classes=["dim-label", "caption"],
+        )
+        self.caption_group.add(self.models_needed)
+        page.add(self.caption_group)
+        self.error_group = Adw.PreferencesGroup(visible=False)
         self.error = Adw.ActionRow(
             title=text("savedVoices.changeFailed"), use_markup=False, visible=False, css_classes=["error-line"]
         )
@@ -62,39 +119,74 @@ class SavedVoicesPage(Adw.NavigationPage):
         self.error.add_suffix(self.again)
         self.error_group.add(self.error)
         page.add(self.error_group)
-        # Board: one footnote at the start, Forget everyone… at the end. Add a
-        # voice… (D-977 guided test phrase, PARITY "Remembered voices") stays
-        # beside it: the board does not draw it, but nothing is removed (L-58).
-        footer = Adw.PreferencesGroup()
-        actions = Gtk.Box(spacing=20, css_classes=["saved-voices-footer"])
-        self.footnote = Gtk.Label(
-            label=text("savedVoices.howToAdd.short"),
-            wrap=True,
-            xalign=0,
-            hexpand=True,
-            valign=Gtk.Align.START,
-            css_classes=["dim-label", "saved-voices-footnote"],
+        # Forget everyone… sits apart under the list, never beside the privacy footnote.
+        self.forget_group = Adw.PreferencesGroup()
+        self.everyone = Gtk.Button(
+            label=text("savedVoices.forgetEveryone"),
+            halign=Gtk.Align.START,
+            css_classes=["saved-voices-forget-all"],
         )
-        actions.append(self.footnote)
-        buttons = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, valign=Gtk.Align.START)
-        self.everyone = Gtk.Button(label=text("savedVoices.forgetEveryone"), css_classes=["saved-voices-forget-all"])
         self.everyone.connect("clicked", lambda *_: self.confirm(None))
-        buttons.append(self.everyone)
-        self.add_voice = Gtk.Button(label=text("voices.enroll.addAction"))
-        self.add_voice.connect("clicked", lambda *_: self.enroll())
-        buttons.append(self.add_voice)
-        actions.append(buttons)
-        footer.add(actions)
-        self.models_needed = Gtk.Label(
+        self.forget_group.add(self.everyone)
+        page.add(self.forget_group)
+        # Empty state: centred larger title, body, primary "Add a voice…", no large icon.
+        self.empty_group = Adw.PreferencesGroup(visible=False, css_classes=["saved-voices-empty-group"])
+        empty_box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=10,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+            margin_top=48,
+            margin_bottom=32,
+        )
+        self.empty = Gtk.Label(
+            label=text("savedVoices.empty"),
+            wrap=True,
+            justify=Gtk.Justification.CENTER,
+            css_classes=["saved-voices-empty-title"],
+        )
+        empty_box.append(self.empty)
+        self.empty_body = Gtk.Label(
+            label=text("savedVoices.empty.body"),
+            wrap=True,
+            justify=Gtk.Justification.CENTER,
+            max_width_chars=44,
+            css_classes=["dim-label", "saved-voices-empty-body"],
+        )
+        empty_box.append(self.empty_body)
+        self.empty_add_voice = Gtk.Button(
+            label=text("voices.enroll.addAction"),
+            halign=Gtk.Align.CENTER,
+            margin_top=8,
+            css_classes=["suggested-action", "primary-action", "saved-voices-empty-add"],
+        )
+        self.empty_add_voice.connect("clicked", lambda *_: self.enroll())
+        empty_box.append(self.empty_add_voice)
+        self.empty_models_needed = Gtk.Label(
             label=text("speakers.rememberVoice.modelsNeeded"),
             wrap=True,
-            xalign=0,
-            margin_top=8,
+            justify=Gtk.Justification.CENTER,
+            max_width_chars=44,
+            margin_top=4,
             visible=False,
             css_classes=["dim-label", "caption"],
         )
-        footer.add(self.models_needed)
-        page.add(footer)
+        empty_box.append(self.empty_models_needed)
+        self.empty_group.add(empty_box)
+        page.add(self.empty_group)
+        # Bottom privacy footnote: one centred line with the shield icon, same with voices and empty.
+        self.privacy_group = Adw.PreferencesGroup()
+        privacy = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER, css_classes=["saved-voices-privacy"])
+        privacy.append(LineGlyph("shield", 14, valign=Gtk.Align.CENTER, css_classes=["saved-voices-shield"]))
+        self.footnote = Gtk.Label(
+            label=text("savedVoices.footnote.computer"),
+            wrap=True,
+            justify=Gtk.Justification.CENTER,
+            css_classes=["dim-label", "saved-voices-footnote"],
+        )
+        privacy.append(self.footnote)
+        self.privacy_group.add(privacy)
+        page.add(self.privacy_group)
         self.enroll_dialog = None
         self.rename_dialog = None
         toolbar.set_content(page)
@@ -109,8 +201,9 @@ class SavedVoicesPage(Adw.NavigationPage):
         if self.closed:
             return
         state = self.app.voice_store.snapshot()
+        voices = state["voices"]
         signature = (
-            state["voices"],
+            voices,
             state["readOnly"],
             self.busy,
             tuple(
@@ -120,23 +213,39 @@ class SavedVoicesPage(Adw.NavigationPage):
                 for m in w.snapshot.meetings
             ),
         )
+        has_voices = bool(voices)
         writable = not state["readOnly"] and not self.busy
-        self.newer.set_visible(state["readOnly"])
-        self.empty.set_visible(not state["voices"])
-        self.everyone.set_sensitive(bool(state["voices"]) and writable)
         ready = self.can_enroll()
+        self.newer_group.set_visible(state["readOnly"])
+        self.newer.set_visible(state["readOnly"])
+        stale_names = [voice["name"] for voice in voices if stale(voice)]
+        self.stale_group.set_visible(bool(stale_names))
+        if stale_names:
+            title, body = stale_notice_text(stale_names)
+            self.stale_title.set_label(title)
+            self.stale_body.set_label(body)
+        self.people.set_visible(has_voices)
+        if has_voices:
+            self.people.set_title(plural("savedVoices.peopleCount", len(voices)))
+        self.caption_group.set_visible(has_voices)
+        self.forget_group.set_visible(has_voices)
+        self.empty_group.set_visible(not has_voices)
+        self.empty.set_visible(not has_voices)
+        self.everyone.set_sensitive(has_voices and writable)
         self.add_voice.set_sensitive(ready and writable)
-        self.models_needed.set_visible(not ready)
+        self.empty_add_voice.set_sensitive(ready and writable)
+        self.models_needed.set_visible(has_voices and not ready)
+        self.empty_models_needed.set_visible(not has_voices and not ready)
         if signature != self._signature:
             self._signature = signature
             for row in self.rows.values():
                 self.people.remove(row.row)
             self.rows = {}
-            for voice in state["voices"]:
+            for voice in voices:
                 row = VoiceRow(self, voice, writable)
                 self.people.add(row.row)
                 self.rows[voice["id"]] = row
-            self._load_samples(state["voices"])
+            self._load_samples(voices)
         self._tick()
 
     def enroll(self):
@@ -210,6 +319,7 @@ class SavedVoicesPage(Adw.NavigationPage):
         self._stop_sample()
         self.busy = True
         self.error.set_visible(False)
+        self.error_group.set_visible(False)
         self.refresh()
         future = self.settings.executor.submit(operation)
         future.add_done_callback(lambda f: GLib.idle_add(self._finished, f, operation))
@@ -225,6 +335,7 @@ class SavedVoicesPage(Adw.NavigationPage):
             if not self.closed:
                 self.retry = operation
                 self.error.set_visible(True)
+                self.error_group.set_visible(True)
         else:
             self.retry = None
         if not self.closed:
@@ -368,44 +479,39 @@ def initials(name):
 
 
 class VoiceRow:
-    """One saved voice (L-63): save-order colour (L-41), name, meta, amber stale hint, Play, Options menu."""
+    """One saved voice (L-63, D106 §5): save-order colour (L-41), name, meta, amber stale pill, Play, Options menu."""
 
     def __init__(self, page, voice, writable):
         self.voice = voice
         name = voice["name"]
         self.row = Adw.PreferencesRow(title=name, use_markup=False, css_classes=["saved-voice-row"])
-        box = Gtk.Box(spacing=12, margin_top=10, margin_bottom=10, margin_start=14, margin_end=14)
+        box = Gtk.Box(spacing=12, margin_top=12, margin_bottom=12, margin_start=14, margin_end=14)
         self.avatar = Gtk.Label(
             label=initials(name),
-            valign=Gtk.Align.CENTER,
+            valign=Gtk.Align.START,
             css_classes=["speaker-avatar", f"speaker-avatar-{saved_voice_slot(voice)}"],
         )
         box.append(self.avatar)
-        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True, valign=Gtk.Align.CENTER)
+        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True, valign=Gtk.Align.START)
         self.name = Gtk.Label(label=name, xalign=0, wrap=True, css_classes=["saved-voice-name"])
         lines.append(self.name)
         self.meta = Gtk.Label(
-            label=text(
-                "savedVoices.row.meta",
-                meetingCount=plural("savedVoices.row.meetingCount", len(voice["meetings"])),
-                confirmedSpeech=confirmed_speech(voice["seconds"] * 1000),
-            ),
+            label=voice_row_meta(voice),
             xalign=0,
             wrap=True,
             css_classes=["dim-label", "saved-voice-meta"],
         )
         lines.append(self.meta)
         self.stale = stale(voice)
-        self.stale_line = Gtk.Label(
-            label=text("savedVoices.row.stale"),
-            xalign=0,
-            wrap=True,
+        self.stale_pill = Gtk.Label(
+            label=text("savedVoices.row.needsNaming"),
+            halign=Gtk.Align.START,
             visible=self.stale,
-            css_classes=["saved-voice-meta", "saved-voice-stale"],
+            css_classes=["saved-voice-stale-pill"],
         )
-        lines.append(self.stale_line)
+        lines.append(self.stale_pill)
         box.append(lines)
-        self.play = Gtk.Button(css_classes=["circular", "saved-voice-play"], valign=Gtk.Align.CENTER)
+        self.play = Gtk.Button(css_classes=["circular", "saved-voice-play"], valign=Gtk.Align.START)
         self.play.connect("clicked", lambda *_: page._toggle_sample(voice["id"]))
         self._playing = None
         self.show_playing(False)
@@ -429,8 +535,8 @@ class VoiceRow:
             icon_name="view-more-symbolic",
             menu_model=self.menu,
             tooltip_text=options,
-            valign=Gtk.Align.CENTER,
-            css_classes=["circular", "flat"],
+            valign=Gtk.Align.START,
+            css_classes=["circular", "flat", "saved-voice-options"],
         )
         self.options.update_property([Gtk.AccessibleProperty.LABEL], [options])
         box.append(self.options)

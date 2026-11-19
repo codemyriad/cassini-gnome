@@ -1353,7 +1353,7 @@
   },
   {
    "id": "confirm.deleteVoiceProfile.primary",
-   "en": "Delete",
+   "en": "Forget",
    "platforms": [
     "gnome",
     "mac",
@@ -1366,29 +1366,29 @@
     "States-mac"
    ],
    "milestone": "UX2",
-   "note": "Destructive primary: red fill (GNOME destructive-action, Mac role .destructive); Return.",
+   "note": "Destructive primary: red fill (GNOME destructive-action, Mac role .destructive); Return. D106 §5 (L-63) (D106): English was “Delete”.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Elimina"
+     "text": "Dimentica"
     },
     "fr": {
-     "text": "Supprimer"
+     "text": "Oublier"
     },
     "es": {
-     "text": "Eliminar"
+     "text": "Olvidar"
     },
     "pt-BR": {
-     "text": "Excluir"
+     "text": "Esquecer"
     },
     "pt-PT": {
-     "text": "Eliminar"
+     "text": "Esquecer"
     }
    }
   },
   {
    "id": "confirm.deleteVoiceProfile.title",
-   "en": "Delete {name}’s voice profile?",
+   "en": "Forget {name}’s voice?",
    "platforms": [
     "gnome",
     "mac",
@@ -1404,23 +1404,23 @@
    "placeholders": {
     "name": "saved voice's person name (sample: Marta)"
    },
-   "note": "Confirmation 2 (HARMONY 7), the only place 'voice profile' is allowed. Opened by savedVoices.row.forget (UX17). savedVoices.forgetEveryone reuses this shape with copy still to come.",
+   "note": "Confirmation 2 (HARMONY 7), the only place 'voice profile' is allowed. Opened by savedVoices.row.forget (UX17). savedVoices.forgetEveryone reuses this shape with copy still to come. D106 §5 (L-63), uses the menu’s word (savedVoices.row.forgetEllipsis) (D106): English was “Delete {name}’s voice profile?”.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Eliminare il profilo vocale di {name}?"
+     "text": "Dimenticare la voce di {name}?"
     },
     "fr": {
-     "text": "Supprimer le profil vocal de {name} ?"
+     "text": "Oublier la voix de {name} ?"
     },
     "es": {
-     "text": "¿Eliminar el perfil de voz de {name}?"
+     "text": "¿Olvidar la voz de {name}?"
     },
     "pt-BR": {
-     "text": "Excluir o perfil de voz de {name}?"
+     "text": "Esquecer a voz de {name}?"
     },
     "pt-PT": {
-     "text": "Eliminar o perfil de voz de {name}?"
+     "text": "Esquecer a voz de {name}?"
     }
    }
   },
@@ -2487,7 +2487,7 @@
     "Export-mac"
    ],
    "milestone": "UX7a",
-   "note": "Small dim text under 'Cassini file'. Two lines on GNOME, one on Mac. Phones: the .opus Cassini file they export today. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "note": "Small dim text under 'Cassini file'. Two lines on GNOME, one on Mac. Phones: the .opus Cassini file they export today. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract). Superseded by D106 §1 by the one-line export.cassiniFile.description.short. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -2645,7 +2645,7 @@
      "text": "A transcrição como ficheiro de texto, com oradores e tempos."
     }
    },
-   "note": "L-11 (D-998, D99): one export format set on all four apps (PARITY export contract)."
+   "note": "L-11 (D-998, D99): one export format set on all four apps (PARITY export contract). Superseded by D106 §1 by the one-line export.markdown.description.short. Kept for older pins."
   },
   {
    "id": "export.moreFormats",
@@ -2659,7 +2659,7 @@
    "role": "label",
    "boards": [],
    "milestone": "Phase 2 export (L-11)",
-   "note": "D99. Disclosure under the two primary choices (Cassini file, Markdown); opens Plain text and the two subtitle formats. Hidden for audio-only meetings. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "note": "D99. Disclosure under the two primary choices (Cassini file, Markdown); opens Plain text and the two subtitle formats. Hidden for audio-only meetings. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract). D106 §1: Android keeps it; iOS shows every format under export.otherFormats instead.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -2723,7 +2723,7 @@
    "role": "caption",
    "boards": [],
    "milestone": "Phase 2 export (L-11)",
-   "note": "D99. Caption under export.plainText.label. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "note": "D99. Caption under export.plainText.label. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract). Superseded by D106 §1 by the one-line export.plainText.description.short. Kept for older pins.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -2755,7 +2755,7 @@
    "role": "label",
    "boards": [],
    "milestone": "Phase 2 export (L-11)",
-   "note": "D99. Format option, .srt. Transcribed meetings only. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "note": "D99. Format option, .srt. Transcribed meetings only. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract). Superseded by D106 §1 by export.subtitles.label with the file type beside it. Kept for older pins.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -2787,7 +2787,7 @@
    "role": "caption",
    "boards": [],
    "milestone": "Phase 2 export (L-11)",
-   "note": "D99. Caption under export.srt.label. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "note": "D99. Caption under export.srt.label. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract). Superseded by D106 §1 by the one-line export.srt.description.short. Kept for older pins.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -2819,7 +2819,7 @@
    "role": "label",
    "boards": [],
    "milestone": "Phase 2 export (L-11)",
-   "note": "D99. Format option, .vtt. Transcribed meetings only. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "note": "D99. Format option, .vtt. Transcribed meetings only. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract). Superseded by D106 §1 by export.subtitles.label with the file type beside it. Kept for older pins.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -2851,7 +2851,7 @@
    "role": "caption",
    "boards": [],
    "milestone": "Phase 2 export (L-11)",
-   "note": "D99. Caption under export.vtt.label. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "note": "D99. Caption under export.vtt.label. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract). Superseded by D106 §1 by the one-line export.vtt.description.short. Kept for older pins.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -3054,7 +3054,7 @@
    "placeholders": {
     "name": "display name of the speaker recognised automatically from a saved voice, shown semibold (600) inline (sample: Dario)"
    },
-   "note": "The raw text is three runs around <strong>; join them as one template. Use this when exactly one speaker name was recognised automatically. With none use export.speakerNames.body.none; with two or more use export.speakerNames.body.several.",
+   "note": "The raw text is three runs around <strong>; join them as one template. Use this when exactly one speaker name was recognised automatically. With none use export.speakerNames.body.none; with two or more use export.speakerNames.body.several. Superseded by D106 §1: desktop Export drops the whole Speaker names section (names are checked in the transcript; voiceprint privacy lives on Saved voices). Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -3087,7 +3087,7 @@
     "Export-mac"
    ],
    "milestone": "UX7a",
-   "note": "Coordinator variant (HARMONY 9). Shown when no speaker name was recognised automatically (every name is from the source, typed by the person, or there are no names).",
+   "note": "Coordinator variant (HARMONY 9). Shown when no speaker name was recognised automatically (every name is from the source, typed by the person, or there are no names). Superseded by D106 §1: desktop Export drops the whole Speaker names section (names are checked in the transcript; voiceprint privacy lives on Saved voices). Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -3123,7 +3123,7 @@
    "placeholders": {
     "names": "two or more automatically recognised display names in speaker order, each semibold (600), joined as a list without the Oxford comma: 'Dario and Ana', 'Dario, Ana and Lea'. Mac: ListFormatter. GNOME: ', ' between names and ' and ' before the last. Only the names are semibold, not the separators."
    },
-   "note": "Coordinator variant (HARMONY 9). Shown when two or more speaker names were recognised automatically. Never truncate the list: export is the moment to say exactly which names leave the computer.",
+   "note": "Coordinator variant (HARMONY 9). Shown when two or more speaker names were recognised automatically. Never truncate the list: export is the moment to say exactly which names leave the computer. Superseded by D106 §1: desktop Export drops the whole Speaker names section (names are checked in the transcript; voiceprint privacy lives on Saved voices). Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -3156,7 +3156,7 @@
     "Export-mac"
    ],
    "milestone": "UX7a",
-   "note": "Small bold (700) dim section heading.",
+   "note": "Small bold (700) dim section heading. Superseded by D106 §1: desktop Export drops the whole Speaker names section (names are checked in the transcript; voiceprint privacy lives on Saved voices). Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -3189,7 +3189,7 @@
     "Export-mac"
    ],
    "milestone": "UX7a",
-   "note": "Dim text under the title.",
+   "note": "Dim text under the title. Superseded by D106 §1: desktop drops this line (Alex, 18 Nov: it overexplains). Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -3227,7 +3227,7 @@
    "placeholders": {
     "title": "meeting title as shown in the Meeting header (user-editable plain text; escape it for Pango markup on GNOME)"
    },
-   "note": "HARMONY 9. The typographic quotes are part of the string. Also the dialog's accessible name. GNOME: centred. Mac: leading. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract).",
+   "note": "HARMONY 9. The typographic quotes are part of the string. Also the dialog's accessible name. GNOME: centred. Mac: leading. L-11 (D-998, D99): one export format set on all four apps (PARITY export contract). D106 §1: iOS uses export.heading as the sheet title instead, with the meeting name under it.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -6955,7 +6955,7 @@
     "SavedVoices-mac"
    ],
    "milestone": "UX17",
-   "note": "Accessible label of the back chevron, which returns to the Transcription tab. An allowed vocabulary exception (HARMONY 2). GNOME: override the AdwNavigationView default 'Back'. Mac: label the NavigationStack back button.",
+   "note": "Accessible label of the back chevron, which returns to the Transcription tab. An allowed vocabulary exception (HARMONY 2). GNOME: override the AdwNavigationView default 'Back'. Mac: label the NavigationStack back button. D106 §5: Mac replaces this link with a ‹ back button and the title “Saved voices” (common.savedVoices) in a System Settings style header.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -7025,7 +7025,7 @@
     "SavedVoices-mac"
    ],
    "milestone": "UX17",
-   "note": "Small dim footnote under the list card. The quoted toggle name differs from speakers.rememberVoice. Kept verbatim until the coordinator decides.",
+   "note": "Small dim footnote under the list card. The quoted toggle name differs from speakers.rememberVoice. Kept verbatim until the coordinator decides. Superseded by D106 §5 by savedVoices.caption. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -7058,7 +7058,7 @@
     "SavedVoices-mac"
    ],
    "milestone": "UX17",
-   "note": "Dim lead line after a green shield icon (aria-hidden).",
+   "note": "Dim lead line after a green shield icon (aria-hidden). Superseded by D106 §5 on Saved voices by the savedVoices.footnote.* footnote. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -7199,7 +7199,7 @@
     "meetingCount": "savedVoices.row.meetingCount output (plural)",
     "confirmedSpeech": "format.confirmedSpeech output, e.g. 4 h 12 min confirmed speech"
    },
-   "note": "Small dim line under the name. Separator ' · ' (U+00B7 with spaces). Sample: '31 meetings · 4 h 12 min confirmed speech'. The avatar initial is taken from the name and is not catalog text.",
+   "note": "Small dim line under the name. Separator ' · ' (U+00B7 with spaces). Sample: '31 meetings · 4 h 12 min confirmed speech'. The avatar initial is taken from the name and is not catalog text. D106 §5: rows now read “31 meetings · 4 h 12 min”: {confirmedSpeech} takes the plain duration, without “confirmed speech”.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -7272,7 +7272,7 @@
     "SavedVoices-mac"
    ],
    "milestone": "UX17",
-   "note": "Optional third line in amber text (#7a4d00, no tint), with no action. Shown for a weak or stale voiceprint (Luca in the fixture). The trigger condition is not specified; ask. en-GB 'recognising'. Coordinator (D25): shown only for a stale voiceprint (model sha256 not the pinned one, or not 512 values). No 'weak' rule in this wave.",
+   "note": "Optional third line in amber text (#7a4d00, no tint), with no action. Shown for a weak or stale voiceprint (Luca in the fixture). The trigger condition is not specified; ask. en-GB 'recognising'. Coordinator (D25): shown only for a stale voiceprint (model sha256 not the pinned one, or not 512 values). No 'weak' rule in this wave. Superseded by D106 §5 by savedVoices.stale.title / .body and the savedVoices.row.needsNaming pill. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -11577,7 +11577,7 @@
   },
   {
    "id": "savedVoices.empty",
-   "en": "No saved voices yet.",
+   "en": "No saved voices yet",
    "platforms": [
     "gnome",
     "mac",
@@ -11591,22 +11591,22 @@
    ],
    "milestone": "UX17",
    "status": "harmony",
-   "note": "Coordinator (D25). Shown in place of the list card when there are no saved voices; savedVoices.howToAdd still follows. Forget everyone is hidden.",
+   "note": "Coordinator (D25). Shown in place of the list card when there are no saved voices; savedVoices.howToAdd still follows. Forget everyone is hidden. D106 §5 (L-63): now the centred empty-state title, with savedVoices.empty.body under it, no large icon (D106): English was “No saved voices yet.”.",
    "l10n": {
     "it": {
-     "text": "Ancora nessuna voce salvata."
+     "text": "Ancora nessuna voce salvata"
     },
     "fr": {
-     "text": "Aucune voix mémorisée pour l’instant."
+     "text": "Aucune voix mémorisée pour l’instant"
     },
     "es": {
-     "text": "Aún no hay voces guardadas."
+     "text": "Aún no hay voces guardadas"
     },
     "pt-BR": {
-     "text": "Nenhuma voz salva ainda."
+     "text": "Nenhuma voz salva ainda"
     },
     "pt-PT": {
-     "text": "Ainda não há vozes guardadas."
+     "text": "Ainda não há vozes guardadas"
     }
    }
   },
@@ -20477,7 +20477,7 @@
     "P2RecordFirst-Desktop"
    ],
    "milestone": "Before you record and Test recording (D104)",
-   "note": "D104 §2, PROVISIONAL: computer-sound row while testing, once its level crosses the activity floor. Not drawn (the board shows this row only waiting); asked of Alex. Plain text, not a pill.",
+   "note": "D104 §2, PROVISIONAL: computer-sound row while testing, once its level crosses the activity floor. Not drawn (the board shows this row only waiting); asked of Alex. Plain text, not a pill. D106: still open (question a6).",
    "status": "draft",
    "l10n": {
     "it": {
@@ -23531,7 +23531,7 @@
    "role": "description",
    "boards": [],
    "milestone": "D97",
-   "note": "Silvio (2026-11-12): remove routine phone-transfer notices; keep the Settings opt-out and privacy policy. Existing recognition/privacy wording retained.",
+   "note": "Silvio (2026-11-12): remove routine phone-transfer notices; keep the Settings opt-out and privacy policy. Existing recognition/privacy wording retained. Superseded by D106 §5 on Saved voices by the savedVoices.footnote.* footnote. Kept for older pins.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -26191,7 +26191,7 @@
    "role": "heading",
    "boards": [],
    "milestone": "W6.0 (L-28)",
-   "note": "L-28 / D-957 / D-1012 / D98: Android heading of the once-only dismissible notice card on phones while encrypted OS cloud backup is enabled by default. Android only: iOS uses backup.phoneOnlyCard.title.ios because iOS has no mechanism that guarantees 'this phone only'.",
+   "note": "L-28 / D-957 / D-1012 / D98: Android heading of the once-only dismissible notice card on phones while encrypted OS cloud backup is enabled by default. Android only: iOS uses backup.phoneOnlyCard.title.ios because iOS has no mechanism that guarantees 'this phone only'. Superseded by D106 §2 by the backup.notice.* card (news first). Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -26220,7 +26220,7 @@
    "role": "heading",
    "boards": [],
    "milestone": "W6.0 (L-28)",
-   "note": "L-28 / D-979 / D98: iOS heading of the once-only dismissible backup card (replaces backup.phoneOnlyCard.title on iOS). Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'.",
+   "note": "L-28 / D-979 / D98: iOS heading of the once-only dismissible backup card (replaces backup.phoneOnlyCard.title on iOS). Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Superseded by D106 §2 by the backup.notice.* card (news first). Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -26250,7 +26250,7 @@
    "role": "description",
    "boards": [],
    "milestone": "W6.0 (L-28)",
-   "note": "L-28 / D-957 / D-1012 / D98: body of the dismissible phone backup card explaining default encrypted cloud backup and automatic device-to-device copy of meetings and saved voices (true on both platforms while backup is on). Android: the card action (backup.phoneOnlyCard.action) turns off BOTH cloud backup (Auto Backup exclusion) AND the settings.transfer device-to-device switch. iOS: the card action (backup.phoneOnlyCard.action.ios) sets NSURLIsExcludedFromBackupKey = true on the meetings and voices directories so iOS skips them in iCloud Backup; Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Manual Export All as ZIP stays available on both.",
+   "note": "L-28 / D-957 / D-1012 / D98: body of the dismissible phone backup card explaining default encrypted cloud backup and automatic device-to-device copy of meetings and saved voices (true on both platforms while backup is on). Android: the card action (backup.phoneOnlyCard.action) turns off BOTH cloud backup (Auto Backup exclusion) AND the settings.transfer device-to-device switch. iOS: the card action (backup.phoneOnlyCard.action.ios) sets NSURLIsExcludedFromBackupKey = true on the meetings and voices directories so iOS skips them in iCloud Backup; Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Manual Export All as ZIP stays available on both. Superseded by D106 §2 by the backup.notice.* card (news first). Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -26279,7 +26279,7 @@
    "role": "button",
    "boards": [],
    "milestone": "W6.0 (L-28)",
-   "note": "L-28 / D98: Android primary card action. Turns off BOTH encrypted cloud backup (Auto Backup exclusion) AND automatic OS device-to-device transfer (settings.transfer off), leaving the phone-only state described by backup.phoneOnly.body. Manual user-initiated Export All as ZIP stays available. iOS uses backup.phoneOnlyCard.action.ios instead (no 'this phone only' claim, no transfer guarantee).",
+   "note": "L-28 / D98: Android primary card action. Turns off BOTH encrypted cloud backup (Auto Backup exclusion) AND automatic OS device-to-device transfer (settings.transfer off), leaving the phone-only state described by backup.phoneOnly.body. Manual user-initiated Export All as ZIP stays available. iOS uses backup.phoneOnlyCard.action.ios instead (no 'this phone only' claim, no transfer guarantee). Superseded by D106 §2 by the backup.notice.* card (news first). Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -26308,7 +26308,7 @@
    "role": "button",
    "boards": [],
    "milestone": "W6.0 (L-28)",
-   "note": "L-28 / D-979 / D98: iOS primary card action. Turns cloud backup off: sets NSURLIsExcludedFromBackupKey = true on the meetings and voices directories so iOS skips them in iCloud Backup. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Afterwards Settings shows backup.cloud.body.off.ios. Manual Export All as ZIP stays available.",
+   "note": "L-28 / D-979 / D98: iOS primary card action. Turns cloud backup off: sets NSURLIsExcludedFromBackupKey = true on the meetings and voices directories so iOS skips them in iCloud Backup. Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Afterwards Settings shows backup.cloud.body.off.ios. Manual Export All as ZIP stays available. Superseded by D106 §2 by the backup.notice.* card (news first). Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -26338,7 +26338,7 @@
    "role": "button",
    "boards": [],
    "milestone": "W6.0 (L-28)",
-   "note": "L-28 / D-957: secondary dismiss button on the phone backup card keeping encrypted cloud backup enabled and hiding the card permanently.",
+   "note": "L-28 / D-957: secondary dismiss button on the phone backup card keeping encrypted cloud backup enabled and hiding the card permanently. Superseded by D106 §2 by the backup.notice.* card (news first). Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -26781,7 +26781,7 @@
    "role": "section-heading",
    "boards": [],
    "milestone": "W6.0 (L-28)",
-   "note": "L-28: Layer 2 section heading explaining what data is included in backups.",
+   "note": "L-28: Layer 2 section heading explaining what data is included in backups. Superseded by D106 §4 on the phones’ details page by backup.info.included.heading. Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -27168,7 +27168,7 @@
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-28)",
-   "note": "W6.1 (D-979 iOS, D-980 Android): honest on-device privacy explanation in phone voice setup when 'Include saved voices in backups' is configurable in Settings.",
+   "note": "W6.1 (D-979 iOS, D-980 Android): honest on-device privacy explanation in phone voice setup when 'Include saved voices in backups' is configurable in Settings. D106 §3: approved by Alex as built (18 Nov).",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -27232,7 +27232,7 @@
    "role": "button",
    "boards": [],
    "milestone": "W6.0 (D-957)",
-   "note": "D-977..D-980: button in Saved voices or voice setup opening guided test-phrase voice enrollment.",
+   "note": "D-977..D-980: button in Saved voices or voice setup opening guided test-phrase voice enrollment. D106 §5: back on Mac (link on the list heading and under the empty state), GNOME (flat button); primary in the desktop empty state. Android has no Add a voice.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -27908,7 +27908,7 @@
    "role": "description",
    "boards": [],
    "milestone": "W6.0 (D-978)",
-   "note": "D-978: Mac-specific Saved voices privacy lead line explicitly confirming local-only storage without iCloud sync (HARMONY §12).",
+   "note": "D-978: Mac-specific Saved voices privacy lead line explicitly confirming local-only storage without iCloud sync (HARMONY §12). Superseded by D106 §5 on Saved voices by the savedVoices.footnote.* footnote. Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -27938,7 +27938,7 @@
    "role": "description",
    "boards": [],
    "milestone": "W6.0 (D-957)",
-   "note": "D-979 / D-980: Saved voices lead privacy line on phones, compatible with optional encrypted cloud backup ('Include saved voices in backups').",
+   "note": "D-979 / D-980: Saved voices lead privacy line on phones, compatible with optional encrypted cloud backup ('Include saved voices in backups'). Superseded by D106 §5 on Saved voices by the savedVoices.footnote.* footnote. Kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -29147,7 +29147,7 @@
    "boards": [],
    "milestone": "Phase 2 phone nouns (L-67)",
    "status": "draft",
-   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged.",
+   "note": "D-1048 / L-67: existing Android phone copy with meeting nouns, including the Trash path from Settings. Internal resource names are unchanged. Superseded by D106 §5 by savedVoices.caption. Kept for older pins.",
    "l10n": {
     "it": {
      "text": "Per aggiungere qualcuno, dai un nome a una voce in una riunione e lascia attivo “Ricorda questa voce”."
@@ -30406,7 +30406,7 @@
     "one": "1 person",
     "other": "{n} people"
    },
-   "note": "D103 §1, 5 (L-58, L-63): answer on the Saved voices rows. Desktop keeps settings.transcription.savedVoices.summary.",
+   "note": "D103 §1, 5 (L-58, L-63): answer on the Saved voices rows. Desktop keeps settings.transcription.savedVoices.summary. D106 §5: also the grey list heading on Saved voices (“4 PEOPLE” small caps on iOS, “4 people” on Android).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -30658,14 +30658,15 @@
    "id": "settings.phone.transcription.rightAway",
    "en": "Transcribe right away",
    "platforms": [
-    "ios"
+    "ios",
+    "android"
    ],
    "role": "switch",
    "boards": [
     "P2Transcription-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): the existing iOS auto-transcribe switch, renamed. Default unchanged.",
+   "note": "D103 §1 (L-58): the existing iOS auto-transcribe switch, renamed. Default unchanged. D106 §4: Android gets it too (platforms gained android).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -30689,14 +30690,15 @@
    "id": "settings.phone.transcription.rightAway.subtitle",
    "en": "When this is off, Cassini keeps the audio and you choose when to transcribe.",
    "platforms": [
-    "ios"
+    "ios",
+    "android"
    ],
    "role": "caption",
    "boards": [
     "P2Transcription-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): subtitle of settings.phone.transcription.rightAway.",
+   "note": "D103 §1 (L-58): subtitle of settings.phone.transcription.rightAway. D106 §4: Android gets it too (platforms gained android).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -30761,7 +30763,7 @@
     "P2Download-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1, 4 (L-58, L-61): link row / text button one layer down: the model source, sizes, checksums and licences (third layer).",
+   "note": "D103 §1, 4 (L-58, L-61): link row / text button one layer down: the model source, sizes, checksums and licences (third layer). D106 §2: on the model download screen it becomes models.offer.whereFrom.link; Settings › Transcription keeps this row.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -30931,7 +30933,7 @@
     "P2PrefsTranscription-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): Phase 2 description under “Recognise saved voices”. Supersedes models.recogniseVoices.description (kept).",
+   "note": "D103 §1 (L-58): Phase 2 description under “Recognise saved voices”. Supersedes models.recogniseVoices.description (kept). D106 §4: the phones use settings.phone.speakers.recognise.subtitle instead; desktop keeps this.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31090,7 +31092,7 @@
     "P2Speakers-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §3 (L-60): the default of “Remember this voice” in Name a speaker. Set by the answer to voices.setup.title; changeable here. Phones: Settings › Speakers › Saved voices group. Desktop: Settings › Transcription › Speakers group (not drawn; PROVISIONAL, QUESTIONS-FOR-ALEX q4).",
+   "note": "D103 §3 (L-60): the default of “Remember this voice” in Name a speaker. Set by the answer to voices.setup.title; changeable here. Phones: Settings › Speakers › Saved voices group. Desktop: Settings › Transcription › Speakers group (not drawn; PROVISIONAL, QUESTIONS-FOR-ALEX q4). D106 §3: Alex approved the desktop placement (Settings › Transcription › Speakers, between Recognise saved voices and Saved voices); it is no longer provisional.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31155,7 +31157,7 @@
     "P2Speakers-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): iOS only, the existing auto-name switch with its Phase 2 label. Off by default.",
+   "note": "D103 §1 (L-58): iOS only, the existing auto-name switch with its Phase 2 label. Off by default. Superseded by D106 §4 by settings.phone.speakers.autoName. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31186,7 +31188,7 @@
     "P2Speakers-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): subtitle of settings.ios.speakers.autoName.",
+   "note": "D103 §1 (L-58): subtitle of settings.ios.speakers.autoName. Superseded by D106 §4 by settings.phone.speakers.autoName.subtitle. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31480,7 +31482,7 @@
     "P2FirstRun-Phones"
    ],
    "milestone": "Phase 2 first run (D105)",
-   "note": "D105 §3 (L-71): first line of the two-line first-run privacy line on Android, after the accent shield aligned to this line; second line firstRun.privacy.backups.phone. Always true, so no backup-state variant on first run (amends D98 §§1, 3 for first run only). Settings keeps privacy.onDevice.phone* with its D98 variants.",
+   "note": "D105 §3 (L-71): first line of the two-line first-run privacy line on Android, after the accent shield aligned to this line; second line firstRun.privacy.backups.phone. Always true, so no backup-state variant on first run (amends D98 §§1, 3 for first run only). Settings keeps privacy.onDevice.phone* with its D98 variants. D106 §4: also the privacy line at the top of phone Settings.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31511,7 +31513,7 @@
     "P2FirstRun-Phones"
    ],
    "milestone": "Phase 2 first run (D105)",
-   "note": "D105 §3 (L-71): second line of the Android first-run privacy line. The backup notice and Settings › Backup carry the detail (D98, D103 §2).",
+   "note": "D105 §3 (L-71): second line of the Android first-run privacy line. The backup notice and Settings › Backup carry the detail (D98, D103 §2). D106 §4: also the privacy line at the top of phone Settings.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31542,7 +31544,7 @@
     "P2FirstRun-Phones"
    ],
    "milestone": "Phase 2 first run (D105)",
-   "note": "D105 §3 (L-71): first line of the two-line first-run privacy line on iPhone, after the accent shield; second line firstRun.privacy.backups.ios. Always true (no “never leaves” or “this iPhone only” claim, D98). Settings keeps privacy.onDevice.iphone.withBackup / .backupExcluded.",
+   "note": "D105 §3 (L-71): first line of the two-line first-run privacy line on iPhone, after the accent shield; second line firstRun.privacy.backups.ios. Always true (no “never leaves” or “this iPhone only” claim, D98). Settings keeps privacy.onDevice.iphone.withBackup / .backupExcluded. D106 §4: also the privacy line at the top of phone Settings.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31571,7 +31573,7 @@
    "role": "caption",
    "boards": [],
    "milestone": "Phase 2 first run (D105)",
-   "note": "D105 §3 (L-71): iPad variant of firstRun.privacy.iphone. Derived, not drawn.",
+   "note": "D105 §3 (L-71): iPad variant of firstRun.privacy.iphone. Derived, not drawn. D106 §4: also the privacy line at the top of phone Settings.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -31602,7 +31604,7 @@
     "P2FirstRun-Phones"
    ],
    "milestone": "Phase 2 first run (D105)",
-   "note": "D105 §3 (L-71): second line of the iOS first-run privacy line, on iPhone and iPad. Describes eligibility, never a completed backup (D103 §2). The backup notice and Settings › Backup carry the detail.",
+   "note": "D105 §3 (L-71): second line of the iOS first-run privacy line, on iPhone and iPad. Describes eligibility, never a completed backup (D103 §2). The backup notice and Settings › Backup carry the detail. D106 §4: also the privacy line at the top of phone Settings.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -31996,7 +31998,7 @@
     "P2Download-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §4 (L-61): title of the model download sheet. Opens when a model is missing (same states as today).",
+   "note": "D103 §4 (L-61): title of the model download sheet. Opens when a model is missing (same states as today). D106 §2: iOS now uses this and models.offer.body.iphone (Android’s copy), with no Cassini mark on the screen.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -32247,7 +32249,7 @@
   },
   {
    "id": "models.offer.spaceNeeded",
-   "en": "Needs about {size} free while it installs. Each file is checked before it is used.",
+   "en": "Needs about {size} free to install. Each file is checked before it’s used.",
    "platforms": [
     "ios",
     "android"
@@ -32260,23 +32262,23 @@
    "placeholders": {
     "size": "peak free space needed while installing, format.size (for example 1.2 GB)"
    },
-   "note": "D103 §4 (L-61): free space needed during install (from the manifest), then the checksum promise.",
+   "note": "D103 §4 (L-61): free space needed during install (from the manifest), then the checksum promise. D106 §2 (L-61), one copy on both phones; models.offer.whereFrom.link follows at the end of this line (D106): English was “Needs about {size} free while it installs. Each file is checked before it is used.”.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Servono circa {size} liberi durante l’installazione. Ogni file viene verificato prima dell’uso."
+     "text": "Servono circa {size} liberi per l’installazione. Ogni file viene verificato prima dell’uso."
     },
     "fr": {
-     "text": "Il faut environ {size} d’espace libre pendant l’installation. Chaque fichier est vérifié avant d’être utilisé."
+     "text": "Il faut environ {size} d’espace libre pour l’installation. Chaque fichier est vérifié avant d’être utilisé."
     },
     "es": {
-     "text": "Necesita unos {size} libres mientras se instala. Cada archivo se comprueba antes de usarlo."
+     "text": "Necesita unos {size} libres para instalarse. Cada archivo se comprueba antes de usarlo."
     },
     "pt-BR": {
-     "text": "Precisa de cerca de {size} livres durante a instalação. Cada arquivo é verificado antes de ser usado."
+     "text": "Precisa de cerca de {size} livres para instalar. Cada arquivo é verificado antes de ser usado."
     },
     "pt-PT": {
-     "text": "Precisa de cerca de {size} livres durante a instalação. Cada ficheiro é verificado antes de ser usado."
+     "text": "Precisa de cerca de {size} livres para instalar. Cada ficheiro é verificado antes de ser usado."
     }
    }
   },
@@ -32324,7 +32326,7 @@
     "P2Download-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §4 (L-61): under “Not now” (common.notNow). Replaces “Not now — keep the audio”.",
+   "note": "D103 §4 (L-61): under “Not now” (common.notNow). Replaces “Not now — keep the audio”. Superseded by D106 §2: the phones say models.offer.notNow instead. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33416,7 +33418,7 @@
     "P2SavedVoices-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §5 (L-63): footnote under the list on all four. Supersedes savedVoices.howToAdd and android.savedVoices.howToAdd (kept).",
+   "note": "D103 §5 (L-63): footnote under the list on all four. Supersedes savedVoices.howToAdd and android.savedVoices.howToAdd (kept). Superseded by D106 §5 by savedVoices.caption. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33584,7 +33586,7 @@
     "P2Backup-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §2 (L-59): the answer first, while device-to-device transfer is on. Body: settings.transfer.body (D97). The drawn body ends “Nothing goes to a cloud account.”, which is true of transfer only; while encrypted cloud backup is on (D98 default) the page also shows the cloud switch with backup.cloud.body.on (QUESTIONS-FOR-ALEX q1).",
+   "note": "D103 §2 (L-59): the answer first, while device-to-device transfer is on. Body: settings.transfer.body (D97). The drawn body ends “Nothing goes to a cloud account.”, which is true of transfer only; while encrypted cloud backup is on (D98 default) the page also shows the cloud switch with backup.cloud.body.on (QUESTIONS-FOR-ALEX q1). D106 §4: the Backup page drops its banner; the switches say what is backed up.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33615,7 +33617,7 @@
     "P2Backup-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §2 (L-59): the answer first, while meetings are not marked to be left out of iCloud Backup. Describes eligibility only: iOS cannot read whether iCloud Backup is on or has run, so it never says the meetings are backed up. Drawn: “Your meetings are in your iCloud backup” (QUESTIONS-FOR-ALEX q3; codex review on #47).",
+   "note": "D103 §2 (L-59): the answer first, while meetings are not marked to be left out of iCloud Backup. Describes eligibility only: iOS cannot read whether iCloud Backup is on or has run, so it never says the meetings are backed up. Drawn: “Your meetings are in your iCloud backup” (QUESTIONS-FOR-ALEX q3; codex review on #47). D106 §4: the Backup page drops its banner; the switches say what is backed up.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -33646,7 +33648,7 @@
     "P2Backup-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §2 (L-59): under backup.page.answer.icloud. Recovery is conditional on iCloud Backup, which the app cannot read. Drawn: “If this iPhone is lost or replaced, they come back with it. iCloud Backup is on in iOS Settings.” (QUESTIONS-FOR-ALEX q3; codex review on #47).",
+   "note": "D103 §2 (L-59): under backup.page.answer.icloud. Recovery is conditional on iCloud Backup, which the app cannot read. Drawn: “If this iPhone is lost or replaced, they come back with it. iCloud Backup is on in iOS Settings.” (QUESTIONS-FOR-ALEX q3; codex review on #47). D106 §4: the Backup page drops its banner; the switches say what is backed up.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -33773,7 +33775,7 @@
     "P2Backup-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §2 (L-59): first line under the saved-voices switch.",
+   "note": "D103 §2 (L-59): first line under the saved-voices switch. Superseded by D106 §4 by backup.savedVoices.switch.description.phone / .iphone / .ipad. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33838,7 +33840,7 @@
     "P2BackupDetails-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §2 (L-59): Android detail section (iOS uses backup.info.what.heading).",
+   "note": "D103 §2 (L-59): Android detail section (iOS uses backup.info.what.heading). Superseded by D106 §4 on the phones’ details page by backup.info.included.heading. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33925,7 +33927,7 @@
   },
   {
    "id": "backup.ownCopy.zip.subtitle",
-   "en": "Save every meeting to a folder, a drive or another app.",
+   "en": "Save every meeting to a folder or app.",
    "platforms": [
     "ios",
     "android"
@@ -33935,23 +33937,23 @@
     "P2Backup-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §2 (L-59): under export.zip.all on the Backup page.",
+   "note": "D103 §2 (L-59): under export.zip.all on the Backup page. D106 §4 (L-58), cut to one line (D106): English was “Save every meeting to a folder, a drive or another app.”.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Salva tutte le riunioni in una cartella, un’unità o un’altra app."
+     "text": "Salva tutte le riunioni in una cartella o in un’app."
     },
     "fr": {
-     "text": "Sauvegardez toutes les réunions dans un dossier, sur un disque ou dans une autre app."
+     "text": "Enregistrez toutes les réunions dans un dossier ou une app."
     },
     "es": {
-     "text": "Guarda todas las reuniones en una carpeta, una unidad u otra app."
+     "text": "Guarda todas las reuniones en una carpeta o una app."
     },
     "pt-BR": {
-     "text": "Salve todas as reuniões em uma pasta, uma unidade ou outro app."
+     "text": "Salve todas as reuniões em uma pasta ou app."
     },
     "pt-PT": {
-     "text": "Guarde todas as reuniões numa pasta, numa unidade ou noutra aplicação."
+     "text": "Guarde todas as reuniões numa pasta ou aplicação."
     }
    }
   },
@@ -34250,7 +34252,7 @@
     "P2BackupDetails-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §2 (L-59): Android detail status while the channel copies that item.",
+   "note": "D103 §2 (L-59): Android detail status while the channel copies that item. Superseded by D106 §4 by backup.info.status.included. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -34281,7 +34283,7 @@
     "P2BackupDetails-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §2 (L-59): Android detail status.",
+   "note": "D103 §2 (L-59): Android detail status. Superseded by D106 §4 by backup.info.status.notIncluded. Kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -34312,7 +34314,7 @@
     "P2BackupDetails-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §2 (L-59): iOS detail status while the item is not marked to be left out of iCloud Backup. Eligibility, not a completed backup: iOS cannot read whether iCloud Backup is on or has run. Drawn: “Backed up” (QUESTIONS-FOR-ALEX q3; codex review on #47).",
+   "note": "D103 §2 (L-59): iOS detail status while the item is not marked to be left out of iCloud Backup. Eligibility, not a completed backup: iOS cannot read whether iCloud Backup is on or has run. Drawn: “Backed up” (QUESTIONS-FOR-ALEX q3; codex review on #47). Superseded by D106 §4 by backup.info.status.included. Kept for older pins.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -34343,7 +34345,7 @@
     "P2BackupDetails-Phones"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §2 (L-59): iOS detail status (speech models always; saved voices while their switch is off). Keeps D98 wording: NSURLIsExcludedFromBackupKey is guidance, not a guarantee, and a Quick Start transfer may still copy local files. Drawn: “Not backed up” (codex review on #47).",
+   "note": "D103 §2 (L-59): iOS detail status (speech models always; saved voices while their switch is off). Keeps D98 wording: NSURLIsExcludedFromBackupKey is guidance, not a guarantee, and a Quick Start transfer may still copy local files. Drawn: “Not backed up” (codex review on #47). Superseded by D106 §4 by backup.info.status.notIncluded. Kept for older pins.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -35227,6 +35229,1400 @@
     },
     "pt-PT": {
      "text": "© {year} Codemyriad OÜ · Software livre ao abrigo da GPL-3.0"
+    }
+   }
+  },
+  {
+   "id": "export.heading",
+   "en": "Export",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2Export-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §1 (L-62): iOS half-height sheet title and Android section heading (grey, sentence case, the Saved voices heading style; replaces Android “SAVE A COPY”). Desktop keeps export.title.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Esporta"
+    },
+    "fr": {
+     "text": "Exporter"
+    },
+    "es": {
+     "text": "Exportar"
+    },
+    "pt-BR": {
+     "text": "Exportar"
+    },
+    "pt-PT": {
+     "text": "Exportar"
+    }
+   }
+  },
+  {
+   "id": "export.otherFormats",
+   "en": "Other formats",
+   "platforms": [
+    "ios"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2Export-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §1 (L-62): iOS list heading over Plain text and both subtitle formats; iOS shows every format, with no More formats expander (Android keeps export.moreFormats).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Altri formati"
+    },
+    "fr": {
+     "text": "Autres formats"
+    },
+    "es": {
+     "text": "Otros formatos"
+    },
+    "pt-BR": {
+     "text": "Outros formatos"
+    },
+    "pt-PT": {
+     "text": "Outros formatos"
+    }
+   }
+  },
+  {
+   "id": "export.subtitles.label",
+   "en": "Subtitles",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2Export-Phones",
+    "P2Export-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §1 (L-62): one name for both subtitle formats, told apart by the file type beside it (“Subtitles .srt”, “Subtitles .vtt”). Replaces export.srt.label / export.vtt.label. The file type is never translated.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Sottotitoli"
+    },
+    "fr": {
+     "text": "Sous-titres"
+    },
+    "es": {
+     "text": "Subtítulos"
+    },
+    "pt-BR": {
+     "text": "Legendas"
+    },
+    "pt-PT": {
+     "text": "Legendas"
+    }
+   }
+  },
+  {
+   "id": "export.cassiniFile.description.short",
+   "en": "Audio and transcript in one file",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Export-Phones",
+    "P2Export-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §1 (L-62): one-line description, the same on all four apps (no full stop). Replaces export.cassiniFile.description.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Audio e trascrizione in un unico file"
+    },
+    "fr": {
+     "text": "Audio et transcription dans un seul fichier"
+    },
+    "es": {
+     "text": "Audio y transcripción en un solo archivo"
+    },
+    "pt-BR": {
+     "text": "Áudio e transcrição em um só arquivo"
+    },
+    "pt-PT": {
+     "text": "Áudio e transcrição num só ficheiro"
+    }
+   }
+  },
+  {
+   "id": "export.markdown.description.short",
+   "en": "Transcript with speakers and times",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Export-Phones",
+    "P2Export-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §1 (L-62): one-line description. Replaces export.markdown.description.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascrizione con persone e orari"
+    },
+    "fr": {
+     "text": "Transcription avec intervenants et horaires"
+    },
+    "es": {
+     "text": "Transcripción con hablantes y tiempos"
+    },
+    "pt-BR": {
+     "text": "Transcrição com falantes e tempos"
+    },
+    "pt-PT": {
+     "text": "Transcrição com oradores e tempos"
+    }
+   }
+  },
+  {
+   "id": "export.plainText.description.short",
+   "en": "Transcript only, no formatting",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Export-Phones",
+    "P2Export-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §1 (L-62): one-line description. Replaces export.plainText.description.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Solo trascrizione, senza formattazione"
+    },
+    "fr": {
+     "text": "Transcription seule, sans mise en forme"
+    },
+    "es": {
+     "text": "Solo la transcripción, sin formato"
+    },
+    "pt-BR": {
+     "text": "Só a transcrição, sem formatação"
+    },
+    "pt-PT": {
+     "text": "Só a transcrição, sem formatação"
+    }
+   }
+  },
+  {
+   "id": "export.srt.description.short",
+   "en": "For video players and editors",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Export-Phones",
+    "P2Export-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §1 (L-62): one-line description of “Subtitles .srt”. Replaces export.srt.description.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Per lettori ed editor video"
+    },
+    "fr": {
+     "text": "Pour les lecteurs et éditeurs vidéo"
+    },
+    "es": {
+     "text": "Para reproductores y editores de vídeo"
+    },
+    "pt-BR": {
+     "text": "Para players e editores de vídeo"
+    },
+    "pt-PT": {
+     "text": "Para leitores e editores de vídeo"
+    }
+   }
+  },
+  {
+   "id": "export.vtt.description.short",
+   "en": "With speaker names, for web video",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Export-Phones",
+    "P2Export-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §1 (L-62): one-line description of “Subtitles .vtt”. Replaces export.vtt.description.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Con i nomi delle persone, per i video sul web"
+    },
+    "fr": {
+     "text": "Avec les noms des intervenants, pour la vidéo web"
+    },
+    "es": {
+     "text": "Con los nombres de los hablantes, para vídeo web"
+    },
+    "pt-BR": {
+     "text": "Com os nomes dos falantes, para vídeo na web"
+    },
+    "pt-PT": {
+     "text": "Com os nomes dos oradores, para vídeo na web"
+    }
+   }
+  },
+  {
+   "id": "export.typeWithSize",
+   "en": "{type} ({size})",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2Export-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "placeholders": {
+    "type": "file extension, never translated (.opus)",
+    "size": "format.size, rounded estimate (24 MB)"
+   },
+   "note": "D106 §1 (L-62): phones only, beside the Cassini file name: the file type then the app’s rounded size estimate in brackets, without “about” (“.opus (24 MB)”). Grey, on the Cassini file row only. Desktop keeps the size on the right.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{type} ({size})"
+    },
+    "fr": {
+     "text": "{type} ({size})"
+    },
+    "es": {
+     "text": "{type} ({size})"
+    },
+    "pt-BR": {
+     "text": "{type} ({size})"
+    },
+    "pt-PT": {
+     "text": "{type} ({size})"
+    }
+   }
+  },
+  {
+   "id": "models.offer.whereFrom.link",
+   "en": "Where do the files come from?",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "link",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §2 (L-61): inline link at the end of models.offer.spaceNeeded on both phones, not a separate button. Opens the same page as models.whereFrom, which it replaces on this screen.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Da dove arrivano i file?"
+    },
+    "fr": {
+     "text": "D’où viennent les fichiers ?"
+    },
+    "es": {
+     "text": "¿De dónde vienen los archivos?"
+    },
+    "pt-BR": {
+     "text": "De onde vêm os arquivos?"
+    },
+    "pt-PT": {
+     "text": "De onde vêm os ficheiros?"
+    }
+   }
+  },
+  {
+   "id": "models.offer.notNow",
+   "en": "Not now — keep the audio",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "P2Download-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §2 (L-61): the model download’s decline button on both phones (iOS’s copy; Android takes it and drops models.offer.recordingKept). Tapping it while a speaker switch asked for the download turns that switch back off (D106 §4).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Non ora — tieni l’audio"
+    },
+    "fr": {
+     "text": "Pas maintenant — garder l’audio"
+    },
+    "es": {
+     "text": "Ahora no — conservar el audio"
+    },
+    "pt-BR": {
+     "text": "Agora não — manter o áudio"
+    },
+    "pt-PT": {
+     "text": "Agora não — manter o áudio"
+    }
+   }
+  },
+  {
+   "id": "backup.notice.title",
+   "en": "Meetings in your backups",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2BackupNote-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §2 (L-59): one-time backup notice after the first saved meeting, news first, one line beside the icon (Android: cloud with an up arrow). Backup stays on by default. Replaces backup.phoneOnlyCard.title / .title.ios.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Riunioni nei tuoi backup"
+    },
+    "fr": {
+     "text": "Réunions dans vos sauvegardes"
+    },
+    "es": {
+     "text": "Reuniones en tus copias de seguridad"
+    },
+    "pt-BR": {
+     "text": "Reuniões nos seus backups"
+    },
+    "pt-PT": {
+     "text": "Reuniões nas suas cópias de segurança"
+    }
+   }
+  },
+  {
+   "id": "backup.notice.body.phone",
+   "en": "If this phone backs up, your meetings and saved voices go into its encrypted backup and move with you to a new phone.",
+   "platforms": [
+    "android"
+   ],
+   "role": "body",
+   "boards": [
+    "P2BackupNote-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §2 (L-59): Android body of backup.notice.title, the card’s full width. Replaces backup.phoneOnlyCard.body on Android.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Se questo telefono fa il backup, le riunioni e le voci salvate finiscono nel suo backup crittografato e ti seguono su un nuovo telefono."
+    },
+    "fr": {
+     "text": "Si ce téléphone est sauvegardé, vos réunions et voix mémorisées vont dans sa sauvegarde chiffrée et vous suivent sur un nouveau téléphone."
+    },
+    "es": {
+     "text": "Si este teléfono hace copias de seguridad, tus reuniones y voces guardadas van a su copia cifrada y se pasan contigo a un teléfono nuevo."
+    },
+    "pt-BR": {
+     "text": "Se este celular faz backup, suas reuniões e vozes salvas vão para o backup criptografado dele e passam com você para um celular novo."
+    },
+    "pt-PT": {
+     "text": "Se este telemóvel fizer cópias de segurança, as reuniões e vozes guardadas vão para a cópia encriptada e passam consigo para um telemóvel novo."
+    }
+   }
+  },
+  {
+   "id": "backup.notice.body.iphone",
+   "en": "If iCloud Backup is on, your meetings and saved voices go into it, so a new iPhone gets them back.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "body",
+   "boards": [
+    "P2BackupNote-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §2 (L-59): iOS body of backup.notice.title. Says only what is always true (D103 §2). Replaces backup.phoneOnlyCard.body on iOS.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Se il backup di iCloud è attivo, le riunioni e le voci salvate ci finiscono dentro, così un nuovo iPhone le recupera."
+    },
+    "fr": {
+     "text": "Si la sauvegarde iCloud est activée, vos réunions et voix mémorisées y sont incluses, et un nouvel iPhone les récupère."
+    },
+    "es": {
+     "text": "Si la copia de seguridad de iCloud está activada, tus reuniones y voces guardadas van en ella, y un iPhone nuevo las recupera."
+    },
+    "pt-BR": {
+     "text": "Se o Backup do iCloud estiver ativado, suas reuniões e vozes salvas vão para ele, e um iPhone novo as recupera."
+    },
+    "pt-PT": {
+     "text": "Se a cópia de segurança do iCloud estiver ativada, as reuniões e vozes guardadas vão para ela, e um iPhone novo recupera-as."
+    }
+   }
+  },
+  {
+   "id": "backup.notice.body.ipad",
+   "en": "If iCloud Backup is on, your meetings and saved voices go into it, so a new iPad gets them back.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "body",
+   "boards": [],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §2 (L-59): iPad variant of backup.notice.body.iphone. Derived, not drawn.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Se il backup di iCloud è attivo, le riunioni e le voci salvate ci finiscono dentro, così un nuovo iPad le recupera."
+    },
+    "fr": {
+     "text": "Si la sauvegarde iCloud est activée, vos réunions et voix mémorisées y sont incluses, et un nouvel iPad les récupère."
+    },
+    "es": {
+     "text": "Si la copia de seguridad de iCloud está activada, tus reuniones y voces guardadas van en ella, y un iPad nuevo las recupera."
+    },
+    "pt-BR": {
+     "text": "Se o Backup do iCloud estiver ativado, suas reuniões e vozes salvas vão para ele, e um iPad novo as recupera."
+    },
+    "pt-PT": {
+     "text": "Se a cópia de segurança do iCloud estiver ativada, as reuniões e vozes guardadas vão para ela, e um iPad novo recupera-as."
+    }
+   }
+  },
+  {
+   "id": "backup.notice.keep",
+   "en": "Keep in backup",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "P2BackupNote-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §2 (L-59): first of two equal side-by-side buttons; × does the same. Replaces backup.phoneOnlyCard.dismiss.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Tieni nel backup"
+    },
+    "fr": {
+     "text": "Garder dans la sauvegarde"
+    },
+    "es": {
+     "text": "Mantener en la copia"
+    },
+    "pt-BR": {
+     "text": "Manter no backup"
+    },
+    "pt-PT": {
+     "text": "Manter na cópia de segurança"
+    }
+   }
+  },
+  {
+   "id": "backup.notice.phoneOnly",
+   "en": "This phone only",
+   "platforms": [
+    "android"
+   ],
+   "role": "button",
+   "boards": [
+    "P2BackupNote-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §2 (L-59): Android second button; turns cloud backup and transfer off. Replaces backup.phoneOnlyCard.action.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Solo su questo telefono"
+    },
+    "fr": {
+     "text": "Ce téléphone seulement"
+    },
+    "es": {
+     "text": "Solo en este teléfono"
+    },
+    "pt-BR": {
+     "text": "Só neste celular"
+    },
+    "pt-PT": {
+     "text": "Só neste telemóvel"
+    }
+   }
+  },
+  {
+   "id": "backup.notice.leaveOut",
+   "en": "Leave out",
+   "platforms": [
+    "ios"
+   ],
+   "role": "button",
+   "boards": [
+    "P2BackupNote-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §2 (L-59): iOS second button; marks meetings and saved voices to be left out of iCloud Backup. Replaces backup.phoneOnlyCard.action.ios.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Escludi"
+    },
+    "fr": {
+     "text": "Exclure"
+    },
+    "es": {
+     "text": "Excluir"
+    },
+    "pt-BR": {
+     "text": "Deixar de fora"
+    },
+    "pt-PT": {
+     "text": "Deixar de fora"
+    }
+   }
+  },
+  {
+   "id": "settings.answer.on",
+   "en": "On",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2Settings-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): Android’s Backup row answer while backup is on (was backup.cloud.title). Pair of settings.answer.off.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Attivo"
+    },
+    "fr": {
+     "text": "Activé"
+    },
+    "es": {
+     "text": "Activado"
+    },
+    "pt-BR": {
+     "text": "Ativado"
+    },
+    "pt-PT": {
+     "text": "Ativado"
+    }
+   }
+  },
+  {
+   "id": "backup.savedVoices.switch.description.phone",
+   "en": "Voiceprints of people you’ve named, so a new or restored phone keeps recognising them. A voice belongs to someone else, so this is its own choice.",
+   "platforms": [
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): description inside the “Back up saved voices” row (the note under the switches moves here). Replaces backup.savedVoices.switch.why.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali delle persone a cui hai dato un nome, così un telefono nuovo o ripristinato continua a riconoscerle. Una voce appartiene a qualcun altro, quindi è una scelta a parte."
+    },
+    "fr": {
+     "text": "Les empreintes vocales des personnes que vous avez nommées, pour qu’un téléphone neuf ou restauré continue à les reconnaître. Une voix appartient à quelqu’un d’autre, c’est donc un choix à part."
+    },
+    "es": {
+     "text": "Las huellas de voz de las personas a las que has puesto nombre, para que un teléfono nuevo o restaurado las siga reconociendo. Una voz es de otra persona, así que es una decisión aparte."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz das pessoas que você nomeou, para que um celular novo ou restaurado continue a reconhecê-las. Uma voz pertence a outra pessoa, então esta é uma escolha à parte."
+    },
+    "pt-PT": {
+     "text": "As impressões de voz das pessoas a quem deu nome, para que um telemóvel novo ou restaurado continue a reconhecê-las. Uma voz pertence a outra pessoa, por isso esta é uma escolha à parte."
+    }
+   }
+  },
+  {
+   "id": "backup.savedVoices.switch.description.iphone",
+   "en": "Voiceprints of people you’ve named, so a new or restored iPhone keeps recognising them. A voice belongs to someone else, so this is its own choice.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): iOS description inside the “Back up saved voices” row. Replaces backup.savedVoices.switch.why.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali delle persone a cui hai dato un nome, così un iPhone nuovo o ripristinato continua a riconoscerle. Una voce appartiene a qualcun altro, quindi è una scelta a parte."
+    },
+    "fr": {
+     "text": "Les empreintes vocales des personnes que vous avez nommées, pour qu’un iPhone neuf ou restauré continue à les reconnaître. Une voix appartient à quelqu’un d’autre, c’est donc un choix à part."
+    },
+    "es": {
+     "text": "Las huellas de voz de las personas a las que has puesto nombre, para que un iPhone nuevo o restaurado las siga reconociendo. Una voz es de otra persona, así que es una decisión aparte."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz das pessoas que você nomeou, para que um iPhone novo ou restaurado continue a reconhecê-las. Uma voz pertence a outra pessoa, então esta é uma escolha à parte."
+    },
+    "pt-PT": {
+     "text": "As impressões de voz das pessoas a quem deu nome, para que um iPhone novo ou restaurado continue a reconhecê-las. Uma voz pertence a outra pessoa, por isso esta é uma escolha à parte."
+    }
+   }
+  },
+  {
+   "id": "backup.savedVoices.switch.description.ipad",
+   "en": "Voiceprints of people you’ve named, so a new or restored iPad keeps recognising them. A voice belongs to someone else, so this is its own choice.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): iPad variant of backup.savedVoices.switch.description.iphone. Derived, not drawn.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali delle persone a cui hai dato un nome, così un iPad nuovo o ripristinato continua a riconoscerle. Una voce appartiene a qualcun altro, quindi è una scelta a parte."
+    },
+    "fr": {
+     "text": "Les empreintes vocales des personnes que vous avez nommées, pour qu’un iPad neuf ou restauré continue à les reconnaître. Une voix appartient à quelqu’un d’autre, c’est donc un choix à part."
+    },
+    "es": {
+     "text": "Las huellas de voz de las personas a las que has puesto nombre, para que un iPad nuevo o restaurado las siga reconociendo. Una voz es de otra persona, así que es una decisión aparte."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz das pessoas que você nomeou, para que um iPad novo ou restaurado continue a reconhecê-las. Uma voz pertence a outra pessoa, então esta é uma escolha à parte."
+    },
+    "pt-PT": {
+     "text": "As impressões de voz das pessoas a quem deu nome, para que um iPad novo ou restaurado continue a reconhecê-las. Uma voz pertence a outra pessoa, por isso esta é uma escolha à parte."
+    }
+   }
+  },
+  {
+   "id": "backup.moreDetail.row",
+   "en": "What’s included and who can read it",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "row",
+   "boards": [
+    "P2Backup-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): the Backup page’s “In more detail” section becomes this one row (the two rows opened the same page).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cosa è incluso e chi può leggerlo"
+    },
+    "fr": {
+     "text": "Ce qui est inclus et qui peut le lire"
+    },
+    "es": {
+     "text": "Qué se incluye y quién puede leerlo"
+    },
+    "pt-BR": {
+     "text": "O que está incluído e quem pode ler"
+    },
+    "pt-PT": {
+     "text": "O que está incluído e quem pode ler"
+    }
+   }
+  },
+  {
+   "id": "backup.info.included.heading",
+   "en": "What’s included",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): heading of the status list on both phones. Replaces backup.info.what.heading (iOS) and backup.info.moves.heading (Android).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Cosa è incluso"
+    },
+    "fr": {
+     "text": "Ce qui est inclus"
+    },
+    "es": {
+     "text": "Qué se incluye"
+    },
+    "pt-BR": {
+     "text": "O que está incluído"
+    },
+    "pt-PT": {
+     "text": "O que está incluído"
+    }
+   }
+  },
+  {
+   "id": "backup.info.included.iosLead",
+   "en": "When iCloud Backup is on:",
+   "platforms": [
+    "ios"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): iOS only, one grey line (15 px) under backup.info.included.heading, so the short statuses stay conditional (D103 §2).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Quando il backup di iCloud è attivo:"
+    },
+    "fr": {
+     "text": "Quand la sauvegarde iCloud est activée :"
+    },
+    "es": {
+     "text": "Cuando la copia de seguridad de iCloud está activada:"
+    },
+    "pt-BR": {
+     "text": "Quando o Backup do iCloud estiver ativado:"
+    },
+    "pt-PT": {
+     "text": "Quando a cópia de segurança do iCloud estiver ativada:"
+    }
+   }
+  },
+  {
+   "id": "backup.info.status.included",
+   "en": "Included",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): status on both phones. Replaces backup.info.status.copied (Android) and backup.info.status.backedUp (iOS).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Incluso"
+    },
+    "fr": {
+     "text": "Inclus"
+    },
+    "es": {
+     "text": "Incluido"
+    },
+    "pt-BR": {
+     "text": "Incluído"
+    },
+    "pt-PT": {
+     "text": "Incluído"
+    }
+   }
+  },
+  {
+   "id": "backup.info.status.notIncluded",
+   "en": "Not included",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "value",
+   "boards": [
+    "P2BackupDetails-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): status on both phones. Replaces backup.info.status.notCopied (Android) and backup.info.status.notBackedUp (iOS).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Non incluso"
+    },
+    "fr": {
+     "text": "Non inclus"
+    },
+    "es": {
+     "text": "No incluido"
+    },
+    "pt-BR": {
+     "text": "Não incluído"
+    },
+    "pt-PT": {
+     "text": "Não incluído"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.speakers.recognise.subtitle",
+   "en": "Names people you’ve saved.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): one-line description under “Recognise saved voices” in phone Settings › Speakers (snapshot 1795009023-f7b9). Replaces models.recogniseVoices.description.short on phones.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Dà il nome alle persone che hai salvato."
+    },
+    "fr": {
+     "text": "Nomme les personnes que vous avez mémorisées."
+    },
+    "es": {
+     "text": "Pone nombre a las personas que has guardado."
+    },
+    "pt-BR": {
+     "text": "Dá nome às pessoas que você salvou."
+    },
+    "pt-PT": {
+     "text": "Dá nome às pessoas que guardou."
+    }
+   }
+  },
+  {
+   "id": "settings.phone.speakers.autoName",
+   "en": "Name people automatically",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "switch",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): Settings › Speakers on both phones, off by default (Android gains the switch; it used to name strong matches automatically with no setting). Replaces settings.ios.speakers.autoName.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Assegna i nomi automaticamente"
+    },
+    "fr": {
+     "text": "Nommer les personnes automatiquement"
+    },
+    "es": {
+     "text": "Poner nombres automáticamente"
+    },
+    "pt-BR": {
+     "text": "Nomear pessoas automaticamente"
+    },
+    "pt-PT": {
+     "text": "Dar nome às pessoas automaticamente"
+    }
+   }
+  },
+  {
+   "id": "settings.phone.speakers.autoName.subtitle",
+   "en": "Only when Cassini is sure. Matches can be wrong, so this is off by default.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2Speakers-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §4 (L-58): description of settings.phone.speakers.autoName. Replaces settings.ios.speakers.autoName.subtitle.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Solo quando Cassini è sicuro. Le corrispondenze possono essere sbagliate, quindi è disattivato per impostazione predefinita."
+    },
+    "fr": {
+     "text": "Seulement quand Cassini est sûr. Les correspondances peuvent être fausses, c’est donc désactivé par défaut."
+    },
+    "es": {
+     "text": "Solo cuando Cassini está seguro. Las coincidencias pueden fallar, así que está desactivado de forma predeterminada."
+    },
+    "pt-BR": {
+     "text": "Só quando o Cassini tem certeza. As correspondências podem estar erradas, por isso vem desativado."
+    },
+    "pt-PT": {
+     "text": "Só quando o Cassini tem a certeza. As correspondências podem estar erradas, por isso vem desativado."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.footnote.madeOn.phone",
+   "en": "Voiceprints are made on this phone.",
+   "platforms": [
+    "android"
+   ],
+   "role": "footnote",
+   "boards": [
+    "P2SavedVoices-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §5 (L-63): first line of the two-line privacy footnote at the bottom of Saved voices (shield icon), the same with voices and empty; second line savedVoices.footnote.namesOnly. Replaces android.savedVoices.privacy and savedVoices.privacy.phone.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali vengono create su questo telefono."
+    },
+    "fr": {
+     "text": "Les empreintes vocales sont créées sur ce téléphone."
+    },
+    "es": {
+     "text": "Las huellas de voz se crean en este teléfono."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz são criadas neste celular."
+    },
+    "pt-PT": {
+     "text": "As impressões de voz são criadas neste telemóvel."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.footnote.madeOn.iphone",
+   "en": "Voiceprints are made on this iPhone.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "footnote",
+   "boards": [
+    "P2SavedVoices-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §5 (L-63): iOS first footnote line (lock icon). Replaces savedVoices.privacy.phone.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali vengono create su questo iPhone."
+    },
+    "fr": {
+     "text": "Les empreintes vocales sont créées sur cet iPhone."
+    },
+    "es": {
+     "text": "Las huellas de voz se crean en este iPhone."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz são criadas neste iPhone."
+    },
+    "pt-PT": {
+     "text": "As impressões de voz são criadas neste iPhone."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.footnote.madeOn.ipad",
+   "en": "Voiceprints are made on this iPad.",
+   "platforms": [
+    "ios"
+   ],
+   "role": "footnote",
+   "boards": [],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §5 (L-63): iPad variant of savedVoices.footnote.madeOn.iphone. Derived, not drawn.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali vengono create su questo iPad."
+    },
+    "fr": {
+     "text": "Les empreintes vocales sont créées sur cet iPad."
+    },
+    "es": {
+     "text": "Las huellas de voz se crean en este iPad."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz são criadas neste iPad."
+    },
+    "pt-PT": {
+     "text": "As impressões de voz são criadas neste iPad."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.footnote.namesOnly",
+   "en": "Exports and shares include names only.",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "footnote",
+   "boards": [
+    "P2SavedVoices-Phones",
+    "P2Export-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §5 (L-63), §1 (L-62): second footnote line on the phones; the one privacy wording for exports (Export itself no longer repeats it).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Esportazioni e condivisioni includono solo i nomi."
+    },
+    "fr": {
+     "text": "Les exports et partages n’incluent que les noms."
+    },
+    "es": {
+     "text": "Las exportaciones y lo que compartes solo incluyen los nombres."
+    },
+    "pt-BR": {
+     "text": "Exportações e compartilhamentos incluem só os nomes."
+    },
+    "pt-PT": {
+     "text": "As exportações e partilhas incluem só os nomes."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.footnote.mac",
+   "en": "Voiceprints are made on this Mac. Exports and shares include names only.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "footnote",
+   "boards": [
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §5 (L-63): Mac footnote, one centred line with a lock, the same with voices and empty. Replaces savedVoices.privacy.mac.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali vengono create su questo Mac. Esportazioni e condivisioni includono solo i nomi."
+    },
+    "fr": {
+     "text": "Les empreintes vocales sont créées sur ce Mac. Les exports et partages n’incluent que les noms."
+    },
+    "es": {
+     "text": "Las huellas de voz se crean en este Mac. Las exportaciones y lo que compartes solo incluyen los nombres."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz são criadas neste Mac. Exportações e compartilhamentos incluem só os nomes."
+    },
+    "pt-PT": {
+     "text": "As impressões de voz são criadas neste Mac. As exportações e partilhas incluem só os nomes."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.footnote.computer",
+   "en": "Voiceprints are made on this computer. Exports and shares include names only.",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "footnote",
+   "boards": [
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §5 (L-63): GNOME footnote, one centred line with a shield, the same with voices and empty. Replaces savedVoices.privacy.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le impronte vocali vengono create su questo computer. Esportazioni e condivisioni includono solo i nomi."
+    },
+    "fr": {
+     "text": "Les empreintes vocales sont créées sur cet ordinateur. Les exports et partages n’incluent que les noms."
+    },
+    "es": {
+     "text": "Las huellas de voz se crean en este ordenador. Las exportaciones y lo que compartes solo incluyen los nombres."
+    },
+    "pt-BR": {
+     "text": "As impressões de voz são criadas neste computador. Exportações e compartilhamentos incluem só os nomes."
+    },
+    "pt-PT": {
+     "text": "As impressões de voz são criadas neste computador. As exportações e partilhas incluem só os nomes."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.stale.title",
+   "en": "{n} voices need naming again",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2SavedVoices-Phones",
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "placeholders": {
+    "n": "number of stale saved voices"
+   },
+   "plural": {
+    "one": "1 voice needs naming again",
+    "other": "{n} voices need naming again"
+   },
+   "note": "D106 §5 (L-63): one amber notice above the list when any voice is stale. Replaces the per-row savedVoices.row.stale line.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{n} voci da nominare di nuovo",
+     "plural": {
+      "one": "1 voce da nominare di nuovo",
+      "other": "{n} voci da nominare di nuovo"
+     }
+    },
+    "fr": {
+     "text": "{n} voix à renommer",
+     "plural": {
+      "one": "{n} voix à renommer",
+      "many": "{n} voix à renommer",
+      "other": "{n} voix à renommer"
+     }
+    },
+    "es": {
+     "text": "{n} voces necesitan un nombre de nuevo",
+     "plural": {
+      "one": "1 voz necesita un nombre de nuevo",
+      "many": "{n} voces necesitan un nombre de nuevo",
+      "other": "{n} voces necesitan un nombre de nuevo"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} vozes precisam ser nomeadas de novo",
+     "plural": {
+      "one": "{n} voz precisa ser nomeada de novo",
+      "many": "{n} vozes precisam ser nomeadas de novo",
+      "other": "{n} vozes precisam ser nomeadas de novo"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} vozes precisam de ser nomeadas de novo",
+     "plural": {
+      "one": "{n} voz precisa de ser nomeada de novo",
+      "many": "{n} vozes precisam de ser nomeadas de novo",
+      "other": "{n} vozes precisam de ser nomeadas de novo"
+     }
+    }
+   }
+  },
+  {
+   "id": "savedVoices.stale.body",
+   "en": "Voice recognition was updated, and voices saved before the update can’t be recognised. Name {name} in a meeting to save their voice again.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "body",
+   "boards": [
+    "P2SavedVoices-Phones",
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "placeholders": {
+    "name": "stale saved voice’s name (sample: Luca)"
+   },
+   "note": "D106 §5 (L-63): body of the amber notice, drawn with one stale voice (Luca). With several, the wording for listing names is not drawn yet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Il riconoscimento vocale è stato aggiornato e le voci salvate prima dell’aggiornamento non possono essere riconosciute. Dai un nome a {name} in una riunione per salvare di nuovo la sua voce."
+    },
+    "fr": {
+     "text": "La reconnaissance vocale a été mise à jour, et les voix mémorisées avant la mise à jour ne peuvent plus être reconnues. Nommez {name} dans une réunion pour mémoriser à nouveau sa voix."
+    },
+    "es": {
+     "text": "El reconocimiento de voz se ha actualizado y las voces guardadas antes de la actualización no se pueden reconocer. Pon nombre a {name} en una reunión para volver a guardar su voz."
+    },
+    "pt-BR": {
+     "text": "O reconhecimento de voz foi atualizado, e as vozes salvas antes da atualização não podem ser reconhecidas. Nomeie {name} em uma reunião para salvar a voz de novo."
+    },
+    "pt-PT": {
+     "text": "O reconhecimento de voz foi atualizado, e as vozes guardadas antes da atualização não podem ser reconhecidas. Dê nome a {name} numa reunião para guardar a voz de novo."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.row.needsNaming",
+   "en": "Needs naming again",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "badge",
+   "boards": [
+    "P2SavedVoices-Phones",
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §5 (L-63): amber pill on a stale row, the notice’s colours. Replaces savedVoices.row.stale.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Da nominare di nuovo"
+    },
+    "fr": {
+     "text": "À renommer"
+    },
+    "es": {
+     "text": "Necesita un nombre de nuevo"
+    },
+    "pt-BR": {
+     "text": "Precisa ser nomeada de novo"
+    },
+    "pt-PT": {
+     "text": "Precisa de ser nomeada de novo"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.addVoice",
+   "en": "Add a voice",
+   "platforms": [
+    "ios"
+   ],
+   "role": "button",
+   "boards": [
+    "P2SavedVoices-Phones"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §5 (L-63): iOS “+ Add a voice” on the right of the list heading (savedVoices.peopleCount, small caps). Mac (link) and GNOME (flat button) use voices.enroll.addAction there.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Aggiungi una voce"
+    },
+    "fr": {
+     "text": "Ajouter une voix"
+    },
+    "es": {
+     "text": "Añadir una voz"
+    },
+    "pt-BR": {
+     "text": "Adicionar uma voz"
+    },
+    "pt-PT": {
+     "text": "Adicionar uma voz"
+    }
+   }
+  },
+  {
+   "id": "savedVoices.caption",
+   "en": "To add someone, name a speaker in a meeting and keep “Remember this voice” on.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2SavedVoices-Phones",
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §5 (L-63): the only caption under the list; the forgetting sentence lives in the Forget confirmations. Replaces savedVoices.howToAdd.short, savedVoices.howToAdd and android.savedVoices.howToAdd.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Per aggiungere qualcuno, dai un nome a una persona in una riunione e lascia attivo “Ricorda questa voce”."
+    },
+    "fr": {
+     "text": "Pour ajouter quelqu’un, nommez un intervenant dans une réunion et laissez « Mémoriser cette voix » activé."
+    },
+    "es": {
+     "text": "Para añadir a alguien, pon nombre a un hablante en una reunión y deja activado «Recordar esta voz»."
+    },
+    "pt-BR": {
+     "text": "Para adicionar alguém, nomeie um falante em uma reunião e deixe “Lembrar esta voz” ativado."
+    },
+    "pt-PT": {
+     "text": "Para adicionar alguém, dê nome a um orador numa reunião e deixe “Memorizar esta voz” ativado."
+    }
+   }
+  },
+  {
+   "id": "savedVoices.empty.body",
+   "en": "Name a speaker in a meeting and keep “Remember this voice” on. Next time, Cassini names them for you.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "body",
+   "boards": [
+    "P2SavedVoices-Phones",
+    "P2SavedVoices-Desktop"
+   ],
+   "milestone": "Phase 2 18 Nov (D106)",
+   "note": "D106 §5 (L-63): under savedVoices.empty, centred. iOS, Mac and GNOME add voices.enroll.addAction (primary on desktop).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Dai un nome a una persona in una riunione e lascia attivo “Ricorda questa voce”. La prossima volta, Cassini le darà il nome per te."
+    },
+    "fr": {
+     "text": "Nommez un intervenant dans une réunion et laissez « Mémoriser cette voix » activé. La prochaine fois, Cassini le nommera pour vous."
+    },
+    "es": {
+     "text": "Pon nombre a un hablante en una reunión y deja activado «Recordar esta voz». La próxima vez, Cassini le pondrá el nombre por ti."
+    },
+    "pt-BR": {
+     "text": "Nomeie um falante em uma reunião e deixe “Lembrar esta voz” ativado. Da próxima vez, o Cassini o nomeia para você."
+    },
+    "pt-PT": {
+     "text": "Dê nome a um orador numa reunião e deixe “Memorizar esta voz” ativado. Da próxima vez, o Cassini dá-lhe o nome por si."
     }
    }
   }

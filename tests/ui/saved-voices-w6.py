@@ -187,14 +187,16 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: len(page.rows) == 4 and not page._loading)
     shown = labels(page)
 
-    # Privacy line: local only, no cloud claim on the desktop (HARMONY §12, D25, L-63).
-    assert text("voices.setup.privacy.desktop") in shown
+    # Privacy footnote: local only, one centred line at the bottom (HARMONY §12, D25, L-63, D106 §5).
+    assert text("savedVoices.footnote.computer") in shown
+    assert text("voices.setup.privacy.desktop") not in shown and text("savedVoices.howToAdd.short") not in shown
     assert not any("iCloud" in value or "backup" in value.lower() for value in shown)
-    # The voices question left Saved voices (D103 §3); one footnote remains (L-63).
+    # The voices question left Saved voices (D103 §3); D106 §5 list heading, flat "+ Add a voice…" and caption.
     assert text("voices.setup.title") not in shown and not hasattr(page, "setup")
-    assert text("savedVoices.howToAdd.short") in shown
+    assert page.people.get_title() == "4 people"
+    assert text("savedVoices.caption") in shown
     assert page.everyone.get_label() == "Forget everyone…"
-    assert not page.add_voice.get_sensitive() and page.add_voice.get_label() == "Add a voice…"
+    assert not page.add_voice.get_sensitive() and page.add_voice.get_child().get_label() == "Add a voice…"
     assert page.models_needed.get_visible()
 
     # 1. One voices question over the first meeting with more than one speaker (D103 §3).
@@ -262,7 +264,7 @@ with tempfile.TemporaryDirectory() as temporary:
     speakers.force_close()
     until(lambda: speakers.closed)
 
-    # Preferences › Transcription › Speakers: Remember people I name (PROVISIONAL, D-1044 q4).
+    # Preferences › Transcription › Speakers: Remember people I name (L-60, D106 §3).
     settings = app.settings_dialog = SettingsDialog(app)
     settings.present(window)
     settings.set_visible_page_name("transcription")
@@ -282,17 +284,23 @@ with tempfile.TemporaryDirectory() as temporary:
     page.refresh()
     assert not page.models_needed.get_visible() and page.add_voice.get_sensitive()
 
-    # 2. Saved voices rows (L-63): slot colours, meta, amber stale line, play, one Options menu.
+    # 2. Saved voices rows (L-63, D106 §5): stale notice/pill, slot colours, meta, top alignment, play, menu.
+    assert page.stale_group.get_visible()
+    assert page.stale_title.get_text() == "1 voice needs naming again"
+    assert "Name Nina in a meeting" in page.stale_body.get_text()
     snapshot = app.voice_store.snapshot()["voices"]
     by_name = {v["name"]: v for v in snapshot}
     marta, nina = page.rows[by_name["Marta"]["id"]], page.rows[by_name["Nina"]["id"]]
     assert marta.avatar.has_css_class("speaker-avatar-1") and nina.avatar.has_css_class("speaker-avatar-4")
+    assert marta.avatar.get_valign() == Gtk.Align.START
+    assert marta.play.get_valign() == Gtk.Align.START and marta.options.get_valign() == Gtk.Align.START
     assert marta.row.get_title() == "Marta" and marta.name.get_text() == "Marta"
-    assert marta.meta.get_text().endswith("confirmed speech") and "samples" not in " ".join(labels(marta.row))
+    assert marta.meta.get_text() == "31 meetings · 24 min" and "confirmed speech" not in marta.meta.get_text()
+    assert "samples" not in " ".join(labels(marta.row))
     assert "Ready" not in labels(marta.row)
-    assert not marta.stale_line.get_visible()
-    assert nina.stale_line.get_visible() and nina.stale_line.get_text() == text("savedVoices.row.stale")
-    assert nina.stale_line.has_css_class("saved-voice-stale")
+    assert not marta.stale_pill.get_visible()
+    assert nina.stale_pill.get_visible() and nina.stale_pill.get_text() == text("savedVoices.row.needsNaming")
+    assert nina.stale_pill.has_css_class("saved-voice-stale-pill")
     assert not hasattr(marta, "rename") and not hasattr(marta, "delete")  # No inline buttons.
     assert marta.play.get_tooltip_text() == "Play a sample of Marta"
     assert marta.options.get_tooltip_text() == "Options for Marta"
@@ -307,7 +315,8 @@ with tempfile.TemporaryDirectory() as temporary:
     assert items == [("Play a sample", "voice.play"), ("Rename…", "voice.rename"), ("Forget…", "voice.forget")]
     assert marta.actions.lookup_action("rename").get_enabled() and marta.actions.lookup_action("forget").get_enabled()
     marta.actions.activate_action("forget", None)
-    assert page.confirmation.get_heading() == "Delete Marta’s voice profile?"
+    assert page.confirmation.get_heading() == "Forget Marta’s voice?"
+    assert page.confirmation.get_response_label("forget") == "Forget"
     page.confirmation.force_close()
     marta.actions.activate_action("rename", None)
     assert page.rename_dialog.get_heading() == "Rename saved voice"
@@ -426,12 +435,12 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: not page.busy and page.rows[bea["id"]].row.get_title() == "Bea Rossi")
     assert page.rows[bea["id"]].avatar.get_label() == "BR"
 
-    # 5. Delete one voice, then Forget everyone; names in meetings stay.
+    # 5. Forget one voice, then Forget everyone; names in meetings stay.
     renamed = next(v for v in app.voice_store.snapshot()["voices"] if v["id"] == bea["id"])
     page.confirm(renamed)
-    assert page.confirmation.get_heading() == "Delete Bea Rossi’s voice profile?"
+    assert page.confirmation.get_heading() == "Forget Bea Rossi’s voice?"
     assert page.confirmation.get_body() == text("confirm.deleteVoiceProfile.body", name="Bea Rossi")
-    assert page.confirmation.get_response_label("forget") == "Delete"
+    assert page.confirmation.get_response_label("forget") == "Forget"
     page.confirmation.emit("response", "forget")
     page.confirmation.force_close()
     until(lambda: not page.busy and bea["id"] not in page.rows)
@@ -441,7 +450,13 @@ with tempfile.TemporaryDirectory() as temporary:
     page.confirmation.emit("response", "forget")
     page.confirmation.force_close()
     until(lambda: not page.busy and not page.rows)
-    assert page.empty.get_visible() and not page.everyone.get_sensitive()
+    assert page.empty_group.get_visible() and page.empty.get_visible()
+    assert page.empty.get_text() == "No saved voices yet"
+    assert page.empty_body.get_text() == text("savedVoices.empty.body")
+    assert page.empty_add_voice.get_label() == "Add a voice…" and page.empty_add_voice.get_sensitive()
+    assert not page.people.get_visible() and not page.forget_group.get_visible() and not page.stale_group.get_visible()
+    assert page.privacy_group.get_visible() and not page.everyone.get_sensitive()
+    assert text("savedVoices.footnote.computer") in labels(page)
 
     # Nothing in the Library meeting changed except names the person typed (none here).
     after = {p: p.read_bytes() for p in meeting.directory.iterdir() if p.is_file()}

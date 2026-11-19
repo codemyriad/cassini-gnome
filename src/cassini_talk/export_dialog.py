@@ -7,26 +7,30 @@ import threading
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
-from gi.repository import Adw, Gio, GLib, Gtk, Pango
+from gi.repository import Adw, Gio, GLib, Gtk
 
 from . import ux_formats as fmt
 from .export_model import available_formats, encode_choice
 from .exporting import export_meeting
 from .i18n import gettext as _
-from .i18n import join_list
 from .library_window import label, vertical
 from .strings import text
 
-# PARITY §2 (L-11, D99): catalog label and caption for every single-meeting format.
+# PARITY §2 (L-11, L-62, D99, D106 §1): catalog label, file type and one-line caption per format.
 FORMAT_TEXT = {
-    "cassini": ("export.cassiniFile.label", "export.cassiniFile.description"),
-    "original": ("export.originalAudio.label", "export.originalAudio.description"),
-    "markdown": ("export.markdown.label", "export.markdown.description"),
-    "txt": ("export.plainText.label", "export.plainText.description"),
-    "srt": ("export.srt.label", "export.srt.description"),
-    "vtt": ("export.vtt.label", "export.vtt.description"),
+    "cassini": ("export.cassiniFile.label", ".opus", "export.cassiniFile.description.short"),
+    "original": ("export.originalAudio.label", "", "export.originalAudio.description"),
+    "markdown": ("export.markdown.label", ".md", "export.markdown.description.short"),
+    "txt": ("export.plainText.label", ".txt", "export.plainText.description.short"),
+    "srt": ("export.subtitles.label", ".srt", "export.srt.description.short"),
+    "vtt": ("export.subtitles.label", ".vtt", "export.vtt.description.short"),
 }
 MORE_FORMATS = ("txt", "srt", "vtt")
+
+
+def format_accessible_label(name_key, file_type):
+    name = text(name_key)
+    return f"{name} {file_type}" if file_type else name
 
 
 def audio_size_label(meeting, kind):
@@ -45,16 +49,6 @@ def audio_size_label(meeting, kind):
         )
         estimate = (meeting.duration_ms or 0) * choice["bitrateBps"] // 8000
     return fmt.size(estimate, approx=True) if type(estimate) is int and estimate >= 0 else None
-
-
-def speaker_names_markup(meeting):
-    names = [GLib.markup_escape_text(s.name) for s in meeting.speakers if s.provenance == "recognised"]
-    if not names:
-        return text("export.speakerNames.body.none")
-    names = [f"<b>{name}</b>" for name in names]
-    if len(names) == 1:
-        return text("export.speakerNames.body", name=names[0])
-    return text("export.speakerNames.body.several", names=join_list(names))
 
 
 class ExportDialog(Adw.Dialog):
@@ -79,11 +73,8 @@ class ExportDialog(Adw.Dialog):
         self.busy = False
         self.output = None
         outer = vertical(22, margin_start=28, margin_end=28, margin_top=26, margin_bottom=26)
-        heading = vertical(10)
         self.heading = label(self.get_title(), "export-heading", wrap=True, justify=Gtk.Justification.CENTER)
-        heading.append(self.heading)
-        heading.append(label(text("export.subtitle"), "dim-label", wrap=True, justify=Gtk.Justification.CENTER))
-        outer.append(heading)
+        outer.append(self.heading)
         choices = vertical(css_classes=["export-choices"], accessible_role=Gtk.AccessibleRole.GROUP)
         choices.update_property([Gtk.AccessibleProperty.LABEL], [text("export.formatGroup.a11y")])
         self.cassini = Gtk.CheckButton()  # The audio choice: Cassini file, or Original audio (D99 §2).
@@ -97,7 +88,7 @@ class ExportDialog(Adw.Dialog):
         self.audio_kind = None
         self.choice_rows = []
         self.rows = {}
-        self.audio_name, self.audio_description, self.audio_size = self._choice_row(choices, "audio")
+        self.audio_name, self.audio_ext, self.audio_description, self.audio_size = self._choice_row(choices, "audio")
         self._choice_row(choices, "markdown")
         self.more = Gtk.Expander(label=text("export.moreFormats"), css_classes=["export-more"])
         more_rows = vertical(css_classes=["export-more-rows"])
@@ -112,12 +103,6 @@ class ExportDialog(Adw.Dialog):
         self._apply_formats(meeting)
         outer.append(choices)
         outer.append(self.audio_only_note)
-        names = vertical(8)
-        names.append(label(text("export.speakerNames.heading"), "small", "heading", "dim-label", xalign=0))
-        self.names = label("", wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, xalign=0)
-        self.names.set_markup(speaker_names_markup(meeting))
-        names.append(self.names)
-        outer.append(names)
         destination = Gtk.Box(spacing=12, css_classes=["export-destination"])
         destination.append(Gtk.Image(icon_name="folder-symbolic", accessible_role=Gtk.AccessibleRole.PRESENTATION))
         self.folder = label("", hexpand=True, xalign=0, wrap=True)
@@ -150,10 +135,14 @@ class ExportDialog(Adw.Dialog):
         row = Gtk.Box(spacing=14, css_classes=["export-choice"])
         row.append(button)
         body = vertical(4, hexpand=True)
-        name_key, description_key = FORMAT_TEXT["cassini" if kind == "audio" else kind]
+        name_key, file_type, description_key = FORMAT_TEXT["cassini" if kind == "audio" else kind]
+        title_line = Gtk.Box(spacing=6)
         name = label(text(name_key), "heading", xalign=0)
-        description = label(text(description_key), "small", "dim-label", wrap=True, xalign=0, max_width_chars=34)
-        body.append(name)
+        ext = label(file_type, "export-ext", xalign=0, valign=Gtk.Align.CENTER, visible=bool(file_type))
+        title_line.append(name)
+        title_line.append(ext)
+        description = label(text(description_key), "small", "dim-label", wrap=True, xalign=0)
+        body.append(title_line)
         body.append(description)
         row.append(body)
         size = label("", "small", "dim-label", valign=Gtk.Align.CENTER, visible=False)
@@ -161,7 +150,7 @@ class ExportDialog(Adw.Dialog):
         parent.append(row)
         self.choice_rows.append(row)
         self.rows[kind] = row
-        button.update_property([Gtk.AccessibleProperty.LABEL], [text(name_key)])
+        button.update_property([Gtk.AccessibleProperty.LABEL], [format_accessible_label(name_key, file_type)])
         button.connect(
             "toggled",
             lambda active, row=row: (row.add_css_class if active.get_active() else row.remove_css_class)("selected"),
@@ -169,7 +158,7 @@ class ExportDialog(Adw.Dialog):
         click = Gtk.GestureClick()
         click.connect("released", lambda _gesture, _n, _x, _y, button=button: button.set_active(True))
         row.add_controller(click)
-        return name, description, size
+        return name, ext, description, size
 
     def _apply_formats(self, meeting):
         """L-11: text formats only for a completed transcript; hidden, not greyed out, otherwise."""
@@ -177,10 +166,12 @@ class ExportDialog(Adw.Dialog):
         audio = formats[0]
         if audio != self.audio_kind:
             self.audio_kind = audio
-            name_key, description_key = FORMAT_TEXT[audio]
+            name_key, file_type, description_key = FORMAT_TEXT[audio]
             self.audio_name.set_label(text(name_key))
+            self.audio_ext.set_label(file_type)
+            self.audio_ext.set_visible(bool(file_type))
             self.audio_description.set_label(text(description_key))
-            self.cassini.update_property([Gtk.AccessibleProperty.LABEL], [text(name_key)])
+            self.cassini.update_property([Gtk.AccessibleProperty.LABEL], [format_accessible_label(name_key, file_type)])
         size = audio_size_label(meeting, audio)
         self.audio_size.set_label(size or "")
         self.audio_size.set_visible(bool(size))
@@ -249,7 +240,6 @@ class ExportDialog(Adw.Dialog):
         self.meeting = meeting
         self.set_title(text("export.title", title=meeting.title))
         self.heading.set_label(self.get_title())
-        self.names.set_markup(speaker_names_markup(meeting))
         self._apply_formats(meeting)
 
     def _export(self, *_):

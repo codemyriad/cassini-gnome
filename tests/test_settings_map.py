@@ -292,3 +292,69 @@ def test_folder_caption_reads_like_the_board(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     assert folder_caption(tmp_path / "Music/Cassini") == "Music/Cassini"
     assert folder_caption("/srv/library") == "/srv/library"
+
+
+# D106 (L-60, L-62, L-63): Export dialog, Saved voices redesign, and L-60 no longer provisional.
+D106_EXPORT_IDS = (
+    "export.subtitles.label",
+    "export.cassiniFile.description.short",
+    "export.markdown.description.short",
+    "export.plainText.description.short",
+    "export.srt.description.short",
+    "export.vtt.description.short",
+)
+D106_VOICES_IDS = (
+    "savedVoices.footnote.computer",
+    "savedVoices.stale.title",
+    "savedVoices.stale.body",
+    "savedVoices.row.needsNaming",
+    "savedVoices.caption",
+    "savedVoices.empty.body",
+)
+D106_SUPERSEDED_EXPORT = (
+    "export.subtitle",
+    "export.speakerNames.heading",
+    "export.speakerNames.body",
+    "export.speakerNames.body.none",
+    "export.speakerNames.body.several",
+    "export.cassiniFile.description",
+    "export.markdown.description",
+    "export.plainText.description",
+    "export.srt.label",
+    "export.srt.description",
+    "export.vtt.label",
+    "export.vtt.description",
+)
+D106_SUPERSEDED_VOICES = (
+    "savedVoices.privacy",
+    "savedVoices.howToAdd",
+    "savedVoices.howToAdd.short",
+    "savedVoices.row.stale",
+    "voices.setup.privacy.desktop",
+)
+
+
+def test_every_d106_gnome_id_is_used_and_superseded_copy_is_gone():
+    entries = {e["id"]: e for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_text())["entries"]}
+    export_src = (ROOT / "src/cassini_talk/export_dialog.py").read_text()
+    voices_src = (ROOT / "src/cassini_talk/saved_voices_page.py").read_text()
+    export_used = set(re.findall(r'"([a-zA-Z]+(?:\.[a-zA-Z0-9]+)+)"', export_src))
+    voices_used = set(re.findall(r'"([a-zA-Z]+(?:\.[a-zA-Z0-9]+)+)"', voices_src))
+    for identifier in D106_EXPORT_IDS:
+        assert identifier in export_used, identifier
+        entry = entries[identifier]
+        assert entry["milestone"] == "Phase 2 18 Nov (D106)" and "gnome" in entry["platforms"], identifier
+        for lang in ("it", "fr", "es", "pt-BR", "pt-PT"):
+            assert entry["l10n"][lang].get("text", "").strip(), (identifier, lang)
+    for identifier in D106_VOICES_IDS:
+        assert identifier in voices_used, identifier
+        entry = entries[identifier]
+        assert entry["milestone"] == "Phase 2 18 Nov (D106)" and "gnome" in entry["platforms"], identifier
+        for lang in ("it", "fr", "es", "pt-BR", "pt-PT"):
+            localized = entry["l10n"][lang]
+            assert localized.get("text", "").strip() or localized.get("plural"), (identifier, lang)
+    assert not (export_used & set(D106_SUPERSEDED_EXPORT)), sorted(export_used & set(D106_SUPERSEDED_EXPORT))
+    assert not (voices_used & set(D106_SUPERSEDED_VOICES)), sorted(voices_used & set(D106_SUPERSEDED_VOICES))
+    # D106 §3 (L-60): "Remember people I name" placement is settled, no longer provisional.
+    assert "PROVISIONAL" not in SOURCES["settings_dialog.py"]
+    assert "D-1044 q4" not in SOURCES["settings_dialog.py"]
