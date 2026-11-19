@@ -1261,7 +1261,9 @@ class CassiniApplication(Adw.Application):
             if self.comfort.notification_visible:
                 self.comfort.refresh_background()
         self.windowless_background.refresh()
-        self._sync_live_follower()
+        sync_follower = getattr(self, "_sync_live_follower", None)
+        if callable(sync_follower):
+            sync_follower()
         for window in self.get_windows():
             if hasattr(window, "capture_changed"):
                 window.capture_changed()
