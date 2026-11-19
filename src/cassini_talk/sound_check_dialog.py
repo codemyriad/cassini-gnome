@@ -14,10 +14,11 @@ test.
 """
 
 import logging
+import threading
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, GLib, Gtk
 
-from . import ux_formats
+from . import desktop_settings, ux_formats
 from .sound_check import KINDS, WORKING, heard, pill_text, refused_line
 from .status_badge import BadgeGlyph, StatusBadge
 from .strings import text
@@ -113,14 +114,23 @@ class StreamRow(Gtk.ListBoxRow):
         self.update_property([Gtk.AccessibleProperty.LABEL], [self.line])
 
 
-def open_privacy_settings():
-    """D107 §4: Open Settings opens the desktop's privacy settings; Cassini changes nothing there."""
-    try:
-        Gio.AppInfo.create_from_commandline("gnome-control-center privacy", None, Gio.AppInfoCreateFlags.NONE).launch(
-            [], None
-        )
-    except GLib.Error as error:
-        LOG.warning("Could not open the desktop privacy settings: %s", error)
+def open_privacy_settings(done):
+    """D107 §4: Open Settings opens the desktop's privacy settings; Cassini changes nothing there.
+
+    The launch (through the Flatpak host bridge in the sandbox) waits briefly for
+    an early exit, so it runs on a worker; done(ok) runs on the main loop.
+    """
+
+    def work():
+        try:
+            desktop_settings.open_panel("privacy")
+            ok = True
+        except Exception as error:  # OSError, or a missing host bridge: never kill the worker silently.
+            LOG.warning("Could not open the desktop privacy settings: %s", error)
+            ok = False
+        GLib.idle_add(done, ok)
+
+    threading.Thread(target=work, name="cassini-open-privacy", daemon=True).start()
 
 
 class SoundCheckDialog(Adw.Dialog):
@@ -133,6 +143,7 @@ class SoundCheckDialog(Adw.Dialog):
         self._shown = None
         self._ticker = 0
         self.lines = []
+        self.settings_failed = False
         toolbar = Adw.ToolbarView()
         self.set_child(toolbar)
         toolbar.add_top_bar(Adw.HeaderBar())  # D104 §2: plain, the title only.
@@ -154,7 +165,7 @@ class SoundCheckDialog(Adw.Dialog):
         self.open_settings = Gtk.Button(
             label=text("test.refused.action"), css_classes=["link"], valign=Gtk.Align.CENTER
         )
-        self.open_settings.connect("clicked", lambda *_: open_privacy_settings())
+        self.open_settings.connect("clicked", self._open_settings)
         refused.append(self.open_settings)
         self.subline.add_named(refused, "refused")
         self.subline.add_named(Gtk.Box(), "none")
@@ -244,6 +255,18 @@ class SoundCheckDialog(Adw.Dialog):
         self.done_button.grab_focus()
         # Screen readers read the result when it replaces the live levels.
         self.announce("\n".join(self.lines), Gtk.AccessibleAnnouncementPriority.MEDIUM)
+
+    def _open_settings(self, *_):
+        # Insensitive while Settings opens: one launch per click, no repeats.
+        self.open_settings.set_sensitive(False)
+        open_privacy_settings(self._settings_opened)
+
+    def _settings_opened(self, ok):
+        # A failed launch leaves Open Settings greyed: clicking it again would do nothing.
+        self.settings_failed = not ok
+        if not self.closed:
+            self.open_settings.set_sensitive(ok)
+        return False
 
     def _tick(self):
         if not self.running or self.closed:

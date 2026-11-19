@@ -311,6 +311,36 @@ def child():
         assert dialog.refused.get_label() == "Your microphone isn’t allowed."
         assert dialog.open_settings.get_visible() and dialog.open_settings.get_label() == "Open Settings"
         shots("not-allowed")
+        # Clicking Open Settings in Flatpak sends gnome-control-center to the host (flatpak-spawn --host).
+        from cassini_talk import desktop_settings
+
+        bridge = Path(tempfile.mkdtemp(prefix="cassini-flatpak-spawn-"))
+        spawn, spawned = bridge / "flatpak-spawn", bridge / "argv"
+        spawn.write_text(
+            '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$0.argv.tmp"\nmv "$0.argv.tmp" "${0%/*}/argv"\nexit "$(cat "${0%/*}/status")"\n'
+        )
+        spawn.chmod(spawn.stat().st_mode | stat.S_IXUSR)
+        (bridge / "status").write_text("0")
+        flatpak, path = desktop_settings.in_flatpak, os.environ["PATH"]
+        desktop_settings.in_flatpak = lambda: True
+        os.environ["PATH"] = f"{bridge}:{path}"
+        try:
+            dialog.open_settings.emit("clicked")
+            assert not dialog.open_settings.get_sensitive(), "One launch per click"
+            until(lambda: spawned.exists() and dialog.open_settings.get_sensitive())
+            argv = spawned.read_text().splitlines()
+            assert argv[:2] == ["--host", "--directory=/"] and "--watch-bus" not in argv, argv
+            assert argv[-2:] == ["gnome-control-center", "privacy"], argv
+            assert not dialog.settings_failed
+            # A failed launch on the host greys Open Settings.
+            spawned.unlink()
+            (bridge / "status").write_text("1")
+            dialog.open_settings.emit("clicked")
+            until(lambda: spawned.exists() and dialog.settings_failed)
+            assert not dialog.open_settings.get_sensitive()
+        finally:
+            desktop_settings.in_flatpak, os.environ["PATH"] = flatpak, path
+            shutil.rmtree(bridge)
         record_event("refused")
         until(lambda: dialog.closed and not folder.exists() and not check.busy)
         assert app.record_first is consent
@@ -448,7 +478,8 @@ def parent():
             wait("refused", 30)
             # Strip 6b, read through AT-SPI: the refused row's pill and Open Settings by name.
             lines(NOT_ALLOWED)
-            button("Open Settings")
+            # Greyed: the child's last click failed to open Settings on the host.
+            button("Open Settings", sensitive=False)
             button("Play back", sensitive=False)
             activate("Done")
             wait("finished", 60)
