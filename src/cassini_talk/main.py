@@ -1261,6 +1261,7 @@ class CassiniApplication(Adw.Application):
             if self.comfort.notification_visible:
                 self.comfort.refresh_background()
         self.windowless_background.refresh()
+        self._sync_live_follower()
         for window in self.get_windows():
             if hasattr(window, "capture_changed"):
                 window.capture_changed()
@@ -1416,6 +1417,26 @@ class CassiniApplication(Adw.Application):
 
         return resolve_transcription_mode(self)
 
+    def _sync_live_follower(self):
+        if (
+            not getattr(self, "transcription_enabled", False)
+            or getattr(self, "_quitting", False)
+            or getattr(self, "_capture_exiting", False)
+        ):
+            return
+        from .transcription import TranscriptionMode
+
+        mode = (
+            self._effective_transcription_mode()
+            if hasattr(self, "_effective_transcription_mode")
+            else CassiniApplication._effective_transcription_mode(self)
+        )
+        if mode is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
+            return
+        live_dirs = self.live_recording_directories()
+        if live_dirs:
+            self._ensure_transcriber().sync_recordings(live_dirs)
+
     def _on_publish_started(self, directory):
         if self._quitting or self._capture_exiting or not getattr(self, "transcription_enabled", False):
             return
@@ -1426,6 +1447,11 @@ class CassiniApplication(Adw.Application):
         transcriber = self.transcriber
         if transcriber is not None:
             transcriber.notify_session_finished(directory)
+
+    def _on_publish_failed(self, directory):
+        transcriber = getattr(self, "transcriber", None)
+        if transcriber is not None and hasattr(transcriber, "release_failed_publication"):
+            transcriber.release_failed_publication(directory)
 
     def _ensure_transcriber(self):
         import threading
@@ -1469,7 +1495,7 @@ class CassiniApplication(Adw.Application):
                 progress_changed=progress_changed,
                 mode=self._effective_transcription_mode(),
             )
-            library_publication.register_publish_observer(self._on_publish_started)
+            library_publication.register_publish_observer(self._on_publish_started, failed=self._on_publish_failed)
         return self.transcriber
 
     def transcription_progress(self, meeting):
@@ -1789,15 +1815,18 @@ class CassiniApplication(Adw.Application):
             else CassiniApplication._effective_transcription_mode(self)
         )
         if mode is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
-            live_dirs = self.live_recording_directories()
-            if live_dirs:
-                self._ensure_transcriber().sync_recordings(live_dirs)
+            (
+                self._sync_live_follower()
+                if hasattr(self, "_sync_live_follower")
+                else CassiniApplication._sync_live_follower(self)
+            )
 
         for meeting in snapshot.meetings:
             managed = meeting.directory.parent.name == "sessions" and meeting.directory.parent.parent.name == ".cassini"
             if managed and meeting.published_file is None:
                 if (
                     mode is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
+                    and meeting.lifecycle == "saving"
                     and meeting.capture_state in ("completed", "interrupted")
                     and meeting.transcript in ("none", "queued", "running")
                 ):
@@ -1927,7 +1956,7 @@ class CassiniApplication(Adw.Application):
         if self.transcriber:
             from . import library_publication
 
-            library_publication.unregister_publish_observer(self._on_publish_started)
+            library_publication.unregister_publish_observer(self._on_publish_started, failed=self._on_publish_failed)
             self.transcriber.close()
             self.transcriber = None
         while self._transcription_holds:

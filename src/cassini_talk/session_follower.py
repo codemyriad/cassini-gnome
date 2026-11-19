@@ -18,10 +18,10 @@ import math
 import os
 import selectors
 import struct
+from bisect import bisect_right
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 
 from . import placement
 from .library_files import regular
@@ -127,6 +127,21 @@ class StdinLineReader:
 
 def _open_session_dir_ro(directory: Path) -> int:
     return os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+
+
+def _stat_session_manifest(directory: Path) -> tuple[int, int, int, int] | None:
+    """Return a cheap revision signature for session.json without reading or following symlinks."""
+    try:
+        dir_fd = _open_session_dir_ro(directory)
+    except OSError:
+        return None
+    try:
+        info = os.stat("session.json", dir_fd=dir_fd, follow_symlinks=False)
+        return (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size)
+    except OSError:
+        return None
+    finally:
+        os.close(dir_fd)
 
 
 def read_session_readonly(directory: Path) -> dict | None:
@@ -281,6 +296,160 @@ class _SpanBuffer:
             self.base += drop
 
 
+class _IncrementalSpanMapping:
+    """O(1)-per-anchor incremental clock mapping matching `mixdown.Mapping` bit-for-bit."""
+
+    def __init__(self, start_ms_local: float, rate: int = RATE_48K):
+        from .library_v2 import mixdown
+
+        self.start_ms_local = start_ms_local
+        self.rate = rate
+        self.origin = mixdown.frame(start_ms_local, RATE_48K)
+        self.shift = self.origin
+        self._raw_count = 0
+        self._last_raw: tuple[int, int] | None = None
+        self._kept_raw: list[tuple[int, int]] = []
+        self.j_list: list[float] = []
+        self.p_list: list[float] = []
+        self._at_zero: float | None = None
+
+    @property
+    def knots(self):
+        return (self.j_list, self.p_list) if len(self.j_list) >= 2 else None
+
+    def _append_valid(self, index: int, ns: int) -> None:
+        from .library_v2 import mixdown
+
+        if self._kept_raw:
+            last_index, last_ns = self._kept_raw[-1]
+            if index <= last_index or ns <= last_ns:
+                return
+            slope = ((ns - last_ns) / 1e9) / ((index - last_index) / self.rate)
+            if abs(slope - 1) > mixdown.MAX_SLOPE_ERROR:
+                return
+        self._kept_raw.append((index, ns))
+        if len(self._kept_raw) == 2:
+            j0 = self._kept_raw[0][0] * RATE_48K / self.rate
+            j1 = self._kept_raw[1][0] * RATE_48K / self.rate
+            s0 = self._kept_raw[0][1] / 1e9
+            s1 = self._kept_raw[1][1] / 1e9
+            self._at_zero = s0 + (0.0 - j0) * ((s1 - s0) / (j1 - j0))
+            self.j_list = [j0, j1]
+            self.p_list = [
+                self.origin + (s0 - self._at_zero) * RATE_48K,
+                self.origin + (s1 - self._at_zero) * RATE_48K,
+            ]
+        elif len(self._kept_raw) > 2:
+            self.j_list.append(index * RATE_48K / self.rate)
+            self.p_list.append(self.origin + (ns / 1e9 - self._at_zero) * RATE_48K)
+
+    def _rebuild(self, anchors) -> None:
+        from .library_v2 import mixdown
+
+        self._raw_count = len(anchors)
+        self._last_raw = (
+            (anchors[-1][0], anchors[-1][1])
+            if anchors and isinstance(anchors[-1], (list, tuple)) and len(anchors[-1]) == 2
+            else None
+        )
+        self._kept_raw.clear()
+        self.j_list.clear()
+        self.p_list.clear()
+        self._at_zero = None
+        knots = mixdown.valid_anchors(anchors, self.rate)
+        if len(knots) < 2:
+            return
+        self._kept_raw = [(idx, round(t * 1e9)) for idx, t in knots]
+        j0 = knots[0][0] * RATE_48K / self.rate
+        j1 = knots[1][0] * RATE_48K / self.rate
+        s0, s1 = knots[0][1], knots[1][1]
+        self._at_zero = s0 + (0.0 - j0) * ((s1 - s0) / (j1 - j0))
+        self.j_list = [idx * RATE_48K / self.rate for idx, _ in knots]
+        self.p_list = [self.origin + (t - self._at_zero) * RATE_48K for _, t in knots]
+
+    def sync(self, anchors, count: int) -> None:
+        """Synchronize mapping against `anchors[:count]` in O(1) when monotonically appended."""
+        if count == 0:
+            if self._raw_count != 0:
+                self._raw_count = 0
+                self._last_raw = None
+                self._kept_raw.clear()
+                self.j_list.clear()
+                self.p_list.clear()
+                self._at_zero = None
+            return
+        if count == self._raw_count:
+            tail = anchors[count - 1]
+            if isinstance(tail, (list, tuple)) and len(tail) == 2 and (tail[0], tail[1]) == self._last_raw:
+                return
+        if count > self._raw_count:
+            prefix_ok = self._raw_count == 0
+            if not prefix_ok:
+                prev = anchors[self._raw_count - 1]
+                prefix_ok = isinstance(prev, (list, tuple)) and len(prev) == 2 and (prev[0], prev[1]) == self._last_raw
+            if prefix_ok:
+                prev_key = self._last_raw
+                monotonic = True
+                parsed_new = []
+                for item in anchors[self._raw_count : count]:
+                    if (
+                        isinstance(item, (list, tuple))
+                        and len(item) == 2
+                        and type(item[0]) is int
+                        and type(item[1]) is int
+                        and 0 <= item[0] <= 2**63
+                        and 0 <= item[1] <= 2**63
+                    ):
+                        pair = (item[0], item[1])
+                        if prev_key is not None and pair < prev_key:
+                            monotonic = False
+                            break
+                        prev_key = pair
+                        parsed_new.append(pair)
+                if monotonic:
+                    for index, ns in parsed_new:
+                        self._append_valid(index, ns)
+                    self._raw_count = count
+                    self._last_raw = prev_key
+                    return
+        self._rebuild(anchors[:count])
+
+    def source(self, positions):
+        import numpy as np
+
+        from .library_v2 import mixdown
+
+        positions = np.asarray(positions, dtype=np.float64)
+        if len(self.j_list) < 2:
+            return positions - self.shift
+        if not len(positions):
+            return np.empty(0, dtype=np.float64)
+        lo = max(0, bisect_right(self.p_list, float(positions[0])) - 1)
+        hi = min(len(self.p_list), bisect_right(self.p_list, float(positions[-1])) + 1)
+        if hi - lo < 2:
+            if lo > 0:
+                lo -= 1
+            else:
+                hi = min(len(self.p_list), lo + 2)
+        p_slice = np.asarray(self.p_list[lo:hi], dtype=np.float64)
+        j_slice = np.asarray(self.j_list[lo:hi], dtype=np.float64)
+        return mixdown._linear(positions, p_slice, j_slice)
+
+    def end(self, length: int) -> int:
+        import numpy as np
+
+        from .library_v2 import mixdown
+
+        if len(self.j_list) < 2:
+            return round(float(length) + self.shift)
+        idx = bisect_right(self.j_list, float(length))
+        lo = max(0, min(idx - 1, len(self.j_list) - 2))
+        hi = min(len(self.j_list), lo + 2)
+        j_slice = np.asarray(self.j_list[lo:hi], dtype=np.float64)
+        p_slice = np.asarray(self.p_list[lo:hi], dtype=np.float64)
+        return round(float(mixdown._linear(np.array([float(length)]), j_slice, p_slice)[0]))
+
+
 @dataclass(frozen=True)
 class _PrefixCheckpoint:
     """O(1) checkpoint into TrackFollower's append-only prefix histories."""
@@ -334,6 +503,7 @@ class TrackFollower:
 
         # Streaming audio state.
         self._span_buffers: dict[str, _SpanBuffer] = {}
+        self._span_mappings: dict[str, _IncrementalSpanMapping] = {}
         self._tl_cursor_48k = 0  # Next 48 kHz timeline sample to emit (for 48 kHz path)
         self._cursor_16k_raw = 0  # Next raw 16 kHz source sample (for direct 16 kHz path)
         self._resampler = IncrementalResampler()
@@ -469,10 +639,15 @@ class TrackFollower:
             return None
         return inspected
 
+    def _get_span_mapping(self, filename: str, start_ms_local: float) -> _IncrementalSpanMapping:
+        mapping = self._span_mappings.get(filename)
+        if mapping is None or mapping.start_ms_local != start_ms_local:
+            mapping = _IncrementalSpanMapping(start_ms_local, RATE_48K)
+            self._span_mappings[filename] = mapping
+        return mapping
+
     def _safe_48k_plan(self, spans: list[dict]):
         """Return (span_specs, safe_tl_end_48k, reached_final_eof) for 48 kHz single/multi/warped tracks."""
-        from .library_v2 import mixdown
-
         specs = []
         all_ended = self._session_ended or self._track_ended
         safe_end = 0
@@ -489,15 +664,10 @@ class TrackFollower:
             anchors = span["anchors"]
             span_has_anchors = bool(anchors) or self.ever_clock_anchored
             committed = span["committed"]
+            mapping = self._get_span_mapping(span["file"], start_ms_local)
 
             if not span_has_anchors:
-                mapping = mixdown.Mapping(
-                    SimpleNamespace(
-                        start_ms=start_ms_local,
-                        anchors=(),
-                        info=SimpleNamespace(sample_rate=RATE_48K),
-                    )
-                )
+                mapping.sync((), 0)
                 specs.append((span, mapping, committed))
                 if span["ended"]:
                     span_safe = shift_48k + committed
@@ -515,14 +685,7 @@ class TrackFollower:
 
             # Clock-anchored native span.
             if span["ended"]:
-                usable_anchors = anchors
-                mapping = mixdown.Mapping(
-                    SimpleNamespace(
-                        start_ms=start_ms_local,
-                        anchors=tuple(tuple(a) for a in usable_anchors if isinstance(a, list)),
-                        info=SimpleNamespace(sample_rate=RATE_48K),
-                    )
-                )
+                mapping.sync(anchors, len(anchors))
                 specs.append((span, mapping, committed))
                 span_end = mapping.end(committed) if committed > 0 else shift_48k
                 if not blocked_by_unanchored:
@@ -530,21 +693,11 @@ class TrackFollower:
                 final_end = max(final_end, span_end)
             else:
                 # Live anchored span: only anchors[:-1] are permanently fixed.
-                fixed_raw = anchors[:-1] if len(anchors) >= 2 else []
-                knots = mixdown.valid_anchors(fixed_raw, RATE_48K)
-                if len(knots) < 2:
+                fixed_count = len(anchors) - 1 if len(anchors) >= 2 else 0
+                mapping.sync(anchors, fixed_count)
+                if mapping.knots is None:
                     # Wait until at least one 60 s interval is permanently anchored.
                     safe_end = min(safe_end, max(0, shift_48k - 1)) if idx > 0 else 0
-                    blocked_by_unanchored = True
-                    continue
-                mapping = mixdown.Mapping(
-                    SimpleNamespace(
-                        start_ms=start_ms_local,
-                        anchors=tuple(tuple(a) for a in fixed_raw if isinstance(a, list)),
-                        info=SimpleNamespace(sample_rate=RATE_48K),
-                    )
-                )
-                if mapping.knots is None:
                     blocked_by_unanchored = True
                     continue
                 j_arr, p_arr = mapping.knots
@@ -798,9 +951,14 @@ class SessionFollower:
         self.tracks: dict[str, TrackFollower] = {}
         self.session_ended = False
         self.segments_decoded = 0
+        self._manifest_sig: tuple[int, int, int, int] | None = None
+        self._manifest_loaded = False
         self.schedule_trace: list[tuple[str, str, int]] = []  # (track_id, action, session_ms) for diagnostics/tests
 
     def refresh(self) -> bool:
+        sig = _stat_session_manifest(self.directory)
+        if sig is not None and sig == self._manifest_sig and self._manifest_loaded:
+            return True
         manifest = read_session_readonly(self.directory)
         if manifest is None:
             return False
@@ -824,6 +982,8 @@ class SessionFollower:
             else:
                 follower.order = order
                 follower.update(track, events, self.session_ended)
+        self._manifest_sig = sig
+        self._manifest_loaded = True
         return True
 
     def step(self) -> bool:

@@ -1159,6 +1159,42 @@ def test_long_input_11h_v2_cache_and_prefix_linear_scaling():
     p_2n = run_prefix_checkpoints(600)
     assert p_2n <= max(p_n * 3.2, p_n + 0.25), f"Non-linear checkpointing: t(300)={p_n:.4f}s, t(600)={p_2n:.4f}s"
 
+    # Also exercise incremental minute-anchor clock mapping + bit-for-bit equality with mixdown.Mapping.
+    from types import SimpleNamespace
+
+    from cassini_talk.library_v2 import mixdown
+    from cassini_talk.session_follower import _IncrementalSpanMapping
+
+    def run_incremental_anchors(n_minutes: int) -> tuple[float, _IncrementalSpanMapping, list[list[int]]]:
+        anchors: list[list[int]] = []
+        mapping = _IncrementalSpanMapping(0.0, 48000)
+        start = time.thread_time()
+        for m in range(n_minutes):
+            # 1 minute = 2,880,000 samples at 48 kHz with slight +50 ppm drift.
+            anchors.append([m * 48000 * 60, int(round(m * 60 * 1_000_050_000))])
+            fixed = len(anchors) - 1 if len(anchors) >= 2 else 0
+            mapping.sync(anchors, fixed)
+            if mapping.knots is not None:
+                pos = np.arange(m * 48000 * 60 - 24576, m * 48000 * 60, dtype=np.float64)
+                _ = mapping.source(pos)
+        return time.thread_time() - start, mapping, anchors
+
+    run_incremental_anchors(20)
+    a_n, _, _ = run_incremental_anchors(300)
+    a_2n, inc_map, all_anchors = run_incremental_anchors(600)
+    assert a_2n <= max(a_n * 3.2, a_n + 0.25), f"Non-linear anchor mapping: t(300)={a_n:.4f}s, t(600)={a_2n:.4f}s"
+
+    # Verify bit-for-bit agreement with mixdown.Mapping on the full anchored history.
+    ref_map = mixdown.Mapping(
+        SimpleNamespace(
+            start_ms=0.0,
+            anchors=tuple(tuple(a) for a in all_anchors[:-1]),
+            info=SimpleNamespace(sample_rate=48000),
+        )
+    )
+    probe = np.arange(48000 * 120, 48000 * 120 + 24576, dtype=np.float64)
+    np.testing.assert_allclose(inc_map.source(probe), ref_map.source(probe), rtol=0, atol=1e-9)
+
 
 # ---------------------------------------------------------------------------
 # 13. Review regressions: idle LibraryRelocator polls & consecutive one-child invariant
@@ -1678,3 +1714,420 @@ def test_library_relocator_never_calls_path_resolve_under_transcriber_lock(tmp_p
     busy = relocator._prepare_relocation_busy([], set(), {})
     assert resolve_calls >= 3
     assert {d1.resolve(), d2.resolve(), d3.resolve()}.issubset(busy)
+
+
+# ---------------------------------------------------------------------------
+# 15. Review regressions (round 2): windowless browser follow, failed
+#     publication release, cold-start model switch, async warm reap,
+#     manifest stat cache, FIFO journal open, and journal-only cleanup
+# ---------------------------------------------------------------------------
+
+
+def _ensure_gi_for_main(monkeypatch):
+    from types import ModuleType, SimpleNamespace
+
+    if "gi.repository" in sys.modules:
+        return
+    try:
+        import gi.repository  # noqa: F401
+    except ModuleNotFoundError:
+        gi_mod = ModuleType("gi")
+        gi_mod.require_version = lambda *_a, **_k: None
+        repo_mod = ModuleType("gi.repository")
+        repo_mod.Adw = SimpleNamespace(Application=object)
+        repo_mod.Gio = SimpleNamespace()
+        repo_mod.GLib = SimpleNamespace(idle_add=lambda fn, *a: fn(*a))
+        repo_mod.Gst = SimpleNamespace()
+        repo_mod.Gtk = SimpleNamespace()
+        gi_mod.repository = repo_mod
+        monkeypatch.setitem(sys.modules, "gi", gi_mod)
+        monkeypatch.setitem(sys.modules, "gi.repository", repo_mod)
+
+
+def test_windowless_browser_recording_starts_live_follower(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _ensure_gi_for_main(monkeypatch)
+    from cassini_talk.main import CassiniApplication
+
+    rec_dir = tmp_path / "browser-meeting"
+    rec_dir.mkdir()
+    synced = []
+
+    class StubTranscriber:
+        def sync_recordings(self, dirs):
+            synced.append(list(dirs))
+
+    transcriber = StubTranscriber()
+    app = SimpleNamespace(
+        transcription_enabled=True,
+        transcription_mode="transcribeWhileRecording",
+        _quitting=False,
+        _capture_exiting=False,
+        native_captures={},
+        _last_native=None,
+        _browser_snapshot=dict(statuses=[dict(recording=True, path=str(rec_dir))]),
+        _permission_sources=set(),
+        record_first=None,
+        settings_dialog=None,
+        comfort=None,
+        windowless_background=SimpleNamespace(refresh=lambda: None),
+        build_refresh=None,
+        get_windows=lambda: [],  # Zero windows open!
+        recording_active=lambda: True,
+        discard_test_recording=lambda: None,
+        _ensure_transcriber=lambda: transcriber,
+    )
+    app.live_recording_directories = lambda: CassiniApplication.live_recording_directories(app)
+    app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
+    app._sync_live_follower = lambda: CassiniApplication._sync_live_follower(app)
+
+    CassiniApplication._native_changed(app)
+    assert synced == [[str(rec_dir)]]
+
+
+def test_failed_publication_releases_tail_follower_and_does_not_preempt_new_recording(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _ensure_gi_for_main(monkeypatch)
+    from cassini_talk import library_publication
+    from cassini_talk.library_v2 import finalize as lib_finalize
+    from cassini_talk.main import CassiniApplication
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=20,
+    )
+    failed_session = RecordingSession(capture_parent(lib), "Failed publish", source="gnome")
+    new_session = RecordingSession(capture_parent(lib), "New live meeting", source="gnome")
+
+    def on_start(d):
+        queue.notify_session_finished(d)
+
+    def on_fail(d):
+        queue.release_failed_publication(d)
+
+    library_publication.register_publish_observer(on_start, failed=on_fail)
+    try:
+        failed_session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        failed_session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        failed_session.finish()
+
+        # Simulate Opus publication failing -> failure observer releases the tail follower.
+        monkeypatch.setattr(lib_finalize, "finalize", lambda *_a, **_k: (_ for _ in ()).throw(OSError("encode failed")))
+        with pytest.raises(OSError, match="encode failed"):
+            library_publication.publish_stopped(failed_session)
+        wait_on_queue(
+            queue,
+            lambda: queue._follow_directory is None and queue._warm_client is None,
+            message="Failed publication did not release tail follower",
+        )
+
+        # Now start a new live recording and deliver a library snapshot containing the failed unpublished session.
+        new_session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        new_session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 520.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        new_session.checkpoint()
+        assert queue.follow_recording(new_session.directory)
+        wait_on_queue(
+            queue,
+            lambda: queue._follow_directory == new_session.directory.resolve(),
+            message="New live recording follower did not start",
+        )
+
+        failed_meeting = SimpleNamespace(
+            key="failed-key",
+            directory=failed_session.directory,
+            published_file=None,
+            lifecycle="saved",
+            capture_state="completed",
+            transcript="none",
+            origin="own",
+            metadata_editable=True,
+        )
+        app = SimpleNamespace(
+            transcription_enabled=True,
+            transcription_mode="transcribeWhileRecording",
+            _quitting=False,
+            _capture_exiting=False,
+            _last_meetings={},
+            _voice_library_keys=frozenset(),
+            voice_backfill=None,
+            voice_store=None,
+            settings_dialog=None,
+            get_windows=lambda: [],
+            live_recording_directories=lambda: [str(new_session.directory)],
+            _ensure_transcriber=lambda: queue,
+            write_down=lambda *_a, **_k: None,
+        )
+        app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
+        app._sync_live_follower = lambda: CassiniApplication._sync_live_follower(app)
+
+        CassiniApplication.observe_library(app, SimpleNamespace(meetings=[failed_meeting], unavailable=False), {})
+        assert queue._follow_directory == new_session.directory.resolve(), (
+            "Failed unpublished session must not preempt a new live recording"
+        )
+    finally:
+        library_publication.unregister_publish_observer(on_start, failed=on_fail)
+        new_session.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+
+
+def test_cold_start_model_switch_preempts_before_start_follow(tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    models = FakeSpeechModels("whistle", tracker)
+
+    start_entered = threading.Event()
+    release_start = threading.Event()
+    follow_started = []
+
+    class GatedColdStartClient:
+        def __init__(self, *_args, **_kw):
+            self._alive = True
+            self.cancelled_flag = False
+            self.closed_flag = False
+
+        def start(self):
+            start_entered.set()
+            durable(release_start, "start() was not released")
+            return self
+
+        def is_alive(self):
+            return self._alive
+
+        def start_follow(self, *_args, **_kw):
+            follow_started.append(True)
+
+        def poll_follow_event(self, timeout=0.05):
+            return None
+
+        def stop_follow(self, **_kw):
+            return dict(type="follow-stopped")
+
+        def cancel(self):
+            self.cancelled_flag = True
+
+        def close(self):
+            self._alive = False
+            self.closed_flag = True
+
+    created = []
+
+    def factory(*args, **kw):
+        c = GatedColdStartClient(*args, **kw)
+        created.append(c)
+        return c
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=lib,
+        models=models,
+        client_factory=factory,
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+    )
+    session = RecordingSession(lib, "Cold start race", source="gnome")
+    try:
+        session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session.checkpoint()
+
+        assert queue.follow_recording(session.directory)
+        durable(start_entered, "Cold-start client did not enter start()")
+
+        # Switch model while start() is still blocked -> model_changed() must see intended model & preempt!
+        models.select_for_test(PARAKEET_MODEL_ID)
+        queue.model_changed()
+        release_start.set()
+
+        wait_on_queue(queue, lambda: queue._follow_directory is None, message="Stale follower did not exit")
+        assert follow_started == [], "Stale model must not call start_follow() after model switch during start()"
+        assert created and created[0].closed_flag
+    finally:
+        release_start.set()
+        session.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+
+
+def test_preempt_and_stop_do_not_block_gtk_on_warm_client_close(tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    models = FakeSpeechModels("whistle", tracker)
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=lib,
+        models=models,
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+    )
+
+    class BlockingWarmClient:
+        def __init__(self):
+            self.cancel_called = threading.Event()
+            self.close_entered = threading.Event()
+            self.release_close = threading.Event()
+            self.close_done = threading.Event()
+
+        def cancel(self):
+            self.cancel_called.set()
+
+        def close(self):
+            self.close_entered.set()
+            durable(self.release_close, "warm.close() was not released")
+            self.close_done.set()
+
+    try:
+        # 1) model_changed() -> preempt_follower(wait=False) must return while warm.close() is blocked.
+        warm1 = BlockingWarmClient()
+        with queue.lock:
+            queue._warm_client = warm1
+            queue._warm_client_model = "whistle"
+            queue._warm_directory = lib / "m1"
+        models.select_for_test(PARAKEET_MODEL_ID)
+        queue.model_changed()
+        assert warm1.cancel_called.is_set()
+        durable(warm1.close_entered, "Background reaper did not start closing warm1")
+        assert not warm1.close_done.is_set()
+        warm1.release_close.set()
+        durable(warm1.close_done, "warm1.close() did not finish after release")
+
+        # 2) stop(directory) must also return while warm.close() is blocked.
+        warm2 = BlockingWarmClient()
+        target = lib / "m2"
+        target.mkdir()
+        with queue.lock:
+            queue._warm_client = warm2
+            queue._warm_client_model = PARAKEET_MODEL_ID
+            queue._warm_directory = target.absolute()
+        assert queue.stop(target)
+        assert warm2.cancel_called.is_set()
+        durable(warm2.close_entered, "Background reaper did not start closing warm2")
+        assert not warm2.close_done.is_set()
+        warm2.release_close.set()
+        durable(warm2.close_done, "warm2.close() did not finish after release")
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
+
+
+def test_session_follower_skips_reparse_when_manifest_unchanged(tmp_path, monkeypatch):
+    from cassini_talk import session_follower as sf
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    session = RecordingSession(lib, "Manifest cache", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.checkpoint()
+
+    reads = []
+    orig_read = sf.read_session_readonly
+
+    def counting_read(directory):
+        reads.append(directory)
+        return orig_read(directory)
+
+    monkeypatch.setattr(sf, "read_session_readonly", counting_read)
+    try:
+        follower = SessionFollower(
+            session.directory,
+            DeterministicRecognizer("whistle"),
+            "whistle@" + ("a" * 64),
+            DeterministicDetector(),
+            on_cache_entry=lambda _e: None,
+        )
+        assert follower.refresh()
+        assert len(reads) == 1
+        # Repeated refreshes while session.json is unchanged must NOT reparse.
+        for _ in range(10):
+            assert follower.refresh()
+        assert len(reads) == 1
+        # Updating session.json invalidates the stat signature and triggers exactly one reparse.
+        session.append("microphone", make_speech_pcm16(16000, 1, [(0.5, 440.0, 0.3)]), 0.0)
+        session.checkpoint()
+        assert follower.refresh()
+        assert len(reads) == 2
+    finally:
+        session.finish()
+
+
+def test_journal_append_never_blocks_on_fifo_without_reader(tmp_path):
+    fifo = tmp_path / recognition_cache.JOURNAL_FILE
+    os.mkfifo(fifo)
+    key = recognition_cache.segment_key("a" * 64, 16000)
+    value = dict(text="hello", language="en", words=[dict(start=0.0, end=0.5, text="hello")])
+    assert not recognition_cache.append_journal_entry(tmp_path, "whistle@" + ("a" * 64), key, value)
+
+
+def test_journal_only_cache_is_cleaned_up_after_successful_transcription(tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+
+    session = RecordingSession(lib, "Journal cleanup meeting", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+    session.finish()
+
+    # Pre-populate ONLY the append-only journal (simulating crash recovery where all segments hit cache).
+    model_id = recognition_cache_model("whistle", bundle)
+    direct_entries = []
+    direct = SessionFollower(
+        session.directory,
+        DeterministicRecognizer("whistle"),
+        model_id,
+        DeterministicDetector(),
+        on_cache_entry=direct_entries.append,
+    )
+    assert direct.refresh()
+    while direct.step():
+        pass
+    assert len(direct_entries) >= 1
+    for entry in direct_entries:
+        val = {name: entry[name] for name in ("text", "language", "words")}
+        assert recognition_cache.append_journal_entry(session.directory, model_id, entry["key"], val)
+    assert (session.directory / recognition_cache.JOURNAL_FILE).is_file()
+    assert not (session.directory / RECOGNITION_CACHE_FILE).exists()
+
+    finished = Finished()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.AFTER_STOP,
+    )
+    try:
+        assert queue.enqueue(session.directory)
+        finished.wait(1, bound=30)
+        assert read_metadata(session.directory)["transcript"]["status"] == "done"
+        assert not (session.directory / RECOGNITION_CACHE_FILE).exists()
+        assert not (session.directory / recognition_cache.JOURNAL_FILE).exists()
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)

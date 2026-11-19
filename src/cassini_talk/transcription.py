@@ -653,6 +653,30 @@ class TranscriptionQueue:
         """Overlap read-only tail planning/ASR with Opus publication in speed mode."""
         return self.follow_recording(directory)
 
+    def _close_client_async(self, client) -> None:
+        """Signal a detached client immediately and reap it off the caller (GTK) thread."""
+        if client is None:
+            return
+        if hasattr(client, "cancel"):
+            with contextlib.suppress(Exception):
+                client.cancel()
+
+        def reap():
+            with contextlib.suppress(Exception):
+                client.close()
+
+        threading.Thread(target=reap, daemon=True, name="cassini-reap-worker").start()
+
+    def release_failed_publication(self, directory) -> None:
+        """Release any tail follower or warm worker held for a session whose Opus publication failed."""
+        target = self._canonical_follow_dir(directory)
+        with self.lock:
+            if self._follow_directory == target:
+                self._signal_follower_stop_locked(drain=False, cancel_client=True)
+            warm = self._discard_warm_client_locked() if self._warm_directory == target else None
+        if warm is not None:
+            self._close_client_async(warm)
+
     def _discard_warm_client_locked(self):
         warm = self._warm_client
         self._warm_client = None
@@ -678,10 +702,13 @@ class TranscriptionQueue:
             thread = self._signal_follower_stop_locked(drain=drain, cancel_client=not drain)
             warm = self._discard_warm_client_locked() if not drain else None
         if warm is not None:
-            if hasattr(warm, "cancel"):
-                warm.cancel()
-            with contextlib.suppress(Exception):
-                warm.close()
+            if wait:
+                if hasattr(warm, "cancel"):
+                    warm.cancel()
+                with contextlib.suppress(Exception):
+                    warm.close()
+            else:
+                self._close_client_async(warm)
         if wait and thread is not None and thread is not threading.current_thread():
             thread.join(timeout=max(1.0, self._follow_stop_timeout + 2.0))
 
@@ -846,6 +873,10 @@ class TranscriptionQueue:
             if client is None:
                 if not self._follow_still_valid(directory, stop_event, generation):
                     return
+                with self.lock:
+                    if not self._follow_still_valid(directory, stop_event, generation):
+                        return
+                    self._follow_client_model = selected
                 if selected == MODEL_ID and self.models is not None:
                     started = self.models.start_parakeet(self.bundle, register=register_follow_client)
                     if started is not None:
@@ -854,6 +885,10 @@ class TranscriptionQueue:
                 if client is None:
                     if not self._follow_still_valid(directory, stop_event, generation):
                         return
+                    with self.lock:
+                        if not self._follow_still_valid(directory, stop_event, generation):
+                            return
+                        self._follow_client_model = "whistle"
                     candidate = self.client_factory(self.bundle, timeout=120)
                     register_follow_client(candidate)
                     client_model = "whistle"
@@ -862,6 +897,10 @@ class TranscriptionQueue:
                 if self._follow_generation == generation:
                     self._follow_client_model = client_model
                     self._idle.notify_all()
+            if not self._follow_still_valid(directory, stop_event, generation):
+                return
+            if self.models is not None and self.models.choice_for_job() != client_model:
+                return
             if not all(hasattr(client, name) for name in ("start_follow", "poll_follow_event", "stop_follow")):
                 return
             cache_model = recognition_cache_model(client_model, self.bundle)
@@ -1773,6 +1812,7 @@ class TranscriptionQueue:
             raise
         with contextlib.suppress(OSError):
             (directory / RECOGNITION_CACHE_FILE).unlink()
+        recognition_cache.remove_journal(directory)
         self.changed(directory)
         self.completed(tag)
         if self.client_model == MODEL_ID:
@@ -2024,10 +2064,7 @@ class TranscriptionQueue:
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
             warm = self._discard_warm_client_locked() if self._warm_directory == directory else None
         if warm is not None:
-            if hasattr(warm, "cancel"):
-                warm.cancel()
-            with contextlib.suppress(Exception):
-                warm.close()
+            self._close_client_async(warm)
         for future in futures:
             if future is not None:
                 future.cancel()

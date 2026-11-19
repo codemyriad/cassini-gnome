@@ -22,19 +22,24 @@ LOG = logging.getLogger(__name__)
 _ENCODER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-library-publish")
 _PUBLISH_OBSERVERS_LOCK = threading.Lock()
 _PUBLISH_OBSERVERS: list = []
+_PUBLISH_FAILURE_OBSERVERS: list = []
 
 
-def register_publish_observer(callback):
-    """Register a read-only listener notified when publish_stopped starts encoding."""
+def register_publish_observer(callback, *, failed=None):
+    """Register read-only listeners notified when publish_stopped starts or fails."""
     with _PUBLISH_OBSERVERS_LOCK:
-        if callback not in _PUBLISH_OBSERVERS:
+        if callback is not None and callback not in _PUBLISH_OBSERVERS:
             _PUBLISH_OBSERVERS.append(callback)
+        if failed is not None and failed not in _PUBLISH_FAILURE_OBSERVERS:
+            _PUBLISH_FAILURE_OBSERVERS.append(failed)
 
 
-def unregister_publish_observer(callback):
+def unregister_publish_observer(callback, *, failed=None):
     with _PUBLISH_OBSERVERS_LOCK:
-        if callback in _PUBLISH_OBSERVERS:
+        if callback is not None and callback in _PUBLISH_OBSERVERS:
             _PUBLISH_OBSERVERS.remove(callback)
+        if failed is not None and failed in _PUBLISH_FAILURE_OBSERVERS:
+            _PUBLISH_FAILURE_OBSERVERS.remove(failed)
 
 
 def _notify_publish_started(directory):
@@ -45,6 +50,16 @@ def _notify_publish_started(directory):
             callback(Path(directory))
         except Exception:
             LOG.exception("Publish observer failed; continuing audio publication")
+
+
+def _notify_publish_failed(directory):
+    with _PUBLISH_OBSERVERS_LOCK:
+        observers = tuple(_PUBLISH_FAILURE_OBSERVERS)
+    for callback in observers:
+        try:
+            callback(Path(directory))
+        except Exception:
+            LOG.exception("Publish failure observer failed")
 
 
 def submit_stopped(session, *, cancel=None):
@@ -104,7 +119,11 @@ def publish_stopped(session, *, cancel=None):
     record_capture(session.directory, session.manifest)
     check_cancel(cancel)
     _notify_publish_started(session.directory)
-    return finalize.finalize(root, session.manifest["id"], cancel=cancel)
+    try:
+        return finalize.finalize(root, session.manifest["id"], cancel=cancel)
+    except BaseException:
+        _notify_publish_failed(session.directory)
+        raise
 
 
 @dataclass(frozen=True)
