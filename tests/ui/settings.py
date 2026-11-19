@@ -95,7 +95,8 @@ with tempfile.TemporaryDirectory() as temporary:
     app.activate()
     window = app.get_active_window()
     until(lambda: not window._pending)
-    from cassini_talk.settings_dialog import SettingsDialog
+    from cassini_talk.library import library_root
+    from cassini_talk.settings_dialog import SettingsDialog, path_caption
 
     dialog = SettingsDialog(app, service_path=path)
     dialog.present(window)
@@ -143,36 +144,81 @@ with tempfile.TemporaryDirectory() as temporary:
         page.set_title(ux_text("settings.tab." + page_name))
     until(lambda: dialog.pages["browserCompanion"].get_title() == "Browser companion")
     assert dialog.get_title() == "Preferences" and not dialog.get_search_enabled()
-    # L-58 (D103 §1): one map, grouped by question on each page.
+    # L-58 (D103 §1, D107 §1): one map; a heading (and description) above each card.
     shown = labels(dialog)
     for key in (
         "settings.recording.group.starting",
         "settings.recording.firstRecord.subtitle",
+        "settings.recording.group.browser",
         "test.action",
-        "settings.recording.test.description",
-        "settings.transcription.privacyLine",
+        "settings.recording.test.descriptionShort",
+        "settings.transcription.speech.heading",
         "models.keepTranscript",
         "models.builtIn",
+        "settings.transcription.footnote",
+        "settings.library.folder.title",
         "settings.library.folder.descriptionShort",
+        "settings.library.deleted.caption",
         "settings.library.group.keepingCopy",
-        "settings.library.backUp.title",
+        "settings.library.zip.title",
         "settings.library.zip.subtitle",
+        "settings.library.backUp.caption",
+        "settings.browser.heading",
+        "settings.browser.body",
+        "companion.worksWith",
+        "companion.privacy",
+    ):
+        assert ux_text(key) in shown, key
+    # Replaced by D107: the line above Transcription, the backup row, "Deleted meetings", the Trash help
+    # text (Help keeps it) and the "Without it" section.
+    for key in (
+        "settings.transcription.network.heading",
+        "settings.transcription.privacyLine",
+        "settings.recording.test.description",
+        "settings.library.backUp.title",
         "settings.library.group.deleted",
         "settings.library.deleted.title",
         "help.trash.body",
         "companion.bodyShort",
-        "companion.worksWith",
         "companion.without.heading",
         "companion.without.body",
+        "export.zip.all",
     ):
-        assert ux_text(key) in shown, key
-    assert ux_text("settings.transcription.network.heading") not in shown
+        assert ux_text(key) not in shown, key
+    # Every page's sections sit 26 px apart (D107 §1).
+    for page in dialog.pages.values():
+        groups = []
+        stack = [page]
+        while stack:
+            widget = stack.pop()
+            if isinstance(widget, Adw.PreferencesGroup) and widget.get_visible() and widget.get_height() > 0:
+                groups.append(widget)
+            child = widget.get_first_child()
+            while child is not None:
+                stack.append(child)
+                child = child.get_next_sibling()
+        if page.get_mapped() and len(groups) > 1:
+            tops = sorted((g.compute_bounds(page)[1].get_y(), g.compute_bounds(page)[1].get_height()) for g in groups)
+            gaps = {round(b[0] - (a[0] + a[1])) for a, b in zip(tops, tops[1:], strict=False)}
+            assert gaps <= {26, 36}, (page.get_name(), gaps)  # The footnote adds 10 px above itself.
     assert dialog.test_button.get_label() == "Test"
+    # D107 §1: never set up, so "Needs the browser companion · Set it up", the switch greyed and a red dot.
+    assert dialog.browser_meetings_status.get_label() == "Needs the browser companion ·"
+    assert dialog.browser_set_up.get_visible() and dialog.browser_set_up.get_label() == "Set it up"
+    assert not dialog.browser_meetings_dot.get_visible() and not dialog.automatic.get_sensitive()
+    # The card's title names this container's state (no browser here); not connected, so a red dot.
+    assert dialog.browser_dot.has_css_class("status-dot-off"), dialog.browser.get_title()
+    assert not dialog.browser_remove.get_visible()
+    dialog.browser_set_up.emit("clicked")
+    assert dialog.get_visible_page_name() == "browserCompanion"
+    dialog.set_visible_page_name("recording")
     # "9 meetings · 263 MB": sized off the GTK thread, then shown under the folder path.
     until(lambda: dialog.library_stats is not None)
     meetings = len(window.snapshot.meetings)
     assert dialog.library_stats.startswith(f"{meetings} meetings · "), dialog.library_stats
-    assert dialog.folder.get_subtitle().endswith("\n" + dialog.library_stats)
+    # D107 §1: the card is "Music › Cassini" (here the fixture folder) over its meetings and size.
+    assert dialog.folder.get_title() == path_caption(library_root())
+    assert dialog.folder.get_subtitle() == dialog.library_stats
     assert dialog.zip_button.get_sensitive() and not dialog.move_lines.get_visible()
     # Export… from Preferences works while the sidebar search is open, and its toasts land on the
     # Preferences dialog (the window's own overlay is behind it, under the modal scrim).
@@ -183,7 +229,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.search_page is not None
     window._refresh_export()
     dialog.refresh_library()
-    assert dialog.zip_button.get_sensitive(), "Search must not grey out Export All as ZIP…"
+    assert dialog.zip_button.get_sensitive(), "Search must not grey out Export all as ZIP"
     dialog.zip_button.emit("clicked")
     until(lambda: window.zip_export_dialog is not None and window.zip_export_dialog.get_mapped())
     zdialog = window.zip_export_dialog
@@ -253,6 +299,25 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda: request(path=path)["connectedBrowsers"] == 1)
         dialog.refresh()
         until(lambda: dialog.browser.get_title() == "Connected to Chromium")
+        # D107 §1: a green dot and the browser, right of "Browser meetings" too; the switch is available.
+        assert dialog.browser_dot.has_css_class("status-dot-connected")
+        assert dialog.browser_meetings_status.get_label() == "Connected to Chromium"
+        assert dialog.browser_meetings_dot.get_visible() and not dialog.browser_set_up.get_visible()
+        assert dialog.automatic.get_sensitive()
+        assert dialog.browser_remove.get_visible() and dialog.browser_remove.get_label() == "Remove…"
+        assert not dialog.browser_add.get_visible() and not dialog.browser_add_local.get_visible()
+        # Remove… opens the Extensions page (never really launched here) and shows the one-line how-to.
+        from cassini_talk import companion as companion_module
+
+        opened = []
+        with (
+            patch.object(companion_module, "open_new_tab", lambda browser: opened.append(browser)),
+            patch.object(companion_module, "check_browser_launch", lambda _process: None),
+        ):
+            dialog.browser_remove.emit("clicked")
+            until(lambda: not dialog._removing)
+        assert dialog.remove_help.get_visible()
+        assert "On the Extensions page, find Cassini and click Remove." in labels(dialog)
         assert "Parakeet Ultra" not in labels(dialog) and "Tell speakers apart" not in labels(dialog)
         assert "In use for new meetings" in labels(dialog)
         assert "To check for updates. No meeting data is sent." not in labels(dialog)

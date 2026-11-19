@@ -1260,7 +1260,7 @@
     "CompanionSetup-mac"
    ],
    "milestone": "UX10",
-   "note": "Small dim footer next to a 14 px lock icon (aria-hidden). 'Music/Cassini' is literal (HARMONY 4). Different from firstRun.footer.",
+   "note": "Small dim footer next to a 14 px lock icon (aria-hidden). 'Music/Cassini' is literal (HARMONY 4). Different from firstRun.footer. D107 §1 (L-58): privacy footnote of Settings › Browser companion, one centred line with the accent lock.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -4695,7 +4695,7 @@
    "boards": [],
    "milestone": "D41",
    "status": "harmony",
-   "note": "Coordinator (D41). Mac Settings. Default on. Off hides the idle menu bar item only; the recording item always shows.",
+   "note": "Coordinator (D41). Mac Settings. Default on. Off hides the idle menu bar item only; the recording item always shows. D107 §1 (L-58): a checkbox inside the “Record every browser meeting automatically” row, greyed until that switch is on (and while the companion is not set up); no separate row, no subtitle.",
    "l10n": {
     "it": {
      "text": "Mostra Cassini nella barra dei menu"
@@ -8626,7 +8626,7 @@
     "one": "1 person. Voiceprints stay on this computer.",
     "other": "{n} people. Voiceprints stay on this computer."
    },
-   "note": "Subtitle of the common.savedVoices row. It uses the HARMONY 6 plural '1 person.' / '{n} people.' Drawn with n = 5. The zero case is not drawn; do not invent it.",
+   "note": "Subtitle of the common.savedVoices row. It uses the HARMONY 6 plural '1 person.' / '{n} people.' Drawn with n = 5. The zero case is not drawn; do not invent it. Superseded by D107 §1 (settings.transcription.savedVoices.summary.madeOn{,.none}); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -9021,7 +9021,7 @@
     "Settings-mac"
    ],
    "milestone": "UX8a",
-   "note": "Coordinator (D15). Browser companion tab description (short form of companion.body).",
+   "note": "Coordinator (D15). Browser companion tab description (short form of companion.body). Superseded in Settings › Browser companion by D107 §1 (settings.browser.heading, settings.browser.body); text kept for older pins.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -9054,7 +9054,7 @@
     "Settings-mac"
    ],
    "milestone": "UX8a",
-   "note": "Coordinator (D15). Browser companion tab status row when connected.",
+   "note": "Coordinator (D15). Browser companion tab status row when connected. D107 §1 (L-58): also the status right of the Browser meetings heading in Settings › Recording and the companion card status in Settings › Browser companion, with a green dot, no full stop (“Connected to Chrome”).",
    "status": "harmony",
    "placeholders": {
     "browser": "browser display name, e.g. Firefox"
@@ -9090,7 +9090,7 @@
     "Settings-mac"
    ],
    "milestone": "UX8a",
-   "note": "Coordinator (D15). Browser companion tab status row when no browser is connected. Trailing button meeting.companionCard.setUp (\"Set up\"), which opens the existing setup path until UX10.",
+   "note": "Coordinator (D15). Browser companion tab status row when no browser is connected. Trailing button meeting.companionCard.setUp (\"Set up\"), which opens the existing setup path until UX10. D107 §1 (L-58): companion card status in Settings › Browser companion, with a red dot.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -11556,7 +11556,7 @@
    ],
    "milestone": "UX17",
    "status": "harmony",
-   "note": "Coordinator (D25). Zero case of settings.transcription.savedVoices.summary.",
+   "note": "Coordinator (D25). Zero case of settings.transcription.savedVoices.summary. Superseded by D107 §1 (settings.transcription.savedVoices.summary.madeOn{,.none}); text kept for older pins.",
    "l10n": {
     "it": {
      "text": "Ancora nessuno. Le impronte vocali restano su questo computer."
@@ -19953,7 +19953,7 @@
    "role": "warning",
    "boards": [],
    "milestone": "D58",
-   "note": "Coordinator (D58, R79). Recording details, Audio sources: a side refused with permissionDenied. {source} is details.source.*.",
+   "note": "Coordinator (D58, R79). Recording details, Audio sources: a side refused with permissionDenied. {source} is details.source.*. D107 §4: Test recording shows test.pill.notAllowed and test.refused.* instead; meeting details keep this line.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -20477,7 +20477,7 @@
     "P2RecordFirst-Desktop"
    ],
    "milestone": "Before you record and Test recording (D104)",
-   "note": "D104 §2, PROVISIONAL: computer-sound row while testing, once its level crosses the activity floor. Not drawn (the board shows this row only waiting); asked of Alex. Plain text, not a pill. D106: still open (question a6).",
+   "note": "D104 §2: computer-sound row of Test recording while testing, once its level crosses the activity floor. Plain text, not a pill. D107 §3: Alex answered question a6 on 18 Nov, “Hearing sound” is kept (no longer provisional; GNOME drops its provisional code mark). Not drawn (the board shows this row only waiting), so the status stays draft.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -25829,13 +25829,12 @@
    "id": "firstRun.hero.phoneBackupQualifier",
    "en": "(except for encrypted cloud backup)",
    "platforms": [
-    "ios",
     "android"
    ],
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (D-937)",
-   "note": "D-937 / L-27 / L-28: parenthetical qualifier paired with firstRun.hero.subtitle ('None of it uploaded.') on phone first run (D-974 iOS, D-975 Android) whenever encrypted OS cloud backup is enabled (the default). Omitted on desktop (HARMONY §§10, 12) and when the user opts out to phone-only storage. Removed from first run by D105 §2 (L-70): the new hero line and the two-line privacy line are true with backups on or off. Kept for older pins.",
+   "note": "D-937 / L-27 / L-28: parenthetical qualifier paired with firstRun.hero.subtitle ('None of it uploaded.') on phone first run (D-974 iOS, D-975 Android) whenever encrypted OS cloud backup is enabled (the default). Omitted on desktop (HARMONY §§10, 12) and when the user opts out to phone-only storage. Removed from first run by D105 §2 (L-70): the new hero line and the two-line privacy line are true with backups on or off. Kept for older pins. D107 §4 (Alex on D-1108, 18 Nov): iOS never calls the iCloud backup “encrypted”; it says “iCloud” and leaves encryption to Backup › In more detail › Who can read it. ios removed from platforms; Android is unchanged and keeps “encrypted backup”.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -25859,13 +25858,12 @@
    "id": "firstRun.hero.subtitlePhoneNote",
    "en": "None of it uploaded. (except for encrypted cloud backup)",
    "platforms": [
-    "ios",
     "android"
    ],
    "role": "heading",
    "boards": [],
    "milestone": "W6.0 (D-937)",
-   "note": "D-937 / L-27 / L-28: combined phone first-run hero second line pairing firstRun.hero.subtitle with firstRun.hero.phoneBackupQualifier when encrypted OS cloud backup is enabled, so phone layouts and screen readers never concatenate strings in code. Removed from first run by D105 §2 (L-70). Kept for older pins.",
+   "note": "D-937 / L-27 / L-28: combined phone first-run hero second line pairing firstRun.hero.subtitle with firstRun.hero.phoneBackupQualifier when encrypted OS cloud backup is enabled, so phone layouts and screen readers never concatenate strings in code. Removed from first run by D105 §2 (L-70). Kept for older pins. D107 §4 (Alex on D-1108, 18 Nov): iOS never calls the iCloud backup “encrypted”; it says “iCloud” and leaves encryption to Backup › In more detail › Who can read it. ios removed from platforms; Android is unchanged and keeps “encrypted backup”.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -25987,8 +25985,8 @@
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.iphone (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this iPhone. Never uploaded, except to your encrypted cloud backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
-   "status": "draft",
+   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.iphone (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this iPhone. Never uploaded, except to your encrypted cloud backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant. D107 §4 (Alex on D-1108, 18 Nov): iOS never calls the iCloud backup “encrypted”; it says “iCloud” and leaves encryption to Backup › In more detail › Who can read it. Retired: do not ship; phone Settings shows firstRun.privacy.* + firstRun.privacy.backups.ios (D106 §4). Text kept for older pins.",
+   "status": "retired",
    "l10n": {
     "it": {
      "text": "Trascritto su questo iPhone. Mai caricato, tranne nel tuo backup crittografato nel cloud."
@@ -26074,8 +26072,8 @@
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.ipad (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this iPad. Never uploaded, except to your encrypted cloud backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
-   "status": "draft",
+   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.ipad (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this iPad. Never uploaded, except to your encrypted cloud backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant. D107 §4 (Alex on D-1108, 18 Nov): iOS never calls the iCloud backup “encrypted”; it says “iCloud” and leaves encryption to Backup › In more detail › Who can read it. Retired: do not ship; phone Settings shows firstRun.privacy.* + firstRun.privacy.backups.ios (D106 §4). Text kept for older pins.",
+   "status": "retired",
    "l10n": {
     "it": {
      "text": "Trascritto su questo iPad. Mai caricato, tranne nel tuo backup crittografato nel cloud."
@@ -26156,13 +26154,12 @@
    "id": "privacy.onDevice.phone.withBackup",
    "en": "Transcribed on this phone. Never uploaded, except to your encrypted cloud backup.",
    "platforms": [
-    "android",
-    "ios"
+    "android"
    ],
    "role": "caption",
    "boards": [],
    "milestone": "W6.0 (L-09)",
-   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.phone (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this phone. Never uploaded, except to your encrypted cloud backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant.",
+   "note": "PROVISIONAL (L-09 / D-938 / D-937 / D98; async copy review tracked in D-1019): backup-qualified first-run privacy line for the default state where encrypted cloud backup is on. Replaces privacy.onDevice.phone (which says the audio never leaves the device) until the user turns cloud backup off. Shown on first run only per L-27, L-30. L-69 (D105 §1): English was “Written down on this phone. Never uploaded, except to your encrypted cloud backup.”. D98 variant logic and tails unchanged. D105 §3: phone first run shows the two always-true lines (firstRun.privacy.*, firstRun.privacy.backups.*) instead; this line stays the Settings privacy line with its D98 variant. D107 §4 (Alex on D-1108, 18 Nov): iOS never calls the iCloud backup “encrypted”; it says “iCloud” and leaves encryption to Backup › In more detail › Who can read it. ios removed from platforms; Android is unchanged and keeps “encrypted backup”.",
    "status": "draft",
    "l10n": {
     "it": {
@@ -26244,13 +26241,12 @@
    "id": "backup.phoneOnlyCard.body",
    "en": "Your meetings and saved voices are included in encrypted cloud backup and copied when you move to a new phone, so you don’t lose them if this phone is lost or replaced.",
    "platforms": [
-    "ios",
     "android"
    ],
    "role": "description",
    "boards": [],
    "milestone": "W6.0 (L-28)",
-   "note": "L-28 / D-957 / D-1012 / D98: body of the dismissible phone backup card explaining default encrypted cloud backup and automatic device-to-device copy of meetings and saved voices (true on both platforms while backup is on). Android: the card action (backup.phoneOnlyCard.action) turns off BOTH cloud backup (Auto Backup exclusion) AND the settings.transfer device-to-device switch. iOS: the card action (backup.phoneOnlyCard.action.ios) sets NSURLIsExcludedFromBackupKey = true on the meetings and voices directories so iOS skips them in iCloud Backup; Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Manual Export All as ZIP stays available on both. Superseded by D106 §2 by the backup.notice.* card (news first). Kept for older pins.",
+   "note": "L-28 / D-957 / D-1012 / D98: body of the dismissible phone backup card explaining default encrypted cloud backup and automatic device-to-device copy of meetings and saved voices (true on both platforms while backup is on). Android: the card action (backup.phoneOnlyCard.action) turns off BOTH cloud backup (Auto Backup exclusion) AND the settings.transfer device-to-device switch. iOS: the card action (backup.phoneOnlyCard.action.ios) sets NSURLIsExcludedFromBackupKey = true on the meetings and voices directories so iOS skips them in iCloud Backup; Apple documents NSURLIsExcludedFromBackupKey as backup guidance only: it is not guaranteed to keep data out of every backup, and a direct device-to-device Quick Start migration may still copy local app storage. iOS copy therefore never claims 'this phone only' or 'never leaves it'. Manual Export All as ZIP stays available on both. Superseded by D106 §2 by the backup.notice.* card (news first). Kept for older pins. D107 §4 (Alex on D-1108, 18 Nov): iOS never calls the iCloud backup “encrypted”; it says “iCloud” and leaves encryption to Backup › In more detail › Who can read it. ios removed from platforms; Android is unchanged and keeps “encrypted backup”.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -26568,13 +26564,12 @@
    "id": "backup.cloud.title",
    "en": "Encrypted cloud backup",
    "platforms": [
-    "ios",
     "android"
    ],
    "role": "switch",
    "boards": [],
    "milestone": "W6.0 (L-28)",
-   "note": "L-28 / D-957: primary switch in Settings › Moving and backup; ON by default.",
+   "note": "L-28 / D-957: primary switch in Settings › Moving and backup; ON by default. D107 §4 (Alex on D-1108, 18 Nov): iOS never calls the iCloud backup “encrypted”; it says “iCloud” and leaves encryption to Backup › In more detail › Who can read it. ios removed from platforms; Android is unchanged and keeps “encrypted backup”.",
    "status": "harmony",
    "l10n": {
     "it": {
@@ -30827,7 +30822,7 @@
     "P2PrefsTranscription-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): first line of desktop Settings › Transcription. Supersedes settings.transcription.privacy and the settings.transcription.network.* group (kept for older pins; update checks stay described in Mac Settings › Updates). L-69 (D105 §1): English was “Written down on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.”. Verbatim from P2PrefsTranscription-Desktop.",
+   "note": "D103 §1 (L-58): first line of desktop Settings › Transcription. Supersedes settings.transcription.privacy and the settings.transcription.network.* group (kept for older pins; update checks stay described in Mac Settings › Updates). L-69 (D105 §1): English was “Written down on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.”. Verbatim from P2PrefsTranscription-Desktop. Superseded by D107 §1 (settings.transcription.footnote, at the foot of the page); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -30933,7 +30928,7 @@
     "P2PrefsTranscription-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): Phase 2 description under “Recognise saved voices”. Supersedes models.recogniseVoices.description (kept). D106 §4: the phones use settings.phone.speakers.recognise.subtitle instead; desktop keeps this.",
+   "note": "D103 §1 (L-58): Phase 2 description under “Recognise saved voices”. Supersedes models.recogniseVoices.description (kept). D106 §4: the phones use settings.phone.speakers.recognise.subtitle instead; desktop keeps this. D107 §1: desktop Settings now uses settings.phone.speakers.recognise.subtitle (“Names people you’ve saved.”); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -32654,33 +32649,33 @@
   },
   {
    "id": "settings.recording.group.browser.subtitle",
-   "en": "Needs the browser companion.",
+   "en": "Needs the browser companion",
    "platforms": [
     "gnome",
     "mac"
    ],
-   "role": "caption",
+   "role": "status",
    "boards": [
     "P2PrefsRecording-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): under the Browser meetings heading.",
+   "note": "D103 §1 (L-58): under the Browser meetings heading. D107 §1 (L-58): status right of the Browser meetings heading while the companion is not set up, no full stop, followed by “ · ” and the settings.recording.browser.setUp link; the switch (and Mac’s menu-bar checkbox) is greyed (D107): English was “Needs the browser companion.”.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Richiede l’estensione per il browser."
+     "text": "Richiede l’estensione per il browser"
     },
     "fr": {
-     "text": "Nécessite l’extension de navigateur."
+     "text": "Nécessite l’extension de navigateur"
     },
     "es": {
-     "text": "Requiere la extensión del navegador."
+     "text": "Requiere la extensión del navegador"
     },
     "pt-BR": {
-     "text": "Requer a extensão do navegador."
+     "text": "Requer a extensão do navegador"
     },
     "pt-PT": {
-     "text": "Requer a extensão do navegador."
+     "text": "Requer a extensão do navegador"
     }
    }
   },
@@ -32727,7 +32722,7 @@
     "P2PrefsRecording-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): Mac only. The menu-bar switch sits under auto-record and is dimmed while auto-record is off.",
+   "note": "D103 §1 (L-58): Mac only. The menu-bar switch sits under auto-record and is dimmed while auto-record is off. Superseded by D107 §1: the menu-bar option is a checkbox inside the automatic-recording row, so “Needs automatic recording.” goes. Text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -32759,7 +32754,7 @@
     "P2PrefsRecording-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1, 4 (L-58, L-61): Test recording group on both desktops (heading test.action). Supersedes test.intro in Settings (kept for the test dialog).",
+   "note": "D103 §1, 4 (L-58, L-61): Test recording group on both desktops (heading test.action). Supersedes test.intro in Settings (kept for the test dialog). Superseded by D107 §1 (settings.recording.test.descriptionShort); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -32924,7 +32919,7 @@
     "P2PrefsLibrary-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): first row of Keeping a copy (information only, no control).",
+   "note": "D103 §1 (L-58): first row of Keeping a copy (information only, no control). Superseded by D107 §1 (settings.library.backUp.caption under the Keeping a copy card); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -32957,7 +32952,7 @@
     "P2PrefsLibrary-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): subtitle; Mac names Time Machine.",
+   "note": "D103 §1 (L-58): subtitle; Mac names Time Machine. Superseded by D107 §1 (settings.library.backUp.caption under the Keeping a copy card); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33026,7 +33021,7 @@
     "P2PrefsLibrary-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58, L-64, D101): third group: says where deleted meetings go. No in-app list.",
+   "note": "D103 §1 (L-58, L-64, D101): third group: says where deleted meetings go. No in-app list. Superseded by D107 §1 (Library has two sections; the Trash line is settings.library.deleted.caption under the folder card); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33058,7 +33053,7 @@
     "P2PrefsLibrary-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-64, D101): row title (information only).",
+   "note": "D103 §1 (L-64, D101): row title (information only). Superseded by D107 §1 (Library has two sections; the Trash line is settings.library.deleted.caption under the folder card); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33091,7 +33086,7 @@
     "P2PrefsLibrary-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-64, D101): row subtitle; Mac names the Finder Trash. Only for an app that keeps the system Trash; an app that kept its in-app Trash view (D101 §3, GNOME today) shows help.trash.body here instead.",
+   "note": "D103 §1 (L-64, D101): row subtitle; Mac names the Finder Trash. Only for an app that keeps the system Trash; an app that kept its in-app Trash view (D101 §3, GNOME today) shows help.trash.body here instead. Superseded by D107 §1 (Library has two sections; the Trash line is settings.library.deleted.caption under the folder card); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33128,7 +33123,7 @@
     "P2PrefsCompanion-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): Browser companion page lead. Supersedes settings.browser.description in Settings (kept).",
+   "note": "D103 §1 (L-58): Browser companion page lead. Supersedes settings.browser.description in Settings (kept). Superseded in Settings › Browser companion by D107 §1 (settings.browser.heading, settings.browser.body); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33160,7 +33155,7 @@
     "P2PrefsCompanion-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): under the status line (settings.browser.status.*).",
+   "note": "D103 §1 (L-58): under the status line (settings.browser.status.*). D107 §1 (L-58): inside the companion card, under the status in both states.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33195,7 +33190,7 @@
    "placeholders": {
     "browser": "browser product name, for example Chrome"
    },
-   "note": "D103 §1 (L-58): the one button when not set up (drawn “Add to Chrome”). {browser} is the detected default browser’s name.",
+   "note": "D103 §1 (L-58): the one button when not set up (drawn “Add to Chrome”). {browser} is the detected default browser’s name. D107 §1 (L-58): the card’s button while not set up, once the store listing is public; until then the same button is companion.local.add and opens the local install guide.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33227,7 +33222,7 @@
     "P2PrefsCompanion-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): what happens without the companion.",
+   "note": "D103 §1 (L-58): what happens without the companion. Superseded in Settings › Browser companion by D107 §1 (settings.browser.heading, settings.browser.body); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33259,7 +33254,7 @@
     "P2PrefsCompanion-Desktop"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): first line under “Without it”; companion.privacy follows.",
+   "note": "D103 §1 (L-58): first line under “Without it”; companion.privacy follows. Superseded in Settings › Browser companion by D107 §1 (settings.browser.heading, settings.browser.body); text kept for older pins.",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -33281,7 +33276,7 @@
   },
   {
    "id": "settings.updates.privacy",
-   "en": "Checking sends no meeting data.",
+   "en": "Checking for updates sends no meeting data.",
    "platforms": [
     "mac"
    ],
@@ -33290,23 +33285,23 @@
     "P2PrefsUpdates-Mac"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): under the Updates heading. Updates is the last Settings tab on Mac.",
+   "note": "D103 §1 (L-58): under the Updates heading. Updates is the last Settings tab on Mac. D107 §1 (L-58): privacy footnote of Settings › Updates, one centred line with the accent lock; same meaning, names what is checked (D107): English was “Checking sends no meeting data.”.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Il controllo non invia dati delle riunioni."
+     "text": "Il controllo degli aggiornamenti non invia dati delle riunioni."
     },
     "fr": {
-     "text": "La vérification n’envoie aucune donnée de réunion."
+     "text": "La recherche de mises à jour n’envoie aucune donnée de réunion."
     },
     "es": {
-     "text": "La comprobación no envía datos de las reuniones."
+     "text": "La búsqueda de actualizaciones no envía datos de las reuniones."
     },
     "pt-BR": {
-     "text": "A verificação não envia dados das reuniões."
+     "text": "A busca por atualizações não envia dados das reuniões."
     },
     "pt-PT": {
-     "text": "A verificação não envia dados das reuniões."
+     "text": "A verificação de atualizações não envia dados das reuniões."
     }
    }
   },
@@ -33343,7 +33338,7 @@
   },
   {
    "id": "settings.updates.upToDate",
-   "en": "You have the latest version.",
+   "en": "You have the latest version",
    "platforms": [
     "mac"
    ],
@@ -33352,23 +33347,23 @@
     "P2PrefsUpdates-Mac"
    ],
    "milestone": "Phase 2 second pass (D103)",
-   "note": "D103 §1 (L-58): under about.nameVersion when no update is waiting.",
+   "note": "D103 §1 (L-58): under about.nameVersion when no update is waiting. D107 §1 (L-58): grey, on the version line after about.nameVersion (“Cassini talk 0.1.2”, the Mac app’s own version), Check now on the right; no full stop (D107): English was “You have the latest version.”.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Hai la versione più recente."
+     "text": "Hai la versione più recente"
     },
     "fr": {
-     "text": "Vous avez la dernière version."
+     "text": "Vous avez la dernière version"
     },
     "es": {
-     "text": "Tienes la versión más reciente."
+     "text": "Tienes la versión más reciente"
     },
     "pt-BR": {
-     "text": "Você tem a versão mais recente."
+     "text": "Você tem a versão mais recente"
     },
     "pt-PT": {
-     "text": "Tem a versão mais recente."
+     "text": "Tem a versão mais recente"
     }
    }
   },
@@ -36108,15 +36103,18 @@
    "id": "settings.phone.speakers.recognise.subtitle",
    "en": "Names people you’ve saved.",
    "platforms": [
+    "gnome",
+    "mac",
     "ios",
     "android"
    ],
    "role": "caption",
    "boards": [
-    "P2Speakers-Phones"
+    "P2Speakers-Phones",
+    "P2PrefsTranscription-Desktop"
    ],
    "milestone": "Phase 2 18 Nov (D106)",
-   "note": "D106 §4 (L-58): one-line description under “Recognise saved voices” in phone Settings › Speakers (snapshot 1795009023-f7b9). Replaces models.recogniseVoices.description.short on phones.",
+   "note": "D106 §4 (L-58): one-line description under “Recognise saved voices” in phone Settings › Speakers (snapshot 1795009023-f7b9). Replaces models.recogniseVoices.description.short on phones. D107 §1 (L-58): Mac and GNOME use it too, under “Recognise saved voices” in Settings › Transcription › Speakers (Mac shows “On · 26 MB” on its own line below), so desktop gains the platforms; the id keeps its “phone” segment (no id is renamed, D103 §8).",
    "status": "drawn",
    "l10n": {
     "it": {
@@ -36623,6 +36621,727 @@
     },
     "pt-PT": {
      "text": "Dê nome a um orador numa reunião e deixe “Memorizar esta voz” ativado. Da próxima vez, o Cassini dá-lhe o nome por si."
+    }
+   }
+  },
+  {
+   "id": "settings.recording.browser.setUp",
+   "en": "Set it up",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "link",
+   "boards": [
+    "P2PrefsRecording-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1 (L-58): link after settings.recording.group.browser.subtitle (“Needs the browser companion · Set it up”), right of the Browser meetings heading. Opens Settings › Browser companion. Gone once connected (settings.browser.status.connected with a green dot takes its place).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Configura"
+    },
+    "fr": {
+     "text": "Configurer"
+    },
+    "es": {
+     "text": "Configurar"
+    },
+    "pt-BR": {
+     "text": "Configurar"
+    },
+    "pt-PT": {
+     "text": "Configurar"
+    }
+   }
+  },
+  {
+   "id": "settings.recording.test.descriptionShort",
+   "en": "Records 8 seconds, plays it back, then deletes it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsRecording-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1 (L-58): Test recording sits on its own at the foot of Settings › Recording, not in a card: heading test.action, this line, and the settings.recording.test.button button. Replaces settings.recording.test.description.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Registra 8 secondi, li riproduce e poi li elimina."
+    },
+    "fr": {
+     "text": "Enregistre 8 secondes, les relit, puis les supprime."
+    },
+    "es": {
+     "text": "Graba 8 segundos, los reproduce y luego los borra."
+    },
+    "pt-BR": {
+     "text": "Grava 8 segundos, reproduz e depois exclui a gravação."
+    },
+    "pt-PT": {
+     "text": "Grava 8 segundos, reproduz a gravação e depois elimina-a."
+    }
+   }
+  },
+  {
+   "id": "settings.transcription.footnote",
+   "en": "Transcribed on this computer. Your meetings never leave it.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "footnote",
+   "boards": [
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1 (L-58): privacy footnote of Settings › Transcription, one centred line with the accent lock at the foot of the page (as on Saved voices). Replaces the line above Transcription (settings.transcription.privacyLine); Mac draft PR #326’s rewording of that line (“…Cassini goes online only…”) is not used. Desktop has no cloud backup (HARMONY §12), so the claim is true on both desktops.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Trascritto su questo computer. Le tue riunioni non lo lasciano mai."
+    },
+    "fr": {
+     "text": "Transcrit sur cet ordinateur. Vos réunions n’en sortent jamais."
+    },
+    "es": {
+     "text": "Transcrito en este equipo. Tus reuniones nunca salen de él."
+    },
+    "pt-BR": {
+     "text": "Transcrito neste computador. Suas reuniões nunca saem dele."
+    },
+    "pt-PT": {
+     "text": "Transcrito neste computador. As suas reuniões nunca saem dele."
+    }
+   }
+  },
+  {
+   "id": "settings.transcription.savedVoices.summary.madeOn",
+   "en": "{n} people. Voiceprints are made on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "placeholders": {
+    "n": "number of saved voices"
+   },
+   "plural": {
+    "one": "1 person. Voiceprints are made on this computer.",
+    "other": "{n} people. Voiceprints are made on this computer."
+   },
+   "note": "D107 §1 (L-58): subtitle of the Saved voices row in Settings › Transcription; the voiceprint wording matches the Saved voices footnote (savedVoices.footnote.computer, D106 §5). Drawn with n = 4. Replaces settings.transcription.savedVoices.summary.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{n} persone. Le impronte vocali vengono create su questo computer.",
+     "plural": {
+      "one": "1 persona. Le impronte vocali vengono create su questo computer.",
+      "many": "{n} persone. Le impronte vocali vengono create su questo computer.",
+      "other": "{n} persone. Le impronte vocali vengono create su questo computer."
+     }
+    },
+    "fr": {
+     "text": "{n} personnes. Les empreintes vocales sont créées sur cet ordinateur.",
+     "plural": {
+      "one": "{n} personne. Les empreintes vocales sont créées sur cet ordinateur.",
+      "many": "{n} personnes. Les empreintes vocales sont créées sur cet ordinateur.",
+      "other": "{n} personnes. Les empreintes vocales sont créées sur cet ordinateur."
+     }
+    },
+    "es": {
+     "text": "{n} personas. Las huellas de voz se crean en este equipo.",
+     "plural": {
+      "one": "1 persona. Las huellas de voz se crean en este equipo.",
+      "many": "{n} personas. Las huellas de voz se crean en este equipo.",
+      "other": "{n} personas. Las huellas de voz se crean en este equipo."
+     }
+    },
+    "pt-BR": {
+     "text": "{n} pessoas. As impressões de voz são criadas neste computador.",
+     "plural": {
+      "one": "{n} pessoa. As impressões de voz são criadas neste computador.",
+      "many": "{n} pessoas. As impressões de voz são criadas neste computador.",
+      "other": "{n} pessoas. As impressões de voz são criadas neste computador."
+     }
+    },
+    "pt-PT": {
+     "text": "{n} pessoas. As impressões vocais são criadas neste computador.",
+     "plural": {
+      "one": "{n} pessoa. As impressões vocais são criadas neste computador.",
+      "many": "{n} pessoas. As impressões vocais são criadas neste computador.",
+      "other": "{n} pessoas. As impressões vocais são criadas neste computador."
+     }
+    }
+   }
+  },
+  {
+   "id": "settings.transcription.savedVoices.summary.madeOn.none",
+   "en": "No one yet. Voiceprints are made on this computer.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsTranscription-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1 (L-58): zero case of settings.transcription.savedVoices.summary.madeOn. Not drawn: derived from settings.transcription.savedVoices.summary.none with the D107 voiceprint wording. Replaces settings.transcription.savedVoices.summary.none.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Ancora nessuno. Le impronte vocali vengono create su questo computer."
+    },
+    "fr": {
+     "text": "Personne pour l’instant. Les empreintes vocales sont créées sur cet ordinateur."
+    },
+    "es": {
+     "text": "Nadie todavía. Las huellas de voz se crean en este equipo."
+    },
+    "pt-BR": {
+     "text": "Ninguém ainda. As impressões de voz são criadas neste computador."
+    },
+    "pt-PT": {
+     "text": "Ainda ninguém. As impressões vocais são criadas neste computador."
+    }
+   }
+  },
+  {
+   "id": "settings.library.deleted.caption",
+   "en": "Deleted meetings stay in the Trash for 30 days. Restore them from Trash in the main menu.",
+   "mac": "Deleted meetings go to the Finder Trash. Put them back from there, or press Undo straight away.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1 (L-58, L-64): caption under the Library folder card in Settings › Library. The Trash split is kept (Alex, 18 Nov): GNOME keeps its in-app Trash (D101 §3), Mac uses the Finder Trash. Replaces the “Deleted meetings” section (settings.library.group.deleted, settings.library.deleted.title, settings.library.deleted.body) and, in Settings, D103 §7’s help.trash.body (Help keeps help.trash.body).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Le riunioni eliminate restano nel Cestino per 30 giorni. Ripristinale da Cestino nel menu principale.",
+     "mac": "Le riunioni eliminate finiscono nel Cestino del Finder. Puoi ripristinarle da lì, oppure premi subito Annulla."
+    },
+    "fr": {
+     "text": "Les réunions supprimées restent dans la corbeille pendant 30 jours. Restaurez-les depuis Corbeille dans le menu principal.",
+     "mac": "Les réunions supprimées vont dans la corbeille du Finder. Restaurez-les depuis celle-ci, ou cliquez tout de suite sur Annuler."
+    },
+    "es": {
+     "text": "Las reuniones eliminadas se quedan en la papelera 30 días. Restáuralas desde Papelera en el menú principal.",
+     "mac": "Las reuniones eliminadas van a la papelera del Finder. Recupéralas desde ahí o pulsa Deshacer enseguida."
+    },
+    "pt-BR": {
+     "text": "As reuniões excluídas ficam na Lixeira por 30 dias. Restaure-as em Lixeira no menu principal.",
+     "mac": "As reuniões excluídas vão para a Lixeira do Finder. Restaure-as por lá ou clique em Desfazer na hora."
+    },
+    "pt-PT": {
+     "text": "As reuniões eliminadas ficam no Lixo durante 30 dias. Restaure-as a partir de Lixo no menu principal.",
+     "mac": "As reuniões eliminadas vão para o Lixo do Finder. Reponha-as a partir daí ou clique em Desfazer de imediato."
+    }
+   }
+  },
+  {
+   "id": "settings.library.zip.title",
+   "en": "Export all as ZIP",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1 (L-58): row title in the Keeping a copy card of Settings › Library, sentence case, no ellipsis; the button is common.exportEllipsis (“Export…”) and the subtitle settings.library.zip.subtitle. The menu action keeps export.zip.all (“Export All as ZIP…”).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Esporta tutto come ZIP"
+    },
+    "fr": {
+     "text": "Tout exporter en ZIP"
+    },
+    "es": {
+     "text": "Exportar todo como ZIP"
+    },
+    "pt-BR": {
+     "text": "Exportar tudo como ZIP"
+    },
+    "pt-PT": {
+     "text": "Exportar tudo como ZIP"
+    }
+   }
+  },
+  {
+   "id": "settings.library.backUp.caption",
+   "en": "Or back up the folder like any other: your backup app, an external drive or a copy you make.",
+   "mac": "Or back up the folder like any other: Time Machine, an external drive or a copy you make.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsLibrary-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1 (L-58): caption under the Keeping a copy card; Mac names Time Machine. Replaces the settings.library.backUp.title / .subtitle row.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Oppure fai il backup della cartella come di qualsiasi altra: la tua app di backup, un disco esterno o una copia fatta da te.",
+     "mac": "Oppure fai il backup della cartella come di qualsiasi altra: Time Machine, un disco esterno o una copia fatta da te."
+    },
+    "fr": {
+     "text": "Ou sauvegardez le dossier comme n’importe quel autre : votre app de sauvegarde, un disque externe ou une copie que vous faites.",
+     "mac": "Ou sauvegardez le dossier comme n’importe quel autre : Time Machine, un disque externe ou une copie que vous faites."
+    },
+    "es": {
+     "text": "O haz una copia de seguridad de la carpeta como de cualquier otra: tu app de copias de seguridad, un disco externo o una copia que hagas tú.",
+     "mac": "O haz una copia de seguridad de la carpeta como de cualquier otra: Time Machine, un disco externo o una copia que hagas tú."
+    },
+    "pt-BR": {
+     "text": "Ou faça backup da pasta como de qualquer outra: seu app de backup, um disco externo ou uma cópia que você fizer.",
+     "mac": "Ou faça backup da pasta como de qualquer outra: Time Machine, um disco externo ou uma cópia que você fizer."
+    },
+    "pt-PT": {
+     "text": "Ou faça uma cópia de segurança da pasta como de qualquer outra: a sua aplicação de cópias de segurança, um disco externo ou uma cópia que fizer.",
+     "mac": "Ou faça uma cópia de segurança da pasta como de qualquer outra: Time Machine, um disco externo ou uma cópia que fizer."
+    }
+   }
+  },
+  {
+   "id": "settings.browser.heading",
+   "en": "Separate voices in browser meetings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "heading",
+   "boards": [
+    "P2PrefsCompanion-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1 (L-58): heading of Settings › Browser companion, above the companion card (the tab keeps settings.tab.browserCompanion).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Voci separate per le riunioni nel browser"
+    },
+    "fr": {
+     "text": "Voix séparées pour les réunions dans le navigateur"
+    },
+    "es": {
+     "text": "Voces separadas para las reuniones en el navegador"
+    },
+    "pt-BR": {
+     "text": "Vozes separadas para reuniões no navegador"
+    },
+    "pt-PT": {
+     "text": "Vozes separadas para reuniões no navegador"
+    }
+   }
+  },
+  {
+   "id": "settings.browser.body",
+   "en": "With the companion, Cassini records each person as their own audio track, so speaker names are right more often. Without it, the others share one.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "description",
+   "boards": [
+    "P2PrefsCompanion-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1 (L-58): description under settings.browser.heading, the same in both states; wraps normally. Replaces companion.bodyShort and the “Without it” section (companion.without.heading, companion.without.body).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Con l’estensione, Cassini registra ogni persona su una traccia audio separata, così i nomi delle voci sono giusti più spesso. Senza, gli altri condividono un’unica traccia."
+    },
+    "fr": {
+     "text": "Avec l’extension, Cassini enregistre chaque personne sur sa propre piste audio, donc les noms des intervenants sont plus souvent justes. Sans elle, les autres partagent une seule piste."
+    },
+    "es": {
+     "text": "Con la extensión, Cassini graba a cada persona en su propia pista de audio, así que los nombres de los hablantes aciertan más a menudo. Sin ella, los demás comparten una sola pista."
+    },
+    "pt-BR": {
+     "text": "Com a extensão, o Cassini grava cada pessoa na própria faixa de áudio, então os nomes dos locutores ficam corretos com mais frequência. Sem ela, os outros dividem uma única faixa."
+    },
+    "pt-PT": {
+     "text": "Com a extensão, o Cassini grava cada pessoa na sua própria faixa de áudio, por isso os nomes dos oradores ficam certos mais vezes. Sem ela, os outros partilham uma única faixa."
+    }
+   }
+  },
+  {
+   "id": "settings.browser.remove",
+   "en": "Remove…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "button",
+   "boards": [
+    "P2PrefsCompanion-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1 (L-58): new, not in the apps: button on the connected companion card (“Connected to Chrome”). Opens the browser’s Extensions page and shows settings.browser.remove.howTo; Cassini can’t remove the extension itself. Called Remove, not Disconnect. If the browser refuses to open its Extensions page from outside, use the D39.1 copy-address path (companion.local.copyExtensions, companion.local.extensionsPasteHint).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Rimuovi…"
+    },
+    "fr": {
+     "text": "Supprimer…"
+    },
+    "es": {
+     "text": "Quitar…"
+    },
+    "pt-BR": {
+     "text": "Remover…"
+    },
+    "pt-PT": {
+     "text": "Remover…"
+    }
+   }
+  },
+  {
+   "id": "settings.browser.remove.howTo",
+   "en": "On the Extensions page, find Cassini and click Remove.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2PrefsCompanion-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §1, PROVISIONAL: the one-line how-to shown when settings.browser.remove opens the browser’s Extensions page. Alex approved a one-line how-to but did not draw its words (P2PrefsCompanion-Desktop, connected strip); this wording is derived from companion.local.step1 and Chrome’s own Remove label, to be confirmed by Alex. Shown in Cassini, under the companion card.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Nella pagina Estensioni, trova Cassini e fai clic su Rimuovi."
+    },
+    "fr": {
+     "text": "Sur la page Extensions, trouvez Cassini et cliquez sur Supprimer."
+    },
+    "es": {
+     "text": "En la página Extensiones, busca Cassini y haz clic en Quitar."
+    },
+    "pt-BR": {
+     "text": "Na página Extensões, encontre o Cassini e clique em Remover."
+    },
+    "pt-PT": {
+     "text": "Na página Extensões, encontre o Cassini e clique em Remover."
+    }
+   }
+  },
+  {
+   "id": "about.reportProblem",
+   "en": "Report a problem",
+   "platforms": [
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "P2About-Desktop",
+    "P2About-Phones"
+   ],
+   "milestone": "Report a problem (L-65, D107 §2)",
+   "note": "D107 §2 (L-65): approved by Alex, 18 Nov; WAITING ON SILVIO for the cassini.talk page and its URL (D-1113). Do not build until the URL is decided; no URL is defined here. Opens that page in the browser; the app attaches nothing (no recordings, no logs). iOS and Android: a row after Help with about.reportProblem.subtitle. Mac: a link after Help, links on two lines (“Help · Report a problem · Privacy” / “Licences · Source code”). GNOME has no id: libadwaita’s built-in “Report an Issue” keeps its label and opens the same page.",
+   "status": "pending",
+   "l10n": {
+    "it": {
+     "text": "Segnala un problema"
+    },
+    "fr": {
+     "text": "Signaler un problème"
+    },
+    "es": {
+     "text": "Informar de un problema"
+    },
+    "pt-BR": {
+     "text": "Relatar um problema"
+    },
+    "pt-PT": {
+     "text": "Comunicar um problema"
+    }
+   }
+  },
+  {
+   "id": "about.reportProblem.subtitle",
+   "en": "Tell us what went wrong",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "caption",
+   "boards": [
+    "P2About-Phones"
+   ],
+   "milestone": "Report a problem (L-65, D107 §2)",
+   "note": "D107 §2 (L-65): subtitle of the about.reportProblem row on phones, no full stop (as about.help.subtitle). Waiting on Silvio for the page and URL (D-1113); do not build until it is decided.",
+   "status": "pending",
+   "l10n": {
+    "it": {
+     "text": "Raccontaci cosa non ha funzionato"
+    },
+    "fr": {
+     "text": "Dites-nous ce qui n’a pas marché"
+    },
+    "es": {
+     "text": "Cuéntanos qué ha fallado"
+    },
+    "pt-BR": {
+     "text": "Conte para a gente o que deu errado"
+    },
+    "pt-PT": {
+     "text": "Diga-nos o que correu mal"
+    }
+   }
+  },
+  {
+   "id": "shortcuts.group.general",
+   "en": "General",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "group-title",
+   "boards": [
+    "P2Shortcuts-GNOME"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §2 (L-66): first titled group of the GNOME keyboard shortcuts dialog (HARMONY §8): Record, recording from anywhere, Find, Import, Export, Preferences, Back to Library, Close window, Quit, Move to Trash, Delete permanently…, Help.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Generali"
+    },
+    "fr": {
+     "text": "Général"
+    },
+    "es": {
+     "text": "General"
+    },
+    "pt-BR": {
+     "text": "Geral"
+    },
+    "pt-PT": {
+     "text": "Geral"
+    }
+   }
+  },
+  {
+   "id": "shortcuts.group.listening",
+   "en": "Listening",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "group-title",
+   "boards": [
+    "P2Shortcuts-GNOME"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §2 (L-66): second titled group of the GNOME keyboard shortcuts dialog (HARMONY §8): Play or Pause, Back and Forward 10 seconds, next/previous turn, next/previous speaker, Play this turn, Stop listening. Same keys as listen.* / shortcuts.*.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Ascolto"
+    },
+    "fr": {
+     "text": "Écoute"
+    },
+    "es": {
+     "text": "Escucha"
+    },
+    "pt-BR": {
+     "text": "Ouvir"
+    },
+    "pt-PT": {
+     "text": "Ouvir"
+    }
+   }
+  },
+  {
+   "id": "test.pill.notAllowed",
+   "en": "Not allowed",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §4 (amends D104 §2): strip 6b, a refused source in Test recording. The refused row’s pill, error tint with the alert icon (STATUS-BADGES), in place of the live level or result. The line under the title says which source (test.refused.mic, test.refused.sound) with test.refused.action.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Non consentito"
+    },
+    "fr": {
+     "text": "Non autorisé"
+    },
+    "es": {
+     "text": "No permitido"
+    },
+    "pt-BR": {
+     "text": "Não permitido"
+    },
+    "pt-PT": {
+     "text": "Não permitido"
+    }
+   }
+  },
+  {
+   "id": "test.refused.mic",
+   "en": "Your microphone isn’t allowed.",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §4 (amends D104 §2): strip 6b, the line under the Test recording title when the microphone is refused, followed by test.refused.action. Replaces details.sources.refused.* in this dialog (the meeting details keep them).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "L’accesso al microfono non è consentito."
+    },
+    "fr": {
+     "text": "Votre microphone n’est pas autorisé."
+    },
+    "es": {
+     "text": "No se permite el acceso a tu micrófono."
+    },
+    "pt-BR": {
+     "text": "O acesso ao microfone não está permitido."
+    },
+    "pt-PT": {
+     "text": "O acesso ao microfone não está permitido."
+    }
+   }
+  },
+  {
+   "id": "test.refused.sound",
+   "en": "This computer’s sound isn’t allowed.",
+   "platforms": [
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §4: the same line as test.refused.mic when macOS refuses Screen & System Audio Recording. Not drawn: derived from strip 6b (“the line under the title says which”). GNOME asks nothing for computer sound.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "L’accesso all’audio di questo computer non è consentito."
+    },
+    "fr": {
+     "text": "Le son de cet ordinateur n’est pas autorisé."
+    },
+    "es": {
+     "text": "No se permite el acceso al sonido de este equipo."
+    },
+    "pt-BR": {
+     "text": "O acesso ao som deste computador não está permitido."
+    },
+    "pt-PT": {
+     "text": "O acesso ao som deste computador não está permitido."
+    }
+   }
+  },
+  {
+   "id": "test.refused.action",
+   "en": "Open Settings",
+   "mac": "Open System Settings",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "link",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §4: strip 6b, the link after test.refused.mic / test.refused.sound. Opens the system’s privacy settings: GNOME Settings (“Open Settings”), macOS System Settings (“Open System Settings”, mac). GLOSSARY: the OS settings app, not Cassini’s Preferences.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Apri Impostazioni",
+     "mac": "Apri Impostazioni di Sistema"
+    },
+    "fr": {
+     "text": "Ouvrir Paramètres",
+     "mac": "Ouvrir Réglages Système"
+    },
+    "es": {
+     "text": "Abrir Configuración",
+     "mac": "Abrir Ajustes del Sistema"
+    },
+    "pt-BR": {
+     "text": "Abrir Configurações",
+     "mac": "Abrir Ajustes do Sistema"
+    },
+    "pt-PT": {
+     "text": "Abrir Definições",
+     "mac": "Abrir Definições do Sistema"
+    }
+   }
+  },
+  {
+   "id": "test.pill.couldNotStart",
+   "en": "Couldn’t start",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "status",
+   "boards": [
+    "P2RecordFirst-Desktop"
+   ],
+   "milestone": "Phase 2 desktop Settings (D107)",
+   "note": "D107 §4: pill for a source that couldn’t start, “the same pattern” as test.pill.notAllowed (P2Note-RecordFirst, Alex 17 Nov). Named in the notes board, not drawn; its line under the title is not given, so the apps keep details.sources.refused.deviceUnavailable there until it is drawn.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Avvio non riuscito"
+    },
+    "fr": {
+     "text": "Démarrage impossible"
+    },
+    "es": {
+     "text": "No se pudo iniciar"
+    },
+    "pt-BR": {
+     "text": "Não foi possível iniciar"
+    },
+    "pt-PT": {
+     "text": "Não foi possível iniciar"
     }
    }
   }

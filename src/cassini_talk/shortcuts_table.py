@@ -2,7 +2,7 @@
 """L-66: catalog titles for the Keyboard shortcuts dialog, in HARMONY section 8 order.
 
 The rows and accelerators live in shortcuts-dialog.ui; this maps each item id
-to its shared-catalog title. ``None`` marks a row whose title is missing from
+to its shared-catalog title, and GROUPS gives the two titled groups (D107 §2). ``None`` marks a row whose title is missing from
 the cassini-ux catalog (flagged on D-1046), so it keeps the gettext title.
 """
 
@@ -30,3 +30,28 @@ TITLES = {
 
 # Ctrl+F is one row: Find in this meeting when a meeting is open, sidebar search otherwise (L-44).
 SUBTITLES = {"find": "search.field.placeholder"}
+
+# D107 §2 (HARMONY §8): two titled groups, each in table order. Same rows and keys as TITLES.
+GROUPS = {
+    "general": (
+        "shortcuts.group.general",
+        (
+            "record",
+            "record_anywhere",
+            "find",
+            "import",
+            "export",
+            "preferences",
+            "back_library",
+            "close_window",
+            "quit",
+            "move_to_trash",
+            "delete_permanently",
+            "help",
+        ),
+    ),
+    "listening": (
+        "shortcuts.group.listening",
+        ("play_pause", "skip_back", "skip_forward", "listen_turns", "listen_speakers", "play_turn", "listen_stop"),
+    ),
+}

@@ -659,17 +659,13 @@ def main():
     for appid in appids:
         flatpak = appid.endswith(".Devel")
         prefix = ["flatpak", "run", "--user", "--command=gsettings", appid] if flatpak else []
-        subprocess.run(
-            [
-                *prefix,
-                *([] if flatpak else ["gsettings"]),
-                "set",
-                "io.codemyriad.CassiniTalk",
-                "skip-record-first",
-                "true",
-            ],
-            check=True,
-        )
+        # D107 §1: Preferences greys automatic recording until the browser companion has been set
+        # up, so this profile has connected it before.
+        for key in ("skip-record-first", "browser-ever-connected"):
+            subprocess.run(
+                [*prefix, *([] if flatpak else ["gsettings"]), "set", "io.codemyriad.CassiniTalk", key, "true"],
+                check=True,
+            )
         # Explicit pre-consent isolates the Background Apps journey from the desktop
         # permission prompt. The real RequestBackground still runs in the app; its
         # denial/late-response behavior is covered by the private-bus GTK test.

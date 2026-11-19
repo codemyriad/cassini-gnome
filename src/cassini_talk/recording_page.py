@@ -2,6 +2,7 @@
 """Live recording controls and app-owned title edits."""
 
 import logging
+import threading
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
@@ -349,12 +350,16 @@ class RecordingPage(Adw.NavigationPage):
 
     def _check_sound(self, *_):
         # The desktop owns its sound preferences. No change to devices by Cassini.
-        try:
-            Gio.AppInfo.create_from_commandline("gnome-control-center sound", None, Gio.AppInfoCreateFlags.NONE).launch(
-                [], None
-            )
-        except GLib.Error as error:
-            logging.getLogger(__name__).warning("Could not open desktop sound settings: %s", error)
+        # On a worker: the launch, through the Flatpak host bridge in the sandbox, waits for an early exit.
+        def work():
+            from . import desktop_settings
+
+            try:
+                desktop_settings.open_panel("sound")
+            except Exception as error:
+                logging.getLogger(__name__).warning("Could not open desktop sound settings: %s", error)
+
+        threading.Thread(target=work, name="cassini-open-sound", daemon=True).start()
 
     def _title_changed(self, *_):
         if self._updating_title:

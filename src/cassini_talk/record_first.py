@@ -73,15 +73,23 @@ class RecordFirst(Adw.Dialog):
                 self.test_button.connect("clicked", lambda *_: self.app.open_test_recording(self))
                 row.append(self.test_button)
             content.append(row)
-        # D104 §1 (GNOME): "Don't show again" on its own line just above the buttons.
+        # D107 §4 (amends D104 §1): "Don't show again" at the start of the button row, as on Mac;
+        # Not now and Start recording at its end.
+        self.button_row = Gtk.Box(spacing=12)
+        # A wrapping label: a longer translation shares the row with both buttons.
         self.dont_show = Gtk.CheckButton(
-            label=text("recordFirst.dontShowAgain"), active=self.settings.get_boolean("skip-record-first")
+            child=Gtk.Label(label=text("recordFirst.dontShowAgain"), wrap=True, xalign=0),
+            active=self.settings.get_boolean("skip-record-first"),
+            hexpand=True,
+            halign=Gtk.Align.START,
+            valign=Gtk.Align.CENTER,
         )
+        self.dont_show.update_property([Gtk.AccessibleProperty.LABEL], [text("recordFirst.dontShowAgain")])
         self.dont_show.connect(
             "toggled", lambda button: self.settings.set_boolean("skip-record-first", button.get_active())
         )
-        content.append(self.dont_show)
-        buttons = Gtk.Box(spacing=10, homogeneous=True)
+        self.button_row.append(self.dont_show)
+        buttons = Gtk.Box(spacing=10, halign=Gtk.Align.END)  # Hugging their labels, beside the check.
         later = Gtk.Button(label=text("common.notNow"))
         later.connect("clicked", lambda *_: self.close())
         self.start_button = Gtk.Button(
@@ -91,7 +99,8 @@ class RecordFirst(Adw.Dialog):
         self.start_button.connect("clicked", self._start)
         buttons.append(later)
         buttons.append(self.start_button)
-        content.append(buttons)
+        self.button_row.append(buttons)
+        content.append(self.button_row)
         self.set_default_widget(self.start_button)
         self.refresh_permissions()
         self.refresh_test()

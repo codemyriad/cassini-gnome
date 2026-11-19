@@ -6,17 +6,20 @@ under it the red Recording pill with the time while testing, then "Play it
 back…" on the result. Two rows (prompt over source) show a live level and
 "Waiting for sound" / "Hearing…" while testing, then a Working or No sound
 heard pill. Play back, Test again and Done stay in place; while testing the
-first two are greyed and Cancel takes Done's place. Closing it (Done, Cancel,
+first two are greyed and Cancel takes Done's place. A refused source (D107 §4,
+strip 6b) shows a Not allowed (or Couldn't start) pill on its row, and the line
+under the title says which, with Open Settings for a refused microphone. Closing it (Done, Cancel,
 Escape, its parent closing, or a real Start discarding the test) deletes the
 test.
 """
 
 import logging
+import threading
 
 from gi.repository import Adw, GLib, Gtk
 
-from . import ux_formats
-from .sound_check import KINDS, WORKING, heard, pill_text, refusal_line
+from . import desktop_settings, ux_formats
+from .sound_check import KINDS, WORKING, heard, pill_text, refused_line
 from .status_badge import BadgeGlyph, StatusBadge
 from .strings import text
 
@@ -24,13 +27,14 @@ LOG = logging.getLogger(__name__)
 STREAM_ICONS = {"microphone": "audio-input-microphone-symbolic", "system": "video-display-symbolic"}
 PROMPTS = {"microphone": "test.mic.prompt", "system": "test.sound.prompt"}
 SOURCES = {"microphone": "common.yourMicrophone", "system": "recordFirst.sound.title"}
-# D104 §2: "Hearing you" on the microphone; the computer sound's is provisional.
+# D104 §2: "Hearing you" on the microphone; D107 §3 settles the computer sound's "Hearing sound".
 HEARING = {"microphone": "test.live.hearing", "system": "test.live.hearingSound"}
 TICK_MS = 100
 
 
 class ResultPill(Gtk.Box):
-    """D104 §2 result pill: Working (success tint, tick) or No sound heard (error tint, alert)."""
+    """D104 §2 result pill: Working (success tint, tick); No sound heard, Not allowed or
+    Couldn't start (D107 §4) in the error tint with the alert icon."""
 
     def __init__(self):
         super().__init__(spacing=4, valign=Gtk.Align.CENTER, halign=Gtk.Align.END, css_classes=["badge", "test-pill"])
@@ -43,14 +47,14 @@ class ResultPill(Gtk.Box):
             self.append(child)
         self.state = None
 
-    def set_outcome(self, outcome):
+    def set_outcome(self, outcome, kind="microphone"):
         working = outcome.state == WORKING
         self.state = outcome.state
         self.tick.set_visible(working)
         self.alert.set_visible(not working)
         for name, on in (("test-pill-working", working), ("test-pill-silent", not working)):
             (self.add_css_class if on else self.remove_css_class)(name)
-        self.label.set_label(pill_text(outcome))
+        self.label.set_label(pill_text(outcome, kind))
 
 
 class StreamRow(Gtk.ListBoxRow):
@@ -98,25 +102,35 @@ class StreamRow(Gtk.ListBoxRow):
         self.level.set_value(max(0.0, min(1.0, level)))
         self.status.set_label(text(HEARING[self.kind] if self.heard else "test.live.waiting"))
         self.stack.set_visible_child_name("live")
-        self.source.set_label(text(SOURCES[self.kind]))
-        self._refused(False)
         self.update_property([Gtk.AccessibleProperty.LABEL], [text(PROMPTS[self.kind])])
-
-    def _refused(self, refused):
-        (self.source.add_css_class if refused else self.source.remove_css_class)("error")
-        (self.source.remove_css_class if refused else self.source.add_css_class)("dim-label")
 
     def show_result(self, outcome):
         self.heard = False
-        self.pill.set_outcome(outcome)
+        self.pill.set_outcome(outcome, self.kind)
         self.stack.set_visible_child_name("pill")
-        refused = refusal_line(self.kind, outcome)
-        # A refused stream keeps its D58 line (built, not drawn) under the prompt.
-        self.source.set_label(refused or text(SOURCES[self.kind]))
-        self._refused(bool(refused))
-        # Read as two lines, never a composed sentence: the source (or why it failed), then the pill.
-        self.line = (refused or text(SOURCES[self.kind])) + "\n" + self.pill.label.get_label()
+        # D107 §4: the row keeps its source; why it was refused is the line under the title.
+        # Read as two lines, never a composed sentence: the source, then the pill.
+        self.line = text(SOURCES[self.kind]) + "\n" + self.pill.label.get_label()
         self.update_property([Gtk.AccessibleProperty.LABEL], [self.line])
+
+
+def open_privacy_settings(done):
+    """D107 §4: Open Settings opens the desktop's privacy settings; Cassini changes nothing there.
+
+    The launch (through the Flatpak host bridge in the sandbox) waits briefly for
+    an early exit, so it runs on a worker; done(ok) runs on the main loop.
+    """
+
+    def work():
+        try:
+            desktop_settings.open_panel("privacy")
+            ok = True
+        except Exception as error:  # OSError, or a missing host bridge: never kill the worker silently.
+            LOG.warning("Could not open the desktop privacy settings: %s", error)
+            ok = False
+        GLib.idle_add(done, ok)
+
+    threading.Thread(target=work, name="cassini-open-privacy", daemon=True).start()
 
 
 class SoundCheckDialog(Adw.Dialog):
@@ -129,6 +143,7 @@ class SoundCheckDialog(Adw.Dialog):
         self._shown = None
         self._ticker = 0
         self.lines = []
+        self.settings_failed = False
         toolbar = Adw.ToolbarView()
         self.set_child(toolbar)
         toolbar.add_top_bar(Adw.HeaderBar())  # D104 §2: plain, the title only.
@@ -143,6 +158,16 @@ class SoundCheckDialog(Adw.Dialog):
             label=text("test.note"), wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"]
         )
         self.subline.add_named(self.note, "note")
+        # D107 §4 (strip 6b): "Your microphone isn't allowed." then Open Settings.
+        refused = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+        self.refused = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"])
+        refused.append(self.refused)
+        self.open_settings = Gtk.Button(
+            label=text("test.refused.action"), css_classes=["link"], valign=Gtk.Align.CENTER
+        )
+        self.open_settings.connect("clicked", self._open_settings)
+        refused.append(self.open_settings)
+        self.subline.add_named(refused, "refused")
         self.subline.add_named(Gtk.Box(), "none")
         content.append(self.subline)
         self.rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
@@ -212,11 +237,17 @@ class SoundCheckDialog(Adw.Dialog):
             return
         playable = bool(check.tracks()[0])
         self.play_button.set_sensitive(playable)
-        self.subline.set_visible_child_name("note" if playable else "none")
+        refused = refused_line(check.outcomes)
+        if refused:
+            self.refused.set_label(refused[0])
+            self.open_settings.set_visible(refused[1])
+        self.subline.set_visible_child_name("refused" if refused else "note" if playable else "none")
         if check.outcomes is self._shown:
             return
         self._shown = check.outcomes
         self.lines = []
+        if refused:
+            self.lines.append(refused[0])
         for kind in KINDS:
             row = self.stream_rows[kind]
             row.show_result(check.outcomes[kind])
@@ -224,6 +255,18 @@ class SoundCheckDialog(Adw.Dialog):
         self.done_button.grab_focus()
         # Screen readers read the result when it replaces the live levels.
         self.announce("\n".join(self.lines), Gtk.AccessibleAnnouncementPriority.MEDIUM)
+
+    def _open_settings(self, *_):
+        # Insensitive while Settings opens: one launch per click, no repeats.
+        self.open_settings.set_sensitive(False)
+        open_privacy_settings(self._settings_opened)
+
+    def _settings_opened(self, ok):
+        # A failed launch leaves Open Settings greyed: clicking it again would do nothing.
+        self.settings_failed = not ok
+        if not self.closed:
+            self.open_settings.set_sensitive(ok)
+        return False
 
     def _tick(self):
         if not self.running or self.closed:

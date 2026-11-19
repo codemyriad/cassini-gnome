@@ -398,6 +398,21 @@ popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):act
 .suggestion-card > label, .suggestion-card button.flat { color: var(--app-accent-ink); }
 .library-sidebar .parakeet-suggestion { margin: 0 10px 8px; }
 .cassini-preferences .parakeet-suggestion { margin-top: 12px; }
+/* D107 §1 (L-58): sections 26 px apart, headings 12 px from their card (6 px box spacing + 6 px). */
+.cassini-preferences preferencespage > scrolledwindow > viewport > clamp > box { border-spacing: 26px; }
+.cassini-preferences preferencesgroup > box > box.header { margin-bottom: 6px; }
+/* Information under its card; the privacy footnote at the foot of the page. */
+.cassini-preferences label.preferences-caption { margin: 2px 12px 0; font-size: 13px; }
+.cassini-preferences .preferences-footnote { margin-top: 10px; }
+/* Multi-line rows: switches, radios, "Built in" and buttons on the first line. */
+.cassini-preferences button.first-line, .cassini-preferences switch.first-line { margin-top: 2px; }
+.cassini-preferences checkbutton.first-line { margin-top: 0; padding-top: 0; }
+.cassini-preferences label.first-line { margin-top: 3px; }
+/* The companion's status: green when connected, red when not set up. */
+.status-dot { min-width: 8px; min-height: 8px; border-radius: 50%; }
+.status-dot-connected { background: var(--cx-success); }
+.status-dot-off { background: var(--cx-error); }
+.cassini-preferences button.preferences-link { padding: 0 2px; min-height: 0; }
 .meeting-player { min-height: 44px; padding: 0 14px 0 6px; border-radius: 12px; border: 1px solid var(--cx-line-soft); background: var(--cx-raised); box-shadow: 0 10px 30px -12px var(--cx-shadow), 0 2px 6px -2px var(--cx-shadow); }
 .meeting-player button.suggested-action { border-radius: 50%; min-width: 32px; min-height: 32px; padding: 0; background: var(--cx-accent-strong); color: var(--cx-on-accent); }
 .meeting-player scale { padding: 0; }

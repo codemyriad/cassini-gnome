@@ -24,30 +24,20 @@ D103_IDS = (
     "settings.recording.group.browser",
     "settings.recording.group.browser.subtitle",
     "settings.recording.autoRecord.subtitleShort",
-    "settings.recording.test.description",
     "settings.recording.test.button",
-    "settings.transcription.privacyLine",
     "models.keepTranscript",
     "models.whistle.description.short",
     "models.parakeetUltra.description.short",
     "models.builtIn",
     "models.statusWithSize",
     "models.tellSpeakersApart.description.short",
-    "models.recogniseVoices.description.short",
     "settings.library.folder.descriptionShort",
     "settings.library.stats",
     "library.meetingCount",
     "settings.library.group.keepingCopy",
-    "settings.library.backUp.title",
-    "settings.library.backUp.subtitle",
     "settings.library.zip.subtitle",
-    "settings.library.group.deleted",
-    "settings.library.deleted.title",
-    "companion.bodyShort",
     "companion.worksWith",
     "companion.addTo",
-    "companion.without.heading",
-    "companion.without.body",
     "about.tagline.computer",
     "about.help",
     "firstRun.shortcutLine",
@@ -88,6 +78,22 @@ SUPERSEDED = (
     "firstRun.howTo",
     "firstRun.libraryLocation",
     "firstRun.hero.subtitle",
+    # D107 §1 (L-58): replaced in desktop Preferences.
+    "settings.recording.test.description",
+    "settings.transcription.privacyLine",
+    "settings.transcription.savedVoices.summary",
+    "settings.transcription.savedVoices.summary.none",
+    "settings.library.backUp.title",
+    "settings.library.backUp.subtitle",
+    "settings.library.group.deleted",
+    "settings.library.deleted.title",
+    "companion.bodyShort",
+    "companion.without.heading",
+    "companion.without.body",
+    "models.recogniseVoices.description.short",
+    # D107 §4: Test recording no longer uses the meeting details' refusal lines, but for Couldn't start.
+    "details.sources.refused.permissionDenied",
+    "details.sources.refused.startRejected",
 )
 # D104 (L-61 revised, Test recording): Before you record's Test row and the one-screen test.
 D104_SOURCES = ("record_first.py", "sound_check_dialog.py", "sound_check.py")
@@ -109,6 +115,37 @@ D104_IDS = (
     "common.done",
     "common.cancel",
 )
+
+# D107 (L-58, L-66, Test recording): desktop Preferences, grouped shortcuts and a refused source.
+D107_MILESTONE = "Phase 2 desktop Settings (D107)"
+D107_SOURCES = ("settings_dialog.py", "sound_check_dialog.py", "sound_check.py", "shortcuts_table.py")
+# The milestone's ids GNOME ships, plus the ids D107 changed in place or brought to desktop.
+D107_IDS = (
+    "settings.recording.browser.setUp",
+    "settings.recording.test.descriptionShort",
+    "settings.transcription.footnote",
+    "settings.transcription.savedVoices.summary.madeOn",
+    "settings.transcription.savedVoices.summary.madeOn.none",
+    "settings.library.deleted.caption",
+    "settings.library.zip.title",
+    "settings.library.backUp.caption",
+    "settings.browser.heading",
+    "settings.browser.body",
+    "settings.browser.remove",
+    "settings.browser.remove.howTo",
+    "shortcuts.group.general",
+    "shortcuts.group.listening",
+    "test.pill.notAllowed",
+    "test.refused.mic",
+    "test.refused.action",
+    "test.pill.couldNotStart",
+    "settings.recording.group.browser.subtitle",
+    "settings.phone.speakers.recognise.subtitle",
+)
+# Not GNOME's: Mac's computer-sound refusal (GNOME asks nothing for it); Updates is Mac only.
+D107_NOT_GNOME = ("test.refused.sound", "settings.updates.upToDate", "settings.updates.privacy")
+# D107 §2: "Report a problem" waits on D-1113 and is never built yet.
+D107_PENDING = ("about.reportProblem", "about.reportProblem.subtitle")
 
 # D105 (L-69, L-70, L-71): GNOME's first run, and the ids whose English became "transcribe".
 D105_IDS = (
@@ -204,14 +241,38 @@ def test_the_process_is_transcribe_in_english_l69():
     assert leftovers == [], leftovers
 
 
+def test_every_d107_id_is_used_and_catalogued_in_all_six_languages():
+    entries = {e["id"]: e for e in json.loads((ROOT / "src/cassini_talk/strings.json").read_text())["entries"]}
+    sources = {name: (ROOT / "src/cassini_talk" / name).read_text() for name in D107_SOURCES}
+    used = {m for source in sources.values() for m in re.findall(r'"([a-zA-Z]+(?:\.[a-zA-Z0-9]+)+)"', source)}
+    milestone = {i for i, e in entries.items() if e.get("milestone") == D107_MILESTONE}
+    assert milestone - set(D107_IDS) == {"test.refused.sound"}, sorted(milestone - set(D107_IDS))
+    for identifier in D107_IDS:
+        assert identifier in used, identifier
+        entry = entries[identifier]
+        assert "gnome" in entry["platforms"], identifier
+        for lang in ("it", "fr", "es", "pt-BR", "pt-PT"):
+            localized = entry["l10n"][lang]
+            assert localized.get("text", "").strip() or localized.get("plural"), (identifier, lang)
+    every = "".join(path.read_text() for path in (ROOT / "src/cassini_talk").rglob("*.py"))
+    for identifier in (*D107_NOT_GNOME, *D107_PENDING):
+        assert f'"{identifier}"' not in every, identifier
+    for identifier in D107_PENDING:
+        assert entries[identifier]["status"] == "pending", identifier
+    # The provisional how-to is said in one place only.
+    assert every.count('"settings.browser.remove.howTo"') == 1
+
+
 def test_superseded_copy_is_gone_from_these_screens():
     used = used_ids()
     assert not used & set(SUPERSEDED), sorted(used & set(SUPERSEDED))
 
 
 def test_gnome_keeps_its_in_app_trash_words_in_preferences():
-    # D103 §7: GNOME kept its in-app Trash under D101 §3, so the row body is help.trash.body.
-    assert '"help.trash.body"' in SOURCES["settings_dialog.py"]
+    # D107 §1: GNOME keeps its in-app Trash (D101 §3); Preferences says so in a caption under the folder,
+    # and no longer shows help.trash.body (Help keeps it).
+    assert '"settings.library.deleted.caption"' in SOURCES["settings_dialog.py"]
+    assert '"help.trash.body"' not in SOURCES["settings_dialog.py"]
 
 
 def test_about_links():

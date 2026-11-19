@@ -15,7 +15,7 @@ KEY_RE = re.compile(r"^[a-z0-9][a-z0-9.-]*$")
 CORE_ORDER = (
     "library", "first-run", "recording", "record-first", "meeting", "received",
     "search", "export", "settings-recording", "settings-transcription", "settings-library", "settings-companion",
-    "speakers", "saved-voices", "saved-voices-empty", "voices-question",
+    "speakers", "saved-voices", "saved-voices-empty", "voices-question", "shortcuts",
 )  # fmt: skip
 BOARDS = frozenset(CORE_ORDER)
 GALLERY_BOARDS = {
@@ -24,7 +24,7 @@ GALLERY_BOARDS = {
     "background": "RecordHidden", "meeting": "Meeting", "speakers": "Speakers", "export": "Export",
     "settings-recording": "Settings", "settings-transcription": "Settings", "settings-library": "Settings",
     "settings-companion": "Settings", "saved-voices": "SavedVoices", "saved-voices-empty": "P2SavedVoices-Desktop",
-    "voices-question": "P2Voices-Desktop",
+    "voices-question": "P2Voices-Desktop", "shortcuts": "P2Shortcuts-GNOME",
     "companion-setup-pending": "CompanionSetup", "trash-undo": "Trash",
 }  # fmt: skip
 FLOW_SOURCES = (

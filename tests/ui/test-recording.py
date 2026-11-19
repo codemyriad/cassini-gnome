@@ -24,10 +24,12 @@ ACKS = OUTPUT.with_suffix(".ack")
 PRGNAME = "cassini-test-recording-test"
 WORKING = ["Your microphone\nWorking", "This computer’s sound\nWorking"]
 SILENT = ["Your microphone\nWorking", "This computer’s sound\nNo sound heard"]
+# D107 §4: a refused row keeps its source and shows its pill; why is the line under the title.
 REFUSED = [
-    "Your microphone: couldn’t be started.\nNo sound heard",
-    "This computer’s sound: couldn’t be started.\nNo sound heard",
+    "Your microphone\nCouldn’t start",
+    "This computer’s sound\nCouldn’t start",
 ]
+NOT_ALLOWED = ["Your microphone\nNot allowed", "This computer’s sound\nWorking"]
 
 
 def child():
@@ -53,7 +55,10 @@ def child():
     from cassini_talk.capture_guard import recorder_busy
     from cassini_talk.folder_player import FolderPlayer
     from cassini_talk.main import CassiniApplication
-    from cassini_talk.sound_check import folders_root
+    from cassini_talk.refusals import entry
+    from cassini_talk.sound_check import REFUSED as REFUSED_STATE
+    from cassini_talk.sound_check import WORKING as WORKING_STATE
+    from cassini_talk.sound_check import Outcome, folders_root
     from cassini_talk.sound_check_dialog import SoundCheckDialog
 
     def until(check, seconds=40):
@@ -156,7 +161,7 @@ def child():
         app.on_preferences()
         settings = app.settings_dialog
         assert settings.test_row.get_title() == "Test recording"
-        assert settings.test_row.get_description().startswith("Records 8 seconds of your microphone")
+        assert settings.test_row.get_description() == "Records 8 seconds, plays it back, then deletes it."
         assert settings.test_button.get_label() == "Test"
         until(lambda: settings.test_row.get_sensitive() and settings.test_button.get_sensitive())
         record_event("settings")
@@ -283,12 +288,59 @@ def child():
         until(lambda: consent.test_button.get_sensitive())
         shots("first-run")
         record_event("first-run")
-        assert result() == REFUSED
+        assert result() == ["Your microphone: couldn’t be started.", *REFUSED]
         dialog, folder = app.sound_check_dialog, check.folder
         assert not dialog.play_button.get_sensitive(), "Nothing to play back"
-        assert dialog.subline.get_visible_child_name() == "none"
-        assert {row.pill.label.get_label() for row in dialog.stream_rows.values()} == {"No sound heard"}
+        # D107 §4: the line under the title says which source; Open Settings only for "Not allowed".
+        assert dialog.subline.get_visible_child_name() == "refused"
+        assert dialog.refused.get_label() == "Your microphone: couldn’t be started."
+        assert not dialog.open_settings.get_visible()
+        assert {row.pill.label.get_label() for row in dialog.stream_rows.values()} == {"Couldn’t start"}
         shots("refused")
+        # Strip 6b: the microphone refused for permission, the computer's sound working.
+        check.outcomes = {
+            "microphone": Outcome(REFUSED_STATE, entry(0, "me", "permissionDenied")),
+            "system": Outcome(WORKING_STATE),
+        }
+        dialog._render()
+        assert dialog.lines == [
+            "Your microphone isn’t allowed.",
+            *NOT_ALLOWED,
+        ]
+        assert dialog.subline.get_visible_child_name() == "refused"
+        assert dialog.refused.get_label() == "Your microphone isn’t allowed."
+        assert dialog.open_settings.get_visible() and dialog.open_settings.get_label() == "Open Settings"
+        shots("not-allowed")
+        # Clicking Open Settings in Flatpak sends gnome-control-center to the host (flatpak-spawn --host).
+        from cassini_talk import desktop_settings
+
+        bridge = Path(tempfile.mkdtemp(prefix="cassini-flatpak-spawn-"))
+        spawn, spawned = bridge / "flatpak-spawn", bridge / "argv"
+        spawn.write_text(
+            '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$0.argv.tmp"\nmv "$0.argv.tmp" "${0%/*}/argv"\nexit "$(cat "${0%/*}/status")"\n'
+        )
+        spawn.chmod(spawn.stat().st_mode | stat.S_IXUSR)
+        (bridge / "status").write_text("0")
+        flatpak, path = desktop_settings.in_flatpak, os.environ["PATH"]
+        desktop_settings.in_flatpak = lambda: True
+        os.environ["PATH"] = f"{bridge}:{path}"
+        try:
+            dialog.open_settings.emit("clicked")
+            assert not dialog.open_settings.get_sensitive(), "One launch per click"
+            until(lambda: spawned.exists() and dialog.open_settings.get_sensitive())
+            argv = spawned.read_text().splitlines()
+            assert argv[:2] == ["--host", "--directory=/"] and "--watch-bus" not in argv, argv
+            assert argv[-2:] == ["gnome-control-center", "privacy"], argv
+            assert not dialog.settings_failed
+            # A failed launch on the host greys Open Settings.
+            spawned.unlink()
+            (bridge / "status").write_text("1")
+            dialog.open_settings.emit("clicked")
+            until(lambda: spawned.exists() and dialog.settings_failed)
+            assert not dialog.open_settings.get_sensitive()
+        finally:
+            desktop_settings.in_flatpak, os.environ["PATH"] = flatpak, path
+            shutil.rmtree(bridge)
         record_event("refused")
         until(lambda: dialog.closed and not folder.exists() and not check.busy)
         assert app.record_first is consent
@@ -424,7 +476,10 @@ def parent():
             wait("first-run", 60)
             activate("Test")
             wait("refused", 30)
-            lines(REFUSED)
+            # Strip 6b, read through AT-SPI: the refused row's pill and Open Settings by name.
+            lines(NOT_ALLOWED)
+            # Greyed: the child's last click failed to open Settings on the host.
+            button("Open Settings", sensitive=False)
             button("Play back", sensitive=False)
             activate("Done")
             wait("finished", 60)

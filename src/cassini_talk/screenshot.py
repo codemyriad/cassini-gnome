@@ -48,6 +48,7 @@ def capture(application_id, version, profile):
     opened_search = False
     selected_search = False
     opened_settings = False
+    opened_shortcuts = False
     seeded_voices = False
     board = os.environ.get("CASSINI_SCREENSHOT_BOARD", "")
     while time.monotonic() < deadline:
@@ -149,6 +150,10 @@ def capture(application_id, version, profile):
             window.search_page.entry.set_text("budget")
             window.search_page.choose_speaker("Marta")
             opened_search = True
+            settled_frame = None
+        if board == "shortcuts" and not window._pending and not opened_shortcuts:
+            app.on_shortcuts()  # D107 §2: the two titled groups, General and Listening.
+            opened_shortcuts = True
             settled_frame = None
         if board.startswith("settings-") and not window._pending and not opened_settings:
             if board == "settings-transcription" and app.diarization_models:
