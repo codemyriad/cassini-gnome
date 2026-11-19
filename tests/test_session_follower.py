@@ -4494,3 +4494,62 @@ def test_stop_queued_meeting_cancellation_does_not_call_path_resolve_on_gtk_thre
         queue.executor.shutdown(wait=True)
         if getattr(queue, "_close_thread", None) is not None:
             queue._close_thread.join(timeout=5.0)
+
+
+def test_progress_for_canonical_path_does_not_call_path_resolve_on_gtk_thread(tmp_path, monkeypatch):
+    real_lib = tmp_path / "real-lib"
+    real_lib.mkdir()
+    link_lib = tmp_path / "link-lib"
+    link_lib.symlink_to(real_lib)
+    bundle = FakeBundle.create(tmp_path)
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=link_lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(b, engine="whistle", timeout=timeout),
+        mode=TranscriptionMode.AFTER_STOP,
+    )
+    session = RecordingSession(link_lib, "Symlinked progress lookup", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(0.5, 440.0, 0.3)]), 0.0)
+    session.finish()
+    canonical_dir = session.directory.resolve()
+
+    prep_entered = threading.Event()
+    release_prep = threading.Event()
+    orig_mark_queued = queue._mark_queued
+
+    def gated_mark_queued(directory, resume):
+        prep_entered.set()
+        durable(release_prep, "Preparer gate was not released")
+        return orig_mark_queued(directory, resume)
+
+    monkeypatch.setattr(queue, "_mark_queued", gated_mark_queued)
+
+    gtk_tid = threading.get_ident()
+    orig_resolve = Path.resolve
+    gtk_resolves = []
+
+    def poisoned_gtk_resolve(self, *args, **kwargs):
+        if threading.get_ident() == gtk_tid:
+            gtk_resolves.append(str(self))
+        return orig_resolve(self, *args, **kwargs)
+
+    try:
+        assert queue.enqueue(session.directory)
+        durable(prep_entered, "Preparer did not enter _mark_queued")
+
+        monkeypatch.setattr(Path, "resolve", poisoned_gtk_resolve)
+        # Canonical lookup while preparer is held must NOT call Path.resolve() on GTK.
+        assert queue.progress_for(canonical_dir) is None
+        # Lexical lookup still hits immediately without Path.resolve().
+        assert queue.progress_for(session.directory) is not None
+        assert not gtk_resolves, f"Path.resolve() called on GTK thread in progress_for(): {gtk_resolves}"
+    finally:
+        monkeypatch.setattr(Path, "resolve", orig_resolve)
+        release_prep.set()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)

@@ -1078,7 +1078,15 @@ class TranscriptionQueue:
         abs_path = path.absolute()
         if (found := self._progress.get(abs_path)) is not None:
             return found
-        return self._progress.get(self._progress_key(path))
+        with self.lock:
+            for token, aliases in self._job_aliases.items():
+                if abs_path == token or abs_path in aliases:
+                    if (found := self._progress.get(token)) is not None:
+                        return found
+                    for alias in aliases:
+                        if (found := self._progress.get(alias)) is not None:
+                            return found
+        return None
 
     def _set_progress(
         self,
