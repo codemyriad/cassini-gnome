@@ -1419,7 +1419,7 @@ class CassiniApplication(Adw.Application):
 
         return resolve_transcription_mode(self)
 
-    def _sync_live_follower(self):
+    def _sync_live_follower(self, *, saving=()):
         if (
             not getattr(self, "transcription_enabled", False)
             or getattr(self, "_quitting", False)
@@ -1437,7 +1437,16 @@ class CassiniApplication(Adw.Application):
             return
         live_dirs = self.live_recording_directories()
         if live_dirs:
-            self._ensure_transcriber().sync_recordings(live_dirs)
+            self._ensure_transcriber().sync_recordings(live_dirs, saving=saving)
+            return
+        transcriber = getattr(self, "transcriber", None)
+        if transcriber is not None and hasattr(transcriber, "sync_recordings"):
+            active_saving = list(saving)
+            for recorder in tuple(getattr(self, "native_captures", {}).values()):
+                session = getattr(recorder, "session", None)
+                if session is not None and getattr(session, "finished", False):
+                    active_saving.append(session.directory)
+            transcriber.sync_recordings([], saving=active_saving)
 
     def _on_publish_started(self, directory):
         if self._quitting or self._capture_exiting or not getattr(self, "transcription_enabled", False):
@@ -1817,11 +1826,13 @@ class CassiniApplication(Adw.Application):
             else CassiniApplication._effective_transcription_mode(self)
         )
         if mode is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
-            (
-                self._sync_live_follower()
-                if hasattr(self, "_sync_live_follower")
-                else CassiniApplication._sync_live_follower(self)
-            )
+            saving_dirs = [
+                m.directory for m in snapshot.meetings if m.lifecycle == "saving" and m.published_file is None
+            ]
+            if hasattr(self, "_sync_live_follower"):
+                self._sync_live_follower(saving=saving_dirs)
+            else:
+                CassiniApplication._sync_live_follower(self, saving=saving_dirs)
 
         for meeting in snapshot.meetings:
             managed = meeting.directory.parent.name == "sessions" and meeting.directory.parent.parent.name == ".cassini"
@@ -1874,6 +1885,9 @@ class CassiniApplication(Adw.Application):
                     self._last_native = None
         if self.comfort:
             self.comfort.discard_meeting(directory)
+        transcriber = getattr(self, "transcriber", None)
+        if transcriber is not None and hasattr(transcriber, "release_failed_publication"):
+            transcriber.release_failed_publication(directory)
         for window in self.get_windows():
             activity = getattr(window, "_activity_source", None)
             if activity is not None:

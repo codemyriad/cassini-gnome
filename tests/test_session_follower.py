@@ -1755,7 +1755,7 @@ def test_windowless_browser_recording_starts_live_follower(tmp_path, monkeypatch
     synced = []
 
     class StubTranscriber:
-        def sync_recordings(self, dirs):
+        def sync_recordings(self, dirs, *, saving=()):
             synced.append(list(dirs))
 
     transcriber = StubTranscriber()
@@ -1780,7 +1780,7 @@ def test_windowless_browser_recording_starts_live_follower(tmp_path, monkeypatch
     )
     app.live_recording_directories = lambda: CassiniApplication.live_recording_directories(app)
     app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
-    app._sync_live_follower = lambda: CassiniApplication._sync_live_follower(app)
+    app._sync_live_follower = lambda **kw: CassiniApplication._sync_live_follower(app, **kw)
 
     CassiniApplication._native_changed(app)
     assert synced == [[str(rec_dir)]]
@@ -1872,7 +1872,7 @@ def test_failed_publication_releases_tail_follower_and_does_not_preempt_new_reco
             write_down=lambda *_a, **_k: None,
         )
         app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
-        app._sync_live_follower = lambda: CassiniApplication._sync_live_follower(app)
+        app._sync_live_follower = lambda **kw: CassiniApplication._sync_live_follower(app, **kw)
 
         CassiniApplication.observe_library(app, SimpleNamespace(meetings=[failed_meeting], unavailable=False), {})
         assert queue._follow_directory == new_session.directory.resolve(), (
@@ -2131,3 +2131,186 @@ def test_journal_only_cache_is_cleaned_up_after_successful_transcription(tmp_pat
     finally:
         queue.close()
         queue.executor.shutdown(wait=True)
+
+
+# ---------------------------------------------------------------------------
+# 16. Review regressions (round 3): empty-live/symlink release, lock-free
+#     Popen cancel, hard-linked journal rejection, warm identity mismatch
+# ---------------------------------------------------------------------------
+
+
+def test_empty_live_recordings_and_symlinked_library_release_follower(tmp_path):
+    real_lib = tmp_path / "real-lib"
+    real_lib.mkdir()
+    link_lib = tmp_path / "link-lib"
+    link_lib.symlink_to(real_lib)
+
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=link_lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=20,
+    )
+    session = RecordingSession(link_lib, "Symlinked meeting", source="gnome")
+    try:
+        session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session.checkpoint()
+
+        # Follow via symlinked path; release via resolved path must still match and stop it!
+        assert queue.follow_recording(session.directory)
+        wait_on_queue(queue, lambda: queue._follow_client_model == "whistle", message="Follower did not start")
+        queue.release_failed_publication(session.directory.resolve())
+        wait_on_queue(queue, lambda: queue._follow_directory is None, message="Resolved path did not release symlinked")
+
+        # Re-attach: empty live list with active saving preserves follower; empty saving releases it.
+        assert queue.follow_recording(session.directory)
+        wait_on_queue(queue, lambda: queue._follow_client_model == "whistle", message="Follower did not restart")
+        queue.sync_recordings([], saving=[session.directory.resolve()])
+        assert queue._follow_directory is not None, "Active saving publication must not be released"
+        queue.sync_recordings([], saving=[])
+        wait_on_queue(
+            queue, lambda: queue._follow_directory is None, message="Empty live + empty saving did not release follower"
+        )
+    finally:
+        session.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+
+
+def test_preempt_and_stop_never_block_on_popen_in_start(tmp_path, monkeypatch):
+    import subprocess
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+
+    popen_entered = threading.Event()
+    release_popen = threading.Event()
+    killed = threading.Event()
+    waited = threading.Event()
+
+    class FakeProc:
+        def __init__(self):
+            self.pid = 999999
+            self.stdin = type("S", (), {"close": lambda self: None})()
+            self.stdout = type("S", (), {"close": lambda self: None})()
+            self._rc = None
+
+        def poll(self):
+            return self._rc
+
+        def kill(self):
+            self._rc = -9
+            killed.set()
+
+        def wait(self, timeout=None):
+            waited.set()
+            return self._rc
+
+    def gated_popen(*_args, **_kwargs):
+        popen_entered.set()
+        durable(release_popen, "Popen gate was not released")
+        return FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", gated_popen)
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(b, engine="whistle", timeout=timeout),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+    )
+    session = RecordingSession(lib, "Blocked Popen", source="gnome")
+    try:
+        session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session.checkpoint()
+
+        assert queue.follow_recording(session.directory)
+        durable(popen_entered, "Worker start did not reach Popen")
+
+        # Main-thread preempt_follower(wait=False) MUST return immediately while Popen is blocked!
+        queue.preempt_follower(drain=False, wait=False)
+        assert not killed.is_set()
+
+        # Releasing Popen must immediately kill/reap the spawned child and retire the follower.
+        release_popen.set()
+        durable(killed, "Cancelled Popen child was not killed")
+        durable(waited, "Cancelled Popen child was not reaped")
+        wait_on_queue(queue, lambda: queue._follow_directory is None, message="Follower did not retire after Popen")
+    finally:
+        release_popen.set()
+        session.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+
+
+def test_journal_append_rejects_hard_linked_file(tmp_path):
+    backup = tmp_path / "backup.jsonl"
+    backup.write_text("precious-backup\n")
+    journal = tmp_path / recognition_cache.JOURNAL_FILE
+    os.link(backup, journal)
+    key = recognition_cache.segment_key("b" * 64, 16000)
+    value = dict(text="hello", language="en", words=[dict(start=0.0, end=0.5, text="hello")])
+    assert not recognition_cache.append_journal_entry(tmp_path, "whistle@" + ("a" * 64), key, value)
+    assert backup.read_text() == "precious-backup\n"
+
+
+def test_warm_worker_restarts_when_bundle_identity_changes_on_disk(tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+
+    finished = Finished()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=20,
+    )
+    session = RecordingSession(lib, "Bundle upgrade meeting", source="gnome")
+    try:
+        session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session.checkpoint()
+
+        assert queue.follow_recording(session.directory)
+        wait_on_queue(
+            queue,
+            lambda: cached_segment_count(session.directory, "whistle", bundle) >= 1,
+            message="Follower v1 did not cache segment",
+        )
+        session.finish()
+        # Drain warm v1 worker cleanly.
+        queue.preempt_follower(drain=True, wait=True)
+        assert queue._warm_client is not None and len(tracker["pids"]) == 1
+
+        # Upgrade bundle pins.json on disk while warm v1 worker is resident!
+        (bundle / "pins.json").write_text(json.dumps({"installed": {"whistle.cact": "b" * 64}}))
+
+        # Finalization MUST reject the stale v1 warm worker and spawn a fresh v2 worker!
+        assert queue.enqueue(session.directory)
+        finished.wait(1, bound=30)
+        assert len(tracker["pids"]) == 2, "Stale warm worker was reused despite on-disk bundle identity change"
+        assert read_metadata(session.directory)["transcript"]["status"] == "done"
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)

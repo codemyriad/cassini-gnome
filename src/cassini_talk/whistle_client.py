@@ -56,16 +56,31 @@ class WhistleClient:
         self._buffer = b""
         self.ready = None
         env = self.worker_environment()
+        if self.cancelled.is_set():
+            raise CancelledError()
+        # Never hold _process_lock across Popen(): main-thread cancel() must return
+        # immediately without waiting for child spawn, and start() reaps if cancelled.
+        process = subprocess.Popen(
+            self.worker_command(),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        )
         with self._process_lock:
-            if self.cancelled.is_set():
-                raise CancelledError()
-            self.process = subprocess.Popen(
-                self.worker_command(),
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                env=env,
-            )
+            cancelled = self.cancelled.is_set()
+            if not cancelled:
+                self.process = process
+        if cancelled:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                process.kill()
+            with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                process.wait(timeout=5)
+            with contextlib.suppress(OSError):
+                process.stdin.close()
+            with contextlib.suppress(OSError):
+                process.stdout.close()
+            raise CancelledError()
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.process.stdout, selectors.EVENT_READ)
         try:

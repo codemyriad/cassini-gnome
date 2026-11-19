@@ -217,7 +217,7 @@ def append_journal_entry(directory, model, key, value, *, max_bytes=MAX_BYTES):
         flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
         fd = os.open(JOURNAL_FILE, flags, 0o600, dir_fd=dir_fd)
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_size + len(line) > max_bytes:
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size + len(line) > max_bytes:
             return False
         view = memoryview(line)
         written = 0

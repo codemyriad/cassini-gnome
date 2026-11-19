@@ -64,6 +64,16 @@ def recognition_cache_model(selected, bundle):
     return recognition_cache.whistle_identity(bundle)
 
 
+def _worker_reported_identity(client) -> str | None:
+    """The modelIdentity reported in the worker's `ready` handshake, when valid."""
+    ready = getattr(client, "ready", None)
+    if isinstance(ready, dict):
+        reported = ready.get("modelIdentity")
+        if recognition_cache.is_valid_model_identity(reported):
+            return reported
+    return None
+
+
 def resolve_transcription_mode(app) -> TranscriptionMode:
     """Resolve the active TranscriptionMode from an explicit app attribute or CASSINI_TRANSCRIPTION_MODE.
 
@@ -636,18 +646,51 @@ class TranscriptionQueue:
             thread.start()
             return True
 
-    def sync_recordings(self, directories) -> None:
-        """Observe live recording directories; never spawns workers outside speed mode."""
+    def _matches_dir(self, stored: Path | None, directory) -> bool:
+        if stored is None:
+            return False
+        raw = Path(directory).absolute()
+        if stored == raw:
+            return True
+        return self._canonical_follow_dir(stored) == self._canonical_follow_dir(raw)
+
+    def _client_identity_matches(self, client, selected: str) -> bool:
+        reported = _worker_reported_identity(client)
+        expected = recognition_cache_model(selected, self.bundle)
+        return not (reported is not None and expected is not None and reported != expected)
+
+    def sync_recordings(self, directories, *, saving=()) -> None:
+        """Observe live recording directories; never spawns workers outside speed mode.
+
+        When `directories` is empty, releases any active follower or warm worker whose
+        session is not actively `saving` (e.g. discarded capture or failed publication).
+        """
+        warm = None
         with self.lock:
             if self._mode is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
                 return
             live = [Path(d).absolute() for d in directories]
             if not live:
-                return
-            current = self._follow_directory
-            if current in live and self._follow_thread is not None and self._follow_thread.is_alive():
-                return
-        self.follow_recording(live[0])
+                saving_paths = [Path(d).absolute() for d in saving]
+                follow_dir = self._follow_directory
+                warm_dir = self._warm_directory
+                if follow_dir is not None and not any(self._matches_dir(follow_dir, s) for s in saving_paths):
+                    self._signal_follower_stop_locked(drain=False, cancel_client=True)
+                if warm_dir is not None and not any(self._matches_dir(warm_dir, s) for s in saving_paths):
+                    warm = self._discard_warm_client_locked()
+            else:
+                current = self._follow_directory
+                if (
+                    current is not None
+                    and any(self._matches_dir(current, d) for d in live)
+                    and self._follow_thread is not None
+                    and self._follow_thread.is_alive()
+                ):
+                    return
+        if warm is not None:
+            self._close_client_async(warm)
+        if live:
+            self.follow_recording(live[0])
 
     def notify_session_finished(self, directory) -> bool:
         """Overlap read-only tail planning/ASR with Opus publication in speed mode."""
@@ -668,12 +711,11 @@ class TranscriptionQueue:
         threading.Thread(target=reap, daemon=True, name="cassini-reap-worker").start()
 
     def release_failed_publication(self, directory) -> None:
-        """Release any tail follower or warm worker held for a session whose Opus publication failed."""
-        target = self._canonical_follow_dir(directory)
+        """Release any tail follower or warm worker held for a session whose publication failed or was discarded."""
         with self.lock:
-            if self._follow_directory == target:
+            if self._matches_dir(self._follow_directory, directory):
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
-            warm = self._discard_warm_client_locked() if self._warm_directory == target else None
+            warm = self._discard_warm_client_locked() if self._matches_dir(self._warm_directory, directory) else None
         if warm is not None:
             self._close_client_async(warm)
 
@@ -746,7 +788,11 @@ class TranscriptionQueue:
             self._warm_directory = None
         if warm is None:
             return None
-        if warm_model == selected and getattr(warm, "is_alive", lambda: False)():
+        if (
+            warm_model == selected
+            and getattr(warm, "is_alive", lambda: False)()
+            and self._client_identity_matches(warm, selected)
+        ):
             return warm
         with contextlib.suppress(Exception):
             warm.close()
@@ -860,7 +906,12 @@ class TranscriptionQueue:
                     self.client = None
                     self.client_model = None
                 for candidate, candidate_model in candidates:
-                    if client is None and candidate_model == selected and self._client_can_follow(candidate):
+                    if (
+                        client is None
+                        and candidate_model == selected
+                        and self._client_can_follow(candidate)
+                        and self._client_identity_matches(candidate, selected)
+                    ):
                         self._follow_client = candidate
                         self._follow_client_model = candidate_model
                         client = candidate
@@ -903,7 +954,7 @@ class TranscriptionQueue:
                 return
             if not all(hasattr(client, name) for name in ("start_follow", "poll_follow_event", "stop_follow")):
                 return
-            cache_model = recognition_cache_model(client_model, self.bundle)
+            cache_model = _worker_reported_identity(client) or recognition_cache_model(client_model, self.bundle)
             if not cache_model:
                 return
             cache_entries = recognition_cache.read(canonical / RECOGNITION_CACHE_FILE, cache_model)
@@ -1318,7 +1369,11 @@ class TranscriptionQueue:
                 raise
             self.client_model = selected
         else:
-            if self.client and (self.client_model != selected or selected == MODEL_ID):
+            if self.client and (
+                self.client_model != selected
+                or selected == MODEL_ID
+                or not self._client_identity_matches(self.client, selected)
+            ):
                 self.client.close()
                 self.client = None
             if selected == MODEL_ID:
@@ -1386,7 +1441,7 @@ class TranscriptionQueue:
                 ),
                 default=0,
             )
-        cache_model = recognition_cache_model(self.client_model, self.bundle)
+        cache_model = _worker_reported_identity(self.client) or recognition_cache_model(self.client_model, self.bundle)
         cache_entries = recognition_cache.read(directory / RECOGNITION_CACHE_FILE, cache_model) if cache_model else {}
         cache_budget = recognition_cache.CacheBudget(cache_model, cache_entries) if cache_model else None
         cache_dirty = False
