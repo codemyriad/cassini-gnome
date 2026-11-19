@@ -24,7 +24,6 @@ import numpy as np
 from . import placement
 
 RATE = 16000
-RECOGNITION_CACHE_FORMAT = "cassini.recognition-cache.v1"
 FIR = json.loads(Path(__file__).with_name("fir-48k-16k.json").read_text())
 TAPS = np.asarray(FIR["coefficients"], dtype="<f4")
 
@@ -365,94 +364,34 @@ def segment_ranges(path, detector, heartbeat=None, *, chunks=None):
     return ranges
 
 
-def _segment_cache_key(input_hash, offset_ms, segment, audio_end_ms, presence):
-    return hashlib.sha256(
-        json.dumps(
-            [
-                input_hash,
-                offset_ms,
-                segment["startSample"],
-                segment["endSample"],
-                segment.get("reason"),
-                audio_end_ms,
-                presence,
-            ],
-            separators=(",", ":"),
-        ).encode()
-    ).hexdigest()
-
-
-def _valid_cached_entry(key, entry):
-    return (
-        isinstance(key, str)
-        and len(key) == 64
-        and isinstance(entry, dict)
-        and isinstance(entry.get("text"), str)
-        and isinstance(entry.get("language"), str)
-        and isinstance(entry.get("words"), list)
-        and len(entry["words"]) <= 10000
-        and all(
-            isinstance(w, dict)
-            and type(w.get("startMs")) is int
-            and type(w.get("endMs")) is int
-            and 0 <= w["startMs"] <= w["endMs"]
-            and isinstance(w.get("text"), str)
-            and bool(w["text"])
-            for w in entry["words"]
-        )
-    )
-
-
 def read_recognition_cache(options):
+    """D-1120: the valid raw segments of the cache file for exactly `options["model"]`."""
+    from . import recognition_cache
+
     if not isinstance(options, dict):
         return {}
-    path, model = options.get("path"), options.get("model")
-    if not isinstance(path, str) or not path or not isinstance(model, str) or not model:
-        return {}
-    from .library_files import regular
-
-    target = Path(path)
-    try:
-        descriptor = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
-    except OSError:
-        return {}
-    try:
-        with regular(descriptor, target.name) as (stream, _info):
-            raw = stream.read(16 * 1024 * 1024 + 1)
-    except (OSError, ValueError):
-        return {}
-    finally:
-        os.close(descriptor)
-    if len(raw) > 16 * 1024 * 1024:
-        return {}
-    try:
-        value = json.loads(raw)
-        if value.get("format") != RECOGNITION_CACHE_FORMAT or value.get("model") != model:
-            return {}
-        segments = value.get("segments")
-        if not isinstance(segments, dict) or len(segments) > 100000:
-            return {}
-        return {k: v for k, v in segments.items() if _valid_cached_entry(k, v)}
-    except (ValueError, TypeError, KeyError, AttributeError):
-        return {}
+    return recognition_cache.read(options.get("path"), options.get("model"))
 
 
-def recognise_segment(model, path, segment, offset_ms=0, *, samples=None, audio_end_ms=None, input_hash=None):
-    if samples is None:
-        samples = np.concatenate(list(resampled_chunks(path, segment["startSample"], segment["endSample"])))
-    if input_hash is None:
-        input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
-    result = model.transcribe(samples, language=None, word_timestamps=True)
+def transcribe_raw(model, samples):
+    """The recogniser's own output for these samples: a pure function of model and PCM."""
+    from . import recognition_cache
+
+    return recognition_cache.entry(model.transcribe(samples, language=None, word_timestamps=True))
+
+
+def place_words(raw, segment, sample_count, offset_ms=0, audio_end_ms=None):
+    """Session-ms words of one segment from its raw, segment-relative recognition."""
     # D55: session ms of the segment's first 16 kHz sample, from the one placement. G11: a
     # word ends within the PCM it was recognised from, counted in whole ms from that first
     # sample (Mac's MeetingTranscriber.clamped: start + count * 1000 / 16000).
     base = placement.word_ms(offset_ms, segment["startSample"])
-    last_sample = min(segment["endSample"], segment["startSample"] + len(samples))
+    last_sample = min(segment["endSample"], segment["startSample"] + sample_count)
     end = base + (last_sample - segment["startSample"]) * 1000 // RATE
     if audio_end_ms is not None:
         end = min(end, audio_end_ms)
     words = []
-    for word in result.get("words", []):
+    for word in raw["words"]:
         # A recognizer can report its last word beyond the supplied PCM. Keep
         # the text/count, but never assign it time outside its own source.
         start = min(end, max(base, base + round(word["start"] * 1000)))
@@ -460,10 +399,20 @@ def recognise_segment(model, path, segment, offset_ms=0, *, samples=None, audio_
             dict(
                 startMs=start,
                 endMs=max(start, min(end, base + round(word["end"] * 1000))),
-                text=word.get("word", word.get("text", "")),
+                text=word["text"],
             )
         )
-    return dict(segment, text=result["text"]), words, result.get("language") or "und", input_hash
+    return dict(segment, text=raw["text"]), words, raw["language"]
+
+
+def recognise_segment(model, path, segment, offset_ms=0, *, samples=None, audio_end_ms=None, input_hash=None):
+    if samples is None:
+        samples = np.concatenate(list(resampled_chunks(path, segment["startSample"], segment["endSample"])))
+    if input_hash is None:
+        input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
+    raw = transcribe_raw(model, samples)
+    value, words, language = place_words(raw, segment, len(samples), offset_ms, audio_end_ms)
+    return value, words, language, input_hash
 
 
 def present_words(words, presence):
@@ -524,8 +473,11 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recogni
     """One complete queue job; all inference and floating PCM stay in the child."""
     import time
 
+    from . import recognition_cache as cache
     from . import recognition_fallback as fallback
 
+    # D-1120: segments are keyed on their own PCM and the model alone; a hit
+    # replaces only `model.transcribe`, never what follows it.
     cache_enabled = (
         isinstance(recognition_cache, dict)
         and isinstance(recognition_cache.get("path"), str)
@@ -580,41 +532,26 @@ def process_tracks(model, tracks, vad_model, notify, *, extra_seconds=0, recogni
         nonlocal elapsed, processed, remaining
         input_hash = hashlib.sha256(samples.tobytes()).hexdigest()
         presence = track.get("sessionPresence")
-        cache_key = _segment_cache_key(input_hash, offset, segment, audio_end, presence) if cache_enabled else None
-        cached = cached_segments.get(cache_key) if cache_key is not None else None
+        cache_key = cache.segment_key(input_hash, len(samples))
+        raw = cached_segments.get(cache_key) if cache_enabled else None
         seconds = (segment["endSample"] - segment["startSample"]) / RATE
-        if cached is not None:
-            words = [dict(word) for word in cached["words"]]
-            detected = cached["language"]
-            value = dict(segment, text=cached["text"])
-            remaining = max(0, remaining - seconds)
-            factor = elapsed / processed if processed else initial_factor
-        else:
+        if raw is None:
             started = time.monotonic()
-            value, words, detected, input_hash = recognise_segment(
-                model,
-                track["path"],
-                segment,
-                offset,
-                samples=samples,
-                audio_end_ms=audio_end,
-                input_hash=input_hash,
-            )
-            # D63 #3: a word outside its track's presence is never written, on either
-            # path, so it neither counts as a VAD word nor joins a fallback window.
-            kept = present_words(words, presence)
-            if len(kept) != len(words):
-                words, value = kept, dict(value, text=" ".join(word["text"] for word in kept))
+            raw = transcribe_raw(model, samples)
             elapsed += time.monotonic() - started
             processed += seconds
-            remaining = max(0, remaining - seconds)
-            factor = elapsed / processed if processed else initial_factor
-            if cache_key is not None:
-                cache_entry = dict(
-                    key=cache_key, text=value["text"], words=[dict(word) for word in words], language=detected
-                )
-                cached_segments[cache_key] = cache_entry
-                notify("planning", trackId=track["id"], cacheEntry=cache_entry)
+            # Output a later read would reject is never offered for reuse.
+            if cache_enabled and cache.valid_entry(cache_key, raw):
+                cached_segments[cache_key] = raw
+                notify("planning", trackId=track["id"], cacheEntry=dict(raw, key=cache_key))
+        remaining = max(0, remaining - seconds)
+        factor = elapsed / processed if processed else initial_factor
+        value, words, detected = place_words(raw, segment, len(samples), offset, audio_end)
+        # D63 #3: a word outside its track's presence is never written, on either
+        # path, so it neither counts as a VAD word nor joins a fallback window.
+        kept = present_words(words, presence)
+        if len(kept) != len(words):
+            words, value = kept, dict(value, text=" ".join(word["text"] for word in kept))
         return dict(
             inputSha256=input_hash,
             trackId=track["id"],

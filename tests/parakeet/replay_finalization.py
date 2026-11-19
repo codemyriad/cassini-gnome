@@ -24,7 +24,7 @@ from pathlib import Path
 
 from queue_models import Models
 
-from cassini_talk import portable
+from cassini_talk import portable, recognition_cache
 from cassini_talk import speech_pipeline as speech
 from cassini_talk.library_publication import capture_parent, publish_stopped
 from cassini_talk.meeting_store import atomic_json, read_metadata
@@ -149,30 +149,25 @@ def precompute(args, path):
                 if chunk.end:
                     samples = np.concatenate(pieces)
                     segment = dict(startSample=start, endSample=start + len(samples), reason=chunk.reason)
-                    value, words, lang, digest = speech.recognise_segment(model, None, segment, samples=samples)
-                    print(json.dumps([segment, value["text"], words, lang, digest, time.monotonic()]), flush=True)
+                    # The same pure recogniser call the final worker caches: no placement here.
+                    raw = speech.transcribe_raw(model, samples)
+                    key = recognition_cache.samples_key(samples)
+                    print(json.dumps([segment, key, raw, time.monotonic()]), flush=True)
                     pieces.clear()
     finally:
         if args.parakeet:
             model.close()
 
 
-def cache_entries(track, completed, stop):
-    # The probe creates one continuous system track at offset zero. The final
-    # worker independently replans it and checks every key against saved PCM.
-    if track["offsetMs"] != 0:
-        raise ValueError("Probe requires zero track offset")
-    presence, end = track.get("sessionPresence"), speech._source_end(track)
-    entries = {}
-    for segment, text, words, lang, digest, finished in completed:
-        if finished > stop or end is not None and words and max(w["endMs"] for w in words) > end:
-            continue
-        kept = speech.present_words(words, presence)
-        key = speech._segment_cache_key(digest, track["offsetMs"], segment, end, presence)
-        entries[key] = dict(
-            text=text if kept == words else " ".join(w["text"] for w in kept), words=kept, language=lang
-        )
-    return entries
+def cache_entries(completed, stop):
+    # D-1120: entries are raw recogniser output keyed on segment PCM alone. The
+    # final worker replans every track and places, clamps, filters and falls back
+    # on its own, so any offset, presence or end is handled after Stop.
+    return {
+        key: raw
+        for _segment, key, raw, finished in completed
+        if finished <= stop and recognition_cache.valid_entry(key, raw)
+    }
 
 
 def run(args, library, live):
@@ -263,14 +258,13 @@ def run(args, library, live):
     class Client(ParakeetClient if args.parakeet else WhistleClient):
         def process_tracks(self, tracks, progress):
             nonlocal offered
-            system_track = next(track for track in tracks if track["kind"] == "system")
-            entries = cache_entries(system_track, completed, stop)
+            entries = cache_entries(completed, stop)
             offered = len(entries)
             if entries:
                 opts = self.recognition_cache
                 atomic_json(
                     Path(opts["path"]),
-                    dict(format=speech.RECOGNITION_CACHE_FORMAT, model=opts["model"], segments=entries),
+                    recognition_cache.document(opts["model"], entries),
                 )
 
             def observed(event):

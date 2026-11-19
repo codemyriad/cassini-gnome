@@ -11,8 +11,10 @@ import threading
 import time
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
+from . import recognition_cache
 from .library import LibraryScanner, library_root, meeting_id, track_identity, track_rows
 from .library_edits import mutation, transaction
 from .meeting_store import atomic_json, read_metadata, transcript_snapshot, update_metadata
@@ -23,38 +25,40 @@ from .whistle_worker import onnxruntime_dir
 
 LOG = logging.getLogger(__name__)
 REFERENCE = dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
-RECOGNITION_CACHE_FILE = ".recognition-cache.json"
-RECOGNITION_CACHE_FORMAT = "cassini.recognition-cache.v1"
+RECOGNITION_CACHE_FILE = recognition_cache.FILE
+RECOGNITION_CACHE_FORMAT = recognition_cache.FORMAT
 
 
-def _read_recognition_cache_entries(directory, model):
-    try:
-        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    except OSError:
-        return {}
-    try:
-        from .meeting_store import regular, strict_json
+class TranscriptionMode(StrEnum):
+    """D-1117 non-UI policy: when a stopped recording is written down.
 
-        with regular(descriptor, RECOGNITION_CACHE_FILE) as (stream, _info):
-            raw = stream.read(16 * 1024 * 1024 + 1)
-    except OSError:
-        return {}
-    finally:
-        os.close(descriptor)
-    if len(raw) > 16 * 1024 * 1024:
-        return {}
-    try:
-        value = strict_json(raw)
-    except ValueError:
-        return {}
-    if (
-        not isinstance(value, dict)
-        or value.get("format") != RECOGNITION_CACHE_FORMAT
-        or value.get("model") != model
-        or not isinstance(value.get("segments"), dict)
-    ):
-        return {}
-    return dict(value["segments"])
+    `afterStop` is the shipped default. `recordOnly` saves audio only and waits
+    for the user's Transcribe. `transcribeWhileRecording` finalizes as
+    `afterStop` until the recording-time follower lands (D-1121). No mode
+    starts a worker while recording; capture never sees this value.
+    """
+
+    RECORD_ONLY = "recordOnly"
+    AFTER_STOP = "afterStop"
+    TRANSCRIBE_WHILE_RECORDING = "transcribeWhileRecording"
+
+    @classmethod
+    def parse(cls, value):
+        """A mode from its member, contract value or snake-case name; anything else raises."""
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            for mode in cls:
+                if value in (mode.value, mode.name.lower()):
+                    return mode
+        raise ValueError(f"Unknown transcription mode: {value!r}")
+
+
+def recognition_cache_model(selected, bundle):
+    """The cache header identity: the verified checkpoint or bundle, never just a name."""
+    from .parakeet_model import MODEL_ID, MODEL_TAG
+
+    return MODEL_TAG if selected == MODEL_ID else recognition_cache.whistle_identity(bundle)
 
 
 def bundle_path():
@@ -94,7 +98,9 @@ def track_speaker(track):
     return "others", text("common.theOthers"), "source"
 
 
-def should_auto_write(meeting, previous):
+def should_auto_write(meeting, previous, mode=TranscriptionMode.AFTER_STOP):
+    if TranscriptionMode.parse(mode) is TranscriptionMode.RECORD_ONLY:
+        return False  # Audio only; the user's Transcribe still enqueues it.
     if (
         previous is None
         or meeting.origin != "own"
@@ -889,18 +895,19 @@ class TranscriptionQueue:
                 ),
                 default=0,
             )
-        cache_entries = _read_recognition_cache_entries(directory, tag)
+        cache_model = recognition_cache_model(self.client_model, self.bundle)
+        cache_entries = recognition_cache.read(directory / RECOGNITION_CACHE_FILE, cache_model) if cache_model else {}
         cache_dirty = False
 
         def record_cache(entry):
             nonlocal cache_dirty
-            if not isinstance(entry, dict) or not isinstance(entry.get("key"), str) or len(entry["key"]) != 64:
+            if not cache_model or not isinstance(entry, dict):
                 return
-            cache_entries[entry["key"]] = {
-                "text": entry["text"],
-                "words": entry["words"],
-                "language": entry["language"],
-            }
+            key = entry.get("key")
+            value = {name: entry.get(name) for name in ("text", "language", "words")}
+            if not recognition_cache.valid_entry(key, value) or len(cache_entries) >= recognition_cache.MAX_SEGMENTS:
+                return
+            cache_entries[key] = value
             cache_dirty = True
 
         def flush_cache():
@@ -910,7 +917,7 @@ class TranscriptionQueue:
             self._check_not_trashed()
             atomic_json(
                 directory / RECOGNITION_CACHE_FILE,
-                dict(format=RECOGNITION_CACHE_FORMAT, model=tag, segments=cache_entries),
+                recognition_cache.document(cache_model, cache_entries),
                 before_commit=self._check_not_trashed,
             )
             cache_dirty = False
@@ -942,7 +949,9 @@ class TranscriptionQueue:
                 LOG.exception("Saved voices unavailable; keeping ordinary speaker names")
         self.client.keep_for_voices = voices_options is not None
         self.client.diarization = diarization
-        self.client.recognition_cache = dict(path=str(directory / RECOGNITION_CACHE_FILE), model=tag)
+        self.client.recognition_cache = (
+            dict(path=str(directory / RECOGNITION_CACHE_FILE), model=cache_model) if cache_model else None
+        )
         turn_groups = {}
         reused_groups = set()
         recognised_summary = None

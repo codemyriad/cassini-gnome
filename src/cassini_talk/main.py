@@ -41,6 +41,9 @@ RESOURCE = "/io/codemyriad/CassiniTalk"
 class CassiniApplication(Adw.Application):
     """The application: one window per open meeting."""
 
+    # D-1117/D-1120: no UI chooses this yet; the shipped behaviour is the default.
+    transcription_mode = "afterStop"
+
     def __init__(self, application_id, version, profile, *, installed_build=None):
         super().__init__(
             application_id=application_id,
@@ -1750,8 +1753,9 @@ class CassiniApplication(Adw.Application):
             self.settings_dialog.saved_voices_page.refresh()
         if not self.transcription_enabled:
             return
-        from .transcription import should_auto_write
+        from .transcription import TranscriptionMode, should_auto_write
 
+        mode = TranscriptionMode.parse(getattr(self, "transcription_mode", TranscriptionMode.AFTER_STOP))
         for meeting in snapshot.meetings:
             managed = meeting.directory.parent.name == "sessions" and meeting.directory.parent.parent.name == ".cassini"
             if managed and meeting.published_file is None:
@@ -1774,7 +1778,7 @@ class CassiniApplication(Adw.Application):
                 )
             ):
                 self.write_down(meeting, resume=True)
-            elif should_auto_write(meeting, previous):
+            elif should_auto_write(meeting, previous, mode):
                 self.write_down(meeting)
 
     def discard_meeting_paths(self, directory):
