@@ -150,7 +150,7 @@ def refresh_capture_background(app):
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cassini-hidden-save")
 
     def save():
-        if app.transcription_enabled:
+        if _auto_write(app):
             return [path for path in paths if queue_saved_for_later(path)]
         return []
 
@@ -354,7 +354,7 @@ def confirm_capture_close(app, window, *, quitting=False, force_stop=False):
             completing = True
 
             def finish_saved():
-                if exiting and app.transcription_enabled:
+                if exiting and _auto_write(app):
                     for path in paths:
                         queue_saved_for_later(path)
 
@@ -447,7 +447,7 @@ def confirm_capture_close(app, window, *, quitting=False, force_stop=False):
                         abort()
                         return False
                     paths.extend(captured)
-                    if not exiting and app.transcription_enabled:
+                    if not exiting and _auto_write(app):
                         for path in captured:
                             app.write_down(path, resume=True)
                     browser_done = True
@@ -559,6 +559,12 @@ def stop_browser_captures(directory=None, *, cancel_groups=(), quitting=False, g
     if any(s.get("recording") and matches(s.get("path")) for s in after.get("statuses", [])):
         raise ValueError("The browser has not confirmed the recording stopped")
     return save_end(paths)
+
+
+def _auto_write(app):
+    from .transcription import auto_write_enabled
+
+    return auto_write_enabled(app)
 
 
 def queue_saved_for_later(path):

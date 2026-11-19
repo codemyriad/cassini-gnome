@@ -38,6 +38,13 @@ from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 RESOURCE = "/io/codemyriad/CassiniTalk"
 
 
+def _auto_write_enabled(app):
+    """Whether a stopped capture is written down without the user's Transcribe (not in `recordOnly`)."""
+    from .transcription import auto_write_enabled
+
+    return auto_write_enabled(app)
+
+
 class CassiniApplication(Adw.Application):
     """The application: one window per open meeting."""
 
@@ -1282,7 +1289,7 @@ class CassiniApplication(Adw.Application):
         if self._pending_recording == _path:
             self._pending_recording = None
         if (
-            self.transcription_enabled
+            _auto_write_enabled(self)
             and not self._quitting
             and not self._capture_exiting
             and _recorder.session is not None
@@ -1360,7 +1367,7 @@ class CassiniApplication(Adw.Application):
                                 phases[identifier] = "stopping"
                     for path in paths:
                         self._notify_shortcut_saved(path)
-                    if self.transcription_enabled:
+                    if _auto_write_enabled(self):
                         for path in paths:
                             self.write_down(path, resume=True)
                 except (OSError, ValueError) as error:
@@ -1816,7 +1823,7 @@ class CassiniApplication(Adw.Application):
                     ]
 
     def observe_browser_recordings(self, snapshot, previous):
-        if not self.transcription_enabled or previous is None:
+        if not _auto_write_enabled(self) or previous is None:
             return
         for recording in snapshot.get("recordings", []):
             path = recording.get("path")

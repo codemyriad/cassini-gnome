@@ -55,10 +55,24 @@ class TranscriptionMode(StrEnum):
 
 
 def recognition_cache_model(selected, bundle):
-    """The cache header identity: the verified checkpoint or bundle, never just a name."""
+    """The cache header identity: the verified checkpoint plus runtime, or bundle; never just a name."""
     from .parakeet_model import MODEL_ID, MODEL_TAG
 
-    return MODEL_TAG if selected == MODEL_ID else recognition_cache.whistle_identity(bundle)
+    if selected == MODEL_ID:
+        return recognition_cache.parakeet_identity(MODEL_TAG, Path(__file__).with_name("sherpa-pins.json"))
+    return recognition_cache.whistle_identity(bundle)
+
+
+def auto_write_enabled(app):
+    """Whether a stopped capture is written down without the user's Transcribe.
+
+    Every capture-stop and close path asks this; `recordOnly` keeps audio only.
+    Resuming an already queued or running job is gated on `transcription_enabled` alone.
+    """
+    if not getattr(app, "transcription_enabled", False):
+        return False
+    mode = TranscriptionMode.parse(getattr(app, "transcription_mode", TranscriptionMode.AFTER_STOP))
+    return mode is not TranscriptionMode.RECORD_ONLY
 
 
 def bundle_path():

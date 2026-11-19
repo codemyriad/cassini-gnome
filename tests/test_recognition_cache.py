@@ -7,6 +7,7 @@ pipeline equivalence checks live in test_recognition_cache_pipeline.py.
 
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 from durable import Finished
@@ -14,7 +15,13 @@ from test_library import capture
 
 from cassini_talk import recognition_cache as cache
 from cassini_talk.library import LibraryScanner
-from cassini_talk.transcription import TranscriptionMode, TranscriptionQueue, recognition_cache_model, should_auto_write
+from cassini_talk.transcription import (
+    TranscriptionMode,
+    TranscriptionQueue,
+    auto_write_enabled,
+    recognition_cache_model,
+    should_auto_write,
+)
 
 KEY = "ab" * 32 + ":16000"
 MODEL = "whistle@" + "0" * 64
@@ -121,15 +128,42 @@ def test_read_never_follows_links_and_tolerates_missing_files(tmp_path):
 
 
 def test_model_identity_names_the_checkpoint_or_bundle(tmp_path):
+    import cassini_talk
     from cassini_talk.parakeet_model import MODEL_ID, MODEL_TAG, REVISION
 
-    assert recognition_cache_model(MODEL_ID, tmp_path) == MODEL_TAG and REVISION in MODEL_TAG
+    parakeet = recognition_cache_model(MODEL_ID, tmp_path)
+    runtime = (Path(cassini_talk.__file__).with_name("sherpa-pins.json")).read_bytes()
+    assert parakeet == f"{MODEL_TAG}+sherpa@{hashlib.sha256(runtime).hexdigest()}" and REVISION in parakeet
     assert recognition_cache_model("whistle", tmp_path) is None, "an unidentified bundle caches nothing"
     (tmp_path / "pins.json").write_text('{"installed": {"whistle.cact": "1"}}')
     first = recognition_cache_model("whistle", tmp_path)
     assert first.startswith("whistle@") and first != MODEL_TAG
     (tmp_path / "pins.json").write_text('{"installed": {"whistle.cact": "2"}}')
     assert recognition_cache_model("whistle", tmp_path) != first
+
+
+def test_parakeet_identity_changes_with_the_sherpa_runtime_pins(tmp_path):
+    pins = tmp_path / "sherpa-pins.json"
+    assert cache.parakeet_identity("parakeet@1", pins) is None, "an unpinned runtime caches nothing"
+    pins.write_text('{"sherpa-onnx-go-linux": {"files": {"libonnxruntime.so": "1"}}}')
+    first = cache.parakeet_identity("parakeet@1", pins)
+    assert first.startswith("parakeet@1+sherpa@")
+    pins.write_text('{"sherpa-onnx-go-linux": {"files": {"libonnxruntime.so": "2"}}}')
+    assert cache.parakeet_identity("parakeet@1", pins) != first, "a runtime upgrade never reuses old output"
+    assert cache.parakeet_identity("parakeet@2", pins) != cache.parakeet_identity("parakeet@1", pins)
+
+
+def test_auto_write_follows_transcription_enabled_and_mode():
+    from types import SimpleNamespace
+
+    assert auto_write_enabled(SimpleNamespace(transcription_enabled=True)), "afterStop is the default"
+    assert not auto_write_enabled(SimpleNamespace(transcription_enabled=False))
+    assert not auto_write_enabled(SimpleNamespace())
+    for mode, expected in (("afterStop", True), ("transcribeWhileRecording", True), ("recordOnly", False)):
+        assert auto_write_enabled(SimpleNamespace(transcription_enabled=True, transcription_mode=mode)) is expected
+        assert not auto_write_enabled(SimpleNamespace(transcription_enabled=False, transcription_mode=mode))
+    with pytest.raises(ValueError):
+        auto_write_enabled(SimpleNamespace(transcription_enabled=True, transcription_mode="live"))
 
 
 def test_transcription_mode_values_and_validation():

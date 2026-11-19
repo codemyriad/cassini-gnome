@@ -56,6 +56,19 @@ def whistle_identity(bundle):
     return "whistle@" + hashlib.sha256(pins).hexdigest()
 
 
+def parakeet_identity(model_tag, runtime_pins):
+    """Parakeet's identity is its checkpoint plus the pinned Sherpa/ONNX Runtime binaries.
+
+    A runtime upgrade (decoding, timestamps, INT8 kernels) can change the output
+    of the same checkpoint, so the hash of `sherpa-pins.json` is part of it.
+    """
+    try:
+        pins = Path(runtime_pins).read_bytes()
+    except OSError:
+        return None
+    return f"{model_tag}+sherpa@{hashlib.sha256(pins).hexdigest()}"
+
+
 def _number(value):
     return type(value) in (int, float) and math.isfinite(value)
 
