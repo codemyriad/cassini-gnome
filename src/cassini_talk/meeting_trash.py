@@ -453,6 +453,10 @@ class MeetingTrash:
 
     def _published_recovered(self, directory, transcript_status):
         if not getattr(self.app, "_quitting", False):
+            recovery = getattr(self.app, "library_recovery", None)
+            if recovery is not None:
+                with recovery.lock:
+                    recovery.failures.pop(directory, None)
             handler = getattr(self.app, "_on_recovery_result", None)
             if handler is not None:
                 handler(directory, None, transcript_status=transcript_status)

@@ -4330,13 +4330,14 @@ def test_trash_maintenance_before_recovery_resumes_queued_transcript_once_withou
         cancelled=threading.Event(),
         lock=threading.Lock(),
         _activity={},
-        failures={},
+        failures={session.directory: OSError("stale failure")},
         attempted=set(),
         started_revision=0,
         _requested={},
         _retry_paths=lambda _roots: None,
         _phase=lambda _path, _saving: None,
     )
+    app.library_recovery = recovery_stub
     recovery_stub._result_finished = lambda d, e, s=None: LibraryRecovery._result_finished(recovery_stub, d, e, s)
     monkeypatch.setattr("cassini_talk.library_location.roots", lambda: [lib])
 
@@ -4355,6 +4356,7 @@ def test_trash_maintenance_before_recovery_resumes_queued_transcript_once_withou
     drain_glib()
 
     assert read_metadata(session.directory)["published"] is True
+    assert session.directory not in recovery_stub.failures
     assert app._observed_saving_directories == ()
     assert enqueued == [(session.directory.resolve(), True)]
 
@@ -4392,6 +4394,7 @@ def test_enqueue_from_recovery_does_not_call_path_resolve_on_gtk_thread(tmp_path
         _quitting=False,
         _capture_exiting=False,
         _observed_saving_directories=(str(session.directory),),
+        _transcription_stops={str((lib / "unrelated-stopping-meeting").absolute())},
         transcriber=queue,
         native_captures={},
         _browser_snapshot={},
@@ -4421,6 +4424,72 @@ def test_enqueue_from_recovery_does_not_call_path_resolve_on_gtk_thread(tmp_path
         finished.wait(1, bound=30)
         assert read_metadata(session.directory)["transcript"]["status"] == "done"
     finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+
+
+def test_stop_queued_meeting_cancellation_does_not_call_path_resolve_on_gtk_thread(tmp_path, monkeypatch):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(b, engine="whistle", timeout=timeout),
+        mode=TranscriptionMode.AFTER_STOP,
+    )
+    session_a = RecordingSession(lib, "Blocking preparer meeting", source="gnome")
+    session_a.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session_a.append("microphone", make_speech_pcm16(16000, 1, [(0.5, 440.0, 0.3)]), 0.0)
+    session_a.finish()
+
+    session_b = RecordingSession(lib, "Queued cancelled meeting", source="gnome")
+    session_b.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session_b.append("microphone", make_speech_pcm16(16000, 1, [(0.5, 440.0, 0.3)]), 0.0)
+    session_b.finish()
+
+    prep_entered = threading.Event()
+    release_prep = threading.Event()
+    orig_mark_queued = queue._mark_queued
+
+    def gated_mark_queued(directory, resume):
+        if directory == session_a.directory.absolute():
+            prep_entered.set()
+            durable(release_prep, "Preparer gate was not released")
+        return orig_mark_queued(directory, resume)
+
+    monkeypatch.setattr(queue, "_mark_queued", gated_mark_queued)
+
+    gtk_tid = threading.get_ident()
+    orig_resolve = Path.resolve
+    gtk_resolves = []
+
+    def poisoned_gtk_resolve(self, *args, **kwargs):
+        if threading.get_ident() == gtk_tid:
+            gtk_resolves.append(str(self))
+        return orig_resolve(self, *args, **kwargs)
+
+    stop_done = threading.Event()
+    try:
+        assert queue.enqueue(session_a.directory)
+        durable(prep_entered, "Meeting A did not hold the preparer worker")
+
+        monkeypatch.setattr(Path, "resolve", poisoned_gtk_resolve)
+        assert queue.enqueue(session_b.directory)
+        # Future.cancel() on queued session_b runs _prepared -> _completed synchronously on this (GTK) thread!
+        assert queue.stop(session_b.directory, done=stop_done.set)
+        assert not gtk_resolves, f"Path.resolve() called on GTK thread during Stop cancellation: {gtk_resolves}"
+        assert session_b.directory.absolute() not in queue.pending
+        assert session_b.directory.absolute() not in queue._progress
+
+        monkeypatch.setattr(Path, "resolve", orig_resolve)
+        durable(stop_done, "Stop did not complete for cancelled queued meeting")
+    finally:
+        release_prep.set()
         queue.close()
         queue.executor.shutdown(wait=True)
         if getattr(queue, "_close_thread", None) is not None:

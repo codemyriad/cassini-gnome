@@ -1654,15 +1654,19 @@ class CassiniApplication(Adw.Application):
 
     @staticmethod
     def _stop_key(meeting):
-        directory = Path(getattr(meeting, "directory", meeting))
-        try:
-            return str(directory.resolve())
-        except OSError:
-            return str(directory.absolute())
+        return str(Path(getattr(meeting, "directory", meeting)).absolute())
 
     def transcription_stopping(self, meeting):
         stops = getattr(self, "_transcription_stops", None)
-        return bool(stops) and CassiniApplication._stop_key(meeting) in stops
+        if not stops:
+            return False
+        key = CassiniApplication._stop_key(meeting)
+        if key in stops:
+            return True
+        transcriber = getattr(self, "transcriber", None)
+        if transcriber is not None and hasattr(transcriber, "stopping_meeting"):
+            return transcriber.stopping_meeting(Path(key))
+        return False
 
     def _refresh_transcription_controls(self):
         for window in self.get_windows():

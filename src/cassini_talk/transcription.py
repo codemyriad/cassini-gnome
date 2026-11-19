@@ -1126,6 +1126,19 @@ class TranscriptionQueue:
         with self.lock:
             return Path(directory).absolute() in self.pending
 
+    def stopping_meeting(self, directory) -> bool:
+        """In-memory check (zero filesystem IO) for whether directory is stopping."""
+        path = Path(directory).absolute()
+        with self.lock:
+            if path in self._stopping_meetings:
+                return True
+            for token, aliases in self._job_aliases.items():
+                if (token == path or path in aliases) and (
+                    token in self._stopping_meetings or self._any_alias_in(aliases, self._stopping_meetings)
+                ):
+                    return True
+            return False
+
     def enqueue(self, directory, *, resume=False):
         directory = Path(directory).absolute()
         with self.lock:
@@ -1315,9 +1328,8 @@ class TranscriptionQueue:
         return True
 
     def _completed(self, directory, *, job_future=None):
-        progress_key = self._progress_key(directory)
         with self.lock:
-            retired = self._retire_locked(directory, job_future=job_future, progress_key=progress_key)
+            retired = self._retire_locked(directory, job_future=job_future)
         if retired:
             self.finished(directory)
 
