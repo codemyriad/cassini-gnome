@@ -225,6 +225,7 @@ def test_recognition_cache_skips_cached_segments_and_invalidates_on_model_mismat
     import json
     import wave
 
+    from cassini_talk import recognition_cache
     from cassini_talk import speech_pipeline as pipeline
 
     path = tmp_path / "two-segments.wav"
@@ -291,7 +292,7 @@ def test_recognition_cache_skips_cached_segments_and_invalidates_on_model_mismat
     cache_file.write_text(
         json.dumps(
             dict(
-                format=pipeline.RECOGNITION_CACHE_FORMAT,
+                format=recognition_cache.FORMAT,
                 model="whistle",
                 segments={
                     first_entry["key"]: {

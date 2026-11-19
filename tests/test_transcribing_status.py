@@ -154,16 +154,16 @@ def test_transcription_queue_emits_live_step_transitions_and_clears_on_finish(tm
                     "words": words_t0,
                 }
             )
-            # Mid-recognition segment cache write (speech_pipeline.py:617) and decode heartbeat (:654)
+            # A mid-recognition segment cache write (speech_pipeline.recognise) and the decode heartbeat
             # emit "planning" messages after "words" has already started; step must never regress.
             notify(
                 {
                     "type": "planning",
                     "trackId": tracks[0]["id"],
                     "cacheEntry": {
-                        "key": "a" * 64,
+                        "key": "a" * 64 + ":1600",
                         "text": "Hello there",
-                        "words": words_t0,
+                        "words": [{"start": 0.0, "end": 0.04, "text": "Hello"}],
                         "language": "en",
                     },
                 }
