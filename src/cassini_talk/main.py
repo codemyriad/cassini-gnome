@@ -1825,15 +1825,6 @@ class CassiniApplication(Adw.Application):
             if hasattr(self, "_effective_transcription_mode")
             else CassiniApplication._effective_transcription_mode(self)
         )
-        if mode is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
-            saving_dirs = [
-                m.directory for m in snapshot.meetings if m.lifecycle == "saving" and m.published_file is None
-            ]
-            if hasattr(self, "_sync_live_follower"):
-                self._sync_live_follower(saving=saving_dirs)
-            else:
-                CassiniApplication._sync_live_follower(self, saving=saving_dirs)
-
         for meeting in snapshot.meetings:
             managed = meeting.directory.parent.name == "sessions" and meeting.directory.parent.parent.name == ".cassini"
             if managed and meeting.published_file is None:
@@ -1865,6 +1856,15 @@ class CassiniApplication(Adw.Application):
                 self.write_down(meeting, resume=True)
             elif should_auto_write(meeting, previous, mode):
                 self.write_down(meeting)
+
+        if mode is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
+            saving_dirs = [
+                m.directory for m in snapshot.meetings if m.lifecycle == "saving" and m.published_file is None
+            ]
+            if hasattr(self, "_sync_live_follower"):
+                self._sync_live_follower(saving=saving_dirs)
+            else:
+                CassiniApplication._sync_live_follower(self, saving=saving_dirs)
 
     def discard_meeting_paths(self, directory):
         """No completed recorder or hidden-window callback may re-save a trashed path."""

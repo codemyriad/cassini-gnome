@@ -592,8 +592,8 @@ class TranscriptionQueue:
                 and self._follow_generation == generation
                 and self._follow_directory == directory
                 and not stop_event.is_set()
-                and directory not in self._cancelled_meetings
-                and directory not in self._stopping_meetings
+                and not self._any_alias_in(self._follow_aliases, self._cancelled_meetings)
+                and not self._any_alias_in(self._follow_aliases, self._stopping_meetings)
                 and not self.pending
                 and not self.voice_pending
                 and self._active_directory is None
@@ -621,10 +621,14 @@ class TranscriptionQueue:
                 or target in self._stopping_meetings
             ):
                 return False
-            if self._follow_directory == target and self._follow_thread is not None and self._follow_thread.is_alive():
+            if (
+                self._matches_aliases(self._follow_aliases, target)
+                and self._follow_thread is not None
+                and self._follow_thread.is_alive()
+            ):
                 return True
             stale_warm = None
-            if self._warm_directory == target and self._warm_client is not None:
+            if self._matches_aliases(self._warm_aliases, target) and self._warm_client is not None:
                 if getattr(self._warm_client, "is_alive", lambda: False)():
                     return True
                 stale_warm = self._discard_warm_client_locked()
@@ -654,9 +658,13 @@ class TranscriptionQueue:
         """Pure in-memory path check (never calls Path.resolve() under lock or on GTK)."""
         return bool(aliases) and Path(directory).absolute() in aliases
 
-    def _client_identity_matches(self, client, selected: str) -> bool:
+    @staticmethod
+    def _any_alias_in(aliases: frozenset[Path], members) -> bool:
+        return bool(aliases) and any(alias in members for alias in aliases)
+
+    @staticmethod
+    def _identity_matches_expected(client, expected: str | None) -> bool:
         reported = _worker_reported_identity(client)
-        expected = recognition_cache_model(selected, self.bundle)
         return not (reported is not None and expected is not None and reported != expected)
 
     def sync_recordings(self, directories, *, saving=()) -> None:
@@ -786,6 +794,7 @@ class TranscriptionQueue:
                 thread.join(timeout=2.0)
 
     def _claim_warm_client(self, selected: str, directory: Path):
+        expected_identity = recognition_cache_model(selected, self.bundle)
         with self.lock:
             warm = self._warm_client
             warm_model = self._warm_client_model
@@ -798,7 +807,7 @@ class TranscriptionQueue:
         if (
             warm_model == selected
             and getattr(warm, "is_alive", lambda: False)()
-            and self._client_identity_matches(warm, selected)
+            and self._identity_matches_expected(warm, expected_identity)
         ):
             return warm
         with contextlib.suppress(Exception):
@@ -822,10 +831,11 @@ class TranscriptionQueue:
         cache_dirty = False
         cache_model = None
         canonical = directory
+        aliases = frozenset((directory,))
 
         def check_cache_writable():
             with self.lock:
-                if self.closed or directory in self._cancelled_meetings:
+                if self.closed or self._any_alias_in(aliases, self._cancelled_meetings):
                     raise CancelledError()
 
         def flush_follow_cache():
@@ -895,12 +905,14 @@ class TranscriptionQueue:
                 canonical = self._owned(directory)
             except ValueError:
                 return
+            aliases = frozenset((directory, canonical))
             with self.lock:
                 if self._follow_generation == generation:
-                    self._follow_aliases = frozenset((directory, canonical))
+                    self._follow_aliases = aliases
             selected = self.models.choice_for_job() if self.models else "whistle"
             if not self._follow_still_valid(directory, stop_event, generation):
                 return
+            expected_identity = recognition_cache_model(selected, self.bundle)
             # Enforce the one-child invariant: claim any idle/warm client under lock,
             # transferring a compatible live worker or reaping incompatible ones off GTK.
             to_close = []
@@ -920,7 +932,7 @@ class TranscriptionQueue:
                         client is None
                         and candidate_model == selected
                         and self._client_can_follow(candidate)
-                        and self._client_identity_matches(candidate, selected)
+                        and self._identity_matches_expected(candidate, expected_identity)
                     ):
                         self._follow_client = candidate
                         self._follow_client_model = candidate_model
@@ -984,8 +996,8 @@ class TranscriptionQueue:
                 drain = (
                     self._follow_drain_requested
                     and not self.closed
-                    and directory not in self._cancelled_meetings
-                    and directory not in self._stopping_meetings
+                    and not self._any_alias_in(aliases, self._cancelled_meetings)
+                    and not self._any_alias_in(aliases, self._stopping_meetings)
                 )
             if drain and client is not None and getattr(client, "is_alive", lambda: False)():
                 stopped = (
@@ -999,14 +1011,14 @@ class TranscriptionQueue:
                         if (
                             not self.closed
                             and self._follow_generation == generation
-                            and directory not in self._cancelled_meetings
-                            and directory not in self._stopping_meetings
+                            and not self._any_alias_in(aliases, self._cancelled_meetings)
+                            and not self._any_alias_in(aliases, self._stopping_meetings)
                         ):
                             old_warm = self._discard_warm_client_locked()
                             self._warm_client = client
                             self._warm_client_model = client_model
                             self._warm_directory = directory
-                            self._warm_aliases = frozenset((directory, canonical))
+                            self._warm_aliases = aliases
                             client = None
                         else:
                             old_warm = None
@@ -1110,7 +1122,7 @@ class TranscriptionQueue:
             self._set_progress(directory, TranscriptionProgress(step="reading"), notify=False, reset=True)
             if self._active_directory in self._background_voices and self.client:
                 self.client.cancel()
-            if self._follow_directory is not None and self._follow_directory != directory:
+            if self._follow_directory is not None and not self._matches_aliases(self._follow_aliases, directory):
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
             future = self.preparer.submit(self._mark_queued, directory, resume)
             self._prepare_futures[directory] = future
@@ -1384,7 +1396,7 @@ class TranscriptionQueue:
             if self.client and (
                 self.client_model != selected
                 or selected == MODEL_ID
-                or not self._client_identity_matches(self.client, selected)
+                or not self._identity_matches_expected(self.client, recognition_cache_model(selected, self.bundle))
             ):
                 self.client.close()
                 self.client = None
@@ -2090,9 +2102,9 @@ class TranscriptionQueue:
             # advance to another meeting between this identity check and cancel.
             if self._active_directory == directory and self.client and hasattr(self.client, "cancel"):
                 self.client.cancel()
-            if self._follow_directory == directory:
+            if self._matches_aliases(self._follow_aliases, directory):
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
-            warm = self._discard_warm_client_locked() if self._warm_directory == directory else None
+            warm = self._discard_warm_client_locked() if self._matches_aliases(self._warm_aliases, directory) else None
         if warm is not None:
             if hasattr(warm, "cancel"):
                 warm.cancel()
@@ -2108,7 +2120,7 @@ class TranscriptionQueue:
                         directory not in self.pending
                         and directory not in self.voice_pending
                         and self._active_directory != directory
-                        and self._follow_directory != directory
+                        and not self._matches_aliases(self._follow_aliases, directory)
                     )
                 )
             yield
@@ -2127,9 +2139,9 @@ class TranscriptionQueue:
             futures = [mapping.get(directory) for mapping in (self._prepare_futures, self._job_futures)]
             if self._active_directory == directory and self.client and hasattr(self.client, "cancel"):
                 self.client.cancel()
-            if self._follow_directory == directory:
+            if self._matches_aliases(self._follow_aliases, directory):
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
-            warm = self._discard_warm_client_locked() if self._warm_directory == directory else None
+            warm = self._discard_warm_client_locked() if self._matches_aliases(self._warm_aliases, directory) else None
         if warm is not None:
             self._close_client_async(warm)
         for future in futures:

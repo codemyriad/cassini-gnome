@@ -938,7 +938,7 @@ class TrackFollower:
 class SessionFollower:
     """Multi-track earliest-session-time precompute coordinator (read-only on capture)."""
 
-    def __init__(self, directory, model, model_identity, detector, *, on_cache_entry):
+    def __init__(self, directory, model, model_identity, detector, *, on_cache_entry, record_trace: bool = False):
         self.directory = Path(directory)
         try:
             self.resolved_dir = str(self.directory.resolve())
@@ -953,7 +953,8 @@ class SessionFollower:
         self.segments_decoded = 0
         self._manifest_sig: tuple[int, int, int, int] | None = None
         self._manifest_loaded = False
-        self.schedule_trace: list[tuple[str, str, int]] = []  # (track_id, action, session_ms) for diagnostics/tests
+        self._record_trace = bool(record_trace)
+        self.schedule_trace: list[tuple[str, str, int]] = []  # Opt-in diagnostics/tests trace
 
     def refresh(self) -> bool:
         sig = _stat_session_manifest(self.directory)
@@ -1012,7 +1013,7 @@ class SessionFollower:
             session_ms, _order, action, chosen = candidates[0]
             if action == "advance":
                 did = chosen.advance_quantum(dir_fd)
-                if did:
+                if did and self._record_trace:
                     self.schedule_trace.append((chosen.track_id, "advance", session_ms))
                 return did
         finally:
@@ -1020,7 +1021,8 @@ class SessionFollower:
 
         # Recognize outside any open capture file descriptor.
         ready = chosen.pop_ready_segment()
-        self.schedule_trace.append((chosen.track_id, "recognize", ready.session_ms))
+        if self._record_trace:
+            self.schedule_trace.append((chosen.track_id, "recognize", ready.session_ms))
         samples = np.asarray(ready.samples, dtype="<f4")
         if len(samples) and np.isfinite(samples).all():
             raw = transcribe_raw(self.model, samples)

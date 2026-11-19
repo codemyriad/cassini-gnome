@@ -529,6 +529,7 @@ def test_multi_track_earliest_session_time_fairness_and_bounded_memory(tmp_path)
         "whistle@" + ("a" * 64),
         detector,
         on_cache_entry=cached.append,
+        record_trace=True,
     )
     follower.refresh()
 
@@ -2021,6 +2022,7 @@ def test_preempt_and_stop_do_not_block_gtk_on_warm_client_close(tmp_path):
             queue._warm_client = warm2
             queue._warm_client_model = PARAKEET_MODEL_ID
             queue._warm_directory = target.absolute()
+            queue._warm_aliases = frozenset((target.absolute(),))
         assert queue.stop(target)
         assert warm2.cancel_called.is_set()
         durable(warm2.close_entered, "Background reaper did not start closing warm2")
@@ -2485,3 +2487,152 @@ def test_whistle_worker_ready_identity_uses_verified_pins_not_reread_after_load(
     assert ready_events[0]["modelIdentity"] == expected_v1, (
         "ready.modelIdentity must come from the verified pins.json bytes, not a post-load reread"
     )
+
+
+# ---------------------------------------------------------------------------
+# 18. Review regressions (round 5): observe_library enqueue-before-cleanup,
+#     symlink opposite-spelling cancel_meeting & enqueue, opt-in schedule_trace
+# ---------------------------------------------------------------------------
+
+
+def test_observe_library_saving_to_saved_enqueues_before_empty_sync_recordings(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _ensure_gi_for_main(monkeypatch)
+    from cassini_talk.main import CassiniApplication
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(lib))
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+
+    finished = Finished()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=20,
+    )
+    session = RecordingSession(lib, "Observe transition", source="gnome")
+    try:
+        session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session.checkpoint()
+
+        assert queue.follow_recording(session.directory)
+        wait_on_queue(
+            queue,
+            lambda: cached_segment_count(session.directory, "whistle", bundle) >= 1,
+            message="Follower did not cache segment before saving -> saved transition",
+        )
+        session.finish()
+
+        saved_meeting = SimpleNamespace(
+            key="m-key",
+            directory=session.directory,
+            published_file=session.directory / "audio.opus",
+            lifecycle="saved",
+            capture_state="completed",
+            transcript="none",
+            origin="own",
+            metadata_editable=True,
+        )
+        previous = {"m-key": ("saving", "completed", False)}
+        app = SimpleNamespace(
+            transcription_enabled=True,
+            transcription_mode="transcribeWhileRecording",
+            _quitting=False,
+            _capture_exiting=False,
+            _voice_library_keys=frozenset(),
+            voice_backfill=None,
+            voice_store=None,
+            settings_dialog=None,
+            transcriber=queue,
+            native_captures={},
+            get_windows=lambda: [],
+            live_recording_directories=lambda: [],
+            _ensure_transcriber=lambda: queue,
+            write_down=lambda meeting, resume=False: queue.enqueue(meeting.directory),
+        )
+        app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
+        app._sync_live_follower = lambda **kw: CassiniApplication._sync_live_follower(app, **kw)
+
+        CassiniApplication.observe_library(app, SimpleNamespace(meetings=[saved_meeting], unavailable=False), previous)
+        finished.wait(1, bound=30)
+
+        assert len(tracker["pids"]) == 1, "observe_library must enqueue before empty sync_recordings cleanup"
+        assert tracker["planned"] and tracker["planned"][-1].get("prefixesReused", 0) >= 1
+        assert read_metadata(session.directory)["transcript"]["status"] == "done"
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+
+
+def test_symlink_library_cancel_meeting_and_enqueue_match_opposite_spelling(tmp_path):
+    real_lib = tmp_path / "real-lib"
+    real_lib.mkdir()
+    link_lib = tmp_path / "link-lib"
+    link_lib.symlink_to(real_lib)
+
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    finished = Finished()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=bundle,
+        root=link_lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=20,
+    )
+    session_trash = RecordingSession(link_lib, "Trash via canonical", source="gnome")
+    session_handoff = RecordingSession(link_lib, "Enqueue via canonical", source="gnome")
+    try:
+        # 1) Trash (cancel_meeting) using canonical path while follower uses symlink path.
+        session_trash.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session_trash.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session_trash.checkpoint()
+
+        assert queue.follow_recording(session_trash.directory)
+        wait_on_queue(queue, lambda: queue._follow_client_model == "whistle", message="Follower did not start")
+        with queue.cancel_meeting(session_trash.directory.resolve()):
+            assert queue._follow_directory is None, "cancel_meeting via canonical path must retire symlink follower"
+            assert queue._warm_client is None
+        session_trash.finish()
+
+        # 2) Enqueue using canonical path while follower uses symlink path -> warm handoff preserved!
+        tracker["pids"].clear()
+        tracker["planned"].clear()
+        session_handoff.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session_handoff.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 520.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session_handoff.checkpoint()
+
+        assert queue.follow_recording(session_handoff.directory)
+        wait_on_queue(
+            queue,
+            lambda: cached_segment_count(session_handoff.directory, "whistle", bundle) >= 1,
+            message="Follower did not cache segment",
+        )
+        session_handoff.finish()
+        assert queue.enqueue(session_handoff.directory.resolve())
+        finished.wait(1, bound=30)
+
+        assert len(tracker["pids"]) == 1, "enqueue via canonical path must drain and reuse symlink follower"
+        assert tracker["planned"] and tracker["planned"][-1].get("prefixesReused", 0) >= 1
+        assert read_metadata(session_handoff.directory)["transcript"]["status"] == "done"
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
