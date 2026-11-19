@@ -1436,17 +1436,17 @@ class CassiniApplication(Adw.Application):
         if mode is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
             return
         live_dirs = self.live_recording_directories()
-        if live_dirs:
-            self._ensure_transcriber().sync_recordings(live_dirs, saving=saving)
+        active_saving = list(saving)
+        for recorder in tuple(getattr(self, "native_captures", {}).values()):
+            session = getattr(recorder, "session", None)
+            if session is not None and getattr(session, "finished", False):
+                active_saving.append(session.directory)
+        if live_dirs or active_saving:
+            self._ensure_transcriber().sync_recordings(live_dirs, saving=active_saving)
             return
         transcriber = getattr(self, "transcriber", None)
         if transcriber is not None and hasattr(transcriber, "sync_recordings"):
-            active_saving = list(saving)
-            for recorder in tuple(getattr(self, "native_captures", {}).values()):
-                session = getattr(recorder, "session", None)
-                if session is not None and getattr(session, "finished", False):
-                    active_saving.append(session.directory)
-            transcriber.sync_recordings([], saving=active_saving)
+            transcriber.sync_recordings([], saving=[])
 
     def _on_publish_started(self, directory):
         if self._quitting or self._capture_exiting or not getattr(self, "transcription_enabled", False):
@@ -1828,13 +1828,6 @@ class CassiniApplication(Adw.Application):
         for meeting in snapshot.meetings:
             managed = meeting.directory.parent.name == "sessions" and meeting.directory.parent.parent.name == ".cassini"
             if managed and meeting.published_file is None:
-                if (
-                    mode is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
-                    and meeting.lifecycle == "saving"
-                    and meeting.capture_state in ("completed", "interrupted")
-                    and meeting.transcript in ("none", "queued", "running")
-                ):
-                    self._ensure_transcriber().notify_session_finished(meeting.directory)
                 continue  # Keep queued intent, but wait for publication before committing metadata.
             if (
                 (
@@ -1859,7 +1852,14 @@ class CassiniApplication(Adw.Application):
 
         if mode is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
             saving_dirs = [
-                m.directory for m in snapshot.meetings if m.lifecycle == "saving" and m.published_file is None
+                m.directory
+                for m in snapshot.meetings
+                if m.directory.parent.name == "sessions"
+                and m.directory.parent.parent.name == ".cassini"
+                and m.published_file is None
+                and m.lifecycle == "saving"
+                and m.capture_state in ("completed", "interrupted")
+                and m.transcript in ("none", "queued", "running")
             ]
             if hasattr(self, "_sync_live_follower"):
                 self._sync_live_follower(saving=saving_dirs)

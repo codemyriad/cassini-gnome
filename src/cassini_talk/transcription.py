@@ -522,8 +522,8 @@ class TranscriptionQueue:
         self.recordings = recordings
         self.clock = clock
         self.bundle = Path(bundle) if bundle else bundle_path()
-        self.root = library_root(root).absolute()
         self._explicit_root = root is not None
+        self._root = Path(root).absolute() if root is not None else None
         self.client_factory = client_factory
         self.client = None
         self.models = models
@@ -563,6 +563,12 @@ class TranscriptionQueue:
         self._warm_client_model: str | None = None
         self._warm_directory: Path | None = None
         self._warm_aliases: frozenset[Path] = frozenset()
+
+    @property
+    def root(self) -> Path:
+        if self._root is None:
+            return library_root(None).absolute()
+        return self._root
 
     @property
     def mode(self) -> TranscriptionMode:
@@ -668,20 +674,23 @@ class TranscriptionQueue:
         return not (reported is not None and expected is not None and reported != expected)
 
     def sync_recordings(self, directories, *, saving=()) -> None:
-        """Observe live recording directories; never spawns workers outside speed mode.
+        """Observe live recording and actively-saving directories; never spawns outside speed mode.
 
-        When `directories` is empty, releases any active follower or warm worker whose
-        session is neither actively `saving` nor already queued/active for post-Stop
-        transcription. Purely in-memory under `self.lock` (no Path.resolve() on GTK).
+        Picks one stable follower target per refresh (live recording first, then saving
+        session). When both are empty, releases any active follower or warm worker whose
+        session is not already queued/active for post-Stop transcription. Purely in-memory
+        under `self.lock` (no Path.resolve() on GTK).
         """
         warm = None
+        target_to_follow = None
         with self.lock:
             if self._mode is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
                 return
             live = [Path(d).absolute() for d in directories]
-            if not live:
-                protected = [Path(d).absolute() for d in saving]
-                protected.extend(self.pending)
+            saving_paths = [Path(d).absolute() for d in saving]
+            candidates = live if live else saving_paths
+            if not candidates:
+                protected = list(self.pending)
                 if self._active_directory is not None:
                     protected.append(self._active_directory)
                 if self._follow_directory is not None and not any(
@@ -695,15 +704,16 @@ class TranscriptionQueue:
             else:
                 if (
                     self._follow_directory is not None
-                    and any(self._matches_aliases(self._follow_aliases, d) for d in live)
+                    and any(self._matches_aliases(self._follow_aliases, d) for d in candidates)
                     and self._follow_thread is not None
                     and self._follow_thread.is_alive()
                 ):
                     return
+                target_to_follow = candidates[0]
         if warm is not None:
             self._close_client_async(warm)
-        if live:
-            self.follow_recording(live[0])
+        if target_to_follow is not None:
+            self.follow_recording(target_to_follow)
 
     def notify_session_finished(self, directory) -> bool:
         """Overlap read-only tail planning/ASR with Opus publication in speed mode."""
@@ -779,10 +789,16 @@ class TranscriptionQueue:
         if follow_mismatch or warm_mismatch:
             self.preempt_follower(drain=False, wait=False)
 
-    def _wait_follower_stopped(self, *, drain_for: Path | None = None) -> None:
+    def _wait_follower_stopped(self, *, drain_for: Path | frozenset[Path] | None = None) -> None:
         """Wait off-GTK for the follower thread to hand off or terminate before _run()."""
+        if isinstance(drain_for, frozenset):
+            drain_aliases = drain_for
+        elif drain_for is not None:
+            drain_aliases = frozenset((Path(drain_for).absolute(), self._canonical_follow_dir(drain_for)))
+        else:
+            drain_aliases = frozenset()
         with self.lock:
-            same = drain_for is not None and self._matches_aliases(self._follow_aliases, drain_for)
+            same = bool(drain_aliases) and self._any_alias_in(drain_aliases, self._follow_aliases)
             thread = self._signal_follower_stop_locked(drain=same, cancel_client=not same)
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=max(1.0, self._follow_stop_timeout + 5.0))
@@ -1122,8 +1138,6 @@ class TranscriptionQueue:
             self._set_progress(directory, TranscriptionProgress(step="reading"), notify=False, reset=True)
             if self._active_directory in self._background_voices and self.client:
                 self.client.cancel()
-            if self._follow_directory is not None and not self._matches_aliases(self._follow_aliases, directory):
-                self._signal_follower_stop_locked(drain=False, cancel_client=True)
             future = self.preparer.submit(self._mark_queued, directory, resume)
             self._prepare_futures[directory] = future
         future.add_done_callback(lambda f: self._prepared(directory, f))
@@ -1157,7 +1171,12 @@ class TranscriptionQueue:
 
     def _mark_queued_locked(self, directory, resume):
         self._check_open()
+        raw_directory = directory
         canonical = self._owned(directory)
+        dir_aliases = frozenset((raw_directory, canonical))
+        with self.lock:
+            if self._follow_directory is not None and not self._any_alias_in(dir_aliases, self._follow_aliases):
+                self._signal_follower_stop_locked(drain=False, cancel_client=True)
         directory = canonical
         scanner = LibraryScanner.for_meeting(canonical)
         meeting = next(m for m in scanner.scan(changed_directories={canonical}).meetings if m.directory == canonical)
@@ -2091,20 +2110,24 @@ class TranscriptionQueue:
     def cancel_meeting(self, directory):
         """Worker-only exclusion: cancel this meeting, wait, keep it blocked during Trash."""
         directory = Path(directory).absolute()
+        dir_aliases = frozenset((directory, self._canonical_follow_dir(directory)))
         with self.lock:
-            self._cancelled_meetings.add(directory)
-            self._resume_pending.discard(directory)
-            self._clear_progress_locked(directory)
+            self._cancelled_meetings.update(dir_aliases)
+            for alias in dir_aliases:
+                self._resume_pending.discard(alias)
+                self._clear_progress_locked(alias)
             futures = [
-                mapping.get(directory) for mapping in (self._prepare_futures, self._job_futures, self._voice_futures)
+                mapping.get(alias)
+                for mapping in (self._prepare_futures, self._job_futures, self._voice_futures)
+                for alias in dir_aliases
             ]
             # Cancel while holding the owner lock: a persistent client must not
             # advance to another meeting between this identity check and cancel.
-            if self._active_directory == directory and self.client and hasattr(self.client, "cancel"):
+            if self._active_directory in dir_aliases and self.client and hasattr(self.client, "cancel"):
                 self.client.cancel()
-            if self._matches_aliases(self._follow_aliases, directory):
+            if self._any_alias_in(dir_aliases, self._follow_aliases):
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
-            warm = self._discard_warm_client_locked() if self._matches_aliases(self._warm_aliases, directory) else None
+            warm = self._discard_warm_client_locked() if self._any_alias_in(dir_aliases, self._warm_aliases) else None
         if warm is not None:
             if hasattr(warm, "cancel"):
                 warm.cancel()
@@ -2117,16 +2140,17 @@ class TranscriptionQueue:
             with self._idle:
                 self._idle.wait_for(
                     lambda: (
-                        directory not in self.pending
-                        and directory not in self.voice_pending
-                        and self._active_directory != directory
-                        and not self._matches_aliases(self._follow_aliases, directory)
+                        not any(alias in self.pending for alias in dir_aliases)
+                        and not any(alias in self.voice_pending for alias in dir_aliases)
+                        and self._active_directory not in dir_aliases
+                        and not self._any_alias_in(dir_aliases, self._follow_aliases)
                     )
                 )
             yield
         finally:
             with self.lock:
-                self._cancelled_meetings.discard(directory)
+                for alias in dir_aliases:
+                    self._cancelled_meetings.discard(alias)
 
     def stop(self, directory, done=lambda: None):
         """Cancel any queued or running transcription for directory and reset its status to none."""

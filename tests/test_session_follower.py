@@ -2636,3 +2636,177 @@ def test_symlink_library_cancel_meeting_and_enqueue_match_opposite_spelling(tmp_
         queue.executor.shutdown(wait=True)
         if getattr(queue, "_close_thread", None) is not None:
             queue._close_thread.join(timeout=5.0)
+
+
+# ---------------------------------------------------------------------------
+# 19. Review regressions (round 6): stable single follower per refresh,
+#     reverse-direction canonical->symlink cancel/enqueue, lazy library_root
+# ---------------------------------------------------------------------------
+
+
+def test_observe_library_saving_plus_live_keeps_stable_single_follower(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _ensure_gi_for_main(monkeypatch)
+    from cassini_talk.main import CassiniApplication
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(lib))
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=20,
+    )
+    saving_session = RecordingSession(capture_parent(lib), "Saving meeting A", source="gnome")
+    live_session = RecordingSession(capture_parent(lib), "Live meeting B", source="gnome")
+    try:
+        saving_session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        saving_session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        saving_session.finish()
+
+        live_session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        live_session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 520.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        live_session.checkpoint()
+
+        saving_meeting = SimpleNamespace(
+            key="a-key",
+            directory=saving_session.directory,
+            published_file=None,
+            lifecycle="saving",
+            capture_state="completed",
+            transcript="none",
+            origin="own",
+            metadata_editable=True,
+        )
+        app = SimpleNamespace(
+            transcription_enabled=True,
+            transcription_mode="transcribeWhileRecording",
+            _quitting=False,
+            _capture_exiting=False,
+            _voice_library_keys=frozenset(),
+            voice_backfill=None,
+            voice_store=None,
+            settings_dialog=None,
+            transcriber=queue,
+            native_captures={},
+            get_windows=lambda: [],
+            live_recording_directories=lambda: [str(live_session.directory)],
+            _ensure_transcriber=lambda: queue,
+            write_down=lambda *_a, **_k: None,
+        )
+        app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
+        app._sync_live_follower = lambda **kw: CassiniApplication._sync_live_follower(app, **kw)
+
+        snapshot = SimpleNamespace(meetings=[saving_meeting], unavailable=False)
+        CassiniApplication.observe_library(app, snapshot, {})
+        wait_on_queue(queue, lambda: queue._follow_client_model == "whistle", message="Live follower did not start")
+        initial_pid = tracker["pids"][0]
+        initial_thread = queue._follow_thread
+
+        # Repeating identical snapshots (A saving + B live) must NEVER restart or churn the follower.
+        for _ in range(5):
+            CassiniApplication.observe_library(app, snapshot, {})
+        assert tracker["pids"] == [initial_pid]
+        assert queue._follow_thread is initial_thread
+        assert queue._follow_directory == live_session.directory.absolute()
+    finally:
+        live_session.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+
+
+def test_symlink_library_canonical_follow_matches_symlink_cancel_and_enqueue(tmp_path):
+    real_lib = tmp_path / "real-lib"
+    real_lib.mkdir()
+    link_lib = tmp_path / "link-lib"
+    link_lib.symlink_to(real_lib)
+
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    finished = Finished()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=bundle,
+        root=real_lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=20,
+    )
+    session_trash = RecordingSession(real_lib, "Canonical follow, symlink trash", source="gnome")
+    session_handoff = RecordingSession(real_lib, "Canonical follow, symlink enqueue", source="gnome")
+    try:
+        # 1) Follower starts on canonical path; Trash calls cancel_meeting via symlink path.
+        session_trash.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session_trash.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session_trash.checkpoint()
+
+        assert queue.follow_recording(session_trash.directory)
+        wait_on_queue(queue, lambda: queue._follow_client_model == "whistle", message="Follower did not start")
+        symlink_trash_dir = link_lib / session_trash.directory.name
+        with queue.cancel_meeting(symlink_trash_dir):
+            assert queue._follow_directory is None, "cancel_meeting via symlink path must retire canonical follower"
+            assert queue._warm_client is None
+        session_trash.finish()
+
+        # 2) Follower starts on canonical path; enqueue is called via symlink path -> warm handoff preserved!
+        tracker["pids"].clear()
+        tracker["planned"].clear()
+        session_handoff.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session_handoff.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 520.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session_handoff.checkpoint()
+
+        assert queue.follow_recording(session_handoff.directory)
+        wait_on_queue(
+            queue,
+            lambda: cached_segment_count(session_handoff.directory, "whistle", bundle) >= 1,
+            message="Follower did not cache segment",
+        )
+        session_handoff.finish()
+        symlink_handoff_dir = link_lib / session_handoff.directory.name
+        assert queue.enqueue(symlink_handoff_dir)
+        finished.wait(1, bound=30)
+
+        assert len(tracker["pids"]) == 1, "enqueue via symlink path must drain and reuse canonical follower"
+        assert tracker["planned"] and tracker["planned"][-1].get("prefixesReused", 0) >= 1
+        assert read_metadata(session_handoff.directory)["transcript"]["status"] == "done"
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+
+
+def test_transcription_queue_init_does_not_call_library_root_on_gtk(tmp_path, monkeypatch):
+    bundle = FakeBundle.create(tmp_path)
+
+    def forbid_library_root(*_args, **_kwargs):
+        raise AssertionError("TranscriptionQueue.__init__ must not call library_root(None) synchronously on GTK")
+
+    monkeypatch.setattr("cassini_talk.transcription.library_root", forbid_library_root)
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=None,
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+    )
+    try:
+        assert queue._root is None
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
