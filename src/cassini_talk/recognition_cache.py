@@ -12,7 +12,7 @@ import json
 import math
 import os
 import re
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from .library_files import regular
@@ -32,7 +32,7 @@ MAX_RELATIVE_WORD_MS = 86_400_000
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-class TranscriptionMode(str, Enum):
+class TranscriptionMode(StrEnum):
     RECORD_ONLY = "record_only"
     AFTER_STOP = "after_stop"
     TRANSCRIBE_WHILE_RECORDING = "transcribe_while_recording"

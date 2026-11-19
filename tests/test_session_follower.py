@@ -17,6 +17,8 @@ from durable import Finished, durable
 
 np = pytest.importorskip("numpy")
 
+from fake_follow_worker import DeterministicDetector, DeterministicRecognizer  # noqa: E402
+
 from cassini_talk import portable  # noqa: E402
 from cassini_talk import speech_pipeline as pipeline  # noqa: E402
 from cassini_talk.library import LibraryScanner  # noqa: E402
@@ -43,7 +45,6 @@ from cassini_talk.rotating_wav import RotatingWAV  # noqa: E402
 from cassini_talk.session_follower import SessionFollower  # noqa: E402
 from cassini_talk.transcription import TranscriptionQueue, should_auto_write  # noqa: E402
 from cassini_talk.whistle_client import WhistleClient  # noqa: E402
-from fake_follow_worker import DeterministicDetector, DeterministicRecognizer  # noqa: E402
 
 WORKER_SCRIPT = Path(__file__).with_name("fake_follow_worker.py")
 
@@ -284,7 +285,9 @@ def test_transcription_mode_normalization_and_record_only_policy(tmp_path):
         finished,
         bundle=bundle,
         root=lib,
-        client_factory=lambda b, *, timeout=120: SubprocessTestClient(b, engine="whistle", timeout=timeout, tracker=tracker),
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
         mode=TranscriptionMode.RECORD_ONLY,
     )
     try:
@@ -312,7 +315,9 @@ def test_record_only_and_after_stop_spawn_zero_workers_during_capture(tmp_path, 
         bundle=bundle,
         root=lib,
         models=models,
-        client_factory=lambda b, *, timeout=120: SubprocessTestClient(b, engine="whistle", timeout=timeout, tracker=tracker),
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
         mode=mode,
     )
     session = RecordingSession(capture_parent(lib), "Silent mode", source="gnome")
@@ -901,7 +906,9 @@ def test_overlap_readonly_planning_asr_with_opus_publication(tmp_path, monkeypat
         finished,
         bundle=bundle,
         root=lib,
-        client_factory=lambda b, *, timeout=120: SubprocessTestClient(b, engine="whistle", timeout=timeout, tracker=tracker),
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
         mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
         follow_poll_interval_ms=15,
     )
@@ -983,7 +990,9 @@ def test_preemption_manual_enqueue_model_change_trash_and_close(tmp_path):
         bundle=bundle,
         root=lib,
         models=models,
-        client_factory=lambda b, *, timeout=120: SubprocessTestClient(b, engine="whistle", timeout=timeout, tracker=tracker),
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
         mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
         follow_poll_interval_ms=15,
     )
@@ -1045,7 +1054,9 @@ def test_capture_stress_two_simultaneous_tracks_zero_frame_loss(tmp_path):
         lambda _: None,
         bundle=bundle,
         root=lib,
-        client_factory=lambda b, *, timeout=120: SubprocessTestClient(b, engine="whistle", timeout=timeout, tracker=tracker),
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
         mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
         follow_poll_interval_ms=10,
     )

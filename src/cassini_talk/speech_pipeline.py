@@ -23,7 +23,7 @@ import numpy as np
 
 from . import placement
 from .recognition_cache import (
-    RECOGNITION_CACHE_FORMAT,
+    RECOGNITION_CACHE_FORMAT as RECOGNITION_CACHE_FORMAT,
     cache_entry_payload,
     derive_segment_cache_key,
     is_valid_model_identity,
@@ -705,6 +705,9 @@ def recognise_segment(model, path, segment, offset_ms=0, *, samples=None, audio_
     return dict(segment, text=result["text"]), words, result.get("language") or "und", input_hash
 
 
+_DEFAULT_RECOGNISE_SEGMENT = recognise_segment
+
+
 def present_words(words, presence, *, starts=None):
     """D63 #3: the words whose midpoint lies in one of the track's presence ranges.
 
@@ -871,46 +874,62 @@ def process_tracks(
             factor = elapsed / processed if processed else initial_factor
         else:
             started = time.monotonic()
-            result = model.transcribe(samples, language=None, word_timestamps=True)
-            cache_entry, _ = raw_result_to_cache_entry(cache_model, samples, result) if cache_enabled else (None, None)
-            if cache_entry is not None:
-                value, words, detected = place_and_clamp_words(
+            cache_entry = None
+            if recognise_segment is not _DEFAULT_RECOGNISE_SEGMENT:
+                value, words, detected, input_hash = recognise_segment(
+                    model,
+                    track["path"],
                     segment,
                     offset,
-                    len(samples),
-                    cache_entry["text"],
-                    cache_entry["relativeWords"],
-                    cache_entry["language"],
+                    samples=samples,
                     audio_end_ms=audio_end,
-                    presence=presence,
-                    presence_starts=starts,
+                    input_hash=input_hash,
                 )
+                kept = present_words(words, presence, starts=starts)
+                if len(kept) != len(words):
+                    words, value = kept, dict(value, text=" ".join(word["text"] for word in kept))
             else:
-                # Non-cacheable raw output still uses the exact existing placement/clamp path.
-                base = placement.word_ms(offset, segment["startSample"])
-                last_sample = min(segment["endSample"], segment["startSample"] + len(samples))
-                end = base + (last_sample - segment["startSample"]) * 1000 // RATE
-                if audio_end is not None:
-                    end = min(end, audio_end)
-                raw_words = []
-                for word in result.get("words", []):
-                    start = min(end, max(base, base + round(word["start"] * 1000)))
-                    raw_words.append(
-                        dict(
-                            startMs=start,
-                            endMs=max(start, min(end, base + round(word["end"] * 1000))),
-                            text=word.get("word", word.get("text", "")),
-                        )
+                result = model.transcribe(samples, language=None, word_timestamps=True)
+                if cache_enabled:
+                    cache_entry, _ = raw_result_to_cache_entry(cache_model, samples, result)
+                if cache_entry is not None:
+                    value, words, detected = place_and_clamp_words(
+                        segment,
+                        offset,
+                        len(samples),
+                        cache_entry["text"],
+                        cache_entry["relativeWords"],
+                        cache_entry["language"],
+                        audio_end_ms=audio_end,
+                        presence=presence,
+                        presence_starts=starts,
                     )
-                kept = present_words(raw_words, presence, starts=starts)
-                if len(kept) != len(raw_words):
-                    words = kept
-                    final_text = " ".join(word["text"] for word in kept)
                 else:
-                    words = raw_words
-                    final_text = result["text"]
-                value = dict(segment, text=final_text)
-                detected = result.get("language") or "und"
+                    # Non-cacheable raw output still uses the exact existing placement/clamp path.
+                    base = placement.word_ms(offset, segment["startSample"])
+                    last_sample = min(segment["endSample"], segment["startSample"] + len(samples))
+                    end = base + (last_sample - segment["startSample"]) * 1000 // RATE
+                    if audio_end is not None:
+                        end = min(end, audio_end)
+                    raw_words = []
+                    for word in result.get("words", []):
+                        start = min(end, max(base, base + round(word["start"] * 1000)))
+                        raw_words.append(
+                            dict(
+                                startMs=start,
+                                endMs=max(start, min(end, base + round(word["end"] * 1000))),
+                                text=word.get("word", word.get("text", "")),
+                            )
+                        )
+                    kept = present_words(raw_words, presence, starts=starts)
+                    if len(kept) != len(raw_words):
+                        words = kept
+                        final_text = " ".join(word["text"] for word in kept)
+                    else:
+                        words = raw_words
+                        final_text = result["text"]
+                    value = dict(segment, text=final_text)
+                    detected = result.get("language") or "und"
             elapsed += time.monotonic() - started
             processed += seconds
             remaining = max(0, remaining - seconds)

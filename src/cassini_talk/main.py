@@ -1777,7 +1777,11 @@ class CassiniApplication(Adw.Application):
         from .recognition_cache import TranscriptionMode
         from .transcription import should_auto_write
 
-        mode = self.transcription_mode()
+        mode = (
+            self.transcription_mode()
+            if hasattr(self, "transcription_mode")
+            else CassiniApplication.transcription_mode(self)
+        )
         if mode is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
             live_dirs = self.live_recording_directories()
             if live_dirs:
@@ -1853,7 +1857,12 @@ class CassiniApplication(Adw.Application):
             return
         from .recognition_cache import TranscriptionMode
 
-        if self.transcription_mode() is TranscriptionMode.RECORD_ONLY:
+        mode = (
+            self.transcription_mode()
+            if hasattr(self, "transcription_mode")
+            else CassiniApplication.transcription_mode(self)
+        )
+        if mode is TranscriptionMode.RECORD_ONLY:
             return
         for recording in snapshot.get("recordings", []):
             path = recording.get("path")

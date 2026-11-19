@@ -34,7 +34,9 @@ class DeterministicDetector:
     input_stage = "test-energy-vad-v1"
 
     def __init__(self, *_args):
-        self.runtime = dict(inputStage=self.input_stage, version="test", providers=["CPU"], intraThreads=1, interThreads=1)
+        self.runtime = dict(
+            inputStage=self.input_stage, version="test", providers=["CPU"], intraThreads=1, interThreads=1
+        )
         self.prob_calls = 0
         self.reset()
 

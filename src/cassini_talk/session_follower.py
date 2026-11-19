@@ -295,7 +295,9 @@ class TrackFollower:
         self.primary_file = str(track.get("file", ""))
         self.kind = _track_kind(track, self.primary_file)
         raw_offset = track.get("startOffsetMs")
-        self.offset_ms = float(raw_offset) if isinstance(raw_offset, (int, float)) and not isinstance(raw_offset, bool) else None
+        self.offset_ms = (
+            float(raw_offset) if isinstance(raw_offset, (int, float)) and not isinstance(raw_offset, bool) else None
+        )
         self.placed_offset = 0.0 if self.offset_ms is None else self.offset_ms
         self.origin_16k = placement.frame(self.placed_offset, RATE_16K)
         self.sample_rate: int | None = None
@@ -420,7 +422,9 @@ class TrackFollower:
             elif type(span_offset) not in (int, float) or not math.isfinite(span_offset) or span_offset < 0:
                 self.unsupported = True
                 return None
-            span_ended = self._session_ended or self._track_ended or bool(row.get("ended")) or (idx < len(self._rows) - 1)
+            span_ended = (
+                self._session_ended or self._track_ended or bool(row.get("ended")) or (idx < len(self._rows) - 1)
+            )
             anchors = row.get("clockAnchors") if isinstance(row.get("clockAnchors"), list) else []
             inspected.append(
                 dict(
@@ -437,7 +441,9 @@ class TrackFollower:
             return None
         # Direct 16 kHz only applies to single-span unwarped tracks; multi-span or warped 16 kHz
         # uses GStreamer resampling in mapped_audio, so leave it to post-Stop batch.
-        if self.sample_rate == RATE_16K and (len(inspected) > 1 or self.ever_clock_anchored or _has_clock_anchors(self._rows)):
+        if self.sample_rate == RATE_16K and (
+            len(inspected) > 1 or self.ever_clock_anchored or _has_clock_anchors(self._rows)
+        ):
             self.unsupported = True
             self.prefix_invalidated = True
             return None
@@ -483,10 +489,7 @@ class TrackFollower:
                         safe_end = max(safe_end, span_safe)
                 elif committed < RIGHT_HALO_48K:
                     # Wait for the new rotated span to have committed frames before crossing its start.
-                    if idx > 0:
-                        safe_end = min(safe_end, max(0, shift_48k))
-                    else:
-                        safe_end = 0
+                    safe_end = min(safe_end, max(0, shift_48k)) if idx > 0 else 0
                 else:
                     span_safe = shift_48k + (committed - RIGHT_HALO_48K)
                     if not blocked_by_unanchored:
@@ -515,10 +518,7 @@ class TrackFollower:
                 knots = mixdown.valid_anchors(fixed_raw, RATE_48K)
                 if len(knots) < 2:
                     # Wait until at least one 60 s interval is permanently anchored.
-                    if idx > 0:
-                        safe_end = min(safe_end, max(0, shift_48k - 1))
-                    else:
-                        safe_end = 0
+                    safe_end = min(safe_end, max(0, shift_48k - 1)) if idx > 0 else 0
                     blocked_by_unanchored = True
                     continue
                 mapping = mixdown.Mapping(
@@ -539,10 +539,7 @@ class TrackFollower:
                         best_p = float(p_arr[k])
                         break
                 if best_p is None:
-                    if idx > 0:
-                        safe_end = min(safe_end, max(0, shift_48k - 1))
-                    else:
-                        safe_end = 0
+                    safe_end = min(safe_end, max(0, shift_48k - 1)) if idx > 0 else 0
                     blocked_by_unanchored = True
                     continue
                 specs.append((span, mapping, committed))
