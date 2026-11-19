@@ -2112,8 +2112,8 @@ class TranscriptionQueue:
         directory = Path(directory).absolute()
         dir_aliases = frozenset((directory, self._canonical_follow_dir(directory)))
         with self.lock:
-            self._cancelled_meetings.update(dir_aliases)
             for alias in dir_aliases:
+                self._cancelled_meetings.add(alias)
                 self._resume_pending.discard(alias)
                 self._clear_progress_locked(alias)
             futures = [
