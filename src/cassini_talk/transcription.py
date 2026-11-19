@@ -1111,11 +1111,11 @@ class TranscriptionQueue:
         if notify:
             self.progress_changed(directory)
 
-    def _clear_progress_locked(self, directory) -> None:
+    def _clear_progress_locked(self, directory, *, key: Path | None = None) -> None:
         path = Path(directory)
         self._progress.pop(path, None)
         self._progress.pop(path.absolute(), None)
-        self._progress.pop(self._progress_key(path), None)
+        self._progress.pop(key if key is not None else self._progress_key(path), None)
 
     def transcribing(self, directory):
         """Whether a job for this meeting is queued or running (it may re-diarize)."""
@@ -1283,7 +1283,7 @@ class TranscriptionQueue:
                 if retired:
                     self.finished(directory)
 
-    def _retire_locked(self, directory, *, job_future=None):
+    def _retire_locked(self, directory, *, job_future=None, progress_key=None):
         if directory not in self.pending:
             return False
         if job_future is not None and self._job_futures.get(directory) is not job_future:
@@ -1292,13 +1292,14 @@ class TranscriptionQueue:
         self._resume_pending.discard(directory)
         self._prepare_futures.pop(directory, None)
         self._job_futures.pop(directory, None)
-        self._clear_progress_locked(directory)
+        self._clear_progress_locked(directory, key=progress_key)
         self._idle.notify_all()
         return True
 
     def _completed(self, directory, *, job_future=None):
+        progress_key = self._progress_key(directory)
         with self.lock:
-            retired = self._retire_locked(directory, job_future=job_future)
+            retired = self._retire_locked(directory, job_future=job_future, progress_key=progress_key)
         if retired:
             self.finished(directory)
 
@@ -2088,6 +2089,7 @@ class TranscriptionQueue:
     @contextlib.contextmanager
     def _job_scope(self, directory, *, owner=False):
         self._context.directory = directory
+        self._context.aliases = frozenset((directory, self._canonical_follow_dir(directory)))
         self._context.background = owner and directory in self._background_voices
         try:
             with self.lock:
@@ -2100,6 +2102,7 @@ class TranscriptionQueue:
                 if owner and self._active_directory == directory:
                     self._active_directory = None
                 self._context.directory = None
+                self._context.aliases = frozenset()
                 self._context.background = False
                 self._idle.notify_all()
 
@@ -2107,11 +2110,16 @@ class TranscriptionQueue:
     def cancel_meeting(self, directory):
         """Worker-only exclusion: cancel this meeting, wait, keep it blocked during Trash."""
         directory = Path(directory).absolute()
-        dir_aliases = frozenset((directory, self._canonical_follow_dir(directory)))
+        base_aliases = {directory, self._canonical_follow_dir(directory)}
         with self.lock:
             snap_follow, snap_warm = self._follow_directory, self._warm_directory
+            snap_jobs = [*self.pending, *self.voice_pending]
+            if self._active_directory is not None:
+                snap_jobs.append(self._active_directory)
         follow_canon = self._canonical_follow_dir(snap_follow) if snap_follow is not None else None
         warm_canon = self._canonical_follow_dir(snap_warm) if snap_warm is not None else None
+        matched_jobs = {p for p in snap_jobs if p in base_aliases or self._canonical_follow_dir(p) in base_aliases}
+        dir_aliases = frozenset(base_aliases | matched_jobs)
         with self.lock:
             if follow_canon is not None and self._follow_directory == snap_follow:
                 self._follow_aliases = self._follow_aliases | frozenset((follow_canon,))
@@ -2120,7 +2128,7 @@ class TranscriptionQueue:
             for alias in dir_aliases:
                 self._cancelled_meetings.add(alias)
                 self._resume_pending.discard(alias)
-                self._clear_progress_locked(alias)
+                self._progress.pop(alias, None)
             futures = [
                 mapping.get(alias)
                 for mapping in (self._prepare_futures, self._job_futures, self._voice_futures)
@@ -2236,15 +2244,23 @@ class TranscriptionQueue:
                 self.changed(target)
             done()
 
+    def _context_aliases(self):
+        aliases = getattr(self._context, "aliases", None)
+        if aliases:
+            return aliases
+        directory = getattr(self._context, "directory", None)
+        return frozenset((directory,)) if directory is not None else frozenset()
+
     def _check_not_trashed(self):
-        if self.closed or getattr(self._context, "directory", None) in self._cancelled_meetings:
+        if self.closed or self._any_alias_in(self._context_aliases(), self._cancelled_meetings):
             raise CancelledError()
 
     def _check_open(self):
+        aliases = self._context_aliases()
         if (
             self.closed
-            or getattr(self._context, "directory", None) in self._cancelled_meetings
-            or getattr(self._context, "directory", None) in self._stopping_meetings
+            or self._any_alias_in(aliases, self._cancelled_meetings)
+            or self._any_alias_in(aliases, self._stopping_meetings)
             or getattr(self._context, "background", False)
             and self.pending
         ):

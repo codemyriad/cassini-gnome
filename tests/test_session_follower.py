@@ -2872,3 +2872,229 @@ def test_follow_stop_drain_true_emits_ready_segment_before_acknowledging(tmp_pat
     assert types.index("follow-cache") < types.index("follow-stopped")
     stopped = next(e for e in events if e["type"] == "follow-stopped")
     assert stopped["segments"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# 20. Review regressions (round 8): canonical cancel_meeting vs symlink job
+#     (including pre-commit check & zero Path.resolve under lock) and gated
+#     _owned() startup window
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_meeting_via_canonical_waits_and_cancels_symlink_enqueued_job_without_resolve_under_lock(
+    tmp_path, monkeypatch
+):
+    real_lib = tmp_path / "real-lib"
+    real_lib.mkdir()
+    link_lib = tmp_path / "link-lib"
+    link_lib.symlink_to(real_lib)
+    bundle = FakeBundle.create(tmp_path)
+
+    job_entered = threading.Event()
+    release_job = threading.Event()
+    client_cancelled = threading.Event()
+    trash_entered = threading.Event()
+    trash_done = threading.Event()
+
+    class GatedJobClient:
+        def __init__(self, *_args, **_kw):
+            self.recognition_cache = None
+            self.diarization = None
+            self.keep_for_voices = False
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def cancel(self):
+            client_cancelled.set()
+
+        def process_tracks(self, tracks, progress):
+            progress(dict(type="planned", etaMinutes=0, segments=1))
+            job_entered.set()
+            durable(release_job, "Gated job was not released")
+            # Return normally so TranscriptionQueue hits its pre-commit _check_not_trashed()!
+            progress(
+                dict(
+                    type="progress",
+                    trackId=tracks[0]["id"],
+                    trackOrder=0,
+                    language="en",
+                    etaMinutes=0,
+                    words=[dict(startMs=0, endMs=300, text="ShouldNotCommit")],
+                )
+            )
+            return dict(diagnostics=[], segments=1)
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=link_lib,
+        client_factory=GatedJobClient,
+        mode=TranscriptionMode.AFTER_STOP,
+    )
+    session = RecordingSession(link_lib, "Symlink job vs canonical trash", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+    session.finish()
+
+    try:
+        assert queue.enqueue(session.directory)
+        durable(job_entered, "Symlink-enqueued job did not enter process_tracks")
+
+        # Verify cancel_meeting never calls Path.resolve() while holding queue.lock.
+        class TrackingRLock:
+            def __init__(self, inner):
+                self._inner = inner
+                self._local = threading.local()
+
+            def _depth(self):
+                return getattr(self._local, "depth", 0)
+
+            def acquire(self, *args, **kwargs):
+                ok = self._inner.acquire(*args, **kwargs)
+                if ok:
+                    self._local.depth = self._depth() + 1
+                return ok
+
+            def release(self):
+                self._local.depth = max(0, self._depth() - 1)
+                return self._inner.release()
+
+            def _release_save(self):
+                saved = self._inner._release_save()
+                self._local.depth = 0
+                return saved
+
+            def _acquire_restore(self, state):
+                self._inner._acquire_restore(state)
+                self._local.depth = state[0]
+
+            def __enter__(self):
+                self.acquire()
+                return self
+
+            def __exit__(self, *args):
+                self.release()
+
+            def __getattr__(self, name):
+                return getattr(self._inner, name)
+
+        tracked_lock = TrackingRLock(queue.lock)
+        queue.lock = tracked_lock
+        queue._idle = threading.Condition(tracked_lock)
+
+        orig_resolve = Path.resolve
+        resolve_under_lock = []
+
+        def checked_resolve(self, *args, **kwargs):
+            if tracked_lock._depth() > 0:
+                resolve_under_lock.append(str(self))
+            return orig_resolve(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", checked_resolve)
+
+        canonical_dir = orig_resolve(session.directory)
+
+        def run_trash():
+            with queue.cancel_meeting(canonical_dir):
+                trash_entered.set()
+                assert queue._active_directory is None
+                assert not queue.pending
+            trash_done.set()
+
+        trash_thread = threading.Thread(target=run_trash, daemon=True)
+        trash_thread.start()
+
+        # Trash must signal cancel on the symlink-enqueued client and WAIT until the job exits!
+        durable(client_cancelled, "Canonical cancel_meeting did not cancel symlink-enqueued job")
+        assert not trash_entered.is_set(), "Trash entered exclusion block while symlink-enqueued job was still active"
+
+        release_job.set()
+        durable(trash_entered, "Trash did not enter after cancelled job exited")
+        durable(trash_done, "Trash did not complete")
+        trash_thread.join(timeout=5.0)
+
+        assert not resolve_under_lock, f"Path.resolve() called while queue.lock was held: {resolve_under_lock}"
+        # Pre-commit _check_not_trashed() must have aborted committing the transcript!
+        assert read_metadata(session.directory)["transcript"]["status"] != "done"
+    finally:
+        release_job.set()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+
+
+def test_cancel_meeting_waits_for_follower_gated_before_owned_returns(tmp_path, monkeypatch):
+    real_lib = tmp_path / "real-lib"
+    real_lib.mkdir()
+    link_lib = tmp_path / "link-lib"
+    link_lib.symlink_to(real_lib)
+    bundle = FakeBundle.create(tmp_path)
+
+    owned_entered = threading.Event()
+    release_owned = threading.Event()
+    trash_entered = threading.Event()
+    trash_done = threading.Event()
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=link_lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(b, engine="whistle", timeout=timeout),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+    )
+    orig_owned = queue._owned
+
+    def gated_owned(directory):
+        owned_entered.set()
+        durable(release_owned, "_owned() gate was not released")
+        return orig_owned(directory)
+
+    monkeypatch.setattr(queue, "_owned", gated_owned)
+    session = RecordingSession(link_lib, "Gated _owned startup", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.checkpoint()
+
+    try:
+        assert queue.follow_recording(session.directory)
+        durable(owned_entered, "Follower did not reach _owned()")
+
+        canonical_dir = session.directory.resolve()
+        cancelled_added = threading.Event()
+
+        class TrackingSet(set):
+            def add(self, item):
+                super().add(item)
+                if item == canonical_dir:
+                    cancelled_added.set()
+
+        queue._cancelled_meetings = TrackingSet()
+
+        def run_trash():
+            with queue.cancel_meeting(canonical_dir):
+                trash_entered.set()
+                assert queue._follow_directory is None
+            trash_done.set()
+
+        trash_thread = threading.Thread(target=run_trash, daemon=True)
+        trash_thread.start()
+
+        durable(cancelled_added, "cancel_meeting did not register canonical_dir in _cancelled_meetings")
+        # Ensure Trash cannot enter its exclusion block while follower is still inside _owned().
+        assert not trash_entered.is_set()
+
+        release_owned.set()
+        durable(trash_entered, "Trash did not enter after gated follower retired")
+        durable(trash_done, "Trash did not finish")
+        trash_thread.join(timeout=5.0)
+    finally:
+        release_owned.set()
+        session.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
