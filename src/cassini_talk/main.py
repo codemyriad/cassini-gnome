@@ -1457,7 +1457,8 @@ class CassiniApplication(Adw.Application):
             return
         transcriber = self.transcriber
         if transcriber is not None:
-            transcriber.notify_session_finished(directory)
+            live_dirs = self.live_recording_directories()
+            transcriber.sync_recordings(live_dirs, saving=[directory])
 
     def _on_publish_failed(self, directory):
         transcriber = getattr(self, "transcriber", None)

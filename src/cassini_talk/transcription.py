@@ -546,6 +546,7 @@ class TranscriptionQueue:
         self._context = threading.local()
         self._active_directory = None
         self._prepare_futures, self._job_futures, self._voice_futures = {}, {}, {}
+        self._job_aliases: dict[Path, frozenset[Path]] = {}
         self.closed = False
         self._mode = TranscriptionMode.parse(mode)
         self._follow_stop_timeout = float(follow_stop_timeout)
@@ -1172,6 +1173,7 @@ class TranscriptionQueue:
         canonical = self._owned(directory)
         dir_aliases = frozenset((raw_directory, canonical))
         with self.lock:
+            self._job_aliases[raw_directory] = dir_aliases
             if self._follow_directory is not None and not self._any_alias_in(dir_aliases, self._follow_aliases):
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
         directory = canonical
@@ -1292,6 +1294,7 @@ class TranscriptionQueue:
         self._resume_pending.discard(directory)
         self._prepare_futures.pop(directory, None)
         self._job_futures.pop(directory, None)
+        self._job_aliases.pop(directory, None)
         self._clear_progress_locked(directory, key=progress_key)
         self._idle.notify_all()
         return True
@@ -2088,11 +2091,13 @@ class TranscriptionQueue:
 
     @contextlib.contextmanager
     def _job_scope(self, directory, *, owner=False):
+        aliases = frozenset((directory, self._canonical_follow_dir(directory)))
         self._context.directory = directory
-        self._context.aliases = frozenset((directory, self._canonical_follow_dir(directory)))
+        self._context.aliases = aliases
         self._context.background = owner and directory in self._background_voices
         try:
             with self.lock:
+                self._job_aliases[directory] = aliases
                 self._check_open()
                 if owner:
                     self._active_directory = directory
@@ -2110,46 +2115,63 @@ class TranscriptionQueue:
     def cancel_meeting(self, directory):
         """Worker-only exclusion: cancel this meeting, wait, keep it blocked during Trash."""
         directory = Path(directory).absolute()
-        base_aliases = {directory, self._canonical_follow_dir(directory)}
-        with self.lock:
-            snap_follow, snap_warm = self._follow_directory, self._warm_directory
-            snap_jobs = [*self.pending, *self.voice_pending]
-            if self._active_directory is not None:
-                snap_jobs.append(self._active_directory)
-        follow_canon = self._canonical_follow_dir(snap_follow) if snap_follow is not None else None
-        warm_canon = self._canonical_follow_dir(snap_warm) if snap_warm is not None else None
-        matched_jobs = {p for p in snap_jobs if p in base_aliases or self._canonical_follow_dir(p) in base_aliases}
-        dir_aliases = frozenset(base_aliases | matched_jobs)
-        with self.lock:
-            if follow_canon is not None and self._follow_directory == snap_follow:
-                self._follow_aliases = self._follow_aliases | frozenset((follow_canon,))
-            if warm_canon is not None and self._warm_directory == snap_warm:
-                self._warm_aliases = self._warm_aliases | frozenset((warm_canon,))
-            for alias in dir_aliases:
-                self._cancelled_meetings.add(alias)
-                self._resume_pending.discard(alias)
-                self._progress.pop(alias, None)
-            futures = [
-                mapping.get(alias)
-                for mapping in (self._prepare_futures, self._job_futures, self._voice_futures)
-                for alias in dir_aliases
-            ]
-            # Cancel while holding the owner lock: a persistent client must not
-            # advance to another meeting between this identity check and cancel.
-            if self._active_directory in dir_aliases and self.client and hasattr(self.client, "cancel"):
-                self.client.cancel()
-            if self._any_alias_in(dir_aliases, self._follow_aliases):
-                self._signal_follower_stop_locked(drain=False, cancel_client=True)
-            warm = self._discard_warm_client_locked() if self._any_alias_in(dir_aliases, self._warm_aliases) else None
-        if warm is not None:
-            if hasattr(warm, "cancel"):
-                warm.cancel()
-            with contextlib.suppress(Exception):
-                warm.close()
-        for future in futures:
-            if future is not None:
-                future.cancel()
+        dir_aliases: set[Path] = {directory, self._canonical_follow_dir(directory)}
+        checked: set[Path] = set()
+        warm = None
+        futures = []
         try:
+            while True:
+                with self.lock:
+                    for alias in dir_aliases:
+                        self._cancelled_meetings.add(alias)
+                        self._resume_pending.discard(alias)
+                        self._progress.pop(alias, None)
+                    snap_follow, snap_warm = self._follow_directory, self._warm_directory
+                    candidates = [*self.pending, *self.voice_pending]
+                    if self._active_directory is not None:
+                        candidates.append(self._active_directory)
+                    if snap_follow is not None:
+                        candidates.append(snap_follow)
+                    if snap_warm is not None:
+                        candidates.append(snap_warm)
+                    unseen = [p for p in candidates if p not in checked]
+                    if not unseen:
+                        futures = [
+                            mapping.get(alias)
+                            for mapping in (self._prepare_futures, self._job_futures, self._voice_futures)
+                            for alias in dir_aliases
+                        ]
+                        # Cancel while holding the owner lock: a persistent client must not
+                        # advance to another meeting between this identity check and cancel.
+                        if self._active_directory in dir_aliases and self.client and hasattr(self.client, "cancel"):
+                            self.client.cancel()
+                        if self._any_alias_in(dir_aliases, self._follow_aliases):
+                            self._signal_follower_stop_locked(drain=False, cancel_client=True)
+                        warm = (
+                            self._discard_warm_client_locked()
+                            if self._any_alias_in(dir_aliases, self._warm_aliases)
+                            else None
+                        )
+                        break
+                resolved = {p: self._canonical_follow_dir(p) for p in unseen}
+                checked.update(unseen)
+                for raw_path, canon_path in resolved.items():
+                    if raw_path in dir_aliases or canon_path in dir_aliases:
+                        dir_aliases.add(raw_path)
+                        dir_aliases.add(canon_path)
+                with self.lock:
+                    if snap_follow in resolved and self._follow_directory == snap_follow:
+                        self._follow_aliases = self._follow_aliases | frozenset((resolved[snap_follow],))
+                    if snap_warm in resolved and self._warm_directory == snap_warm:
+                        self._warm_aliases = self._warm_aliases | frozenset((resolved[snap_warm],))
+            if warm is not None:
+                if hasattr(warm, "cancel"):
+                    warm.cancel()
+                with contextlib.suppress(Exception):
+                    warm.close()
+            for future in futures:
+                if future is not None:
+                    future.cancel()
             with self._idle:
                 self._idle.wait_for(
                     lambda: (
@@ -2171,44 +2193,94 @@ class TranscriptionQueue:
         with self.lock:
             if self.closed or directory in self._cancelled_meetings:
                 return False
-            self._stopping_meetings.add(directory)
-            self._resume_pending.discard(directory)
-            futures = [mapping.get(directory) for mapping in (self._prepare_futures, self._job_futures)]
-            if self._active_directory == directory and self.client and hasattr(self.client, "cancel"):
-                self.client.cancel()
+            stop_aliases: set[Path] = {directory}
+            for token, aliases in self._job_aliases.items():
+                if directory in aliases:
+                    stop_aliases.add(token)
+                    stop_aliases.update(aliases)
             if self._matches_aliases(self._follow_aliases, directory):
+                stop_aliases.update(self._follow_aliases)
+            if self._matches_aliases(self._warm_aliases, directory):
+                stop_aliases.update(self._warm_aliases)
+            for alias in stop_aliases:
+                self._stopping_meetings.add(alias)
+                self._resume_pending.discard(alias)
+            futures = [
+                mapping.get(alias) for mapping in (self._prepare_futures, self._job_futures) for alias in stop_aliases
+            ]
+            if self._active_directory in stop_aliases and self.client and hasattr(self.client, "cancel"):
+                self.client.cancel()
+            if self._any_alias_in(stop_aliases, self._follow_aliases):
                 self._signal_follower_stop_locked(drain=False, cancel_client=True)
-            warm = self._discard_warm_client_locked() if self._matches_aliases(self._warm_aliases, directory) else None
+            warm = self._discard_warm_client_locked() if self._any_alias_in(stop_aliases, self._warm_aliases) else None
         if warm is not None:
             self._close_client_async(warm)
         for future in futures:
             if future is not None:
                 future.cancel()
         try:
-            self._stopper.submit(self._finish_stop, directory, done)
+            self._stopper.submit(self._finish_stop, directory, set(stop_aliases), done)
         except RuntimeError:
             with self.lock:
-                self._stopping_meetings.discard(directory)
+                for alias in stop_aliases:
+                    self._stopping_meetings.discard(alias)
             return False
         return True
 
-    def _abort_if_trashed(self, directory):
-        if self.closed or directory in self._cancelled_meetings:
+    def _abort_if_trashed(self, aliases):
+        if self.closed or self._any_alias_in(aliases, self._cancelled_meetings):
             raise CancelledError()
 
-    def _finish_stop(self, directory, done):
+    def _finish_stop(self, directory, stop_aliases, done):
         target = None
         changed = False
+        dir_aliases: set[Path] = set(stop_aliases)
+        dir_aliases.add(self._canonical_follow_dir(directory))
+        checked: set[Path] = set()
         try:
+            while True:
+                with self.lock:
+                    for alias in dir_aliases:
+                        self._stopping_meetings.add(alias)
+                        self._resume_pending.discard(alias)
+                    candidates = list(self.pending)
+                    if self._active_directory is not None:
+                        candidates.append(self._active_directory)
+                    unseen = [p for p in candidates if p not in checked]
+                    if not unseen:
+                        futures = [
+                            mapping.get(alias)
+                            for mapping in (self._prepare_futures, self._job_futures)
+                            for alias in dir_aliases
+                        ]
+                        if self._active_directory in dir_aliases and self.client and hasattr(self.client, "cancel"):
+                            self.client.cancel()
+                        break
+                resolved = {p: self._canonical_follow_dir(p) for p in unseen}
+                checked.update(unseen)
+                for raw_path, canon_path in resolved.items():
+                    if raw_path in dir_aliases or canon_path in dir_aliases:
+                        dir_aliases.add(raw_path)
+                        dir_aliases.add(canon_path)
+            for future in futures:
+                if future is not None:
+                    future.cancel()
             with self._idle:
                 self._idle.wait_for(
-                    lambda: self.closed or (directory not in self.pending and self._active_directory != directory)
+                    lambda: (
+                        self.closed
+                        or (
+                            not any(alias in self.pending for alias in dir_aliases)
+                            and self._active_directory not in dir_aliases
+                        )
+                    )
                 )
-            if self.closed or directory in self._cancelled_meetings:
+            if self.closed or self._any_alias_in(dir_aliases, self._cancelled_meetings):
                 return
             target = self._owned(directory)
+            dir_aliases.add(target)
             with transaction(target):
-                self._abort_if_trashed(directory)
+                self._abort_if_trashed(dir_aliases)
                 current = read_metadata(target)
                 tx = dict(current.get("transcript") or {})
                 if tx.get("status") in ("queued", "running"):
@@ -2228,7 +2300,7 @@ class TranscriptionQueue:
                         transcript_body=snapshot,
                         etaMinutes=None,
                         error=None,
-                        before_commit=lambda: self._abort_if_trashed(directory),
+                        before_commit=lambda: self._abort_if_trashed(dir_aliases),
                     )
                     changed = True
         except CancelledError:
@@ -2237,8 +2309,9 @@ class TranscriptionQueue:
             LOG.exception("Could not save stopped transcription state")
         finally:
             with self.lock:
-                self._stopping_meetings.discard(directory)
-                self._clear_progress_locked(directory)
+                for alias in dir_aliases:
+                    self._stopping_meetings.discard(alias)
+                    self._progress.pop(alias, None)
                 self._idle.notify_all()
             if changed and target is not None:
                 self.changed(target)

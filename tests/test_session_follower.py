@@ -2723,13 +2723,19 @@ def test_observe_library_saving_plus_live_keeps_stable_single_follower(tmp_path,
 
         snapshot = SimpleNamespace(meetings=[saving_meeting], unavailable=False)
         CassiniApplication.observe_library(app, snapshot, {})
-        wait_on_queue(queue, lambda: queue._follow_client_model == "whistle", message="Live follower did not start")
+        wait_on_queue(
+            queue,
+            lambda: queue._follow_client_model == "whistle" and bool(tracker["pids"]),
+            message="Live follower did not start",
+        )
         initial_pid = tracker["pids"][0]
         initial_thread = queue._follow_thread
 
-        # Repeating identical snapshots (A saving + B live) must NEVER restart or churn the follower.
+        # Repeating identical snapshots (A saving + B live) and firing _on_publish_started(A)
+        # must NEVER restart or churn B's live follower.
         for _ in range(5):
             CassiniApplication.observe_library(app, snapshot, {})
+        CassiniApplication._on_publish_started(app, saving_session.directory)
         assert tracker["pids"] == [initial_pid]
         assert queue._follow_thread is initial_thread
         assert queue._follow_directory == live_session.directory.absolute()
@@ -3098,3 +3104,147 @@ def test_cancel_meeting_waits_for_follower_gated_before_owned_returns(tmp_path, 
         queue.executor.shutdown(wait=True)
         if getattr(queue, "_close_thread", None) is not None:
             queue._close_thread.join(timeout=5.0)
+
+
+# ---------------------------------------------------------------------------
+# 21. Review regressions (round 9): cancel_meeting lock-gap symlink enqueue
+#     and canonical stop() vs symlink-enqueued active job
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_meeting_catches_symlink_enqueue_during_off_lock_resolve_gap(tmp_path, monkeypatch):
+    real_lib = tmp_path / "real-lib"
+    real_lib.mkdir()
+    link_lib = tmp_path / "link-lib"
+    link_lib.symlink_to(real_lib)
+    bundle = FakeBundle.create(tmp_path)
+
+    resolve_gap_entered = threading.Event()
+    release_resolve_gap = threading.Event()
+    trash_entered = threading.Event()
+    trash_done = threading.Event()
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=link_lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(b, engine="whistle", timeout=timeout),
+        mode=TranscriptionMode.AFTER_STOP,
+    )
+    session = RecordingSession(link_lib, "Gap enqueue meeting", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+    session.finish()
+
+    other_dir = (link_lib / "other-unrelated").absolute()
+    other_dir.mkdir()
+    canonical_dir = session.directory.resolve()
+
+    orig_canonical = queue._canonical_follow_dir
+
+    def gated_canonical(path):
+        result = orig_canonical(path)
+        if Path(path).absolute() == other_dir and not resolve_gap_entered.is_set():
+            resolve_gap_entered.set()
+            durable(release_resolve_gap, "Resolve gap was not released")
+        return result
+
+    monkeypatch.setattr(queue, "_canonical_follow_dir", gated_canonical)
+    try:
+        # Place an unrelated path in pending so cancel_meeting must execute its off-lock resolve pass.
+        with queue.lock:
+            queue.pending.add(other_dir)
+
+        def run_trash():
+            with queue.cancel_meeting(canonical_dir):
+                trash_entered.set()
+                assert session.directory.absolute() not in queue.pending
+                assert queue._active_directory not in (session.directory.absolute(), canonical_dir)
+            trash_done.set()
+
+        trash_thread = threading.Thread(target=run_trash, daemon=True)
+        trash_thread.start()
+
+        durable(resolve_gap_entered, "cancel_meeting did not enter off-lock resolve gap")
+        # Enqueue via symlink spelling DURING cancel_meeting's off-lock resolve gap!
+        queue.enqueue(session.directory)
+        release_resolve_gap.set()
+
+        durable(trash_entered, "cancel_meeting did not enter after cancelling gap-enqueued symlink job")
+        durable(trash_done, "cancel_meeting did not finish")
+        trash_thread.join(timeout=5.0)
+        assert read_metadata(session.directory)["transcript"]["status"] != "done"
+    finally:
+        release_resolve_gap.set()
+        with queue.lock:
+            queue.pending.discard(other_dir)
+        queue.close()
+        queue.executor.shutdown(wait=True)
+
+
+def test_stop_via_canonical_cancels_and_waits_for_symlink_enqueued_job(tmp_path):
+    real_lib = tmp_path / "real-lib"
+    real_lib.mkdir()
+    link_lib = tmp_path / "link-lib"
+    link_lib.symlink_to(real_lib)
+    bundle = FakeBundle.create(tmp_path)
+
+    job_entered = threading.Event()
+    release_job = threading.Event()
+    client_cancelled = threading.Event()
+    stop_done = threading.Event()
+
+    class GatedStopClient:
+        def __init__(self, *_args, **_kw):
+            self.recognition_cache = None
+            self.diarization = None
+            self.keep_for_voices = False
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def cancel(self):
+            client_cancelled.set()
+
+        def process_tracks(self, tracks, progress):
+            progress(dict(type="planned", etaMinutes=0, segments=1))
+            job_entered.set()
+            durable(release_job, "Gated job was not released")
+            raise CancelledError()
+
+    from concurrent.futures import CancelledError
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=link_lib,
+        client_factory=GatedStopClient,
+        mode=TranscriptionMode.AFTER_STOP,
+    )
+    session = RecordingSession(link_lib, "Symlink enqueue, canonical stop", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+    session.finish()
+
+    try:
+        assert queue.enqueue(session.directory)
+        durable(job_entered, "Symlink-enqueued job did not enter process_tracks")
+
+        # Stop via canonical path must cancel the running client and NOT fire done while job is active!
+        canonical_dir = session.directory.resolve()
+        assert queue.stop(canonical_dir, done=stop_done.set)
+        durable(client_cancelled, "Canonical stop() did not cancel symlink-enqueued job")
+        assert not stop_done.is_set(), "stop() completed before the symlink-enqueued active job retired"
+
+        release_job.set()
+        durable(stop_done, "stop() did not complete after active job retired")
+        assert read_metadata(session.directory)["transcript"]["status"] == "none"
+    finally:
+        release_job.set()
+        queue.close()
+        queue.executor.shutdown(wait=True)
