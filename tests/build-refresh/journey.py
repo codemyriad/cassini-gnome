@@ -249,6 +249,9 @@ try:
     )
     settings = Gio.Settings.new("io.codemyriad.CassiniTalk")
     assert settings.set_boolean("skip-record-first", True)
+    # D107 §1: Preferences greys "Record every browser meeting automatically" until the browser
+    # companion has been set up, so this profile has connected it before.
+    assert settings.set_boolean("browser-ever-connected", True)
     Gio.Settings.sync()
     # The upgrade journey deliberately leaves automatic recording armed. Give
     # it a private Background portal, rather than racing whether the container
