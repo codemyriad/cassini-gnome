@@ -25,6 +25,9 @@ def guarded_load(loader):
     return loader()
 
 
+_VERIFIED_BUNDLE_IDENTITY = {}
+
+
 def verify_bundle_with_identity(bundle):
     bundle = Path(bundle).resolve()
     pins_bytes = (bundle / "pins.json").read_bytes()
@@ -44,7 +47,9 @@ def verify_bundle_with_identity(bundle):
 
 
 def verify_bundle(bundle):
-    return verify_bundle_with_identity(bundle)[0]
+    verified, identity = verify_bundle_with_identity(bundle)
+    _VERIFIED_BUNDLE_IDENTITY[verified] = identity
+    return verified
 
 
 def onnxruntime_dir(config=None):
@@ -118,7 +123,12 @@ def main(bundle):
 
     background_worker_priority()
     # Guard wraps the actual wrapper/model constructor, not just the command entry.
-    bundle, model_identity = verify_bundle_with_identity(bundle)
+    bundle = verify_bundle(bundle)
+    model_identity = _VERIFIED_BUNDLE_IDENTITY.pop(bundle, None)
+    if model_identity is None:
+        from cassini_talk.recognition_cache import whistle_identity
+
+        model_identity = whistle_identity(bundle)
     runtime = onnxruntime_dir()
     if runtime is not None:
         sys.path.insert(0, str(verify_onnxruntime(runtime)))
