@@ -19,7 +19,7 @@ import tempfile
 import threading
 import time
 import wave
-from contextlib import ExitStack, suppress
+from contextlib import ExitStack, closing, suppress
 from pathlib import Path
 
 from queue_models import Models
@@ -40,13 +40,17 @@ from cassini_talk.whistle_worker import PRIVACY, verify_bundle
 WATERMARK = struct.Struct("<Q")
 
 
-def committed_pcm(path):
-    """Follow writer frame counts from stdin. Each notification supersedes earlier ones."""
-    cursor = 0
+def watermarks():
+    """Each atomic writer frame count supersedes earlier ones."""
     while packet := sys.stdin.buffer.read1(WATERMARK.size * 128):
         if len(packet) % WATERMARK.size:
             raise ValueError("Truncated watermark")
-        frames = WATERMARK.unpack_from(packet, len(packet) - WATERMARK.size)[0]
+        yield WATERMARK.unpack_from(packet, len(packet) - WATERMARK.size)[0]
+
+
+def committed_pcm(path):
+    cursor = 0
+    for frames in watermarks():
         with wave.open(str(path)) as wav:
             wav.setpos(cursor)
             while cursor < frames:
@@ -56,6 +60,57 @@ def committed_pcm(path):
                     raise ValueError("Committed PCM unavailable")
                 yield pcm
                 cursor += count
+
+
+def fixed_clock_interval(path, rate, channels):
+    """Replay the first permanently anchored minute through the batch clock mapper."""
+    processed = False
+    for frames in watermarks():
+        if processed or frames <= rate * 60:
+            continue
+        manifest = json.loads((path.parent / "session.json").read_text())
+        track = next(t for t in manifest["tracks"] if t["file"] == path.name)
+        anchors = track.get("clockAnchors", [])
+        # The last point can still move. The preceding ones are fixed.
+        if len(anchors) < 3 or anchors[0][0] != 0:
+            continue
+        first, second = anchors[:2]
+        length = second[0] + rate // 4
+        if frames < length:
+            continue
+        # One bounded snapshot supplies real right context to the batch resampler.
+        # Keep it under the probe's disposable library even on cancellation.
+        with tempfile.TemporaryDirectory(dir=path.parent) as scratch:
+            snapshot = Path(scratch) / path.name
+            with wave.open(str(path)) as source, wave.open(str(snapshot), "wb") as output:
+                output.setparams((channels, 2, rate, 0, "NONE", "not compressed"))
+                remaining = length
+                while remaining:
+                    count = min(remaining, rate)
+                    pcm = source.readframes(count)
+                    if len(pcm) != count * channels * 2:
+                        raise ValueError("Incomplete fixed interval")
+                    output.writeframesraw(pcm)
+                    remaining -= count
+            mapped = dict(
+                id="system",
+                path=str(snapshot),
+                frames=length,
+                sampleRate=rate,
+                channels=channels,
+                offsetMs=0,
+                clockAnchors=[first, second],
+            )
+            # Leave the FIR right halo and one linear-interpolation neighbour.
+            halo = (len(speech.TAPS) // 2 + 2) // 3 + 1
+            available = (second[1] - first[1]) * speech.RATE // 1_000_000_000 - halo
+            with closing(speech.audio_chunks(mapped)) as blocks:
+                for block in blocks:
+                    if available <= 0:
+                        break
+                    yield block[:available]
+                    available -= len(block)
+        processed = True
 
 
 def precompute(args, path):
@@ -82,6 +137,8 @@ def precompute(args, path):
                 yield samples / np.float32(32768)
 
         samples_in = speech.resampled_stream(mono()) if rate == 48000 else mono()
+        if args.fixed_clock_interval:
+            samples_in = fixed_clock_interval(path, rate, channels)
         for block in samples_in:
             for chunk in gate.feed(block):
                 if not pieces:
@@ -138,6 +195,7 @@ def run(args, library, live):
             tracks[kind] = wav
         system = tracks["system"]
         duration = max(w.getnframes() / w.getframerate() for w in tracks.values())
+        env = WhistleClient(args.bundle).worker_environment() if live else None
         started = time.monotonic()
         worker = None
         if live:
@@ -145,7 +203,7 @@ def run(args, library, live):
             worker = stack.enter_context(
                 subprocess.Popen(
                     [sys.executable, __file__, *sys.argv[1:], "--follow", str(session.directory / "track-system.wav")],
-                    env=WhistleClient(args.bundle).worker_environment(),
+                    env=env,
                     stdin=subprocess.PIPE,
                     stdout=output,
                 )
@@ -165,7 +223,13 @@ def run(args, library, live):
                 if live:
                     time.sleep(max(0, deadline - time.monotonic()))
                 for kind, pcm, offset, _ in blocks:
-                    session.append(kind, pcm, offset)
+                    if args.native_drift_ppm is None:
+                        session.append(kind, pcm, offset)
+                    else:
+                        # Both lanes observe the same deterministic device clock. Its drift
+                        # makes the finalizer resample raw PCM onto the session timeline.
+                        host_ns = session._native_clock_origin_ns + round(offset * (1_000_000 + args.native_drift_ppm))
+                        session.append_native(kind, pcm, offset, host_ns=host_ns)
                 if worker:
                     if worker.poll() is not None:
                         raise RuntimeError(f"Capture recognizer exited with code {worker.returncode}")
@@ -278,7 +342,7 @@ def run(args, library, live):
             report["voicePrints"] = len(prints)
             report["voiceExtraction"] = round(marks["voiceEnd"] - marks["voiceStart"], 3)
             report["remainingPublication"] = round(report["remainingPublication"] - report["voiceExtraction"], 3)
-        return report, words, turns, (file_words, embedded.speakers)
+        return report, words, turns, (file_words, embedded.speakers), embedded.manifest["integrity"]["opusAudioSha256"]
     finally:
         jobs.close()
         jobs.executor.shutdown(wait=True)
@@ -290,10 +354,22 @@ def main():
         parser.add_argument(name, type=Path)
     parser.add_argument("--parakeet", type=Path)
     parser.add_argument("--campplus", type=Path)
+    parser.add_argument(
+        "--native-drift-ppm",
+        type=int,
+        choices=range(-1000, 1001),
+        metavar="PPM",
+        help="Exercise native capture with a synthetic sample clock offset in parts per million",
+    )
+    parser.add_argument(
+        "--fixed-clock-interval", action="store_true", help="Decode the first fixed native clock interval"
+    )
     parser.add_argument("--microphone", type=Path, help="Record a simultaneous mic track and finalize it at Stop")
     parser.add_argument("--reuse-first", action="store_true", help="Reverse order to expose warm-cache effects")
     parser.add_argument("--follow", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.fixed_clock_interval and args.native_drift_ppm is None:
+        parser.error("--fixed-clock-interval requires --native-drift-ppm")
     os.environ.update(PRIVACY)
     verify_bundle(args.bundle)
     if args.follow:
@@ -306,8 +382,8 @@ def main():
         results = {}
         for use_live in (args.reuse_first, not args.reuse_first):
             results[use_live] = run(args, Path(root) / ("live" if use_live else "batch"), use_live)
-        batch, words, turns, embedded = results[False]
-        live, other_words, other_turns, other_embedded = results[True]
+        batch, words, turns, embedded, audio_digest = results[False]
+        live, other_words, other_turns, other_embedded, other_digest = results[True]
     print(
         json.dumps(
             dict(
@@ -316,17 +392,19 @@ def main():
                 identicalWords=words == other_words,
                 identicalTurns=turns == other_turns,
                 identicalPublishedTranscript=embedded == other_embedded,
+                identicalPublishedAudio=audio_digest == other_digest,
             ),
             indent=2,
         )
     )
-    if (
-        embedded != other_embedded
-        or words != other_words
-        or turns != other_turns
-        or live["postStopCacheMisses"] >= batch["postStopCacheMisses"]
-    ):
-        raise SystemExit("Replay failed to reproduce final output with fewer post-Stop decodes")
+    if audio_digest != other_digest:
+        raise SystemExit("Published Opus payload digest differs")
+    if embedded != other_embedded or words != other_words or turns != other_turns:
+        raise SystemExit("Final words, speakers or turns differ")
+    if (args.fixed_clock_interval or not args.native_drift_ppm) and live["postStopCacheMisses"] >= batch[
+        "postStopCacheMisses"
+    ]:
+        raise SystemExit("No reduction in post-Stop decodes")
 
 
 if __name__ == "__main__":
