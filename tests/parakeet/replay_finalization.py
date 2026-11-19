@@ -258,13 +258,14 @@ def run(args, library, live):
             output.seek(0)
             # Stop can interrupt the final line. Only complete, flushed results qualify.
             completed = [json.loads(line) for line in output if line.endswith(b"\n")]
-    marks, misses = {}, 0
+    marks, misses, offered = {}, 0, 0
 
     class Client(ParakeetClient if args.parakeet else WhistleClient):
         def process_tracks(self, tracks, progress):
-            nonlocal misses
+            nonlocal offered
             system_track = next(track for track in tracks if track["kind"] == "system")
             entries = cache_entries(system_track, completed, stop)
+            offered = len(entries)
             if entries:
                 opts = self.recognition_cache
                 atomic_json(
@@ -334,6 +335,7 @@ def run(args, library, live):
             diarizationThroughFirstTurnBatch=round(marks["diarized"] - marks["recognised"], 3),
             remainingPublication=round(published - marks["diarized"], 3),
             postStopCacheMisses=misses,
+            offeredSegments=offered,
             completedBeforeStop=sum(row[-1] <= stop for row in completed),
             words=len(json.loads(words)["items"]),
             speakers=len({w["speaker"] for w in json.loads(words)["items"]}),
@@ -419,9 +421,11 @@ def main():
     if embedded != other_embedded or words != other_words or turns != other_turns:
         raise SystemExit("Final words, speakers or turns differ")
     if args.expect_no_hits and (
-        not live["completedBeforeStop"] or live["postStopCacheMisses"] != batch["postStopCacheMisses"]
+        not live["offeredSegments"] or live["postStopCacheMisses"] != batch["postStopCacheMisses"]
     ):
         raise SystemExit("Expected nominal-clock candidates and zero hits on the warped speech fixture")
+    if args.fixed_clock_interval and not live["completedBeforeStop"]:
+        raise SystemExit("No fixed interval decoded before Stop; use a longer speech recording")
     if (args.fixed_clock_interval or not args.native_drift_ppm) and live["postStopCacheMisses"] >= batch[
         "postStopCacheMisses"
     ]:
