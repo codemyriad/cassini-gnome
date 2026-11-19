@@ -3403,3 +3403,230 @@ def test_recognition_cache_rejects_unpaired_surrogates_and_keeps_valid_entries(t
     assert not budget.try_add(
         bad_key, dict(text="bad\ud800text", language="en", words=[dict(start=0.0, end=0.4, text="ok")])
     )
+
+
+# ---------------------------------------------------------------------------
+# 23. Review regressions (round 11): pre-preparer moved-meeting routing in
+#     Trash/Stop, follower restart cache reuse, and huge-int overflow guard
+# ---------------------------------------------------------------------------
+
+
+def test_moved_meeting_pre_preparer_trash_and_stop_match_via_owned(tmp_path, monkeypatch):
+    old_lib = tmp_path / "old-lib"
+    dest_lib = tmp_path / "dest-lib"
+    old_lib.mkdir()
+    dest_lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+
+    session = RecordingSession(dest_lib, "Pre-preparer moved meeting", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+    session.finish()
+    dest_dir = session.directory.resolve()
+    old_dir = (old_lib / dest_dir.name).absolute()
+
+    processed = []
+
+    class NeverProcessClient:
+        def __init__(self, *_args, **_kw):
+            self.recognition_cache = None
+            self.diarization = None
+            self.keep_for_voices = False
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+        def cancel(self):
+            pass
+
+        def process_tracks(self, tracks, progress):
+            processed.append(tracks)
+            return dict(diagnostics=[], segments=0)
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=dest_lib,
+        client_factory=NeverProcessClient,
+        mode=TranscriptionMode.AFTER_STOP,
+    )
+    monkeypatch.setattr(queue, "_owned", lambda d: dest_dir if Path(d).absolute() in (old_dir, dest_dir) else Path(d))
+    monkeypatch.setattr("cassini_talk.library_location.owned_directory", lambda d: dest_dir)
+
+    orig_mark_queued = queue._mark_queued
+    gate = dict(entered=threading.Event(), release=threading.Event())
+
+    def held_mark_queued(directory, resume):
+        gate["entered"].set()
+        durable(gate["release"], "Preparer gate was not released")
+        return orig_mark_queued(directory, resume)
+
+    monkeypatch.setattr(queue, "_mark_queued", held_mark_queued)
+
+    class WatchSet(set):
+        def __init__(self, target, event):
+            super().__init__()
+            self._target = target
+            self._event = event
+
+        def add(self, item):
+            super().add(item)
+            if item == self._target:
+                self._event.set()
+
+    try:
+        # Part A: Trash via dest_dir while preparer for old_dir is held BEFORE _job_aliases is recorded.
+        old_cancelled = threading.Event()
+        queue._cancelled_meetings = WatchSet(old_dir, old_cancelled)
+        assert queue.enqueue(old_dir)
+        durable(gate["entered"], "Preparer did not enter _mark_queued (Trash)")
+        assert old_dir not in queue._job_aliases
+
+        trash_entered = threading.Event()
+        trash_done = threading.Event()
+
+        def run_trash():
+            with queue.cancel_meeting(dest_dir):
+                trash_entered.set()
+                assert not queue.pending
+                assert queue._active_directory is None
+            trash_done.set()
+
+        t_trash = threading.Thread(target=run_trash, daemon=True)
+        t_trash.start()
+        durable(old_cancelled, "cancel_meeting(dest_dir) did not discover pre-preparer old_dir via _owned()")
+        assert not trash_entered.is_set(), "Trash entered while pre-preparer old_dir job was still pending"
+        gate["release"].set()
+        durable(trash_entered, "Trash did not enter after pre-preparer job retired")
+        durable(trash_done, "Trash did not finish")
+        t_trash.join(timeout=5.0)
+        assert not processed
+
+        # Part B: Stop via dest_dir while preparer for old_dir is held BEFORE _job_aliases is recorded.
+        gate["entered"] = threading.Event()
+        gate["release"] = threading.Event()
+        old_stopping = threading.Event()
+        queue._stopping_meetings = WatchSet(old_dir, old_stopping)
+        stop_done = threading.Event()
+
+        assert queue.enqueue(old_dir)
+        durable(gate["entered"], "Preparer did not enter _mark_queued (Stop)")
+        assert old_dir not in queue._job_aliases
+
+        assert queue.stop(dest_dir, done=stop_done.set)
+        durable(old_stopping, "stop(dest_dir) did not discover pre-preparer old_dir via _owned()")
+        assert not stop_done.is_set(), "Stop finished while pre-preparer old_dir job was still pending"
+        gate["release"].set()
+        durable(stop_done, "Stop did not finish after pre-preparer job retired")
+        assert not processed
+        assert read_metadata(dest_dir)["transcript"]["status"] == "none"
+    finally:
+        gate["release"].set()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+
+
+def test_session_follower_restart_skips_cached_same_model_segments(tmp_path):
+    model_id = "whistle@" + ("a" * 64)
+    session = RecordingSession(tmp_path, "Follower restart cache reuse", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    seg1 = make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)])
+    session.append("microphone", seg1, 0.0)
+    session.checkpoint()
+
+    class CountingRecognizer(DeterministicRecognizer):
+        def __init__(self, engine):
+            super().__init__(engine)
+            self.calls = 0
+
+        def recognize(self, samples):
+            self.calls += 1
+            return super().recognize(samples)
+
+    rec1 = CountingRecognizer("whistle")
+    emitted1 = []
+    f1 = SessionFollower(
+        session.directory,
+        rec1,
+        model_id,
+        DeterministicDetector(),
+        on_cache_entry=emitted1.append,
+    )
+    assert f1.refresh()
+    while f1.step():
+        pass
+    assert rec1.calls == 1
+    assert len(emitted1) == 1
+
+    # Persist the emitted cache entry as the parent queue does before preemption.
+    entries = {e["key"]: {k: e[k] for k in ("text", "language", "words")} for e in emitted1}
+    (session.directory / RECOGNITION_CACHE_FILE).write_text(
+        json.dumps(recognition_cache.document(model_id, entries)),
+        encoding="utf-8",
+    )
+
+    # Append a new distinct speech segment, then restart a fresh SessionFollower.
+    seg2 = make_speech_pcm16(16000, 1, [(1.0, 660.0, 0.3), (0.8, 0.0, 0.0)])
+    session.append("microphone", seg2, 1800.0)
+    session.checkpoint()
+
+    rec2 = CountingRecognizer("whistle")
+    emitted2 = []
+    f2 = SessionFollower(
+        session.directory,
+        rec2,
+        model_id,
+        DeterministicDetector(),
+        on_cache_entry=emitted2.append,
+    )
+    assert f2.refresh()
+    while f2.step():
+        pass
+    assert rec2.calls == 1, f"Expected only newly appended segment to run inference, got {rec2.calls} calls"
+    assert len(emitted2) == 1
+    assert emitted2[0]["key"] != emitted1[0]["key"]
+
+
+def test_recognition_cache_rejects_huge_int_overflow_in_json_and_journal(tmp_path):
+    model_id = "whistle@" + ("b" * 64)
+    good_key = recognition_cache.segment_key("1" * 64, 16000)
+    bad_key = recognition_cache.segment_key("2" * 64, 16000)
+    good_entry = dict(text="ok", language="en", words=[dict(start=0.0, end=0.5, text="ok")])
+    huge_int = "1" + ("0" * 309)
+
+    json_dir = tmp_path / "json-case"
+    json_dir.mkdir()
+    raw_json = (
+        '{"format":"cassini.recognition-cache.v2","model":"'
+        + model_id
+        + '","segments":{"'
+        + good_key
+        + '":'
+        + json.dumps(good_entry)
+        + ',"'
+        + bad_key
+        + '":{"text":"huge","language":"en","words":[{"start":0,"end":'
+        + huge_int
+        + ',"text":"huge"}]}}}'
+    ).encode("utf-8")
+    (json_dir / RECOGNITION_CACHE_FILE).write_bytes(raw_json)
+    assert list(recognition_cache.read(json_dir / RECOGNITION_CACHE_FILE, model_id)) == [good_key]
+
+    journal_dir = tmp_path / "journal-case"
+    journal_dir.mkdir()
+    good_line = json.dumps(dict(format=recognition_cache.FORMAT, model=model_id, key=good_key, entry=good_entry))
+    bad_line = (
+        '{"format":"cassini.recognition-cache.v2","model":"'
+        + model_id
+        + '","key":"'
+        + bad_key
+        + '","entry":{"text":"huge","language":"en","words":[{"start":0,"end":'
+        + huge_int
+        + ',"text":"huge"}]}}'
+    )
+    (journal_dir / recognition_cache.JOURNAL_FILE).write_bytes((good_line + "\n" + bad_line + "\n").encode("utf-8"))
+    assert list(recognition_cache.read(journal_dir / RECOGNITION_CACHE_FILE, model_id)) == [good_key]

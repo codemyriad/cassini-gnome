@@ -83,7 +83,12 @@ def is_valid_model_identity(model_identity):
 
 
 def _number(value):
-    return type(value) in (int, float) and math.isfinite(value)
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
 
 
 def _utf8_str(value, max_len):

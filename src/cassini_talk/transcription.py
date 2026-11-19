@@ -2131,6 +2131,18 @@ class TranscriptionQueue:
                 dir_aliases.add(token)
                 dir_aliases.update(aliases)
 
+    def _resolve_candidate_aliases(self, path: Path) -> set[Path]:
+        aliases = {path, self._canonical_follow_dir(path)}
+        try:
+            owned = self._owned(path)
+        except (OSError, ValueError, RuntimeError):
+            owned = None
+        if owned is not None:
+            owned_abs = Path(owned).absolute()
+            aliases.add(owned_abs)
+            aliases.add(self._canonical_follow_dir(owned_abs))
+        return aliases
+
     @contextlib.contextmanager
     def cancel_meeting(self, directory):
         """Worker-only exclusion: cancel this meeting, wait, keep it blocked during Trash."""
@@ -2148,7 +2160,7 @@ class TranscriptionQueue:
                         self._resume_pending.discard(alias)
                         self._progress.pop(alias, None)
                     snap_follow, snap_warm = self._follow_directory, self._warm_directory
-                    candidates = [*self.pending, *self.voice_pending]
+                    candidates = [directory, *self.pending, *self.voice_pending]
                     if self._active_directory is not None:
                         candidates.append(self._active_directory)
                     if snap_follow is not None:
@@ -2174,17 +2186,18 @@ class TranscriptionQueue:
                             else None
                         )
                         break
-                resolved = {p: self._canonical_follow_dir(p) for p in unseen}
+                resolved = {p: self._resolve_candidate_aliases(p) for p in unseen}
                 checked.update(unseen)
-                for raw_path, canon_path in resolved.items():
-                    if raw_path in dir_aliases or canon_path in dir_aliases:
-                        dir_aliases.add(raw_path)
-                        dir_aliases.add(canon_path)
+                if directory in resolved:
+                    dir_aliases.update(resolved[directory])
+                for p_aliases in resolved.values():
+                    if p_aliases & dir_aliases:
+                        dir_aliases.update(p_aliases)
                 with self.lock:
                     if snap_follow in resolved and self._follow_directory == snap_follow:
-                        self._follow_aliases = self._follow_aliases | frozenset((resolved[snap_follow],))
+                        self._follow_aliases = self._follow_aliases | frozenset(resolved[snap_follow])
                     if snap_warm in resolved and self._warm_directory == snap_warm:
-                        self._warm_aliases = self._warm_aliases | frozenset((resolved[snap_warm],))
+                        self._warm_aliases = self._warm_aliases | frozenset(resolved[snap_warm])
             if warm is not None:
                 if hasattr(warm, "cancel"):
                     warm.cancel()
@@ -2267,7 +2280,7 @@ class TranscriptionQueue:
                         self._stopping_meetings.add(alias)
                         self._resume_pending.discard(alias)
                     snap_follow, snap_warm = self._follow_directory, self._warm_directory
-                    candidates = list(self.pending)
+                    candidates = [directory, *self.pending]
                     if self._active_directory is not None:
                         candidates.append(self._active_directory)
                     if snap_follow is not None:
@@ -2291,17 +2304,18 @@ class TranscriptionQueue:
                             else None
                         )
                         break
-                resolved = {p: self._canonical_follow_dir(p) for p in unseen}
+                resolved = {p: self._resolve_candidate_aliases(p) for p in unseen}
                 checked.update(unseen)
-                for raw_path, canon_path in resolved.items():
-                    if raw_path in dir_aliases or canon_path in dir_aliases:
-                        dir_aliases.add(raw_path)
-                        dir_aliases.add(canon_path)
+                if directory in resolved:
+                    dir_aliases.update(resolved[directory])
+                for p_aliases in resolved.values():
+                    if p_aliases & dir_aliases:
+                        dir_aliases.update(p_aliases)
                 with self.lock:
                     if snap_follow in resolved and self._follow_directory == snap_follow:
-                        self._follow_aliases = self._follow_aliases | frozenset((resolved[snap_follow],))
+                        self._follow_aliases = self._follow_aliases | frozenset(resolved[snap_follow])
                     if snap_warm in resolved and self._warm_directory == snap_warm:
-                        self._warm_aliases = self._warm_aliases | frozenset((resolved[snap_warm],))
+                        self._warm_aliases = self._warm_aliases | frozenset(resolved[snap_warm])
             if warm is not None:
                 self._close_client_async(warm)
             for future in futures:

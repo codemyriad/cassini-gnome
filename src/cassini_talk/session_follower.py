@@ -955,6 +955,13 @@ class SessionFollower:
         self._manifest_loaded = False
         self._record_trace = bool(record_trace)
         self.schedule_trace: list[tuple[str, str, int]] = []  # Opt-in diagnostics/tests trace
+        from . import recognition_cache
+
+        self._cached_keys: set[str] = (
+            set(recognition_cache.read(self.directory / recognition_cache.FILE, self.model_identity))
+            if recognition_cache.is_valid_model_identity(self.model_identity)
+            else set()
+        )
 
     def refresh(self) -> bool:
         sig = _stat_session_manifest(self.directory)
@@ -1025,11 +1032,13 @@ class SessionFollower:
             self.schedule_trace.append((chosen.track_id, "recognize", ready.session_ms))
         samples = np.asarray(ready.samples, dtype="<f4")
         if len(samples) and np.isfinite(samples).all():
-            raw = transcribe_raw(self.model, samples)
             key = recognition_cache.samples_key(samples)
-            if recognition_cache.valid_entry(key, raw):
-                self.segments_decoded += 1
-                self.on_cache_entry(dict(raw, key=key))
+            if key not in self._cached_keys:
+                raw = transcribe_raw(self.model, samples)
+                if recognition_cache.valid_entry(key, raw):
+                    self._cached_keys.add(key)
+                    self.segments_decoded += 1
+                    self.on_cache_entry(dict(raw, key=key))
         return True
 
     def all_drained(self) -> bool:
