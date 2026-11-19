@@ -1062,28 +1062,42 @@ def test_capture_stress_two_simultaneous_tracks_zero_frame_loss(tmp_path):
 
         # Write 8 seconds of 48 kHz stereo PCM in 20 ms packets (400 packets per track = 800 writes)
         # while the real background_worker_priority() child reads both WAVs concurrently.
+        # Gate the second half on follower cache progress from the first half, then append distinct audio.
         packet_frames = 960  # 20 ms at 48 kHz
-        speech_pkt = make_speech_pcm16(48000, 2, [(0.02, 440.0, 0.3)])
+        speech_pkt_a = make_speech_pcm16(48000, 2, [(0.02, 440.0, 0.3)])
+        speech_pkt_b = make_speech_pcm16(48000, 2, [(0.02, 620.0, 0.3)])
         silence_pkt = bytes(packet_frames * 4)
         expected_mic = bytearray()
         expected_sys = bytearray()
-        for idx in range(400):
-            t_ms = idx * 20.0
-            mic_on = (idx // 50) % 2 == 0  # alternating 1 s speech / 1 s silence
-            sys_on = ((idx + 25) // 50) % 2 == 0
-            mp = speech_pkt if mic_on else silence_pkt
-            sp = speech_pkt if sys_on else silence_pkt
-            session.append("microphone", mp, t_ms)
-            session.append("system", sp, t_ms)
-            expected_mic.extend(mp)
-            expected_sys.extend(sp)
-            if idx % 25 == 24:
-                session.checkpoint()
-        session.checkpoint()
+
+        def write_batch(start_idx: int, end_idx: int, speech_pkt: bytes) -> None:
+            for idx in range(start_idx, end_idx):
+                t_ms = idx * 20.0
+                mic_on = (idx // 50) % 2 == 0  # alternating 1 s speech / 1 s silence
+                sys_on = ((idx + 25) // 50) % 2 == 0
+                mp = speech_pkt if mic_on else silence_pkt
+                sp = speech_pkt if sys_on else silence_pkt
+                session.append("microphone", mp, t_ms)
+                session.append("system", sp, t_ms)
+                expected_mic.extend(mp)
+                expected_sys.extend(sp)
+                if idx % 25 == 24:
+                    session.checkpoint()
+            session.checkpoint()
+
+        write_batch(0, 200, speech_pkt_a)
         wait_on_queue(
             queue,
-            lambda: cached_segment_count(session.directory, "whistle", bundle) >= 4,
-            message="Stress follower did not cache segments from simultaneous 2-track capture",
+            lambda: cached_segment_count(session.directory, "whistle", bundle) >= 2,
+            message="Stress follower did not cache first-half segments during live capture",
+        )
+        mid_cached = cached_segment_count(session.directory, "whistle", bundle)
+
+        write_batch(200, 400, speech_pkt_b)
+        wait_on_queue(
+            queue,
+            lambda: cached_segment_count(session.directory, "whistle", bundle) >= mid_cached + 2,
+            message="Stress follower did not cache distinct post-gate segments during live capture",
         )
         session.finish()
 
@@ -2779,6 +2793,9 @@ def test_symlink_library_canonical_follow_matches_symlink_cancel_and_enqueue(tmp
         session_handoff.finish()
         symlink_handoff_dir = link_lib / session_handoff.directory.name
         assert queue.enqueue(symlink_handoff_dir)
+        # Calling empty sync_recordings([]) immediately while symlink_handoff_dir is in self.pending
+        # MUST NOT cancel the canonical follower before the worker resolves the symlink!
+        queue.sync_recordings([])
         finished.wait(1, bound=30)
 
         assert len(tracker["pids"]) == 1, "enqueue via symlink path must drain and reuse canonical follower"
@@ -2810,3 +2827,48 @@ def test_transcription_queue_init_does_not_call_library_root_on_gtk(tmp_path, mo
     finally:
         queue.close()
         queue.executor.shutdown(wait=True)
+
+
+def test_follow_stop_drain_true_emits_ready_segment_before_acknowledging(tmp_path):
+    from cassini_talk.session_follower import run_follow_loop
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    session = RecordingSession(lib, "Drain stop test", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+    session.finish()
+
+    # Deliver follow-stop(drain=True) right after advancing enough quanta to queue a ready segment
+    # (before the loop's next recognize step runs!), proving drain=True finishes ready recognition.
+    class StopWhenReadyReader:
+        def __init__(self):
+            self.calls = 0
+            self.sent = False
+
+        def try_readline(self, timeout=0.0):
+            self.calls += 1
+            # 1.8 s of 16 kHz audio = 4 quanta of 512 ms to close the segment into ready_segments;
+            # inject follow-stop(drain=True) on the very next poll before recognize runs.
+            if not self.sent and self.calls >= 5:
+                self.sent = True
+                return b'{"type":"follow-stop","drain":true}\n'
+            return None
+
+    events = []
+    prefix_store = {}
+    action, _det = run_follow_loop(
+        DeterministicRecognizer("whistle"),
+        tmp_path,
+        dict(directory=str(session.directory), model="whistle@" + ("a" * 64), pollIntervalMs=10),
+        lambda kind, **kw: events.append(dict(type=kind, **kw)),
+        reader=StopWhenReadyReader(),
+        detector=DeterministicDetector(),
+        prefix_store=prefix_store,
+    )
+    assert action == "continue"
+    types = [e["type"] for e in events]
+    assert "follow-cache" in types and "follow-stopped" in types
+    assert types.index("follow-cache") < types.index("follow-stopped")
+    stopped = next(e for e in events if e["type"] == "follow-stopped")
+    assert stopped["segments"] >= 1

@@ -690,17 +690,14 @@ class TranscriptionQueue:
             saving_paths = [Path(d).absolute() for d in saving]
             candidates = live if live else saving_paths
             if not candidates:
-                protected = list(self.pending)
-                if self._active_directory is not None:
-                    protected.append(self._active_directory)
-                if self._follow_directory is not None and not any(
-                    self._matches_aliases(self._follow_aliases, p) for p in protected
-                ):
-                    self._signal_follower_stop_locked(drain=False, cancel_client=True)
-                if self._warm_directory is not None and not any(
-                    self._matches_aliases(self._warm_aliases, p) for p in protected
-                ):
-                    warm = self._discard_warm_client_locked()
+                # When any transcription job is queued or active, defer follower/warm cleanup
+                # to the worker thread (_mark_queued_locked / _run) so an unresolved symlink
+                # alias in `self.pending` never prematurely cancels a matching warm worker.
+                if not self.pending and self._active_directory is None:
+                    if self._follow_directory is not None:
+                        self._signal_follower_stop_locked(drain=False, cancel_client=True)
+                    if self._warm_directory is not None:
+                        warm = self._discard_warm_client_locked()
             else:
                 if (
                     self._follow_directory is not None
@@ -2112,6 +2109,14 @@ class TranscriptionQueue:
         directory = Path(directory).absolute()
         dir_aliases = frozenset((directory, self._canonical_follow_dir(directory)))
         with self.lock:
+            snap_follow, snap_warm = self._follow_directory, self._warm_directory
+        follow_canon = self._canonical_follow_dir(snap_follow) if snap_follow is not None else None
+        warm_canon = self._canonical_follow_dir(snap_warm) if snap_warm is not None else None
+        with self.lock:
+            if follow_canon is not None and self._follow_directory == snap_follow:
+                self._follow_aliases = self._follow_aliases | frozenset((follow_canon,))
+            if warm_canon is not None and self._warm_directory == snap_warm:
+                self._warm_aliases = self._warm_aliases | frozenset((warm_canon,))
             for alias in dir_aliases:
                 self._cancelled_meetings.add(alias)
                 self._resume_pending.discard(alias)

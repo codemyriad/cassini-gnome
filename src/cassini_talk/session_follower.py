@@ -1078,6 +1078,32 @@ def run_follow_loop(model, bundle: Path, message: dict, emit, *, reader: StdinLi
 
     follower = SessionFollower(directory, model, model_identity, detector, on_cache_entry=on_cache)
     idle_notified = False
+
+    def finish_follow_stop(cmd):
+        if cmd.get("drain"):
+            import time
+
+            deadline = time.monotonic() + 2.0
+            try:
+                follower.refresh()
+                while time.monotonic() < deadline:
+                    if not any(tr.has_ready_segment() for tr in follower.tracks.values()):
+                        break
+                    if not follower.step():
+                        break
+            except (OSError, ValueError):
+                pass
+        exported = follower.export_prefixes()
+        prefix_store.clear()
+        prefix_store.update(exported)
+        emit(
+            "follow-stopped",
+            directory=directory,
+            segments=follower.segments_decoded,
+            prefixes=len(exported),
+        )
+        return "continue", detector
+
     while True:
         # Check for stop/quit/preempt commands between every bounded step.
         line = reader.try_readline(0.0)
@@ -1087,16 +1113,7 @@ def run_follow_loop(model, bundle: Path, message: dict, emit, *, reader: StdinLi
             cmd = json.loads(line)
             cmd_type = cmd.get("type")
             if cmd_type == "follow-stop":
-                exported = follower.export_prefixes()
-                prefix_store.clear()
-                prefix_store.update(exported)
-                emit(
-                    "follow-stopped",
-                    directory=directory,
-                    segments=follower.segments_decoded,
-                    prefixes=len(exported),
-                )
-                return "continue", detector
+                return finish_follow_stop(cmd)
             if cmd_type == "quit":
                 return "quit", detector
             raise ValueError(f"Unexpected command during follow mode: {cmd_type}")
@@ -1132,16 +1149,7 @@ def run_follow_loop(model, bundle: Path, message: dict, emit, *, reader: StdinLi
             cmd = json.loads(line)
             cmd_type = cmd.get("type")
             if cmd_type == "follow-stop":
-                exported = follower.export_prefixes()
-                prefix_store.clear()
-                prefix_store.update(exported)
-                emit(
-                    "follow-stopped",
-                    directory=directory,
-                    segments=follower.segments_decoded,
-                    prefixes=len(exported),
-                )
-                return "continue", detector
+                return finish_follow_stop(cmd)
             if cmd_type == "quit":
                 return "quit", detector
             raise ValueError(f"Unexpected command during follow mode: {cmd_type}")
