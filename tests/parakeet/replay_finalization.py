@@ -3,75 +3,67 @@
 """Compare Stop-to-publication on a paced, mixed PCM16 meeting.
 
 Run with PYTHONPATH=src, the packaged bundle, matching Python ORT and pinned
-models. Output contains timings and counts only. Both libraries are disposable.
+models and GStreamer Opus plugins. Both managed libraries are disposable.
+The report contains timings, counts and equality checks. Use --reuse-first to
+measure order effects and --microphone for a second, simultaneously recorded track.
 """
 
 import argparse
 import importlib
 import json
 import os
+import struct
+import subprocess
 import sys
 import tempfile
 import threading
 import time
 import wave
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 from pathlib import Path
 
 from queue_models import Models
 
+from cassini_talk import portable
 from cassini_talk import speech_pipeline as speech
+from cassini_talk.library_publication import capture_parent, publish_stopped
 from cassini_talk.meeting_store import atomic_json, read_metadata
 from cassini_talk.parakeet import Parakeet
 from cassini_talk.parakeet_client import ParakeetClient
 from cassini_talk.recording_session import RecordingSession
+from cassini_talk.speech_threads import background_worker_priority
 from cassini_talk.transcription import TranscriptionQueue
 from cassini_talk.voice_store import VoiceStore
 from cassini_talk.whistle_client import WhistleClient
 from cassini_talk.whistle_worker import PRIVACY, verify_bundle
 
+WATERMARK = struct.Struct("<Q")
 
-class GrowingTrack:
-    """A writer watermark only. The recognizer reads committed frames at its own pace."""
 
-    def __init__(self, path):
-        self.path = path
-        self.condition = threading.Condition()
-        self.frames = 0
-        self.stopped = False
-
-    def advance(self, frames):
-        with self.condition:
-            self.frames = frames
-            self.condition.notify()
-
-    def stop(self):
-        with self.condition:
-            self.stopped = True
-            self.condition.notify()
-
-    def blocks(self, rate, channels):
-        cursor = 0
-        while True:
-            with self.condition:
-                while not self.stopped and self.frames == cursor:
-                    self.condition.wait()
-                if self.stopped:
-                    return
-                count = min(rate, self.frames - cursor)
-            with wave.open(str(self.path)) as wav:
-                wav.setpos(cursor)
+def committed_pcm(path):
+    """Follow writer frame counts from stdin. Each notification supersedes earlier ones."""
+    cursor = 0
+    while packet := sys.stdin.buffer.read1(WATERMARK.size * 128):
+        if len(packet) % WATERMARK.size:
+            raise ValueError("Truncated watermark")
+        frames = WATERMARK.unpack_from(packet, len(packet) - WATERMARK.size)[0]
+        with wave.open(str(path)) as wav:
+            wav.setpos(cursor)
+            while cursor < frames:
+                count = min(wav.getframerate(), frames - cursor)
                 pcm = wav.readframes(count)
-            if len(pcm) != 2 * channels * count:
-                raise ValueError("Committed PCM unavailable")
-            yield pcm
-            cursor += count
+                if len(pcm) != 2 * wav.getnchannels() * count:
+                    raise ValueError("Committed PCM unavailable")
+                yield pcm
+                cursor += count
 
 
-def precompute(track, args, rate, channels):
+def precompute(args, path):
     import numpy as np
 
+    background_worker_priority()
+    with wave.open(str(path)) as wav:
+        rate, channels = wav.getframerate(), wav.getnchannels()
     gate = speech.SpeechGate(speech.SpeechDetector(args.bundle / "silero_vad.onnx"))
     if args.parakeet:
         model = Parakeet(args.parakeet, args.runtime)
@@ -79,11 +71,11 @@ def precompute(track, args, rate, channels):
         os.environ["NEEDLE3_LIB_PATH"] = str(args.bundle / "libneedle3.so")
         sys.path.insert(0, str(args.bundle / "wrapper.whl"))
         model = importlib.import_module("needle").Whistle(weights=args.bundle / "whistle.cact")
-    completed, pieces = [], []
+    pieces = []
     try:
 
         def mono():
-            for pcm in track.blocks(rate, channels):
+            for pcm in committed_pcm(path):
                 samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32)
                 if channels == 2:
                     samples = samples.reshape(-1, 2).mean(axis=1, dtype=np.float32)
@@ -99,12 +91,11 @@ def precompute(track, args, rate, channels):
                     samples = np.concatenate(pieces)
                     segment = dict(startSample=start, endSample=start + len(samples), reason=chunk.reason)
                     value, words, lang, digest = speech.recognise_segment(model, None, segment, samples=samples)
-                    completed.append((segment, value["text"], words, lang, digest, time.monotonic()))
+                    print(json.dumps([segment, value["text"], words, lang, digest, time.monotonic()]), flush=True)
                     pieces.clear()
     finally:
         if args.parakeet:
             model.close()
-    return completed
 
 
 def cache_entries(track, completed, stop):
@@ -127,10 +118,14 @@ def cache_entries(track, completed, stop):
 
 def run(args, library, live):
     library.mkdir()
-    session = RecordingSession(library, "Replay", source="gnome")
-    growing = GrowingTrack(session.directory / "track-system.wav")
+    os.environ.update(
+        CASSINI_LIBRARY_DIR=str(library),
+        XDG_CONFIG_HOME=str(library.parent / (library.name + "-config")),
+        XDG_DATA_HOME=str(library.parent / (library.name + "-data")),
+    )
+    session = RecordingSession(capture_parent(library), "Replay", source="gnome")
     max_capture_lag = 0.0
-    with ExitStack() as stack, ThreadPoolExecutor(max_workers=1) as pool:
+    with ExitStack() as stack:
         tracks = {}
         for kind, path in (("system", args.audio), ("microphone", args.microphone)):
             if path is None:
@@ -144,7 +139,18 @@ def run(args, library, live):
         system = tracks["system"]
         duration = max(w.getnframes() / w.getframerate() for w in tracks.values())
         started = time.monotonic()
-        worker = pool.submit(precompute, growing, args, system.getframerate(), system.getnchannels()) if live else None
+        worker = None
+        if live:
+            output = stack.enter_context(tempfile.TemporaryFile())
+            worker = stack.enter_context(
+                subprocess.Popen(
+                    [sys.executable, __file__, *sys.argv[1:], "--follow", str(session.directory / "track-system.wav")],
+                    env=WhistleClient(args.bundle).worker_environment(),
+                    stdin=subprocess.PIPE,
+                    stdout=output,
+                )
+            )
+            os.set_blocking(worker.stdin.fileno(), False)
         try:
             while any(w.tell() < w.getnframes() for w in tracks.values()):
                 blocks = []
@@ -160,13 +166,26 @@ def run(args, library, live):
                     time.sleep(max(0, deadline - time.monotonic()))
                 for kind, pcm, offset, _ in blocks:
                     session.append(kind, pcm, offset)
-                growing.advance(system.tell())
+                if worker:
+                    if worker.poll() is not None:
+                        raise RuntimeError(f"Capture recognizer exited with code {worker.returncode}")
+                    # The next watermark covers the same frames on disk.
+                    with suppress(BlockingIOError):
+                        os.write(worker.stdin.fileno(), WATERMARK.pack(system.tell()))
                 max_capture_lag = max(max_capture_lag, time.monotonic() - deadline)
         finally:
             stop = time.monotonic()
-            growing.stop()
+            if worker:
+                worker.kill()
+                worker.wait()
             session.finish()
-        completed = worker.result() if worker else []
+        audio_file = publish_stopped(session)
+        audio_published = time.monotonic()
+        completed = []
+        if worker:
+            output.seek(0)
+            # Stop can interrupt the final line. Only complete, flushed results qualify.
+            completed = [json.loads(line) for line in output if line.endswith(b"\n")]
     marks, misses = {}, 0
 
     class Client(ParakeetClient if args.parakeet else WhistleClient):
@@ -225,6 +244,10 @@ def run(args, library, live):
         if read_metadata(session.directory)["transcript"]["status"] != "done":
             raise RuntimeError("Final queue failed")
         words, turns = [(session.directory / name).read_bytes() for name in ("transcript.json", "speaker-turns.json")]
+        embedded = portable.read_meeting(str(library / audio_file.name))
+        file_words = portable.load_words(embedded, embedded.default_transcript_id)
+        if not file_words:
+            raise RuntimeError("Published recording contains no default transcript")
         groups = json.loads(turns)["groups"]
         if not groups or not any(g["turns"] for g in groups):
             raise RuntimeError("No diarization turns to compare")
@@ -233,7 +256,8 @@ def run(args, library, live):
             tracks=len(tracks),
             maxWriterLagMs=round(max_capture_lag * 1000, 1) if live else None,
             secondsAfterStop=round(published - stop, 3),
-            stopThroughPlanning=round(marks["planned"] - stop, 3),
+            audioPublication=round(audio_published - stop, 3),
+            setupAndPlanning=round(marks["planned"] - audio_published, 3),
             recognition=round(marks["recognised"] - marks["planned"], 3),
             diarizationThroughFirstTurnBatch=round(marks["diarized"] - marks["recognised"], 3),
             remainingPublication=round(published - marks["diarized"], 3),
@@ -254,7 +278,7 @@ def run(args, library, live):
             report["voicePrints"] = len(prints)
             report["voiceExtraction"] = round(marks["voiceEnd"] - marks["voiceStart"], 3)
             report["remainingPublication"] = round(report["remainingPublication"] - report["voiceExtraction"], 3)
-        return report, words, turns
+        return report, words, turns, (file_words, embedded.speakers)
     finally:
         jobs.close()
         jobs.executor.shutdown(wait=True)
@@ -268,22 +292,40 @@ def main():
     parser.add_argument("--campplus", type=Path)
     parser.add_argument("--microphone", type=Path, help="Record a simultaneous mic track and finalize it at Stop")
     parser.add_argument("--reuse-first", action="store_true", help="Reverse order to expose warm-cache effects")
+    parser.add_argument("--follow", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     os.environ.update(PRIVACY)
     verify_bundle(args.bundle)
+    if args.follow:
+        from cassini_talk.whistle_worker import block_network
+
+        sys.addaudithook(block_network)
+        precompute(args, args.follow)
+        return
     with tempfile.TemporaryDirectory() as root:
         results = {}
         for use_live in (args.reuse_first, not args.reuse_first):
             results[use_live] = run(args, Path(root) / ("live" if use_live else "batch"), use_live)
-        batch, words, turns = results[False]
-        live, other_words, other_turns = results[True]
+        batch, words, turns, embedded = results[False]
+        live, other_words, other_turns, other_embedded = results[True]
     print(
         json.dumps(
-            dict(batch=batch, reuse=live, identicalWords=words == other_words, identicalTurns=turns == other_turns),
+            dict(
+                batch=batch,
+                reuse=live,
+                identicalWords=words == other_words,
+                identicalTurns=turns == other_turns,
+                identicalPublishedTranscript=embedded == other_embedded,
+            ),
             indent=2,
         )
     )
-    if words != other_words or turns != other_turns or live["postStopCacheMisses"] >= batch["postStopCacheMisses"]:
+    if (
+        embedded != other_embedded
+        or words != other_words
+        or turns != other_turns
+        or live["postStopCacheMisses"] >= batch["postStopCacheMisses"]
+    ):
         raise SystemExit("Replay failed to reproduce final output with fewer post-Stop decodes")
 
 
