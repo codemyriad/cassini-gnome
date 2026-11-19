@@ -3884,9 +3884,15 @@ def test_idle_browser_poll_during_recovery_saving_preserves_warm_worker_handoff(
         assert tracker["completes"][0]["workerPid"] == tracker["pids"][0]
         assert tracker["planned"][0]["prefixesReused"] >= 1
 
-        # 4. _on_publish_failed drops the failed directory from _observed_saving_directories.
+        # 4. _on_publish_failed drops the failed directory from _observed_saving_directories on GTK.
         app._observed_saving_directories = (str(session.directory),)
         CassiniApplication._on_publish_failed(app, session.directory)
+        from gi.repository import GLib
+
+        if hasattr(GLib, "MainContext"):
+            ctx = GLib.MainContext.default()
+            while ctx.iteration(False):
+                pass
         assert app._observed_saving_directories == ()
     finally:
         queue.close()
