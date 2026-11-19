@@ -64,6 +64,29 @@ def recognition_cache_model(selected, bundle):
     return recognition_cache.whistle_identity(bundle)
 
 
+def resolve_transcription_mode(app) -> TranscriptionMode:
+    """Resolve the active TranscriptionMode from an explicit app attribute or CASSINI_TRANSCRIPTION_MODE.
+
+    Explicit per-instance `app.transcription_mode` is validated strictly (raising on
+    unknown values). When not overridden on the instance, `CASSINI_TRANSCRIPTION_MODE`
+    is consulted and unknown env values fall back to `afterStop` with a warning.
+    """
+    instance_dict = getattr(app, "__dict__", None)
+    if isinstance(instance_dict, dict) and "transcription_mode" in instance_dict:
+        explicit = instance_dict["transcription_mode"]
+        if explicit is not None:
+            return TranscriptionMode.parse(explicit)
+    env_raw = os.environ.get("CASSINI_TRANSCRIPTION_MODE")
+    if env_raw:
+        try:
+            return TranscriptionMode.parse(env_raw)
+        except ValueError:
+            LOG.warning("Ignoring unknown CASSINI_TRANSCRIPTION_MODE=%r; using afterStop", env_raw)
+            return TranscriptionMode.AFTER_STOP
+    default = getattr(app, "transcription_mode", TranscriptionMode.AFTER_STOP)
+    return TranscriptionMode.parse(TranscriptionMode.AFTER_STOP if default is None else default)
+
+
 def auto_write_enabled(app):
     """Whether a stopped capture is written down without the user's Transcribe.
 
@@ -72,8 +95,7 @@ def auto_write_enabled(app):
     """
     if not getattr(app, "transcription_enabled", False):
         return False
-    mode = TranscriptionMode.parse(getattr(app, "transcription_mode", TranscriptionMode.AFTER_STOP))
-    return mode is not TranscriptionMode.RECORD_ONLY
+    return resolve_transcription_mode(app) is not TranscriptionMode.RECORD_ONLY
 
 
 def bundle_path():
@@ -716,6 +738,8 @@ class TranscriptionQueue:
         client = None
         client_model = None
         cache_entries: dict[str, dict] = {}
+        cache_budget = None
+        cache_dirty = False
         cache_model = None
         canonical = directory
 
@@ -724,23 +748,10 @@ class TranscriptionQueue:
                 if self.closed or directory in self._cancelled_meetings:
                     raise CancelledError()
 
-        def handle_follow_event(event):
-            if not isinstance(event, dict):
+        def flush_follow_cache():
+            nonlocal cache_dirty
+            if not cache_dirty or not cache_model or not cache_entries:
                 return
-            ev_type = event.get("type")
-            if ev_type == "follow-idle":
-                self._follow_drained.set()
-                return
-            if ev_type != "follow-cache":
-                return
-            entry = event.get("cacheEntry")
-            if not cache_model or not isinstance(entry, dict):
-                return
-            key = entry.get("key")
-            value = {name: entry.get(name) for name in ("text", "language", "words")}
-            if not recognition_cache.valid_entry(key, value) or len(cache_entries) >= recognition_cache.MAX_SEGMENTS:
-                return
-            cache_entries[key] = value
             try:
                 check_cache_writable()
                 if not canonical.is_dir():
@@ -750,8 +761,39 @@ class TranscriptionQueue:
                     recognition_cache.document(cache_model, cache_entries),
                     before_commit=check_cache_writable,
                 )
+                recognition_cache.remove_journal(canonical)
+                cache_dirty = False
             except (CancelledError, OSError, ValueError):
                 pass
+
+        def handle_follow_event(event):
+            nonlocal cache_dirty
+            if not isinstance(event, dict):
+                return
+            ev_type = event.get("type")
+            if ev_type == "follow-idle":
+                self._follow_drained.set()
+                with self.lock:
+                    self._idle.notify_all()
+                return
+            if ev_type != "follow-cache":
+                return
+            entry = event.get("cacheEntry")
+            if not cache_model or cache_budget is None or not isinstance(entry, dict):
+                return
+            key = entry.get("key")
+            value = {name: entry.get(name) for name in ("text", "language", "words")}
+            if not cache_budget.try_add(key, value):
+                return
+            cache_dirty = True
+            try:
+                check_cache_writable()
+                if canonical.is_dir():
+                    recognition_cache.append_journal_entry(canonical, cache_model, key, value)
+            except (CancelledError, OSError, ValueError):
+                pass
+            with self.lock:
+                self._idle.notify_all()
 
         def register_follow_client(candidate):
             nonlocal client
@@ -819,12 +861,14 @@ class TranscriptionQueue:
             with self.lock:
                 if self._follow_generation == generation:
                     self._follow_client_model = client_model
+                    self._idle.notify_all()
             if not all(hasattr(client, name) for name in ("start_follow", "poll_follow_event", "stop_follow")):
                 return
             cache_model = recognition_cache_model(client_model, self.bundle)
             if not cache_model:
                 return
             cache_entries = recognition_cache.read(canonical / RECOGNITION_CACHE_FILE, cache_model)
+            cache_budget = recognition_cache.CacheBudget(cache_model, cache_entries)
             follow_started = False
             if not stop_event.is_set() and not self.closed:
                 client.start_follow(canonical, cache_model, poll_interval_ms=self._follow_poll_interval_ms)
@@ -849,6 +893,7 @@ class TranscriptionQueue:
                     if follow_started
                     else dict(type="follow-stopped")
                 )
+                flush_follow_cache()
                 if stopped is not None and getattr(client, "is_alive", lambda: False)():
                     with self.lock:
                         if (
@@ -872,6 +917,7 @@ class TranscriptionQueue:
         except Exception as error:
             LOG.warning("Session follower stopped cleanly (capture unaffected): %s", error)
         finally:
+            flush_follow_cache()
             if client is not None:
                 if hasattr(client, "cancel"):
                     client.cancel()
@@ -1303,17 +1349,17 @@ class TranscriptionQueue:
             )
         cache_model = recognition_cache_model(self.client_model, self.bundle)
         cache_entries = recognition_cache.read(directory / RECOGNITION_CACHE_FILE, cache_model) if cache_model else {}
+        cache_budget = recognition_cache.CacheBudget(cache_model, cache_entries) if cache_model else None
         cache_dirty = False
 
         def record_cache(entry):
             nonlocal cache_dirty
-            if not cache_model or not isinstance(entry, dict):
+            if cache_budget is None or not isinstance(entry, dict):
                 return
             key = entry.get("key")
             value = {name: entry.get(name) for name in ("text", "language", "words")}
-            if not recognition_cache.valid_entry(key, value) or len(cache_entries) >= recognition_cache.MAX_SEGMENTS:
+            if not cache_budget.try_add(key, value):
                 return
-            cache_entries[key] = value
             cache_dirty = True
 
         def flush_cache():
@@ -1326,6 +1372,7 @@ class TranscriptionQueue:
                 recognition_cache.document(cache_model, cache_entries),
                 before_commit=self._check_not_trashed,
             )
+            recognition_cache.remove_journal(directory)
             cache_dirty = False
 
         diarization = (

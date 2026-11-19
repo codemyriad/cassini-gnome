@@ -281,6 +281,22 @@ class _SpanBuffer:
             self.base += drop
 
 
+@dataclass(frozen=True)
+class _PrefixCheckpoint:
+    """O(1) checkpoint into TrackFollower's append-only prefix histories."""
+
+    block_count: int
+    meter_code_count: int
+    closed_range_count: int
+    ownership_windows: object
+    offset_ms: int
+    vad_input_stage: str
+    max_samples: int
+    detector_state: object
+    gate_state: object
+    open_start: int | None
+
+
 class TrackFollower:
     """Incremental read-only follower for one logical session.json track."""
 
@@ -335,7 +351,7 @@ class TrackFollower:
         self._open_start: int | None = None
         self._open_pieces: list = []
         self._block_hashes: list[bytes] = []
-        self.latest_prefix = None
+        self._latest_checkpoint: _PrefixCheckpoint | None = None
 
         # Bounded queue of closed segments awaiting ASR (typically length 0 or 1).
         self.ready_segments: deque[_ReadySegment] = deque()
@@ -627,7 +643,7 @@ class TrackFollower:
     def _feed_16k_masked(self, block, *, flush: bool = False) -> None:
         import numpy as np
 
-        from .speech_pipeline import PREFIX_BLOCK_SAMPLES, SegmentationPrefix
+        from .speech_pipeline import PREFIX_BLOCK_SAMPLES
 
         frame_size = self._detector.frame_size
         block_bytes = PREFIX_BLOCK_SAMPLES * 4
@@ -638,8 +654,8 @@ class TrackFollower:
         self._detector.restore(self._detector_state)
         try:
             # Feed at 512-sample frame granularity (32 ms) so closed segments emit immediately
-            # without waiting for an 8192-sample prefix block boundary, while capturing exact
-            # SegmentationPrefix checkpoints on every PREFIX_BLOCK_SAMPLES boundary.
+            # without waiting for an 8192-sample prefix block boundary, while capturing O(1)
+            # length-only checkpoints on every PREFIX_BLOCK_SAMPLES boundary.
             while len(self._pending_16k) >= frame_size:
                 if not self.prefix_invalidated:
                     rem_samples = (block_bytes - len(self._prefix_hash_buf)) // 4
@@ -655,17 +671,16 @@ class TrackFollower:
                     if len(self._prefix_hash_buf) == block_bytes:
                         self._block_hashes.append(hashlib.sha256(self._prefix_hash_buf).digest())
                         self._prefix_hash_buf.clear()
-                        self.latest_prefix = SegmentationPrefix(
-                            samples=len(self._block_hashes) * PREFIX_BLOCK_SAMPLES,
-                            block_hashes=tuple(self._block_hashes),
+                        self._latest_checkpoint = _PrefixCheckpoint(
+                            block_count=len(self._block_hashes),
+                            meter_code_count=len(self._meter.codes),
+                            closed_range_count=len(self._closed_ranges),
                             ownership_windows=self._ownership,
                             offset_ms=self.placed_offset,
                             vad_input_stage=self._detector.input_stage,
                             max_samples=self._gate.max_samples,
                             detector_state=self._detector.snapshot(),
                             gate_state=self._gate.snapshot(),
-                            meter_codes=bytes(self._meter.codes),
-                            closed_ranges=tuple(dict(r) for r in self._closed_ranges),
                             open_start=self._open_start,
                         )
             if flush:
@@ -747,9 +762,24 @@ class TrackFollower:
         return False
 
     def export_prefix(self):
-        if self.prefix_invalidated or self.unsupported or self.latest_prefix is None:
+        from .speech_pipeline import PREFIX_BLOCK_SAMPLES, SegmentationPrefix
+
+        cp = self._latest_checkpoint
+        if self.prefix_invalidated or self.unsupported or cp is None:
             return None
-        return self.latest_prefix
+        return SegmentationPrefix(
+            samples=cp.block_count * PREFIX_BLOCK_SAMPLES,
+            block_hashes=tuple(self._block_hashes[: cp.block_count]),
+            ownership_windows=cp.ownership_windows,
+            offset_ms=cp.offset_ms,
+            vad_input_stage=cp.vad_input_stage,
+            max_samples=cp.max_samples,
+            detector_state=cp.detector_state,
+            gate_state=cp.gate_state,
+            meter_codes=bytes(self._meter.codes[: cp.meter_code_count]),
+            closed_ranges=tuple(dict(r) for r in self._closed_ranges[: cp.closed_range_count]),
+            open_start=cp.open_start,
+        )
 
 
 class SessionFollower:

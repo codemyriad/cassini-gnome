@@ -1412,14 +1412,9 @@ class CassiniApplication(Adw.Application):
         return self.writing_unavailable is None
 
     def _effective_transcription_mode(self):
-        from .transcription import TranscriptionMode
+        from .transcription import resolve_transcription_mode
 
-        raw = getattr(self, "transcription_mode", None)
-        if raw is None or (
-            raw == CassiniApplication.transcription_mode and os.environ.get("CASSINI_TRANSCRIPTION_MODE")
-        ):
-            raw = os.environ.get("CASSINI_TRANSCRIPTION_MODE") or CassiniApplication.transcription_mode
-        return TranscriptionMode.parse(raw)
+        return resolve_transcription_mode(self)
 
     def _on_publish_started(self, directory):
         if self._quitting or self._capture_exiting or not getattr(self, "transcription_enabled", False):

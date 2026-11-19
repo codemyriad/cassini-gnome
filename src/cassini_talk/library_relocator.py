@@ -115,10 +115,12 @@ class LibraryRelocator:
         if not transcriber:
             return work_busy
         with transcriber.lock:
-            work_busy.update(Path(p).resolve() for p in transcriber.pending)
-            work_busy.update(Path(p).resolve() for p in getattr(transcriber, "voice_pending", ()))
+            pending_paths = list(transcriber.pending)
+            voice_paths = list(getattr(transcriber, "voice_pending", ()))
             follow_dir = getattr(transcriber, "_follow_directory", None)
             warm_dir = getattr(transcriber, "_warm_directory", None)
+        work_busy.update(Path(p).resolve() for p in pending_paths)
+        work_busy.update(Path(p).resolve() for p in voice_paths)
         follow_resolved = Path(follow_dir).resolve() if follow_dir is not None else None
         warm_resolved = Path(warm_dir).resolve() if warm_dir is not None else None
         if (
@@ -146,8 +148,8 @@ class LibraryRelocator:
                 break
         with transcriber.lock:
             remaining_follow = getattr(transcriber, "_follow_directory", None)
-            if remaining_follow is not None:
-                work_busy.add(Path(remaining_follow).resolve())
+        if remaining_follow is not None:
+            work_busy.add(Path(remaining_follow).resolve())
         return work_busy
 
     def _complete(self, future):

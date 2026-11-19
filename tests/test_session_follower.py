@@ -39,6 +39,7 @@ from cassini_talk.transcription import (  # noqa: E402
     RECOGNITION_CACHE_FILE,
     TranscriptionMode,
     TranscriptionQueue,
+    recognition_cache_model,
     should_auto_write,
 )
 from cassini_talk.whistle_client import WhistleClient  # noqa: E402
@@ -46,13 +47,15 @@ from cassini_talk.whistle_client import WhistleClient  # noqa: E402
 WORKER_SCRIPT = Path(__file__).with_name("fake_follow_worker.py")
 
 
-def wait_until(predicate, timeout=15.0, message="Condition not met"):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        time.sleep(0.01)
-    assert predicate(), message
+def wait_on_queue(queue, predicate, *, timeout=15.0, message="Condition not met"):
+    with queue._idle:
+        ok = queue._idle.wait_for(predicate, timeout=timeout)
+    assert ok, message
+
+
+def cached_segment_count(directory: Path, engine: str, bundle: Path) -> int:
+    model_id = recognition_cache_model(PARAKEET_MODEL_ID if engine == "parakeet" else "whistle", bundle)
+    return len(recognition_cache.read(directory / RECOGNITION_CACHE_FILE, model_id))
 
 
 def make_speech_pcm16(rate: int, channels: int, segments_spec: list[tuple[float, float, float]]) -> bytes:
@@ -479,12 +482,9 @@ def test_paired_replay_single_and_two_track_warm_handoff(tmp_path, engine, two_t
         session.checkpoint()
         if live:
             # Wait deterministically until pre-Stop follower caches at least 2 segments (no wall-clock sleep).
-            wait_until(
-                lambda: (
-                    (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                    and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
-                    >= (3 if two_tracks else 2)
-                ),
+            wait_on_queue(
+                queue,
+                lambda: cached_segment_count(session.directory, engine, bundle) >= (3 if two_tracks else 2),
                 message="Follower did not precompute closed segments before Stop",
             )
 
@@ -602,12 +602,9 @@ def test_native_clock_drift_multi_minute_and_negative_control(tmp_path, engine):
         session.checkpoint()
         if live:
             # Expect segments from BOTH minute 1 (t=0..1s) AND spanning/minute 2 (t=58.5..63s) cached BEFORE Stop!
-            wait_until(
-                lambda: (
-                    (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                    and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
-                    >= 3
-                ),
+            wait_on_queue(
+                queue,
+                lambda: cached_segment_count(session.directory, engine, bundle) >= 3,
                 timeout=20.0,
                 message="Drifted multi-minute follower did not decode across consecutive 60 s fixed intervals",
             )
@@ -642,7 +639,7 @@ def test_native_clock_drift_multi_minute_and_negative_control(tmp_path, engine):
         session.checkpoint()
         if live:
             # Wait for the worker process to be ready, then verify SessionFollower directly produces 0 segments.
-            wait_until(lambda: len(tracker["pids"]) == 1, message="Follower worker did not start")
+            wait_on_queue(queue, lambda: len(tracker["pids"]) == 1, message="Follower worker did not start")
             direct = SessionFollower(
                 session.directory,
                 DeterministicRecognizer(engine),
@@ -692,12 +689,9 @@ def test_rotating_wav_mid_utterance_paired_equivalence(tmp_path, engine):
         session.checkpoint()
         assert len(session.manifest["tracks"][0].get("spans", [])) >= 3, "Expected >=3 rotated physical spans"
         if live:
-            wait_until(
-                lambda: (
-                    (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                    and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
-                    >= 2
-                ),
+            wait_on_queue(
+                queue,
+                lambda: cached_segment_count(session.directory, engine, bundle) >= 2,
                 message="RotatingWAV follower did not decode across mid-utterance rotation",
             )
 
@@ -759,12 +753,9 @@ def test_companion_ownership_windows_and_nonzero_offset(tmp_path, engine):
             rel_ms += 250.0
         session.checkpoint()
         if live:
-            wait_until(
-                lambda: (
-                    (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                    and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
-                    >= 2
-                ),
+            wait_on_queue(
+                queue,
+                lambda: cached_segment_count(session.directory, engine, bundle) >= 2,
                 message="Companion follower did not precompute non-zero offsetMs segments",
             )
 
@@ -858,18 +849,17 @@ def test_mid_recording_sigkill_and_sigstop_recovery(tmp_path, engine, sig):
         session.append("microphone", part1, 0.0)
         session.checkpoint()
         if live and inject_sig is not None:
-            wait_until(
-                lambda: (
-                    (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                    and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {}))
-                    >= 1
-                ),
+            wait_on_queue(
+                queue,
+                lambda: cached_segment_count(session.directory, engine, bundle) >= 1,
                 message="Follower did not cache first segment before signal injection",
             )
             pid = tracker["pids"][0]
             os.kill(pid, inject_sig)
             if inject_sig == signal.SIGKILL:
-                wait_until(lambda: queue._follow_directory is None, message="Queue did not clean up after SIGKILL")
+                wait_on_queue(
+                    queue, lambda: queue._follow_directory is None, message="Queue did not clean up after SIGKILL"
+                )
         # Capture continues completely untouched after worker SIGKILL/SIGSTOP!
         session.append("microphone", part2, 2000.0)
         session.checkpoint()
@@ -945,14 +935,8 @@ def test_overlap_readonly_planning_asr_with_opus_publication(tmp_path, monkeypat
         durable(opus_entered, "publish_stopped did not enter Opus encoding")
 
         # While Opus encoding is STILL paused, the read-only follower finishes ALL tail ASR!
-        wait_until(
-            lambda: (
-                queue._follow_drained.is_set()
-                and (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) == 2
-            ),
-            message="Tail planning/ASR did not overlap Opus publication",
-        )
+        assert queue._follow_drained.wait(timeout=15.0), "Tail planning/ASR did not overlap Opus publication"
+        assert cached_segment_count(session.directory, "whistle", bundle) == 2
         # Final metadata MUST NOT be committed while Opus publication is still running!
         assert not (session.directory / "transcript.json").exists()
         assert read_metadata(session.directory)["transcript"]["status"] == "none"
@@ -1013,7 +997,7 @@ def test_preemption_manual_enqueue_model_change_trash_and_close(tmp_path):
 
         # 1) Start following live_session -> manual enqueue of saved_session preempts follower!
         assert queue.follow_recording(live_session.directory)
-        wait_until(lambda: len(tracker["pids"]) == 1, message="Follower did not start")
+        wait_on_queue(queue, lambda: len(tracker["pids"]) == 1, message="Follower did not start")
         assert queue.enqueue(saved_session.directory)
         finished.wait(1, bound=30)
         assert queue._follow_directory is None
@@ -1021,15 +1005,17 @@ def test_preemption_manual_enqueue_model_change_trash_and_close(tmp_path):
 
         # 2) Re-attach follower, then switch model -> model_changed() preempts follower!
         assert queue.follow_recording(live_session.directory)
-        wait_until(lambda: queue._follow_client_model == "whistle", message="Follower did not reattach")
+        wait_on_queue(queue, lambda: queue._follow_client_model == "whistle", message="Follower did not reattach")
         assert sum(1 for c in tracker["clients"] if c.is_alive()) == 1
         models.select_for_test(PARAKEET_MODEL_ID)
         queue.model_changed()
-        wait_until(lambda: queue._follow_directory is None, message="model_changed did not preempt follower")
+        wait_on_queue(queue, lambda: queue._follow_directory is None, message="model_changed did not preempt follower")
 
         # 3) Re-attach follower on Parakeet, then Trash (cancel_meeting) cancels & waits cleanly!
         assert queue.follow_recording(live_session.directory)
-        wait_until(lambda: queue._follow_client_model == PARAKEET_MODEL_ID, message="Parakeet follower did not start")
+        wait_on_queue(
+            queue, lambda: queue._follow_client_model == PARAKEET_MODEL_ID, message="Parakeet follower did not start"
+        )
         assert sum(1 for c in tracker["clients"] if c.is_alive()) == 1
         assert all(not alive for alive in tracker["concurrent_alive_at_start"])
         with queue.cancel_meeting(live_session.directory):
@@ -1093,11 +1079,9 @@ def test_capture_stress_two_simultaneous_tracks_zero_frame_loss(tmp_path):
             if idx % 25 == 24:
                 session.checkpoint()
         session.checkpoint()
-        wait_until(
-            lambda: (
-                (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 4
-            ),
+        wait_on_queue(
+            queue,
+            lambda: cached_segment_count(session.directory, "whistle", bundle) >= 4,
             message="Stress follower did not cache segments from simultaneous 2-track capture",
         )
         session.finish()
@@ -1151,6 +1135,30 @@ def test_long_input_11h_v2_cache_and_prefix_linear_scaling():
     # 2N must scale near-linearly (well below quadratic 4x; generous 3.2x margin prevents flake on busy CI).
     assert t_2n <= max(t_n * 3.2, t_n + 0.25), f"Non-linear scaling: t(10k)={t_n:.4f}s, t(20k)={t_2n:.4f}s"
 
+    # Also exercise TrackFollower's O(1) prefix checkpointing + single materialization at export_prefix().
+    from cassini_talk.session_follower import TrackFollower
+
+    def run_prefix_checkpoints(n_blocks: int) -> float:
+        track = dict(id="t1", kind="microphone", sampleRate=16000, channels=1, offsetMs=0, file="track.wav")
+        follower = TrackFollower("t1", 0, track, [], DeterministicDetector())
+        speech_block = np.full(pipeline.PREFIX_BLOCK_SAMPLES, 0.25, dtype="<f4")
+        silence_block = np.zeros(pipeline.PREFIX_BLOCK_SAMPLES, dtype="<f4")
+        start = time.thread_time()
+        for idx in range(n_blocks):
+            follower._feed_16k_masked(speech_block if idx % 3 == 0 else silence_block, flush=False)
+        prefix = follower.export_prefix()
+        elapsed = time.thread_time() - start
+        assert prefix is not None
+        assert prefix.samples == n_blocks * pipeline.PREFIX_BLOCK_SAMPLES
+        assert len(prefix.block_hashes) == n_blocks
+        assert len(prefix.meter_codes) == n_blocks * (pipeline.PREFIX_BLOCK_SAMPLES // 512)
+        return elapsed
+
+    run_prefix_checkpoints(30)
+    p_n = run_prefix_checkpoints(300)
+    p_2n = run_prefix_checkpoints(600)
+    assert p_2n <= max(p_n * 3.2, p_n + 0.25), f"Non-linear checkpointing: t(300)={p_n:.4f}s, t(600)={p_2n:.4f}s"
+
 
 # ---------------------------------------------------------------------------
 # 13. Review regressions: idle LibraryRelocator polls & consecutive one-child invariant
@@ -1192,12 +1200,9 @@ def test_library_relocator_idle_polls_preserve_follower_and_relocation_preempts_
         session.checkpoint()
 
         assert queue.follow_recording(session.directory)
-        wait_until(
-            lambda: (
-                len(tracker["pids"]) == 1
-                and (session.directory / RECOGNITION_CACHE_FILE).is_file()
-                and len(json.loads((session.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 1
-            ),
+        wait_on_queue(
+            queue,
+            lambda: len(tracker["pids"]) == 1 and cached_segment_count(session.directory, "whistle", bundle) >= 1,
             message="Follower did not cache initial segment",
         )
         initial_pid = tracker["pids"][0]
@@ -1328,11 +1333,9 @@ def test_consecutive_whistle_job_and_follower_preserves_one_child_invariant(tmp_
         live_2.checkpoint()
 
         assert queue.follow_recording(live_2.directory)
-        wait_until(
-            lambda: (
-                (live_2.directory / RECOGNITION_CACHE_FILE).is_file()
-                and len(json.loads((live_2.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 1
-            ),
+        wait_on_queue(
+            queue,
+            lambda: cached_segment_count(live_2.directory, "whistle", bundle) >= 1,
             message="Cycle 2 follower did not cache segment using transferred Whistle worker",
         )
         assert queue.client is None
@@ -1359,11 +1362,11 @@ def test_consecutive_whistle_job_and_follower_preserves_one_child_invariant(tmp_
         live_3.checkpoint()
 
         assert queue.follow_recording(live_3.directory)
-        wait_until(
+        wait_on_queue(
+            queue,
             lambda: (
                 queue._follow_client_model == PARAKEET_MODEL_ID
-                and (live_3.directory / RECOGNITION_CACHE_FILE).is_file()
-                and len(json.loads((live_3.directory / RECOGNITION_CACHE_FILE).read_text()).get("segments", {})) >= 1
+                and cached_segment_count(live_3.directory, "parakeet", bundle) >= 1
             ),
             message="Cycle 3 Parakeet follower did not start and cache segment",
         )
@@ -1382,3 +1385,296 @@ def test_consecutive_whistle_job_and_follower_preserves_one_child_invariant(tmp_
             queue._close_thread.join(timeout=5.0)
     for client in tracker["clients"]:
         assert client.process is None or client.process.poll() is not None
+
+
+# ---------------------------------------------------------------------------
+# 14. Review regressions: env mode unification, SpeechModels.select, cache
+#     linearity + byte budget, and lock-free Path.resolve in relocator
+# ---------------------------------------------------------------------------
+
+
+def test_env_transcription_mode_gates_all_auto_write_paths_and_falls_back_on_invalid(monkeypatch, caplog):
+    from cassini_talk.transcription import auto_write_enabled, resolve_transcription_mode
+
+    class AppStub:
+        transcription_mode = "afterStop"
+        transcription_enabled = True
+
+    app = AppStub()
+
+    # Env recordOnly must gate BOTH resolve_transcription_mode and auto_write_enabled
+    # (which controls native Stop, browser Stop, and close-and-save).
+    monkeypatch.setenv("CASSINI_TRANSCRIPTION_MODE", "recordOnly")
+    assert resolve_transcription_mode(app) is TranscriptionMode.RECORD_ONLY
+    assert not auto_write_enabled(app)
+
+    # Env transcribeWhileRecording enables auto-write and live following.
+    monkeypatch.setenv("CASSINI_TRANSCRIPTION_MODE", "transcribeWhileRecording")
+    assert resolve_transcription_mode(app) is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
+    assert auto_write_enabled(app)
+
+    # Invalid env value falls back to afterStop with a warning instead of raising.
+    caplog.clear()
+    monkeypatch.setenv("CASSINI_TRANSCRIPTION_MODE", "invalidModeName")
+    with caplog.at_level("WARNING", logger="cassini_talk.transcription"):
+        assert resolve_transcription_mode(app) is TranscriptionMode.AFTER_STOP
+        assert auto_write_enabled(app)
+    assert any("CASSINI_TRANSCRIPTION_MODE" in rec.message for rec in caplog.records)
+
+    # Explicit per-instance override takes precedence over env.
+    monkeypatch.setenv("CASSINI_TRANSCRIPTION_MODE", "recordOnly")
+    app.transcription_mode = "afterStop"
+    assert resolve_transcription_mode(app) is TranscriptionMode.AFTER_STOP
+    assert auto_write_enabled(app)
+
+
+def test_speech_models_select_notifies_changed_and_preempts_live_follower(tmp_path):
+    from cassini_talk.speech_models import SpeechModels
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+
+    class StubStore:
+        def installed(self, *_args):
+            return tmp_path
+
+        def install_path(self, *_args):
+            return tmp_path
+
+    changes = []
+    selected_box = ["whistle"]
+    queue_ref = []
+
+    def on_models_changed():
+        changes.append(True)
+        if queue_ref:
+            queue_ref[0].model_changed()
+
+    speech_models = SpeechModels(
+        "whistle",
+        lambda v: selected_box.__setitem__(0, v),
+        on_models_changed,
+        store=StubStore(),
+        preference="whistle",
+        persist_preference=lambda _v: None,
+        defer_inspect=True,
+    )
+    # Parakeet is already inspected & downloaded and no notice is showing.
+    speech_models._inspect_started = True
+    speech_models._inspected.set()
+    speech_models._state["downloaded"] = True
+    speech_models._state["busy"] = False
+    speech_models._state["notice"] = None
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=lib,
+        models=speech_models,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+        follow_poll_interval_ms=20,
+    )
+    queue_ref.append(queue)
+    session = RecordingSession(lib, "Model switch meeting", source="gnome")
+    try:
+        session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+        session.append("microphone", make_speech_pcm16(16000, 1, [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0)]), 0.0)
+        session.checkpoint()
+
+        assert queue.follow_recording(session.directory)
+        wait_on_queue(queue, lambda: queue._follow_client_model == "whistle", message="Whistle follower did not start")
+
+        # Switching to already-downloaded Parakeet with notice=None MUST fire changed() and preempt follower.
+        before = len(changes)
+        assert speech_models.select(PARAKEET_MODEL_ID)
+        assert len(changes) == before + 1
+        wait_on_queue(
+            queue, lambda: queue._follow_directory is None, message="SpeechModels.select did not preempt follower"
+        )
+    finally:
+        session.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
+
+
+def test_follower_cache_writes_are_linear_and_respect_byte_budget(tmp_path, monkeypatch):
+    from cassini_talk import meeting_store
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    session = RecordingSession(lib, "Linear cache meeting", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    session.checkpoint()
+
+    n_segments = 40
+    atomic_writes = []
+    orig_atomic_json = meeting_store.atomic_json
+
+    def counting_atomic_json(path, value, *, before_commit=None):
+        if Path(path).name == RECOGNITION_CACHE_FILE:
+            atomic_writes.append(len(json.dumps(value, separators=(",", ":")).encode("utf-8")))
+        return orig_atomic_json(path, value, before_commit=before_commit)
+
+    monkeypatch.setattr("cassini_talk.transcription.atomic_json", counting_atomic_json)
+
+    class BurstFollowClient:
+        def __init__(self, *_args, **_kw):
+            self._alive = True
+            self._idx = 0
+            self._done = False
+
+        def start(self):
+            return self
+
+        def is_alive(self):
+            return self._alive
+
+        def start_follow(self, directory, model, *, poll_interval_ms=50):
+            self._dir = str(directory)
+
+        def poll_follow_event(self, timeout=0.05):
+            if self._idx < n_segments:
+                i = self._idx
+                self._idx += 1
+                key = recognition_cache.segment_key(f"{i:064x}", 16000)
+                return dict(
+                    type="follow-cache",
+                    directory=self._dir,
+                    cacheEntry=dict(
+                        key=key,
+                        text=f"segment-{i} " + ("word " * 8),
+                        language="en",
+                        words=[dict(start=0.05, end=0.4, text=f"seg{i}")],
+                    ),
+                )
+            if not self._done:
+                self._done = True
+                return dict(type="follow-idle", directory=self._dir)
+            return None
+
+        def stop_follow(self, *, drain=False, timeout=5.0, on_event=None):
+            return dict(type="follow-stopped", directory=self._dir, segments=self._idx)
+
+        def cancel(self):
+            self._alive = False
+
+        def close(self):
+            self._alive = False
+
+    queue = TranscriptionQueue(
+        lambda _: None,
+        lambda _: None,
+        bundle=bundle,
+        root=lib,
+        client_factory=BurstFollowClient,
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+    )
+    try:
+        assert queue.follow_recording(session.directory)
+        assert queue._follow_drained.wait(timeout=10.0), "Follower did not finish burst"
+        # During live recording, ZERO full-file atomic_json rewrites happened (entries were appended to JSONL).
+        assert atomic_writes == []
+        model_id = recognition_cache_model("whistle", bundle)
+        assert len(recognition_cache.read(session.directory / RECOGNITION_CACHE_FILE, model_id)) == n_segments
+
+        # Draining on Stop compacts once into .recognition-cache.json and removes the journal.
+        queue.preempt_follower(drain=True, wait=True)
+        assert len(atomic_writes) == 1
+        assert not (session.directory / recognition_cache.JOURNAL_FILE).exists()
+        assert len(recognition_cache.read(session.directory / RECOGNITION_CACHE_FILE, model_id)) == n_segments
+    finally:
+        session.finish()
+        queue.close()
+        queue.executor.shutdown(wait=True)
+
+    # Byte-budget enforcement: entries stop before crossing max_bytes so Stop reuses all accepted entries.
+    budget_dir = tmp_path / "budget"
+    budget_dir.mkdir()
+    model_id = recognition_cache_model("whistle", bundle)
+    entries: dict[str, dict] = {}
+    small_limit = 1024
+    budget = recognition_cache.CacheBudget(model_id, entries, max_bytes=small_limit)
+    accepted = 0
+    for i in range(50):
+        key = recognition_cache.segment_key(f"{i:064x}", 16000)
+        val = dict(text="hello world " * 4, language="en", words=[dict(start=0.0, end=0.5, text="hello")])
+        if budget.try_add(key, val):
+            accepted += 1
+    assert 0 < accepted < 50
+    cache_path = budget_dir / RECOGNITION_CACHE_FILE
+    orig_atomic_json(cache_path, recognition_cache.document(model_id, entries))
+    assert cache_path.stat().st_size <= small_limit
+    assert len(recognition_cache.read(cache_path, model_id)) == accepted
+
+
+def test_library_relocator_never_calls_path_resolve_under_transcriber_lock(tmp_path, monkeypatch):
+    from types import ModuleType, SimpleNamespace
+
+    if "gi.repository" not in sys.modules:
+        try:
+            import gi.repository  # noqa: F401
+        except ModuleNotFoundError:
+            gi_mod = ModuleType("gi")
+            repo_mod = ModuleType("gi.repository")
+            repo_mod.GLib = SimpleNamespace(idle_add=lambda fn, *a: fn(*a))
+            gi_mod.repository = repo_mod
+            monkeypatch.setitem(sys.modules, "gi", gi_mod)
+            monkeypatch.setitem(sys.modules, "gi.repository", repo_mod)
+
+    from cassini_talk.library_relocator import LibraryRelocator
+
+    class TrackingLock:
+        def __init__(self):
+            self._lock = threading.Lock()
+            self.held = False
+
+        def __enter__(self):
+            self._lock.acquire()
+            self.held = True
+            return self
+
+        def __exit__(self, *args):
+            self.held = False
+            self._lock.release()
+
+    lock = TrackingLock()
+    d1 = tmp_path / "m1"
+    d2 = tmp_path / "m2"
+    d3 = tmp_path / "m3"
+    for d in (d1, d2, d3):
+        d.mkdir()
+
+    transcriber = SimpleNamespace(
+        lock=lock,
+        pending=[d1],
+        voice_pending=[d2],
+        _follow_directory=d3,
+        _warm_directory=None,
+        preempt_follower=lambda **_kw: None,
+    )
+    relocator = LibraryRelocator.__new__(LibraryRelocator)
+    relocator.app = SimpleNamespace(transcriber=transcriber)
+    relocator.cancelled = threading.Event()
+
+    orig_resolve = Path.resolve
+    resolve_calls = 0
+
+    def guarded_resolve(self, *args, **kwargs):
+        nonlocal resolve_calls
+        resolve_calls += 1
+        assert not lock.held, "Path.resolve() must never be called while transcriber.lock is held"
+        return orig_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", guarded_resolve)
+    busy = relocator._prepare_relocation_busy([], set(), {})
+    assert resolve_calls >= 3
+    assert {d1.resolve(), d2.resolve(), d3.resolve()}.issubset(busy)
