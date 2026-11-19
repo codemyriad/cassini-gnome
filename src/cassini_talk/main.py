@@ -1558,7 +1558,15 @@ class CassiniApplication(Adw.Application):
         recording, saving = [], []
         for recorder in tuple(getattr(self, "native_captures", {}).values()):
             session = getattr(recorder, "session", None)
-            if not recorder_busy(recorder) or session is None:
+            if session is None:
+                continue
+            if not recorder_busy(recorder):
+                if (
+                    not getattr(recorder, "discarded", False)
+                    and not getattr(recorder, "_discard", False)
+                    and getattr(recorder, "publication_error", None) is None
+                ):
+                    saving.append(str(session.directory))
                 continue
             if recorder_stopping(recorder) or getattr(session, "finished", False):
                 saving.append(str(session.directory))

@@ -1676,7 +1676,7 @@ def test_library_relocator_never_calls_path_resolve_under_transcriber_lock(tmp_p
         except ModuleNotFoundError:
             gi_mod = ModuleType("gi")
             repo_mod = ModuleType("gi.repository")
-            repo_mod.GLib = SimpleNamespace(idle_add=lambda fn, *a: fn(*a))
+            repo_mod.GLib = SimpleNamespace(idle_add=lambda fn, *a: fn(*a), get_language_names=lambda: ["en"])
             gi_mod.repository = repo_mod
             monkeypatch.setitem(sys.modules, "gi", gi_mod)
             monkeypatch.setitem(sys.modules, "gi.repository", repo_mod)
@@ -1751,7 +1751,7 @@ def _ensure_gi_for_main(monkeypatch):
         repo_mod = ModuleType("gi.repository")
         repo_mod.Adw = SimpleNamespace(Application=object)
         repo_mod.Gio = SimpleNamespace()
-        repo_mod.GLib = SimpleNamespace(idle_add=lambda fn, *a: fn(*a))
+        repo_mod.GLib = SimpleNamespace(idle_add=lambda fn, *a: fn(*a), get_language_names=lambda: ["en"])
         repo_mod.Gst = SimpleNamespace()
         repo_mod.Gtk = SimpleNamespace()
         gi_mod.repository = repo_mod
@@ -3630,3 +3630,134 @@ def test_recognition_cache_rejects_huge_int_overflow_in_json_and_journal(tmp_pat
     )
     (journal_dir / recognition_cache.JOURNAL_FILE).write_bytes((good_line + "\n" + bad_line + "\n").encode("utf-8"))
     assert list(recognition_cache.read(journal_dir / RECOGNITION_CACHE_FILE, model_id)) == [good_key]
+
+
+# ---------------------------------------------------------------------------
+# 24. Review regression (round 12): native changed -> finished signal order
+#     preserves warm follower worker across handoff
+# ---------------------------------------------------------------------------
+
+
+def test_native_changed_before_finished_preserves_warm_worker_handoff(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _ensure_gi_for_main(monkeypatch)
+    monkeypatch.setattr("cassini_talk.library_location.owned_directory", lambda d: Path(d).resolve())
+    from cassini_talk.main import CassiniApplication
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    bundle = FakeBundle.create(tmp_path)
+    tracker = dict(pids=[], clients=[], planned=[], completes=[])
+    finished = Finished()
+    queue = TranscriptionQueue(
+        lambda _: None,
+        finished,
+        bundle=bundle,
+        root=lib,
+        client_factory=lambda b, *, timeout=120: SubprocessTestClient(
+            b, engine="whistle", timeout=timeout, tracker=tracker
+        ),
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
+    )
+
+    session = RecordingSession(lib, "Native changed before finished", source="gnome")
+    session.add_track("microphone", None, "microphone", 16000, 1, filename="track-microphone.wav")
+    pcm = make_speech_pcm16(
+        16000,
+        1,
+        [(1.0, 440.0, 0.3), (0.8, 0.0, 0.0), (1.0, 520.0, 0.3), (0.8, 0.0, 0.0)],
+    )
+    session.append("microphone", pcm, 0.0)
+    session.checkpoint()
+
+    recorder = SimpleNamespace(
+        session=session,
+        pipeline=object(),
+        starting=False,
+        stopping=False,
+        _finishing=False,
+        _stop_requested=False,
+        discarded=False,
+        _discard=False,
+        publication_error=None,
+        close=lambda: None,
+    )
+    app = SimpleNamespace(
+        transcription_enabled=True,
+        transcription_mode="transcribeWhileRecording",
+        _quitting=False,
+        _capture_exiting=False,
+        transcriber=queue,
+        native_captures={"cap-1": recorder},
+        _last_native=recorder,
+        _browser_snapshot={},
+        _permission_sources=set(),
+        _pending_recording=None,
+        record_first=None,
+        settings_dialog=None,
+        comfort=None,
+        windowless_background=SimpleNamespace(refresh=lambda: None),
+        build_refresh=None,
+        get_windows=lambda: [],
+        recording_active=lambda: bool(recorder.pipeline),
+        discard_test_recording=lambda: None,
+        _notify_shortcut_saved=lambda _path: None,
+        _release_native=lambda: None,
+        _ensure_transcriber=lambda: queue,
+        write_down=lambda path, resume=False: queue.enqueue(Path(path), resume=resume),
+    )
+    app.follower_capture_directories = lambda: CassiniApplication.follower_capture_directories(app)
+    app._effective_transcription_mode = lambda: CassiniApplication._effective_transcription_mode(app)
+    app._sync_live_follower = lambda **kw: CassiniApplication._sync_live_follower(app, **kw)
+    app._native_changed = lambda *a: CassiniApplication._native_changed(app, *a)
+
+    try:
+        # 1. Active native recording starts the live follower and precomputes closed segments.
+        CassiniApplication._native_changed(app)
+        wait_on_queue(
+            queue,
+            lambda: len(tracker["pids"]) == 1 and cached_segment_count(session.directory, "whistle", bundle) >= 2,
+            message="Live native follower did not precompute segments before Stop",
+        )
+
+        # 2. Mirror NativeRecorder._finished(): finalize session, clear busy flags while
+        #    recorder is STILL in native_captures, emit `changed`, then emit `finished`.
+        session.finish()
+        recorder.pipeline = None
+        recorder.stopping = recorder._finishing = recorder._stop_requested = False
+
+        assert CassiniApplication.follower_capture_directories(app) == ([], [str(session.directory)])
+        CassiniApplication._native_changed(app)
+        with queue.lock:
+            assert queue._follow_directory is not None or queue._warm_client is not None, (
+                "changed signal before finished cancelled the warm follower prematurely"
+            )
+
+        CassiniApplication._native_finished(app, recorder, str(session.directory))
+        finished.wait(1, bound=30)
+
+        # 3. Exact same worker PID must serve both live follow and final post-Stop transcription.
+        assert len(tracker["pids"]) == 1, f"Expected 1 warm worker PID, got {tracker['pids']}"
+        assert tracker["completes"][0]["workerPid"] == tracker["pids"][0]
+        assert tracker["planned"][0]["prefixesReused"] >= 1
+
+        # Discarded idle recorder in native_captures must not be kept in saving.
+        discarded = SimpleNamespace(
+            session=session,
+            pipeline=None,
+            starting=False,
+            stopping=False,
+            _finishing=False,
+            _stop_requested=False,
+            discarded=True,
+            _discard=True,
+            publication_error=None,
+        )
+        app.native_captures = {"cap-discarded": discarded}
+        assert CassiniApplication.follower_capture_directories(app) == ([], [])
+    finally:
+        queue.close()
+        queue.executor.shutdown(wait=True)
+        if getattr(queue, "_close_thread", None) is not None:
+            queue._close_thread.join(timeout=5.0)
