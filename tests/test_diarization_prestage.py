@@ -12,7 +12,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -34,7 +33,13 @@ from test_session_follower import (  # noqa: E402
     wait_on_queue,
 )
 
-from cassini_talk import diarization_audio, nemotron_model, worker_diarization  # noqa: E402
+from cassini_talk import (  # noqa: E402
+    diarization_audio,
+    nemotron_model,
+    session_follower,
+    speech_pipeline,
+    worker_diarization,
+)
 from cassini_talk.diarization import turns_sha256, voice_source  # noqa: E402
 from cassini_talk.library import LibraryScanner  # noqa: E402
 from cassini_talk.library_publication import capture_parent  # noqa: E402
@@ -1102,14 +1107,19 @@ def test_worker_sigkill_after_diarization_staging_recovers_byte_identically(tmp_
 
 
 # ---------------------------------------------------------------------------
-# 7. Long-input linear scaling & O(1) tail append CPU test (BUG-CLASSES #1, #17)
+# 7. Long-input linear scaling & O(1) tail append work-count test (BUG-CLASSES #1, #17, D88)
 # ---------------------------------------------------------------------------
 
 
-def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path):
-    """Verify 2N vs N linear CPU scaling across rotated spans and fast tail-only append (no wall clock)."""
+def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path, monkeypatch):
+    """Verify deterministic O(N) staging and O(1) tail-rejoin work across rotated spans (D88: no timing ratios)."""
+    real_read_wav = session_follower.read_wav_mono_f32
+    real_resampler_feed = speech_pipeline.IncrementalResampler.feed
+    real_append_block = diarization_audio.TrackDiarizationStager.append_block
+    real_span_prov = diarization_audio.StagedSpanProvenance
+    real_verify_prefix = diarization_audio._verify_wav_pcm_prefix
 
-    def measure_staging_cpu(sub_root: Path, n_spans: int) -> tuple[float, float]:
+    def measure_work(sub_root: Path, n_spans: int) -> tuple[dict[str, int], dict[str, int]]:
         sub_root.mkdir()
         scratch = sub_root / "scratch"
         lib = sub_root / "lib"
@@ -1125,6 +1135,59 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path)
             session.append("system", one_sec, i * 1000.0)
         session.checkpoint()
 
+        def fresh_counters() -> dict:
+            return dict(
+                wav_frames_read=0,
+                wav_spans_read=set(),
+                span_cursors={},
+                resampler_calls=0,
+                resampler_samples=0,
+                staged_blocks=0,
+                staged_bytes=0,
+                provenance_builds=0,
+                verify_prefix_calls=0,
+                verify_prefix_frames=0,
+            )
+
+        active = fresh_counters()
+
+        def counted_read_wav(dir_fd, filename, start_frame, count, channels, *, raw_hasher=None):
+            prev_end = active["span_cursors"].get(filename, 0)
+            assert start_frame >= prev_end, (
+                f"Re-read already-processed frames in {filename}: start={start_frame} < prev_end={prev_end}"
+            )
+            active["span_cursors"][filename] = start_frame + count
+            active["wav_frames_read"] += count
+            active["wav_spans_read"].add(filename)
+            return real_read_wav(dir_fd, filename, start_frame, count, channels, raw_hasher=raw_hasher)
+
+        def counted_resampler_feed(self, samples):
+            active["resampler_calls"] += 1
+            active["resampler_samples"] += len(samples)
+            return real_resampler_feed(self, samples)
+
+        def counted_append_block(self, block_bytes, **kwargs):
+            active["staged_blocks"] += 1
+            active["staged_bytes"] += len(block_bytes)
+            return real_append_block(self, block_bytes, **kwargs)
+
+        def counted_span_prov(*args, **kwargs):
+            active["provenance_builds"] += 1
+            return real_span_prov(*args, **kwargs)
+
+        def counted_verify_prefix(dir_fd, filename, expected_rate, expected_channels, consumed_frames, *args, **kwargs):
+            active["verify_prefix_calls"] += 1
+            active["verify_prefix_frames"] += consumed_frames
+            return real_verify_prefix(
+                dir_fd, filename, expected_rate, expected_channels, consumed_frames, *args, **kwargs
+            )
+
+        monkeypatch.setattr(session_follower, "read_wav_mono_f32", counted_read_wav)
+        monkeypatch.setattr(speech_pipeline.IncrementalResampler, "feed", counted_resampler_feed)
+        monkeypatch.setattr(diarization_audio.TrackDiarizationStager, "append_block", counted_append_block)
+        monkeypatch.setattr(diarization_audio, "StagedSpanProvenance", counted_span_prov)
+        monkeypatch.setattr(diarization_audio, "_verify_wav_pcm_prefix", counted_verify_prefix)
+
         follower = SessionFollower(
             session.directory,
             DeterministicRecognizer("whistle"),
@@ -1133,23 +1196,28 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path)
             on_cache_entry=lambda _e: None,
             diarization_options=dict(modelPath="m", runtimePath="r", scratch=str(scratch)),
         )
-        t0 = time.thread_time()
         assert follower.refresh()
         while follower.step():
             pass
         staged_map = follower.export_diarization_staged()
-        stage_cpu = time.thread_time() - t0
         assert staged_map
+        stage_work = {k: len(v) if isinstance(v, set) else v for k, v in active.items() if k != "span_cursors"}
+        staged_preview = next(iter(staged_map.values()))
+        assert stage_work["wav_frames_read"] <= n_spans * 48000
+        assert stage_work["resampler_samples"] <= n_spans * 48000
+        assert stage_work["staged_bytes"] == staged_preview.samples * 4
+        assert stage_work["staged_blocks"] == staged_preview.samples // diarization_audio.PREFIX_BLOCK_SAMPLES
 
-        # Append identical 1-second tail and measure post-Stop rejoin_with_staged CPU time!
+        # Append identical 1-second tail and measure post-Stop rejoin_with_staged work!
         session.append("system", one_sec, n_spans * 1000.0)
         session.finish()
         meeting = LibraryScanner(lib).scan().meetings[0]
         tracks, _ = prepare_tracks(meeting)
         staged = diarization_audio.pop_staged_for_track(staged_map, tracks[0])
         assert staged is not None
+        staged_span_count = len(staged.spans)
 
-        t1 = time.thread_time()
+        active = fresh_counters()
         with diarization_audio.rejoin_with_staged(tracks, staged=staged, scratch=scratch) as (
             _stream,
             _frames,
@@ -1159,17 +1227,39 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path)
         ):
             assert reused is True
             assert tail_frames < 2 * 16000
-        rejoin_cpu = time.thread_time() - t1
-        return stage_cpu, rejoin_cpu
+        rejoin_work = {k: len(v) if isinstance(v, set) else v for k, v in active.items() if k != "span_cursors"}
+        assert rejoin_work["verify_prefix_calls"] == staged_span_count
+        assert rejoin_work["verify_prefix_frames"] <= n_spans * 48000
+        # Tail decoding/resampling must touch only the tail boundary, never re-reading already-staged prefix spans.
+        assert rejoin_work["wav_spans_read"] <= 2
+        assert rejoin_work["wav_frames_read"] < 2 * 48000
+        assert rejoin_work["resampler_samples"] < 2 * 48000
+        assert rejoin_work["resampler_calls"] <= 2
+        return stage_work, rejoin_work
 
-    cpu_n, rejoin_n = measure_staging_cpu(tmp_path / "n20", 20)
-    cpu_2n, rejoin_2n = measure_staging_cpu(tmp_path / "n40", 40)
+    stage_n, rejoin_n = measure_work(tmp_path / "n20", 20)
+    stage_2n, rejoin_2n = measure_work(tmp_path / "n40", 40)
 
-    # 2N spans must scale linearly (well below quadratic 4x; allow +0.08 s fixed noise floor).
-    assert cpu_2n <= 2.8 * cpu_n + 0.08, f"Non-linear staging CPU scaling: N={cpu_n:.4f}s, 2N={cpu_2n:.4f}s"
-    assert rejoin_2n <= 2.8 * rejoin_n + 0.05, (
-        f"Non-linear tail rejoin CPU scaling: N={rejoin_n:.4f}s, 2N={rejoin_2n:.4f}s"
-    )
+    # Staging work must scale linearly O(N) when doubling spans from N=20 to 2N=40 (well below quadratic 4x).
+    for metric in (
+        "wav_frames_read",
+        "resampler_calls",
+        "resampler_samples",
+        "staged_blocks",
+        "staged_bytes",
+        "provenance_builds",
+    ):
+        assert stage_n[metric] > 0, f"Expected positive staging work for {metric}"
+        assert stage_2n[metric] <= 2.2 * stage_n[metric], (
+            f"Non-linear staging scaling for {metric}: N={stage_n[metric]}, 2N={stage_2n[metric]}"
+        )
+
+    # Prefix SHA verification scales O(N) linearly with staged spans; tail decode/resample stays O(1).
+    assert rejoin_2n["verify_prefix_calls"] <= 2.2 * rejoin_n["verify_prefix_calls"]
+    assert rejoin_2n["verify_prefix_frames"] <= 2.2 * rejoin_n["verify_prefix_frames"]
+    assert rejoin_2n["wav_frames_read"] <= rejoin_n["wav_frames_read"] + 48000
+    assert rejoin_2n["resampler_samples"] <= rejoin_n["resampler_samples"] + 48000
+    assert rejoin_2n["resampler_calls"] <= rejoin_n["resampler_calls"] + 1
 
 
 def test_worker_diarization_low_disk_and_disabled_paths_do_not_import_numpy(tmp_path):
