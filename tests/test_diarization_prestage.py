@@ -1115,6 +1115,8 @@ def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
     """Assert deterministic O(N) staging and O(1) tail-rejoin work across N=20 vs 2N=40 rotated spans."""
     real_read_wav = session_follower.read_wav_mono_f32
     real_read_header = session_follower.read_wav_committed
+    real_inspect_row = session_follower.TrackFollower._inspect_span_row
+    real_get_mapping = session_follower.TrackFollower._get_span_mapping
     real_resampler_feed = speech_pipeline.IncrementalResampler.feed
     real_append_block = diarization_audio.TrackDiarizationStager.append_block
     real_span_prov = diarization_audio.StagedSpanProvenance
@@ -1139,6 +1141,8 @@ def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
         def fresh_counters() -> dict:
             return dict(
                 wav_header_reads=0,
+                span_inspect_visits=0,
+                plan_span_visits=0,
                 wav_frames_read=0,
                 wav_spans_read=set(),
                 span_cursors={},
@@ -1158,6 +1162,14 @@ def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
         def counted_read_header(dir_fd, filename):
             active["wav_header_reads"] += 1
             return real_read_header(dir_fd, filename)
+
+        def counted_inspect_row(self, dir_fd, idx, row):
+            active["span_inspect_visits"] += 1
+            return real_inspect_row(self, dir_fd, idx, row)
+
+        def counted_get_mapping(self, filename, start_ms_local):
+            active["plan_span_visits"] += 1
+            return real_get_mapping(self, filename, start_ms_local)
 
         def counted_read_wav(dir_fd, filename, start_frame, count, channels, *, raw_hasher=None):
             prev_end = active["span_cursors"].get(filename, 0)
@@ -1206,6 +1218,8 @@ def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
             )
 
         monkeypatch.setattr(session_follower, "read_wav_committed", counted_read_header)
+        monkeypatch.setattr(session_follower.TrackFollower, "_inspect_span_row", counted_inspect_row)
+        monkeypatch.setattr(session_follower.TrackFollower, "_get_span_mapping", counted_get_mapping)
         monkeypatch.setattr(session_follower, "read_wav_mono_f32", counted_read_wav)
         monkeypatch.setattr(speech_pipeline.IncrementalResampler, "feed", counted_resampler_feed)
         monkeypatch.setattr(diarization_audio.TrackDiarizationStager, "append_block", counted_append_block)
@@ -1275,6 +1289,8 @@ def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
     # Staging work must scale linearly O(N) when doubling spans from N=20 to 2N=40 (well below quadratic 4x).
     for metric in (
         "wav_header_reads",
+        "span_inspect_visits",
+        "plan_span_visits",
         "wav_frames_read",
         "resampler_calls",
         "resampler_samples",
@@ -1301,20 +1317,46 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path,
     _assert_diarization_linear_scaling(tmp_path, monkeypatch)
 
 
-def test_linear_scaling_guard_rejects_quadratic_header_rereads_and_eager_provenance_copy(tmp_path, monkeypatch):
-    """Negative controls proving the deterministic guard catches both quadratic WAV header re-reads and eager provenance copies."""
+def test_linear_scaling_guard_rejects_quadratic_header_rereads_and_eager_provenance_copy(tmp_path):
+    """Negative controls proving the deterministic guard catches quadratic header reads, prefix traversal, and eager provenance copies."""
     real_inspect = session_follower.TrackFollower._inspect_spans
+    real_plan = session_follower.TrackFollower._safe_48k_plan
     real_build_prov = session_follower.TrackFollower._build_staged_spans_provenance
 
     with pytest.MonkeyPatch.context() as mp:
 
-        def uncached_inspect(self, dir_fd):
+        def uncached_headers(self, dir_fd):
+            self._sealed_span_count = 0
             self._sealed_wav_info.clear()
             return real_inspect(self, dir_fd)
 
-        mp.setattr(session_follower.TrackFollower, "_inspect_spans", uncached_inspect)
+        mp.setattr(session_follower.TrackFollower, "_inspect_spans", uncached_headers)
         with pytest.raises(AssertionError, match="Non-linear staging scaling for wav_header_reads"):
             _assert_diarization_linear_scaling(tmp_path / "neg-headers", mp)
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        def repeated_inspect_prefix(self, dir_fd):
+            # Keep _sealed_wav_info cached so header I/O stays O(N); only span-inspection traversal is quadratic!
+            self._sealed_span_count = 0
+            return real_inspect(self, dir_fd)
+
+        mp.setattr(session_follower.TrackFollower, "_inspect_spans", repeated_inspect_prefix)
+        with pytest.raises(AssertionError, match="Non-linear staging scaling for span_inspect_visits"):
+            _assert_diarization_linear_scaling(tmp_path / "neg-inspect", mp)
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        def repeated_plan_prefix(self, spans):
+            self._sealed_plan_count = 0
+            self._sealed_safe_end = 0
+            self._sealed_final_end = 0
+            self._sealed_max_committed = 0
+            return real_plan(self, spans)
+
+        mp.setattr(session_follower.TrackFollower, "_safe_48k_plan", repeated_plan_prefix)
+        with pytest.raises(AssertionError, match="Non-linear staging scaling for plan_span_visits"):
+            _assert_diarization_linear_scaling(tmp_path / "neg-plan", mp)
 
     with pytest.MonkeyPatch.context() as mp:
 

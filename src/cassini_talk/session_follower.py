@@ -527,6 +527,14 @@ class TrackFollower:
         self._span_buffers: dict[str, _SpanBuffer] = {}
         self._span_mappings: dict[str, _IncrementalSpanMapping] = {}
         self._sealed_wav_info: dict[str, tuple[int, int, int]] = {}
+        self._inspected_spans: list[dict] = []
+        self._sealed_span_count = 0
+        self._plan_specs: list[tuple] = []
+        self._sealed_plan_count = 0
+        self._sealed_safe_end = 0
+        self._sealed_final_end = 0
+        self._sealed_max_committed = 0
+        self._last_max_committed_48k = 0
         self._emit_start_idx = 0
         self._tl_cursor_48k = 0  # Next 48 kHz timeline sample to emit (for 48 kHz path)
         self._cursor_16k_raw = 0  # Next raw 16 kHz source sample (for direct 16 kHz path)
@@ -557,17 +565,28 @@ class TrackFollower:
         self.ready_segments: deque[_ReadySegment] = deque()
         self._seen_segment_count = 0
 
+    def _reset_sealed_span_caches(self) -> None:
+        self._inspected_spans.clear()
+        self._sealed_span_count = 0
+        self._plan_specs.clear()
+        self._sealed_plan_count = 0
+        self._sealed_safe_end = 0
+        self._sealed_final_end = 0
+        self._sealed_max_committed = 0
+        self._last_max_committed_48k = 0
+        self._emit_start_idx = 0
+
     def update(self, track: dict, events: list, session_ended: bool) -> None:
         self._rows = _span_rows(track)
         self._track_ended = bool(track.get("ended"))
         self._session_ended = bool(session_ended)
         if _has_clock_anchors(self._rows):
-            if not self.ever_clock_anchored and (
-                self._emitted_16k > 0 or self._tl_cursor_48k > 0 or self._cursor_16k_raw > 0
-            ):
-                # Clock anchors appeared only after unwarped decoding began: fall back to batch.
-                self.prefix_invalidated = True
-                self.unsupported = True
+            if not self.ever_clock_anchored:
+                self._reset_sealed_span_caches()
+                if self._emitted_16k > 0 or self._tl_cursor_48k > 0 or self._cursor_16k_raw > 0:
+                    # Clock anchors appeared only after unwarped decoding began: fall back to batch.
+                    self.prefix_invalidated = True
+                    self.unsupported = True
             self.ever_clock_anchored = True
         offset_changed = False
         if self.offset_ms is None:
@@ -581,6 +600,8 @@ class TrackFollower:
                     offset_changed = True
                 else:
                     self.prefix_invalidated = True
+        if offset_changed or len(self._rows) < self._sealed_span_count:
+            self._reset_sealed_span_caches()
         new_ownership = ownership_windows(self.kind, events) if self.offset_ms is not None else None
         if new_ownership != self._ownership or offset_changed:
             new_mask = FrameMask(new_ownership, RATE_16K, self.origin_16k / 16)
@@ -713,6 +734,48 @@ class TrackFollower:
     def pop_ready_segment(self) -> _ReadySegment:
         return self.ready_segments.popleft()
 
+    def _inspect_span_row(self, dir_fd: int, idx: int, row: dict) -> dict | None:
+        if "codec" in row:
+            self.unsupported = True
+            return None
+        filename = row.get("file")
+        if not isinstance(filename, str) or not filename.startswith("track-") or not filename.endswith(".wav"):
+            return None
+        span_ended = self._session_ended or self._track_ended or bool(row.get("ended")) or (idx < len(self._rows) - 1)
+        info = self._sealed_wav_info.get(filename) if span_ended else None
+        if info is None:
+            info = read_wav_committed(dir_fd, filename)
+            if info is None:
+                return None
+            if span_ended:
+                self._sealed_wav_info[filename] = info
+        committed, rate, channels = info
+        if self.sample_rate is None:
+            self.sample_rate, self.channels = rate, channels
+        if rate not in (RATE_16K, RATE_48K):
+            self.unsupported = True
+            return None
+        if rate != self.sample_rate:
+            self.unsupported = True
+            self.prefix_invalidated = True
+            return None
+        span_offset = row.get("startOffsetMs")
+        if span_offset is None:
+            span_offset = self.placed_offset
+        elif type(span_offset) not in (int, float) or not math.isfinite(span_offset) or span_offset < 0:
+            self.unsupported = True
+            return None
+        anchors = row.get("clockAnchors") if isinstance(row.get("clockAnchors"), list) else []
+        return dict(
+            file=filename,
+            committed=committed,
+            rate=rate,
+            channels=channels,
+            start_offset_ms=float(span_offset),
+            ended=span_ended,
+            anchors=anchors,
+        )
+
     def _inspect_spans(self, dir_fd: int) -> list[dict] | None:
         if (
             not self._session_ended
@@ -726,63 +789,25 @@ class TrackFollower:
             )
             if manifest_frames == 0:
                 return None
-        inspected = []
-        for idx, row in enumerate(self._rows):
-            if "codec" in row:
-                self.unsupported = True
+        if self._sealed_span_count > len(self._rows):
+            self._reset_sealed_span_caches()
+        del self._inspected_spans[self._sealed_span_count :]
+        for idx in range(self._sealed_span_count, len(self._rows)):
+            span = self._inspect_span_row(dir_fd, idx, self._rows[idx])
+            if span is None:
                 return None
-            filename = row.get("file")
-            if not isinstance(filename, str) or not filename.startswith("track-") or not filename.endswith(".wav"):
-                return None
-            span_ended = (
-                self._session_ended or self._track_ended or bool(row.get("ended")) or (idx < len(self._rows) - 1)
-            )
-            info = self._sealed_wav_info.get(filename) if span_ended else None
-            if info is None:
-                info = read_wav_committed(dir_fd, filename)
-                if info is None:
-                    return None
-                if span_ended:
-                    self._sealed_wav_info[filename] = info
-            committed, rate, channels = info
-            if self.sample_rate is None:
-                self.sample_rate, self.channels = rate, channels
-            if rate not in (RATE_16K, RATE_48K):
-                self.unsupported = True
-                return None
-            span_offset = row.get("startOffsetMs")
-            if span_offset is None:
-                span_offset = self.placed_offset
-            elif type(span_offset) not in (int, float) or not math.isfinite(span_offset) or span_offset < 0:
-                self.unsupported = True
-                return None
-            anchors = row.get("clockAnchors") if isinstance(row.get("clockAnchors"), list) else []
-            inspected.append(
-                dict(
-                    file=filename,
-                    committed=committed,
-                    rate=rate,
-                    channels=channels,
-                    start_offset_ms=float(span_offset),
-                    ended=span_ended,
-                    anchors=anchors,
-                )
-            )
-        if not inspected:
+            self._inspected_spans.append(span)
+            if span["ended"] and idx == self._sealed_span_count:
+                self._sealed_span_count += 1
+        if not self._inspected_spans:
             return None
         # Direct 16 kHz only applies to single-span unwarped tracks; multi-span or warped 16 kHz
         # uses GStreamer resampling in mapped_audio, so leave it to post-Stop batch.
-        if self.sample_rate == RATE_16K and (
-            len(inspected) > 1 or self.ever_clock_anchored or _has_clock_anchors(self._rows)
-        ):
+        if self.sample_rate == RATE_16K and (len(self._inspected_spans) > 1 or self.ever_clock_anchored):
             self.unsupported = True
             self.prefix_invalidated = True
             return None
-        if any(s["rate"] != self.sample_rate for s in inspected):
-            self.unsupported = True
-            self.prefix_invalidated = True
-            return None
-        return inspected
+        return self._inspected_spans
 
     def _get_span_mapping(self, filename: str, start_ms_local: float) -> _IncrementalSpanMapping:
         mapping = self._span_mappings.get(filename)
@@ -792,14 +817,22 @@ class TrackFollower:
         return mapping
 
     def _safe_48k_plan(self, spans: list[dict]):
-        """Return (span_specs, safe_tl_end_48k, reached_final_eof) for 48 kHz single/multi/warped tracks."""
-        specs = []
+        """Return (span_specs, safe_tl_end_48k, reached_final_eof) incrementally for 48 kHz tracks."""
         all_ended = self._session_ended or self._track_ended
-        safe_end = 0
-        final_end = 0
+        if self._sealed_plan_count > len(spans):
+            self._plan_specs.clear()
+            self._sealed_plan_count = 0
+            self._sealed_safe_end = 0
+            self._sealed_final_end = 0
+            self._sealed_max_committed = 0
+        del self._plan_specs[self._sealed_plan_count :]
+        safe_end = self._sealed_safe_end
+        final_end = self._sealed_final_end
+        max_committed = self._sealed_max_committed
         blocked_by_unanchored = False
 
-        for idx, span in enumerate(spans):
+        for idx in range(self._sealed_plan_count, len(spans)):
+            span = spans[idx]
             local_16k = placement.frame(span["start_offset_ms"], RATE_16K) - self.origin_16k
             if local_16k < 0:
                 self.unsupported = True
@@ -813,11 +846,12 @@ class TrackFollower:
 
             if not span_has_anchors:
                 mapping.sync((), 0)
-                specs.append((span, mapping, committed))
+                self._plan_specs.append((span, mapping, committed))
+                span_end = shift_48k + committed
+                max_committed = max(max_committed, span_end)
                 if span["ended"]:
-                    span_safe = shift_48k + committed
                     if not blocked_by_unanchored:
-                        safe_end = max(safe_end, span_safe)
+                        safe_end = max(safe_end, span_end)
                 elif committed < RIGHT_HALO_48K:
                     # Wait for the new rotated span to have committed frames before crossing its start.
                     safe_end = min(safe_end, max(0, shift_48k)) if idx > 0 else 0
@@ -825,17 +859,31 @@ class TrackFollower:
                     span_safe = shift_48k + (committed - RIGHT_HALO_48K)
                     if not blocked_by_unanchored:
                         safe_end = max(safe_end, span_safe)
-                final_end = max(final_end, shift_48k + committed)
+                final_end = max(final_end, span_end)
+                if span["ended"] and not blocked_by_unanchored and idx == self._sealed_plan_count:
+                    self._sealed_plan_count += 1
+                    self._sealed_safe_end = safe_end
+                    self._sealed_final_end = final_end
+                    self._sealed_max_committed = max_committed
                 continue
 
             # Clock-anchored native span.
             if span["ended"]:
                 mapping.sync(anchors, len(anchors))
-                specs.append((span, mapping, committed))
+                self._plan_specs.append((span, mapping, committed))
                 span_end = mapping.end(committed) if committed > 0 else shift_48k
+                max_committed = max(
+                    max_committed,
+                    mapping.end(committed) if mapping.knots is not None else mapping.shift + committed,
+                )
                 if not blocked_by_unanchored:
                     safe_end = max(safe_end, span_end)
                 final_end = max(final_end, span_end)
+                if not blocked_by_unanchored and idx == self._sealed_plan_count:
+                    self._sealed_plan_count += 1
+                    self._sealed_safe_end = safe_end
+                    self._sealed_final_end = final_end
+                    self._sealed_max_committed = max_committed
             else:
                 # Live anchored span: only anchors[:-1] are permanently fixed.
                 fixed_count = len(anchors) - 1 if len(anchors) >= 2 else 0
@@ -856,15 +904,17 @@ class TrackFollower:
                     safe_end = min(safe_end, max(0, shift_48k - 1)) if idx > 0 else 0
                     blocked_by_unanchored = True
                     continue
-                specs.append((span, mapping, committed))
+                self._plan_specs.append((span, mapping, committed))
+                max_committed = max(max_committed, mapping.end(committed))
                 # Strictly before the right knot so mapping.source never extrapolates past fixed knots.
                 span_safe = max(0, int(math.floor(best_p)) - 1)
                 if not blocked_by_unanchored:
                     safe_end = max(safe_end, span_safe)
 
+        self._last_max_committed_48k = max_committed if self._plan_specs else safe_end
         if all_ended and not blocked_by_unanchored:
-            return specs, final_end, True
-        return specs, safe_end, False
+            return self._plan_specs, final_end, True
+        return self._plan_specs, safe_end, False
 
     def _emit_48k_block(self, dir_fd: int, specs: list, start: int, count: int):
         import numpy as np
@@ -1083,13 +1133,7 @@ class TrackFollower:
                 self.detach_diarization_stager()
             return False
         self._last_specs = specs
-        max_committed_48k = max(
-            (
-                (mapping.end(committed) if mapping.knots is not None else mapping.shift + committed)
-                for _sp, mapping, committed in specs
-            ),
-            default=safe_end,
-        )
+        max_committed_48k = self._last_max_committed_48k if specs else safe_end
         self._last_total_end_ms = math.ceil((self.origin_16k * 3 + max_committed_48k) * 1000 / RATE_48K)
         avail = safe_end - self._tl_cursor_48k
         if avail > 0:
