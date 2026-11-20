@@ -1111,16 +1111,17 @@ def test_worker_sigkill_after_diarization_staging_recovers_byte_identically(tmp_
 # ---------------------------------------------------------------------------
 
 
-def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path, monkeypatch):
-    """Verify deterministic O(N) staging and O(1) tail-rejoin work across rotated spans (D88: no timing ratios)."""
+def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
+    """Assert deterministic O(N) staging and O(1) tail-rejoin work across N=20 vs 2N=40 rotated spans."""
     real_read_wav = session_follower.read_wav_mono_f32
+    real_read_header = session_follower.read_wav_committed
     real_resampler_feed = speech_pipeline.IncrementalResampler.feed
     real_append_block = diarization_audio.TrackDiarizationStager.append_block
     real_span_prov = diarization_audio.StagedSpanProvenance
     real_verify_prefix = diarization_audio._verify_wav_pcm_prefix
 
     def measure_work(sub_root: Path, n_spans: int) -> tuple[dict[str, int], dict[str, int]]:
-        sub_root.mkdir()
+        sub_root.mkdir(parents=True)
         scratch = sub_root / "scratch"
         lib = sub_root / "lib"
         lib.mkdir()
@@ -1137,6 +1138,7 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path,
 
         def fresh_counters() -> dict:
             return dict(
+                wav_header_reads=0,
                 wav_frames_read=0,
                 wav_spans_read=set(),
                 span_cursors={},
@@ -1145,11 +1147,17 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path,
                 staged_blocks=0,
                 staged_bytes=0,
                 provenance_builds=0,
+                provenance_entries_copied=0,
+                prov_prefix_list_id=None,
                 verify_prefix_calls=0,
                 verify_prefix_frames=0,
             )
 
         active = fresh_counters()
+
+        def counted_read_header(dir_fd, filename):
+            active["wav_header_reads"] += 1
+            return real_read_header(dir_fd, filename)
 
         def counted_read_wav(dir_fd, filename, start_frame, count, channels, *, raw_hasher=None):
             prev_end = active["span_cursors"].get(filename, 0)
@@ -1169,6 +1177,21 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path,
         def counted_append_block(self, block_bytes, **kwargs):
             active["staged_blocks"] += 1
             active["staged_bytes"] += len(block_bytes)
+            spans = kwargs.get("spans")
+            if (
+                isinstance(spans, tuple)
+                and len(spans) == 3
+                and isinstance(spans[0], list)
+                and type(spans[1]) is int
+                and isinstance(spans[2], tuple)
+            ):
+                prefix_id = id(spans[0])
+                if active["prov_prefix_list_id"] != prefix_id:
+                    active["prov_prefix_list_id"] = prefix_id
+                    active["provenance_entries_copied"] += spans[1]
+                active["provenance_entries_copied"] += len(spans[2])
+            elif spans is not None:
+                active["provenance_entries_copied"] += len(spans)
             return real_append_block(self, block_bytes, **kwargs)
 
         def counted_span_prov(*args, **kwargs):
@@ -1182,6 +1205,7 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path,
                 dir_fd, filename, expected_rate, expected_channels, consumed_frames, *args, **kwargs
             )
 
+        monkeypatch.setattr(session_follower, "read_wav_committed", counted_read_header)
         monkeypatch.setattr(session_follower, "read_wav_mono_f32", counted_read_wav)
         monkeypatch.setattr(speech_pipeline.IncrementalResampler, "feed", counted_resampler_feed)
         monkeypatch.setattr(diarization_audio.TrackDiarizationStager, "append_block", counted_append_block)
@@ -1201,7 +1225,11 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path,
             pass
         staged_map = follower.export_diarization_staged()
         assert staged_map
-        stage_work = {k: len(v) if isinstance(v, set) else v for k, v in active.items() if k != "span_cursors"}
+        stage_work = {
+            k: len(v) if isinstance(v, set) else v
+            for k, v in active.items()
+            if k not in ("span_cursors", "prov_prefix_list_id")
+        }
         staged_preview = next(iter(staged_map.values()))
         assert stage_work["wav_frames_read"] <= n_spans * 48000
         assert stage_work["resampler_samples"] <= n_spans * 48000
@@ -1227,7 +1255,11 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path,
         ):
             assert reused is True
             assert tail_frames < 2 * 16000
-        rejoin_work = {k: len(v) if isinstance(v, set) else v for k, v in active.items() if k != "span_cursors"}
+        rejoin_work = {
+            k: len(v) if isinstance(v, set) else v
+            for k, v in active.items()
+            if k not in ("span_cursors", "prov_prefix_list_id")
+        }
         assert rejoin_work["verify_prefix_calls"] == staged_span_count
         assert rejoin_work["verify_prefix_frames"] <= n_spans * 48000
         # Tail decoding/resampling must touch only the tail boundary, never re-reading already-staged prefix spans.
@@ -1237,17 +1269,19 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path,
         assert rejoin_work["resampler_calls"] <= 2
         return stage_work, rejoin_work
 
-    stage_n, rejoin_n = measure_work(tmp_path / "n20", 20)
-    stage_2n, rejoin_2n = measure_work(tmp_path / "n40", 40)
+    stage_n, rejoin_n = measure_work(root / "n20", 20)
+    stage_2n, rejoin_2n = measure_work(root / "n40", 40)
 
     # Staging work must scale linearly O(N) when doubling spans from N=20 to 2N=40 (well below quadratic 4x).
     for metric in (
+        "wav_header_reads",
         "wav_frames_read",
         "resampler_calls",
         "resampler_samples",
         "staged_blocks",
         "staged_bytes",
         "provenance_builds",
+        "provenance_entries_copied",
     ):
         assert stage_n[metric] > 0, f"Expected positive staging work for {metric}"
         assert stage_2n[metric] <= 2.2 * stage_n[metric], (
@@ -1260,6 +1294,45 @@ def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path,
     assert rejoin_2n["wav_frames_read"] <= rejoin_n["wav_frames_read"] + 48000
     assert rejoin_2n["resampler_samples"] <= rejoin_n["resampler_samples"] + 48000
     assert rejoin_2n["resampler_calls"] <= rejoin_n["resampler_calls"] + 1
+
+
+def test_diarization_staging_and_tail_rejoin_linear_scaling_cpu_budget(tmp_path, monkeypatch):
+    """Verify deterministic O(N) staging and O(1) tail-rejoin work across rotated spans (D88: no timing ratios)."""
+    _assert_diarization_linear_scaling(tmp_path, monkeypatch)
+
+
+def test_linear_scaling_guard_rejects_quadratic_header_rereads_and_eager_provenance_copy(tmp_path, monkeypatch):
+    """Negative controls proving the deterministic guard catches both quadratic WAV header re-reads and eager provenance copies."""
+    real_inspect = session_follower.TrackFollower._inspect_spans
+    real_build_prov = session_follower.TrackFollower._build_staged_spans_provenance
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        def uncached_inspect(self, dir_fd):
+            self._sealed_wav_info.clear()
+            return real_inspect(self, dir_fd)
+
+        mp.setattr(session_follower.TrackFollower, "_inspect_spans", uncached_inspect)
+        with pytest.raises(AssertionError, match="Non-linear staging scaling for wav_header_reads"):
+            _assert_diarization_linear_scaling(tmp_path / "neg-headers", mp)
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        def eager_copy_prov(self, s0):
+            res = real_build_prov(self, s0)
+            if (
+                isinstance(res, tuple)
+                and len(res) == 3
+                and isinstance(res[0], list)
+                and type(res[1]) is int
+                and isinstance(res[2], tuple)
+            ):
+                return (*res[0][: res[1]], *res[2])
+            return res
+
+        mp.setattr(session_follower.TrackFollower, "_build_staged_spans_provenance", eager_copy_prov)
+        with pytest.raises(AssertionError, match="Non-linear staging scaling for provenance_entries_copied"):
+            _assert_diarization_linear_scaling(tmp_path / "neg-prov", mp)
 
 
 def test_worker_diarization_low_disk_and_disabled_paths_do_not_import_numpy(tmp_path):

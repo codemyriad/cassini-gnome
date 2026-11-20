@@ -526,6 +526,8 @@ class TrackFollower:
         # Streaming audio state.
         self._span_buffers: dict[str, _SpanBuffer] = {}
         self._span_mappings: dict[str, _IncrementalSpanMapping] = {}
+        self._sealed_wav_info: dict[str, tuple[int, int, int]] = {}
+        self._emit_start_idx = 0
         self._tl_cursor_48k = 0  # Next 48 kHz timeline sample to emit (for 48 kHz path)
         self._cursor_16k_raw = 0  # Next raw 16 kHz source sample (for direct 16 kHz path)
         self._raw_hasher_16k = hashlib.sha256()
@@ -732,9 +734,16 @@ class TrackFollower:
             filename = row.get("file")
             if not isinstance(filename, str) or not filename.startswith("track-") or not filename.endswith(".wav"):
                 return None
-            info = read_wav_committed(dir_fd, filename)
+            span_ended = (
+                self._session_ended or self._track_ended or bool(row.get("ended")) or (idx < len(self._rows) - 1)
+            )
+            info = self._sealed_wav_info.get(filename) if span_ended else None
             if info is None:
-                return None
+                info = read_wav_committed(dir_fd, filename)
+                if info is None:
+                    return None
+                if span_ended:
+                    self._sealed_wav_info[filename] = info
             committed, rate, channels = info
             if self.sample_rate is None:
                 self.sample_rate, self.channels = rate, channels
@@ -747,9 +756,6 @@ class TrackFollower:
             elif type(span_offset) not in (int, float) or not math.isfinite(span_offset) or span_offset < 0:
                 self.unsupported = True
                 return None
-            span_ended = (
-                self._session_ended or self._track_ended or bool(row.get("ended")) or (idx < len(self._rows) - 1)
-            )
             anchors = row.get("clockAnchors") if isinstance(row.get("clockAnchors"), list) else []
             inspected.append(
                 dict(
@@ -863,8 +869,22 @@ class TrackFollower:
     def _emit_48k_block(self, dir_fd: int, specs: list, start: int, count: int):
         import numpy as np
 
+        if self._emit_start_idx > len(specs):
+            self._emit_start_idx = 0
+        while self._emit_start_idx < len(specs):
+            span, mapping, committed = specs[self._emit_start_idx]
+            if not span["ended"]:
+                break
+            if committed > 0:
+                if mapping.knots is None:
+                    if mapping.shift + committed > start:
+                        break
+                elif float(mapping.source(np.array([float(start)]))[0]) <= committed - 1:
+                    break
+            self._emit_start_idx += 1
+
         out = np.zeros(count, dtype=np.float64)
-        for span, mapping, committed in specs:
+        for span, mapping, committed in specs[self._emit_start_idx :]:
             if committed <= 0:
                 continue
             buf = self._span_buffers.get(span["file"])
