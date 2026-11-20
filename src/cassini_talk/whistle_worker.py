@@ -142,9 +142,14 @@ def main(bundle):
         threads=len(list(Path("/proc/self/task").iterdir())),
         modelIdentity=model_identity,
     )
+    from cassini_talk.diarization_audio import close_diarization_store, discard_staged_for_track
+    from cassini_talk.worker_diarization import WarmDiarizer
+
     reader = StdinLineReader(sys.stdin)
     detector = None
     prefix_store = {}
+    diarization_store = {}
+    warm_diarizer = WarmDiarizer()
     try:
         while line := reader.readline():
             message = json.loads(line)
@@ -153,13 +158,32 @@ def main(bundle):
                 return 0
             if msg_type == "follow":
                 action, detector = run_follow_loop(
-                    model, bundle, message, emit, reader=reader, detector=detector, prefix_store=prefix_store
+                    model,
+                    bundle,
+                    message,
+                    emit,
+                    reader=reader,
+                    detector=detector,
+                    prefix_store=prefix_store,
+                    diarization_store=diarization_store,
+                    warm_diarizer=warm_diarizer,
                 )
                 if action != "continue":
                     return 0
                 continue
             if msg_type == "follow-stop":
-                emit("follow-stopped", directory=message.get("directory"), segments=0, prefixes=len(prefix_store))
+                if message.get("drain", True) is False:
+                    prefix_store.clear()
+                    close_diarization_store(diarization_store)
+                    warm_diarizer.close()
+                emit(
+                    "follow-stopped",
+                    directory=message.get("directory"),
+                    segments=0,
+                    prefixes=len(prefix_store),
+                    diarizationStaged=len({id(v) for v in diarization_store.values()}),
+                    diarizerWarmed=warm_diarizer.model is not None,
+                )
                 continue
             if msg_type == "voiceprints":
                 from cassini_talk.worker_voices import request
@@ -184,19 +208,31 @@ def main(bundle):
                     detector = SpeechDetector(bundle / "silero_vad.onnx")
                 options = message.get("diarization")
                 try:
-                    summary = process_tracks(
-                        model,
+                    try:
+                        summary = process_tracks(
+                            model,
+                            tracks,
+                            bundle / "silero_vad.onnx",
+                            emit,
+                            extra_seconds=estimate(tracks, options),
+                            recognition_cache=message.get("recognitionCache"),
+                            detector=detector,
+                            prefix_store=prefix_store,
+                            on_prefix_mismatch=lambda tr: discard_staged_for_track(diarization_store, tr),
+                        )
+                    finally:
+                        prefix_store.clear()
+                    summary = complete(
+                        summary,
                         tracks,
-                        bundle / "silero_vad.onnx",
+                        options,
                         emit,
-                        extra_seconds=estimate(tracks, options),
-                        recognition_cache=message.get("recognitionCache"),
-                        detector=detector,
-                        prefix_store=prefix_store,
+                        diarization_store=diarization_store,
+                        warm_diarizer=warm_diarizer,
                     )
                 finally:
-                    prefix_store.clear()
-                summary = complete(summary, tracks, options, emit)
+                    close_diarization_store(diarization_store)
+                    warm_diarizer.close()
                 emit("complete", **summary)
                 continue
             if msg_type != "transcribe" or not isinstance(message.get("path"), str):
@@ -215,6 +251,8 @@ def main(bundle):
             emit("result", text=result["text"], pid=os.getpid(), seconds=time.monotonic() - started)
         return 0
     finally:
+        close_diarization_store(diarization_store)
+        warm_diarizer.close()
         reader.close()
 
 

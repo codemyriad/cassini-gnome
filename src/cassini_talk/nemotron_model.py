@@ -57,3 +57,18 @@ def verify_model(directory, *, cancelled=None):
                 raise ValueError("Nemotron model SHA256 mismatch: " + name)
             signature.append((name, after.st_ino, after.st_size, after.st_mtime_ns))
     return tuple(signature)
+
+
+def model_signature_matches(directory, expected_signature) -> bool:
+    if not isinstance(expected_signature, tuple) or len(expected_signature) != len(FILES):
+        return False
+    try:
+        base = Path(directory)
+        actual = []
+        for name in FILES:
+            with regular_input(base / name) as stream:
+                info = os.fstat(stream.fileno())
+            actual.append((name, info.st_ino, info.st_size, info.st_mtime_ns))
+    except (OSError, ValueError):
+        return False
+    return tuple(actual) == expected_signature

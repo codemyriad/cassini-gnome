@@ -10,7 +10,7 @@ from .diarization import normalize_turns
 from .diarization_abi import SherpaOnnxOfflineSpeakerDiarizationConfig as Config
 from .diarization_abi import SherpaOnnxOfflineSpeakerDiarizationSegment as Segment
 from .nemotron_model import verify_model
-from .sherpa_runtime import PINS, verify_runtime
+from .sherpa_runtime import PINS, verify_runtime_with_signature
 from .whistle_worker import PRIVACY
 
 
@@ -18,8 +18,8 @@ class Nemotron:
     def __init__(self, model, runtime):
         if any(os.environ.get(key) != value for key, value in PRIVACY.items()):
             raise RuntimeError("Speech privacy flags must be set before loading Nemotron")
-        verify_model(model)
-        runtime = verify_runtime(runtime)
+        self._model_sig = verify_model(model)
+        runtime, self._runtime_sig = verify_runtime_with_signature(runtime)
         self.ort = C.CDLL(str(runtime / "libonnxruntime.so"), mode=C.RTLD_LOCAL)
         self.api = api = C.CDLL(str(runtime / "libsherpa-onnx-c-api.so"), mode=C.RTLD_LOCAL)
         self.callback_type = C.CFUNCTYPE(C.c_int32, C.c_int32, C.c_int32, C.c_void_p)

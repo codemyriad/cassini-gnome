@@ -125,20 +125,19 @@ class WhistleClient:
             raise RuntimeError(self.worker_name + " worker failed: " + str(result.get("message", "invalid reply")))
         return result
 
-    def start_follow(self, directory, model_identity, *, poll_interval_ms=50):
+    def start_follow(self, directory, model_identity, *, poll_interval_ms=50, diarization=None):
         if not self.is_alive():
             raise RuntimeError(self.worker_name + " worker is not running")
-        packet = (
-            json.dumps(
-                dict(
-                    type="follow",
-                    directory=str(Path(directory).resolve()),
-                    model=model_identity,
-                    pollIntervalMs=poll_interval_ms,
-                )
-            ).encode()
-            + b"\n"
+        payload = dict(
+            type="follow",
+            directory=str(Path(directory).resolve()),
+            model=model_identity,
+            pollIntervalMs=poll_interval_ms,
         )
+        diar_opts = diarization if diarization is not None else getattr(self, "diarization", None)
+        if diar_opts is not None:
+            payload["diarization"] = diar_opts
+        packet = json.dumps(payload).encode() + b"\n"
         if len(packet) > 512 * 1024:
             raise ValueError("Worker request exceeds limit")
         try:

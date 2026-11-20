@@ -559,9 +559,11 @@ class TranscriptionQueue:
         self._follow_drain_requested = False
         self._follow_client = None
         self._follow_client_model: str | None = None
+        self._follow_diarization_ready: bool | None = None
         self._follow_drained = threading.Event()
         self._warm_client = None
         self._warm_client_model: str | None = None
+        self._warm_diarization_ready: bool | None = None
         self._warm_directory: Path | None = None
         self._warm_aliases: frozenset[Path] = frozenset()
 
@@ -744,6 +746,7 @@ class TranscriptionQueue:
         warm = self._warm_client
         self._warm_client = None
         self._warm_client_model = None
+        self._warm_diarization_ready = None
         self._warm_directory = None
         self._warm_aliases = frozenset()
         return warm
@@ -777,13 +780,28 @@ class TranscriptionQueue:
             thread.join(timeout=max(1.0, self._follow_stop_timeout + 2.0))
 
     def model_changed(self) -> None:
-        """Preempt the follower if the user switched speech models in Preferences."""
-        if self.models is None:
-            return
-        selected = self.models.snapshot().get("selected")
+        """Preempt the follower if the user switched speech or speaker models in Preferences."""
+        selected = self.models.snapshot().get("selected") if self.models is not None else None
+        diar_ready = None
+        if self.diarization_models is not None and hasattr(self.diarization_models, "snapshot"):
+            diar_snap = self.diarization_models.snapshot()
+            if not diar_snap.get("busy"):
+                diar_ready = bool(diar_snap.get("ready"))
         with self.lock:
-            follow_mismatch = self._follow_client_model is not None and self._follow_client_model != selected
-            warm_mismatch = self._warm_client_model is not None and self._warm_client_model != selected
+            follow_mismatch = (
+                selected is not None and self._follow_client_model is not None and self._follow_client_model != selected
+            ) or (
+                diar_ready is not None
+                and self._follow_diarization_ready is not None
+                and self._follow_diarization_ready != diar_ready
+            )
+            warm_mismatch = (
+                selected is not None and self._warm_client_model is not None and self._warm_client_model != selected
+            ) or (
+                diar_ready is not None
+                and self._warm_diarization_ready is not None
+                and self._warm_diarization_ready != diar_ready
+            )
         if follow_mismatch or warm_mismatch:
             self.preempt_follower(drain=False, wait=False)
 
@@ -814,6 +832,7 @@ class TranscriptionQueue:
             warm_model = self._warm_client_model
             self._warm_client = None
             self._warm_client_model = None
+            self._warm_diarization_ready = None
             self._warm_directory = None
             self._warm_aliases = frozenset()
         if warm is None:
@@ -993,11 +1012,29 @@ class TranscriptionQueue:
             cache_model = _worker_reported_identity(client) or recognition_cache_model(client_model, self.bundle)
             if not cache_model:
                 return
+            follow_diarization = (
+                self.diarization_models.request(canonical, origin="own")
+                if self.diarization_models is not None
+                else None
+            )
+            if follow_diarization is not None:
+                live_dirs = list(dict.fromkeys([*self._live_recordings(), str(canonical)]))[:64]
+                follow_diarization = dict(follow_diarization, recordingDirectories=live_dirs)
+            diar_enabled = follow_diarization is not None
+            with self.lock:
+                if self._follow_generation == generation:
+                    self._follow_diarization_ready = diar_enabled
+            if not self._follow_still_valid(directory, stop_event, generation):
+                return
             cache_entries = recognition_cache.read(canonical / RECOGNITION_CACHE_FILE, cache_model)
             cache_budget = recognition_cache.CacheBudget(cache_model, cache_entries)
             follow_started = False
             if not stop_event.is_set() and not self.closed:
-                client.start_follow(canonical, cache_model, poll_interval_ms=self._follow_poll_interval_ms)
+                client.diarization = follow_diarization
+                try:
+                    client.start_follow(canonical, cache_model, poll_interval_ms=self._follow_poll_interval_ms)
+                finally:
+                    client.diarization = None
                 follow_started = True
                 while not stop_event.is_set() and not self.closed:
                     event = client.poll_follow_event(timeout=0.05)
@@ -1031,6 +1068,7 @@ class TranscriptionQueue:
                             old_warm = self._discard_warm_client_locked()
                             self._warm_client = client
                             self._warm_client_model = client_model
+                            self._warm_diarization_ready = diar_enabled
                             self._warm_directory = directory
                             self._warm_aliases = aliases
                             client = None
@@ -1056,6 +1094,7 @@ class TranscriptionQueue:
                     self._follow_aliases = frozenset()
                     self._follow_client = None
                     self._follow_client_model = None
+                    self._follow_diarization_ready = None
                     self._follow_stop_event = None
                     self._follow_thread = None
                     self._follow_drain_requested = False
