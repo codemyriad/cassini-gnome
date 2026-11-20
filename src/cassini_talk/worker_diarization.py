@@ -166,7 +166,6 @@ def run(tracks, options, notify, *, statvfs=None, diarization_store=None, warm_d
     from .diarization_audio import (
         LowDiskFallbackError,
         close_diarization_store,
-        discard_staged_for_track,
         pop_staged_for_track,
         rejoin_with_staged,
     )
@@ -176,6 +175,7 @@ def run(tracks, options, notify, *, statvfs=None, diarization_store=None, warm_d
     by_id = {t["id"]: t for t in tracks}
     cached = read_cache(options.get("storedTurnsPath"))
     model = None
+    staged_entry = None
     diagnostics, completed = [], []
     measured_seconds = measured_frames = 0
     staged_groups_reused = 0
@@ -186,132 +186,175 @@ def run(tracks, options, notify, *, statvfs=None, diarization_store=None, warm_d
         factor = 0.05
     try:
         groups = group_tracks(tracks, origin=options.get("origin", "own"))
+        eligible_groups = [group for group in groups if group["eligible"]]
+        staged_idx: int | None = None
         if diarization_store:
-            single_eligible_ids = {
-                group["tracks"][0] for group in groups if group["eligible"] and len(group["tracks"]) == 1
-            }
-            for track in tracks:
-                if track["id"] not in single_eligible_ids:
-                    discard_staged_for_track(diarization_store, track)
-        for group in groups:
-            if not group["eligible"]:
-                continue
+            # G14: retain at most one single-track eligible staged file up front and
+            # immediately close every other entry so <= 1 scratch file is ever open.
+            for idx, group in enumerate(eligible_groups):
+                if len(group["tracks"]) != 1:
+                    continue
+                candidate = pop_staged_for_track(diarization_store, by_id[group["tracks"][0]])
+                if candidate is None:
+                    continue
+                if staged_entry is None and not candidate.closed:
+                    staged_idx = idx
+                    staged_entry = candidate
+                else:
+                    candidate.close()
+            close_diarization_store(diarization_store)
+
+        # Process any staged group first so its scratch file is consumed and closed
+        # before any other group runs scratch budgeting or rejoin, then emit results
+        # in canonical group_tracks order via next_emit.
+        if staged_idx is not None and staged_idx > 0:
+            exec_order = [staged_idx, *range(0, staged_idx), *range(staged_idx + 1, len(eligible_groups))]
+        else:
+            exec_order = list(range(len(eligible_groups)))
+        outcomes: dict[int, tuple] = {}
+        next_emit = 0
+
+        for idx in exec_order:
+            group = eligible_groups[idx]
             identifier = group["id"]
-            staged = (
-                pop_staged_for_track(diarization_store, by_id[group["tracks"][0]])
-                if len(group["tracks"]) == 1
-                else None
-            )
+            staged = None
+            if idx == staged_idx:
+                staged = staged_entry
+                staged_entry = None
             try:
                 staged_ms = (staged.total_frames * 1000 // 16000) if staged is not None and not staged.closed else 0
                 # G14: too little disk for this group's temp audio keeps D11,
                 # as any other failure does, without creating the file.
-                if short := shortfall(
+                short = shortfall(
                     max(0, group["durationMs"] - staged_ms),
                     scratch=options.get("scratch"),
                     statvfs=statvfs,
                     recordings=live,
-                ):
-                    if staged is not None:
-                        staged.close()
-                    diagnostics.append(
+                )
+                if short and staged is not None:
+                    staged.close()
+                    staged = None
+                    short = shortfall(
+                        group["durationMs"],
+                        scratch=options.get("scratch"),
+                        statvfs=statvfs,
+                        recordings=live,
+                    )
+                if short:
+                    outcomes[idx] = (
+                        "diag",
                         dict(
                             code="diarization-kept-d11",
                             group=identifier,
                             reason="lowDisk",
                             message="Not enough disk space",
                             **short,
+                        ),
+                    )
+                else:
+
+                    def heartbeat(group=group, identifier=identifier):
+                        notify(
+                            "diarizing",
+                            groupId=identifier,
+                            etaMinutes=max(1, math.ceil(group["durationMs"] * factor / 60000)),
                         )
-                    )
-                    continue
 
-                def heartbeat(group=group, identifier=identifier):
-                    notify(
-                        "diarizing",
-                        groupId=identifier,
-                        etaMinutes=max(1, math.ceil(group["durationMs"] * factor / 60000)),
-                    )
+                    with rejoin_with_staged(
+                        [by_id[t] for t in group["tracks"]],
+                        staged=staged,
+                        scratch=options.get("scratch"),
+                        heartbeat=heartbeat,
+                        check_full_budget=lambda group=group: shortfall(
+                            group["durationMs"], scratch=options.get("scratch"), statvfs=statvfs, recordings=live
+                        ),
+                    ) as (stream, frames, sha, staged_reused, tail_frames):
+                        if staged_reused:
+                            staged_groups_reused += 1
+                            tail_frames_appended += tail_frames
+                        duration = frames * 1000 // 16000
+                        old = cached.get(identifier)
+                        if old and old["inputSHA256"] == sha and old["durationMs"] == duration:
+                            turns, reused = old["turns"], True
+                        elif frames < 3200:
+                            turns, reused = [], False
+                        else:
+                            if model is None and warm_diarizer is not None:
+                                model = warm_diarizer.take(options)
+                                if model is not None:
+                                    warm_model_reused = True
+                            if model is None:
+                                from .nemotron import Nemotron
 
-                with rejoin_with_staged(
-                    [by_id[t] for t in group["tracks"]],
-                    staged=staged,
-                    scratch=options.get("scratch"),
-                    heartbeat=heartbeat,
-                    check_full_budget=lambda group=group: shortfall(
-                        group["durationMs"], scratch=options.get("scratch"), statvfs=statvfs, recordings=live
-                    ),
-                ) as (stream, frames, sha, staged_reused, tail_frames):
-                    if staged_reused:
-                        staged_groups_reused += 1
-                        tail_frames_appended += tail_frames
-                    duration = frames * 1000 // 16000
-                    old = cached.get(identifier)
-                    if old and old["inputSHA256"] == sha and old["durationMs"] == duration:
-                        turns, reused = old["turns"], True
-                    elif frames < 3200:
-                        turns, reused = [], False
-                    else:
-                        if model is None and warm_diarizer is not None:
-                            model = warm_diarizer.take(options)
-                            if model is not None:
-                                warm_model_reused = True
-                        if model is None:
-                            from .nemotron import Nemotron
+                                model = Nemotron(options["modelPath"], options["runtimePath"])
+                            import numpy as np
 
-                            model = Nemotron(options["modelPath"], options["runtimePath"])
-                        import numpy as np
+                            # Mapping stays owned by this block, and all C pointers
+                            # are released before closing it. No full PCM copy.
+                            samples = np.memmap(stream, dtype="<f4", mode="r", shape=(frames,))
+                            last = time.monotonic()
 
-                        # Mapping stays owned by this block, and all C pointers
-                        # are released before closing it. No full PCM copy.
-                        samples = np.memmap(stream, dtype="<f4", mode="r", shape=(frames,))
-                        last = time.monotonic()
+                            def progress(_done, _total):
+                                nonlocal last
+                                if time.monotonic() - last >= 1:
+                                    heartbeat()
+                                    last = time.monotonic()
 
-                        def progress(_done, _total):
-                            nonlocal last
-                            if time.monotonic() - last >= 1:
-                                heartbeat()
-                                last = time.monotonic()
-
-                        try:
-                            result = model.infer(samples, progress)
-                        finally:
-                            samples._mmap.close()
-                        measured_seconds += result["inferenceSeconds"]
-                        measured_frames += frames
-                        turns, reused = result["turns"], False
-                value = dict(id=identifier, durationMs=duration, inputSHA256=sha, turns=turns)
-                if not valid_group(value):
-                    raise ValueError("Invalid diarization group")
-                # The existing transport limits each reply to 1 MiB. Long turns
-                # use separate messages, with an explicit final batch marker.
-                for first in range(0, max(1, len(turns)), 512):
-                    notify(
-                        "diarized",
-                        groupId=identifier,
-                        durationMs=duration,
-                        inputSHA256=sha,
-                        turns=turns[first : first + 512],
-                        first=first == 0,
-                        final=first + 512 >= len(turns),
-                        reused=reused,
-                        etaMinutes=0,
-                    )
-                completed.append(identifier)
+                            try:
+                                result = model.infer(samples, progress)
+                            finally:
+                                samples._mmap.close()
+                            measured_seconds += result["inferenceSeconds"]
+                            measured_frames += frames
+                            turns, reused = result["turns"], False
+                    value = dict(id=identifier, durationMs=duration, inputSHA256=sha, turns=turns)
+                    if not valid_group(value):
+                        raise ValueError("Invalid diarization group")
+                    outcomes[idx] = ("ok", (identifier, duration, sha, turns, reused))
             except LowDiskFallbackError as low_disk:
-                diagnostics.append(
+                outcomes[idx] = (
+                    "diag",
                     dict(
                         code="diarization-kept-d11",
                         group=identifier,
                         reason="lowDisk",
                         message="Not enough disk space",
                         **low_disk.shortfall_info,
-                    )
+                    ),
                 )
             except Exception as error:
                 if staged is not None:
                     staged.close()
-                diagnostics.append(dict(code="diarization-kept-d11", group=identifier, message=str(error)))
+                outcomes[idx] = ("diag", dict(code="diarization-kept-d11", group=identifier, message=str(error)))
+
+            while next_emit in outcomes:
+                kind, payload = outcomes.pop(next_emit)
+                next_emit += 1
+                if kind == "diag":
+                    diagnostics.append(payload)
+                    continue
+                emit_id, duration, sha, turns, reused = payload
+                try:
+                    # The existing transport limits each reply to 1 MiB. Long turns
+                    # use separate messages, with an explicit final batch marker.
+                    for first in range(0, max(1, len(turns)), 512):
+                        notify(
+                            "diarized",
+                            groupId=emit_id,
+                            durationMs=duration,
+                            inputSHA256=sha,
+                            turns=turns[first : first + 512],
+                            first=first == 0,
+                            final=first + 512 >= len(turns),
+                            reused=reused,
+                            etaMinutes=0,
+                        )
+                    completed.append(emit_id)
+                except Exception as error:
+                    diagnostics.append(dict(code="diarization-kept-d11", group=emit_id, message=str(error)))
     finally:
+        if staged_entry is not None:
+            staged_entry.close()
         if model is not None:
             model.close()
         if warm_diarizer is not None:

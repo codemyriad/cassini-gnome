@@ -1213,20 +1213,18 @@ class SessionFollower:
                 current_tr.detach_diarization_stager()
             self._staged_track_id = None
 
-        # Enforce G14 <= 1 group scratch file: choose highest-priority single-source eligible track
-        # that has not yet crossed its first checkpoint.
+        # Enforce G14 <= 1 group scratch file: choose the first single-source eligible track
+        # in manifest order (matching diarization.group_tracks) that has not yet crossed its
+        # first checkpoint.
         best_tid = None
-        best_rank = 99
         for tid, kind, identity in valid_rows:
             if not is_single_source_eligible(tid, kind, identity):
                 continue
             tr = self.tracks[tid]
             if tr._emitted_16k > 0:
                 continue
-            rank = 0 if kind == "system" else 1 if kind in {"remote", "tab", "media", "application"} else 2
-            if rank < best_rank:
-                best_rank = rank
-                best_tid = tid
+            best_tid = tid
+            break
         if best_tid is not None:
             tr = self.tracks[best_tid]
             stager = TrackDiarizationStager(

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import signal
@@ -59,28 +60,41 @@ def append_pcm_chunks(session, track_id: str, pcm: bytes, *, rate: int, channels
 
 
 class _TempFileMeter:
-    """Counts tempfile.TemporaryFile creations and currently-open descriptors."""
+    """Counts tempfile.TemporaryFile creations, peak concurrency, and live open bytes."""
 
     def __init__(self, monkeypatch):
         self.created = 0
-        self.open_files: set[int] = set()
+        self.max_open = 0
+        self.open_files: dict[int, object] = {}
         real_temp = tempfile.TemporaryFile
 
         def tracked(*args, **kwargs):
             f = real_temp(*args, **kwargs)
             self.created += 1
             ident = id(f)
-            self.open_files.add(ident)
+            self.open_files[ident] = f
+            if len(self.open_files) > self.max_open:
+                self.max_open = len(self.open_files)
             real_close = f.close
 
             def tracked_close():
-                self.open_files.discard(ident)
+                self.open_files.pop(ident, None)
                 return real_close()
 
             f.close = tracked_close
             return f
 
         monkeypatch.setattr(tempfile, "TemporaryFile", tracked)
+
+    def reset_max(self) -> None:
+        self.max_open = len(self.open_files)
+
+    def open_bytes(self) -> int:
+        total = 0
+        for f in list(self.open_files.values()):
+            with contextlib.suppress(OSError, ValueError):
+                total += os.fstat(f.fileno()).st_size
+        return total
 
 
 # ---------------------------------------------------------------------------
@@ -641,11 +655,7 @@ def test_scratch_budget_shortfall_and_low_memory_skip_cleanly_without_disturbing
 
     # Simulate real filesystem statvfs that subtracts bytes currently held in scratch!
     def dynamic_statvfs(_path):
-        used = 0
-        if scratch.is_dir():
-            # Track open staged bytes via stager/fd sizes in test
-            pass
-        return SimpleNamespace(f_bavail=one_group_room - used, f_frsize=1, f_blocks=10 << 30)
+        return SimpleNamespace(f_bavail=max(0, one_group_room - meter.open_bytes()), f_frsize=1, f_blocks=10 << 30)
 
     follower2 = SessionFollower(
         session.directory,
@@ -681,6 +691,280 @@ def test_scratch_budget_shortfall_and_low_memory_skip_cleanly_without_disturbing
     assert res["stagedGroupsReused"] == 1
     assert res["groupIds"] == ["others"]
     assert len(meter.open_files) == 0
+
+
+def test_multi_group_remote_then_system_tight_disk_and_max_one_scratch_file(tmp_path, monkeypatch):
+    """Multi-group G14 regression: remote -> system at reserve + 416,000 bytes never fails lowDisk
+    and never holds > 1 group scratch TemporaryFile simultaneously, even when a later group is staged.
+    """
+    meter = _TempFileMeter(monkeypatch)
+    scratch = tmp_path / "scratch"
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    reserve = 1 << 30
+    unencumbered_free = reserve + 416_000  # Fits one 4 s group (needs 320,000 B), NOT two simultaneously!
+
+    observed_open_counts: list[int] = []
+
+    class GuardedNemotron(DeterministicNemotron):
+        def infer(self, samples, progress):
+            observed_open_counts.append(len(meter.open_files))
+            assert len(meter.open_files) <= 1, "G14 violation: >1 scratch file open during Nemotron.infer"
+            return super().infer(samples, progress)
+
+    monkeypatch.setattr("cassini_talk.nemotron.Nemotron", GuardedNemotron)
+
+    def tight_statvfs(_path):
+        observed_open_counts.append(len(meter.open_files))
+        return SimpleNamespace(
+            f_bavail=max(0, unencumbered_free - meter.open_bytes()),
+            f_frsize=1,
+            f_blocks=10 << 30,
+        )
+
+    # Build a 4.0 s remote -> system meeting:
+    # - 3.6 s pre-Stop -> 7 * 8192 = 57,344 frames = 229,376 bytes staged
+    # - 0.4 s post-checkpoint tail -> total 4.0 s per group
+    remote_pcm = make_speech_pcm16(48000, 1, [(1.3, 410.0, 0.3), (0.8, 0.0, 0.0), (1.3, 590.0, 0.3), (0.6, 0.0, 0.0)])
+    system_pcm = make_speech_pcm16(48000, 1, [(1.2, 605.0, 0.3), (0.9, 0.0, 0.0), (1.3, 420.0, 0.3), (0.6, 0.0, 0.0)])
+    split_bytes = int(3.6 * 48000) * 2
+    tail_start_ms = 3600.0
+
+    session = RecordingSession(lib, "MultiGroupRemoteSystem", source="chromium")
+    session.add_track("remote-1", None, "remote", 48000, 1)
+    session.add_track("system", None, "system", 48000, 1, filename="track-system.wav")
+    append_pcm_chunks(session, "remote-1", remote_pcm[:split_bytes], rate=48000, channels=1, start_ms=0.0)
+    append_pcm_chunks(session, "system", system_pcm[:split_bytes], rate=48000, channels=1, start_ms=0.0)
+    session.checkpoint()
+
+    opts = dict(modelPath="m", runtimePath="r", scratch=str(scratch))
+    follower = SessionFollower(
+        session.directory,
+        DeterministicRecognizer("whistle"),
+        "whistle@" + ("a" * 64),
+        DeterministicDetector(),
+        on_cache_entry=lambda _e: None,
+        diarization_options=opts,
+        statvfs=tight_statvfs,
+    )
+    assert follower.refresh()
+    while follower.step():
+        assert len(meter.open_files) <= 1
+    staged_e2e = follower.export_diarization_staged()
+    # SessionFollower aligns with canonical group_tracks order: remote-1 is selected first!
+    assert (follower.resolved_dir, "remote-1") in staged_e2e
+    staged_remote = next(iter(staged_e2e.values()))
+    assert os.fstat(staged_remote.stream.fileno()).st_size == 229_376
+    assert meter.max_open == 1
+
+    append_pcm_chunks(session, "remote-1", remote_pcm[split_bytes:], rate=48000, channels=1, start_ms=tail_start_ms)
+    append_pcm_chunks(session, "system", system_pcm[split_bytes:], rate=48000, channels=1, start_ms=tail_start_ms)
+    session.finish()
+
+    meeting = LibraryScanner(lib).scan().meetings[0]
+    tracks, _speakers = prepare_tracks(meeting)
+    assert [t["speaker"] for t in tracks] == ["track-remote-1", "others"]
+
+    # 1) End-to-end SessionFollower -> worker_diarization.run at reserve + 416,000 bytes:
+    events_e2e = []
+    res_e2e = worker_diarization.run(
+        tracks,
+        opts,
+        lambda kind, **kw: events_e2e.append(dict(type=kind, **kw)),
+        statvfs=tight_statvfs,
+        diarization_store=staged_e2e,
+    )
+    assert res_e2e["diagnostics"] == []
+    assert res_e2e["stagedGroupsReused"] == 1
+    assert res_e2e["groupIds"] == ["track-remote-1", "others"]
+    assert meter.max_open == 1
+    assert len(meter.open_files) == 0
+
+    # Baseline after_stop batch at the exact same reserve + 416,000 bytes:
+    meter.reset_max()
+    events_batch = []
+    res_batch = worker_diarization.run(
+        tracks,
+        opts,
+        lambda kind, **kw: events_batch.append(dict(type=kind, **kw)),
+        statvfs=tight_statvfs,
+    )
+    assert res_batch["diagnostics"] == []
+    assert res_batch["stagedGroupsReused"] == 0
+    assert res_batch["groupIds"] == ["track-remote-1", "others"]
+    assert meter.max_open == 1
+    assert len(meter.open_files) == 0
+
+    diarized_e2e = [e for e in events_e2e if e["type"] == "diarized"]
+    diarized_batch = [e for e in events_batch if e["type"] == "diarized"]
+    assert [e["groupId"] for e in diarized_e2e] == ["track-remote-1", "others"]
+    assert diarized_e2e == diarized_batch
+
+    # 2) Direct later-group-staged case: groups = [track-remote-1, others] where ONLY the later group
+    #    ("others", index 1) holds a 229,376-byte StagedDiarization (e.g., if remote-1 already crossed
+    #    its first checkpoint before diarization became ready).
+    def build_staged_for_track(track_id: str, filename: str, pcm_prefix: bytes, *, statvfs_fn=tight_statvfs):
+        from cassini_talk.speech_pipeline import resampled_chunks
+
+        stager = diarization_audio.TrackDiarizationStager(
+            str(session.directory.resolve()),
+            track_id,
+            filename,
+            opts,
+            statvfs=statvfs_fn,
+        )
+        raw_sha = diarization_audio.hashlib.sha256(pcm_prefix).hexdigest()
+        prov = (
+            diarization_audio.StagedSpanProvenance(
+                file=filename,
+                start_offset_ms=0.0,
+                rate=48000,
+                channels=1,
+                consumed_frames=len(pcm_prefix) // 2,
+                raw_sha256=raw_sha,
+                knots=None,
+                ended=False,
+            ),
+        )
+        block_n = diarization_audio.PREFIX_BLOCK_SAMPLES
+        want_16k = 7 * block_n  # 57,344 frames = 229,376 bytes
+        chunks_16k = []
+        rem = want_16k
+        for blk in resampled_chunks(str(session.directory / filename), start=0):
+            take = min(len(blk), rem)
+            if take > 0:
+                chunks_16k.append(blk[:take])
+                rem -= take
+            if rem <= 0:
+                break
+        arr_16k = np.concatenate(chunks_16k).astype("<f4")
+        for i in range(0, want_16k, block_n):
+            assert stager.append_block(
+                arr_16k[i : i + block_n].tobytes(),
+                origin_16k=0,
+                samples=i + block_n,
+                ownership_windows=None,
+                spans=prov,
+            )
+        staged_item = stager.export()
+        assert staged_item is not None
+        assert os.fstat(staged_item.stream.fileno()).st_size == 229_376
+        return staged_item
+
+    meter.reset_max()
+    later_staged = build_staged_for_track("system", "track-system.wav", system_pcm[:split_bytes])
+    later_store = {(str(session.directory.resolve()), "system"): later_staged}
+    # Sanity check: while later_staged is open, remaining free space above reserve is 186,624 < 320,000!
+    assert tight_statvfs(scratch).f_bavail - reserve == 186_624
+
+    events_later = []
+    res_later = worker_diarization.run(
+        tracks,
+        opts,
+        lambda kind, **kw: events_later.append(dict(type=kind, **kw)),
+        statvfs=tight_statvfs,
+        diarization_store=later_store,
+    )
+    assert res_later["diagnostics"] == []
+    assert res_later["stagedGroupsReused"] == 1
+    assert res_later["groupIds"] == ["track-remote-1", "others"]
+    assert [e["groupId"] for e in events_later if e["type"] == "diarized"] == ["track-remote-1", "others"]
+    assert [e for e in events_later if e["type"] == "diarized"] == diarized_batch
+    assert meter.max_open == 1
+    assert len(meter.open_files) == 0
+    assert max(observed_open_counts) <= 1
+
+    # 3) Defensive store with >1 staged entry closes extra entries up front so <= 1 file stays open
+    #    before budgeting/rejoin, AND later-group prefix mismatch closes its staged file before fallback!
+    ample_statvfs = lambda _p: SimpleNamespace(f_bavail=10 << 30, f_frsize=1, f_blocks=20 << 30)  # noqa: E731
+    s_remote = build_staged_for_track(
+        "remote-1", Path(tracks[0]["path"]).name, remote_pcm[:split_bytes], statvfs_fn=ample_statvfs
+    )
+    s_system = build_staged_for_track("system", "track-system.wav", system_pcm[:split_bytes], statvfs_fn=ample_statvfs)
+    assert len(meter.open_files) == 2  # Synthetic pre-call condition
+    observed_open_counts.clear()
+    res_defensive = worker_diarization.run(
+        tracks,
+        opts,
+        lambda *_a, **_k: None,
+        statvfs=tight_statvfs,
+        diarization_store={
+            (str(session.directory.resolve()), "remote-1"): s_remote,
+            (str(session.directory.resolve()), "system"): s_system,
+        },
+    )
+    assert res_defensive["diagnostics"] == []
+    assert res_defensive["stagedGroupsReused"] == 1
+    assert res_defensive["groupIds"] == ["track-remote-1", "others"]
+    assert max(observed_open_counts) <= 1
+    assert len(meter.open_files) == 0
+
+    # Mutate system's prefix and verify later-group mismatch fallback ALSO succeeds at reserve + 416,000!
+    meter.reset_max()
+    bad_later = build_staged_for_track("system", "track-system.wav", system_pcm[:split_bytes])
+    with (session.directory / "track-system.wav").open("r+b") as f:
+        f.seek(44 + 1000)
+        f.write(struct.pack("<h", 12000) * 200)
+    events_fallback, events_mut_ref = [], []
+    res_fallback = worker_diarization.run(
+        tracks,
+        opts,
+        lambda kind, **kw: events_fallback.append(dict(type=kind, **kw)),
+        statvfs=tight_statvfs,
+        diarization_store={(str(session.directory.resolve()), "system"): bad_later},
+    )
+    res_mut_ref = worker_diarization.run(
+        tracks,
+        opts,
+        lambda kind, **kw: events_mut_ref.append(dict(type=kind, **kw)),
+        statvfs=tight_statvfs,
+    )
+    assert res_fallback["diagnostics"] == res_mut_ref["diagnostics"] == []
+    assert res_fallback["stagedGroupsReused"] == 0
+    assert res_fallback["groupIds"] == res_mut_ref["groupIds"] == ["track-remote-1", "others"]
+    assert [e for e in events_fallback if e["type"] == "diarized"] == [
+        e for e in events_mut_ref if e["type"] == "diarized"
+    ]
+    assert meter.max_open == 1
+    assert len(meter.open_files) == 0
+
+
+def test_paired_multi_group_remote_and_system_byte_identical_across_modes(tmp_path):
+    """Full paired TranscriptionQueue integration test for remote -> system multi-group meetings."""
+    bundle = FakeBundle.create(tmp_path)
+    remote_pcm = make_speech_pcm16(
+        48000, 1, [(1.2, 405.0, 0.3), (0.9, 0.0, 0.0), (1.2, 595.0, 0.3), (0.9, 0.0, 0.0), (0.6, 0.0, 0.0)]
+    )
+    system_pcm = make_speech_pcm16(
+        48000, 1, [(1.2, 610.0, 0.3), (0.9, 0.0, 0.0), (1.2, 415.0, 0.3), (0.9, 0.0, 0.0), (0.6, 0.0, 0.0)]
+    )
+    split_bytes = int(4.2 * 48000) * 2
+
+    def record_two_groups(session, queue, _tracker, live, _sig):
+        session.add_track("remote-1", None, "remote", 48000, 1)
+        session.add_track("system", None, "system", 48000, 1, filename="track-system.wav")
+        append_pcm_chunks(session, "remote-1", remote_pcm[:split_bytes], rate=48000, channels=1, start_ms=0.0)
+        append_pcm_chunks(session, "system", system_pcm[:split_bytes], rate=48000, channels=1, start_ms=0.0)
+        session.checkpoint()
+        if live:
+            wait_on_queue(
+                queue,
+                lambda: cached_segment_count(session.directory, "whistle", bundle) >= 4,
+                timeout=15.0,
+                message="Follower did not precompute two-group meeting segments",
+            )
+        append_pcm_chunks(session, "remote-1", remote_pcm[split_bytes:], rate=48000, channels=1, start_ms=4200.0)
+        append_pcm_chunks(session, "system", system_pcm[split_bytes:], rate=48000, channels=1, start_ms=4200.0)
+        session.checkpoint()
+
+    batch = _run_paired_lane(tmp_path, bundle, "whistle", False, record_two_groups)
+    live = _run_paired_lane(tmp_path, bundle, "whistle", True, record_two_groups)
+    _assert_lanes_byte_identical(batch, live)
+
+    turns_doc = json.loads(live["turns_bytes"])
+    assert [g["id"] for g in turns_doc["groups"]] == ["track-remote-1", "others"]
+    assert live["tracker"]["completes"][0]["diarization"]["stagedGroupsReused"] == 1
+    assert live["tracker"]["completes"][0]["diarization"]["warmModelReused"] is True
 
 
 # ---------------------------------------------------------------------------
