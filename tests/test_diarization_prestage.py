@@ -1117,6 +1117,7 @@ def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
     real_read_header = session_follower.read_wav_committed
     real_inspect_row = session_follower.TrackFollower._inspect_span_row
     real_get_mapping = session_follower.TrackFollower._get_span_mapping
+    real_emit_span = session_follower.TrackFollower._emit_48k_span
     real_resampler_feed = speech_pipeline.IncrementalResampler.feed
     real_append_block = diarization_audio.TrackDiarizationStager.append_block
     real_span_prov = diarization_audio.StagedSpanProvenance
@@ -1143,6 +1144,7 @@ def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
                 wav_header_reads=0,
                 span_inspect_visits=0,
                 plan_span_visits=0,
+                emit_span_visits=0,
                 wav_frames_read=0,
                 wav_spans_read=set(),
                 span_cursors={},
@@ -1170,6 +1172,10 @@ def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
         def counted_get_mapping(self, filename, start_ms_local):
             active["plan_span_visits"] += 1
             return real_get_mapping(self, filename, start_ms_local)
+
+        def counted_emit_span(self, dir_fd, spec, start, count, out):
+            active["emit_span_visits"] += 1
+            return real_emit_span(self, dir_fd, spec, start, count, out)
 
         def counted_read_wav(dir_fd, filename, start_frame, count, channels, *, raw_hasher=None):
             prev_end = active["span_cursors"].get(filename, 0)
@@ -1220,6 +1226,7 @@ def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
         monkeypatch.setattr(session_follower, "read_wav_committed", counted_read_header)
         monkeypatch.setattr(session_follower.TrackFollower, "_inspect_span_row", counted_inspect_row)
         monkeypatch.setattr(session_follower.TrackFollower, "_get_span_mapping", counted_get_mapping)
+        monkeypatch.setattr(session_follower.TrackFollower, "_emit_48k_span", counted_emit_span)
         monkeypatch.setattr(session_follower, "read_wav_mono_f32", counted_read_wav)
         monkeypatch.setattr(speech_pipeline.IncrementalResampler, "feed", counted_resampler_feed)
         monkeypatch.setattr(diarization_audio.TrackDiarizationStager, "append_block", counted_append_block)
@@ -1291,6 +1298,7 @@ def _assert_diarization_linear_scaling(root: Path, monkeypatch) -> None:
         "wav_header_reads",
         "span_inspect_visits",
         "plan_span_visits",
+        "emit_span_visits",
         "wav_frames_read",
         "resampler_calls",
         "resampler_samples",
@@ -1321,6 +1329,7 @@ def test_linear_scaling_guard_rejects_quadratic_header_rereads_and_eager_provena
     """Negative controls proving the deterministic guard catches quadratic header reads, prefix traversal, and eager provenance copies."""
     real_inspect = session_follower.TrackFollower._inspect_spans
     real_plan = session_follower.TrackFollower._safe_48k_plan
+    real_emit = session_follower.TrackFollower._emit_48k_block
     real_build_prov = session_follower.TrackFollower._build_staged_spans_provenance
 
     with pytest.MonkeyPatch.context() as mp:
@@ -1357,6 +1366,16 @@ def test_linear_scaling_guard_rejects_quadratic_header_rereads_and_eager_provena
         mp.setattr(session_follower.TrackFollower, "_safe_48k_plan", repeated_plan_prefix)
         with pytest.raises(AssertionError, match="Non-linear staging scaling for plan_span_visits"):
             _assert_diarization_linear_scaling(tmp_path / "neg-plan", mp)
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        def full_suffix_emit(self, dir_fd, specs, start, count):
+            self._specs_monotonic = False
+            return real_emit(self, dir_fd, specs, start, count)
+
+        mp.setattr(session_follower.TrackFollower, "_emit_48k_block", full_suffix_emit)
+        with pytest.raises(AssertionError, match="Non-linear staging scaling for emit_span_visits"):
+            _assert_diarization_linear_scaling(tmp_path / "neg-emit", mp)
 
     with pytest.MonkeyPatch.context() as mp:
 

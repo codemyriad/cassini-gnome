@@ -534,6 +534,9 @@ class TrackFollower:
         self._sealed_safe_end = 0
         self._sealed_final_end = 0
         self._sealed_max_committed = 0
+        self._sealed_specs_monotonic = True
+        self._sealed_last_start_48k: float | None = None
+        self._specs_monotonic = True
         self._last_max_committed_48k = 0
         self._emit_start_idx = 0
         self._tl_cursor_48k = 0  # Next 48 kHz timeline sample to emit (for 48 kHz path)
@@ -573,6 +576,9 @@ class TrackFollower:
         self._sealed_safe_end = 0
         self._sealed_final_end = 0
         self._sealed_max_committed = 0
+        self._sealed_specs_monotonic = True
+        self._sealed_last_start_48k = None
+        self._specs_monotonic = True
         self._last_max_committed_48k = 0
         self._emit_start_idx = 0
 
@@ -825,10 +831,14 @@ class TrackFollower:
             self._sealed_safe_end = 0
             self._sealed_final_end = 0
             self._sealed_max_committed = 0
+            self._sealed_specs_monotonic = True
+            self._sealed_last_start_48k = None
         del self._plan_specs[self._sealed_plan_count :]
         safe_end = self._sealed_safe_end
         final_end = self._sealed_final_end
         max_committed = self._sealed_max_committed
+        specs_monotonic = self._sealed_specs_monotonic
+        last_start_48k = self._sealed_last_start_48k
         blocked_by_unanchored = False
 
         for idx in range(self._sealed_plan_count, len(spans)):
@@ -847,6 +857,10 @@ class TrackFollower:
             if not span_has_anchors:
                 mapping.sync((), 0)
                 self._plan_specs.append((span, mapping, committed))
+                span_start = float(shift_48k)
+                if last_start_48k is not None and span_start < last_start_48k:
+                    specs_monotonic = False
+                last_start_48k = span_start
                 span_end = shift_48k + committed
                 max_committed = max(max_committed, span_end)
                 if span["ended"]:
@@ -865,12 +879,18 @@ class TrackFollower:
                     self._sealed_safe_end = safe_end
                     self._sealed_final_end = final_end
                     self._sealed_max_committed = max_committed
+                    self._sealed_specs_monotonic = specs_monotonic
+                    self._sealed_last_start_48k = last_start_48k
                 continue
 
             # Clock-anchored native span.
             if span["ended"]:
                 mapping.sync(anchors, len(anchors))
                 self._plan_specs.append((span, mapping, committed))
+                span_start = float(mapping.shift) if mapping.knots is None else float(mapping.end(0))
+                if last_start_48k is not None and span_start < last_start_48k:
+                    specs_monotonic = False
+                last_start_48k = span_start
                 span_end = mapping.end(committed) if committed > 0 else shift_48k
                 max_committed = max(
                     max_committed,
@@ -884,6 +904,8 @@ class TrackFollower:
                     self._sealed_safe_end = safe_end
                     self._sealed_final_end = final_end
                     self._sealed_max_committed = max_committed
+                    self._sealed_specs_monotonic = specs_monotonic
+                    self._sealed_last_start_48k = last_start_48k
             else:
                 # Live anchored span: only anchors[:-1] are permanently fixed.
                 fixed_count = len(anchors) - 1 if len(anchors) >= 2 else 0
@@ -905,20 +927,64 @@ class TrackFollower:
                     blocked_by_unanchored = True
                     continue
                 self._plan_specs.append((span, mapping, committed))
+                span_start = float(mapping.end(0))
+                if last_start_48k is not None and span_start < last_start_48k:
+                    specs_monotonic = False
+                last_start_48k = span_start
                 max_committed = max(max_committed, mapping.end(committed))
                 # Strictly before the right knot so mapping.source never extrapolates past fixed knots.
                 span_safe = max(0, int(math.floor(best_p)) - 1)
                 if not blocked_by_unanchored:
                     safe_end = max(safe_end, span_safe)
 
+        self._specs_monotonic = specs_monotonic
         self._last_max_committed_48k = max_committed if self._plan_specs else safe_end
         if all_ended and not blocked_by_unanchored:
             return self._plan_specs, final_end, True
         return self._plan_specs, safe_end, False
 
+    def _emit_48k_span(self, dir_fd: int, spec: tuple, start: int, count: int, out) -> bool:
+        import numpy as np
+
+        span, mapping, committed = spec
+        block_end = start + count
+        if self._specs_monotonic:
+            if mapping.knots is None:
+                if mapping.shift >= block_end:
+                    return False
+            elif float(mapping.source(np.array([float(block_end - 1)]))[0]) < 0.0:
+                return False
+        if committed <= 0:
+            return True
+        buf = self._span_buffers.get(span["file"])
+        if buf is None:
+            buf = self._span_buffers[span["file"]] = _SpanBuffer(span["file"], span["rate"], span["channels"])
+        if mapping.knots is None:
+            first = start - mapping.shift
+            lo, hi = max(first, 0), min(first + count, committed)
+            if lo < hi:
+                out[lo - first : hi - first] += buf.get(dir_fd, lo, hi, committed)
+                buf.release(hi)
+            return True
+        j = mapping.source(np.arange(start, block_end, dtype=np.float64))
+        inside = (j >= 0) & (j <= committed - 1)
+        if not inside.any():
+            return True
+        j_in = j[inside]
+        low = np.floor(j_in).astype(np.int64)
+        weight = j_in - low
+        first = int(low.min())
+        segment = buf.get(dir_fd, first, int(low.max()) + 2, committed)
+        index = low - first
+        out[inside] += segment[index] * (1.0 - weight) + segment[index + 1] * weight
+        buf.release(int(low.max()))
+        return True
+
     def _emit_48k_block(self, dir_fd: int, specs: list, start: int, count: int):
         import numpy as np
 
+        if count <= 0:
+            return np.empty(0, dtype="<f4")
         if self._emit_start_idx > len(specs):
             self._emit_start_idx = 0
         while self._emit_start_idx < len(specs):
@@ -934,31 +1000,9 @@ class TrackFollower:
             self._emit_start_idx += 1
 
         out = np.zeros(count, dtype=np.float64)
-        for span, mapping, committed in specs[self._emit_start_idx :]:
-            if committed <= 0:
-                continue
-            buf = self._span_buffers.get(span["file"])
-            if buf is None:
-                buf = self._span_buffers[span["file"]] = _SpanBuffer(span["file"], span["rate"], span["channels"])
-            if mapping.knots is None:
-                first = start - mapping.shift
-                lo, hi = max(first, 0), min(first + count, committed)
-                if lo < hi:
-                    out[lo - first : hi - first] += buf.get(dir_fd, lo, hi, committed)
-                    buf.release(hi)
-                continue
-            j = mapping.source(np.arange(start, start + count, dtype=np.float64))
-            inside = (j >= 0) & (j <= committed - 1)
-            if not inside.any():
-                continue
-            j_in = j[inside]
-            low = np.floor(j_in).astype(np.int64)
-            weight = j_in - low
-            first = int(low.min())
-            segment = buf.get(dir_fd, first, int(low.max()) + 2, committed)
-            index = low - first
-            out[inside] += segment[index] * (1.0 - weight) + segment[index + 1] * weight
-            buf.release(int(low.max()))
+        for idx in range(self._emit_start_idx, len(specs)):
+            if not self._emit_48k_span(dir_fd, specs[idx], start, count, out):
+                break
         return out.astype("<f4")
 
     def _apply_mask_16k(self, block):
