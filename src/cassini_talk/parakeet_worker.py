@@ -26,16 +26,20 @@ def main(bundle, model_path, runtime_path):
     if runtime is not None:
         sys.path.insert(0, str(verify_onnxruntime(runtime)))
     sys.addaudithook(block_network)
+    from cassini_talk.diarization_audio import close_diarization_store, discard_staged_for_track
     from cassini_talk.parakeet import Parakeet
     from cassini_talk.recognition_cache import parakeet_identity
     from cassini_talk.session_follower import StdinLineReader, run_follow_loop
     from cassini_talk.speech_pipeline import process_tracks
+    from cassini_talk.worker_diarization import WarmDiarizer
 
     model_identity = parakeet_identity(MODEL_TAG, Path(__file__).with_name("sherpa-pins.json"))
     model = Parakeet(model_path, runtime_path)
     reader = StdinLineReader(sys.stdin)
     detector = None
     prefix_store = {}
+    diarization_store = {}
+    warm_diarizer = WarmDiarizer()
     try:
         emit("ready", pid=os.getpid(), model=MODEL_TAG, modelIdentity=model_identity, version=model.version)
         while line := reader.readline():
@@ -45,13 +49,32 @@ def main(bundle, model_path, runtime_path):
                 return 0
             if msg_type == "follow":
                 action, detector = run_follow_loop(
-                    model, bundle, message, emit, reader=reader, detector=detector, prefix_store=prefix_store
+                    model,
+                    bundle,
+                    message,
+                    emit,
+                    reader=reader,
+                    detector=detector,
+                    prefix_store=prefix_store,
+                    diarization_store=diarization_store,
+                    warm_diarizer=warm_diarizer,
                 )
                 if action != "continue":
                     return 0
                 continue
             if msg_type == "follow-stop":
-                emit("follow-stopped", directory=message.get("directory"), segments=0, prefixes=len(prefix_store))
+                if message.get("drain", True) is False:
+                    prefix_store.clear()
+                    close_diarization_store(diarization_store)
+                    warm_diarizer.close()
+                emit(
+                    "follow-stopped",
+                    directory=message.get("directory"),
+                    segments=0,
+                    prefixes=len(prefix_store),
+                    diarizationStaged=len({id(v) for v in diarization_store.values()}),
+                    diarizerWarmed=warm_diarizer.model is not None,
+                )
                 continue
             tracks = message.get("tracks")
             if msg_type != "pipeline" or not isinstance(tracks, list) or not 1 <= len(tracks) <= 64:
@@ -68,19 +91,31 @@ def main(bundle, model_path, runtime_path):
                 detector = SpeechDetector(bundle / "silero_vad.onnx")
             options = message.get("diarization")
             try:
-                summary = process_tracks(
-                    model,
+                try:
+                    summary = process_tracks(
+                        model,
+                        tracks,
+                        bundle / "silero_vad.onnx",
+                        emit,
+                        extra_seconds=estimate(tracks, options),
+                        recognition_cache=message.get("recognitionCache"),
+                        detector=detector,
+                        prefix_store=prefix_store,
+                        on_prefix_mismatch=lambda tr: discard_staged_for_track(diarization_store, tr),
+                    )
+                finally:
+                    prefix_store.clear()
+                summary = complete(
+                    summary,
                     tracks,
-                    bundle / "silero_vad.onnx",
+                    options,
                     emit,
-                    extra_seconds=estimate(tracks, options),
-                    recognition_cache=message.get("recognitionCache"),
-                    detector=detector,
-                    prefix_store=prefix_store,
+                    diarization_store=diarization_store,
+                    warm_diarizer=warm_diarizer,
                 )
             finally:
-                prefix_store.clear()
-            summary = complete(summary, tracks, options, emit)
+                close_diarization_store(diarization_store)
+                warm_diarizer.close()
             emit("complete", model=MODEL_TAG, **summary)
             if message.get("keepForVoices"):
                 model.close()
@@ -97,6 +132,8 @@ def main(bundle, model_path, runtime_path):
             return 0
         return 0
     finally:
+        close_diarization_store(diarization_store)
+        warm_diarizer.close()
         reader.close()
         if model is not None:
             model.close()

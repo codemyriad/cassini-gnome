@@ -722,6 +722,7 @@ def process_tracks(
     recognition_cache=None,
     detector=None,
     prefix_store=None,
+    on_prefix_mismatch=None,
 ):
     """One complete queue job; all inference and floating PCM stay in the child."""
     import time
@@ -762,6 +763,8 @@ def process_tracks(
         )
         if reused:
             prefixes_reused += 1
+        elif prefix is not None and on_prefix_mismatch is not None:
+            on_prefix_mismatch(track)
         for segment in segments:
             plan.append((order, track, segment, offset))
     remaining = sum((s["endSample"] - s["startSample"]) / RATE for _, _, s, _ in plan)

@@ -198,7 +198,7 @@ def read_wav_committed(dir_fd: int, filename: str) -> tuple[int, int, int] | Non
     return min(disk_frames, header_frames), rate, channels
 
 
-def read_wav_mono_f32(dir_fd: int, filename: str, start_frame: int, count: int, channels: int):
+def read_wav_mono_f32(dir_fd: int, filename: str, start_frame: int, count: int, channels: int, *, raw_hasher=None):
     """Read [start_frame, start_frame + count) PCM16 frames read-only as mono float32."""
     import numpy as np
 
@@ -211,6 +211,8 @@ def read_wav_mono_f32(dir_fd: int, filename: str, start_frame: int, count: int, 
         raw = stream.read(expected_bytes)
     if len(raw) != expected_bytes:
         raise ValueError("Committed PCM frames unavailable")
+    if raw_hasher is not None:
+        raw_hasher.update(raw)
     samples = np.frombuffer(raw, dtype="<i2").astype(np.float32)
     if channels == 2:
         samples = samples.reshape(-1, 2).mean(axis=1, dtype=np.float32)
@@ -256,6 +258,15 @@ class _SpanBuffer:
         self.read_cursor = 0
         self.base = 0
         self.buffer = np.empty(0, dtype=np.float64)
+        self.raw_hasher = hashlib.sha256()
+        self._cached_hash_cursor = 0
+        self._cached_raw_sha256 = self.raw_hasher.hexdigest()
+
+    def raw_sha256(self) -> str:
+        if self._cached_hash_cursor != self.read_cursor:
+            self._cached_raw_sha256 = self.raw_hasher.hexdigest()
+            self._cached_hash_cursor = self.read_cursor
+        return self._cached_raw_sha256
 
     def _fill(self, dir_fd: int, end: int, committed: int) -> None:
         import numpy as np
@@ -271,7 +282,9 @@ class _SpanBuffer:
         parts = [self.buffer] if len(self.buffer) else []
         while self.read_cursor < target:
             step = min(RATE_48K, target - self.read_cursor)
-            block = read_wav_mono_f32(dir_fd, self.filename, self.read_cursor, step, self.channels)
+            block = read_wav_mono_f32(
+                dir_fd, self.filename, self.read_cursor, step, self.channels, raw_hasher=self.raw_hasher
+            )
             parts.append(block.astype(np.float64))
             self.read_cursor += step
         self.buffer = np.concatenate(parts) if len(parts) > 1 else parts[0]
@@ -312,10 +325,14 @@ class _IncrementalSpanMapping:
         self.j_list: list[float] = []
         self.p_list: list[float] = []
         self._at_zero: float | None = None
+        self.knots_snapshot: tuple[tuple[float, ...], tuple[float, ...]] | None = None
 
     @property
     def knots(self):
         return (self.j_list, self.p_list) if len(self.j_list) >= 2 else None
+
+    def _refresh_knots_snapshot(self) -> None:
+        self.knots_snapshot = (tuple(self.j_list), tuple(self.p_list)) if len(self.j_list) >= 2 else None
 
     def _append_valid(self, index: int, ns: int) -> None:
         from .library_v2 import mixdown
@@ -339,9 +356,11 @@ class _IncrementalSpanMapping:
                 self.origin + (s0 - self._at_zero) * RATE_48K,
                 self.origin + (s1 - self._at_zero) * RATE_48K,
             ]
+            self._refresh_knots_snapshot()
         elif len(self._kept_raw) > 2:
             self.j_list.append(index * RATE_48K / self.rate)
             self.p_list.append(self.origin + (ns / 1e9 - self._at_zero) * RATE_48K)
+            self._refresh_knots_snapshot()
 
     def _rebuild(self, anchors) -> None:
         from .library_v2 import mixdown
@@ -356,6 +375,7 @@ class _IncrementalSpanMapping:
         self.j_list.clear()
         self.p_list.clear()
         self._at_zero = None
+        self.knots_snapshot = None
         knots = mixdown.valid_anchors(anchors, self.rate)
         if len(knots) < 2:
             return
@@ -366,6 +386,7 @@ class _IncrementalSpanMapping:
         self._at_zero = s0 + (0.0 - j0) * ((s1 - s0) / (j1 - j0))
         self.j_list = [idx * RATE_48K / self.rate for idx, _ in knots]
         self.p_list = [self.origin + (t - self._at_zero) * RATE_48K for _, t in knots]
+        self._refresh_knots_snapshot()
 
     def sync(self, anchors, count: int) -> None:
         """Synchronize mapping against `anchors[:count]` in O(1) when monotonically appended."""
@@ -377,6 +398,7 @@ class _IncrementalSpanMapping:
                 self.j_list.clear()
                 self.p_list.clear()
                 self._at_zero = None
+                self.knots_snapshot = None
             return
         if count == self._raw_count:
             tail = anchors[count - 1]
@@ -506,7 +528,13 @@ class TrackFollower:
         self._span_mappings: dict[str, _IncrementalSpanMapping] = {}
         self._tl_cursor_48k = 0  # Next 48 kHz timeline sample to emit (for 48 kHz path)
         self._cursor_16k_raw = 0  # Next raw 16 kHz source sample (for direct 16 kHz path)
+        self._raw_hasher_16k = hashlib.sha256()
         self._resampler = IncrementalResampler()
+        self._last_spans: list[dict] = []
+        self._last_specs: list[tuple] = []
+        self._last_total_end_ms = 0
+        self._ended_span_provs: list[object] = []
+        self._diarization_stager = None
 
         # 16 kHz VAD / gate / meter / prefix state.
         self._emitted_16k = 0
@@ -560,6 +588,117 @@ class TrackFollower:
                 self.prefix_invalidated = True
             self._ownership = new_ownership
             self._mask = new_mask
+        if self.prefix_invalidated or self.unsupported:
+            self.detach_diarization_stager()
+
+    def attach_diarization_stager(self, stager) -> bool:
+        if self.prefix_invalidated or self.unsupported or self._emitted_16k > 0:
+            stager.close()
+            return False
+        if self._diarization_stager is not None and self._diarization_stager is not stager:
+            self._diarization_stager.close()
+        self._diarization_stager = stager
+        return True
+
+    def detach_diarization_stager(self) -> None:
+        stager, self._diarization_stager = self._diarization_stager, None
+        if stager is not None:
+            stager.close()
+
+    def has_staged_diarization(self) -> bool:
+        stager = self._diarization_stager
+        return (
+            stager is not None
+            and not stager.aborted
+            and not self.prefix_invalidated
+            and not self.unsupported
+            and stager._samples > 0
+        )
+
+    def export_diarization_staged(self):
+        stager, self._diarization_stager = self._diarization_stager, None
+        if stager is None:
+            return None
+        if self.prefix_invalidated or self.unsupported:
+            stager.close()
+            return None
+        return stager.export()
+
+    def _build_staged_spans_provenance(self, s0: int):
+        import numpy as np
+
+        from .diarization_audio import StagedSpanProvenance
+
+        if self.sample_rate == RATE_16K:
+            if not self._last_spans:
+                return None
+            span = self._last_spans[0]
+            committed = span["committed"]
+            consumed = self._cursor_16k_raw
+            return (
+                StagedSpanProvenance(
+                    file=span["file"],
+                    rate=RATE_16K,
+                    channels=span["channels"],
+                    start_offset_ms=span["start_offset_ms"],
+                    ended=bool(span["ended"] and consumed == committed),
+                    knots=None,
+                    consumed_frames=consumed,
+                    raw_sha256=self._raw_hasher_16k.hexdigest(),
+                ),
+            )
+
+        if self.sample_rate != RATE_48K or not self._last_specs:
+            return None
+        max_prefix_48k = (s0 - 1) * 3 + 48
+        prefix_done = len(self._ended_span_provs)
+        if prefix_done > len(self._last_specs):
+            self._ended_span_provs.clear()
+            prefix_done = 0
+        last_touching = max(0, prefix_done - 1)
+        for idx in range(prefix_done, len(self._last_specs)):
+            _span, mapping, _committed = self._last_specs[idx]
+            if mapping.knots is None:
+                touches = mapping.shift <= max_prefix_48k
+            else:
+                touches = float(mapping.source(np.array([float(max_prefix_48k)]))[0]) >= 0.0
+            if touches:
+                last_touching = idx
+            else:
+                break
+
+        empty_sha = None
+        active_tail = []
+        advancing_prefix = True
+        for idx in range(prefix_done, last_touching + 1):
+            span, mapping, committed = self._last_specs[idx]
+            fname = span["file"]
+            buf = self._span_buffers.get(fname)
+            if buf is not None:
+                consumed = buf.read_cursor
+                raw_sha = buf.raw_sha256()
+            else:
+                consumed = 0
+                if empty_sha is None:
+                    empty_sha = hashlib.sha256(b"").hexdigest()
+                raw_sha = empty_sha
+            fully_ended = bool(span["ended"] and consumed == committed)
+            prov = StagedSpanProvenance(
+                file=fname,
+                rate=span["rate"],
+                channels=span["channels"],
+                start_offset_ms=span["start_offset_ms"],
+                ended=fully_ended,
+                knots=mapping.knots_snapshot,
+                consumed_frames=consumed,
+                raw_sha256=raw_sha,
+            )
+            if advancing_prefix and fully_ended:
+                self._ended_span_provs.append(prov)
+            else:
+                advancing_prefix = False
+                active_tail.append(prov)
+        return (self._ended_span_provs, len(self._ended_span_provs), tuple(active_tail))
 
     def has_ready_segment(self) -> bool:
         return bool(self.ready_segments)
@@ -823,6 +962,19 @@ class TrackFollower:
                     self._prefix_hash_buf.extend(piece.tobytes())
                     if len(self._prefix_hash_buf) == block_bytes:
                         self._block_hashes.append(hashlib.sha256(self._prefix_hash_buf).digest())
+                        stager = self._diarization_stager
+                        if stager is not None:
+                            staged_samples = len(self._block_hashes) * PREFIX_BLOCK_SAMPLES
+                            spans_prov = self._build_staged_spans_provenance(staged_samples)
+                            if spans_prov is None or not stager.append_block(
+                                self._prefix_hash_buf,
+                                origin_16k=self.origin_16k,
+                                samples=staged_samples,
+                                ownership_windows=self._ownership,
+                                spans=spans_prov,
+                                estimated_total_ms=self._last_total_end_ms,
+                            ):
+                                self.detach_diarization_stager()
                         self._prefix_hash_buf.clear()
                         self._latest_checkpoint = _PrefixCheckpoint(
                             block_count=len(self._block_hashes),
@@ -836,6 +988,8 @@ class TrackFollower:
                             gate_state=self._gate.snapshot(),
                             open_start=self._open_start,
                         )
+                elif self._diarization_stager is not None:
+                    self.detach_diarization_stager()
             if flush:
                 if len(self._pending_16k):
                     tail = self._pending_16k
@@ -874,14 +1028,25 @@ class TrackFollower:
             return False
         spans = self._inspect_spans(dir_fd)
         if spans is None:
+            if self.unsupported or self.prefix_invalidated:
+                self.detach_diarization_stager()
             return False
+        self._last_spans = spans
 
         if self.sample_rate == RATE_16K:
             span = spans[0]
+            self._last_total_end_ms = math.ceil((self.origin_16k + span["committed"]) * 1000 / RATE_16K)
             avail = span["committed"] - self._cursor_16k_raw
             if avail > 0:
                 take = min(QUANTUM_16K, avail)
-                block = read_wav_mono_f32(dir_fd, span["file"], self._cursor_16k_raw, take, span["channels"])
+                block = read_wav_mono_f32(
+                    dir_fd,
+                    span["file"],
+                    self._cursor_16k_raw,
+                    take,
+                    span["channels"],
+                    raw_hasher=self._raw_hasher_16k,
+                )
                 self._cursor_16k_raw += take
                 masked = self._apply_mask_16k(block)
                 should_flush = (self._session_ended or self._track_ended) and self._cursor_16k_raw >= span["committed"]
@@ -894,7 +1059,18 @@ class TrackFollower:
 
         specs, safe_end, reached_eof = self._safe_48k_plan(spans)
         if specs is None:
+            if self.unsupported or self.prefix_invalidated:
+                self.detach_diarization_stager()
             return False
+        self._last_specs = specs
+        max_committed_48k = max(
+            (
+                (mapping.end(committed) if mapping.knots is not None else mapping.shift + committed)
+                for _sp, mapping, committed in specs
+            ),
+            default=safe_end,
+        )
+        self._last_total_end_ms = math.ceil((self.origin_16k * 3 + max_committed_48k) * 1000 / RATE_48K)
         avail = safe_end - self._tl_cursor_48k
         if avail > 0:
             take = min(QUANTUM_48K, avail)
@@ -938,7 +1114,18 @@ class TrackFollower:
 class SessionFollower:
     """Multi-track earliest-session-time precompute coordinator (read-only on capture)."""
 
-    def __init__(self, directory, model, model_identity, detector, *, on_cache_entry, record_trace: bool = False):
+    def __init__(
+        self,
+        directory,
+        model,
+        model_identity,
+        detector,
+        *,
+        on_cache_entry,
+        record_trace: bool = False,
+        diarization_options: dict | None = None,
+        statvfs=None,
+    ):
         self.directory = Path(directory)
         try:
             self.resolved_dir = str(self.directory.resolve())
@@ -948,11 +1135,15 @@ class SessionFollower:
         self.model_identity = model_identity
         self.detector = detector
         self.on_cache_entry = on_cache_entry
+        self.diarization_options = diarization_options if isinstance(diarization_options, dict) else None
+        self.statvfs = statvfs
         self.tracks: dict[str, TrackFollower] = {}
         self.session_ended = False
         self.segments_decoded = 0
         self._manifest_sig: tuple[int, int, int, int] | None = None
         self._manifest_loaded = False
+        self._staged_track_id: str | None = None
+        self._eligible_for_diarizer = False
         self._record_trace = bool(record_trace)
         self.schedule_trace: list[tuple[str, str, int]] = []  # Opt-in diagnostics/tests trace
         from . import recognition_cache
@@ -962,6 +1153,91 @@ class SessionFollower:
             if recognition_cache.is_valid_model_identity(self.model_identity)
             else set()
         )
+
+    def _sync_diarization_staging(self, manifest_tracks: list) -> None:
+        if self.diarization_options is None:
+            return
+        from .diarization_audio import TrackDiarizationStager
+
+        valid_rows = []
+        all_kinds = set()
+        system_count = 0
+        me_count = 0
+        identity_counts: dict[str, int] = {}
+        for row in manifest_tracks:
+            if not isinstance(row, dict):
+                continue
+            tid = row.get("id")
+            if not isinstance(tid, str) or not tid:
+                continue
+            kind = _track_kind(row, str(row.get("file", "")))
+            all_kinds.add(kind)
+            if kind == "system":
+                system_count += 1
+            elif kind in ("microphone", "local"):
+                me_count += 1
+            identity = str(row.get("sourceTrackId") or tid)
+            identity_counts[identity] = identity_counts.get(identity, 0) + 1
+            valid_rows.append((tid, kind, identity))
+
+        self._eligible_for_diarizer = bool(
+            system_count >= 1
+            or (all_kinds & {"remote", "tab", "media", "application"})
+            or (len(all_kinds) == 1 and me_count >= 1)
+        )
+
+        def is_single_source_eligible(tid: str, kind: str, identity: str) -> bool:
+            tr = self.tracks.get(tid)
+            if tr is None or tr.prefix_invalidated or tr.unsupported:
+                return False
+            if kind == "system":
+                return system_count == 1
+            if kind in {"remote", "tab", "media", "application"}:
+                return identity_counts.get(identity, 0) == 1
+            if kind in {"microphone", "local"}:
+                return len(all_kinds) == 1 and me_count == 1
+            return False
+
+        if self._staged_track_id is not None:
+            current_meta = next((item for item in valid_rows if item[0] == self._staged_track_id), None)
+            current_tr = self.tracks.get(self._staged_track_id)
+            if (
+                current_meta is not None
+                and current_tr is not None
+                and current_tr._diarization_stager is not None
+                and not current_tr._diarization_stager.aborted
+                and is_single_source_eligible(*current_meta)
+            ):
+                return
+            if current_tr is not None:
+                current_tr.detach_diarization_stager()
+            self._staged_track_id = None
+
+        # Enforce G14 <= 1 group scratch file: choose highest-priority single-source eligible track
+        # that has not yet crossed its first checkpoint.
+        best_tid = None
+        best_rank = 99
+        for tid, kind, identity in valid_rows:
+            if not is_single_source_eligible(tid, kind, identity):
+                continue
+            tr = self.tracks[tid]
+            if tr._emitted_16k > 0:
+                continue
+            rank = 0 if kind == "system" else 1 if kind in {"remote", "tab", "media", "application"} else 2
+            if rank < best_rank:
+                best_rank = rank
+                best_tid = tid
+        if best_tid is not None:
+            tr = self.tracks[best_tid]
+            stager = TrackDiarizationStager(
+                self.resolved_dir,
+                tr.track_id,
+                tr.primary_file,
+                self.diarization_options,
+                statvfs=self.statvfs,
+            )
+            if tr.attach_diarization_stager(stager):
+                self._staged_track_id = best_tid
 
     def refresh(self) -> bool:
         sig = _stat_session_manifest(self.directory)
@@ -977,7 +1253,8 @@ class SessionFollower:
             return False
         events = manifest.get("events") if isinstance(manifest.get("events"), list) else []
         tracks = manifest.get("tracks") if isinstance(manifest.get("tracks"), list) else []
-        for order, track in enumerate(tracks[:64]):
+        bounded_tracks = tracks[:64]
+        for order, track in enumerate(bounded_tracks):
             if not isinstance(track, dict):
                 continue
             track_id = track.get("id")
@@ -992,6 +1269,7 @@ class SessionFollower:
             else:
                 follower.order = order
                 follower.update(track, events, self.session_ended)
+        self._sync_diarization_staging(bounded_tracks)
         self._manifest_sig = sig
         self._manifest_loaded = True
         return True
@@ -1061,14 +1339,55 @@ class SessionFollower:
                 prefixes[(self.resolved_dir, track.primary_file)] = prefix
         return prefixes
 
+    def ready_for_diarizer_warm(self) -> bool:
+        if self.diarization_options is None or not self._eligible_for_diarizer:
+            return False
+        if any(tr.has_ready_segment() for tr in self.tracks.values()):
+            return False
+        if any(tr.has_staged_diarization() for tr in self.tracks.values()):
+            return True
+        return any(tr._emitted_16k >= 3200 for tr in self.tracks.values())
 
-def run_follow_loop(model, bundle: Path, message: dict, emit, *, reader: StdinLineReader, detector, prefix_store: dict):
+    def staged_diarization_count(self) -> int:
+        return sum(1 for tr in self.tracks.values() if tr.has_staged_diarization())
+
+    def export_diarization_staged(self) -> dict:
+        staged_map = {}
+        for track in self.tracks.values():
+            staged = track.export_diarization_staged()
+            if staged is None:
+                continue
+            staged_map[(self.resolved_dir, track.track_id)] = staged
+            if track.primary_file:
+                staged_map[(self.resolved_dir, track.primary_file)] = staged
+        self._staged_track_id = None
+        return staged_map
+
+    def close_diarization_staging(self) -> None:
+        for track in self.tracks.values():
+            track.detach_diarization_stager()
+        self._staged_track_id = None
+
+
+def run_follow_loop(
+    model,
+    bundle: Path,
+    message: dict,
+    emit,
+    *,
+    reader: StdinLineReader,
+    detector,
+    prefix_store: dict,
+    diarization_store: dict | None = None,
+    warm_diarizer=None,
+):
     """Run read-only session following inside a verified speech worker until follow-stop/quit.
 
     Returns (next_command_or_None, detector). If a non-follow command was received
     or EOF/quit occurred, handles clean exit while keeping detector and prefix_store
     warm for an immediate post-Stop pipeline handoff.
     """
+    from .diarization_audio import close_diarization_store
     from .speech_pipeline import SpeechDetector
 
     directory = message.get("directory")
@@ -1083,15 +1402,46 @@ def run_follow_loop(model, bundle: Path, message: dict, emit, *, reader: StdinLi
     if detector is None:
         detector = SpeechDetector(bundle / "silero_vad.onnx")
     prefix_store.clear()
+    close_diarization_store(diarization_store)
+    diarization_options = message.get("diarization") if isinstance(message.get("diarization"), dict) else None
+    if diarization_options is None and warm_diarizer is not None:
+        warm_diarizer.close()
 
     def on_cache(entry):
         emit("follow-cache", directory=directory, cacheEntry=entry)
 
-    follower = SessionFollower(directory, model, model_identity, detector, on_cache_entry=on_cache)
+    follower = SessionFollower(
+        directory,
+        model,
+        model_identity,
+        detector,
+        on_cache_entry=on_cache,
+        diarization_options=diarization_options,
+    )
     idle_notified = False
+    warm_attempted = False
+
+    def cleanup_abort():
+        follower.close_diarization_staging()
+        close_diarization_store(diarization_store)
+        if warm_diarizer is not None:
+            warm_diarizer.close()
+
+    def maybe_prewarm_diarizer():
+        nonlocal warm_attempted
+        if (
+            warm_attempted
+            or warm_diarizer is None
+            or diarization_options is None
+            or not follower.ready_for_diarizer_warm()
+        ):
+            return
+        warm_attempted = True
+        warm_diarizer.warm(diarization_options)
 
     def finish_follow_stop(cmd):
-        if cmd.get("drain"):
+        drain = cmd.get("drain", True) is not False
+        if drain:
             import time
 
             deadline = time.monotonic() + 2.0
@@ -1104,63 +1454,93 @@ def run_follow_loop(model, bundle: Path, message: dict, emit, *, reader: StdinLi
                         break
             except (OSError, ValueError):
                 pass
-        exported = follower.export_prefixes()
-        prefix_store.clear()
-        prefix_store.update(exported)
+            maybe_prewarm_diarizer()
+            exported = follower.export_prefixes()
+            prefix_store.clear()
+            prefix_store.update(exported)
+            staged_count = 0
+            if diarization_store is not None:
+                exported_diar = follower.export_diarization_staged()
+                diarization_store.update(exported_diar)
+                staged_count = len({id(v) for v in exported_diar.values()})
+            else:
+                follower.close_diarization_staging()
+        else:
+            cleanup_abort()
+            exported = {}
+            prefix_store.clear()
+            staged_count = 0
         emit(
             "follow-stopped",
             directory=directory,
             segments=follower.segments_decoded,
             prefixes=len(exported),
+            diarizationStaged=staged_count,
+            diarizerWarmed=bool(warm_diarizer is not None and warm_diarizer.model is not None),
         )
         return "continue", detector
 
-    while True:
-        # Check for stop/quit/preempt commands between every bounded step.
-        line = reader.try_readline(0.0)
-        if line is not None:
-            if not line:
-                return None, detector
-            cmd = json.loads(line)
-            cmd_type = cmd.get("type")
-            if cmd_type == "follow-stop":
-                return finish_follow_stop(cmd)
-            if cmd_type == "quit":
-                return "quit", detector
-            raise ValueError(f"Unexpected command during follow mode: {cmd_type}")
+    try:
+        while True:
+            # Check for stop/quit/preempt commands between every bounded step.
+            line = reader.try_readline(0.0)
+            if line is not None:
+                if not line:
+                    cleanup_abort()
+                    return None, detector
+                cmd = json.loads(line)
+                cmd_type = cmd.get("type")
+                if cmd_type == "follow-stop":
+                    return finish_follow_stop(cmd)
+                if cmd_type == "quit":
+                    cleanup_abort()
+                    return "quit", detector
+                cleanup_abort()
+                raise ValueError(f"Unexpected command during follow mode: {cmd_type}")
 
-        try:
-            follower.refresh()
-            worked = follower.step()
-        except (OSError, ValueError):
-            worked = False
+            try:
+                follower.refresh()
+                worked = follower.step()
+            except (OSError, ValueError):
+                worked = False
 
-        if worked:
-            idle_notified = False
-            continue
+            if worked:
+                idle_notified = False
+                continue
 
-        if follower.all_drained() and not idle_notified:
-            exported = follower.export_prefixes()
-            prefix_store.clear()
-            prefix_store.update(exported)
-            emit(
-                "follow-idle",
-                directory=directory,
-                drained=True,
-                segments=follower.segments_decoded,
-                prefixes=len(exported),
-            )
-            idle_notified = True
+            # When caught up with ASR work, pre-verify/pre-warm Nemotron once at background priority.
+            maybe_prewarm_diarizer()
 
-        # Sleep reactively on stdin until either a command arrives or poll_s elapses.
-        line = reader.try_readline(poll_s)
-        if line is not None:
-            if not line:
-                return None, detector
-            cmd = json.loads(line)
-            cmd_type = cmd.get("type")
-            if cmd_type == "follow-stop":
-                return finish_follow_stop(cmd)
-            if cmd_type == "quit":
-                return "quit", detector
-            raise ValueError(f"Unexpected command during follow mode: {cmd_type}")
+            if follower.all_drained() and not idle_notified:
+                exported = follower.export_prefixes()
+                prefix_store.clear()
+                prefix_store.update(exported)
+                emit(
+                    "follow-idle",
+                    directory=directory,
+                    drained=True,
+                    segments=follower.segments_decoded,
+                    prefixes=len(exported),
+                    diarizationStaged=follower.staged_diarization_count(),
+                    diarizerWarmed=bool(warm_diarizer is not None and warm_diarizer.model is not None),
+                )
+                idle_notified = True
+
+            # Sleep reactively on stdin until either a command arrives or poll_s elapses.
+            line = reader.try_readline(poll_s)
+            if line is not None:
+                if not line:
+                    cleanup_abort()
+                    return None, detector
+                cmd = json.loads(line)
+                cmd_type = cmd.get("type")
+                if cmd_type == "follow-stop":
+                    return finish_follow_stop(cmd)
+                if cmd_type == "quit":
+                    cleanup_abort()
+                    return "quit", detector
+                cleanup_abort()
+                raise ValueError(f"Unexpected command during follow mode: {cmd_type}")
+    except BaseException:
+        cleanup_abort()
+        raise
