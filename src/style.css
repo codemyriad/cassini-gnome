@@ -790,3 +790,6 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
 .transcript-name:not(:disabled):hover label, .transcript-time:not(:disabled):hover label { text-decoration-line: underline; }
 .transcript-time { color: var(--cx-ink-2); font-weight: 400; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .transcript-name:disabled, .transcript-time:disabled { filter: none; opacity: 1; }
+
+/* D-1140: Gtk.FlowBox stands in for Adw.WrapBox on libadwaita 1.5. */
+.cassini-wrap-box > flowboxchild { padding: 0; }

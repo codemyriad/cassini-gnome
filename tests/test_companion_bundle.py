@@ -32,6 +32,40 @@ def source(tmp_path, version="0.2.2"):
     return root
 
 
+def exchange_mv(tmp_path):
+    """The host mv, made to behave like GNU coreutils 9.5+ ``mv --exchange``.
+
+    Ubuntu 24.04 has coreutils 9.4, whose mv has no --exchange, so the bundle
+    script takes its Python renameat2 path there. Tests of the mv path wrap
+    this adapter instead of the host mv: it advertises --exchange in --help
+    and performs ``mv -T --exchange --no-copy -- A B`` with renameat2 itself
+    when the host mv cannot (D-1140).
+    """
+    real = shutil.which("mv")
+    if "--exchange" in subprocess.run([real, "--help"], capture_output=True, text=True).stdout:
+        return real
+    directory = tmp_path / "exchange-mv"
+    directory.mkdir()
+    script = directory / "mv"
+    script.write_text(
+        "#!/bin/sh\n"
+        f'if [ "$1" = --help ]; then {shlex.quote(real)} --help; echo "      --exchange"; exit 0; fi\n'
+        'if [ "$2" = --exchange ]; then\n'
+        f"  exec {shlex.quote(sys.executable)} -I -c "
+        + shlex.quote(
+            "import ctypes, os, sys\n"
+            "libc = ctypes.CDLL(None, use_errno=True)\n"
+            "if libc.renameat2(-100, os.fsencode(sys.argv[1]), -100, os.fsencode(sys.argv[2]), 2):\n"
+            "    sys.exit(1)\n"
+        )
+        + ' "$5" "$6"\n'
+        "fi\n"
+        f'exec {shlex.quote(real)} "$@"\n'
+    )
+    script.chmod(0o700)
+    return str(script)
+
+
 def fingerprint(root):
     return {
         str(p.relative_to(root)): (p.read_bytes(), p.stat().st_ino, p.stat().st_mtime_ns)
@@ -160,7 +194,7 @@ def test_failed_atomic_exchange_keeps_copy_and_recovers_a_legacy_crash(tmp_path,
     before = fingerprint(target)
     commands = tmp_path / "commands"
     commands.mkdir()
-    real_mv = shutil.which("mv")
+    real_mv = exchange_mv(tmp_path)
     script = commands / "mv"
     script.write_text('#!/bin/sh\n[ "$2" != --exchange ] || exit 42\nexec ' + real_mv + ' "$@"\n')
     script.chmod(0o700)
@@ -317,7 +351,7 @@ def test_interruption_at_publication_never_removes_stable_path(tmp_path, monkeyp
     commands.mkdir()
     marker = tmp_path / "interrupted"
     previous = target.parent / ".browser-companion.previous"
-    real_mv = shlex.quote(shutil.which("mv"))
+    real_mv = shlex.quote(exchange_mv(tmp_path))
     script = commands / "mv"
     script.write_text(
         "#!/bin/sh\n"
@@ -406,7 +440,7 @@ def test_host_without_atomic_exchange_keeps_its_existing_copy(tmp_path, monkeypa
     before = fingerprint(target)
     commands = tmp_path / "commands"
     commands.mkdir()
-    real_mv = shlex.quote(shutil.which("mv"))
+    real_mv = shlex.quote(exchange_mv(tmp_path))
     script = commands / "mv"
     script.write_text(f'#!/bin/sh\n[ "$2" != --exchange ] || exit 2\nexec {real_mv} "$@"\n')
     script.chmod(0o700)

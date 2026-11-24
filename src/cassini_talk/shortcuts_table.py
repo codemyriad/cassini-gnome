@@ -55,3 +55,26 @@ GROUPS = {
         ("play_pause", "skip_back", "skip_forward", "listen_turns", "listen_speakers", "play_turn", "listen_stop"),
     ),
 }
+
+
+def sections(ui_text):
+    """``[(section id, [(item id, accelerator), ...]), ...]`` from shortcuts-dialog.ui.
+
+    libadwaita 1.5 (Ubuntu 24.04) has no AdwShortcutsDialog, so the app builds
+    its own dialog from the same rows (D-1140).
+    """
+    import xml.etree.ElementTree as ET
+
+    out = []
+    for section in ET.fromstring(ui_text).iter("object"):
+        if section.get("class") != "AdwShortcutsSection":
+            continue
+        items = []
+        for item in section.iter("object"):
+            if item.get("class") == "AdwShortcutsItem":
+                accelerator = next(
+                    (prop.text or "" for prop in item.findall("property") if prop.get("name") == "accelerator"), ""
+                )
+                items.append((item.get("id"), accelerator))
+        out.append((section.get("id"), items))
+    return out

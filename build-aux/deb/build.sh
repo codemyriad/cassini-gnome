@@ -2,10 +2,9 @@
 # Build the Debian package in a container, install it there and smoke-test it,
 # then copy it to ./dist. Uses podman or docker (see build-aux/container.sh).
 #   build-aux/deb/build.sh [--nocheck] [base-image]      (default: ubuntu:26.04)
-# Base images known to work: ubuntu:26.04, ubuntu:25.10, debian:testing,
-# debian:sid.
-# The package needs GTK >= 4.18 and libadwaita >= 1.8, so older releases
-# (ubuntu:24.04, debian:13) cannot install it.
+# Base images known to work: ubuntu:26.04, ubuntu:24.04 (LTS, D-1140),
+# ubuntu:25.10, debian:testing, debian:sid.
+# The package needs GTK >= 4.14 and libadwaita >= 1.5 (Ubuntu 24.04 LTS).
 set -eu
 cd "$(dirname "$0")/../.."
 . build-aux/container.sh
@@ -30,6 +29,7 @@ fi
 DEB=cassini-talk_${DEB_VERSION}_amd64.deb
 # Each base gets its own file name in dist/ and in the release:
 # ubuntu:26.04 -> cassini-talk_0.4.0~ubuntu26.04_amd64.deb,
+# ubuntu:24.04 -> cassini-talk_0.4.0~ubuntu24.04_amd64.deb,
 # debian:testing -> cassini-talk_0.4.0~debian-testing_amd64.deb.
 BASE_NO_DIGEST=${BASE%@sha256:*}
 BASE_TAG=$(echo "${BASE_NO_DIGEST##*/}" | sed 's/:\([0-9]\)/\1/; s/[:@]/-/g')

@@ -440,6 +440,7 @@ def test_runner_variables_move_the_intended_jobs():
             ("daily-test-release.yml", "deb"),
             ("daily-test-release.yml", "rpm"),
             ("deb.yml", "build"),
+            ("deb.yml", "lts"),
             ("flatpak.yml", "flatpak"),
             ("meson-tests.yml", "meson-tests"),
             ("packages.yml", "arch"),
@@ -688,7 +689,7 @@ def test_the_harness_stage_installs_the_static_runtime_depends():
         ["bash", str(ROOT / "tests/harness-image.sh"), "depends"], check=True, capture_output=True, text=True
     ).stdout
     assert depends.endswith("\n") and depends.strip().split(", ") == expected
-    assert "python3-gi" in expected and "gir1.2-gtk-4.0 (>= 4.18)" in expected
+    assert "python3-gi" in expected and "gir1.2-gtk-4.0 (>= 4.14)" in expected
 
 
 def test_the_meson_tests_run_beside_the_build_products_and_gate_every_run():

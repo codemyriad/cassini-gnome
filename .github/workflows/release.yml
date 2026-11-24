@@ -27,7 +27,7 @@ jobs:
         run: python3 build-aux/ci/release_metadata.py --tag "$GITHUB_REF_NAME"
       - name: Require curated user-facing release notes for the tagged version
         run: python3 build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > /dev/null
-      - name: Require all main checks and the six package artifacts
+      - name: Require all main checks and the seven package artifacts
         id: main
         env:
           GH_TOKEN: ${{ github.token }}

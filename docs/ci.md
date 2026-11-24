@@ -66,6 +66,14 @@ smoke-tests. The matrix names that job in `pytest-in`, and the job prints it.
 | fedora:latest | itself (the rpm is built on fedora:44) |
 | alpine:edge | itself (no package job) |
 
+Debian package / Build .deb (Ubuntu 24.04 LTS) (D-1140) has no Source job and
+sits outside this proof: it builds the `.deb` on `ubuntu:24.04` (Python 3.12,
+GTK 4.14, libadwaita 1.5), runs the whole Meson test suite inside
+`dpkg-buildpackage` (any failure fails the job), lintian and the offline smoke
+in a fresh container, on every run. Ubuntu 24.04 has no
+`python3-rfc3339-validator`, so the two schema-conformance tests skip there;
+`ubuntu:26.04` runs them.
+
 The deb and rpm builds have the GTK and libadwaita typelibs as check
 dependencies, and every recipe runs its check with `CASSINI_TEST_REQUIRE_GTK=1`.
 pytest then stops with a usage error if a typelib is missing, instead of
@@ -134,9 +142,10 @@ package builds' distro images are never cached.
 
 ## Releases
 
-Release downloads the five Debian/RPM/Arch products the exact main commit
+Release downloads the six Debian/RPM/Arch products (the Ubuntu 24.04 LTS
+`.deb` among them, D-1140) the exact main commit
 built and tested (no rebuild at tag time). `green_main.py` requires the latest
-main push orchestrator to succeed, every nested job green, all six package
+main push orchestrator to succeed, every nested job green, all seven package
 artifacts (the stable Flatpak's among them, as proof main built and
 smoke-tested it) and all three full-run build products present and unexpired.
 On a 2-parent `main` merge push whose git tree equals `HEAD^2`, `changes.py`
@@ -253,7 +262,7 @@ diagnostics. No build or test retry is added, and test/job timeouts are unchange
 Every container image used on PR, `main` push, `full-ci`, `workflow_dispatch`,
 and release paths (`daily-test-release.yml`, package build scripts, and test
 Dockerfiles) is pinned by `@sha256:` digest in `build-aux/ci/image-pins.json`
-(`ubuntu:26.04`, `debian:testing`, `fedora:44`, `fedora:latest`,
+(`ubuntu:26.04`, `ubuntu:24.04`, `debian:testing`, `fedora:44`, `fedora:latest`,
 `registry.opensuse.org/opensuse/tumbleweed:latest`, `archlinux:latest`, and
 `alpine:edge`, plus the Flatpak builder image in `flatpak.yml`). The installed
 and offline harness workflows also export the pinned `linux/amd64` base digests
@@ -266,7 +275,7 @@ On scheduled nightly runs (`github.event_name == 'schedule'` in `ci.yml`, plus
 `alpine:edge`, and `fedora:latest`) run against their **unpinned** floating tags
 outside both merge and release gates (`green_main.py` and
 `daily_test_release.py` accept only `push` and `workflow_dispatch` runs), while
-fixed releases (`ubuntu:26.04` and `fedora:44`) remain digest-pinned. A red
+fixed releases (`ubuntu:26.04`, `ubuntu:24.04` and `fedora:44`) remain digest-pinned. A red
 nightly rolling leg therefore signals an upstream base-image change without
 blocking merges or releases; validate and refresh all distro image pins in one
 step via:

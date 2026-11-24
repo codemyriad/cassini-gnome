@@ -27,6 +27,8 @@ from uuid import uuid4
 
 import gi
 
+from .adw_compat import install_dialog_close_fix
+from .css_compat import LEGACY_BASE_SUFFIX, LegacyStyle, is_legacy
 from .i18n import gettext as _
 
 gi.require_version("Gtk", "4.0")
@@ -36,6 +38,8 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 
 RESOURCE = "/io/codemyriad/CassiniTalk"
+LEGACY_CSS = is_legacy((Gtk.get_major_version(), Gtk.get_minor_version()))
+install_dialog_close_fix()
 
 
 def _auto_write_enabled(app):
@@ -55,8 +59,9 @@ class CassiniApplication(Adw.Application):
         super().__init__(
             application_id=application_id,
             flags=Gio.ApplicationFlags.HANDLES_OPEN,
-            resource_base_path=RESOURCE,
+            resource_base_path=RESOURCE + LEGACY_BASE_SUFFIX if LEGACY_CSS else RESOURCE,
         )
+        self._legacy_style = None
         self.version = version
         self.profile = profile
         from .build_refresh import BuildRefresh
@@ -186,6 +191,9 @@ class CassiniApplication(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        if LEGACY_CSS:
+            # D-1140: GTK 4.14 (Ubuntu 24.04) cannot parse style.css.
+            self._legacy_style = LegacyStyle(RESOURCE)
         if self.build_refresh:
             self.build_refresh.installed.announce()
         # Restore the armed state before Watch can publish its first snapshot.
@@ -2156,6 +2164,13 @@ class CassiniApplication(Adw.Application):
         window = self.get_active_window()
         if window is None or self.shortcuts_dialog is not None:
             return
+        from .adw_compat import has_shortcuts_dialog
+
+        if not has_shortcuts_dialog():
+            dialog = self.shortcuts_dialog = self._legacy_shortcuts_dialog()
+            dialog.connect("closed", lambda *_: setattr(self, "shortcuts_dialog", None))
+            dialog.present(window)
+            return
         builder = Gtk.Builder.new_from_resource(RESOURCE + "/shortcuts-dialog.ui")
         from .shortcuts_table import GROUPS, SUBTITLES, TITLES
         from .strings import text
@@ -2170,6 +2185,30 @@ class CassiniApplication(Adw.Application):
         dialog = self.shortcuts_dialog = builder.get_object("shortcuts_dialog")
         dialog.connect("closed", lambda *_: setattr(self, "shortcuts_dialog", None))
         dialog.present(window)
+
+    def _legacy_shortcuts_dialog(self):
+        """The Keyboard shortcuts rows of shortcuts-dialog.ui on libadwaita < 1.8 (D-1140)."""
+        from .shortcuts_table import GROUPS, SUBTITLES, TITLES, sections
+        from .strings import text
+
+        data = Gio.resources_lookup_data(RESOURCE + "/shortcuts-dialog.ui", Gio.ResourceLookupFlags.NONE)
+        page = Adw.PreferencesPage()
+        for section, items in sections(data.get_data().decode("utf-8")):
+            group = Adw.PreferencesGroup(title=text(GROUPS[section][0]))
+            for name, accelerator in items:
+                identifier = TITLES[name]
+                row = Adw.ActionRow(title=text(identifier) if identifier else _("Play or Pause"))
+                if name in SUBTITLES:
+                    row.set_subtitle(text(SUBTITLES[name]))
+                keys = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+                for accel in accelerator.split():
+                    keys.append(Gtk.ShortcutLabel(accelerator=accel))
+                row.add_suffix(keys)
+                group.add(row)
+            page.add(group)
+        view = Adw.ToolbarView(content=page)
+        view.add_top_bar(Adw.HeaderBar())
+        return Adw.Dialog(title=text("menu.keyboardShortcuts"), content_width=480, content_height=640, child=view)
 
     def on_trash(self, *_args):
         """☰ › Trash (HARMONY §7.1, D100): the in-app list of deleted meetings."""

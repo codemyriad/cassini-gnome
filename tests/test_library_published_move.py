@@ -21,7 +21,7 @@ from cassini_talk.library import LibraryCollectionScanner
 from cassini_talk.library_v2 import finalize
 
 
-def setup(tmp_path, monkeypatch):
+def _setup(tmp_path, monkeypatch):
     old, new = tmp_path / "old", tmp_path / "new"
     old.mkdir()
     monkeypatch.setenv("CASSINI_LIBRARY_DIR", str(old))
@@ -34,7 +34,7 @@ def setup(tmp_path, monkeypatch):
 def test_move_publishes_both_representations_and_retires_routing_only_when_complete(
     tmp_path, monkeypatch, session_exists
 ):
-    old, new, sid, directory = setup(tmp_path, monkeypatch)
+    old, new, sid, directory = _setup(tmp_path, monkeypatch)
     result = finalize.finalize(old, sid)
     file = old / result.name
     before = file.read_bytes()
@@ -52,7 +52,7 @@ def test_move_publishes_both_representations_and_retires_routing_only_when_compl
 
 
 def test_stop_after_move_routes_and_moves_the_newly_published_pair(tmp_path, monkeypatch):
-    old, new, sid, directory = setup(tmp_path, monkeypatch)
+    old, new, sid, directory = _setup(tmp_path, monkeypatch)
     location.request(new)  # The recording/saving meeting is still at its old root.
     result = finalize.finalize(old, sid)
     assert location.process()["pending"] == []
@@ -95,7 +95,7 @@ def _crash_move(root, config, point, ready):
 def test_sigkill_replays_each_paired_move_boundary_without_duplicate_rows(tmp_path, monkeypatch, point):
     import multiprocessing
 
-    old, new, sid, directory = setup(tmp_path, monkeypatch)
+    old, new, sid, directory = _setup(tmp_path, monkeypatch)
     result = finalize.finalize(old, sid)
     before = (old / result.name).read_bytes()
     location.request(new)
@@ -135,7 +135,7 @@ def test_recovery_keeps_a_newer_destination_edit_and_rename(tmp_path, monkeypatc
     class Interrupted(BaseException):
         pass
 
-    old, new, sid, directory = setup(tmp_path, monkeypatch)
+    old, new, sid, directory = _setup(tmp_path, monkeypatch)
     result = finalize.finalize(old, sid)
     location.request(new)
 
@@ -170,7 +170,7 @@ def test_editor_queued_on_old_library_lock_follows_the_completed_pair(tmp_path, 
     from cassini_talk.library_v2 import journal
     from cassini_talk.meeting_store import update_metadata
 
-    old, new, sid, directory = setup(tmp_path, monkeypatch)
+    old, new, sid, directory = _setup(tmp_path, monkeypatch)
     finalize.finalize(old, sid)
     location.request(new)
     waiting = threading.Event()
@@ -215,7 +215,7 @@ def test_copy_is_outside_both_library_locks_and_a_changed_source_retries(tmp_pat
     from cassini_talk.library_v2 import journal
     from cassini_talk.meeting_store import update_metadata
 
-    old, new, sid, directory = setup(tmp_path, monkeypatch)
+    old, new, sid, directory = _setup(tmp_path, monkeypatch)
     finalize.finalize(old, sid)
     location.request(new)
     entered, release = threading.Event(), threading.Event()
@@ -255,7 +255,7 @@ def test_unpublished_stage_is_discarded_and_originals_survive(tmp_path, monkeypa
     from cassini_talk import library_move_pair
     from cassini_talk.meeting_store import update_metadata
 
-    old, new, sid, directory = setup(tmp_path, monkeypatch)
+    old, new, sid, directory = _setup(tmp_path, monkeypatch)
     result = finalize.finalize(old, sid)
     location.request(new)
     cancelled = threading.Event()
@@ -300,7 +300,7 @@ def test_cross_filesystem_copy_verifies_bytes_and_same_filesystem_links_closed_a
 
     from cassini_talk import library_move_pair
 
-    old, new, sid, directory = setup(tmp_path, monkeypatch)
+    old, new, sid, directory = _setup(tmp_path, monkeypatch)
     result = finalize.finalize(old, sid)
     original_bytes = (old / result.name).read_bytes()
     original_link = library_move_pair.os.link
@@ -327,7 +327,7 @@ def test_old_path_editor_queued_across_published_move_crash_uses_destination(tmp
     class Interrupted(BaseException):
         pass
 
-    old, new, sid, directory = setup(tmp_path, monkeypatch)
+    old, new, sid, directory = _setup(tmp_path, monkeypatch)
     finalize.finalize(old, sid)
     location.request(new)
     waiting = threading.Event()

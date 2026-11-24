@@ -20,8 +20,8 @@ import sys
 from urllib.parse import unquote
 
 PYTHON = (3, 11)
-GTK = (4, 18)
-ADW = (1, 8)
+GTK = (4, 14)
+ADW = (1, 5)
 
 # Typelib name -> what to install, in the common package names.
 PACKAGES = {

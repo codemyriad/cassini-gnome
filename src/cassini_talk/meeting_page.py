@@ -7,6 +7,7 @@ from decimal import Decimal
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gsk, Gtk, Pango
 
 from . import ux_formats as fmt
+from .adw_compat import wrap_box
 from .exact_transcript import ExactTranscript
 from .i18n import language, using_language
 from .inline_line import InlineLine
@@ -241,7 +242,7 @@ class MeetingPage(Adw.NavigationPage):
         self.subtitle_label = label("", "meeting-subtitle", xalign=0, wrap=True)
         self.full_header.append(self.subtitle_label)
 
-        self.speakers = Adw.WrapBox(child_spacing=16, line_spacing=8, margin_top=2)
+        self.speakers = wrap_box(child_spacing=16, line_spacing=8, margin_top=2)
         self.speakers.update_property([Gtk.AccessibleProperty.LABEL], [text("meeting.speakersPane.a11y")])
         self.speakers_scroller = Gtk.ScrolledWindow(
             hscrollbar_policy=Gtk.PolicyType.NEVER,

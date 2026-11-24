@@ -58,6 +58,8 @@ launcher = configure_file(
 talk_sources = files(
   'cassini_talk/__init__.py',
   'cassini_talk/main.py',
+  'cassini_talk/adw_compat.py',
+  'cassini_talk/css_compat.py',
   'cassini_talk/identity.py',
   'cassini_talk/main_loop_watchdog.py',
   'cassini_talk/installed_build.py',

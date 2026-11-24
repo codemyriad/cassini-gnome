@@ -106,7 +106,7 @@ msginit -i po/cassini-talk.pot -o po/<code>.po -l <code>
 Cassini is a GTK 4 and libadwaita application written in Python, with GStreamer
 for playback and recording.
 
-You need Meson, Python 3.11+, PyGObject, GTK 4.18+, libadwaita 1.8+ and
+You need Meson 1.3+, Python 3.11+, PyGObject, GTK 4.14+, libadwaita 1.5+ and
 GStreamer with the base and good plugins. To install them with your
 distribution's package manager (apt, dnf, zypper, pacman or apk):
 

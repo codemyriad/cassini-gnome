@@ -5,7 +5,7 @@
 # Default images: see DEFAULT_IMAGES below. Example, a single distribution:
 #   build-aux/check-distros.sh fedora:latest
 # Each image: install deps, meson setup/test/install, then check that GTK
-# >= 4.18, libadwaita >= 1.8 and all playback and recording GStreamer elements
+# >= 4.14, libadwaita >= 1.5 and all playback and recording GStreamer elements
 # load from the installed tree. Prints a PASS/FAIL table; exits 1 if any failed.
 # Logs go to a temporary directory (printed at the end), not the source tree;
 # with CASSINI_TEST_LOGS set, each image's meson-logs also go there.
@@ -150,8 +150,8 @@ info = "python %s, gtk %s, adw %s, gst %s" % (
     sys.version.split()[0], fmt(gtk), fmt(adw), fmt(Gst.version()[:3]))
 print("@@versions", info)
 problems = []
-if gtk < (4, 18, 0): problems.append("GTK %s < 4.18" % fmt(gtk))
-if adw < (1, 8, 0): problems.append("libadwaita %s < 1.8" % fmt(adw))
+# The floors runtime.check() enforces (GTK 4.14, libadwaita 1.5).
+problems += [p for p in (runtime.too_old("GTK", gtk, runtime.GTK), runtime.too_old("libadwaita", adw, runtime.ADW)) if p]
 # Every playback and recording element: the app only warns about these.
 for el in runtime.missing_gst_elements(Gst.ElementFactory.find, runtime.all_elements()):
     problems.append("GStreamer element %s missing" % el)

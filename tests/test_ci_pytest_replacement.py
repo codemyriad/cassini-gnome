@@ -274,6 +274,9 @@ def deb_build_depends(control):
     block = re.search(r"^Build-Depends:(.*?)^(?=\S)", control, re.M | re.S)[1]
     entries = {}
     for entry in (e.strip() for e in block.split(",")):
+        # An alternative counts by its first package, the one apt prefers
+        # (rfc3339-validator | the jsonschema of Ubuntu 24.04, which has none).
+        entry = entry.split("|", 1)[0].strip()
         if match := re.fullmatch(r"([a-z0-9.+-]+(?::any)?)(\s*\([^)]*\))?(\s*<[^>]*>)?", entry):
             entries[match[1]] = (match[3] or "").strip()
     return entries
@@ -801,7 +804,7 @@ MUTATIONS = {
     ),
     "arch --nocheck": ("build-aux/arch/build.sh", '"makepkg -s --noconfirm"', '"makepkg -s --noconfirm --nocheck"'),
     "arch BUILDENV": ("build-aux/arch/PKGBUILD", "options=(", "BUILDENV=(!check)\noptions=("),
-    "arch without libadwaita": ("build-aux/arch/PKGBUILD", "  'libadwaita>=1.8'\n", ""),
+    "arch without libadwaita": ("build-aux/arch/PKGBUILD", "  'libadwaita>=1.5'\n", ""),
     "arch check step dropped": ("packages.yml", CHECK_STEP, "\n", 1),
     "arch image moved": (
         "build-aux/arch/build.sh",

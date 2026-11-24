@@ -36,7 +36,10 @@ appstream_file = i18n.merge_file(
 )
 
 appstreamcli = find_program('appstreamcli', required: false)
-if appstreamcli.found()
+# AppStream before 1.1 (1.0.2 on Ubuntu 24.04) ships an SPDX list without
+# Unicode-3.0 and refuses to downgrade that warning; newer distributions
+# validate the same file.
+if appstreamcli.found() and appstreamcli.version().version_compare('>= 1.1.0')
   test('Validate appstream file', appstreamcli,
     args: ['validate', '--no-net', '--explain', appstream_file])
 endif

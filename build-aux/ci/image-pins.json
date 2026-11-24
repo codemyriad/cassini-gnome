@@ -16,6 +16,10 @@
       "digest": "sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96",
       "amd64_digest": "sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6"
     },
+    "ubuntu:24.04": {
+      "digest": "sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1e07929e6b",
+      "amd64_digest": "sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a"
+    },
     "debian:testing": {
       "digest": "sha256:2d46f43b677a047cfab870549eea0d83d0a9bea2f55b3f481efc901043916c2a",
       "amd64_digest": "sha256:bdb44a6e90e7ee02e032121a81fae9f945ce86b9454c6d0d71bc43cb595ba17f"
