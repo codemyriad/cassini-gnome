@@ -12,7 +12,7 @@ from test_flatpak_bridge import host as host_fixture
 
 from cassini_talk import companion, registration
 from cassini_talk import flatpak_bridge as bridge
-from cassini_talk.browser_connection import setup
+from cassini_talk.browser_connection import setup as connection_setup
 
 host = host_fixture
 
@@ -136,7 +136,7 @@ def test_no_connection_poll_heals_dead_target_without_user_click(tmp_path, monke
     monkeypatch.setattr(companion, "host_paths", lambda: hosts(live))
     monkeypatch.setattr(companion, "probe", lambda: (True, False))
     clock = Clock()
-    controller = clock.connection(setup)
+    controller = clock.connection(connection_setup)
     controller.health_check = registration.health
     try:
         controller.trigger()

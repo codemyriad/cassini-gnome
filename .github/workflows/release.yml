@@ -27,7 +27,7 @@ jobs:
         run: python3 build-aux/ci/release_metadata.py --tag "$GITHUB_REF_NAME"
       - name: Require curated user-facing release notes for the tagged version
         run: python3 build-aux/ci/release_notes.py "$GITHUB_REF_NAME" > /dev/null
-      - name: Require all main checks and the six package artifacts
+      - name: Require all main checks and the seven package artifacts
         id: main
         env:
           GH_TOKEN: ${{ github.token }}
@@ -101,14 +101,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -R artifacts
-          # The packages carry the x86_64 writing-down engine: exactly two amd64
-          # .debs (one per base), two x86_64 RPMs and the Arch package, plus their
+          # The packages carry the x86_64 writing-down engine: exactly three amd64
+          # .debs (Ubuntu 26.04, Debian testing, Ubuntu 24.04 LTS), two x86_64 RPMs
+          # and the Arch package, plus their
           # SHA256SUMS (sha256sum -c format, by file name), which is attached too.
           # A checked command (bash -e stops here), not a process substitution, whose
           # failure bash would discard: a refused set must never create a release.
           python3 source/build-aux/ci/release_sums.py artifacts --stage staged --sums SHA256SUMS > assets.txt
           mapfile -t assets < assets.txt
-          test "${#assets[@]}" -eq 6
+          test "${#assets[@]}" -eq 7
           # The tagged version's NEWS section, in plain language, with GitHub's PR list folded under <details>.
           prev_args=()
           if prev_tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null) && [ -n "$prev_tag" ] && [ "$prev_tag" != "$GITHUB_REF_NAME" ]; then
@@ -126,5 +127,5 @@ jobs:
           gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir published
           cd published
           sha256sum --check --strict SHA256SUMS
-          test "$(wc -l < SHA256SUMS)" -eq 5
+          test "$(wc -l < SHA256SUMS)" -eq 6
           diff <(ls | grep -vx SHA256SUMS | sort) <(cut -d' ' -f3- SHA256SUMS | sort)

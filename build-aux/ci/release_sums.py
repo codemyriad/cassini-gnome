@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Collect a release's five native packages and write their SHA256SUMS.
+"""Collect a release's six native packages and write their SHA256SUMS.
 
-A release attaches exactly two .debs (Ubuntu 26.04 and Debian testing), two
+A release attaches exactly three .debs (Ubuntu 26.04, Debian testing and
+Ubuntu 24.04 LTS, D-1140), two
 x86_64 RPMs (Fedora and openSUSE) and one Arch package, plus SHA256SUMS in
 sha256sum's own format, one line per package by file name, so downloaders
 run `sha256sum -c SHA256SUMS` next to what they fetched.
@@ -21,13 +22,17 @@ import re
 import shutil
 from pathlib import Path
 
-KINDS = {"deb": ("*.deb", 2), "rpm": ("*.x86_64.rpm", 2), "arch": ("*.pkg.tar.zst", 1)}
+KINDS = {"deb": ("*.deb", 3), "rpm": ("*.x86_64.rpm", 2), "arch": ("*.pkg.tar.zst", 1)}
+# The unattended daily test release (daily_test_release.py) builds no Ubuntu
+# 24.04 LTS .deb, so it keeps its own five-package set.
+NIGHTLY_KINDS = {**KINDS, "deb": ("*.deb", 2)}
 
 
-def packages(directory):
-    """The five packages under `directory`, refusing a missing, extra or same-named one."""
+def packages(directory, kinds=KINDS):
+    """The packages `kinds` counts under `directory` (a stable release's six by default),
+    refusing a missing, extra or same-named one."""
     found = []
-    for kind, (pattern, count) in KINDS.items():
+    for kind, (pattern, count) in kinds.items():
         matches = sorted(p for p in Path(directory).rglob(pattern) if p.is_file())
         if len(matches) != count:
             raise ValueError(f"Expected {count} {kind} package(s), found {[p.name for p in matches]}")

@@ -239,7 +239,9 @@ def test_generated_desktop_metainfo_and_mo_cover_all_six_languages():
         for field in ("GenericName", "Comment", "Keywords"):
             assert app[f"{field}[{tag}]"].strip(), (field, tag)
         assert app[f"Keywords[{tag}]"].endswith(";")
-        assert summaries[language].strip(), language
+        # gettext 0.22+ writes BCP 47 tags (pt-BR); 0.21 (Ubuntu 24.04) the
+        # POSIX ones (pt_BR). AppStream reads both.
+        assert (summaries.get(language) or summaries.get(tag) or "").strip(), language
         assert (build / "po" / tag / "LC_MESSAGES/cassini-talk.mo").is_file(), tag
 
 

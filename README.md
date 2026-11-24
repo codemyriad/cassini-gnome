@@ -23,7 +23,7 @@ Cassini is a GNOME desktop app for Linux that records your meetings, writes them
 
 Packages are on the [Releases page](https://github.com/codemyriad/cassini-gnome/releases). The latest release, [v0.4.0](https://github.com/codemyriad/cassini-gnome/releases/tag/v0.4.0), has `.deb` packages for Ubuntu 26.04 and Debian testing, Fedora and openSUSE Tumbleweed `.rpm` packages and an Arch package. There is no Flatpak release for now. You can also download test packages built from `main` on each successful [CI run](https://github.com/codemyriad/cassini-gnome/actions/workflows/ci.yml?query=branch%3Amain) (a GitHub account is needed to download them), or build from source ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
-Native packages need GTK 4.18 and libadwaita 1.8 or newer (Debian testing, Ubuntu 26.04, Fedora 43 and later, openSUSE Tumbleweed, and Arch Linux). The Fedora package is built for Fedora 44 (Python 3.14) until ONNX Runtime publishes Python 3.15 packages, so Fedora 45 has no package yet. Older distributions (Debian 13, Ubuntu 24.04, openSUSE Leap, and RHEL) have no package either; the Flatpak test bundle built from `main` runs there. The test packages built from `main` are for 64-bit Intel and AMD (`x86_64`) computers: `.deb` packages for Ubuntu 26.04 and Debian testing, Fedora and openSUSE RPMs, an Arch package, and the Flatpak.
+Native packages need GTK 4.14 and libadwaita 1.5 or newer. CI builds and tests `.deb` packages for Ubuntu 26.04, Ubuntu 24.04 LTS and Debian testing, Fedora 44 and openSUSE Tumbleweed `.rpm` packages and an Arch package (see [Supported Linux distributions](#supported-linux-distributions)). The Fedora package is built for Fedora 44 (Python 3.14) until ONNX Runtime publishes Python 3.15 packages, so Fedora 45 has no package yet. The test packages built from `main` are for 64-bit Intel and AMD (`x86_64`) computers: `.deb` packages for Ubuntu 26.04, Ubuntu 24.04 LTS and Debian testing, Fedora and openSUSE RPMs, an Arch package, and the Flatpak.
 
 - **Flatpak test bundle from `main`** (not a release; uses the GNOME 50 runtime from Flathub):
 
@@ -54,6 +54,27 @@ Native packages need GTK 4.18 and libadwaita 1.8 or newer (Debian testing, Ubunt
   ```sh
   sudo pacman -U cassini-talk-*.pkg.tar.zst
   ```
+
+### Supported Linux distributions
+
+| Distribution | Package | Tested in CI |
+| --- | --- | --- |
+| Ubuntu 26.04 | `.deb` (`~ubuntu26.04`) | build, full test suite, installed-app journeys |
+| Ubuntu 24.04 LTS | `.deb` (`~ubuntu24.04`) | build, full test suite, lintian, offline smoke test |
+| Debian testing | `.deb` (`~debian-testing`) | build, full test suite |
+| Fedora 44 | `.rpm` | build, full test suite |
+| openSUSE Tumbleweed | `.rpm` | build, full test suite |
+| Arch Linux | `.pkg.tar.zst` | build, full test suite |
+| Debian 13, Fedora 43, others with the versions below | none: build from source or use the Flatpak test bundle | not tested |
+| openSUSE Leap, RHEL 9 and older | none (GTK or libadwaita too old): the Flatpak test bundle | no |
+
+Version floors, checked at startup (`src/cassini_talk/runtime.py`) and in the package dependencies:
+
+- Python 3.11 (the `.deb` and `.rpm` depend on the exact Python version they were built for, because the bundled ONNX Runtime is a CPython extension)
+- GTK 4.14 and libadwaita 1.5 (GTK before 4.16 cannot read the app's stylesheet, so Cassini translates it at startup; with libadwaita before 1.7 and 1.8 the speaker list and the Keyboard shortcuts dialog use older widgets)
+- GStreamer 1.20 with the Ogg and Opus plugins; a PulseAudio-compatible sound server (such as PipeWire) to record
+- glibc 2.28 (the ONNX Runtime wheels are `manylinux_2_28`), `x86_64` only
+- Meson 1.3 to build from source
 
 ### Your first meeting
 

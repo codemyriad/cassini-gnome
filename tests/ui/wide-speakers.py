@@ -143,7 +143,14 @@ with tempfile.TemporaryDirectory() as temporary:
 
     collect(window.meeting_page.speakers)
     assert len(chips) == 14
-    until(window, lambda: len({chip.get_allocation().y for chip in chips}) > 1, "Inline speakers wrap onto rows")
+    speaker_list = window.meeting_page.speakers
+
+    def rows():
+        # Relative to the speaker list: on libadwaita < 1.7 each chip sits in its own FlowBoxChild (D-1140).
+        bounds = [chip.compute_bounds(speaker_list) for chip in chips]
+        return {round(rect.get_y()) for found, rect in bounds if found}
+
+    until(window, lambda: len(rows()) > 1, "Inline speakers wrap onto rows")
     paintable = Gtk.WidgetPaintable.new(window)
     painted = []
 

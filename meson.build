@@ -35,7 +35,8 @@ if get_option('sherpa').enabled()
 endif
 
 # Runtime requirements, checked by gi.require_version() at startup:
-# GTK >= 4.18, libadwaita >= 1.8, GStreamer >= 1.20 with the Opus plugin.
+# GTK >= 4.14, libadwaita >= 1.5, GStreamer >= 1.20 with the Opus plugin
+# (Ubuntu 24.04 LTS; src/cassini_talk/css_compat.py and adw_compat.py).
 
 subdir('data')
 subdir('po')

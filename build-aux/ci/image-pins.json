@@ -16,6 +16,10 @@
       "digest": "sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96",
       "amd64_digest": "sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6"
     },
+    "ubuntu:24.04": {
+      "digest": "sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1e07929e6b",
+      "amd64_digest": "sha256:9a04f13b3f80ef056361e30868593b1cfd2279fe19e4081cb93a90bf56819d6a"
+    },
     "debian:testing": {
       "digest": "sha256:2d46f43b677a047cfab870549eea0d83d0a9bea2f55b3f481efc901043916c2a",
       "amd64_digest": "sha256:bdb44a6e90e7ee02e032121a81fae9f945ce86b9454c6d0d71bc43cb595ba17f"
@@ -29,8 +33,8 @@
       "amd64_digest": "sha256:53d138f25f6738257c78553d51369b662efc0e0eb1cd1556a2fe0ad5a115be88"
     },
     "registry.opensuse.org/opensuse/tumbleweed:latest": {
-      "digest": "sha256:b088dd76bffb2e6ff88c5666f845163e9fe75330a9e57a70712d504c18f35817",
-      "amd64_digest": "sha256:9776eaff9d8aab89b38e2afd1e2eddcecfeffa39a1f882906fdc136435fe4535"
+      "digest": "sha256:8d75d2997058df2cd0821d07e17a285b4548e77781a88c0dae8d1b17dbca3c1b",
+      "amd64_digest": "sha256:05ee75ae4c97784d9c9fd92bc0ea03fd9eb6667a85a5b6ca7a3fc11f79351abc"
     },
     "archlinux:latest": {
       "digest": "sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899",

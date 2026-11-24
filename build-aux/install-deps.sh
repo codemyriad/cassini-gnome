@@ -9,7 +9,7 @@
 #     --yes       do not ask for confirmation
 #     --dry-run   print the install command instead of running it
 #     --required-only  DNF only: omit weak dependencies (CI source validation)
-# The app needs GTK >= 4.18 and libadwaita >= 1.8; older distributions
+# The app needs GTK >= 4.14 and libadwaita >= 1.5; older distributions
 # install fine but cannot run it (see build-aux/check-distros.sh). Writing
 # down also needs the pinned engine (meson -Dwhistle=enabled, glibc x86_64),
 # which brings its own ONNX Runtime: the distributions' can pull in sympy
@@ -41,8 +41,8 @@ Install these with your package manager (names vary between distributions):
            optional: desktop-file-validate, appstreamcli,
            gtk4-update-icon-cache, python3 pytest, jsonschema and
            rfc3339-validator (the protocol conformance tests)
-  runtime: python3 (>= 3.11), PyGObject, GTK 4 (>= 4.18) and
-           libadwaita (>= 1.8) with their GObject introspection typelibs,
+  runtime: python3 (>= 3.11), PyGObject, GTK 4 (>= 4.14) and
+           libadwaita (>= 1.5) with their GObject introspection typelibs,
            GStreamer 1.x typelib, gst-plugins-base and gst-plugins-good
            (oggdemux, opusdec), a PipeWire or PulseAudio GStreamer sink;
            for writing meetings down (glibc x86_64 only): NumPy and

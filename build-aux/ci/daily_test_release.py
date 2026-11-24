@@ -596,7 +596,7 @@ def publish_release(
 
     staged_dir = work_dir / "staged"
     sums_path = work_dir / "SHA256SUMS"
-    staged = release_sums.stage(release_sums.packages(artifacts_dir), staged_dir)
+    staged = release_sums.stage(release_sums.packages(artifacts_dir, release_sums.NIGHTLY_KINDS), staged_dir)
     verify_staged_versions(staged, value)
     release_sums.write_sums(staged, sums_path)
     assets = [*staged, sums_path]

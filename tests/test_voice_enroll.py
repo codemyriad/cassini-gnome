@@ -93,7 +93,11 @@ def test_quiet_room_is_too_short_even_when_long():
 
 
 def test_speech_rule_matches_the_test_recording_meter():
-    sound_check = pytest.importorskip("cassini_talk.sound_check", exc_type=ImportError)
+    # Not importorskip(exc_type=...): that needs pytest 8.2, Ubuntu 24.04 has 7.4.
+    try:
+        from cassini_talk import sound_check
+    except ImportError as error:
+        pytest.skip(f"cassini_talk.sound_check needs GStreamer: {error}")
     assert (voice_enroll.ACTIVE_DBFS, voice_enroll.FRAME_MS, voice_enroll.MIN_RUN_FRAMES) == (
         sound_check.ACTIVE_DBFS,
         sound_check.FRAME_MS,

@@ -156,3 +156,48 @@ jobs:
         with:
           path: ${{ steps.harness.outputs.path }}
           key: ${{ steps.harness.outputs.key }}
+
+  # D-1140: Ubuntu 24.04 LTS (Python 3.12, GTK 4.14, libadwaita 1.5), on every
+  # run. The same build.sh as above: build, the whole Meson test suite (any
+  # failing test fails dpkg-buildpackage), lintian, then the offline smoke in a
+  # fresh container. Outside the G11 pytest matrix: 24.04 has no
+  # python3-rfc3339-validator, so its two schema-conformance tests skip there;
+  # ubuntu:26.04 runs them. No installed-app journeys here (26.04 runs them).
+  lts:
+    name: Build .deb (Ubuntu 24.04 LTS)
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_RUNNER == 'hetzner' && fromJSON('["self-hosted","cm-hetzner"]') || 'ubuntu-26.04' }}
+    # Room for a cold build image (no prebuilt ci-images.yml copy yet, e.g. a new week).
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: |
+          echo "CASSINI_PARAKEET_TEST_CACHE=$RUNNER_TEMP/parakeet-models" >> "$GITHUB_ENV"
+          echo "CASSINI_TEST_LOGS=$RUNNER_TEMP/meson-logs" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v6
+        with:
+          path: .whistle-cache
+          key: whistle-${{ hashFiles('whistle/pins.json') }}
+      - uses: actions/cache/restore@v6
+        with:
+          path: .sherpa-cache
+          key: sherpa-${{ hashFiles('src/cassini_talk/sherpa-pins.json') }}
+      - uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/parakeet-models
+          key: parakeet-ultra-v2-50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366
+      - run: build-aux/whistle-cache.sh
+      - run: build-aux/deb/build.sh "ubuntu:24.04@sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1e07929e6b"
+      - uses: actions/upload-artifact@v7
+        if: ${{ failure() || (github.event_name != 'pull_request' && always()) }}
+        with:
+          name: meson-logs-deb-lts
+          path: ${{ runner.temp }}/meson-logs/
+          retention-days: 14
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deb-lts
+          path: dist/*~ubuntu24.04_amd64.deb
+          if-no-files-found: error

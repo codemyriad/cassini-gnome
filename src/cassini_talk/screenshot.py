@@ -275,7 +275,11 @@ def capture(application_id, version, profile):
                 tz=os.environ.get("TZ"),
                 lang=os.environ.get("LANG"),
                 font=Gtk.Settings.get_default().props.gtk_font_name,
-                accent=Adw.StyleManager.get_default().get_accent_color().value_nick,
+                accent=(
+                    Adw.StyleManager.get_default().get_accent_color().value_nick
+                    if hasattr(Adw.StyleManager, "get_accent_color")  # libadwaita 1.6
+                    else None
+                ),
                 light=not Adw.StyleManager.get_default().get_dark(),
                 speechModels=(
                     (["whistle"] if opened_settings and app.settings_dialog.whistle.get_visible() else [])

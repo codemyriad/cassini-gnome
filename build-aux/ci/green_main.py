@@ -15,7 +15,7 @@ MAIN_EVENTS = ("push", "workflow_dispatch")
 FULL_MATRIX_EVENTS = ("workflow_dispatch",)
 # flatpak-stable is never shipped (D45.4); it proves main built, validated
 # and smoke-tested the stable Flatpak profile, which CI keeps as a check.
-PACKAGES = {"deb-0", "deb-1", "rpm-fedora", "rpm-opensuse", "arch", "flatpak-stable"}
+PACKAGES = {"deb-0", "deb-1", "deb-lts", "rpm-fedora", "rpm-opensuse", "arch", "flatpak-stable"}
 BUILD_PRODUCTS = {"ci-core", "ci-boards", "ci-offline"}
 # Jobs a release needs to have run, not merely not failed: since H the Meson
 # tests are a job of their own beside Build's products (ci.yml callers' names).

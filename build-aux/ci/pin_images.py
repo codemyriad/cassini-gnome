@@ -31,6 +31,7 @@ PINS_FILE = Path("build-aux/ci/image-pins.json")
 
 FIXED_IMAGES = (
     "ubuntu:26.04",
+    "ubuntu:24.04",
     "fedora:44",
 )
 
@@ -44,6 +45,7 @@ ROLLING_IMAGES = (
 
 IMAGES = (
     "ubuntu:26.04",
+    "ubuntu:24.04",
     "debian:testing",
     "fedora:44",
     "fedora:latest",
@@ -73,8 +75,9 @@ IMAGE_TARGETS: dict[str, tuple[str, ...]] = {
         "registry.opensuse.org/opensuse/tumbleweed:latest",
     ),
     ".github/workflows/meson-tests.yml": ("ubuntu:26.04",),
-    ".github/workflows/source.yml": IMAGES,
-    ".github/workflows/deb.yml": ("ubuntu:26.04", "debian:testing"),
+    # D-1140: Ubuntu 24.04 LTS is a package build only (deb.yml), no Source job.
+    ".github/workflows/source.yml": tuple(tag for tag in IMAGES if tag != "ubuntu:24.04"),
+    ".github/workflows/deb.yml": ("ubuntu:26.04", "ubuntu:24.04", "debian:testing"),
     ".github/workflows/packages.yml": (
         "fedora:44",
         "registry.opensuse.org/opensuse/tumbleweed:latest",
