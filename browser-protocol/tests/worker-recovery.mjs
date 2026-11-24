@@ -7,6 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { workerDeathDuringRecording } from '../scenarios/worker-recovery.mjs';
+import { requirePrivateAudio } from './support/private-audio.mjs';
+requirePrivateAudio(); // this test un-mutes Chromium
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const extension = path.resolve(process.env.CASSINI_TEST_EXTENSION || path.join(root, 'extension'));

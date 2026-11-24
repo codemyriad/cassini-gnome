@@ -325,3 +325,144 @@ test('duplicate page hook-ready messages are forwarded only once per handshake',
  for(let i=0;i<200;i++)f.page({type:'hookReady',protocol:1,revision:3,instanceId:'current'});
  assert.equal(port.sent.filter(message=>message.type==='relayReady').length,1);
 });
+
+test('the popup reload offered for a repaired relay is accepted; the app command keeps the strict rule',async()=>{
+  const app=await setup(1),reloads=[];
+  try {
+    app.chrome.tabs.reload=async tabId=>reloads.push(tabId);
+    const popup={id:'extension',url:app.chrome.runtime.getURL('popup.html')};
+    const reload=(tabId,sender=popup)=>new Promise(resolve=>app.chrome.runtime.onMessage.emit({target:'background',type:'reloadMeetingTab',tabId},sender,resolve));
+    // setup(1) gives tab 2 a healthy relay that is not document-start trusted: a repaired relay.
+    assert.equal(app.api.controlStatus().browserHealth.tabs.find(t=>t.tabId===2).state,'ready');
+    const strict=await app.command({type:'command',requestId:'strict',action:'reloadTab',tabId:2,independent:true});
+    assert.equal(strict.ok,false);assert.equal(strict.code,'gone');assert.deepEqual(reloads,[]);
+    const accepted=await reload(2);assert.equal(accepted.error,undefined);assert.deepEqual(reloads,[2]);
+    assert.equal((await reload(99)).code,'gone','an unknown tab is still refused');
+  } finally {app.close()}
+});
+test('a document-start trusted relay is never reloaded from the popup, nor a repaired one while recording',async()=>{
+  const app=await setup(1),reloads=[];
+  try {
+    app.chrome.tabs.reload=async tabId=>reloads.push(tabId);
+    const popup={id:'extension',url:app.chrome.runtime.getURL('popup.html')};
+    const reload=tabId=>new Promise(resolve=>app.chrome.runtime.onMessage.emit({target:'background',type:'reloadMeetingTab',tabId},popup,resolve));
+    const frame=[...app.api.frames].find(f=>f.tabId===2);frame.observerDocumentStart=true;
+    assert.equal((await reload(2)).code,'gone');
+    frame.observerDocumentStart=false;
+    assert.equal((await app.command({type:'command',requestId:'go',action:'start',mode:'tracks',tabId:2,independent:true})).ok,true);
+    assert.equal((await reload(2)).code,'busy');assert.deepEqual(reloads,[]);
+    while(app.api.status().recording)await app.api.stop();
+  } finally {app.close()}
+});
+
+test('departing capture drain longer than 1500 ms and 2500 ms keeps relay and worker checking until hookReady, and times out at 10000 ms if wedged',async()=>{
+  const {moduleURL}=require('./support/page-capture-harness.cjs');
+  const hookSource=fs.readFileSync(path.join(__dirname,'../page-hook.js'),'utf8');
+  async function scenario(flushMs){
+    const app=await setup(0);app.pages[0].onDisconnect.emit();
+    let now=0,nextId=0;const queue=new Map();
+    const later=(fn,ms)=>{const id=++nextId;queue.set(id,{fn,at:now+ms});return id};
+    const cancel=id=>queue.delete(id);
+    const advance=async ms=>{
+      const target=now+ms;
+      while(true){
+        let earliest=null;
+        for(const [id,item] of queue)if(item.at<=target&&(!earliest||item.at<earliest.at))earliest={id,...item};
+        if(!earliest)break;
+        queue.delete(earliest.id);now=earliest.at;earliest.fn();
+        await new Promise(resolve=>setImmediate(resolve));
+      }
+      now=target;
+      await new Promise(resolve=>setImmediate(resolve));
+    };
+    app.api.relayTimers.later=later;app.api.relayTimers.cancel=cancel;
+    const listeners=new Map(),ports=[];
+    class Peer{
+      constructor(){this.connectionState='connected';this.iceConnectionState='connected';this.signalingState='stable';
+        this.slots=[{currentDirection:'recvonly',receiver:{track:{id:'r1',kind:'audio',readyState:'live',enabled:true,muted:false},
+          getStats:async()=>new Map([['rtp',{id:'rtp',type:'inbound-rtp',kind:'audio',packetsReceived:this.packets}]])}}];this.senders=[];this.packets=0}
+      addEventListener(){}getTransceivers(){return this.slots}getSenders(){return this.senders}getReceivers(){return this.slots.map(s=>s.receiver)}close(){this.signalingState='closed'}
+    }
+    for(const name of ['getStats','createOffer','createAnswer','setLocalDescription','setRemoteDescription','addTrack','addTransceiver'])Peer.prototype[name]=()=>Promise.resolve();
+    const window={location:{href:'https://meet.example/call'},RTCPeerConnection:Peer,
+      addEventListener(name,fn){if(!listeners.has(name))listeners.set(name,new Set());listeners.get(name).add(fn)},
+      removeEventListener(name,fn){listeners.get(name)?.delete(fn)},
+      postMessage(data){queueMicrotask(()=>{for(const fn of [...listeners.get('message')||[]])fn({isTrusted:true,source:window,data})})}};
+    let intervals=[];
+    globalThis.__cassiniPageCapture=async options=>{
+      await options.send({type:'track',id:options.id,label:options.label,kind:options.kind,sampleRate:48000,channels:1,sourceTrackId:options.sourceTrackId,clockMethod:'roundTrip',clockUncertaintyMs:1});
+      return {failed:false,stop:()=>flushMs===Infinity?new Promise(()=>{}):new Promise(resolve=>later(resolve,flushMs))};
+    };
+    const hookContext=vm.createContext({window,navigator:{},document:{querySelectorAll:()=>[]},MediaStream:class{constructor(t){this.t=t}getAudioTracks(){return this.t}},
+      MediaStreamTrack:class{},AudioContext:class{sampleRate=48000;state='running';async close(){this.state='closed'}},
+      crypto:{randomUUID:()=>'span-1'},performance:{now:()=>now},setInterval:fn=>(intervals.push(fn),intervals.length),clearInterval(){},
+      setTimeout:later,clearTimeout:cancel,queueMicrotask});
+    vm.runInContext(hookSource,hookContext,{importModuleDynamically:vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER});
+    const pc=new window.RTCPeerConnection();await intervals[0]();pc.packets=15;await intervals[0]();pc.packets=30;await intervals[0]();
+    function mountRelay(){
+      let alive=true;const runtime=event();
+      const chrome={runtime:{id:'extension',getManifest(){if(!alive)throw Error('Invalidated');return {version:'0.2.32'}},getURL:name=>name==='capture.js'?moduleURL:'extension://'+name,onMessage:runtime,
+        connect(){
+          const workerPort={name:'cassini-frame',sender:{id:'extension',tab:{id:2},frameId:0},onMessage:event(),onDisconnect:event(),sent:[],
+            postMessage(m){this.sent.push(m);queueMicrotask(()=>relayPort.onMessage.emit(m))}};
+          const relayPort={sent:[],onMessage:event(),onDisconnect:event(),disconnect(){this.disconnected=true;queueMicrotask(()=>workerPort.onDisconnect.emit())},
+            postMessage(m){if(!alive)throw Error('Invalidated');this.sent.push(m);queueMicrotask(()=>workerPort.onMessage.emit(m))}};
+          ports.push({workerPort,relayPort});app.chrome.runtime.onConnect.emit(workerPort);return relayPort;
+        }}};
+      const relayContext=vm.createContext({__cassiniRepairInjection:true,window,chrome,setTimeout:later,clearTimeout:cancel});
+      vm.runInContext(source,relayContext);
+      return {runtime,invalidate(){alive=false}};
+    }
+    try{
+      const first=mountRelay();
+      await until(()=>app.api.browserHealth().state==='ready');
+      assert.equal((await app.command({type:'command',requestId:'start-1',action:'start',mode:'tracks',tabId:2,independent:true})).ok,true);
+      await until(()=>app.audio[0].sent.some(p=>p.type==='track'));
+      // Simulate extension reload/reconnect: retire the old relay (starting a slow drain) and mount a replacement relay.
+      first.invalidate();ports[0].relayPort.onDisconnect.emit();ports[0].workerPort.onDisconnect.emit();
+      await until(()=>!app.api.status().recording);
+      const second=mountRelay(),probes=[];
+      await new Promise(resolve=>setImmediate(resolve));
+      await new Promise(resolve=>setImmediate(resolve));
+      second.runtime.emit({type:'cassini-connect'},{},value=>probes.push(value));
+      await advance(1500);
+      assert.equal(ports[1].relayPort.sent.some(m=>m.type==='relayUnavailable'),false,'1500 ms timer must not fire relayUnavailable during active drain');
+      assert.equal(probes.length,0,'probe waiter must wait for drain completion');
+      assert.equal(app.api.browserHealth().state,'checking');
+      await advance(1000); // now = 2500 ms (TAB_READY_DEADLINE_MS)
+      assert.equal(app.api.browserHealth().state,'checking','2500 ms worker deadline must not mark draining hook reloadRequired');
+      if(flushMs<Infinity){
+        await advance(flushMs-2500);
+        await until(()=>app.api.browserHealth().state==='ready');
+        assert.equal(ports[1].relayPort.sent.some(m=>m.type==='relayUnavailable'),false);
+        assert.equal(ports[1].relayPort.sent.some(m=>m.type==='relayReady'),true);
+        assert.deepEqual(probes.map(p=>[p.connected,p.needsReload]),[[true,false]]);
+      }else{
+        await advance(7499); // now = 9999 ms
+        assert.equal(app.api.browserHealth().state,'checking');
+        await advance(1); // now = 10000 ms
+        await until(()=>app.api.browserHealth().state==='reloadRequired');
+        assert.equal(ports[1].relayPort.sent.some(m=>m.type==='relayUnavailable'),true);
+        assert.deepEqual(probes.map(p=>[p.connected,p.needsReload]),[[false,true]]);
+      }
+    }finally{delete globalThis.__cassiniPageCapture;app.close()}
+  }
+  await scenario(4000);
+  await scenario(Infinity);
+});
+
+test('same-relay reconnect during a >1500 ms drain waits up to 10000 ms before declaring relayUnavailable',()=>{
+  const f=relay(),old=f.ports[0];
+  old.onMessage.emit({type:'start',token:'departing'});
+  for(const fn of f.handlers.get('pagehide'))fn({isTrusted:true,persisted:true});
+  for(const fn of [...f.handlers.get('pageshow')])fn({isTrusted:true,persisted:true});
+  const fresh=f.ports[1];
+  fresh.onMessage.emit({type:'relayHello',protocol:1,instanceId:'restored'});
+  assert.equal([...f.timers.values()].some(t=>t.ms===1500),false,'active drainingToken must not arm a 1500 ms handshake timeout');
+  const drainTimer=[...f.timers.values()].find(t=>t.ms===10000);
+  assert.ok(drainTimer,'draining handshake uses 10000 ms bound');
+  f.page({type:'stopped',token:'departing'});
+  f.page({type:'hookReady',protocol:1,revision:3,instanceId:'restored'});
+  assert.equal(fresh.sent.some(m=>m.type==='relayUnavailable'),false);
+  assert.equal(fresh.sent.some(m=>m.type==='relayReady'),true);
+});

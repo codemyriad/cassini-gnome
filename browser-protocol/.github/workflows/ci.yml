@@ -199,6 +199,7 @@ jobs:
         run: |
           node --test tests/rtc-topology-probe.test.mjs
           timeout 240 node tests/nextcloud-talk.mjs
+          timeout 240 node tests/nextcloud-popup-open.mjs
       - name: Measure generic RTC positives, negatives and semantic ambiguity
         working-directory: protocol
         run: timeout 240 node tests/rtc-evidence-observations.mjs

@@ -12,6 +12,8 @@ import {connectReceiveSlots} from '../scenarios/product-topologies.mjs';
 import {cp,mkdir,mkdtemp,readFile,rm,writeFile,chmod} from 'node:fs/promises';
 import os from 'node:os';import path from 'node:path';import {fileURLToPath} from 'node:url';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+import { requirePrivateAudio } from './support/private-audio.mjs';
+requirePrivateAudio(); // this test un-mutes Chromium
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 // Linux supports native-host manifests scoped to this private Chromium profile.
 // The idle real-BFCache case is portable; neither case changes installed hosts.

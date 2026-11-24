@@ -1,23 +1,29 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Trusted extension-side site definitions. No page messages or audio observation.
-const signalToken = value => typeof value === 'string' && value.length > 0 && new TextEncoder().encode(value).length <= 200;
-export async function browserProfileIdentity(storage, uuid, timers = {later:(fn,ms)=>setTimeout(fn,ms),cancel:id=>clearTimeout(id)}) {
+const signalEncoder = new TextEncoder();
+const signalToken = value => typeof value === 'string' && value.length > 0 && signalEncoder.encode(value).length <= 200;
+const defaultSignalTimers = {later:(fn,ms)=>setTimeout(fn,ms),cancel:id=>clearTimeout(id)};
+async function boundedSignalCall(promise, ms, timers = defaultSignalTimers) {
   let deadline;
   try {
     return await Promise.race([
-      (async () => {
-        const saved = await storage.get('cassiniBrowserInstance');
-        if (signalToken(saved.cassiniBrowserInstance)) return saved.cassiniBrowserInstance;
-        const candidate = uuid();
-        if (!signalToken(candidate)) return null;
-        await storage.set({cassiniBrowserInstance:candidate});
-        const persisted = await storage.get('cassiniBrowserInstance');
-        return signalToken(persisted.cassiniBrowserInstance) ? persisted.cassiniBrowserInstance : null;
-      })(),
-      new Promise(resolve => { deadline = timers.later(() => resolve(null), 2500); })
+      promise,
+      new Promise(resolve => { deadline = timers.later(() => resolve(null), ms); })
     ]);
-  } catch { return null; } // Never advertise an ephemeral connection ID as a profile.
+  } catch { return null; }
   finally { try { timers.cancel(deadline); } catch {} }
+}
+export async function browserProfileIdentity(storage, uuid, timers = defaultSignalTimers) {
+  // Never advertise an ephemeral connection ID as a profile.
+  return boundedSignalCall((async () => {
+    const saved = await storage.get('cassiniBrowserInstance');
+    if (signalToken(saved.cassiniBrowserInstance)) return saved.cassiniBrowserInstance;
+    const candidate = uuid();
+    if (!signalToken(candidate)) return null;
+    await storage.set({cassiniBrowserInstance:candidate});
+    const persisted = await storage.get('cassiniBrowserInstance');
+    return signalToken(persisted.cassiniBrowserInstance) ? persisted.cassiniBrowserInstance : null;
+  })(), 2500, timers);
 }
 
 export class SiteSignalAdapters {
@@ -56,21 +62,17 @@ export class SiteSignalAdapters {
 }
 
 export class CallSignalProducer {
-  constructor({identity, tabs, frames, current, adapters = new SiteSignalAdapters(), timers = {later:(fn,ms)=>setTimeout(fn,ms),cancel:id=>clearTimeout(id)}}) {
+  constructor({identity, tabs, frames, current, adapters = new SiteSignalAdapters(), timers = defaultSignalTimers}) {
     Object.assign(this,{identity,tabs,frames,current,adapters,timers});
   }
   async snapshot() {
     const browserInstance = this.identity();
     if (!signalToken(browserInstance)) return null;
     const candidates = [...this.frames()].filter(frame => frame.frameId === 0 && signalToken(frame.browserDocumentId));
-    let tabs, deadline;
-    try {
-      tabs = await Promise.race([this.tabs.query({}),new Promise(resolve=>{
-        deadline=this.timers.later(()=>resolve(null),2500);
-      })]);
-    }
+    // Withdraw facts on failure or timeout, never replay cached active.
+    let tabs;
+    try { tabs = await boundedSignalCall(this.tabs.query({}), 2500, this.timers); }
     catch { return {browserInstance,tabs:[]}; }
-    finally { try { this.timers.cancel(deadline); } catch {} } // Withdraw facts, never replay cached active.
     if (!Array.isArray(tabs)) return {browserInstance,tabs:[]};
     const byId = new Map(tabs.map(tab => [tab.id,tab]));
     const rows = [];
@@ -95,17 +97,13 @@ export class CallSignalProducer {
 export class GenericCallEvidenceProducer {
   constructor({identity,tabs,frames,current,currentSource=current,executeScript,callIdentity,onNativeRead=()=>{},
     now=()=>globalThis.performance?.now?.() ?? Date.now(),
-    timers={later:(fn,ms)=>setTimeout(fn,ms),cancel:id=>clearTimeout(id)}}) {
+    timers=defaultSignalTimers}) {
     Object.assign(this,{identity,tabs,frames,current,currentSource,executeScript,callIdentity,onNativeRead,now,timers});
     this.publications=new WeakMap();this.lastWire=null;this.epoch=null;this.lastPublishedAt=-Infinity;
     this.prepared=new WeakMap();this.activePublications=new Map();
   }
-  async bounded(read) {
-    let deadline;
-    try { return await Promise.race([Promise.resolve().then(read),new Promise(resolve=>{
-      deadline=this.timers.later(()=>resolve(null),750);
-    })]); } catch { return null; }
-    finally { this.timers.cancel(deadline); }
+  bounded(read) {
+    return boundedSignalCall(Promise.resolve().then(read), 750, this.timers);
   }
   finalize(snapshot) {
     const prepared=this.prepared.get(snapshot);
@@ -167,9 +165,22 @@ export class GenericCallEvidenceProducer {
     if (!preview && configurationEpoch!==this.configurationEpoch) {this.configurationEpoch=configurationEpoch;this.lastWire=null;}
     const currentPublication=()=>preview||this.epoch===epoch&&this.configurationEpoch===configurationEpoch;
     const browserInstance=this.identity();
-    if (!signalToken(browserInstance)) return null;
+    // The profile identity names this browser to the app. A local preview publishes nothing, so it never waits on it.
+    if (!preview && !signalToken(browserInstance)) return null;
     if (!verified) return {browserInstance,tabs:[]};
-    const frames=[...this.frames()].filter(frame=>frame.frameId===0&&this.current(frame)&&(tabId===null||frame.tabId===tabId)).slice(0,100);
+    const frames=[...this.frames()].filter(frame=>frame.frameId===0&&this.current(frame)&&(tabId===null||frame.tabId===tabId));
+    if(frames.length>100){
+      // Scheduling hints only. Every selected row still needs a fresh, bound read.
+      const priority=frame=>{
+        if(frame.observerDocumentStart!==true||frame.nativeSourceVerified!==true)return 0;
+        const active=this.activePublications.get(frame.tabId);
+        if(active?.frame===frame&&active.browser===frame.browserDocumentId&&active.hook===frame.documentGeneration&&
+            active.generation===frame.callGeneration&&active.epoch===frame.obsoleteEpoch)return 2;
+        return frame.sourceCount>0?1:0;
+      };
+      frames.sort((a,b)=>priority(b)-priority(a));
+      frames.length=100;
+    }
     const tabs=await this.bounded(()=>this.tabs.query({}));
     if (!currentPublication()) return null;
     if (!Array.isArray(tabs)) return {browserInstance,tabs:[]};
@@ -186,6 +197,15 @@ export class GenericCallEvidenceProducer {
         if (!tab || !/^https?:$/.test(new URL(tab.url).protocol) || tab.url.length>2048 ||
             new URL(frame.browserUrl).origin!==new URL(tab.url).origin || !signalToken(frame.browserDocumentId)) return null;
       } catch { return null; }
+      // A document whose page generations are not learned yet (a worker that has just woken, or a handshake read
+      // still in flight) would bind to nothing and then fail its own binding check once this read learns them.
+      // Learn them first, so the binding below names what the read will confirm. Only the popup's local preview
+      // does this: the publishing path polls (and drops this row for one round, as before), so it never reads the
+      // page twice per round for a document whose generations stay unknown (an unavailable collector, a fenced call).
+      if (preview && (!signalToken(frame.documentGeneration) || !signalToken(frame.callGeneration))) {
+        await this.read(frame);
+        if (!currentPublication() || !this.currentSource(frame)) return null;
+      }
       bindings.set(frame,{browser:frame.browserDocumentId,hook:frame.documentGeneration,
         generation:frame.callGeneration,epoch:frame.obsoleteEpoch,call:this.callIdentity(frame)});
       const observation=await this.observe(frame),observed=observation?.facts;

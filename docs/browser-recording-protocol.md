@@ -3,7 +3,12 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `a5eee34`, ships companion 0.2.31: the popup wears the cassini.talk Saturn mark and the
+The current pin, `2e4bc42f`, ships companion 0.2.38: popups are notified immediately when record requests
+settle or expire (#113), the popup reports an active call whether or not the
+Cassini desktop app is connected (#109, D-1153), lists Talk participants before recording starts, asks
+for a reload when a tab's relay arrived after the page and reconnects on open (#108), offers an explicit
+whole-tab fallback with connection details, and uses the reviewed cassini-ux translations (#107, D-1075).
+On top of `a5eee34` (companion 0.2.31), it keeps the cassini.talk Saturn mark and the
 cassini-ux brand tokens, with the `companion.privacy` footer (D-976). On top of `39f3d9b` (companion 0.2.30), it keeps
 popup-initiated Start and Stop (`popup-record-v1`,
 D-983) routed through the connected app's own manual `start`/`stop` commands (this app does not opt in with

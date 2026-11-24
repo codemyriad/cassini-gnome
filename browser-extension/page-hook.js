@@ -122,6 +122,7 @@
     } catch {}
     return false;
   }
+  // --- WebAudio & media lineage tracking ---
   // WebAudio lineage, the same rules as the native collector's (rtc-evidence.js): a
   // MediaStreamAudioDestinationNode output carries what its graph's sources reach through
   // successful AudioNode connections. AudioParam modulation carries nothing.
@@ -365,6 +366,7 @@
       return value;
     };
   }
+  // --- Discovery & RTP evidence sampling ---
   // Discovery is independent of capture: no AudioContext, cloned stream or PCM
   // is created until an explicit recording command arrives.
   let lastSourceCount = -1, lastHeard = null, latched = false, zeroSince = null, orphanedSince = null;
@@ -472,6 +474,7 @@
     } finally { sampling = false; }
   }
   setInterval(sampleEvidence, 1000);
+  // --- Capture session control ---
   let active = null, waitingHandshake = null;
   const emit = (token, value) => window.postMessage({ channel: "cassini-page", token, ...value }, "*");
   window.addEventListener("message", async event => {
@@ -481,8 +484,10 @@
       if (message.protocol === 1 && typeof message.instanceId === "string" && message.instanceId.length > 0 && message.instanceId.length <= 128) {
         // A replacement relay cannot start a new capture until the departing
         // relay's token has drained. Only the newest instance needs the reply.
-        if (active) waitingHandshake = message.instanceId;
-        else emit(null, {type:"hookReady", protocol:1, revision:hookRevision, instanceId:message.instanceId});
+        if (active) {
+          waitingHandshake = message.instanceId;
+          emit(null, {type:"hookDraining", protocol:1, revision:hookRevision, instanceId:message.instanceId});
+        } else emit(null, {type:"hookReady", protocol:1, revision:hookRevision, instanceId:message.instanceId});
       }
       return;
     }

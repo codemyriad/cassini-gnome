@@ -94,3 +94,46 @@ test('targeted status remains popup-only and a foreign extension receives no res
   await new Promise(resolve=>setImmediate(resolve));assert.equal(response,undefined);
  } finally {await cleanup(app)}
 });
+
+test('only the popup-open check runs scripts in the meeting tab; refreshes read worker state alone',async()=>{
+ const app=await setup(1);
+ try {
+  app.tabs.set(5,{id:5,title:'Talk',url:'https://meeting.test/call/x'});app.frame(5,1,0,'doc-5');
+  await until(()=>[...app.api.frames].some(f=>f.tabId===5&&f.relayAlive&&f.hookReady));
+  const reads=[];
+  app.chrome.scripting={async executeScript(request){
+   if(request.func?.name!=='readTalkParticipants')throw Error('unrelated read');
+   reads.push(request);return [{documentId:request.target.documentIds[0],frameId:0,result:['Hypatia','‮Ibn al-Haytham']}];}};
+  for(let i=0;i<3;i++)assert.equal((await rpc(app,{tabId:5})).participants,undefined,'plain refreshes never read the page');
+  assert.equal(reads.length,0);
+  const opened=await rpc(app,{tabId:5,fresh:true});
+  assert.equal(reads.length,1);assert.equal(JSON.stringify(reads[0].target),JSON.stringify({tabId:5,documentIds:['doc-5']}));assert.equal(reads[0].world,'ISOLATED');
+  assert.equal(JSON.stringify(opened.participants),JSON.stringify(['Hypatia','Ibn al-Haytham']));
+  assert.equal((await rpc(app,{tabId:5})).participants,undefined);assert.equal(reads.length,1,'no read after the open check');
+  // A reply for another document is never accepted, and a failing page yields an empty roster.
+  app.chrome.scripting={async executeScript(request){return [{documentId:'other',frameId:0,result:['Mallory']}]}};
+  assert.equal(JSON.stringify((await rpc(app,{tabId:5,fresh:true})).participants),'[]');
+  app.chrome.scripting={async executeScript(){throw Error('Cannot access contents of this page')}};
+  assert.equal(JSON.stringify((await rpc(app,{tabId:5,fresh:true})).participants),'[]');
+ } finally {await cleanup(app)}
+});
+
+test('open popups are told when worker state changes, and nothing else may subscribe',async()=>{
+ const app=await setup(1);
+ try {
+  const popupUrl=app.chrome.runtime.getURL('popup.html');
+  const connect=(name,sender)=>{const port={name,sender,sent:[],onMessage:event(),onDisconnect:event(),postMessage(m){this.sent.push(m)}};app.chrome.runtime.onConnect.emit(port);return port};
+  const popup=connect('cassini-popup',{id:'extension',url:popupUrl});
+  const foreign=connect('cassini-popup',{id:'someone-else',url:popupUrl});
+  const page=connect('cassini-popup',{id:'extension',url:'https://meeting.test/page',tab:{id:2}});
+  const wrongName=connect('other',{id:'extension',url:popupUrl});
+  app.tabs.set(6,{id:6,title:'New meeting',url:'https://meeting.test/new'});app.frame(6,1);
+  await until(()=>popup.sent.length>0);
+  assert.equal(popup.sent[0].type,'changed');
+  for(const refused of [foreign,page,wrongName])assert.equal(refused.sent.length,0);
+  popup.onDisconnect.emit();const seen=popup.sent.length;
+  app.tabs.set(7,{id:7,title:'Another',url:'https://meeting.test/another'});app.frame(7,1);
+  await until(()=>[...app.api.frames].some(f=>f.tabId===7&&f.hookReady));
+  assert.equal(popup.sent.length,seen,'a closed popup is not written to');
+ } finally {await cleanup(app)}
+});

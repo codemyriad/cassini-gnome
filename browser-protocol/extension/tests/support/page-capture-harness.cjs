@@ -65,6 +65,5 @@ module.exports = async function fixture(run, settings={}) {
  try {await run({peer,window,navigator,Track,AudioContext:context.AudioContext,MediaStreamTrackAudioSourceNode:context.MediaStreamTrackAudioSourceNode,remote,tick,scan,captures,messages,cachedPeer:()=>new Peer(),receive(data){if(data.type==="start")activeToken=data.token;return control(data)},render(track,card){const element={srcObject:new Stream([track]),closest:()=>card};media.push(element);return element},nativeStopFirst(){nativeFinished=true},breakContext(){contextError=true},async stop(){await control({type:'stop',token:activeToken})},async start(token='recording',options={}){activeToken=token;await control({type:'start',token,origin:0,moduleURL,workletURL:'',...options})}})}
  finally {await control({type:'stop',token:activeToken});delete globalThis.__cassiniPageCapture;}
 }
-;
 
 module.exports.moduleURL=moduleURL;

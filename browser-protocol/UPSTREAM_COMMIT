@@ -1,26 +1,26 @@
-tree 97aa18bfbb2d5bae50a5ba020c53b1ffef2d5a0d
-parent 39f3d9b758f8ac7e7c8290e67875253c5a68697e
-parent 5e6f4ad9b91b5f0b74fc854c878cc7e2a22aedcf
-author Silvio Tomatis <silviot@gmail.com> 1794645852 +0100
-committer GitHub <noreply@github.com> 1794645852 +0100
+tree 22a17a37cbae97a7fad51ef5088b507f60752017
+parent bacd40317025b08231f3133347a1f2fcb72efb4e
+parent 848dae6b3c7bb416656b1848185d5fce248598f4
+author Silvio Tomatis <silviot@gmail.com> 1795562302 +0100
+committer GitHub <noreply@github.com> 1795562302 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq+B9cCRC1aQ7uu5UhlAAAgnkQACbJ65CtYD6yLG1ydYlMUwXm
- yG0zAcdwWVRMdKyfRlDIovyRfqsa2imll78KobcAXHyyYnyCEhhVUzJIlzrcxpvz
- M8iJ9ZGWNuIXzxaSgAMTkLBC+IwDm2quDNVskCmCvEFvDSyWYb1zhZbZIrB1fx9s
- CHSgvIbKeFRwiCWTLsWx/Y3qkVVGtE7JEhm+U+yLp7Py0Tfah/1vLyewfN1CWG5G
- +YDxpesqu45XXy9Fw2Ed8mM3lH/2jnBjgMd9Gd+av1Lf8iRTyfVRXn15veLhBZD7
- fE/kikpnaTWXDOrd1g466/uWoEwVtRxxI5FAYlAyv3wPcmPYfXfzSZzppbQ/V+Ri
- jjUnkMqOASMBTWIeymHrmNJ0j3m/DXAYZvCHzsgUVFYvda+hd2Ho4agzfcoIsOQh
- n/RNbpufSBUxK7OSm6oQKOsOwXVlHI9xI+qd0K5IyiK2KpPRff/2QF8lTUWGHVV8
- KttjTMZ0CGGRdv575EKmfK/PkIMZnbjIShQyvB2rzGp8i5e043YlDAEabKKb/4Jc
- n1zRSt4mx7ojhdKjDdt9ZtvvuSrIbItcSo+cw6mr6HqR3sFE6zOVEudz9y1OHHzX
- OMAgDclOwcCIWsCicP1rsW6TDdFY4m9eFNQsRcjrOj2GqXPMBCHuL80k9VBFaM8x
- cVdSIfUj/QX7/uPED8eZ
- =zcvL
+ wsFcBAABCAAQBQJrBhs+CRC1aQ7uu5UhlAAAP/MQAE12VaMvfVu9jpFWUV7/rKfK
+ 5pz/K29PSHsC5QyrNoCHK8jRhPqp1XNhl4jKToFwVhVNiHDJX5nPwyaE58Fr99Mi
+ PvCTxz7maAFcbm5EUX1xis22n21IZPhhTNmubIlgkHNCjjHYGbsMXB56x4Ekd1cy
+ 7SlpA2nbPukCAfc98HU/eVCTqtrgrZvlB/fOpmJl6fekcQ2eT4gm5+OM7DJYpDEQ
+ AsGRCh2pGjEJEWH6PBjcHEYYxK0KmV6p0SZSUBE6hJp6tH58/XEeRQYF4au23opU
+ pseE6ZGEBxp1gJwR+OhVr12aRlkUj+xepGO3jfzZ7ZvdDGdSP/q03CSKadop1nen
+ eKKm89Iftx7pyIxmvqUWr5Py5MqAuWXWvE5n5vgFQ7QzQMr11J9RqLKTtQWvnQeU
+ 808MNitOnLjH/qambwiH6do1+Md7hPxaWx5jvzTao30XVORyGVFCjBIq1N9migfs
+ RjnecxFWA+Um10mJCvvOC8BsY/Isf1eXZ7rUTlIqSJUkDwLZG3z1CIeLuYlvEJaf
+ 3s+3WjiAlpk4UQjRz7mc4945k4PWd5YjGMTqKM4Oe5qkaslVJcbyTJ/exDAYX+Sm
+ 1Ree8+ka3NIBbGB1YVPvNIibqdc4UfQMQYWjzpzLNvDJN+8Er980J2kiZRXU0fRl
+ HQ/n+gkNix3nfN0Z1uau
+ =YjZa
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #106 from codemyriad/participate/d-976
+Merge pull request #113 from codemyriad/fix/popup-settle-notify-and-e1-0.2.38
 
-feat: popup wears the cassini.talk Saturn and cassini-ux brand tokens (D-976)
+Notify popups on record-request settle/expiry and remove fixed sleeps in popup tests (0.2.38)

@@ -1,5 +1,8 @@
 # Draft: verified automatic admission, separate from source observation
 
+> Archived from the repository root (`SPEC.auto-admission.draft.md`) by D-1151. Kept for
+> context only; [SPEC-CONTROL.md](../../SPEC-CONTROL.md) is the contract.
+
 **Historical design proposal; canonical SPEC-CONTROL.md D80.3–D80.5 is controlling.**
 The original failure receipt uses companion0.2.25. Companion0.2.26 implements the
 same-document/frame interactive-media cohort producer and verified negotiation; consumer adoption

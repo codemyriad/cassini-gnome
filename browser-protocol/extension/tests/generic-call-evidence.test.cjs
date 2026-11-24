@@ -136,3 +136,51 @@ test('HTTP and HTTPS subframes retain authenticated native source observation',a
   assert.ok(await f.producer.read(f.frame));assert.equal(f.reads,1);assert.equal(adopted,1);
  }
 });
+
+function crowdedWorkspace(f){
+ const idle=Array.from({length:100},(_,i)=>({...f.frame,tabId:100+i,browserDocumentId:'idle-'+i,sourceCount:0,heard:false}));
+ const reads=[];
+ f.frame.nativeSourceVerified=true;
+ f.producer.frames=()=>[...idle,f.frame];
+ f.producer.current=frame=>frame===f.frame||idle.includes(frame);
+ f.producer.currentSource=f.producer.current;
+ f.producer.tabs.query=async()=>f.producer.frames().map(frame=>({id:frame.tabId,url:frame.browserUrl}));
+ f.producer.executeScript=async({target})=>{
+  reads.push(target.tabId);
+  const result=target.tabId===f.frame.tabId?f.sample:{...f.sample,cohortQualified:false,samePeerCount:0,
+   capturedSendingPeers:0,sentVersion:0,heard:false};
+  return [{documentId:target.documentIds[0],frameId:0,result}];
+ };
+ return {idle,reads};
+}
+
+test('verified sources beyond 100 idle tabs get a fresh read within the wire bound',async()=>{
+ const f=fixture(),{idle,reads}=crowdedWorkspace(f);
+ // Legacy/page discovery counts on an unverified document do not buy priority.
+ for(const frame of idle)Object.assign(frame,{sourceCount:64,heard:true,nativeSourceVerified:false});
+ const snapshot=f.producer.finalize(await f.producer.snapshot({verified:true}));
+ assert.equal(snapshot.tabs.length,100);assert.equal(reads.length,100);
+ assert.equal(snapshot.tabs.find(row=>row.tabId===f.frame.tabId)?.callEvidence.state,'active');
+ assert.equal(snapshot.tabs.some(row=>row.tabId===idle.at(-1).tabId),false);
+});
+
+test('a previously active frame gets rechecked among 100 verified source-bearing tabs',async()=>{
+ const f=fixture();
+ const first=f.producer.finalize(await f.producer.snapshot({verified:true}));
+ assert.equal(first.tabs[0].callEvidence.state,'active');
+ const {idle,reads}=crowdedWorkspace(f);
+ for(const frame of idle)Object.assign(frame,{sourceCount:1,nativeSourceVerified:true});
+ Object.assign(f.sample,{cohortQualified:false,samePeerCount:0,capturedSendingPeers:0,sentVersion:0});
+ const snapshot=f.producer.finalize(await f.producer.snapshot({verified:true}));
+ assert.equal(reads.length,100);assert.equal(snapshot.tabs.length,100);
+ assert.equal(snapshot.tabs.find(row=>row.tabId===f.frame.tabId)?.callEvidence.state,'unknown');
+ assert.ok(snapshot.tabs.every(row=>row.callEvidence.state==='unknown'));
+});
+
+test('the collector mic diagnostic stays out of call-signal rows and cannot grant admission',async()=>{
+ const f=fixture();
+ Object.assign(f.sample,{unverifiedMicSenderObserved:true,cohortQualified:false,capturedSendingPeers:0,samePeerCount:0,sentVersion:0});
+ const snapshot=f.producer.finalize(await f.producer.snapshot({verified:true}));
+ assert.equal(snapshot.tabs[0].callEvidence.state,'unknown');
+ assert.equal(JSON.stringify(snapshot).includes('unverifiedMicSenderObserved'),false);
+});

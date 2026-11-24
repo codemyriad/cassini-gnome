@@ -10,7 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tokens = JSON.parse(await readFile(path.join(root,'ux/brand/tokens.json'),'utf8')).tokens;
 const server = createServer(async (request, response) => {
   const file = request.url?.slice(1);
-  if (!['popup.html', 'popup.js', 'popup-state.mjs', 'tab-evidence.mjs', 'brand-tokens.css', 'brand/saturn-nav.svg'].includes(file)) {response.writeHead(404).end();return;}
+  if (!['popup.html', 'popup.js', 'popup-state.mjs', 'tab-evidence.mjs', 'participants.mjs', 'brand-tokens.css', 'brand/saturn-nav.svg'].includes(file)) {response.writeHead(404).end();return;}
   const types = {html: 'text/html', css: 'text/css', svg: 'image/svg+xml'};
   response.setHeader('Content-Type', types[file.split('.').pop()] || 'text/javascript');
   response.end(await readFile(path.join(root,'extension',file)));
@@ -25,7 +25,9 @@ try {
       status:{browserHealth:{extensionVersion:'0.2.20',nativeControl:'connected',worker:'ready',filesOk:true,tabs:[]}}};
     window.chrome = {
       tabs:{async query(){return [fixture.tab]}},
-      runtime:{async sendMessage(message){
+      runtime:{connect(){const listeners=[];const port={onMessage:{addListener:fn=>listeners.push(fn)},onDisconnect:{addListener(){}}};
+        (fixture.ports??=[]).push(port);fixture.push=()=>listeners.forEach(fn=>fn({type:'changed'}));return port},
+       async sendMessage(message){
         fixture.requests.push(message);
         if(message.type==='recordRequest'){
           if(fixture.recordReply)return fixture.recordReply(message);
@@ -51,6 +53,10 @@ try {
   });
   const page = await context.newPage();
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  // The real worker pushes a change notice whenever its state changes; the fixture stands in for it
+  // after every scripted state change. The popup itself runs no timer.
+  const evaluate=page.evaluate.bind(page);
+  page.evaluate=async(...args)=>{const result=await evaluate(...args);await evaluate(()=>fixture.push?.());return result;};
   await page.goto(`http://127.0.0.1:${server.address().port}/popup.html`);
   await page.locator('main[aria-busy="false"]').waitFor();
   assert.equal(await page.locator('#status').textContent(),'No meeting sources detected');
@@ -63,6 +69,39 @@ try {
   await page.evaluate(()=>fixture.status.browserHealth.tabs=[{tabId:3,state:'reloadRequired'},{tabId:7,state:'ready'}]);
   await page.getByRole('heading',{name:'Meeting sources detected',exact:true}).waitFor();
   assert.equal(await page.locator('#reload').isVisible(),false);
+  // Participant roster: display-only text for this tab, never markup, cleared when it goes away.
+  assert.equal(await page.locator('#participants').isVisible(),false);
+  await page.evaluate(()=>{fixture.status.tabEvidence={tabId:7,callEvidence:{state:'unknown',reason:'unverified'},captureCapability:{kind:'separated',assurance:'observed'}};
+    fixture.status.participants=['Hypatia','<img src=x onerror=window.pwned=1>'];});
+  assert.equal(await page.locator('#participants').isVisible(),false,'a change notice never re-inspects the meeting page');
+  const statusRequests=()=>evaluate(()=>fixture.requests.filter(r=>r.type==='status'));
+  const before=await statusRequests();
+  assert.equal(before[0].fresh,true,'the open check is the first status request');
+  assert.ok(before.slice(1).every(request=>request.fresh===undefined),'refreshes after open never ask for a page check');
+  await page.locator('#recheck').click();
+  await page.locator('#participants').waitFor({state:'visible'});
+  assert.equal((await statusRequests()).filter(request=>request.fresh).length,2,'Check again asks for exactly one more page check');
+  assert.deepEqual(await page.locator('#participant-list li').allTextContents(),['Hypatia','<img src=x onerror=window.pwned=1>']);
+  assert.equal(await page.evaluate(()=>window.pwned),undefined,'names render as text, never markup');
+  assert.doesNotMatch(await page.locator('#diagnostics').textContent(),/Hypatia/);
+  await page.evaluate(()=>{delete fixture.status.participants;delete fixture.status.tabEvidence;});
+  await page.locator('#participants').waitFor({state:'hidden'});
+  // Whole-tab fallback: visible, explicit, handled by the browser alone; its Stop is direct as well.
+  assert.equal(await page.locator('#record-tab').isVisible(),true);
+  assert.match(await page.locator('#record-tab-hint').textContent(),/one stereo track, not separate participants/);
+  await page.locator('#record-tab').click();
+  await page.waitForFunction(()=>fixture.requests.some(r=>r.type==='start'));
+  assert.deepEqual(await evaluate(()=>fixture.requests.find(r=>r.type==='start')),{target:'background',type:'start',mode:'tab',tabId:7});
+  await page.evaluate(()=>{fixture.captures=[{tabId:7,recording:true,tracks:1,mode:'tab',captureId:'capture-A'}]});
+  await page.waitForFunction(()=>document.querySelector('#record').textContent==='Stop recording'&&!document.querySelector('#record').disabled);
+  assert.equal(await page.locator('#record-tab').isVisible(),false,'no fallback while capturing');
+  const asked=()=>evaluate(()=>fixture.requests.filter(r=>r.type==='recordRequest'&&r.action==='stop').length);
+  const askedBefore=await asked();
+  await page.locator('#record').click();
+  await page.waitForFunction(()=>fixture.requests.some(r=>r.type==='stop'));
+  assert.equal(await asked(),askedBefore,'a whole-tab stop never asks the app');
+  assert.deepEqual(await evaluate(()=>fixture.requests.find(r=>r.type==='stop')),{target:'background',type:'stop',tabId:7,captureId:'capture-A'},'Stop names the tab and capture it displayed');
+  await page.evaluate(()=>{delete fixture.captures;fixture.requests=fixture.requests.filter(r=>r.type==='status')});
   await page.evaluate(()=>{
     fixture.status.browserHealth.tabs=[{tabId:7,state:'reloadRequired'}];
     fixture.captures=[{tabId:3,recording:true,tracks:1},{tabId:7,recording:true,tracks:2}];
@@ -92,7 +131,10 @@ try {
   await page.locator('#reload').click();
   await page.getByRole('heading',{name:'Tab reloaded · rejoin your call',exact:true}).waitFor();
   const polls=await page.evaluate(()=>fixture.requests.filter(r=>r.type==='status').length);
-  await page.waitForFunction(count=>fixture.requests.filter(r=>r.type==='status').length>=count+2,polls);
+  for(let notice=1;notice<=2;notice++){ // two worker change notices, each answered by one refresh
+    await evaluate(()=>fixture.push());
+    await page.waitForFunction(([count,wanted])=>fixture.requests.filter(r=>r.type==='status').length>=count+wanted,[polls,notice]);
+  }
   assert.equal(await page.locator('#status').textContent(),'Tab reloaded · rejoin your call','guidance survives refreshes without new evidence');
   await page.evaluate(()=>fixture.status.browserHealth.tabs=[{tabId:7,state:'ready'}]);
   await page.getByRole('heading',{name:'Meeting sources detected',exact:true}).waitFor();
@@ -133,6 +175,8 @@ try {
   assert.equal(await page.locator('#connection').getAttribute('data-connected'),'false');
   assert.match(await page.locator('#recording-note').textContent(),/unavailable/);
   assert.equal(await page.locator('#action-error').isVisible(),false,'worker failure clears stale action refusal');
+  assert.equal(await page.locator('#record-tab').isVisible(),false,'no stale whole-tab button under a status error');
+  assert.equal(await page.locator('#participants').isVisible(),false,'no stale roster under a status error');
   await page.evaluate(()=>{delete fixture.statusError;fixture.status.browserHealth.tabs=[{tabId:7,state:'ready'}]});
   await page.getByRole('heading',{name:'Meeting sources detected',exact:true}).waitFor();
   await page.evaluate(()=>fixture.statusNeverResolves=true);
@@ -140,6 +184,16 @@ try {
   assert.match(await page.locator('#explanation').textContent(),/did not answer in time/);
   assert.equal(await page.locator('#connection').getAttribute('data-connected'),'false');
   assert.equal(await page.evaluate(()=>fixture.requests.some(r=>r.type==='start'||r.type==='stop')),false,'the popup never uses the direct capture RPC');
+  // A failed opening check is spent: the next worker push is an ordinary refresh, never a second page inspection.
+  const failed=await context.newPage();
+  await failed.addInitScript(()=>{fixture.statusError='Generated opening failure'});
+  await failed.goto(`http://127.0.0.1:${server.address().port}/popup.html`);
+  await failed.getByRole('heading',{name:'Meeting detection is unavailable',exact:true}).waitFor();
+  await failed.evaluate(()=>{delete fixture.statusError;fixture.push()});
+  await failed.waitForFunction(()=>fixture.requests.filter(r=>r.type==='status').length>=2);
+  assert.deepEqual(await failed.evaluate(()=>fixture.requests.filter(r=>r.type==='status').map(r=>r.fresh===true)),[true,false],
+    'only the first request asked for a page check');
+  await failed.close();
   assert.deepEqual(errors,[]);
   await context.close();
   console.log('PASS popup: Start/Stop asks the app for the current tab with reasons and feedback, current-tab health/reload, refused reload, honest recovery, copy without meeting URLs, connection loss, light/dark rendering');

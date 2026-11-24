@@ -42,6 +42,27 @@ a source, not a person (Google Meet, for one, multiplexes speakers over three re
 slots); timestamps come from the audio render clock, not from when a message arrived;
 a recording that gets interrupted must still leave playable files behind.
 
+## repository layout
+
+| Path | What it is |
+|---|---|
+| `SPEC.md` | Recording wire protocol and on-disk session contract (changelog inside). |
+| `SPEC-CONTROL.md` | App/browser control host (`io.codemyriad.cassini.control`) contract. |
+| `TESTING.md` | Test layers, what each proves, and how to run them. |
+| `schemas/` | JSON Schema for requests, responses, sessions, control and platform topologies. |
+| `extension/` | The Chromium MV3 extension; `extension/tests/` holds its Node unit tests. |
+| `conformance/` | Host vectors and runners (`run.py`, `control/run.py`), shared oracles and fixtures. |
+| `scenarios/` | Shared browser-test drivers and audio helpers the apps import. |
+| `tests/` | Python unit tests (`python3 -m unittest discover -s tests`) and Chromium/Playwright checks (`npm test`). |
+| `products/` | Manual live-product checklists (Teams, Zoom, Meet) and result template. |
+| `proofs/` | Archived reproduction evidence for specific fixes (diagnostic only, not a CI gate). |
+| `docs/history/` | Superseded design proposals kept for context; never controlling. |
+| `ux/` | Vendored cassini-ux files pinned by `ux/UPSTREAM.json`; edit them in cassini-ux, not here. |
+| `tools/brand-tokens.py` | Regenerates `extension/brand-tokens.css` from `ux/brand/tokens.json`. |
+| `verify.py`, `vendor.py`, `refresh-hashes.py`, `SHA256SUMS` | Vendoring: snapshot checksums and the pinned-commit proof apps verify. |
+
+Contributors and coding agents start with [AGENTS.md](AGENTS.md).
+
 ## how the apps use it
 
 Each app vendors this repository at a pinned commit under `browser-protocol/` and keeps its
@@ -77,73 +98,6 @@ Browser-level tests cover real Chromium, WebRTC, native messaging, and a require
 real Nextcloud Talk stack. Apps additionally test their platform-specific native
 recorders and devices. `TESTING.md` describes the layers and what each one does and does not
 prove.
-
-## browser companion popup
-
-The extension popup reports the active tab’s meeting-source readiness separately
-from its app-control connection. Its Start recording / Stop recording button asks
-the connected Cassini app (`popup-record-v1`), which records through its own
-control command; the popup explains why the button is unavailable when the app is
-missing, too old, or the tab is not ready. A detected source is not
-a verified participant or proof of saved audio. A missing current-tab health row
-means no meeting is reported, not proof that page injection succeeded or failed.
-
-Reload guidance targets only the current tab, warns that reloading interrupts
-the call, and respects the background worker’s refusal to reload active captures.
-Connection details can be copied without meeting titles, URLs or recording paths.
-The packaged-file self-check remains diagnostic and never gates page readiness.
-
-Run `node tests/popup.mjs` for the popup’s isolated Chromium interaction checks;
-`node --test extension/tests/popup-state.test.cjs` covers its evidence-to-status
-mapping, and `node --test extension/tests/popup-record.test.cjs` the app ask.
-Browser fixtures initiate capture through the trusted direct popup RPC; the
-product popup never uses it. The popup does not expose app auto-record policy,
-confirmed saved audio, or an app launcher:
-those need explicit app-backed APIs instead of inferred or simulated state.
-
-### brand and shared copy (D-976)
-
-The popup header is the `cassini.talk` Saturn (`saturn-nav`, 26 px) beside the
-lowercase wordmark (cassini-ux L-04, L-15). Every colour is a cassini-ux brand
-role: `extension/brand-tokens.css` is generated from the vendored
-`ux/brand/tokens.json` by `python3 tools/brand-tokens.py --write`, light on
-`:root` and dark under `prefers-color-scheme: dark`; the popup holds no colour
-literal. Start and Stop use the Record red (L-20), secondary buttons ink at 10%
-(L-54). The subtitle and the privacy line are the cassini-ux catalog's
-`settings.tab.browserCompanion` and `companion.privacy`, verbatim.
-
-`ux/UPSTREAM.json` pins the vendored cassini-ux files (tokens, `saturn-nav.svg`,
-`strings/strings.json`) by commit and SHA-256. Never edit them here: change
-cassini-ux, copy the files at the new commit, update the pin, regenerate the CSS,
-and run `python3 -m unittest tests.test_brand_alignment`.
-
-## changing things
-
-Changes to the protocol, the schemas, the vectors or the extension land here first, with a
-vector for any new rule. Then each app bumps its pinned commit. A host change that makes a
-vector fail is a protocol change, not a bug fix, and gets discussed as one. The wire
-version stays at 1 as long as additions are optional and old hosts keep working; `SPEC.md`
-has the changelog.
-
-Most of this code was written by coding agents (one per app, plus a reviewer), steered and
-read by a human but not proof-read line by line. The vectors and the browser tests are the
-evidence that it works; a gap in them is a bug worth reporting.
-
-
-## SPEC v1.1 and native sessions
-
-SPEC v1.1 amends wire/session version 1 additively. Both native recorders use the same
-one-WAV-per-source folder: `source: "macos"` and `source: "gnome"`, with microphone and
-system/application audio kept separate. `conformance/native-session/` contains complete
-synthetic WAV files and both native manifest variants, checked by
-`python3 conformance/check-native-fixture.py`.
-
-Chromium is the current target, with Chrome 116 as the minimum. Product priorities are Teams
-web, Zoom web, then Meet. `products/` contains account-based manual checklists and a result
-template. `tests/product-topologies.mjs` tests controlled mixed-receiver, PC-free and
-switching-slot models; their results do not establish live product/version compatibility.
-Playwright is pinned to 1.61.1. `npm ci`, `npx playwright install chromium`, and `npm test`
-run the unit/topology checks. Firefox and Flatpak remain future work.
 
 ## updating a vendored copy
 
@@ -186,16 +140,34 @@ see [SPEC-CONTROL.md](SPEC-CONTROL.md). Its desktop-free VM corpus is
 The audio protocol/corpus remain unchanged. App-side discovery uses counts without recording;
 GNOME owns page discovery, while background/relay and management transport are shared.
 
-## Licence
+## changing things
 
-Copyright © 2026 Codemyriad OÜ and contributors.
+Changes to the protocol, the schemas, the vectors or the extension land here first, with a
+vector for any new rule. Then each app bumps its pinned commit. A host change that makes a
+vector fail is a protocol change, not a bug fix, and gets discussed as one. The wire
+version stays at 1 as long as additions are optional and old hosts keep working; `SPEC.md`
+has the changelog.
 
-This repository (the protocol, the browser extension and the conformance files) is free software under the GNU General Public License, version 3 or later
-(`GPL-3.0-or-later`); see [LICENSE](LICENSE). Cassini for GNOME and Cassini for Mac, which vendor
-these files, use the same licence.
+Most of this code was written by coding agents (one per app, plus a reviewer), steered and
+read by a human but not proof-read line by line. The vectors and the browser tests are the
+evidence that it works; a gap in them is a bug worth reporting.
 
+## SPEC v1.1, native sessions and browser targets
 
-## Generic interactive-media evidence (companion 0.2.26)
+SPEC v1.1 amends wire/session version 1 additively. Both native recorders use the same
+one-WAV-per-source folder: `source: "macos"` and `source: "gnome"`, with microphone and
+system/application audio kept separate. `conformance/native-session/` contains complete
+synthetic WAV files and both native manifest variants, checked by
+`python3 conformance/check-native-fixture.py`.
+
+Chromium is the current target, with Chrome 116 as the minimum. Product priorities are Teams
+web, Zoom web, then Meet. `products/` contains account-based manual checklists and a result
+template. `tests/product-topologies.mjs` tests controlled mixed-receiver, PC-free and
+switching-slot models; their results do not establish live product/version compatibility.
+Playwright is pinned to 1.61.1. `npm ci`, `npx playwright install chromium`, and `npm test`
+run the unit/topology checks. Firefox and Flatpak remain future work.
+
+## generic interactive-media evidence (since companion 0.2.26)
 
 Verified automatic admission uses live received RTC progress plus a live page-captured
 microphone actually sent on the same peer connection, with current document/call
@@ -217,3 +189,50 @@ SPEC-CONTROL.md's freshness/identity rules. Heartbeat is transport health, not m
 proof. Copy diagnostics shares the popup's content-free evidence/capability/transport
 model and excludes URLs, titles, identifiers, paths and media. Protocol publication
 does not make old apps adopt the rule; GNOME/Mac adoption is a separate change.
+
+## browser companion popup
+
+The extension popup reports the active tab’s meeting-source readiness separately
+from its app-control connection. Its Start recording / Stop recording button asks
+the connected Cassini app (`popup-record-v1`), which records through its own
+control command; the popup explains why the button is unavailable when the app is
+missing, too old, or the tab is not ready. A detected source is not
+a verified participant or proof of saved audio. A missing current-tab health row
+means no meeting is reported, not proof that page injection succeeded or failed.
+
+Reload guidance targets only the current tab, warns that reloading interrupts
+the call, and respects the background worker’s refusal to reload active captures.
+Connection details can be copied without meeting titles, URLs or recording paths.
+The packaged-file self-check remains diagnostic and never gates page readiness.
+
+Run `node tests/popup.mjs` for the popup’s isolated Chromium interaction checks;
+`node --test extension/tests/popup-state.test.cjs` covers its evidence-to-status
+mapping, and `node --test extension/tests/popup-record.test.cjs` the app ask.
+Browser fixtures initiate capture through the trusted direct popup RPC; the
+product popup never uses it. The popup does not expose app auto-record policy,
+confirmed saved audio, or an app launcher:
+those need explicit app-backed APIs instead of inferred or simulated state.
+
+### brand and shared copy (D-976)
+
+The popup header is the `cassini.talk` Saturn (`saturn-nav`, 26 px) beside the
+lowercase wordmark (cassini-ux L-04, L-15). Every colour is a cassini-ux brand
+role: `extension/brand-tokens.css` is generated from the vendored
+`ux/brand/tokens.json` by `python3 tools/brand-tokens.py --write`, light on
+`:root` and dark under `prefers-color-scheme: dark`; the popup holds no colour
+literal. Start and Stop use the Record red (L-20), secondary buttons ink at 10%
+(L-54). The subtitle and the privacy line are the cassini-ux catalog's
+`settings.tab.browserCompanion` and `companion.privacy`, verbatim.
+
+`ux/UPSTREAM.json` pins the vendored cassini-ux files (tokens, `saturn-nav.svg`,
+`ux/strings/strings.json`) by commit and SHA-256. Never edit them here: change
+cassini-ux, copy the files at the new commit, update the pin, regenerate the CSS,
+and run `python3 -m unittest tests.test_brand_alignment`.
+
+## Licence
+
+Copyright © 2026 Codemyriad OÜ and contributors.
+
+This repository (the protocol, the browser extension and the conformance files) is free software under the GNU General Public License, version 3 or later
+(`GPL-3.0-or-later`); see [LICENSE](LICENSE). Cassini for GNOME and Cassini for Mac, which vendor
+these files, use the same licence.

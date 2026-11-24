@@ -1,5 +1,4 @@
 """D52.5 amendment: PCM_STALE_AFTER = 45 s with a normative >= comparison."""
-import importlib.util
 import json
 from pathlib import Path
 import unittest

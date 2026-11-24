@@ -27,6 +27,8 @@ main { padding: 22px; }
 .card[data-tone="warning"] { background: var(--cx-warn-tint); }
 #status { margin: 0; font-size: 14px; font-weight: 650; line-height: 1.45; }
 #explanation { margin: 9px 0 0; color: var(--cx-ink-2); font-size: 12px; line-height: 1.65; }
+#participants { margin-top: 16px; }
+#participant-list { margin: 6px 0 0; padding: 0; list-style: none; color: var(--cx-ink-2); font-size: 12px; line-height: 1.7; }
 #recording-note { margin: 18px 0 0; color: var(--cx-ink-2); font-size: 12px; line-height: 1.6; }
 /* Secondary buttons: ink at 10% over whatever is behind them (L-46, L-54). */
 button { width: 100%; margin-top: 17px; padding: 10px 12px; border: 1px solid transparent; border-radius: 7px;
@@ -38,6 +40,7 @@ button:disabled { opacity: .55; cursor: default; }
 #record::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--cx-on-record); }
 #record[data-action="stop"]::before { border-radius: 1.5px; }
 #record:hover:not(:disabled) { background: var(--cx-record); filter: brightness(.9); }
+#record-tab-hint { margin: 7px 0 0; color: var(--cx-ink-3); font-size: 10px; line-height: 1.5; }
 #record-hint { margin: 7px 0 0; color: var(--cx-ink-2); font-size: 11px; line-height: 1.5; }
 button:focus-visible, summary:focus-visible { outline: 3px solid var(--cx-accent); outline-offset: 3px; }
 #reload-warning { margin: 7px 0 0; color: var(--cx-ink-3); font-size: 10px; line-height: 1.5; }
@@ -56,9 +59,12 @@ summary { width: fit-content; cursor: pointer; color: var(--cx-ink-3); font-size
 <main id="tab-status" aria-busy="true">
  <div class="eyebrow">This tab</div><p id="tab-title">Checking this tab…</p><p id="site"></p>
  <section class="card" id="card" aria-live="polite" aria-atomic="true"><h2 id="status">Checking meeting detection…</h2><p id="explanation"></p></section>
+ <section id="participants" hidden><div class="eyebrow">In this call</div><ul id="participant-list"></ul></section>
+ <button id="recheck">Check again</button>
  <p id="installation-warning" hidden>Some audio capture files could not be read. See connection details; this check does not determine page readiness.</p>
  <p id="recording-note">Start recording asks the Cassini app on this computer to record this tab.</p>
  <button id="record" hidden disabled aria-describedby="record-hint">Start recording</button><p id="record-hint" hidden></p>
+ <button id="record-tab" hidden>Record the whole tab instead</button><p id="record-tab-hint" hidden></p>
  <p id="record-error" role="status" hidden></p>
  <button id="reload" hidden>Reload meeting tab</button><p id="reload-warning" hidden>Reloading briefly disconnects you from the call.</p>
  <p id="action-error" role="status" hidden></p>

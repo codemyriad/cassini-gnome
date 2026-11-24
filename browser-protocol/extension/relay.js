@@ -11,11 +11,20 @@
   // document-start collector) loses the microphone through WebAudio, so automatic recording never
   // starts on Microsoft Teams: that page needs a reload.
   const hookRevision = 3;
-  let instanceId = null, hookReady = false, handshakeComplete = false, retired = false, handshakeTimer = null;
+  let instanceId = null, hookReady = false, handshakeComplete = false, draining = false, retired = false, handshakeTimer = null;
   const waiters = new Set();
   const listeners = new Map();
   const listen = (name, fn) => { listeners.set(name, fn); window.addEventListener(name, fn); };
   const valid = () => { try { return !retired && !!chrome.runtime.id && (!chrome.runtime.getManifest || !!chrome.runtime.getManifest()); } catch { return false; } };
+  const stripControlChars = (value, maxLength) => [...value.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0, maxLength).join("");
+  const utf8ByteLength = value => {
+    let bytes = 0;
+    for (const ch of value) {
+      const code = ch.codePointAt(0);
+      bytes += code <= 127 ? 1 : code <= 2047 ? 2 : code <= 65535 ? 3 : 4;
+    }
+    return bytes;
+  };
   const moduleURL = chrome.runtime.getURL("capture.js"), workletURL = chrome.runtime.getURL("pcm-worklet.js");
   function settle() {
     const result = { connected: hookReady && valid(), protocol, instanceId, needsReload: !hookReady };
@@ -45,7 +54,7 @@
     } else cleanup();
   }
   function send(message) {
-    if (['relayHello','relayReady','relayUnavailable'].includes(message.type)) message={...message,observerDocumentStart};
+    if (['relayHello','relayDraining','relayReady','relayUnavailable'].includes(message.type)) message={...message,observerDocumentStart};
     try { port?.postMessage(message); }
     catch { retire(); }
   }
@@ -55,16 +64,20 @@
   let sourceCount, heard = false, hidden = false;
   const control = message => window.postMessage({ channel: "cassini-control", ...message,
     moduleURL, workletURL }, "*");
+  function armHandshake(ms) {
+    clearTimeout(handshakeTimer);
+    handshakeTimer = setTimeout(() => {
+      if (!hookReady) { handshakeComplete = true; send({type:"relayUnavailable", protocol, instanceId}); settle(); }
+    }, ms);
+  }
   function receive(message) {
     if (message.type === "relayHello") {
       if (message.protocol !== protocol || typeof message.instanceId !== "string") { retire(); return; }
-      instanceId = message.instanceId; hookReady = false; handshakeComplete = false;
+      instanceId = message.instanceId; hookReady = false; handshakeComplete = false; draining = !!drainingToken;
       send({type:"relayHello", protocol, instanceId});
+      if (draining) send({type:"relayDraining", protocol, instanceId});
       control({type:"handshake", protocol, instanceId});
-      clearTimeout(handshakeTimer);
-      handshakeTimer = setTimeout(() => {
-        if (!hookReady) { handshakeComplete = true; send({type:"relayUnavailable", protocol, instanceId}); settle(); }
-      }, 1500);
+      armHandshake(draining ? 10000 : 1500);
       return;
     }
     if (message.type === "discover") { control({ type: "discover" }); return; }
@@ -87,7 +100,7 @@
       control({ type: "stop", token });
     }
     pending.clear(); pendingStart = null; token = null; port = null;
-    hookReady = false; handshakeComplete = false; instanceId = null;
+    hookReady = false; handshakeComplete = false; draining = false; instanceId = null;
     if (!valid()) retire();
   }
   function connect() {
@@ -140,6 +153,14 @@
     if (event.isTrusted !== true || event.source !== window || event.data?.channel !== "cassini-page") return;
     const { type, packet, request } = event.data;
     if (retired && !(drainingToken && event.data.token === drainingToken)) return;
+    if (type === "hookDraining") {
+      if (event.data.protocol !== protocol || event.data.instanceId !== instanceId || !instanceId) return;
+      if (draining || hookReady || handshakeComplete || !(event.data.revision >= hookRevision)) return;
+      draining = true;
+      send({type:"relayDraining", protocol, instanceId});
+      armHandshake(10000);
+      return;
+    }
     if (type === "hookReady") {
       if (event.data.protocol !== protocol || event.data.instanceId !== instanceId || !instanceId) return;
       if(hookReady&&handshakeComplete)return;
@@ -179,21 +200,21 @@
     if (!token || event.data.token !== token) return;
     // Page code is untrusted. It may supply audio, never filesystem paths or host commands.
     if (type === "packet" && ["track", "audio", "trackEnd", "sources"].includes(packet?.type)) {
-      if (packet.type === "track" && typeof packet.label === "string") packet.label = [...packet.label.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0, 200).join("");
+      if (packet.type === "track" && typeof packet.label === "string") packet.label = stripControlChars(packet.label, 200);
       if (JSON.stringify(packet).length <= 400000) { pending.add(request); send({ type, packet, request }); }
     } else if (["ready", "stopped", "error", "warning"].includes(type)) {
       const details = {};
       if (event.data.transient === true) details.transient = true;
       const source = event.data.sourceTrackId;
-      if (typeof source === "string" && source.length > 0 && [...source].reduce((n,c)=>n+(c.codePointAt(0)<=127?1:c.codePointAt(0)<=2047?2:c.codePointAt(0)<=65535?3:4),0)<=200) {
+      if (typeof source === "string" && source.length > 0 && utf8ByteLength(source) <= 200) {
         details.sourceTrackId = source;
         if (event.data.recovered === true) details.recovered = true;
-        if (typeof event.data.message === "string") details.message = [...event.data.message.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0, 2000).join("");
+        if (typeof event.data.message === "string") details.message = stripControlChars(event.data.message, 2000);
       }
       if (Array.isArray(event.data.discoveredSources)) details.discoveredSources = event.data.discoveredSources.filter(s =>
         s && typeof s.sourceTrackId === "string" && s.sourceTrackId.length > 0 && s.sourceTrackId.length <= 200 &&
         ["local", "remote", "media", "tab"].includes(s.kind)).map(s => ({ sourceTrackId: s.sourceTrackId, kind: s.kind,
-          label: typeof s.label === "string" ? [...s.label.replace(/[\u0000-\u001f\u007f-\u009f]/g, "")].slice(0, 200).join("") : s.kind, ...(s.labelSource != null ? {labelSource:s.labelSource} : {}), failed: s.failed === true }));
+          label: typeof s.label === "string" ? stripControlChars(s.label, 200) : s.kind, ...(s.labelSource != null ? {labelSource:s.labelSource} : {}), failed: s.failed === true }));
       send({ type, ...details });
       if (type === "stopped") { token = null; pending.clear(); }
     }
