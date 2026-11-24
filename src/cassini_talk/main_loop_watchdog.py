@@ -42,18 +42,27 @@ class MainLoopWatchdog:
     def _watch(self):
         reported = None
         reported_faults = 0
+        last_check = time.monotonic()
         while not self._stopped.wait(0.05):
             heartbeat = self._heartbeat
+            now = time.monotonic()
+            watch_gap = now - last_check
+            last_check = now
             if heartbeat is None:
                 continue  # The main context has not started dispatching yet.
             stamp, faults = heartbeat
-            elapsed = time.monotonic() - stamp
             if reported is not None and stamp != reported:
                 LOG.warning(
                     "main loop recovered; major faults since stall: %d",
                     resource.getrusage(resource.RUSAGE_SELF).ru_majflt - reported_faults,
                 )
                 reported = None
+            if watch_gap > 0.25:
+                # The watchdog thread itself was paused or unscheduled longer than
+                # the stall threshold (e.g. SIGSTOP, cgroup freeze, host stall).
+                # Give the main context one beat cycle to dispatch before blaming it.
+                continue
+            elapsed = now - stamp
             if elapsed > 0.25 and reported is None:
                 reported, reported_faults = stamp, faults
                 LOG.warning(

@@ -173,3 +173,73 @@ finally:
     # One traceback from explicit SIGUSR1 while unarmed + one from the post-arm stall.
     assert result.stderr.count("Current thread") == 2, result.stderr
     assert result.stderr.count("main loop recovered") == 1, result.stderr
+
+
+def test_process_pause_gives_main_loop_one_beat_cycle_before_reporting():
+    """A watchdog-thread scheduling gap (e.g. SIGSTOP / cgroup freeze) must not dump a false stall."""
+    script = """
+import logging
+import threading
+from types import SimpleNamespace
+
+from gi.repository import GLib
+from cassini_talk import main_loop_watchdog
+
+loop = GLib.MainLoop()
+lock = threading.Condition()
+now = 0.0
+checks_after_jump = 0
+
+def monotonic():
+    global checks_after_jump
+    with lock:
+        if now >= 9.3:
+            checks_after_jump += 1
+            lock.notify_all()
+        return now
+
+main_loop_watchdog.time = SimpleNamespace(monotonic=monotonic)
+
+class Watchdog(main_loop_watchdog.MainLoopWatchdog):
+    beats = 0
+
+    def _beat(self):
+        global now
+        self.beats += 1
+        if self.beats == 1:
+            keep = super()._beat()
+            # Simulate a 9.3 s process-wide pause before the next watchdog check:
+            # the watchdog wakes up once, skips the scheduling-gap check, and the
+            # next _beat refreshes the heartbeat cleanly.
+            with lock:
+                now = 9.35
+                ok = lock.wait_for(lambda: checks_after_jump >= 1, 5)
+            assert ok, "watchdog did not observe the simulated process pause"
+            return keep
+        keep = super()._beat()
+        if self.beats == 2:
+            with lock:
+                now = 9.36
+            GLib.idle_add(lambda: (
+                lock.acquire(),
+                lock.wait_for(lambda: checks_after_jump >= 3, 5),
+                lock.release(),
+                loop.quit(),
+                GLib.SOURCE_REMOVE,
+            )[-1])
+        return keep
+
+logging.basicConfig(level=logging.WARNING)
+watchdog = Watchdog()
+try:
+    loop.run()
+finally:
+    watchdog.close()
+    watchdog._thread.join(2)
+    assert not watchdog._thread.is_alive()
+"""
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=15, cwd=SOURCE)
+    assert result.returncode == 0, result.stderr
+    assert "main loop stalled" not in result.stderr, result.stderr
+    assert "Current thread" not in result.stderr, result.stderr
+    assert "main loop recovered" not in result.stderr, result.stderr
