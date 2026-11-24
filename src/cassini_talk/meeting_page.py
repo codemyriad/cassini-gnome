@@ -1362,7 +1362,6 @@ class MeetingPage(Adw.NavigationPage):
             self._listening_turns = meeting.listening_turns
             self.timeline.set_turns(meeting.listening_turns)
             self.window.listen.set_turns(meeting.listening_turns)
-        self._listening_changed()
         source = self.window._activity_source
         self.set_connected(source.connected if source else False)
         if self.speakers_dialog and not self.speakers_dialog.closed:

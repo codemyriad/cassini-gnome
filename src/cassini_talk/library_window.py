@@ -62,6 +62,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.selected = None
         self._preview_key = None
         self._updating_rows_selection = False
+        self._updated_meeting = None
+        self._activity_day = None
         self._loaded_key = None
         self._loaded_directory = None
         self.snapshot = None
@@ -1628,19 +1630,29 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.browser_status.render()
 
     def _activity_tick(self):
-        refresh = self.get_application().build_refresh
+        app = self.get_application()
+        refresh = app.build_refresh
         if refresh:
             refresh.capture_changed()
-        activity = application_activity(self.get_application(), self._activity_source, self._fixture_activity)
-        if activity != self._activity:
+        activity = application_activity(app, self._activity_source, self._fixture_activity)
+        activity_changed = activity != self._activity
+        if activity_changed:
             self._activity = activity
             self.monitor.refresh_now()
         self._update_live()
         if self.meeting_page and self._activity_source:
             self.meeting_page.set_connected(self._activity_source.connected)
-        # Re-group at local midnight without touching the filesystem.
+        # Re-group at local midnight without touching the filesystem, and
+        # re-project when activity or a live/pending recording is active.
         if self.snapshot is not None:
-            self._updated(self._source_snapshot or self.snapshot)
+            today = (fmt._local(self.now_ms, self.tz).date(), self.tz)
+            if (
+                activity_changed
+                or getattr(self, "_activity_day", None) != today
+                or getattr(self, "recording_page", None) is not None
+                or getattr(app, "_pending_recording", None) is not None
+            ):
+                self._updated(self._source_snapshot or self.snapshot)
         return GLib.SOURCE_CONTINUE
 
     def _update_live(self):
@@ -2133,9 +2145,16 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.meeting_page = MeetingPage(self, meeting)
             self.meeting_slot.set_child(self.meeting_page)
         else:
-            if rebind_player and self.meeting_page.player is not self.player:
+            player_rebound = bool(rebind_player and self.meeting_page.player is not self.player)
+            if player_rebound:
                 self.meeting_page.rebind_player(self.player)
-            self.meeting_page.select_meeting(meeting, reset_scroll=reset_scroll)
+            if (
+                not self._updating_rows_selection
+                or reset_scroll
+                or player_rebound
+                or getattr(self, "_updated_meeting", None) is not meeting
+            ):
+                self.meeting_page.select_meeting(meeting, reset_scroll=reset_scroll)
         self.detail_stack.set_visible_child_name("meeting")
 
     def _close_right_meeting(self, *, keep_content=False):
@@ -2160,6 +2179,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         return replace(snapshot, meetings=meetings) if meetings != snapshot.meetings else snapshot
 
     def _updated(self, snapshot):
+        self._activity_day = (fmt._local(self.now_ms, self.tz).date(), self.tz)
         snapshot = self._project_activity(snapshot)
         if recovery := getattr(self.get_application(), "library_recovery", None):
             recovery.observe(snapshot)
@@ -2201,6 +2221,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                     LibraryWindow._close_right_recording(self)
                     self._stop_playback(clear_selection=True)
         self.open_pending_recording()
+        updated_meeting = None
         if self.meeting_page and not self._external_meeting:
             current = next((m for m in snapshot.meetings if m.key == self.meeting_page.meeting.key), None)
             if current is None:
@@ -2210,6 +2231,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                 if not current.has_audio:
                     self._stop_playback()
                 self.meeting_page.update(current)
+                updated_meeting = current
         if self.export_dialog and not self.export_dialog.closed:
             current = next((m for m in snapshot.meetings if m.key == self.export_dialog.meeting.key), None)
             if current and not (self.meeting_page and self._external_meeting):
@@ -2287,10 +2309,12 @@ class LibraryWindow(Adw.ApplicationWindow):
                         self.rows.select_row(target_row)
                         self.rows.handler_unblock(self._selection_handler)
                 self._updating_rows_selection = True
+                self._updated_meeting = updated_meeting
                 try:
                     self._selected(self.rows, self.rows.get_selected_row())
                 finally:
                     self._updating_rows_selection = False
+                    self._updated_meeting = None
                 self._pending = False
                 LibraryWindow._apply_library_filter(self)
                 if hasattr(self, "sidebar_header"):
@@ -2562,6 +2586,7 @@ class LibraryWindow(Adw.ApplicationWindow):
                     close_rec(keep_content=True)
                 ensure_player = getattr(self, "_ensure_player", None)
                 if ensure_player is not None:
+                    loaded_before = self._loaded_key
                     if not self._playback_failed and not ensure_player(meeting):
                         desired = Player if meeting.audio_file is not None else FolderPlayer
                         self.listen.stop()
@@ -2569,6 +2594,8 @@ class LibraryWindow(Adw.ApplicationWindow):
                         self.player = desired()
                         self.player.set_rate(self._rate)
                         self._connect_player()
+                    if self._loaded_key != loaded_before:
+                        self._updated_meeting = None
                     self._show_right_meeting(meeting, rebind_player=True)
                 else:
                     self._show_right_meeting(meeting)
