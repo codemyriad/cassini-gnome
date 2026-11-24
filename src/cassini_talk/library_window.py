@@ -114,7 +114,6 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._rows_layout = None
         self._group_layout_key = None
         self._rows_tz = None
-        self._preview_signature_value = None
         self._live_badges = {}
         self._capture_headers = []
         self.spectrograms = WindowSpectrograms(self)
@@ -2730,12 +2729,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self._loaded_key = None
         if clear_selection:
             self._preview_key = None
-            self._preview_signature_value = None
         self._playback_failed = False
-
-    def _open_selected(self):
-        if self.selected:
-            self.open_meeting(self.selected)
 
     def _close_search(self):
         if not self.search_page:

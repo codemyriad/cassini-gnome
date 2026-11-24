@@ -119,20 +119,6 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         self._requested_width = -1
         self.queue_allocate()
 
-    def reset_turns(self, turns):
-        """Switch documents; never retain clickable rows from the old one."""
-        self.clear_rows()
-        self.items, self._display_items = turns, ()
-        self._active = None
-        self.prefix = [0]
-        self.visible_rows = range(0)
-        self.viewport_ready = False
-        self.cancel_pending_scroll()
-        self._display_common = None
-        self.invalidate()
-        if self.props.vadjustment:
-            self.props.vadjustment.set_value(0)
-
     def _cancel_build(self):
         if self._build_tick:
             self.remove_tick_callback(self._build_tick)

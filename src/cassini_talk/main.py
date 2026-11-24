@@ -37,6 +37,8 @@ gi.require_version("Gst", "1.0")
 
 from gi.repository import Adw, Gio, GLib, Gst, Gtk  # noqa: E402
 
+LOG = logging.getLogger(__name__)
+
 RESOURCE = "/io/codemyriad/CassiniTalk"
 LEGACY_CSS = is_legacy((Gtk.get_major_version(), Gtk.get_minor_version()))
 install_dialog_close_fix()
@@ -351,7 +353,7 @@ class CassiniApplication(Adw.Application):
             # A launch while that hold delays the exit: a window now would have
             # no recorder, test or models behind it. The next launch opens. A
             # launch after any other exit still reopens (pushed playback).
-            logging.getLogger(__name__).info("Ignored an activation during exit")
+            LOG.info("Ignored an activation during exit")
             return None
         self._quitting = False
         if background and not self._resume_writing:
@@ -645,7 +647,7 @@ class CassiniApplication(Adw.Application):
     def on_companion_setup(self, *_args, parent=None):
         started = time.monotonic()
         if not self.browser_companion_available:
-            logging.getLogger(__name__).warning("Companion setup unavailable; sheet not presented")
+            LOG.warning("Companion setup unavailable; sheet not presented")
             return None
         from .companion_setup import CompanionSetup
 
@@ -664,9 +666,7 @@ class CassiniApplication(Adw.Application):
 
         def mapped(*_args):
             if dialog.get_mapped():
-                logging.getLogger(__name__).warning(
-                    "Companion setup click to mapped: %.1f ms", (time.monotonic() - started) * 1000
-                )
+                LOG.warning("Companion setup click to mapped: %.1f ms", (time.monotonic() - started) * 1000)
                 if handler:
                     dialog.disconnect(handler)
 
@@ -1146,7 +1146,7 @@ class CassiniApplication(Adw.Application):
             if generation == self._record_start_generation and not self._quitting:
                 from .refusals import banner
 
-                logging.getLogger(__name__).warning("Could not start recording: %s", error)
+                LOG.warning("Could not start recording: %s", error)
                 if retried is None:  # A D17 retry keeps its line and never shows the banner.
                     self.recording_failure = banner([])
                 self._native_changed()
@@ -1220,7 +1220,7 @@ class CassiniApplication(Adw.Application):
                 # interval from the acknowledged microphone choice anyway.
                 self.comfort.clocks.pop(Path(key).name, None)
         except Exception as error:
-            logging.getLogger(__name__).warning("Could not change recording sources: %s", error)
+            LOG.warning("Could not change recording sources: %s", error)
         finally:
             self.release()
         for window in self.get_windows():
@@ -1415,7 +1415,7 @@ class CassiniApplication(Adw.Application):
         reason = unavailable_reason()
         if reason:
             # The action is hidden; this is the only place the reason shows.
-            logging.getLogger(__name__).warning("Writing down is not available on this computer: %s", reason)
+            LOG.warning("Writing down is not available on this computer: %s", reason)
         return reason
 
     @property
@@ -1739,13 +1739,13 @@ class CassiniApplication(Adw.Application):
         try:
             self.voice_store.refresh()
         except (OSError, ValueError):
-            logging.exception("Could not load private saved voices")
+            LOG.exception("Could not load private saved voices")
         try:
             from .voice_enroll import sweep
 
             sweep()  # A crash can leave a guided voice sample behind (D-977).
         except (OSError, ValueError):
-            logging.exception("Could not remove a left-behind voice sample")
+            LOG.exception("Could not remove a left-behind voice sample")
 
     def _voices_changed(self):
         if self.settings_dialog and not self.settings_dialog.closed:

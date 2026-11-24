@@ -44,7 +44,6 @@ from uuid import UUID, uuid4
 
 from . import fsutil, journal, names
 
-JOURNAL = ".cassini/journal"
 SESSIONS = ".cassini/sessions"
 TRASH = ".cassini/trash"
 ENTRY_FILE = "entry.json"

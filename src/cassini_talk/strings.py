@@ -19,9 +19,6 @@ def text(identifier, **values):
     return localized.get("text", entry["en"]).format(**{key: number(value) for key, value in values.items()})
 
 
-PLURALS = {identifier: entry["plural"] for identifier, entry in ENTRIES.items() if "plural" in entry}
-
-
 def plural(identifier, n, **values):
     entry = ENTRIES[identifier]
     forms = entry.get("l10n", {}).get(language(), {}).get("plural", entry["plural"])

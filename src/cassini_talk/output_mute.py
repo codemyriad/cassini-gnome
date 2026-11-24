@@ -9,6 +9,8 @@ import threading
 from dataclasses import dataclass
 from typing import NamedTuple
 
+LOG = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class OutputState:
@@ -173,7 +175,7 @@ class OutputMuteObserver:
                         self.history.observe(track, monitor, state.muted if state else None, at_ms)
                         self.changed(self.history.active is not None)
                 except Exception:
-                    logging.getLogger(__name__).exception("Could not observe the captured output's mute state")
+                    LOG.exception("Could not observe the captured output's mute state")
                 self.wakeup.wait(1)
         finally:
             try:
@@ -181,7 +183,7 @@ class OutputMuteObserver:
                 self.history.observe(None, None, None, self.end_ms)
                 self.changed(False)
             except Exception:
-                logging.getLogger(__name__).exception("Could not finish the output mute observation")
+                LOG.exception("Could not finish the output mute observation")
 
     def close(self, at_ms):
         self.end_ms = at_ms
@@ -189,7 +191,7 @@ class OutputMuteObserver:
         self.wakeup.set()
         self.thread.join(timeout=2)
         if self.thread.is_alive():
-            logging.getLogger(__name__).warning("Output mute observer did not finish within its shutdown bound")
+            LOG.warning("Output mute observer did not finish within its shutdown bound")
 
 
 def monitor_device(branch):

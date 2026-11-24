@@ -26,7 +26,6 @@ from .whistle_worker import onnxruntime_dir
 LOG = logging.getLogger(__name__)
 REFERENCE = dict(kind="sidecar", file="transcript.json", format="cassini.words.v1")
 RECOGNITION_CACHE_FILE = recognition_cache.FILE
-RECOGNITION_CACHE_FORMAT = recognition_cache.FORMAT
 
 
 class TranscriptionMode(StrEnum):
@@ -578,14 +577,6 @@ class TranscriptionQueue:
     def mode(self) -> TranscriptionMode:
         with self.lock:
             return self._mode
-
-    def set_mode(self, mode) -> TranscriptionMode:
-        resolved = TranscriptionMode.parse(mode)
-        with self.lock:
-            self._mode = resolved
-        if resolved is not TranscriptionMode.TRANSCRIBE_WHILE_RECORDING:
-            self.preempt_follower()
-        return resolved
 
     def _canonical_follow_dir(self, directory) -> Path:
         path = Path(directory)

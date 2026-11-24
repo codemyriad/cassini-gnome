@@ -188,12 +188,6 @@ class Meeting:
         value = self.meeting_start
         return milliseconds(value["value"]) if value and value["source"] != "recordedAtLocal" else None
 
-    def speaker_label(self, speaker_id: str) -> str | None:
-        for speaker in self.speakers:
-            if speaker.id == speaker_id:
-                return speaker.label
-        return None
-
 
 @dataclass(frozen=True, slots=True)
 class AudioCheck:
