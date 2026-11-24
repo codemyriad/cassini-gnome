@@ -48,8 +48,8 @@ def _auto_write_enabled(app):
 class CassiniApplication(Adw.Application):
     """The application: one window per open meeting."""
 
-    # D-1117/D-1120: no UI chooses this yet; the shipped behaviour is the default.
-    transcription_mode = "afterStop"
+    # D-1117/D111: no UI chooses this yet; transcribeWhileRecording is the shipped default.
+    transcription_mode = "transcribeWhileRecording"
 
     def __init__(self, application_id, version, profile, *, installed_build=None):
         super().__init__(

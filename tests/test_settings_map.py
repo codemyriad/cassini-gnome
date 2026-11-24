@@ -143,9 +143,15 @@ D107_IDS = (
     "settings.phone.speakers.recognise.subtitle",
 )
 # Not GNOME's: Mac's computer-sound refusal (GNOME asks nothing for it); Updates is Mac only.
-D107_NOT_GNOME = ("test.refused.sound", "settings.updates.upToDate", "settings.updates.privacy")
-# D107 §2: "Report a problem" waits on D-1113 and is never built yet.
-D107_PENDING = ("about.reportProblem", "about.reportProblem.subtitle")
+# D110 §4 (D-1113): "Report a problem" is drawn for Mac/phones; GNOME keeps libadwaita's built-in "Report an Issue".
+D107_NOT_GNOME = (
+    "test.refused.sound",
+    "settings.updates.upToDate",
+    "settings.updates.privacy",
+    "about.reportProblem",
+    "about.reportProblem.subtitle",
+)
+D107_REPORT_PROBLEM = ("about.reportProblem", "about.reportProblem.subtitle")
 
 # D105 (L-69, L-70, L-71): GNOME's first run, and the ids whose English became "transcribe".
 D105_IDS = (
@@ -255,10 +261,10 @@ def test_every_d107_id_is_used_and_catalogued_in_all_six_languages():
             localized = entry["l10n"][lang]
             assert localized.get("text", "").strip() or localized.get("plural"), (identifier, lang)
     every = "".join(path.read_text() for path in (ROOT / "src/cassini_talk").rglob("*.py"))
-    for identifier in (*D107_NOT_GNOME, *D107_PENDING):
+    for identifier in D107_NOT_GNOME:
         assert f'"{identifier}"' not in every, identifier
-    for identifier in D107_PENDING:
-        assert entries[identifier]["status"] == "pending", identifier
+    for identifier in D107_REPORT_PROBLEM:
+        assert entries[identifier]["status"] == "drawn", identifier
     # The provisional how-to is said in one place only.
     assert every.count('"settings.browser.remove.howTo"') == 1
 

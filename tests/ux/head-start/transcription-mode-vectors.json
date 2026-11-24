@@ -1,0 +1,335 @@
+{
+  "schema": "cassini.head-start.transcription-mode-vectors.v1",
+  "defaultMode": "transcribeWhileRecording",
+  "canonicalModes": [
+    "recordOnly",
+    "afterStop",
+    "transcribeWhileRecording"
+  ],
+  "cases": [
+    {
+      "id": "default-transcribe-while-recording",
+      "input": {
+        "rawMode": "transcribeWhileRecording",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": true,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "record-only-canonical",
+      "input": {
+        "rawMode": "recordOnly",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "recordOnly",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": false,
+        "savedTranscriptStateOnStop": "none",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "record-only-python-alias",
+      "input": {
+        "rawMode": "record_only",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "recordOnly",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": false,
+        "savedTranscriptStateOnStop": "none",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "record-only-kotlin-alias",
+      "input": {
+        "rawMode": "RECORD_ONLY",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "recordOnly",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": false,
+        "savedTranscriptStateOnStop": "none",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "record-only-manual-transcribe",
+      "input": {
+        "rawMode": "recordOnly",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": true,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "recordOnly",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": false,
+        "savedTranscriptStateOnStop": "none",
+        "enqueueOnManualRequest": true,
+        "preemptActiveFollower": true
+      }
+    },
+    {
+      "id": "after-stop-canonical",
+      "input": {
+        "rawMode": "afterStop",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "afterStop",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "after-stop-python-alias",
+      "input": {
+        "rawMode": "after_stop",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "afterStop",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "after-stop-kotlin-alias",
+      "input": {
+        "rawMode": "AFTER_STOP",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "afterStop",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "transcribe-while-recording-python-alias",
+      "input": {
+        "rawMode": "transcribe_while_recording",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": true,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "transcribe-while-recording-kotlin-alias",
+      "input": {
+        "rawMode": "TRANSCRIBE_WHILE_RECORDING",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": true,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "transcribe-while-recording-preempted-by-saved-job",
+      "input": {
+        "rawMode": "transcribeWhileRecording",
+        "hasForegroundSavedJob": true,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": true
+      }
+    },
+    {
+      "id": "transcribe-while-recording-preempted-by-manual-request",
+      "input": {
+        "rawMode": "transcribeWhileRecording",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": true,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": true,
+        "preemptActiveFollower": true
+      }
+    },
+    {
+      "id": "transcribe-while-recording-unsupported-aac-capture",
+      "input": {
+        "rawMode": "transcribeWhileRecording",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": false
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "unknown-value-falls-back-to-default",
+      "input": {
+        "rawMode": "livePreview",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": true,
+        "spawnWorkerDuringRecording": true,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "empty-string-falls-back-to-default",
+      "input": {
+        "rawMode": "",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": true,
+        "spawnWorkerDuringRecording": true,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "null-falls-back-to-default",
+      "input": {
+        "rawMode": null,
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": true,
+        "spawnWorkerDuringRecording": true,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "wrong-case-falls-back-to-default",
+      "input": {
+        "rawMode": "recordonly",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": true,
+        "spawnWorkerDuringRecording": true,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
+      "id": "non-string-falls-back-to-default",
+      "input": {
+        "rawMode": 42,
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "transcribeWhileRecording",
+        "fellBackToDefault": true,
+        "spawnWorkerDuringRecording": true,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    }
+  ]
+}

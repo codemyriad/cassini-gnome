@@ -403,7 +403,10 @@ def test_both_library_refresh_paths_keep_recovery_and_stopping_activity(applicat
     assert len(scans) == 1, "Unchanged activity must not churn Library scans"
 
 
-@pytest.mark.parametrize(("mode", "queues"), [("afterStop", True), ("recordOnly", False)])
+@pytest.mark.parametrize(
+    ("mode", "queues"),
+    [("transcribeWhileRecording", True), ("afterStop", True), ("recordOnly", False)],
+)
 def test_record_only_keeps_every_capture_stop_path_audio_only(application_class, tmp_path, monkeypatch, mode, queues):
     from gi.repository import GLib
     from test_library import capture

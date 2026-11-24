@@ -257,11 +257,14 @@ def _assert_lanes_byte_identical(batch: dict, live: dict):
 def test_transcription_mode_normalization_and_record_only_policy(tmp_path):
     assert TranscriptionMode.parse("recordOnly") is TranscriptionMode.RECORD_ONLY
     assert TranscriptionMode.parse("record_only") is TranscriptionMode.RECORD_ONLY
+    assert TranscriptionMode.parse("RECORD_ONLY") is TranscriptionMode.RECORD_ONLY
     assert TranscriptionMode.parse("afterStop") is TranscriptionMode.AFTER_STOP
     assert TranscriptionMode.parse("after_stop") is TranscriptionMode.AFTER_STOP
+    assert TranscriptionMode.parse("AFTER_STOP") is TranscriptionMode.AFTER_STOP
     assert TranscriptionMode.parse("transcribeWhileRecording") is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
     assert TranscriptionMode.parse("transcribe_while_recording") is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
-    for bad in (None, "", "fast", "AFTER_STOP", "RecordOnly", 42, True):
+    assert TranscriptionMode.parse("TRANSCRIBE_WHILE_RECORDING") is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
+    for bad in (None, "", "fast", "recordonly", "RecordOnly", "livePreview", 42, True):
         with pytest.raises(ValueError):
             TranscriptionMode.parse(bad)
 
@@ -1448,7 +1451,7 @@ def test_env_transcription_mode_gates_all_auto_write_paths_and_falls_back_on_inv
     from cassini_talk.transcription import auto_write_enabled, resolve_transcription_mode
 
     class AppStub:
-        transcription_mode = "afterStop"
+        transcription_mode = "transcribeWhileRecording"
         transcription_enabled = True
 
     app = AppStub()
@@ -1459,16 +1462,21 @@ def test_env_transcription_mode_gates_all_auto_write_paths_and_falls_back_on_inv
     assert resolve_transcription_mode(app) is TranscriptionMode.RECORD_ONLY
     assert not auto_write_enabled(app)
 
+    # Env afterStop enables auto-write without live following.
+    monkeypatch.setenv("CASSINI_TRANSCRIPTION_MODE", "afterStop")
+    assert resolve_transcription_mode(app) is TranscriptionMode.AFTER_STOP
+    assert auto_write_enabled(app)
+
     # Env transcribeWhileRecording enables auto-write and live following.
     monkeypatch.setenv("CASSINI_TRANSCRIPTION_MODE", "transcribeWhileRecording")
     assert resolve_transcription_mode(app) is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
     assert auto_write_enabled(app)
 
-    # Invalid env value falls back to afterStop with a warning instead of raising.
+    # Invalid env value falls back to transcribeWhileRecording with a warning instead of raising.
     caplog.clear()
     monkeypatch.setenv("CASSINI_TRANSCRIPTION_MODE", "invalidModeName")
     with caplog.at_level("WARNING", logger="cassini_talk.transcription"):
-        assert resolve_transcription_mode(app) is TranscriptionMode.AFTER_STOP
+        assert resolve_transcription_mode(app) is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
         assert auto_write_enabled(app)
     assert any("CASSINI_TRANSCRIPTION_MODE" in rec.message for rec in caplog.records)
 

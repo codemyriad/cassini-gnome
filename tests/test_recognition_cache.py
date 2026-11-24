@@ -156,7 +156,7 @@ def test_parakeet_identity_changes_with_the_sherpa_runtime_pins(tmp_path):
 def test_auto_write_follows_transcription_enabled_and_mode():
     from types import SimpleNamespace
 
-    assert auto_write_enabled(SimpleNamespace(transcription_enabled=True)), "afterStop is the default"
+    assert auto_write_enabled(SimpleNamespace(transcription_enabled=True)), "transcribeWhileRecording is the default"
     assert not auto_write_enabled(SimpleNamespace(transcription_enabled=False))
     assert not auto_write_enabled(SimpleNamespace())
     for mode, expected in (("afterStop", True), ("transcribeWhileRecording", True), ("recordOnly", False)):
@@ -169,16 +169,19 @@ def test_auto_write_follows_transcription_enabled_and_mode():
 def test_transcription_mode_values_and_validation():
     assert [m.value for m in TranscriptionMode] == ["recordOnly", "afterStop", "transcribeWhileRecording"]
     assert TranscriptionMode.parse("record_only") is TranscriptionMode.RECORD_ONLY
+    assert TranscriptionMode.parse("RECORD_ONLY") is TranscriptionMode.RECORD_ONLY
     assert TranscriptionMode.parse("afterStop") is TranscriptionMode.AFTER_STOP
+    assert TranscriptionMode.parse("AFTER_STOP") is TranscriptionMode.AFTER_STOP
     assert TranscriptionMode.parse("transcribe_while_recording") is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
-    for value in ("", "AFTER_STOP", "live", None, 1):
+    assert TranscriptionMode.parse("TRANSCRIBE_WHILE_RECORDING") is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
+    for value in ("", "recordonly", "RecordOnly", "live", "livePreview", None, 1):
         with pytest.raises(ValueError):
             TranscriptionMode.parse(value)
     with pytest.raises(ValueError):
         should_auto_write(None, {}, "sometimes")
 
 
-def test_application_default_is_after_stop():
+def test_application_default_is_transcribe_while_recording():
     import ast
     from pathlib import Path
 
@@ -188,7 +191,7 @@ def test_application_default_is_after_stop():
         for node in ast.walk(ast.parse(source))
         if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "transcription_mode" for t in node.targets)
     )
-    assert TranscriptionMode.parse(default) is TranscriptionMode.AFTER_STOP
+    assert TranscriptionMode.parse(default) is TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
 
 
 def test_record_only_leaves_a_stopped_recording_audio_only_until_transcribe(tmp_path):
