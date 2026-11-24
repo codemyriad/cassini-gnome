@@ -417,11 +417,12 @@ def test_stable_release_notes_refuse_missing_placeholder_or_developer_text():
             rn.notes(news, "1.2.3")
 
 
-def test_release_sums_cover_exactly_the_five_packages_by_name(tmp_path):
+def test_release_sums_cover_exactly_the_six_packages_by_name(tmp_path):
     assets = module("release_sums")
     contents = {
         "deb/cassini-talk_0.4.0~ubuntu26.04_amd64.deb": b"ubuntu",
         "deb/cassini-talk_0.4.0~debian-testing_amd64.deb": b"debian",
+        "deb/cassini-talk_0.4.0~ubuntu24.04_amd64.deb": b"ubuntu-lts",
         "rpm/cassini-talk-0.4.0-1.fc44.x86_64.rpm": b"fedora",
         "rpm/cassini-talk-0.4.0-1.1.x86_64.rpm": b"opensuse",
         "arch/cassini-talk-0.4.0-1-x86_64.pkg.tar.zst": b"arch",
@@ -438,7 +439,7 @@ def test_release_sums_cover_exactly_the_five_packages_by_name(tmp_path):
         for name, data in contents.items()
         if not name.startswith("other/")
     }
-    assert len(lines) == 5 and set(lines) == expected
+    assert len(lines) == 6 and set(lines) == expected
     if shutil.which("sha256sum"):
         flat = tmp_path / "published"
         flat.mkdir()
@@ -451,12 +452,14 @@ def test_release_sums_cover_exactly_the_five_packages_by_name(tmp_path):
         ).returncode
 
 
-@pytest.mark.parametrize("drop", [0, 2, 4])
+# D-1140: the Ubuntu 24.04 LTS .deb (index 2) is a required release package too.
+@pytest.mark.parametrize("drop", [0, 2, 3, 5])
 def test_release_sums_refuse_a_missing_or_extra_package(tmp_path, drop):
     assets = module("release_sums")
     names = [
         "a~ubuntu26.04_amd64.deb",
         "a~debian-testing_amd64.deb",
+        "a~ubuntu24.04_amd64.deb",
         "a.fc44.x86_64.rpm",
         "a.1.x86_64.rpm",
         "a-x86_64.pkg.tar.zst",
@@ -472,6 +475,27 @@ def test_release_sums_refuse_a_missing_or_extra_package(tmp_path, drop):
         assets.packages(tmp_path)
 
 
+def test_the_nightly_keeps_its_two_deb_package_set(tmp_path):
+    # D-1140: only the stable release gained the Ubuntu 24.04 LTS .deb.
+    assets = module("release_sums")
+    names = [
+        "a~ubuntu26.04_amd64.deb",
+        "a~debian-testing_amd64.deb",
+        "a.fc44.x86_64.rpm",
+        "a.1.x86_64.rpm",
+        "a-x86_64.pkg.tar.zst",
+    ]
+    for name in names:
+        (tmp_path / name).write_bytes(name.encode())
+    assert len(assets.packages(tmp_path, assets.NIGHTLY_KINDS)) == 5
+    with pytest.raises(ValueError, match="Expected 3 deb package"):
+        assets.packages(tmp_path)
+    (tmp_path / "a~ubuntu24.04_amd64.deb").write_bytes(b"lts")
+    assert len(assets.packages(tmp_path)) == 6
+    with pytest.raises(ValueError, match="Expected 2 deb package"):
+        assets.packages(tmp_path, assets.NIGHTLY_KINDS)
+
+
 def test_the_tag_workflow_attaches_sha256sums_and_verifies_the_published_files():
     workflow = (Path(__file__).parents[1] / ".github/workflows/release.yml").read_text()
     assert "release_sums.py artifacts --stage staged --sums SHA256SUMS > assets.txt" in workflow
@@ -479,7 +503,8 @@ def test_the_tag_workflow_attaches_sha256sums_and_verifies_the_published_files()
     assert "--generate-notes" not in workflow
     assert 'gh release download "$GITHUB_REF_NAME"' in workflow
     assert "sha256sum --check --strict SHA256SUMS" in workflow
-    assert 'test "$(wc -l < SHA256SUMS)" -eq 5' in workflow
+    assert 'test "${#assets[@]}" -eq 7' in workflow
+    assert 'test "$(wc -l < SHA256SUMS)" -eq 6' in workflow
 
 
 def test_release_sums_name_each_package_as_github_publishes_it(tmp_path):
@@ -491,6 +516,7 @@ def test_release_sums_name_each_package_as_github_publishes_it(tmp_path):
     names = {
         "cassini-talk_0.4.0~ubuntu26.04_amd64.deb": b"u",
         "cassini-talk_0.4.0~debian-testing_amd64.deb": b"d",
+        "cassini-talk_0.4.0~ubuntu24.04_amd64.deb": b"l",
         "cassini-talk-0.4.0-1.fc44.x86_64.rpm": b"f",
         "cassini-talk-0.4.0-1.opensuse_tumbleweed.x86_64.rpm": b"o",
         "cassini-talk-0.4.0-1-x86_64.pkg.tar.zst": b"a",
@@ -588,17 +614,19 @@ def run_create_release(
 def test_a_refused_staging_never_creates_a_release(tmp_path):
     # #229 Codex: staging in a process substitution lost its failure, so two .debs
     # with one published name reached `gh release create` with zero assets.
-    result, calls = run_create_release(tmp_path, ["a~b_amd64.deb", "a.b_amd64.deb"])
+    result, calls = run_create_release(tmp_path, ["a~b_amd64.deb", "a.b_amd64.deb", "a~lts_amd64.deb"])
     assert result.returncode != 0, result.stdout + result.stderr
     assert "share a published name" in result.stderr
     assert calls is None, calls
 
 
 @pytest.mark.skipif(not shutil.which("bash"), reason="bash runs the workflow step")
-def test_a_good_staging_creates_the_release_with_six_assets_and_folded_developer_changelog(tmp_path):
+def test_a_good_staging_creates_the_release_with_seven_assets_and_folded_developer_changelog(tmp_path):
     rn = module("release_notes")
     root = Path(__file__).parents[1]
-    result, all_calls = run_create_release(tmp_path, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb"])
+    result, all_calls = run_create_release(
+        tmp_path, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb", "a~ubuntu24.04_amd64.deb"]
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     assert all_calls is not None and len(all_calls) == 3
     latest_call, gen_call, create_call = all_calls
@@ -608,7 +636,7 @@ def test_a_good_staging_creates_the_release_with_six_assets_and_folded_developer
     assert create_call[:2] == ["release", "create"]
     assert "--generate-notes" not in create_call
     attached = [c for c in create_call if c.startswith("staged/") or c == "SHA256SUMS"]
-    assert len(attached) == 6 and attached[-1] == "SHA256SUMS"
+    assert len(attached) == 7 and attached[-1] == "SHA256SUMS"
 
     published_notes = (tmp_path / "notes.md").read_text(encoding="utf-8")
     visible_top, sep, folded_dev = published_notes.partition(
@@ -624,10 +652,22 @@ def test_a_good_staging_creates_the_release_with_six_assets_and_folded_developer
 
 
 @pytest.mark.skipif(not shutil.which("bash"), reason="bash runs the workflow step")
+def test_stable_release_refuses_the_pre_lts_two_deb_set(tmp_path):
+    # D-1140 review: the stable release downloads deb-* (deb-0, deb-1, deb-lts); a
+    # set missing the Ubuntu 24.04 LTS .deb must never create a release.
+    result, calls = run_create_release(tmp_path, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb"])
+    assert result.returncode != 0
+    assert "Expected 3 deb package(s)" in result.stderr
+    assert calls is None, calls
+
+
+@pytest.mark.skipif(not shutil.which("bash"), reason="bash runs the workflow step")
 def test_stable_release_handles_first_release_and_refuses_empty_changelog(tmp_path):
     first_dir = tmp_path / "first"
     first_dir.mkdir()
-    result, all_calls = run_create_release(first_dir, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb"], latest_tag=None)
+    result, all_calls = run_create_release(
+        first_dir, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb", "a~ubuntu24.04_amd64.deb"], latest_tag=None
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     assert all_calls is not None and len(all_calls) == 3
     assert not any(arg.startswith("previous_tag_name=") for arg in all_calls[1])
@@ -636,7 +676,7 @@ def test_stable_release_handles_first_release_and_refuses_empty_changelog(tmp_pa
     empty_dir = tmp_path / "empty"
     empty_dir.mkdir()
     bad_result, bad_calls = run_create_release(
-        empty_dir, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb"], generated_changelog="   \n"
+        empty_dir, ["a~ubuntu_amd64.deb", "a~debian_amd64.deb", "a~ubuntu24.04_amd64.deb"], generated_changelog="   \n"
     )
     assert bad_result.returncode != 0
     assert bad_calls is not None and not any(c[:2] == ["release", "create"] for c in bad_calls)
