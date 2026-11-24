@@ -27,7 +27,7 @@ tests/whistle/run.sh "$PWD/_stage/usr/share/cassini-talk/whistle" /tmp/whistle-r
 ```
 
 (The spike's separate `whistle/meson.build` project is now the main
-project's `whistle` subdirectory; see [transcription.md](transcription.md).)
+project's `whistle` subdirectory; see [transcription.md](../transcription.md).)
 
 The harness builds a small Ubuntu image, then runs with `--network none`, a
 read-only filesystem, no capabilities, private temporary storage, and read-only
@@ -60,7 +60,7 @@ child. Unit tests exercise two requests, partial-line timeout and crash cleanup.
 ## Packaging handoff to the coordinator
 
 Done: every package now bundles the engine; see the "Packaging" section of
-[transcription.md](transcription.md) and CONTRIBUTING.md. The original handoff
+[transcription.md](../transcription.md) and CONTRIBUTING.md. The original handoff
 notes follow.
 
 No existing packaging manifest is changed by this spike. The separate
@@ -80,6 +80,6 @@ pinned engine is independently tested. No package dependency or launcher change
 is necessary merely to run this spike; app integration remains UX13.
 
 The full UX13 implementation and updated packaging handoff are now described in
-[transcription.md](transcription.md), including bundled Silero and NumPy/ORT CPU
+[transcription.md](../transcription.md), including bundled Silero and NumPy/ORT CPU
 runtime dependencies. The worker also accepts whole-meeting pipeline requests;
 the 30-second limit above applies only to the original file-smoke-test request.

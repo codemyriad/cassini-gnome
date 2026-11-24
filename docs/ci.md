@@ -207,7 +207,7 @@ reported billable usage. Per-job rounded Linux minutes are a separate resource
 estimate, not a billing invoice. Pending jobs stay explicitly incomplete.
 
 The closest standalone-workflow control is #53's final 011c693, retained in
-`ci/before-orchestrator-pr53.json`: 18 jobs, 45.217 execution minutes, 54 estimated
+`archive/ci/before-orchestrator-pr53.json`: 18 jobs, 45.217 execution minutes, 54 estimated
 rounded Linux minutes, 0 GitHub-reported billable minutes, median 148 seconds queue.
 Earlier controls (#50 and #51) remain in `ci/` for context. The orchestrator's
 final-head comparison is written to coordination `STATUS-GNOME.md` after checks

@@ -28,7 +28,7 @@ counters: without ranges, adding them can double-count the same hole.
 ## R64 — overlap attribution
 
 The approved rule and literal expected IDs are in
-[d52-source-grouping.md](d52-source-grouping.md). The approved suffix is
+[d52-source-grouping.md](../d52-source-grouping.md). The approved suffix is
 `base:overlap:n`, replacing `~overlap-n` because D24/D25 reserve tilde prefixes
 for child voices. Known extents use validated metadata and scalar clock mapping;
 unknown timing never proves disjointness. No NumPy or audio I/O is needed.
