@@ -227,12 +227,13 @@ with tempfile.TemporaryDirectory() as tmp:
 
         class CompletedClient:
             def __init__(self, *args, **kwargs):
-                pass
+                self._active = False
 
             def start(self):
                 return self
 
             def process_tracks(self, tracks, progress):
+                self._active = True
                 writer_entered.set()
                 GLib.idle_add(observe_held_writer)
                 # A guard below the 9 s traceback / 12 s process budgets,
@@ -245,7 +246,10 @@ with tempfile.TemporaryDirectory() as tmp:
                 pass
 
             def cancel(self):
-                release_writer.set()
+                # Only release the saved-job gate for the client running process_tracks;
+                # a precompute follower client cancelled during capture must not trip it.
+                if self._active:
+                    release_writer.set()
 
         app.transcriber = TranscriptionQueue(
             lambda _: None,
