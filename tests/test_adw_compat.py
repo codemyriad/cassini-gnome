@@ -79,7 +79,7 @@ def test_force_close_in_the_first_frames_is_retried_until_closed(compat):
     assert not adw_compat.install_dialog_close_fix((1, 5)), "installs once"
     dialog = FakeDialog(closes_on=3)
     Adw.Dialog.force_close(dialog)
-    assert dialog.force_calls == 1 and timers[0][0] == adw_compat.FORCE_CLOSE_RETRY_MS
+    assert dialog.force_calls == 1 and timers[0][0] == adw_compat.RETRY_MS
     run(timers)
     assert dialog.force_calls == 3 and dialog.parent is None and not dialog.handlers
 
@@ -95,14 +95,28 @@ def test_a_dialog_that_closes_at_once_leaves_no_timer_or_handler(compat):
     assert not timers and not dialog.handlers and dialog.force_calls == 0
 
 
-def test_an_accepted_close_that_never_finishes_is_forced_after_the_grace(compat):
+def test_an_accepted_close_in_the_first_frames_is_repeated(compat):
     Adw, adw_compat, timers = compat
     adw_compat.install_dialog_close_fix((1, 5))
-    dialog = FakeDialog(closes_on=2)
+    dialog = FakeDialog()
+    dialog.close_works = False
     assert Adw.Dialog.close(dialog) is True
-    assert [ms for ms, _ in timers] == [adw_compat.CLOSE_GRACE_MS] and dialog.force_calls == 0
+    assert [ms for ms, _ in timers] == [adw_compat.RETRY_MS]
+    _ms, callback = timers.pop(0)
+    dialog.close_works = True  # A frame later, libadwaita 1.5 honours it.
+    assert callback() is False
+    assert dialog.close_calls == 2 and dialog.force_calls == 0 and not dialog.handlers
+
+
+def test_a_close_that_never_finishes_is_forced_after_the_grace(compat):
+    Adw, adw_compat, timers = compat
+    adw_compat.install_dialog_close_fix((1, 5))
+    dialog = FakeDialog(closes_on=1)
+    assert Adw.Dialog.close(dialog) is True
     run(timers)
-    assert dialog.force_calls == 2 and dialog.parent is None and not dialog.handlers
+    grace_calls = adw_compat.CLOSE_GRACE_MS // adw_compat.RETRY_MS
+    assert dialog.close_calls == grace_calls and dialog.force_calls == 1
+    assert dialog.parent is None and not dialog.handlers
 
 
 def test_a_refused_close_is_left_to_the_dialog(compat):

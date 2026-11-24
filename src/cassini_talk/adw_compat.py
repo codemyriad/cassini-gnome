@@ -39,20 +39,23 @@ def has_shortcuts_dialog():
 
 # libadwaita 1.5 ignores AdwDialog.close() and force_close() in the first
 # frames after present(): "closed" never comes, the dialog stays, and its
-# window then refuses to close. A retry a few frames later works; 1.8 has no
-# such window.
-CLOSE_GRACE_MS = 1000
-FORCE_CLOSE_RETRY_MS = 16
+# window then refuses to close. Calling it again a frame or two later works
+# (and a repeated call during a normal close changes nothing); 1.8 has no such
+# window.
+RETRY_MS = 16
+# A close() still unfinished after this long (well past the closing
+# animation) is forced.
+CLOSE_GRACE_MS = 2000
 
 
 def install_dialog_close_fix(version=None):
     """Make ``Adw.Dialog.close()``/``force_close()`` finish on libadwaita < 1.8 (D-1140).
 
-    ``force_close()`` that has not emitted "closed" is retried every
-    :data:`FORCE_CLOSE_RETRY_MS` until it does or the dialog leaves its window. A ``close()``
-    libadwaita accepted (returned True) that has not emitted "closed" within
-    :data:`CLOSE_GRACE_MS`, past the closing animation, becomes a
-    ``force_close()``. Returns whether it installed.
+    Until "closed" comes or the dialog leaves its window, an accepted
+    ``close()`` (it returned True) and a ``force_close()`` are repeated every
+    :data:`RETRY_MS`; a ``close()`` unfinished after :data:`CLOSE_GRACE_MS`
+    becomes a ``force_close()``. Timers, not tick callbacks, so the dialog of
+    a hidden window closes too. Returns whether it installed.
     """
     from gi.repository import GLib
 
@@ -62,45 +65,35 @@ def install_dialog_close_fix(version=None):
         return False
     original_close, original_force_close = Adw.Dialog.close, Adw.Dialog.force_close
 
-    def watch(dialog):
-        state = {"closed": False}
-        state["handler"] = dialog.connect("closed", lambda *_: state.update(closed=True))
-        return state
-
-    def force_close(self):
-        state = watch(self)
-        original_force_close(self)
-        if state["closed"]:
-            self.disconnect(state["handler"])
-            return
+    def repeat(dialog, call):
+        """Call *call* now and every RETRY_MS until "closed"; return its first result."""
+        state = {"closed": False, "forced": call is original_force_close, "waited": 0}
+        handler = dialog.connect("closed", lambda *_: state.update(closed=True))
+        result = call(dialog)
+        if state["closed"] or result is False:
+            dialog.disconnect(handler)
+            return result
 
         def retry():
-            # Until it closes or leaves its window (destroyed with it). A timer,
-            # not a tick callback: a hidden window's dialog must close too.
-            if not state["closed"] and self.get_parent() is not None:
-                original_force_close(self)
-            if state["closed"] or self.get_parent() is None:
-                self.disconnect(state["handler"])
+            if not state["closed"] and dialog.get_parent() is not None:
+                state["waited"] += RETRY_MS
+                if not state["forced"] and state["waited"] >= CLOSE_GRACE_MS:
+                    state["forced"] = True
+                original = original_force_close if state["forced"] else original_close
+                original(dialog)
+            if state["closed"] or dialog.get_parent() is None:
+                dialog.disconnect(handler)
                 return GLib.SOURCE_REMOVE
             return GLib.SOURCE_CONTINUE
 
-        GLib.timeout_add(FORCE_CLOSE_RETRY_MS, retry)
+        GLib.timeout_add(RETRY_MS, retry)
+        return result
 
     def close(self):
-        state = watch(self)
-        accepted = original_close(self)
-        if not accepted or state["closed"]:
-            self.disconnect(state["handler"])
-            return accepted
+        return repeat(self, original_close)
 
-        def finish():
-            self.disconnect(state["handler"])
-            if not state["closed"]:
-                force_close(self)
-            return GLib.SOURCE_REMOVE
-
-        GLib.timeout_add(CLOSE_GRACE_MS, finish)
-        return accepted
+    def force_close(self):
+        repeat(self, original_force_close)
 
     close._cassini_close_fix = True
     Adw.Dialog.close, Adw.Dialog.force_close = close, force_close

@@ -33,8 +33,8 @@
       "amd64_digest": "sha256:53d138f25f6738257c78553d51369b662efc0e0eb1cd1556a2fe0ad5a115be88"
     },
     "registry.opensuse.org/opensuse/tumbleweed:latest": {
-      "digest": "sha256:b088dd76bffb2e6ff88c5666f845163e9fe75330a9e57a70712d504c18f35817",
-      "amd64_digest": "sha256:9776eaff9d8aab89b38e2afd1e2eddcecfeffa39a1f882906fdc136435fe4535"
+      "digest": "sha256:8d75d2997058df2cd0821d07e17a285b4548e77781a88c0dae8d1b17dbca3c1b",
+      "amd64_digest": "sha256:05ee75ae4c97784d9c9fd92bc0ea03fd9eb6667a85a5b6ca7a3fc11f79351abc"
     },
     "archlinux:latest": {
       "digest": "sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899",
