@@ -2,7 +2,7 @@
 // control port; the app records through its ordinary command. VM fixture only.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, until } = require('./support/app-control-harness.cjs');
+const { setup, event, until } = require('./support/app-control-harness.cjs');
 
 const popup = { id: 'extension', url: 'chrome-extension://extension/popup.html' };
 function rpc(app, message, sender = popup) {
@@ -382,5 +382,68 @@ test('popup record: an accepted ask ends with its connection, opt-in, or the app
     assert.equal((await reply).recordRequest, undefined);
     assert.equal((await rpc(app, { type: 'status', tabId: 2 })).recordRequest, undefined);
     assert.equal(app.audio.length, 0);
+  } finally { app.close(); }
+});
+
+test('popup record: settling a rejected app command and 10 s expiry both notify subscribed popups and cancel timers', async () => {
+  const app = await setup();
+  const timers = new Map();
+  let timerId = 0;
+  app.api.sessionTimers.later = (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; };
+  app.api.sessionTimers.cancel = id => { timers.delete(id); };
+  const popupPort = {
+    name: 'cassini-popup',
+    sender: { id: 'extension', url: app.chrome.runtime.getURL('popup.html') },
+    onMessage: event(),
+    onDisconnect: event(),
+    sent: [],
+    postMessage(message) { this.sent.push(message); }
+  };
+  app.chrome.runtime.onConnect.emit(popupPort);
+  const accept = async (count, action = 'start') => {
+    const reply = rpc(app, { type: 'recordRequest', action, tabId: 2 });
+    const ask = await asked(app, count);
+    app.ports.at(-1).onMessage.emit({ type: 'recordRequestResult', requestId: ask.requestId, ok: true });
+    assert.deepEqual(plain((await reply).recordRequest), { action, state: 'accepted' });
+    return ask;
+  };
+  try {
+    await optIn(app);
+    // 1. Accepted Start followed by a rejected app command notifies the popup and cancels the expiry timer.
+    await accept(1);
+    assert.equal(timers.size, 1, 'accepted ask schedules one 10 s expiry timer');
+    assert.equal([...timers.values()][0].ms, 10000);
+    const beforeReject = popupPort.sent.length;
+    const rejected = await app.command({ type: 'command', requestId: 'app-reject-1', action: 'start', tabId: 2, mode: 'tracks', independent: true, callGeneration: 'stale-call' });
+    assert.equal(rejected.ok, false);
+    assert.ok(popupPort.sent.length > beforeReject, 'settling a rejected app command pushes a change notice to subscribed popups');
+    assert.equal(popupPort.sent.at(-1).type, 'changed');
+    assert.equal(timers.size, 0, 'settling cancels the expiry timer');
+    assert.equal((await rpc(app, { type: 'status', tabId: 2 })).recordRequest, undefined);
+
+    // 2. An accepted ask the app never acts on expires via its timer and notifies the popup.
+    await accept(2);
+    assert.equal(timers.size, 1);
+    const [expiryId, expiry] = [...timers.entries()][0];
+    assert.equal(expiry.ms, 10000);
+    const beforeExpiry = popupPort.sent.length;
+    timers.delete(expiryId);
+    expiry.fn();
+    assert.ok(popupPort.sent.length > beforeExpiry, 'expiry timer pushes a change notice to subscribed popups');
+    assert.equal(popupPort.sent.at(-1).type, 'changed');
+    assert.equal((await rpc(app, { type: 'status', tabId: 2 })).recordRequest, undefined);
+
+    // 3. Revoking opt-in cancels the expiry timer without leaving an orphan.
+    await accept(3);
+    assert.equal(timers.size, 1);
+    await optIn(app, false);
+    assert.equal(timers.size, 0, 'revoking opt-in cancels the expiry timer');
+
+    // 4. Closing the tab cancels the expiry timer without leaving an orphan.
+    await optIn(app, true);
+    await accept(4);
+    assert.equal(timers.size, 1);
+    app.chrome.tabs.onRemoved.emit(2);
+    assert.equal(timers.size, 0, 'closing the tab cancels the expiry timer');
   } finally { app.close(); }
 });

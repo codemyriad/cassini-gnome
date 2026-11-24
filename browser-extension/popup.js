@@ -111,8 +111,9 @@ async function refresh() {
     element('diagnostics').textContent = diagnosticText;
     element('copy').disabled = false;
   } finally {
-    pending = false; element('tab-status').setAttribute('aria-busy', 'false');
-    drainRefresh();
+    pending = false;
+    if (refreshQueued && !actionPending) void refresh();
+    else element('tab-status').setAttribute('aria-busy', 'false');
   }
 }
 function drainRefresh() {

@@ -29,7 +29,7 @@ browser → computer → browser case in one folder. Its returned span shares th
 actual opaque remote source ID, and the final single `end` explains callEnded.
 The hand-written expected file checks timeline, roles and final end. Schema and
 semantic checks reject illegal restoration, duplicate/nonterminal end and unsaved
-state with end. Policy deadlines live in `control/call-lifecycle-vectors.json`.
+state with end. Policy deadlines live in `../control/call-lifecycle-vectors.json`.
 
 `--case uncommitted-return` is the same call returning before its fallback
 committed: the browser loss writes none/lost at 1000 ms, no system track starts

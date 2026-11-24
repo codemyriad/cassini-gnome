@@ -1,12 +1,24 @@
-// The popup has no timer: it reflects what the worker pushes and re-inspects the meeting page only on
-// open or when the person clicks "Check again". Tests act as that person until the state they expect shows.
-export async function waitForHeading(popup, name, timeout = 30000) {
-  const heading = popup.getByRole('heading', {name, exact: true});
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    if (await heading.isVisible().catch(() => false)) return;
-    await popup.locator('#recheck').click().catch(() => {});
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-  await heading.waitFor({timeout: 1000});
+// Popup test helpers: bind the popup's active-tab lookup before popup.js runs its open check,
+// and wait for explicit status-request completion (aria-busy="false") instead of fixed sleeps.
+export async function openPopupForTab(context, extensionId, target, timeout = 30000) {
+  const popup = await context.newPage();
+  await popup.addInitScript(selector => {
+    if (!globalThis.chrome?.tabs?.query) return;
+    const query = chrome.tabs.query.bind(chrome.tabs);
+    chrome.tabs.query = async options => {
+      if (!options?.active) return query(options);
+      if (typeof selector === 'number') return [await chrome.tabs.get(selector)];
+      return (await query({})).filter(tab => tab.url === selector).slice(0, 1);
+    };
+  }, target);
+  await popup.goto(`chrome-extension://${extensionId}/popup.html`);
+  await popup.locator('#tab-status[aria-busy="false"]').waitFor({ timeout });
+  return popup;
+}
+
+// Run one explicit "Check again" and wait for that status request (and any queued refresh) to finish.
+export async function recheckPopup(popup, timeout = 30000) {
+  await popup.locator('#tab-status[aria-busy="false"]').waitFor({ timeout });
+  await popup.locator('#recheck').click();
+  await popup.locator('#tab-status[aria-busy="false"]').waitFor({ timeout });
 }

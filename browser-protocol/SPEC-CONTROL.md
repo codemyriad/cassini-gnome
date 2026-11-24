@@ -1144,8 +1144,9 @@ the control port, capture policy or admission. Only the extension's own popup pa
   yet known (a freshly woken worker), so a handshake read still in flight cannot discard it. Only the open check
   does this; the published call evidence reads the page once per round, as before.
 - **No timer.** The popup does not poll. The worker pushes `{type:"changed"}` over a `cassini-popup` port (accepted
-  only from the extension's own popup page) when its state changes, including app connection, disconnection and the
-  record opt-in; the popup answers with a plain `status`.
+  only from the extension's own popup page) when its state changes, including app connection, disconnection, the
+  record opt-in, and (since extension 0.2.38) when an accepted `recordRequest` settles (including after a rejected
+  app command) or expires after its 10-second settle window; the popup answers with a plain `status`.
 - **Evidence view.** `tabEvidence.transport.documentStart` is `false` when the tab's relay was injected after the
   page loaded; such a relay cannot verify a call. `transport.detail` carries only bounded flags, counts and enum
   values (frame count, main frame, relay and hook state, source count, page state, repair outcome); it never

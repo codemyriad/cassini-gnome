@@ -23,6 +23,7 @@ const extensionId=[...createHash('sha256').update(key).digest('hex').slice(0,32)
 assert.notEqual(extensionId,'pcafdaahfhjiolfpfnlhmljfgoabbaij');
 const pair=['call-signals-v1','verified-auto-admission-v1'];
 import {privateControl,packet,barrier} from './rtc-evidence-control.mjs';
+import {openPopupForTab} from './support/popup-check.mjs';
 const positive=['duplex','captured-clone','echo','unanswered-early-media','repaired-frame-positive-media','primordial-poison-positive','webaudio-mic','webaudio-track-source','stream-clone'];
 const negative=['passive-viewer','mic-preview','synthetic-sender','unanswered-ringing-no-capture','cross-frame-capture','cross-frame-split','cross-document-split','forged-page-evidence','webaudio-non-mic'];
 const report={decision:'D80.5',scope:'real loaded companion/worker/native-control fixture and R1 media; interactive captured-media session, not answered human intent; no GNOME/Mac adoption or native recording proof',completed:false,cases:[]};
@@ -344,6 +345,9 @@ try{
         });
         assert.equal((await packet(worker,{type:'pong',after:afterPing})).packet.seq,702);
         observation.worker.withdrawalWithHealthyPongMs=withdrawalMs;
+        // The published control signal withdraws after 2 s without renewal; wait for the frozen collector
+        // itself to pass its 2.5 s local-preview freshness bound before asserting the popup's initial check.
+        await caller.waitForFunction(()=>__cassiniCallEvidenceV1.read().cohortQualified===false);
       }
       if(fixture==='synthetic-sender'){
         // Exercise the real MAIN capture scan: DOM sender dedup must never
@@ -398,22 +402,16 @@ try{
       const attempts=await worker.evaluate(()=>({inputs:fixtureCaptureAttempts,pcm:fixturePackets.some(value=>value.type==='audio'||value.type==='start')}));
       assert.equal(attempts.inputs,0);assert.equal(attempts.pcm,false);
       // The real popup RPC and Copy diagnostics use one content-free projection.
-      const popup=await context.newPage();await popup.goto(`chrome-extension://${extensionId}/popup.html`);
-      await popup.evaluate(tabId=>{const query=chrome.tabs.query.bind(chrome.tabs);chrome.tabs.query=async options=>options.active?[await chrome.tabs.get(tabId)]:query(options)},tabId);
-      await popup.waitForFunction(()=>document.querySelector('main')?.getAttribute('aria-busy')==='false');
+      const popup=await openPopupForTab(context,extensionId,tabId,30000);
       // A relay injected after the page loaded can never verify a call: the popup asks for a reload instead.
       const unverifiedTitle=fixture==='repaired-frame-positive-media'?'Reload this tab for automatic detection':'Interactive session is unverified';
-      // This fixture opens the popup as a plain tab, so its open check ran before the tab lookup was pointed at the
-      // meeting. Like a person, press Check again until the page shows the state the fixture should produce.
       const shown=([expected,unverified])=>{
         const text=document.querySelector('#diagnostics').textContent;
         return !!text&&JSON.parse(text).callEvidence?.state===expected&&document.querySelector('#status').textContent===
           (expected==='active'?'Interactive media session detected':unverified);
       };
       const wanted=[fixture==='duplex'?'unknown':expected,unverifiedTitle];
-      const until=Date.now()+30000;let seen=false;
-      while(!(seen=await popup.evaluate(shown,wanted))&&Date.now()<until){await popup.locator('#recheck').click();await new Promise(resolve=>setTimeout(resolve,500));}
-      assert.ok(seen,`popup shows ${wanted.join(' / ')} for ${fixture}`);
+      assert.ok(await popup.evaluate(shown,wanted),`popup shows ${wanted.join(' / ')} for ${fixture}, got ${await popup.locator('#status').textContent()} / ${await popup.locator('#diagnostics').textContent()}`);
       await popup.evaluate(()=>Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{globalThis.fixtureCopy=text}}}));
       await popup.locator('summary').click();await popup.locator('#copy').click();await popup.waitForFunction(()=>typeof fixtureCopy==='string');
       assert.equal(await popup.evaluate(()=>fixtureCopy),await popup.locator('#diagnostics').textContent());

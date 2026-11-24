@@ -229,55 +229,70 @@ export class AppControl {
     })().catch(fail);
     return answer;
   }
+  static utf8ByteLength(value) {
+    let bytes = 0;
+    for (const ch of value) {
+      const code = ch.codePointAt(0);
+      bytes += code <= 127 ? 1 : code <= 2047 ? 2 : code <= 65535 ? 3 : 4;
+    }
+    return bytes;
+  }
+  static validTabId(value) {
+    return Number.isSafeInteger(value) && value >= 0;
+  }
   receive(port, message) {
     if (port !== this.port) return;
-    if (message?.type === 'recordRequests') {
-      if (typeof message.enabled !== 'boolean' || Object.keys(message).some(key => !['type','enabled'].includes(key))) return;
-      const enabled = message.enabled && this.capabilities.includes('popup-record-v1');
-      if (!enabled) this.failRecordRequests();
-      this.recordConfigured = enabled;
-      this.send(port, { type: 'recordRequestsConfigured', enabled });
-      this.changed();
-      return;
+    switch (message?.type) {
+      case 'recordRequests': this.handleRecordRequests(port, message); return;
+      case 'recordRequestResult': this.handleRecordRequestResult(message); return;
+      case 'configure': this.handleConfigure(port, message); return;
+      case 'ping': this.handlePing(port, message); return;
+      case 'command': this.handleCommand(port, message); return;
     }
-    if (message?.type === 'recordRequestResult') {
-      const request = typeof message.requestId === 'string' ? this.recordRequests.get(message.requestId) : undefined;
-      if (!request || typeof message.ok !== 'boolean') return;
-      this.recordRequests.delete(message.requestId);
-      this.cancel(request.timer);
-      if (message.ok) request.resolve({ ok: true });
-      else request.resolve({ ok: false,
-        error: typeof message.error === 'string' && message.error ? [...message.error].slice(0, 2000).join('') : 'Cassini could not do that. Check the Cassini app.',
-        ...(typeof message.code === 'string' && /^[A-Za-z]{1,32}$/.test(message.code) ? { code: message.code } : {}) });
-      return;
-    }
-    if (message?.type === 'configure') {
-      const values = message.capabilities;
-      if (!Array.isArray(values) || values.length > 2 || new Set(values).size !== values.length ||
-          values.some(value => !['call-signals-v1','verified-auto-admission-v1'].includes(value)) ||
-          (values.includes('verified-auto-admission-v1') && !values.includes('call-signals-v1')) ||
-          Object.keys(message).some(key => !['type','capabilities'].includes(key))) return;
-      this.cancel(this.signalTimer);this.signalTimer=null;
-      this.signalEpoch++;
-      this.signalRun = null;
-      this.lastSignals = null;
-      this.signalsConfigured = values.includes('call-signals-v1') && this.capabilities.includes('call-signals-v1') && typeof this.signalSnapshot === 'function';
-      this.verifiedConfigured = this.signalsConfigured && values.includes('verified-auto-admission-v1') && this.capabilities.includes('verified-auto-admission-v1');
-      this.signalDirty = false;
-      this.send(port,{type:'configured',capabilities:this.signalsConfigured ? ['call-signals-v1',...(this.verifiedConfigured ? ['verified-auto-admission-v1'] : [])] : []});
-      this.publish();
-      return;
-    }
-    // heartbeat-v1: answer at once, never through the command queues (a Stop
-    // flush can legitimately hold them longer than the app's loss deadline).
-    // A pong is only ever a reply; the extension sends no unsolicited types.
-    if (message?.type === 'ping') {
-      if (!this.capabilities.includes('heartbeat-v1') || !Number.isSafeInteger(message.seq) || message.seq < 0) return;
-      this.delay = 1000;
-      this.send(port, { type: 'pong', seq: message.seq });
-      return;
-    }
-    if (message?.type !== 'command') return;
+  }
+  handleRecordRequests(port, message) {
+    if (typeof message.enabled !== 'boolean' || Object.keys(message).some(key => !['type','enabled'].includes(key))) return;
+    const enabled = message.enabled && this.capabilities.includes('popup-record-v1');
+    if (!enabled) this.failRecordRequests();
+    this.recordConfigured = enabled;
+    this.send(port, { type: 'recordRequestsConfigured', enabled });
+    this.changed();
+  }
+  handleRecordRequestResult(message) {
+    const request = typeof message.requestId === 'string' ? this.recordRequests.get(message.requestId) : undefined;
+    if (!request || typeof message.ok !== 'boolean') return;
+    this.recordRequests.delete(message.requestId);
+    this.cancel(request.timer);
+    if (message.ok) request.resolve({ ok: true });
+    else request.resolve({ ok: false,
+      error: typeof message.error === 'string' && message.error ? [...message.error].slice(0, 2000).join('') : 'Cassini could not do that. Check the Cassini app.',
+      ...(typeof message.code === 'string' && /^[A-Za-z]{1,32}$/.test(message.code) ? { code: message.code } : {}) });
+  }
+  handleConfigure(port, message) {
+    const values = message.capabilities;
+    if (!Array.isArray(values) || values.length > 2 || new Set(values).size !== values.length ||
+        values.some(value => !['call-signals-v1','verified-auto-admission-v1'].includes(value)) ||
+        (values.includes('verified-auto-admission-v1') && !values.includes('call-signals-v1')) ||
+        Object.keys(message).some(key => !['type','capabilities'].includes(key))) return;
+    this.cancel(this.signalTimer); this.signalTimer = null;
+    this.signalEpoch++;
+    this.signalRun = null;
+    this.lastSignals = null;
+    this.signalsConfigured = values.includes('call-signals-v1') && this.capabilities.includes('call-signals-v1') && typeof this.signalSnapshot === 'function';
+    this.verifiedConfigured = this.signalsConfigured && values.includes('verified-auto-admission-v1') && this.capabilities.includes('verified-auto-admission-v1');
+    this.signalDirty = false;
+    this.send(port,{type:'configured',capabilities:this.signalsConfigured ? ['call-signals-v1',...(this.verifiedConfigured ? ['verified-auto-admission-v1'] : [])] : []});
+    this.publish();
+  }
+  // heartbeat-v1: answer at once, never through the command queues (a Stop
+  // flush can legitimately hold them longer than the app's loss deadline).
+  // A pong is only ever a reply; the extension sends no unsolicited types.
+  handlePing(port, message) {
+    if (!this.capabilities.includes('heartbeat-v1') || !Number.isSafeInteger(message.seq) || message.seq < 0) return;
+    this.delay = 1000;
+    this.send(port, { type: 'pong', seq: message.seq });
+  }
+  handleCommand(port, message) {
     this.delay = 1000;
     const id = message.requestId;
     if (!(typeof id === 'string' && id.length > 0 && [...id].length <= 128)
@@ -301,19 +316,19 @@ export class AppControl {
       const validResume = resume === undefined || this.capabilities.includes('resume-capture-v1') &&
         message.action === 'start' && message.independent === true && resume !== null && typeof resume === 'object' &&
         typeof resume.captureId === 'string' && resume.captureId.length > 0 &&
-        Array.from(resume.captureId).reduce((n,c)=>n+(c.codePointAt(0)<=127?1:c.codePointAt(0)<=2047?2:c.codePointAt(0)<=65535?3:4),0)<=128 &&
+        AppControl.utf8ByteLength(resume.captureId) <= 128 &&
         Number.isSafeInteger(resume.timelineOriginMs) && resume.timelineOriginMs >= 0 && resume.timelineOriginMs <= 253402300799000 &&
         typeof message.callGeneration === 'string' && message.callGeneration.length > 0;
       const validOptions = validResume && ['independent', 'captureLocal', 'microphone', 'keepOnNavigation'].every(key => message[key] === undefined || typeof message[key] === 'boolean')
         && (message.keepOnNavigation !== true || (message.action === 'start' && message.independent === true))
         && (message.callGeneration === undefined || (message.action === 'start' && typeof message.callGeneration === 'string' && message.callGeneration.length > 0 && message.callGeneration.length <= 200))
         && (message.captureId === undefined || (message.action === 'stop' && typeof message.captureId === 'string' && message.captureId.length > 0 &&
-            Array.from(message.captureId).reduce((n,c)=>n+(c.codePointAt(0)<=127?1:c.codePointAt(0)<=2047?2:c.codePointAt(0)<=65535?3:4),0)<=200))
+            AppControl.utf8ByteLength(message.captureId) <= 200))
         && (message.reason === undefined || (message.action === 'stop' &&
             ['user', 'callEnded', 'tabClosed', 'pageGone', 'disk', 'error', 'appQuit'].includes(message.reason)));
       const intent = { message, cancelled: false, cancelledResume: false };
       if (validOptions && resume !== undefined) this.resumeIntents.set(key, intent);
-      if (message.independent === true && message.action === 'stop' && Number.isSafeInteger(message.tabId) && message.tabId >= 0 && validOptions) {
+      if (message.independent === true && message.action === 'stop' && AppControl.validTabId(message.tabId) && validOptions) {
         for (const pending of this.resumeIntents.values()) {
           if (pending.message.tabId === message.tabId && (message.captureId === undefined || message.captureId === pending.message.resumeCapture.captureId)) {
             pending.cancelled = true;
@@ -330,14 +345,10 @@ export class AppControl {
         try {
           // D58 #11: `busy` wins over every other refusal of a Start for that tab.
           if (this.busy(message)) throw Object.assign(new Error('A recording is already running. Stop it before starting another.'), { resultCode: 'busy' });
-          if ((!['start', 'stop'].includes(message.action) && !(message.action === 'reloadTab' && this.capabilities.includes('tab-readiness-v1'))) || !Number.isSafeInteger(message.tabId) || message.tabId < 0)
+          if ((!['start', 'stop'].includes(message.action) && !(message.action === 'reloadTab' && this.capabilities.includes('tab-readiness-v1'))) || !AppControl.validTabId(message.tabId))
             throw invalid('Choose a meeting to record.');
           if (message.action === 'start' && message.mode !== 'tracks')
             throw invalid('To record the whole tab, click Record the whole tab in the browser.');
-          for (const key of ['independent', 'captureLocal', 'microphone', 'keepOnNavigation']) {
-            if (message[key] !== undefined && typeof message[key] !== 'boolean')
-              throw invalid('Choose a meeting to record.');
-          }
           if (!validOptions) throw invalid('Choose a meeting to record.');
           if (intent.cancelled) throw new Error('Recording could not start.');
           const status = await this.command(message, intent);
@@ -351,8 +362,7 @@ export class AppControl {
       // Independent tabs must not wait on another tab's lookup, audio host or
       // flush. Same-tab commands remain ordered; a legacy command is a global
       // barrier, preserving the original single-slot arrival-order behavior.
-      const independent = message.independent === true && Number.isSafeInteger(message.tabId)
-        && message.tabId >= 0 && validOptions;
+      const independent = message.independent === true && AppControl.validTabId(message.tabId) && validOptions;
       const predecessors = independent
         ? [this.tail, this.tabTails.get(message.tabId)]
         : [this.tail, ...this.tabTails.values()];

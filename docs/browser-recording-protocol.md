@@ -3,7 +3,8 @@
 The canonical contract, schemas, shared extension and conformance vectors are
 vendored under [browser-protocol](../browser-protocol/README.md). Its exact Git
 revision is recorded in [PINNED_COMMIT](../browser-protocol/PINNED_COMMIT).
-The current pin, `e7282ae`, ships companion 0.2.37: the popup reports an active call whether or not the
+The current pin, `2e4bc42f`, ships companion 0.2.38: popups are notified immediately when record requests
+settle or expire (#113), the popup reports an active call whether or not the
 Cassini desktop app is connected (#109, D-1153), lists Talk participants before recording starts, asks
 for a reload when a tab's relay arrived after the page and reconnects on open (#108), offers an explicit
 whole-tab fallback with connection details, and uses the reviewed cassini-ux translations (#107, D-1075).

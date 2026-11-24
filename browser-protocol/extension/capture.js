@@ -688,11 +688,10 @@ export async function capture(options) {
   const schedule = value => {
     if (ending || retiring || terminal || retryTimer !== null) return;
     const error = value instanceof Error ? value : new Error(String(value));
-    if (retirementReason(error) && retirementReason(error) !== "ended") {
+    const reason = retirementReason(error);
+    if (reason && reason !== "ended") {
       // The token is deliberately fenced or already saved by the native app.
       retiring = true;
-      if (retryTimer !== null) cancel(retryTimer);
-      retryTimer = null;
       return;
     }
     const at = now();
