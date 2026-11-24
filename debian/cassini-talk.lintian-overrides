@@ -20,8 +20,3 @@ embedded-library mbedtls [usr/lib/x86_64-linux-gnu/cassini-talk/python/onnxrunti
 # their approved hashes and make the worker refuse to load them.
 unstripped-binary-or-object [usr/lib/x86_64-linux-gnu/cassini-talk/sherpa/libonnxruntime.so]
 unstripped-binary-or-object [usr/lib/x86_64-linux-gnu/cassini-talk/sherpa/libsherpa-onnx-c-api.so]
-
-# The spectrogram helper is pure computation loaded with ctypes: it calls only
-# libm, so the linker's --as-needed leaves libc out. Lintian 2.117 (Ubuntu
-# 24.04 LTS, D-1140) reports that as an error; newer lintian does not.
-library-not-linked-against-libc [usr/lib/x86_64-linux-gnu/cassini-talk/libcassini-spectro.so]

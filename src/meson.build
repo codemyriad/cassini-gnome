@@ -2,7 +2,9 @@ spectro_dir = get_option('prefix') / get_option('libdir') / 'cassini-talk'
 spectro_helper = shared_module('cassini-spectro', 'native/spectro.c',
   dependencies: meson.get_compiler('c').find_library('m'),
   # Finalize bytes before build identity hashes the private installed helper.
-  link_args: ['-Wl,--strip-all'],
+  # It calls only libm; link libc anyway, as Debian policy (and lintian 2.117 on
+  # Ubuntu 24.04, D-1140) requires of a shared library, despite --as-needed.
+  link_args: ['-Wl,--strip-all', '-Wl,--push-state,--no-as-needed', '-lc', '-Wl,--pop-state'],
   override_options: ['optimization=3'], install: true, install_dir: spectro_dir,
 )
 # SPDX-License-Identifier: GPL-3.0-or-later

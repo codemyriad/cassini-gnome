@@ -349,6 +349,31 @@ def test_installed_metadata_validation_checks_the_packaged_files_and_both_valida
     assert calls == []
 
 
+def test_installed_appstream_validation_tolerates_only_an_old_spdx_list(tmp_path):
+    # D-1140: AppStream 1.0.2 (Ubuntu 24.04) does not know Unicode-3.0 and refuses to downgrade it.
+    import subprocess
+    from types import SimpleNamespace
+
+    policy = module("validate_installed")
+    metainfo = tmp_path / "io.codemyriad.CassiniTalk.metainfo.xml"
+    old_list = "W: io.codemyriad.CassiniTalk:6: spdx-license-unknown Unicode-3.0\n\n✘ Validation failed: warnings: 1\n"
+    for output, tolerated in (
+        (old_list, True),
+        (old_list + "E: io.codemyriad.CassiniTalk:9: tag-invalid summary\n", False),
+        ("W: io.codemyriad.CassiniTalk:6: spdx-license-unknown Made-Up-1.0\n", False),
+        ("I: io.codemyriad.CassiniTalk:3: description-first-para-too-short\n", False),
+        ("", False),
+    ):
+
+        def run(command, *, check, capture_output=False, text=False, output=output):
+            assert command == ["appstreamcli", "validate", "--no-net", str(metainfo)]
+            if check:
+                raise subprocess.CalledProcessError(3, command)
+            return SimpleNamespace(returncode=3, stdout=output)
+
+        assert policy.only_an_old_spdx_list(metainfo, run=run) is tolerated, output
+
+
 def test_release_notes_are_the_tagged_versions_news_section():
     notes = module("release_notes").notes
     news = "Version 2.0.0\n~~~~~~~~~~~~~\nReleased: 2026-11-05\n\n- New\n  line\n\nVersion 1.0.0\n~~~~~~~~~~~~~\nReleased: 2026-10-01\n\n- Old\n"
