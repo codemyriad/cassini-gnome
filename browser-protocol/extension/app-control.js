@@ -3,8 +3,8 @@
 export class AppControl {
   constructor({ runtime, alarms, snapshot, command, capabilities = [], identity = () => ({}), cancelPending = () => {}, connected = async () => {},
                 later = (fn, ms) => setTimeout(fn, ms), cancel = id => clearTimeout(id), busy = () => false, signalSnapshot = null, signalFinalize = value => value,
-               recordWaiting = () => {} }) {
-    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, identity, cancelPending, connected, later, cancel, busy, signalSnapshot, signalFinalize, recordWaiting });
+               recordWaiting = () => {}, changed = () => {} }) {
+    Object.assign(this, { runtime, alarms, snapshot, command, capabilities, identity, cancelPending, connected, later, cancel, busy, signalSnapshot, signalFinalize, recordWaiting, changed });
     this.port = null;
     this.resetSignals();
     this.ready = false;
@@ -58,6 +58,7 @@ export class AppControl {
     this.resetSignals();
     this.ready = false;
     this.connecting = false;
+    this.changed(); // The popup shows app availability.
     if (Date.now() - this.connectedAt >= 30000) this.delay = 1000;
     try { port.disconnect(); } catch {}
     this.requests.clear(); this.completed.clear();
@@ -89,6 +90,7 @@ export class AppControl {
       this.connecting = false;
       this.alarms.clear('cassini-app-control').catch(() => {});
       this.publish();
+      this.changed();
     }).catch(() => {
       if (port !== this.port) return;
       this.connecting = false;
@@ -235,6 +237,7 @@ export class AppControl {
       if (!enabled) this.failRecordRequests();
       this.recordConfigured = enabled;
       this.send(port, { type: 'recordRequestsConfigured', enabled });
+      this.changed();
       return;
     }
     if (message?.type === 'recordRequestResult') {

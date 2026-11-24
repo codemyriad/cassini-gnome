@@ -44,3 +44,21 @@ test('healthy transport without source media stays distinct from unavailable cap
   assert.equal(view.transport.page,'ready');assert.equal(view.callEvidence.state,'unknown');
   assert.equal(view.captureCapability.kind,'unavailable');assert.equal(view.execution.recording,false);
 });
+
+test('documentStart is a strict boolean-or-null fact in the content-free projection',async()=>{
+  const {tabEvidenceView}=await import('../tab-evidence.mjs');
+  const view=value=>tabEvidenceView({browserHealth:{tabs:[]},tabEvidence:{tabId:3,transport:{page:'ready',documentStart:value}}},3).transport.documentStart;
+  assert.equal(view(false),false);assert.equal(view(true),true);
+  for(const hostile of ['false',0,1,{},undefined,null])assert.equal(view(hostile),null);
+});
+
+test('connection details carry only bounded flags, counts and enums about the worker view of a tab',async()=>{
+  const {tabEvidenceView,copyDiagnostics}=await import('../tab-evidence.mjs');
+  const detail={frames:2,main:true,obsolete:false,relayAlive:true,hookReady:false,checking:true,sources:3,nativeVerified:false,pageState:'present',repair:'none'};
+  const view=raw=>tabEvidenceView({browserHealth:{tabs:[]},tabEvidence:{tabId:3,transport:{page:'unavailable',detail:raw}}},3).transport.detail;
+  assert.equal(JSON.stringify(view(detail)),JSON.stringify(detail));
+  assert.equal(view(undefined),null);assert.equal(view('x'),null);
+  const hostile=view({frames:1e9,main:'yes',obsolete:1,relayAlive:{},hookReady:null,checking:'true',sources:-1,nativeVerified:[],pageState:'https://private.invalid/x',repair:'<img>',url:'https://private.invalid',title:'Secret meeting'});
+  assert.equal(JSON.stringify(hostile),JSON.stringify({frames:0,main:null,obsolete:null,relayAlive:null,hookReady:null,checking:null,sources:null,nativeVerified:null,pageState:null,repair:null}));
+  assert.doesNotMatch(JSON.stringify(copyDiagnostics({browserHealth:{tabs:[]},tabEvidence:{tabId:3,transport:{page:'ready',detail:{url:'https://private.invalid',title:'Secret'}}}},3)),/private|Secret/);
+});

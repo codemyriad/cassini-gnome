@@ -5,7 +5,7 @@ Required: 4 participants including the recorder, independent test profiles/accou
 
 1. Join the dedicated test call. Confirm the far-end tone is audible before recording. Note
    Chrome/product versions and each participant's input frequency. Approve test guests if needed.
-2. Open Cassini popup and click **Record separate tracks**. Note the shown source count and
+2. Open Cassini popup and click **Start recording**. Note the shown source count and
    complete Recording-UUID path. If still waiting after joining, record that as a gap; never
    infer success from a red badge alone. Three switching receiver slots are a model to investigate, not a required track count. Mute/unmute remote participants in turn and record whether the same source IDs change content. Labels may be static and unverified.
 3. Record at least 10 seconds of steady signal. Mute the local participant in the product for
@@ -16,12 +16,12 @@ Required: 4 participants including the recorder, independent test profiles/accou
    restarting a browser is not a device-switch pass.
 5. Mute/unmute the far end (Meet: each remote in turn) for 10 seconds each. Observe source
    content/count/labels. Compare known tone powers; mixed remote content is not a bleed failure.
-6. Click **Stop and save**, wait for saved status, retain session.json/WAVs and run
+6. Click **Stop recording**, wait for saved status, retain session.json/WAVs and run
    `python3 conformance/summarize.py /absolute/Recording-UUID --tones 220,440,660,880`.
    Require desired tone power >0.001 and unwanted tone <1% for separated tone sources.
-7. Run a new **Record the whole tab** recording for at least 10 seconds. Confirm playback remains
+7. Run a new **Record the whole tab instead** recording for at least 10 seconds. Confirm playback remains
    audible and one stereo `tab` source contains the rendered far-end mix. Do not assume local
-   microphone inclusion. Click **Stop and save** and collect that folder/summary separately.
+   microphone inclusion. Click **Stop recording** and collect that folder/summary separately.
 8. In one final short recording, leave or navigate the meeting tab while audio is active.
    Require a visible interruption and playable partial WAVs. Complete TEMPLATE.md, attach
    session.json and summarize output for each mode, and record every blocked or failed step.

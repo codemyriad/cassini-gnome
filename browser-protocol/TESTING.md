@@ -50,6 +50,12 @@ tones, media-clone deduplication, and one meeting continuing after the other's
 Stop. It requires CASSINI_ISOLATED_AUDIO=1 and validates the private Pulse socket
 and sink before mutating them; it refuses to run against a desktop sound server.
 Use the GNOME private recording harness locally. Hosted CI starts its own server.
+Every test that un-mutes Chromium (`ignoreDefaultArgs: ['--mute-audio']`: `independent-sessions`, `worker-recovery`,
+`bfcache`) plays real tones and calls `requirePrivateAudio()` (`tests/support/private-audio.mjs`): it refuses to run
+without `CASSINI_ISOLATED_AUDIO=1` and a private Pulse socket, so it can never reach the desktop sound server.
+`tests/test_audio_isolation.py` fails if any test un-mutes the browser without that guard. Locally, run them under `tests/private-audio.sh` (a private PulseAudio server with a null sink on its own socket;
+`tests/private-audio.sh --fetch` once unpacks the `pulseaudio` .deb into `~/.cache`, installing nothing and leaving a PipeWire desktop untouched),
+for example `npm run test:audible`; `npm test` already wraps `worker-recovery` and `bfcache` that way.
 The default audio writer/control bridge are test fixtures, not product hosts.
 CASSINI_NATIVE_HOST and CASSINI_CONTROL_NATIVE_HOST select actual app adapters;
 CASSINI_TEST_EXTENSION and PLAYWRIGHT_MODULE select a pinned installed extension
@@ -333,7 +339,10 @@ The existing popup transport omits tabId from its legacy status requests (rather
 than sending a null reload target); explicit null remains an invalid scoped ID.
 The unpacked Chromium reload regression exercises this real popup/RPC pairing.
 
-Popup review regressions retain rejoin guidance across observed status polls,
+The popup runs no timer. It refreshes when the worker pushes a change notice over its `cassini-popup`
+port, and it inspects the meeting page (repair-on-open and the participant roster) only for the open check or
+a click on Check again (`fresh` status requests); `tests/support/popup-check.mjs` lets real-browser tests act as
+that person. Popup review regressions retain rejoin guidance across observed status refreshes,
 clear it on fresh evidence, and clear stale reload refusals on recovery or a
 worker error. The real DOM test checks the dark installation warning's computed
 foreground/background contrast, with a 4.5:1 floor. Poll-count and UI state waits

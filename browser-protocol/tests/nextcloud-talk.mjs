@@ -7,6 +7,7 @@ import {generateKeyPairSync,createHash} from 'node:crypto';
 import {cp,mkdir,mkdtemp,readFile,writeFile,chmod,rm} from 'node:fs/promises';
 import os from 'node:os';import path from 'node:path';import {fileURLToPath} from 'node:url';
 import {joinNextcloudTalk,talkMediaState} from '../scenarios/nextcloud-talk.mjs';
+import {waitForHeading} from './support/popup-check.mjs';
 import {installRtcTopologyProbe,summarizeRtcTopology,waitRtcTopology,summarizeRtcCohortComparison} from './rtc-topology-probe.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -93,7 +94,7 @@ try{
  // to Chrome's actual meeting-tab object, as in the loaded-reload fixture.
  popup=await observer.newPage();await popup.goto(`chrome-extension://${id}/popup.html`);
  await popup.evaluate(tabId=>{const query=chrome.tabs.query.bind(chrome.tabs);chrome.tabs.query=async options=>options.active?[await chrome.tabs.get(tabId)]:query(options);},row.tabId);
- await popup.getByRole('heading',{name:'Interactive session is unverified',exact:true}).waitFor();
+ await waitForHeading(popup,'Interactive session is unverified');
  const beforeStart=await popup.evaluate(tabId=>chrome.runtime.sendMessage({target:'background',type:'status',tabId}),row.tabId);
  assert.ok(inventory().some(item=>item.tabId===row.tabId&&item.sourceCount>=2&&item.heard===true),
   'listen-only Talk retains both RTP sources without automatic admission');
@@ -163,7 +164,7 @@ try{
  const verified=await controlEvent(()=>inventory().find(item=>item.tabId===row.tabId&&item.browserDocumentId===qualified.documentGeneration),'correlated verified RTP inventory');
  assert.equal(verified.documentGeneration,qualified.sourceDocumentGeneration);assert.equal(verified.callGeneration,qualified.callEvidence.callGeneration);
  assert.notEqual(qualified.documentGeneration,qualified.sourceDocumentGeneration);
- await popup.getByRole('heading',{name:'Interactive media session detected',exact:true}).waitFor();
+ await waitForHeading(popup,'Interactive media session detected');
  // Verify active callEvidence is renewed across multiple post-qualification sampling cycles without dropping to unknown.
  const renewalSignals=await controlEvent(()=>{
   const postActive=events.slice(proofStart).filter(event=>event.type==='callSignals'&&event.sequence>qualifiedSignal.sequence);
@@ -172,7 +173,7 @@ try{
  const renewals=renewalSignals.map(event=>event.tabs.find(tab=>tab.tabId===row.tabId));
  assert.ok(renewals.every(tab=>tab?.callEvidence.state==='active'&&tab.callEvidence.callGeneration===qualified.callEvidence.callGeneration&&tab.remoteAudio==='separated'),
   '4-person active Talk call must not drop to unknown across callSignals renewals');
- await popup.getByRole('heading',{name:'Interactive media session detected',exact:true}).waitFor();
+ await waitForHeading(popup,'Interactive media session detected');
  report.d805Admission={state:qualified.callEvidence.state,remoteAudio:qualified.remoteAudio,acknowledged:true,namespaceBinding:true,
    adapterVersion:qualified.callEvidence.adapter.version,splitPeerConnection:true,renewals:renewals.length,
    collector:await meeting.evaluate(()=>{const value=__cassiniCallEvidenceV1.read();return {version:value.version,

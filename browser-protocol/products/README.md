@@ -5,7 +5,7 @@ numbered product procedure. Use only dedicated test calls and generated input. R
 behavior is an observation to record, not something inferred from the topology fixtures.
 Chromium is the current target (Chrome 116 minimum).
 
-Use the exact popup buttons **Record separate tracks**, **Record the whole tab**, and **Stop and save**.
+Use the exact popup buttons **Start recording**, **Record the whole tab instead**, and **Stop recording**.
 Each recording creates `~/Music/Cassini/Recording-<UUID>/`; copy the path shown in the popup.
 Retain that folder. After Stop, attach session.json and the output of
 `python3 conformance/summarize.py /absolute/Recording-UUID --tones 440,880` to a result

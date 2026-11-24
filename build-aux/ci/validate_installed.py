@@ -25,8 +25,8 @@ def only_an_old_spdx_list(metainfo, *, run=subprocess.run):
 def validate(prefix, app_id, version, *, run=subprocess.run):
     extension = prefix / "share/cassini-talk/browser-extension/manifest.json"
     extension_version = json.loads(extension.read_text()).get("version")
-    if extension_version != "0.2.31":
-        raise ValueError("Installed browser companion version must be 0.2.31")
+    if extension_version != "0.2.37":
+        raise ValueError("Installed browser companion version must be 0.2.37")
     launcher = (prefix / "bin/cassini-talk").read_text()
     match = re.search(r'^VERSION = "([^"]+)"$', launcher, re.MULTILINE)
     if match is None or match[1] != version:

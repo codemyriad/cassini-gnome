@@ -1,26 +1,26 @@
-tree 97aa18bfbb2d5bae50a5ba020c53b1ffef2d5a0d
-parent 39f3d9b758f8ac7e7c8290e67875253c5a68697e
-parent 5e6f4ad9b91b5f0b74fc854c878cc7e2a22aedcf
-author Silvio Tomatis <silviot@gmail.com> 1794645852 +0100
-committer GitHub <noreply@github.com> 1794645852 +0100
+tree 723254b239636ceda35c48cba290ef5b6361f505
+parent 745f6d405c7a3ce2cba64d7f84c0402ab0cb355a
+parent 429abeb22441e06e6a8fa5fe5b6c910c9e6b12d0
+author Silvio Tomatis <silviot@gmail.com> 1795541242 +0100
+committer GitHub <noreply@github.com> 1795541242 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq+B9cCRC1aQ7uu5UhlAAAgnkQACbJ65CtYD6yLG1ydYlMUwXm
- yG0zAcdwWVRMdKyfRlDIovyRfqsa2imll78KobcAXHyyYnyCEhhVUzJIlzrcxpvz
- M8iJ9ZGWNuIXzxaSgAMTkLBC+IwDm2quDNVskCmCvEFvDSyWYb1zhZbZIrB1fx9s
- CHSgvIbKeFRwiCWTLsWx/Y3qkVVGtE7JEhm+U+yLp7Py0Tfah/1vLyewfN1CWG5G
- +YDxpesqu45XXy9Fw2Ed8mM3lH/2jnBjgMd9Gd+av1Lf8iRTyfVRXn15veLhBZD7
- fE/kikpnaTWXDOrd1g466/uWoEwVtRxxI5FAYlAyv3wPcmPYfXfzSZzppbQ/V+Ri
- jjUnkMqOASMBTWIeymHrmNJ0j3m/DXAYZvCHzsgUVFYvda+hd2Ho4agzfcoIsOQh
- n/RNbpufSBUxK7OSm6oQKOsOwXVlHI9xI+qd0K5IyiK2KpPRff/2QF8lTUWGHVV8
- KttjTMZ0CGGRdv575EKmfK/PkIMZnbjIShQyvB2rzGp8i5e043YlDAEabKKb/4Jc
- n1zRSt4mx7ojhdKjDdt9ZtvvuSrIbItcSo+cw6mr6HqR3sFE6zOVEudz9y1OHHzX
- OMAgDclOwcCIWsCicP1rsW6TDdFY4m9eFNQsRcjrOj2GqXPMBCHuL80k9VBFaM8x
- cVdSIfUj/QX7/uPED8eZ
- =zcvL
+ wsFcBAABCAAQBQJrBcj6CRC1aQ7uu5UhlAAAwpwQAFTvV4NDqGc1iUvESt/bQeOq
+ 6SzjIGQkJ5omgjHKgiGsHPHaoz9y7p514hn78nnxK1dYACC6FnWiNILovdpSfC6S
+ N0HlsRyFse/C8gUU2VzcpQofas6KUjCBYpSgMWvhkJ5bD2TWr5NxiIoxmUmi8NTy
+ u/7JZZzKidH+knEJSV32q3QHBQygHfg52H8Vta8npf0urBkN2D5PqXC5Q0qgOqW6
+ 01uimzi5z9gOPPqQH8szMb0Ew1grWqXjQz/UB9E4yLT+ff+s9JXxI9kHLW7OeMmP
+ OuPbnz+R381ZoxiU7SA7Wa5yj9wxIn1nJO6TGuitMTgv8ZXWlXZ/xxeSxWV4H+wy
+ zmWN2Fd4MQDmfvo42peg9BOU1h0p9HJzr7XYxb21qDAxCSveY72VEVLkEefYY0iv
+ sXRsBhTyYbCpfRMmWaZi+QcfDTbmLS7+BLboERyY7kteFZ5d4Jyoguknb3Vse1hc
+ bHa2PsuwMGx/Sh14CmkyC4PBWEi5ckQou8xFi6EXN54bB9eUyWfZ5CFBMp+qGtgS
+ tR+28x3ad+weFq2JUFltwq4VFUkZTeFvrAQr3sYlw2JEeOCtAZBrkp5QhePXivRW
+ 00BDmsKR1aF/SWRm2qMjFqp4TRAuxdX5mRP26UEQnFP08ovwpYYWFJ3kw+9W/Pje
+ 3uCG3C1/VRijPBU496Wp
+ =LO9Z
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #106 from codemyriad/participate/d-976
+Merge pull request #109 from codemyriad/fix/popup-call-verdict-without-app
 
-feat: popup wears the cassini.talk Saturn and cassini-ux brand tokens (D-976)
+fix: popup reports a call in progress whether or not the Cassini app is connected (0.2.36)

@@ -48,6 +48,7 @@ async function setup(sourceCount = 3, previous = {}, hostFeatures = [], nativeFa
   vm.runInContext(fs.readFileSync(path.join(extension, 'app-control.js'), 'utf8').replace('export class AppControl', 'class AppControl'), context);
   context.controlLater = later; context.controlCancel = cancel;
   vm.runInContext(fs.readFileSync(path.join(extension, 'call-signals.js'), 'utf8').replace(/^export /gm, ''), context);
+  vm.runInContext(fs.readFileSync(path.join(extension, 'participants.mjs'), 'utf8').replace(/^export /gm, ''), context);
   const background = fs.readFileSync(path.join(extension, 'background.js'), 'utf8').replace(/^import .*\n/gm, '').replace('runtime: chrome.runtime, alarms: chrome.alarms,', 'runtime: chrome.runtime, alarms: chrome.alarms, later: controlLater, cancel: controlCancel,');
   vm.runInContext(background + '\nglobalThis.api={status,controlStatus,appControl,frames,start,stop,meetings,callInfo,callChanged,sessionTimers,repairTab,repairOpenTabs,browserHealth,relayTimers,checkCompanion,failure,NativeHost,signalProducer,signalAdapters,genericProducer,discoveryTimers,retireNativeDiscovery};', context);
   beforeReady?.({chrome, api:context.api, frame, tabs});

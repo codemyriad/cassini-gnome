@@ -1,7 +1,7 @@
 {
   "repository": "codemyriad/cassini-ux",
   "branch": "main",
-  "commit": "366c1c36cc505ff82a752c7b5bed6cae9307c807",
+  "commit": "c28b72461c7317ea0a4684183cb9103626aabf17",
   "note": "Vendored copies; never edit them here. Change cassini-ux first, then bump this pin (python3 tools/brand-tokens.py --write after copying).",
   "files": {
     "brand/tokens.json": {
@@ -14,7 +14,7 @@
     },
     "strings/strings.json": {
       "path": "ux/strings/strings.json",
-      "sha256": "cf38b3cf3ce3b280787562ffa3584e0c32c4481dd6369bd289cfb27eb544b7fa"
+      "sha256": "06c869c175085b80cbdb8acb00c007d641fe7217724f5a9aa03d88ed8741c3a3"
     }
   }
 }

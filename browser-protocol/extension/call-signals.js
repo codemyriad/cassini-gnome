@@ -167,9 +167,22 @@ export class GenericCallEvidenceProducer {
     if (!preview && configurationEpoch!==this.configurationEpoch) {this.configurationEpoch=configurationEpoch;this.lastWire=null;}
     const currentPublication=()=>preview||this.epoch===epoch&&this.configurationEpoch===configurationEpoch;
     const browserInstance=this.identity();
-    if (!signalToken(browserInstance)) return null;
+    // The profile identity names this browser to the app. A local preview publishes nothing, so it never waits on it.
+    if (!preview && !signalToken(browserInstance)) return null;
     if (!verified) return {browserInstance,tabs:[]};
-    const frames=[...this.frames()].filter(frame=>frame.frameId===0&&this.current(frame)&&(tabId===null||frame.tabId===tabId)).slice(0,100);
+    const frames=[...this.frames()].filter(frame=>frame.frameId===0&&this.current(frame)&&(tabId===null||frame.tabId===tabId));
+    if(frames.length>100){
+      // Scheduling hints only. Every selected row still needs a fresh, bound read.
+      const priority=frame=>{
+        if(frame.observerDocumentStart!==true||frame.nativeSourceVerified!==true)return 0;
+        const active=this.activePublications.get(frame.tabId);
+        if(active?.frame===frame&&active.browser===frame.browserDocumentId&&active.hook===frame.documentGeneration&&
+            active.generation===frame.callGeneration&&active.epoch===frame.obsoleteEpoch)return 2;
+        return frame.sourceCount>0?1:0;
+      };
+      frames.sort((a,b)=>priority(b)-priority(a));
+      frames.length=100;
+    }
     const tabs=await this.bounded(()=>this.tabs.query({}));
     if (!currentPublication()) return null;
     if (!Array.isArray(tabs)) return {browserInstance,tabs:[]};
@@ -186,6 +199,15 @@ export class GenericCallEvidenceProducer {
         if (!tab || !/^https?:$/.test(new URL(tab.url).protocol) || tab.url.length>2048 ||
             new URL(frame.browserUrl).origin!==new URL(tab.url).origin || !signalToken(frame.browserDocumentId)) return null;
       } catch { return null; }
+      // A document whose page generations are not learned yet (a worker that has just woken, or a handshake read
+      // still in flight) would bind to nothing and then fail its own binding check once this read learns them.
+      // Learn them first, so the binding below names what the read will confirm. Only the popup's local preview
+      // does this: the publishing path polls (and drops this row for one round, as before), so it never reads the
+      // page twice per round for a document whose generations stay unknown (an unavailable collector, a fenced call).
+      if (preview && (!signalToken(frame.documentGeneration) || !signalToken(frame.callGeneration))) {
+        await this.read(frame);
+        if (!currentPublication() || !this.currentSource(frame)) return null;
+      }
       bindings.set(frame,{browser:frame.browserDocumentId,hook:frame.documentGeneration,
         generation:frame.callGeneration,epoch:frame.obsoleteEpoch,call:this.callIdentity(frame)});
       const observation=await this.observe(frame),observed=observation?.facts;

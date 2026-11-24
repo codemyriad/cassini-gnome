@@ -481,8 +481,10 @@
       if (message.protocol === 1 && typeof message.instanceId === "string" && message.instanceId.length > 0 && message.instanceId.length <= 128) {
         // A replacement relay cannot start a new capture until the departing
         // relay's token has drained. Only the newest instance needs the reply.
-        if (active) waitingHandshake = message.instanceId;
-        else emit(null, {type:"hookReady", protocol:1, revision:hookRevision, instanceId:message.instanceId});
+        if (active) {
+          waitingHandshake = message.instanceId;
+          emit(null, {type:"hookDraining", protocol:1, revision:hookRevision, instanceId:message.instanceId});
+        } else emit(null, {type:"hookReady", protocol:1, revision:hookRevision, instanceId:message.instanceId});
       }
       return;
     }

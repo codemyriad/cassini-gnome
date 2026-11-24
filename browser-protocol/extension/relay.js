@@ -11,7 +11,7 @@
   // document-start collector) loses the microphone through WebAudio, so automatic recording never
   // starts on Microsoft Teams: that page needs a reload.
   const hookRevision = 3;
-  let instanceId = null, hookReady = false, handshakeComplete = false, retired = false, handshakeTimer = null;
+  let instanceId = null, hookReady = false, handshakeComplete = false, draining = false, retired = false, handshakeTimer = null;
   const waiters = new Set();
   const listeners = new Map();
   const listen = (name, fn) => { listeners.set(name, fn); window.addEventListener(name, fn); };
@@ -45,7 +45,7 @@
     } else cleanup();
   }
   function send(message) {
-    if (['relayHello','relayReady','relayUnavailable'].includes(message.type)) message={...message,observerDocumentStart};
+    if (['relayHello','relayDraining','relayReady','relayUnavailable'].includes(message.type)) message={...message,observerDocumentStart};
     try { port?.postMessage(message); }
     catch { retire(); }
   }
@@ -55,16 +55,20 @@
   let sourceCount, heard = false, hidden = false;
   const control = message => window.postMessage({ channel: "cassini-control", ...message,
     moduleURL, workletURL }, "*");
+  function armHandshake(ms) {
+    clearTimeout(handshakeTimer);
+    handshakeTimer = setTimeout(() => {
+      if (!hookReady) { handshakeComplete = true; send({type:"relayUnavailable", protocol, instanceId}); settle(); }
+    }, ms);
+  }
   function receive(message) {
     if (message.type === "relayHello") {
       if (message.protocol !== protocol || typeof message.instanceId !== "string") { retire(); return; }
-      instanceId = message.instanceId; hookReady = false; handshakeComplete = false;
+      instanceId = message.instanceId; hookReady = false; handshakeComplete = false; draining = !!drainingToken;
       send({type:"relayHello", protocol, instanceId});
+      if (draining) send({type:"relayDraining", protocol, instanceId});
       control({type:"handshake", protocol, instanceId});
-      clearTimeout(handshakeTimer);
-      handshakeTimer = setTimeout(() => {
-        if (!hookReady) { handshakeComplete = true; send({type:"relayUnavailable", protocol, instanceId}); settle(); }
-      }, 1500);
+      armHandshake(draining ? 10000 : 1500);
       return;
     }
     if (message.type === "discover") { control({ type: "discover" }); return; }
@@ -87,7 +91,7 @@
       control({ type: "stop", token });
     }
     pending.clear(); pendingStart = null; token = null; port = null;
-    hookReady = false; handshakeComplete = false; instanceId = null;
+    hookReady = false; handshakeComplete = false; draining = false; instanceId = null;
     if (!valid()) retire();
   }
   function connect() {
@@ -140,6 +144,14 @@
     if (event.isTrusted !== true || event.source !== window || event.data?.channel !== "cassini-page") return;
     const { type, packet, request } = event.data;
     if (retired && !(drainingToken && event.data.token === drainingToken)) return;
+    if (type === "hookDraining") {
+      if (event.data.protocol !== protocol || event.data.instanceId !== instanceId || !instanceId) return;
+      if (draining || hookReady || handshakeComplete || !(event.data.revision >= hookRevision)) return;
+      draining = true;
+      send({type:"relayDraining", protocol, instanceId});
+      armHandshake(10000);
+      return;
+    }
     if (type === "hookReady") {
       if (event.data.protocol !== protocol || event.data.instanceId !== instanceId || !instanceId) return;
       if(hookReady&&handshakeComplete)return;

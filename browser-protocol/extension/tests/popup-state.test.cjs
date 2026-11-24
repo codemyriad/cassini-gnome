@@ -9,7 +9,7 @@ test('healthy source transport and unknown call evidence explain the listen-only
   const result=status([{tabId:7,state:'ready'}],{tabEvidence:{tabId:7,
     callEvidence:{state:'unknown',reason:'unverified'},captureCapability:{kind:'separated',assurance:'observed'}}});
   const view=popupState(result,tab);
-  assert.equal(view.title,'Interactive session is unverified');assert.match(view.description,/Listen-only.*manually/);
+  assert.equal(view.title,'Interactive session is unverified');assert.match(view.description,/microphone is not sending.*listen-only.*record manually/);
   assert.equal(view.reloadTabId,null);assert.equal(view.connected,true);
   result.tabEvidence.callEvidence={state:'active',reason:'activeCall'};
   assert.equal(popupState(result,tab).title,'Interactive media session detected');
@@ -172,4 +172,111 @@ test('without a health row, this tab’s reload/checking evidence reaches the re
   // Evidence for another tab never stands in for this tab.
   const other = evidence('reloadRequired'); other.tabEvidence.tabId = 8;
   assert.match(popupState(other, tab).record.hint, /Join the call first/);
+});
+
+test('a tab whose relay was injected after the page loaded asks for a reload instead of claiming only "unverified"',async()=>{
+  const {popupState}=await state;
+  const evidence=documentStart=>status([{tabId:7,state:'ready'}],{tabEvidence:{tabId:7,transport:{page:'ready',documentStart},
+    callEvidence:{state:'unknown',reason:'unverified'},captureCapability:{kind:'separated',assurance:'observed'}}});
+  const repaired=popupState(evidence(false),tab);
+  assert.equal(repaired.title,'Reload this tab for automatic detection');
+  assert.equal(repaired.reloadTabId,7,'the popup offers the Reload button for this tab');
+  assert.equal(repaired.tone,'warning');assert.match(repaired.description,/manually/);
+  for(const trusted of [true,null])assert.equal(popupState(evidence(trusted),tab).title,'Interactive session is unverified',
+    'a document-start relay with no two-way audio is genuinely listen-only');
+  const active=evidence(false);active.tabEvidence.callEvidence={state:'active',reason:'activeCall'};
+  assert.equal(popupState(active,tab).title,'Interactive media session detected','verified active evidence is never replaced by the hint');
+});
+
+test('listen-only copy names the cause only when meeting sources are really there',async()=>{
+  const {popupState}=await state;
+  const evidence=tabs=>status(tabs,{tabEvidence:{tabId:7,callEvidence:{state:'unknown',reason:'unverified'},captureCapability:{kind:'unknown',assurance:'unknown'}}});
+  assert.match(popupState(evidence([{tabId:7,state:'ready'}]),tab).description,/Incoming meeting audio is available/);
+  assert.doesNotMatch(popupState(evidence([]),tab).description,/Incoming meeting audio is available/);
+});
+
+test('the whole-tab fallback is an explicit browser action offered beside Start, never during a capture',async()=>{
+  const {popupState}=await state;
+  const idle=popupState(status([]),tab);
+  assert.equal(idle.fallback.enabled,true);assert.equal(idle.fallback.label,'Record the whole tab instead');
+  assert.match(idle.fallback.hint,/one stereo track, not separate participants/);
+  assert.equal(popupState(status([]),{...tab,url:'chrome://extensions'}).fallback,null,'only web pages');
+  assert.equal(popupState({},tab).fallback,null,'no worker answer, no action');
+  for(const busy of [{recording:true,tabId:7,tracks:1},{starting:true,tabId:7},{recordRequest:{action:'start',state:'pending'},tabId:7}])
+    assert.equal(popupState(status([],busy),tab).fallback,null);
+  assert.equal(popupState(status([],{recording:true,tabId:8,tracks:1}),tab).fallback.enabled,true,'another tab capture does not hide it here');
+});
+
+test('a whole-tab capture started from the popup stops directly, even with no app link; a tracks capture still asks the app',async()=>{
+  const {popupState}=await state;
+  const wholeTab=popupState({browserHealth:{nativeControl:'disconnected',filesOk:true,tabs:[]},recording:true,tabId:7,tracks:1,mode:'tab',appRecording:'disconnected'},tab);
+  assert.equal(wholeTab.record.action,'stop');assert.equal(wholeTab.record.enabled,true);assert.equal(wholeTab.record.direct,true);
+  const tracks=popupState({browserHealth:{nativeControl:'disconnected',filesOk:true,tabs:[]},recording:true,tabId:7,tracks:1,mode:'tracks',appRecording:'disconnected'},tab);
+  assert.equal(tracks.record.enabled,false);assert.equal(tracks.record.direct,undefined);
+  const saving=popupState({browserHealth:{nativeControl:'connected',filesOk:true,tabs:[]},recording:true,stopping:true,tabId:7,tracks:1,mode:'tab'},tab);
+  assert.equal(saving.record.enabled,false,'no second stop while saving');
+});
+
+// PR #108 review: the card follows what the worker really has for the tab.
+const evidenceFor = (extra = {}) => ({tabEvidence: {tabId: 7, transport: {page: 'ready', documentStart: false}, callEvidence: {state: 'unknown', reason: 'unverified'}, captureCapability: {kind: 'separated', assurance: 'observed'}}, ...extra});
+
+test('the repaired-tab reload prompt and the listen-only explanation need real meeting sources, not a bare relay handshake',async()=>{
+  const {popupState}=await state;
+  const bare=popupState(status([],evidenceFor()),tab);
+  assert.equal(bare.reloadTabId,null,'no meeting row, no reload prompt');
+  assert.doesNotMatch(bare.description,/Incoming meeting audio is available/);
+  const sourced=popupState(status([{tabId:7,state:'ready'}],evidenceFor()),tab);
+  assert.equal(sourced.reloadTabId,7);assert.equal(sourced.title,'Reload this tab for automatic detection');
+  const trusted=popupState(status([{tabId:7,state:'ready'}],{tabEvidence:{...evidenceFor().tabEvidence,transport:{page:'ready',documentStart:true}}}),tab);
+  assert.match(trusted.description,/Incoming meeting audio is available/);
+  const handshakeOnly=popupState(status([],{tabEvidence:{...evidenceFor().tabEvidence,transport:{page:'ready',documentStart:true}}}),tab);
+  assert.doesNotMatch(handshakeOnly.description,/Incoming meeting audio is available/,'a relay handshake alone is not incoming audio');
+});
+
+test('no reload is offered while the app answers a Start or Stop ask',async()=>{
+  const {popupState}=await state;
+  for(const action of ['start','stop']){
+    const view=popupState(status([{tabId:7,state:'ready'}],{...evidenceFor(),tabId:7,recordRequest:{action,state:'accepted'}}),tab);
+    assert.equal(view.reloadTabId,null,action);
+  }
+});
+
+test('the reload guidance survives the worker push that follows the click, and the old roster does not',async()=>{
+  const {popupState}=await state;
+  const afterClick=status([],{tabEvidence:{tabId:7,transport:{page:'unavailable'},callEvidence:{state:'unknown',reason:'unverified'},captureCapability:{kind:'unknown',assurance:'unknown'}}});
+  assert.equal(popupState(afterClick,tab,7).title,'Tab reloaded · rejoin your call','an evidence-only fallback row is not fresh meeting sources');
+  assert.equal(popupState(status([{tabId:7,state:'ready'}],evidenceFor()),tab,7).title,'Reload this tab for automatic detection','real sources end the waiting guidance');
+});
+
+test('names are shown only while the worker has meeting sources for this tab',async()=>{
+  const {popupState}=await state;
+  const withNames=tabs=>status(tabs,{...evidenceFor(),participants:['Hypatia']});
+  assert.deepEqual(popupState(withNames([]),tab).participants,[]);
+  assert.deepEqual(popupState(withNames([{tabId:7,state:'ready'}]),tab).participants,['Hypatia']);
+});
+
+test('the call verdict does not depend on the Cassini app being connected, open or running',async()=>{
+  const {popupState}=await state;
+  const make=(connection,call)=>{const result=status([{tabId:7,state:'ready'}],{appRecording:'disconnected',tabEvidence:{tabId:7,callEvidence:call,
+    captureCapability:{kind:'separated',assurance:'observed'}}});result.browserHealth.nativeControl=connection;return popupState(result,tab)};
+  for (const connection of ['connected','disconnected']) {
+    const active=make(connection,{state:'active',reason:'activeCall'});
+    assert.equal(active.title,'Interactive media session detected',connection);assert.equal(active.tone,'good');
+    assert.equal(make(connection,{state:'unknown',reason:'unverified'}).title,'Interactive session is unverified',connection);
+  }
+  const off=make('disconnected',{state:'active',reason:'activeCall'});
+  assert.match(off.description,/app link is not connected, so the popup cannot ask it to record/);   // what the missing app means, not that the call is gone
+  assert.doesNotMatch(off.title,/not connected|unavailable/i);
+  // ...and says nothing about the app while it is connected.
+  assert.doesNotMatch(make('connected',{state:'active',reason:'activeCall'}).description,/not connected/);
+});
+test('an ended call says no call is in progress instead of offering to record it',async()=>{
+  const {popupState}=await state;
+  for (const connection of ['connected','disconnected']) {
+    const result=status([],{tabEvidence:{tabId:7,transport:{page:'ready'},callEvidence:{state:'inactive',reason:'callEnded'},
+      captureCapability:{kind:'unknown',assurance:'unknown'}}});result.browserHealth.nativeControl=connection;
+    const view=popupState(result,tab);
+    assert.equal(view.title,'No call in progress',connection);assert.notEqual(view.tone,'good');
+    assert.doesNotMatch(view.description,/start recording this tab/i);
+  }
 });

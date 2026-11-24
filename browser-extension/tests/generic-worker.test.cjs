@@ -288,3 +288,88 @@ test('duplicate ready replies cannot bypass the native-read budget',async()=>{
   assert.equal(f.reads,before);
  }finally{f.app.close()}
 });
+
+for(const order of ['main-first','child-first'])test(`verified child-only inventory stays unverified in callSignals while remaining exposed for manual recording (${order})`,async()=>{
+ const app=await setup(0);app.pages[0].onDisconnect.emit();
+ const topRaw={version:2,cohortQualified:false,documentGeneration:'hook-top',hookGeneration:'0',revision:1,ageMs:0,
+  receivedPeers:0,capturedSendingPeers:0,samePeerCount:0,receivedVersion:0,sentVersion:0,ended:false,sourceCount:0,heard:false};
+ const childRaw={version:2,cohortQualified:true,documentGeneration:'hook-child',hookGeneration:'0',revision:2,ageMs:0,
+  receivedPeers:1,capturedSendingPeers:1,samePeerCount:1,receivedVersion:1,sentVersion:1,ended:false,sourceCount:2,heard:true};
+ let holdMainVerify=null;
+ app.chrome.scripting={async executeScript(request){
+  if(request.world==='MAIN'){
+   const doc=request.target.documentIds?.[0];
+   return doc==='chrome-child'?[{frameId:2,documentId:'chrome-child',result:{...childRaw}}]:[{frameId:0,documentId:'chrome-top',result:{...topRaw}}];
+  }
+  const frameId=request.target.frameIds?.[0];
+  if(frameId===0&&holdMainVerify)await holdMainVerify;
+  return [{frameId,documentId:frameId===2?'chrome-child':'chrome-top'}];
+ }};
+ function connectTrusted(frameId,documentId,url){
+  const port={name:'cassini-frame',sender:{id:'extension',tab:{id:2},frameId,documentId,url},
+   onMessage:event(),onDisconnect:event(),sent:[],
+   postMessage(m){this.sent.push(m);if(m.type==='discover')queueMicrotask(()=>this.onMessage.emit({type:'discovery',sourceCount:frameId===2?2:0,heard:frameId===2}));if(m.type==='stop')queueMicrotask(()=>this.onMessage.emit({type:'stopped'}))}};
+  app.chrome.runtime.onConnect.emit(port);
+  const hello=port.sent.find(m=>m.type==='relayHello');
+  port.onMessage.emit({...hello,observerDocumentStart:true});
+  port.onMessage.emit({...hello,type:'relayReady',observerDocumentStart:true});
+  return port;
+ }
+ try{
+  let top,child;
+  if(order==='main-first'){
+   top=connectTrusted(0,'chrome-top','https://meet.example/call');
+   child=connectTrusted(2,'chrome-child','https://embed.example/room');
+  }else{
+   child=connectTrusted(2,'chrome-child','https://embed.example/room');
+   top=connectTrusted(0,'chrome-top','https://meet.example/call');
+  }
+  await until(()=>{
+   const frames=[...app.api.frames].filter(f=>f.tabId===2);
+   return frames.length===2&&frames.every(f=>f.nativeSourceVerified===true);
+  });
+  const control=app.api.appControl,wire=app.ports[0].sent;
+  control.port.onMessage.emit({type:'configure',capabilities:pair});
+  control.port.onMessage.emit({type:'recordRequests',enabled:true});
+  await until(()=>!control.signalRun&&wire.some(m=>m.type==='recordRequestsConfigured'));
+  await control.publishing;
+  const signalRow=wire.filter(m=>m.type==='callSignals').at(-1).tabs.find(r=>r.tabId===2);
+  assert.equal(signalRow.callEvidence.state,'unknown','child-only call must not auto-admit');
+  assert.equal(signalRow.callEvidence.callGeneration,null);
+  assert.equal(signalRow.remoteAudio,'unknown');
+  const verified=(await app.api.meetings({verified:true})).meetings;
+  assert.equal(verified.length,1,'verified child-only inventory must be exposed to the app for manual recording');
+  assert.equal(verified[0].tabId,2);
+  assert.equal(verified[0].sourceCount,2);
+  assert.equal(verified[0].heard,true);
+  assert.equal(verified[0].browserDocumentId,'chrome-top');
+  assert.equal(verified[0].documentGeneration,'hook-top');
+  const popup={id:'extension',url:app.chrome.runtime.getURL('popup.html')};
+  const status=await new Promise(resolve=>app.chrome.runtime.onMessage.emit({target:'background',type:'status',tabId:2},popup,resolve));
+  assert.equal(status.tabEvidence.transport.page,'ready');
+  assert.equal(status.tabEvidence.callEvidence.state,'unknown');
+  assert.notEqual(status.tabEvidence.captureCapability.kind,'unavailable','child sources keep manual capture capability available');
+  // Status-only loading where child verifies before main must also retain child-only verified inventory.
+  let releaseMain;holdMainVerify=new Promise(resolve=>{releaseMain=resolve});
+  app.api.discoveryTimers.now=()=>Date.now()+5000;
+  app.chrome.tabs.onUpdated.emit(2,{status:'loading'});
+  await new Promise(resolve=>setImmediate(resolve));
+  holdMainVerify=null;releaseMain();
+  await until(()=>[...app.api.frames].some(f=>f.frameId===2&&!f.obsolete&&f.sourceCount===2));
+  assert.equal((await app.api.meetings({verified:true})).meetings[0]?.sourceCount,2);
+  // Both popup manual ask and explicit app manual Start succeed and attach the speaking child frame.
+  const askPromise=new Promise(resolve=>app.chrome.runtime.onMessage.emit({target:'background',type:'recordRequest',action:'start',tabId:2},popup,resolve));
+  await until(()=>wire.some(m=>m.type==='recordRequest'));
+  const ask=wire.find(m=>m.type==='recordRequest');
+  assert.equal(ask.tabId,2);assert.equal(ask.callGeneration,verified[0].callGeneration);
+  control.port.onMessage.emit({type:'recordRequestResult',requestId:ask.requestId,ok:true});
+  assert.equal((await askPromise).error,undefined);
+  const started=await app.command({type:'command',requestId:'manual-child',action:'start',mode:'tracks',tabId:2,independent:true,callGeneration:verified[0].callGeneration});
+  assert.equal(started.ok,true);
+  assert.equal(child.sent.some(m=>m.type==='start'),true,'manual Start attaches the source-bearing child frame');
+  child.onMessage.emit({type:'packet',request:1,packet:{type:'track',id:'child-span',kind:'remote',sampleRate:48000,channels:1}});
+  await until(()=>child.sent.some(m=>m.type==='ack'&&m.request===1));
+  assert.equal(app.audio[0].sent.find(p=>p.type==='track'&&p.id==='child-span').documentGeneration,'hook-top');
+  assert.equal((await app.command({type:'command',requestId:'stop-child',action:'stop',tabId:2,independent:true})).ok,true);
+ }finally{app.close()}
+});

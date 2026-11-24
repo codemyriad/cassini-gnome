@@ -1120,6 +1120,53 @@ active light or dark mode, generated from the vendored `ux/brand/tokens.json`
 the catalog's companion privacy line. There are no protocol or capture-policy changes.
 
 
+### Popup status, roster and actions (extension 0.2.37)
+
+These are popup-to-worker messages and popup rendering rules. They are not app protocol: nothing here changes
+the control port, capture policy or admission. Only the extension's own popup page may send them.
+
+- **Open check.** `status` with a `tabId` and `fresh: true` is the only status request that inspects the meeting
+  page: it reconnects a tab that has no main relay (targeting frame 0 only, bounded, never waiting on a tab that
+  cannot be injected), reads call evidence once from the native collector, and reads the participant roster. The
+  popup sends it when it opens and when the person presses **Check again**; a failed open check is not re-armed by
+  later notices. A plain `status` runs no script in the meeting tab and shows the last open-check evidence only for
+  the same browser document; for a replaced document the evidence is `unknown`.
+- **Call verdict is independent of the app.** The popup's call verdict (active, unverified, no call) comes from the
+  page's collector alone. It is shown whether or not the Cassini app link is connected, open or running, and the
+  open check does not wait for the profile identity that is only used to publish to the app. With the link down,
+  the verdict text adds that the *app link* is not connected, so the popup cannot ask it to record; it never claims
+  that nothing is being recorded (the app may be open, and a whole-tab recording uses a separate host). While a
+  Start or Stop is in flight, or a recording of this tab runs, the headline shows that progress instead; the verdict
+  stays in Connection details. An `inactive` (ended) verdict says "No call in progress". A remembered `active`
+  verdict from the last open check is shown as `unknown` once the tab reports no meeting sources, and a remembered
+  `active` or `inactive` verdict is shown as `unknown` once the tab is in a different call (a rejoin or reconnect in
+  the same document). The open check also reads the page once before binding when the page's generations are not
+  yet known (a freshly woken worker), so a handshake read still in flight cannot discard it. Only the open check
+  does this; the published call evidence reads the page once per round, as before.
+- **No timer.** The popup does not poll. The worker pushes `{type:"changed"}` over a `cassini-popup` port (accepted
+  only from the extension's own popup page) when its state changes, including app connection, disconnection and the
+  record opt-in; the popup answers with a plain `status`.
+- **Evidence view.** `tabEvidence.transport.documentStart` is `false` when the tab's relay was injected after the
+  page loaded; such a relay cannot verify a call. `transport.detail` carries only bounded flags, counts and enum
+  values (frame count, main frame, relay and hook state, source count, page state, repair outcome); it never
+  carries a URL, title or page text, and is part of the copied diagnostics.
+- **Reload.** The popup offers a reload only when the worker would accept it: a `reloadRequired` health row, a relay
+  whose hook never answered, or a healthy repaired relay on a tab that has meeting sources. The worker refuses it
+  while a recording, a pending start, or a record ask for that tab exists. The app's `reloadTab` command keeps the
+  stricter rule (a `reloadRequired` row only).
+- **Roster.** Participant names are display-only text read from Talk's participant cards in the verified document,
+  bounded to 64 names of 200 code points inside the page world. They are shown only while the worker has meeting
+  sources for the tab, are never evidence, and are never part of the copied diagnostics.
+- **Whole-tab fallback.** **Record the whole tab instead** is the person's own browser click, offered beside Start
+  and never during a capture. Its `start` message names the displayed `tabId`; its Stop names the displayed `tabId`
+  and `captureId` and is refused (`gone`) if that recording already ended or was replaced. It is disabled while any
+  other recording runs, because the worker refuses a second one.
+- **Manual capture reaches every ready frame.** A child frame that reports no receivers still receives Start, so
+  its microphone sender and rendered media can be recorded. A child that contributed no source, including one whose
+  first track is still awaiting the native acknowledgement, leaving does not by itself end a capture; one that
+  contributed does.
+
+
 ## Peer observation and same-document loading (extension 0.2.22)
 
 Peer registration also observes `getReceivers`, `getSenders` and `getTransceivers`
