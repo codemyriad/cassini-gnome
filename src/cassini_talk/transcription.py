@@ -30,13 +30,14 @@ RECOGNITION_CACHE_FORMAT = recognition_cache.FORMAT
 
 
 class TranscriptionMode(StrEnum):
-    """D-1117 non-UI policy: when a stopped recording is written down.
+    """D-1117/D111 non-UI policy: when a stopped recording is written down.
 
-    `afterStop` is the shipped default. `recordOnly` saves audio only and waits
-    for the user's Transcribe. `transcribeWhileRecording` precomputes raw
+    `transcribeWhileRecording` is the shipped default (D111): it precomputes raw
     segment recognition while recording and hands off warm to Stop finalization
-    (D-1121). `recordOnly` and `afterStop` never start a worker while recording;
-    capture never sees this value.
+    (D-1121). `afterStop` waits until Stop before starting recognition.
+    `recordOnly` saves audio only and waits for the user's Transcribe.
+    `recordOnly` and `afterStop` never start a worker while recording; capture
+    never sees this value.
     """
 
     RECORD_ONLY = "recordOnly"
@@ -45,12 +46,12 @@ class TranscriptionMode(StrEnum):
 
     @classmethod
     def parse(cls, value):
-        """A mode from its member, contract value or snake-case name; anything else raises."""
+        """A mode from its member, contract value, or snake/UPPER_SNAKE name; anything else raises."""
         if isinstance(value, cls):
             return value
         if isinstance(value, str):
             for mode in cls:
-                if value in (mode.value, mode.name.lower()):
+                if value in (mode.value, mode.name.lower(), mode.name):
                     return mode
         raise ValueError(f"Unknown transcription mode: {value!r}")
 
@@ -79,7 +80,7 @@ def resolve_transcription_mode(app) -> TranscriptionMode:
 
     Explicit per-instance `app.transcription_mode` is validated strictly (raising on
     unknown values). When not overridden on the instance, `CASSINI_TRANSCRIPTION_MODE`
-    is consulted and unknown env values fall back to `afterStop` with a warning.
+    is consulted and unknown env values fall back to `transcribeWhileRecording` with a warning.
     """
     instance_dict = getattr(app, "__dict__", None)
     if isinstance(instance_dict, dict) and "transcription_mode" in instance_dict:
@@ -91,10 +92,10 @@ def resolve_transcription_mode(app) -> TranscriptionMode:
         try:
             return TranscriptionMode.parse(env_raw)
         except ValueError:
-            LOG.warning("Ignoring unknown CASSINI_TRANSCRIPTION_MODE=%r; using afterStop", env_raw)
-            return TranscriptionMode.AFTER_STOP
-    default = getattr(app, "transcription_mode", TranscriptionMode.AFTER_STOP)
-    return TranscriptionMode.parse(TranscriptionMode.AFTER_STOP if default is None else default)
+            LOG.warning("Ignoring unknown CASSINI_TRANSCRIPTION_MODE=%r; using transcribeWhileRecording", env_raw)
+            return TranscriptionMode.TRANSCRIBE_WHILE_RECORDING
+    default = getattr(app, "transcription_mode", TranscriptionMode.TRANSCRIBE_WHILE_RECORDING)
+    return TranscriptionMode.parse(TranscriptionMode.TRANSCRIBE_WHILE_RECORDING if default is None else default)
 
 
 def auto_write_enabled(app):
@@ -145,7 +146,7 @@ def track_speaker(track):
     return "others", text("common.theOthers"), "source"
 
 
-def should_auto_write(meeting, previous, mode=TranscriptionMode.AFTER_STOP):
+def should_auto_write(meeting, previous, mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING):
     if TranscriptionMode.parse(mode) is TranscriptionMode.RECORD_ONLY:
         return False  # Audio only; the user's Transcribe still enqueues it.
     if (
@@ -510,7 +511,7 @@ class TranscriptionQueue:
         recordings=tuple,
         completed=lambda _model: None,
         progress_changed=lambda _directory: None,
-        mode=TranscriptionMode.AFTER_STOP,
+        mode=TranscriptionMode.TRANSCRIBE_WHILE_RECORDING,
         follow_stop_timeout=3.0,
         follow_poll_interval_ms=50,
     ):

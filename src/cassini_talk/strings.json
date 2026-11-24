@@ -7431,7 +7431,6 @@
   {
    "id": "search.field.placeholder",
    "en": "Search every meeting",
-   "mac": "Search",
    "platforms": [
     "gnome",
     "mac"
@@ -7439,6 +7438,7 @@
    "role": "placeholder",
    "boards": [
     "Library-mac",
+    "LibraryOpen-MacNative",
     "LibraryReceived",
     "LibraryReceived-mac",
     "Main",
@@ -7446,28 +7446,23 @@
     "Search-mac"
    ],
    "milestone": "UX12",
-   "note": "HARMONY 10. GNOME: placeholder of the entry that the sidebar toggle reveals (not visible on Main). Mac: 220 px toolbar search field, trailing in the detail toolbar, as drawn on Library-mac. Board quirk: Library-mac draws the field trailing in the detail toolbar, Search-mac moves the active field to the sidebar, and LibraryReceived-mac omits it. Decision: Mac keeps one field in the toolbar on every Library screen (HARMONY 10).",
+   "note": "HARMONY 10. GNOME: placeholder of the entry that the sidebar toggle reveals (not visible on Main). Mac: 220 px toolbar search field, trailing in the detail toolbar, as drawn on Library-mac. Board quirk: Library-mac draws the field trailing in the detail toolbar, Search-mac moves the active field to the sidebar, and LibraryReceived-mac omits it. Decision: Mac keeps one field in the toolbar on every Library screen (HARMONY 10). D108 (Mac meeting screen, native macOS 26): the Mac placeholder is 'Search every meeting' too (.searchable(placement: .sidebar), board LibraryOpen-MacNative); the Mac override 'Search' (it 'Cerca', fr 'Rechercher', es 'Buscar', pt-BR 'Buscar', pt-PT 'Pesquisar') is dropped.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Cerca in tutte le riunioni",
-     "mac": "Cerca"
+     "text": "Cerca in tutte le riunioni"
     },
     "fr": {
-     "text": "Rechercher dans toutes les réunions",
-     "mac": "Rechercher"
+     "text": "Rechercher dans toutes les réunions"
     },
     "es": {
-     "text": "Buscar en todas las reuniones",
-     "mac": "Buscar"
+     "text": "Buscar en todas las reuniones"
     },
     "pt-BR": {
-     "text": "Buscar em todas as reuniões",
-     "mac": "Buscar"
+     "text": "Buscar em todas as reuniões"
     },
     "pt-PT": {
-     "text": "Pesquisar em todas as reuniões",
-     "mac": "Pesquisar"
+     "text": "Pesquisar em todas as reuniões"
     }
    }
   },
@@ -24028,6 +24023,43 @@
    }
   },
   {
+   "id": "meeting.find.position",
+   "en": "{index} of {count}",
+   "platforms": [
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "LibraryOpen-MacNative",
+    "LibraryOpen-MacNativeFind",
+    "QA-Mac"
+   ],
+   "milestone": "Mac meeting screen (D108)",
+   "placeholders": {
+    "index": "position of the current match, from 1",
+    "count": "number of matches in this meeting"
+   },
+   "note": "D108 §6: match position inside the Mac find bar under the toolbar (e.g. '2 of 3'), next to the Find in this meeting field. No plural forms: count is a bare number. VoiceOver reads it as the field's value.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{index} di {count}"
+    },
+    "fr": {
+     "text": "{index} sur {count}"
+    },
+    "es": {
+     "text": "{index} de {count}"
+    },
+    "pt-BR": {
+     "text": "{index} de {count}"
+    },
+    "pt-PT": {
+     "text": "{index} de {count}"
+    }
+   }
+  },
+  {
    "id": "meeting.moveToRecentlyDeleted",
    "en": "Move to Recently Deleted",
    "platforms": [
@@ -37066,8 +37098,8 @@
     "P2About-Phones"
    ],
    "milestone": "Report a problem (L-65, D107 §2)",
-   "note": "D107 §2 (L-65): approved by Alex, 18 Nov; WAITING ON SILVIO for the cassini.talk page and its URL (D-1113). Do not build until the URL is decided; no URL is defined here. Opens that page in the browser; the app attaches nothing (no recordings, no logs). iOS and Android: a row after Help with about.reportProblem.subtitle. Mac: a link after Help, links on two lines (“Help · Report a problem · Privacy” / “Licences · Source code”). GNOME has no id: libadwaita’s built-in “Report an Issue” keeps its label and opens the same page.",
-   "status": "pending",
+   "note": "D107 §2 (L-65): approved by Alex, 18 Nov; address settled by D110 (Silvio, D-1113, 20 Nov): opens https://cassini.talk/report in the browser (the address lives in each app beside the Help address, not in the catalog); the app attaches nothing (no recordings, no logs). iOS and Android: a row after Help with about.reportProblem.subtitle. Mac: a link after Help, links on two lines (“Help · Report a problem · Privacy” / “Licences · Source code”). GNOME has no id: libadwaita’s built-in “Report an Issue” keeps its label and, for now, its GitHub issues address (D110 §4).",
+   "status": "drawn",
    "l10n": {
     "it": {
      "text": "Segnala un problema"
@@ -37098,8 +37130,8 @@
     "P2About-Phones"
    ],
    "milestone": "Report a problem (L-65, D107 §2)",
-   "note": "D107 §2 (L-65): subtitle of the about.reportProblem row on phones, no full stop (as about.help.subtitle). Waiting on Silvio for the page and URL (D-1113); do not build until it is decided.",
-   "status": "pending",
+   "note": "D107 §2 (L-65): subtitle of the about.reportProblem row on phones, no full stop (as about.help.subtitle). Address settled by D110 (D-1113, 20 Nov).",
+   "status": "drawn",
    "l10n": {
     "it": {
      "text": "Raccontaci cosa non ha funzionato"
