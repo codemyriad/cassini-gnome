@@ -56,10 +56,6 @@ def parent_browser_info():
     return dict(browserName=None, browserInstance=None)
 
 
-def parent_browser_name():
-    return parent_browser_info()["browserName"]
-
-
 def main(*, input_stream=None, output_stream=None, path=None):
     # An unbuffered descriptor lets a daemon reader block without holding the
     # interpreter's buffered stdin lock when the broker disconnects first.

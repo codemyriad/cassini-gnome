@@ -360,10 +360,6 @@ def visible_turns(turns: list[Turn]) -> list[Turn]:
     return [turn for turn in turns if turn.host is None]
 
 
-def active_turns(turns: list[Turn], ms: int) -> list[Turn]:
-    return [t for t in turns if t.is_active(ms)]
-
-
 def current_turn(turns: list[Turn], ms: int) -> Turn | None:
     """The most recently started active paragraph (including its asides)."""
     return max((t for t in turns if t.host is None and t.is_active(ms)), key=lambda t: t.start_ms, default=None)

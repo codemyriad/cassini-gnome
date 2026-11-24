@@ -119,7 +119,6 @@ class MeetingPage(Adw.NavigationPage):
         self._find_index = -1
         self._find_row_highlights = {}
         self._find_focused = False
-        self.name_speakers_button = None
         self.settings = Gio.Settings.new(window.get_application().settings_schema)
 
         outer = box(hexpand=True, vexpand=True, css_classes=["meeting-pane"])

@@ -1060,7 +1060,7 @@ class BrowserCapture:
                 first = self.restore_refused != self.loss_serial
                 self.restore_refused = self.loss_serial
             if first:
-                logging.getLogger(__name__).warning(
+                LOG.warning(
                     "Keeping computer sound for recording %s; the browser source cannot be restored: %s",
                     self.capture_id,
                     error,
@@ -1223,7 +1223,7 @@ class BrowserCapture:
                     try:
                         tap.stop()
                     except Exception:
-                        logging.getLogger(__name__).exception("Could not finish a deselected source")
+                        LOG.exception("Could not finish a deselected source")
                     finally:
                         with self.lock:
                             state = retiring[identifier]

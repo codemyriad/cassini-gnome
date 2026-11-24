@@ -12,6 +12,8 @@ from .library_window import label, vertical
 from .spectrogram_strip import SpectrogramStrip
 from .strings import text
 
+LOG = logging.getLogger(__name__)
+
 
 class _StopContent(Gtk.Box):
     def __init__(self, initial_label):
@@ -357,7 +359,7 @@ class RecordingPage(Adw.NavigationPage):
             try:
                 desktop_settings.open_panel("sound")
             except Exception as error:
-                logging.getLogger(__name__).warning("Could not open desktop sound settings: %s", error)
+                LOG.warning("Could not open desktop sound settings: %s", error)
 
         threading.Thread(target=work, name="cassini-open-sound", daemon=True).start()
 

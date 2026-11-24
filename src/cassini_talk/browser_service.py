@@ -36,6 +36,8 @@ from .refusals import NothingOpened, StartCancelled, word
 from .session_clock import SessionClock
 from .session_events import source_state
 
+LOG = logging.getLogger(__name__)
+
 MAX_PACKET = 512 * 1024
 # A start with no expected call generation (only a D17 retry carries one).
 ANY_GENERATION = object()
@@ -601,7 +603,7 @@ class BrowserService:
         try:
             owner.stop(reason=reason, user_stopped=False)
         except (OSError, ValueError, TimeoutError):
-            logging.getLogger(__name__).exception("Could not finish cancelled browser capture")
+            LOG.exception("Could not finish cancelled browser capture")
         finally:
             with self.lock:
                 self._cancel_capture_pending.discard(capture_id)
@@ -663,9 +665,7 @@ class BrowserService:
             # this connection's inventory, and a stale-result cancel would
             # cancel the very recording it named.
             if packet.get("ok") is not True:
-                logging.getLogger(__name__).info(
-                    "The browser did not resume recording %s: %s", asked, str(packet.get("error"))[:500]
-                )
+                LOG.info("The browser did not resume recording %s: %s", asked, str(packet.get("error"))[:500])
                 with self.lock:
                     capture = self.captures.get(asked)
                 if capture is not None:
@@ -1368,7 +1368,7 @@ class BrowserService:
                 # D52.5: a frame arriving at or after PCM_STALE_AFTER is too
                 # late, even when no tick has noticed the deadline yet.
                 if (reason := transport.expired(self.clock())) is not None:
-                    logging.getLogger(__name__).warning("Closing a browser peer that %s", reason)
+                    LOG.warning("Closing a browser peer that %s", reason)
                     transport.shutdown()
                     break
                 transport.last_inbound = self.clock()
@@ -1463,7 +1463,7 @@ class BrowserService:
                 try:
                     capture.retire_transport_spans(transport.spans)
                 except Exception:
-                    logging.getLogger(__name__).exception("Could not retire a closed transport's spans")
+                    LOG.exception("Could not retire a closed transport's spans")
                 capture.close()
         finally:
             with self.lock:
@@ -1737,7 +1737,7 @@ class BrowserService:
             return
         retired = owner.observe_document(document, navigating=page == "navigating", present=page == "present")
         if retired:
-            logging.getLogger(__name__).debug("Retired %d spans of a gone document from the PCM watchdog", retired)
+            LOG.debug("Retired %d spans of a gone document from the PCM watchdog", retired)
 
     @staticmethod
     def _still_recording(capture):
@@ -2030,14 +2030,10 @@ class BrowserService:
                     # silent close. It retries at most every minute; once it stops
                     # (removed or downgraded) the state expires on its own.
                     self.app_too_old = self.clock()
-                    logging.getLogger(__name__).warning(
-                        "Browser companion speaks control version %d; update Cassini", version
-                    )
+                    LOG.warning("Browser companion speaks control version %d; update Cassini", version)
                     raise ValueError("Unsupported browser control version")
                 if type(version) is not int or version != 1:
-                    logging.getLogger(__name__).warning(
-                        "Closing a browser control connection with hello version %r", str(version)[:32]
-                    )
+                    LOG.warning("Closing a browser control connection with hello version %r", str(version)[:32])
                     raise ValueError("Unsupported browser control version")
                 self.app_too_old = None
                 browser.hello_seen = True
@@ -2069,7 +2065,7 @@ class BrowserService:
                 name = kind[:64] if isinstance(kind, str) else type(kind).__name__
                 if name not in browser.ignored and len(browser.ignored) < 16:
                     browser.ignored.add(name)
-                    logging.getLogger(__name__).info("Ignoring unknown browser control event: %s", name)
+                    LOG.info("Ignoring unknown browser control event: %s", name)
             browser.page_states = {
                 tab: page
                 for tab, page in browser.page_states.items()
@@ -2454,7 +2450,7 @@ class BrowserService:
                         results.append((identifier, future.result(), None))
                     except Exception as error:
                         if not isinstance(error, (OSError, ValueError, CancelledError)):
-                            logging.getLogger(__name__).exception("Unexpected browser batch failure: %s", identifier)
+                            LOG.exception("Unexpected browser batch failure: %s", identifier)
                         results.append((identifier, None, error))
                 else:
                     results.append((identifier, None, TimeoutError("The browser did not finish the recording command")))
@@ -2903,7 +2899,7 @@ class BrowserService:
             # Stop connecting meanwhile must be read when it is pressed (#230).
             reason = transport.expired(now, wait=False)
             if reason is not None and not transport.shut_down.is_set():
-                logging.getLogger(__name__).warning("Closing a browser peer that %s", reason)
+                LOG.warning("Closing a browser peer that %s", reason)
                 transport.shutdown()
         with self.lock:
             # Loss is checked first. Pings are unconditional, not idle-only, and
@@ -3377,7 +3373,7 @@ class BrowserService:
                     or capture.end_reason in ("user", "callEnded", "pageGone", "appQuit")
                 )
             if not canceled:
-                logging.getLogger(__name__).exception("Could not start signal-owned computer recording")
+                LOG.exception("Could not start signal-owned computer recording")
             with contextlib.suppress(Exception):
                 capture.stop(user_stopped=False)
             with self.lock:
@@ -3438,7 +3434,7 @@ class BrowserService:
                 if identifier is not None:
                     self.command(identifier, "stop", reason=reason, expected_capture=key)
         except (OSError, ValueError, TimeoutError):
-            logging.getLogger(__name__).exception("Browser capture lifecycle: %s", action)
+            LOG.exception("Browser capture lifecycle: %s", action)
         finally:
             with self.lock:
                 self._capture_policy_pending.discard(key)
@@ -3585,7 +3581,7 @@ class BrowserService:
         except (OSError, ValueError) as error:
             browser.resumes.pop(request_id, None)
             capture.clear_resume_ask(request_id)
-            logging.getLogger(__name__).info("Could not ask the browser to resume recording %s: %s", key, error)
+            LOG.info("Could not ask the browser to resume recording %s: %s", key, error)
 
     def _fallback(self, identifier, capture):
         try:
@@ -3593,7 +3589,7 @@ class BrowserService:
             if not capture.lifecycle_capable:
                 self.command(identifier, "stop", preserve_capture=True)
         except (OSError, ValueError, TimeoutError) as error:
-            logging.getLogger(__name__).warning("Browser source fallback: %s", error)
+            LOG.warning("Browser source fallback: %s", error)
         finally:
             with self.lock:
                 browser_id, _, tab = identifier.partition(":")
@@ -3703,7 +3699,7 @@ class BrowserService:
                         elif close:
                             self.workers.submit(self._close_notification, close)
                 except Exception as error:
-                    logging.getLogger(__name__).warning("Could not show recording notification: %s", error)
+                    LOG.warning("Could not show recording notification: %s", error)
         except StartRejected as rejected:
             if rejected.refusal.get("detail") == "busy":
                 return  # D58 #11: it may be this tab already recording; never record it twice.
@@ -3737,7 +3733,7 @@ class BrowserService:
                         verified_binding=verified_binding,
                     )
                 except (OSError, ValueError, TimeoutError):
-                    logging.getLogger(__name__).exception("Could not start the missing-browser fallback")
+                    LOG.exception("Could not start the missing-browser fallback")
         except (OSError, ValueError, TimeoutError):
             if action == "start":
                 with self.lock:
@@ -3780,7 +3776,7 @@ class BrowserService:
         try:
             close()
         except Exception as error:
-            logging.getLogger(__name__).warning("Could not close recording notification: %s", error)
+            LOG.warning("Could not close recording notification: %s", error)
 
     def _application(self, connection, stream, active, generation):
         if type(generation) is not int or generation < 0:
@@ -4150,7 +4146,7 @@ class BrowserService:
                             try:
                                 capture.stop("Recording service closed", user_stopped=False)
                             except (OSError, ValueError, TimeoutError):
-                                logging.getLogger(__name__).exception("Could not finish service-owned capture")
+                                LOG.exception("Could not finish service-owned capture")
                     self.workers.shutdown(wait=False, cancel_futures=True)
 
 
@@ -4163,7 +4159,7 @@ def main():
         parser.error("idle timeout must be positive")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     service = BrowserService(require_application=True)
-    logging.getLogger(__name__).info("Browser service started: %s", service.identity)
+    LOG.info("Browser service started: %s", service.identity)
     signal.signal(signal.SIGTERM, lambda *_: service.close())
     # serve's finally performs the same cleanup for SIGINT as SIGTERM.
     with contextlib.suppress(KeyboardInterrupt):

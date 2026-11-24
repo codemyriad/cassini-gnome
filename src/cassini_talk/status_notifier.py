@@ -15,6 +15,8 @@ from gi.repository import Gio, GLib
 
 from .strings import text
 
+LOG = logging.getLogger(__name__)
+
 WATCHER = "org.kde.StatusNotifierWatcher"
 ITEM = "org.kde.StatusNotifierItem"
 MENU = "com.canonical.dbusmenu"
@@ -149,7 +151,7 @@ class StatusNotifier:
             )
         except GLib.Error:
             if not self.closed:
-                logging.getLogger(__name__).info("Optional panel connection unavailable", exc_info=True)
+                LOG.info("Optional panel connection unavailable", exc_info=True)
             return
         GLib.idle_add(self._connected, connection)
 

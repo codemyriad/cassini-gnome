@@ -11,6 +11,8 @@ from gi.repository import Gio, GLib
 
 from .strings import text
 
+LOG = logging.getLogger(__name__)
+
 SERVICE = "org.freedesktop.portal.Desktop"
 ROOT = "/org/freedesktop/portal/desktop"
 INTERFACE = "org.freedesktop.portal.GlobalShortcuts"
@@ -46,7 +48,7 @@ class GlobalShortcut:
 
     def _failed(self, error):
         self.error = str(error)
-        logging.getLogger(__name__).info("Global recording shortcut unavailable: %s", error)
+        LOG.info("Global recording shortcut unavailable: %s", error)
 
     def _request(self, method, signature, values, completed):
         token = "cassini_" + uuid4().hex

@@ -19,20 +19,12 @@ ORIGIN = "chrome-extension://" + EXTENSION_ID + "/"
 MANIFEST_LIMIT = 65536
 # Mount identity cannot change inside this process; avoid filesystem probes on clicks.
 _FLATPAK_INFO = Path("/.flatpak-info").is_file()
-CONFIG_DIRS = ("google-chrome", "chromium", "microsoft-edge", "BraveSoftware/Brave-Browser")
 
 
 class SetupError(OSError):
     def __init__(self, reason, *, retryable=False, available=True):
         super().__init__("No supported browser is installed" if reason == "noBrowser" else "Browser setup: " + reason)
         self.reason, self.retryable, self.available = reason, retryable, available
-
-
-def manifest_directories(*, config=None, browsers=None):
-    if browsers is not None:
-        return [b.config / "NativeMessagingHosts" for b in browsers]
-    config = Path(config or os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return [config / directory / "NativeMessagingHosts" for directory in CONFIG_DIRS]
 
 
 @dataclass(frozen=True)

@@ -566,7 +566,6 @@ class TrackFollower:
 
         # Bounded queue of closed segments awaiting ASR (typically length 0 or 1).
         self.ready_segments: deque[_ReadySegment] = deque()
-        self._seen_segment_count = 0
 
     def _reset_sealed_span_caches(self) -> None:
         self._inspected_spans.clear()
@@ -1042,7 +1041,6 @@ class TrackFollower:
                         session_ms=session_ms,
                     )
                 )
-                self._seen_segment_count += 1
                 self._open_pieces.clear()
                 self._open_start = None
 

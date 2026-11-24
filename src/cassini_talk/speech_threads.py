@@ -6,6 +6,8 @@ import logging
 import os
 from pathlib import Path
 
+LOG = logging.getLogger(__name__)
+
 
 def _cgroup_cpu_limit(cgroup_root=Path("/sys/fs/cgroup"), proc_cgroup=Path("/proc/self/cgroup")):
     # A private cgroup namespace may expose only its root. Always inspect that
@@ -66,4 +68,4 @@ def background_worker_priority():
             os.setpriority(os.PRIO_PROCESS, 0, 5)
     except OSError:
         # A scheduling preference must not turn a valid transcription into an error.
-        logging.getLogger(__name__).debug("Recognition worker priority is unavailable", exc_info=True)
+        LOG.debug("Recognition worker priority is unavailable", exc_info=True)
