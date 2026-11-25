@@ -172,6 +172,16 @@ class Report:
     def audio(self):
         return audio_lines(self.sources, list(self.refusals), self.silent_tracks)
 
+    def silent_lines(self, side):
+        """D67.1 (LIBRARY-RULES R13): each "no speech heard" line for a source on `side`, so the
+        dialog keeps it in that side's card once Audio sources folds into the cards (D-1162)."""
+        me = side == "Me"
+        return tuple(
+            text("details.sources.silent", source=source.name)
+            for source in self.sources
+            if (source.kind in ("microphone", "local")) == me and source.silent(self.silent_tracks)
+        )
+
     def plain_text(self):
         lines = [text("details.copy.heading"), self.title, "", text("details.capture.title")]
         for side in ("Me", "The others"):
@@ -474,7 +484,11 @@ def _separation_plain(value):
         count = value.get("speakersFound")
         if type(count) is int and 0 <= count <= 1000 and _separation(value) != UNKNOWN:
             key = "details.separation.on.one" if plural_category(count) == "one" else "details.separation.on.other"
-            return text(key, n=count)
+            result = text(key, n=count)
+            # A partial result keeps its explanation: some speech has no speaker attribution.
+            if value["status"] == "partial":
+                result += "\n" + text("details.separation.partial")
+            return result
     return _separation(value)
 
 

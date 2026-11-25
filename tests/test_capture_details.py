@@ -354,3 +354,41 @@ def test_details_saved_loss_cause_explains_only_committed_computer_fallback(meet
     assert all(s.reason != expected for s in rows if s.side == "The others" and s.source == "Browser audio")
     native = replace(meeting, capture_source="gnome")
     assert all(s.reason != expected for s in timeline(native, session))
+
+
+@pytest.mark.parametrize("status", ["completed", "partial"])
+def test_plain_separation_keeps_the_partial_result_warning(meetings, status):
+    """D-1162 review: "On · N voices told apart" alone hides that some audio was not separated."""
+    from cassini_talk.nemotron_model import MODEL_ID, REVISION
+    from cassini_talk.strings import text
+
+    meeting = meetings["microphone"]
+    separation = dict(status=status, modelId=MODEL_ID, modelRevision=REVISION, speakersFound=5)
+    details = dict(meeting.metadata["recordingDetails"])
+    details["writingDown"] = dict(details["writingDown"], speakerSeparation=separation)
+    report = read_details(replace(meeting, metadata=dict(meeting.metadata, recordingDetails=details)))
+    plain = dict(report.writing_plain)["Speaker separation"]
+    assert plain.startswith("On · 5 voices told apart")
+    partial = text("details.separation.partial")
+    assert (partial in plain) == (status == "partial")
+    assert (partial in dict(report.writing)["Speaker separation"]) == (status == "partial")
+
+
+def test_silent_sources_stay_on_their_own_side(meetings):
+    """R13 (D67.1): the "no speech heard" line has a side, so the dialog can keep it in that card."""
+    from cassini_talk.source_report import SourceFact
+
+    def source(identity, kind, label):
+        return SourceFact(identity, kind, label, "captured", 2000, None, None, True, track_ids=(identity,))
+
+    report = replace(
+        read_details(meetings["microphone"]),
+        sources=(source("mic", "microphone", "Built-in Audio"), source("guest", "remote", "Guest")),
+        silent_tracks=frozenset({"guest"}),
+    )
+    assert report.silent_lines("The others") == ("Guest: no speech heard.",)
+    assert report.silent_lines("Me") == ()
+    assert "Guest: no speech heard." in [line.text for line in report.audio]
+    # A live (not final) source is not silent yet.
+    live = replace(report, sources=tuple(replace(s, final=False) for s in report.sources))
+    assert live.silent_lines("The others") == ()

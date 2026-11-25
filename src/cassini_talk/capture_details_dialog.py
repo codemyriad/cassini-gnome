@@ -173,6 +173,12 @@ class RecordingDetailsDialog(Adw.Dialog):
             for index, span in enumerate(spans[:20]):
                 values[("span", side, index, "source")] = span.source
                 values[("span", side, index, "line")] = self._span_line(span)
+        silent = []
+        for side in ("Me", "The others"):
+            lines = report.silent_lines(side)
+            silent.append(len(lines))
+            for index, line in enumerate(lines):
+                values[("silent", side, index)] = line
         if report.ended_plain is not None:
             values[("ended-label",)], values[("ended",)] = report.ended_plain
         health = tuple((name, value) for name, value in report.health if value != UNKNOWN)
@@ -186,6 +192,7 @@ class RecordingDetailsDialog(Adw.Dialog):
         shape = (
             self.narrow,
             tuple(counts),
+            tuple(silent),
             report.ended_plain is not None and bool(report.ended_plain[0]),
             report.ended_plain is not None,
             tuple(k for k, _ in health),
@@ -273,6 +280,9 @@ class RecordingDetailsDialog(Adw.Dialog):
                 card.append(row)
             if len(spans) > 20:
                 card.append(label(text("details.capture.more"), "small", "dim-label"))
+            # R13: a captured source that heard no speech keeps its neutral line in its own card.
+            for index, line in enumerate(report.silent_lines(side)):
+                card.append(self._bound(("silent", side, index), line, "small", "dim-label"))
             sides.append(card)
         captured.append(sides)
         for index, (line, style) in enumerate(quiet):

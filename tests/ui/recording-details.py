@@ -335,11 +335,27 @@ with tempfile.TemporaryDirectory() as temporary:
     outside_metadata["recordingDetails"]["writingDown"].update(
         wallDurationMs=15680,
         resumed=True,
+        # D-1162 review: a partial result and a captured-but-silent source keep their explanations.
         speakerSeparation=dict(
-            status="completed", modelId=MODEL_ID, modelRevision=REVISION, speakersFound=2, reused=False
+            status="partial", modelId=MODEL_ID, modelRevision=REVISION, speakersFound=2, reused=False
         ),
+        silentTracks=["microphone"],
     )
     write_json(outside / "meeting.json", outside_metadata)
+    outside_session = json.loads((outside / "session.json").read_text())
+    outside_session["captureOutcome"] = dict(
+        sources=[
+            dict(
+                sourceTrackId="microphone",
+                kind="microphone",
+                label="Built-in Audio",
+                captureOutcome="captured",
+                audioMs=83000,
+                trackIds=["microphone"],
+            )
+        ]
+    )
+    write_json(outside / "session.json", outside_session)
     external = LibraryScanner(outside.parent).scan().meetings[0]
     assert external.key in {m.key for m in window.snapshot.meetings}
     window.open_meeting(external, external=True)
@@ -351,6 +367,20 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.report.title == outside_metadata["title"]
     assert REVISION in dialog.report.plain_text()
     assert dict(dialog.report.writing)["Time taken"] == "15.68 s (this run, after resuming)"
+    # R13: the silent line stays visible, neutral, inside the Me card (not dropped with Audio sources).
+    silent = text("details.sources.silent", source=text("common.yourMicrophone"))
+    assert silent in dialog.report.plain_text()
+    shown = dialog._bindings[("silent", "Me", 0)]
+    assert shown.get_label() == silent and shown.get_mapped()
+    assert shown.has_css_class("dim-label") and not shown.has_css_class("warning")
+    me_card = shown.get_parent()
+    assert me_card.has_css_class("details-side") and text("details.side.me") in labels(me_card)
+    assert ("silent", "The others", 0) not in dialog._bindings
+    # A partial speaker separation keeps "Some audio could not be separated" beside "On · 2 voices told apart".
+    separation = text("details.writing.separation")
+    index = [name for name, _value in dialog.report.writing_plain].index(separation)
+    value = dialog._bindings[("writing", index)].get_label()
+    assert value.startswith("On · 2 voices told apart") and text("details.separation.partial") in value
     shot(window, "speaker-separation")
     assert not window.lookup_action("move-to-trash").get_enabled()
     window._updated(window._source_snapshot)
