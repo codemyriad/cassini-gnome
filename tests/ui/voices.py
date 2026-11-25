@@ -157,15 +157,31 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.cancel.get_parent() is dialog.merge.get_parent() is dialog.footer_row
     dialog._set_narrow(False)
     assert dialog.footer_row.get_last_child() is dialog.save and dialog.footer_row.get_first_child() is dialog.merge
-    until(
-        lambda: (
-            footer_visible()
-            and (save_in_dialog := dialog.save.compute_bounds(dialog))[0]
-            and save_in_dialog[1].get_y() + save_in_dialog[1].get_height() <= dialog.get_height()
-            and dialog.body_scroll.get_vadjustment().get_upper()
-            <= dialog.body_scroll.get_vadjustment().get_page_size() + 1
+
+    def fit_report():
+        adjustment = dialog.body_scroll.get_vadjustment()
+        shown, bounds = dialog.save.compute_bounds(dialog)
+        return dict(
+            footerVisible=footer_visible(),
+            saveBottom=bounds.get_y() + bounds.get_height() if shown else None,
+            dialog=(dialog.get_width(), dialog.get_height()),
+            window=(window.get_width(), window.get_height()),
+            scroll=(adjustment.get_upper(), adjustment.get_page_size()),
         )
-    )
+
+    try:
+        until(
+            lambda: (
+                footer_visible()
+                and (save_in_dialog := dialog.save.compute_bounds(dialog))[0]
+                and save_in_dialog[1].get_y() + save_in_dialog[1].get_height() <= dialog.get_height()
+                and dialog.body_scroll.get_vadjustment().get_upper()
+                <= dialog.body_scroll.get_vadjustment().get_page_size() + 1
+            )
+        )
+    except AssertionError:
+        print("Speakers dialog fit:", fit_report(), flush=True)
+        raise
     assert dialog.duplicate_title.get_text() == "Giulia is already a saved voice."
     assert '<span weight="600">Giulia</span>' in dialog.duplicate_title.get_label()
     assert "Is this the same person?" not in labels(dialog.duplicate)
