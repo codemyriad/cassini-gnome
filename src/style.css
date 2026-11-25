@@ -767,7 +767,6 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
   padding: 0 12px;
   font-size: 9.75pt;
 }
-.details-side { padding: 12px; border: 1px solid var(--app-details-border); border-radius: 12px; }
 .details-span { padding: 6px 0; }
 .details-marker { background: var(--app-accent-bg); border-radius: 3px; }
 .details-time { font-variant-numeric: tabular-nums; opacity: 0.75; }
@@ -847,3 +846,11 @@ menubutton.edge-button > button:checked,
 .cassini-preferences viewswitcher.preferences-inline-tabs > button:checked {
   background: var(--cx-surface); box-shadow: 0 1px 2px var(--cx-shadow);
 }
+
+/* D-1162 (L-82): Recording details, every section its own card, each detail a small grey label above
+   its value (libadwaita's property row). */
+.details-card { padding: 0; }
+.details-side { padding: 11px 14px 12px; }
+.details-span-source { font-weight: 600; }
+.details-property { padding: 9px 14px 10px; }
+.details-properties > .details-property:not(:last-child) { border-bottom: 1px solid var(--cx-line-soft); }

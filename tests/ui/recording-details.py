@@ -74,6 +74,16 @@ from painted import painted_node  # noqa: E402
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.library import LibraryScanner  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.strings import text  # noqa: E402
+
+
+def labels(widget):
+    found = [widget.get_label()] if isinstance(widget, Gtk.Label) else []
+    child = widget.get_first_child()
+    while child is not None:
+        found += labels(child)
+        child = child.get_next_sibling()
+    return found
 
 
 def until(predicate):
@@ -121,7 +131,8 @@ heights = {}
 
 def check_stable_refreshes(dialog, *, changing):
     first, bindings, report = dialog.body.get_first_child(), dict(dialog._bindings), dialog.report
-    value = bindings[("writing", 0)]
+    # D-1162: Transcribing has no rows while recording (nothing recorded yet), so a health value then.
+    value = bindings.get(("writing", 0)) or bindings[("health", 0)]
     value.grab_focus()
     until(lambda: dialog.window.get_focus() == value)
     adjustment = dialog.scroller.get_vadjustment()
@@ -240,7 +251,8 @@ with tempfile.TemporaryDirectory() as temporary:
             assert not window._trash_key(None, Gdk.KEY_Delete, 0, Gdk.ModifierType(0))
             assert paths[key].is_dir() and not app.meeting_trash.hides(paths[key])
         shot(window, {"fallback": "browser-fallback", "microphone": "microphone", "no-events": "no-events"}[key])
-        heights[key] = dialog.get_child().get_height()
+        # D-1162: the cards can fill the dialog, so compare the content's height, not the dialog's.
+        heights[key] = dialog.scroller.get_vadjustment().get_upper()
         body = dialog.report.plain_text()
         if key == "fallback":
             assert dialog.report.live and "3 audio streams" in body
@@ -253,9 +265,12 @@ with tempfile.TemporaryDirectory() as temporary:
                 "Guest: audio couldn’t be recorded.",
                 "Guest: not selected for recording.",
             ]
-            assert [dialog._bindings[("source", i)].get_label() for i in range(5)] == source_lines
-            assert dialog._bindings[("source", 3)].has_css_class("warning")
-            assert not dialog._bindings[("source", 4)].has_css_class("warning")
+            # D-1162: Audio sources folds into the cards; only a source's problem stays, as a warning.
+            quiet = {k: w for k, w in dialog._bindings.items() if k[0] == "quiet"}
+            shown_lines = [w.get_label() for w in quiet.values()]
+            assert "Guest: audio couldn’t be recorded." in shown_lines and "Guest: 2 s recorded." not in shown_lines
+            assert all(w.has_css_class("warning") for w in quiet.values() if w.get_label() in source_lines)
+            assert text("details.sources.title") not in labels(dialog.body)
             assert all(line in body for line in source_lines)
             page = window.recording_page
             state = app.comfort.states.setdefault(
@@ -356,7 +371,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert len(dialog.report.spans) >= 40
     check_stable_refreshes(dialog, changing=False)
     shot(window, "many-spans")
-    heights["many-spans"] = dialog.get_child().get_height()
+    heights["many-spans"] = dialog.scroller.get_vadjustment().get_upper()
     assert heights["microphone"] < heights["many-spans"], heights
     dialog.close()
     until(lambda: dialog.closed)

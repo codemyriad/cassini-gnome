@@ -163,6 +163,10 @@ class Report:
     silent_tracks: frozenset[str] = frozenset()
     # D69.2: quiet "the computer was too busy" lines, one per source at 1 s or more.
     computer_busy: tuple[str, ...] = ()
+    # D-1162 (L-82): what the dialog shows, in plain words and without rows that recorded nothing.
+    # Copy details keeps `ended` and `writing` exactly.
+    ended_plain: tuple[str, str] | None = None
+    writing_plain: tuple[tuple[str, str], ...] = ()
 
     @property
     def audio(self):
@@ -447,6 +451,33 @@ def _end(meeting, session):
     return UNKNOWN
 
 
+def _end_plain(meeting, session):
+    """(label, value) for How it ended in plain words, or None when nothing was recorded (D-1162)."""
+    ended = _end(meeting, session)
+    if ended == UNKNOWN:
+        return None
+    events = read_events(session.get("events"))
+    end = events[-1] if events and events[-1]["type"] == "end" else None
+    if end is None:
+        details = meeting.metadata.get("recordingDetails") or {}
+        stored = details.get("end") if isinstance(details, dict) else None
+        if isinstance(stored, dict) and type(stored.get("atMs")) is int and 0 <= stored["atMs"] <= 9007199254740991:
+            end = stored
+    if isinstance(end, dict) and end.get("reason") == "user" and type(end.get("atMs")) is int:
+        return text("details.end.stopped"), text("details.end.userAt", time=fmt.live_badge(int(end["atMs"])))
+    return "", ended
+
+
+def _separation_plain(value):
+    """D-1162: "On · 5 voices told apart"; the model name and revision stay in Copy details."""
+    if isinstance(value, dict) and value.get("status") in ("completed", "partial"):
+        count = value.get("speakersFound")
+        if type(count) is int and 0 <= count <= 1000 and _separation(value) != UNKNOWN:
+            key = "details.separation.on.one" if plural_category(count) == "one" else "details.separation.on.other"
+            return text(key, n=count)
+    return _separation(value)
+
+
 def _counter(tracks, field):
     rows = [t for t in tracks if type(t.get(field)) is int and 0 <= t[field] <= 9007199254740991]
     if not rows:
@@ -651,6 +682,12 @@ def read_details(meeting):
     )
     if meeting.lifecycle in ("recording", "saving"):
         writing = tuple((name, text("details.writing.after")) for name, _value in writing)
+        writing_plain = ()
+    else:
+        plain = dict(writing)
+        plain[text("details.writing.separation")] = _separation_plain(writing_facts.get("speakerSeparation"))
+        empty = (UNKNOWN, text("details.writing.noneRecognised"))
+        writing_plain = tuple((name, plain[name]) for name, _value in writing if plain[name] not in empty)
     return Report(
         clean(meeting.title, 500),
         folder,
@@ -666,4 +703,6 @@ def read_details(meeting):
         tuple(read_refusals(session.get("refusals"))),
         silent_tracks,
         computer_busy_lines(raw_tracks) if meeting.lifecycle not in ("recording", "saving") else (),
+        _end_plain(meeting, session),
+        writing_plain,
     )

@@ -29,7 +29,7 @@ def test_fallback_streams_are_audio_not_people_and_do_not_invent_page_reasons(me
     ]
     assert others[0].method == "3 audio streams"
     assert others[1].reason == "Separate voices stopped unexpectedly. Cassini recorded all computer sound instead."
-    assert report.ended == UNKNOWN
+    assert report.ended == UNKNOWN and report.ended_plain is None
     copied = report.plain_text()
     assert "participants" not in copied and "reloaded" not in copied and "tab was closed" not in copied
     assert locale.localize("4000", grouping=True) + " frames · 0.5 s" in copied
@@ -41,6 +41,8 @@ def test_reader_only_end_record_and_large_dc_offset_are_factual_and_do_not_write
     before = {p.name: (p.stat().st_size, p.stat().st_mtime_ns) for p in meeting.directory.iterdir()}
     report = read_details(meeting)
     assert report.ended == "Stopped by you · 00:01:23"
+    # D-1162: the dialog says it in plain words; Copy details keeps the line above.
+    assert report.ended_plain == ("Stopped", "You stopped it at 1:23")
     assert dict(report.health)["Microphone offset"] == (
         "The microphone adds a steady offset (-2060). Cassini corrects for it when finding speech; "
         "the saved audio is unchanged."
@@ -138,6 +140,9 @@ def test_reports_are_whitelisted_and_do_not_read_private_voice_stores(meetings):
     assert dict(report.writing)["Time taken"] == "4.217 s (this run, after resuming)"
     assert dict(report.writing)["Speech segments"] == "2"
     assert dict(report.writing)["Speaker separation"].startswith("Nemotron · 2 voices")
+    # D-1162: plain words in the dialog, without rows that recorded nothing.
+    assert dict(report.writing_plain)["Speaker separation"] == "On · 2 voices told apart"
+    assert UNKNOWN not in dict(report.writing_plain).values()
     assert MODEL_ID + "@" + REVISION in report.plain_text()
     assert "PRIVATE_PRINT_SENTINEL" not in report.plain_text()
     assert dict(report.writing)["Saved voices recognised"] == "Alex"
