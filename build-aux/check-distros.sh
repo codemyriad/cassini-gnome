@@ -17,7 +17,7 @@ cd "$(dirname "$0")/.."
 . build-aux/container.sh
 
 DEFAULT_IMAGES="debian:testing@sha256:2d46f43b677a047cfab870549eea0d83d0a9bea2f55b3f481efc901043916c2a ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96 fedora:latest@sha256:a7d72ba2745b100a3351087472e5ee7b2450af7cf331e7673007e3817612839c
-registry.opensuse.org/opensuse/tumbleweed:latest@sha256:8d75d2997058df2cd0821d07e17a285b4548e77781a88c0dae8d1b17dbca3c1b archlinux:latest@sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899 alpine:edge@sha256:020dfcbaaf4cc1078bf2d9c7ba31a8466e334061dcd2f248001d68f79e52c000"
+registry.opensuse.org/opensuse/tumbleweed:latest@sha256:1c95c1c8993a2d12e82d4f596b3eef0c1de799ebad198919dee79d3abb8b7ae1 archlinux:latest@sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899 alpine:edge@sha256:020dfcbaaf4cc1078bf2d9c7ba31a8466e334061dcd2f248001d68f79e52c000"
 [ $# -gt 0 ] || set -- $DEFAULT_IMAGES
 
 LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/cassini-check-distros.XXXXXX")

@@ -82,7 +82,7 @@ rpm: whistle-cache
 	build-aux/rpm/build.sh
 
 rpm-opensuse: whistle-cache
-	build-aux/rpm/build.sh registry.opensuse.org/opensuse/tumbleweed:latest@sha256:8d75d2997058df2cd0821d07e17a285b4548e77781a88c0dae8d1b17dbca3c1b
+	build-aux/rpm/build.sh registry.opensuse.org/opensuse/tumbleweed:latest@sha256:1c95c1c8993a2d12e82d4f596b3eef0c1de799ebad198919dee79d3abb8b7ae1
 
 arch: whistle-cache
 	build-aux/arch/build.sh
