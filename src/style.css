@@ -170,7 +170,7 @@ text > placeholder {
 .library-window .row-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .dim-label, .library-window .dim-label { color: var(--app-dim-fg); opacity: 1; }
 .library-window .meeting-row:selected .dim-label { color: var(--app-dim-fg); }
-.library-window .drop-footer { padding: 10px 10px 12px; border-top: 1px solid var(--cx-line-soft); color: var(--cx-ink-3); font-size: 9.75pt; }
+.library-window .drop-footer { padding: 10px 10px 12px; border-top: 1px solid var(--cx-line); color: var(--cx-ink-3); font-size: 9.75pt; }
 .library-window .drop-footer.drag-enter { color: var(--cx-accent-ink); font-weight: 600; }
 .library-window .drop-list-frame.drag-enter { border-radius: 12px; outline: 2px dashed color-mix(in srgb, var(--cx-accent) 55%, transparent); outline-offset: -4px; }
 .library-window .drop-list-frame.drag-over > scrolledwindow { opacity: 0.3; }
@@ -821,3 +821,9 @@ menubutton.edge-button > button:active,
 menubutton.edge-button > button:checked,
 .narrow menubutton.recording-more-btn > button:active,
 .narrow menubutton.recording-more-btn > button:checked { background: color-mix(in srgb, var(--cx-ink) 16%, transparent); }
+
+/* D-1162: the sidebar header lines up with the list: the menu button and the recording controls sit
+   10 px from each side of the sidebar, like the search field and the cards (4 px + the bar's 6 px). */
+.library-window .library-sidebar .library-header { padding: 0 4px; }
+/* D-1162: the recording pill fits its contents (dot, time, Stop), like the approved Mac pill. */
+.library-window .live-pill .static-stop { margin-left: 4px; padding: 0 15px; }

@@ -528,7 +528,7 @@ class RecordingPage(Adw.NavigationPage):
             self.sources_dialog.force_close()
         self.window._editor_focus(self.title_entry, False)
         self.flush_edits()
-        for picture in (self.mic_level, self.others_level, self.capture._controls["picture"]):
+        for picture in (self.mic_level, self.others_level):
             self.window.spectrograms.remove(picture)
         if (
             self.capture is not getattr(self.window, "capture_header", None)

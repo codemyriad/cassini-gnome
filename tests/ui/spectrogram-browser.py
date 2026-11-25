@@ -98,7 +98,7 @@ with tempfile.TemporaryDirectory() as temporary:
         until(lambda: window.live_meeting() is not None, "independent browser capture in Library")
         window.open_meeting(window.live_meeting())
         page = window.recording_page
-        views = (page.capture._controls["picture"], page.mic_level, page.others_level)
+        views = (page.mic_level, page.others_level)
         until(
             lambda: (
                 all(v.model and v.texture for v in views)

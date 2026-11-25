@@ -24,7 +24,6 @@ from .meeting_page import MeetingPage
 from .meeting_state import import_entry_badge
 from .player import Player
 from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
-from .spectrogram_strip import SpectrogramStrip
 from .status_badge import BadgeGlyph, StatusBadge
 from .strings import plural, text
 from .tokens import speaker_slot
@@ -1327,8 +1326,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         show = Gtk.Button(child=timer, css_classes=["flat"], tooltip_text=text("recording.pill.noSleep"))
         show.connect("clicked", lambda *_: self.open_live_recording())
         live.append(show)
-        picture = SpectrogramStrip(kind="pill", lanes=("me", "others"))
-        live.append(picture)
+        # D-1162: the pill fits its contents (dot, time, Stop), the same shape as the approved Mac
+        # recording pill: no level strip between the time and Stop. The Recording screen's rows keep theirs.
         muted = Gtk.Image(
             icon_name="dialog-warning-symbolic", visible=False, tooltip_text=text("recording.systemMuted")
         )
@@ -1343,7 +1342,6 @@ class LibraryWindow(Adw.ApplicationWindow):
             stack=stack,
             live=live,
             timer=timer,
-            picture=picture,
             stop=stop,
             muted=muted,
             meeting=meeting.key if meeting else None,
@@ -1488,8 +1486,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         list_content.append(self.received_hint)
 
+        # D-1162: the list stops at a hard line above "Drop audio files here to import", with the
+        # soft shadow GNOME lists show when there's more to scroll (libadwaita's undershoot-bottom).
         self.library_scroller = Gtk.ScrolledWindow(
-            hscrollbar_policy=Gtk.PolicyType.NEVER, child=list_content, vexpand=True
+            hscrollbar_policy=Gtk.PolicyType.NEVER, child=list_content, vexpand=True, css_classes=["undershoot-bottom"]
         )
         self._library_vadj = self.library_scroller.get_vadjustment()
         self._library_vadj.connect("value-changed", self._queue_sidebar_scrolled)
@@ -1722,7 +1722,6 @@ class LibraryWindow(Adw.ApplicationWindow):
             (controls["live"].add_css_class if stopping else controls["live"].remove_css_class)("saving")
             state = app.comfort.status(target) if target else {}
             controls["muted"].set_visible(bool(state.get("output_muted")))
-            self.bind_spectrogram(controls["picture"], target, silent=bool(state.get("silent")), stopping=stopping)
         self._recording_line(native)
         if self.recording_page:
             self.recording_page.update_status()
