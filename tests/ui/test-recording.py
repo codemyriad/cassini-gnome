@@ -161,7 +161,7 @@ def child():
         app.on_preferences()
         settings = app.settings_dialog
         assert settings.test_row.get_title() == "Test recording"
-        assert settings.test_row.get_description() == "Records 8 seconds, plays it back, then deletes it."
+        assert settings.test_row.get_subtitle() == "Records 8 seconds, plays it back, then deletes it."
         assert settings.test_button.get_label() == "Test"
         until(lambda: settings.test_row.get_sensitive() and settings.test_button.get_sensitive())
         record_event("settings")

@@ -408,10 +408,6 @@ popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):act
 /* Information under its card; the privacy footnote at the foot of the page. */
 .cassini-preferences label.preferences-caption { margin: 2px 12px 0; font-size: 9.75pt; }
 .cassini-preferences .preferences-footnote { margin-top: 10px; }
-/* Multi-line rows: switches, radios, "Built in" and buttons on the first line. */
-.cassini-preferences button.first-line, .cassini-preferences switch.first-line { margin-top: 2px; }
-.cassini-preferences checkbutton.first-line { margin-top: 0; padding-top: 0; }
-.cassini-preferences label.first-line { margin-top: 3px; }
 /* The companion's status: green when connected, red when not set up. */
 .status-dot { min-width: 8px; min-height: 8px; border-radius: 50%; }
 .status-dot-connected { background: var(--cx-success); }
@@ -842,3 +838,12 @@ menubutton.edge-button > button:checked,
 .inline-speaker-button { min-height: 0; padding-top: 0; padding-bottom: 0; }
 /* D-1162: one Stop. While the Recording screen is open the sidebar pill shows the time only. */
 .library-window .live-pill.time-only { padding-right: 13px; }
+/* D-1162 (L-90): narrow Preferences keep their tabs at the top, under the title. */
+.cassini-preferences viewswitcher.preferences-inline-tabs {
+  margin: 0 10px 8px; padding: 3px; border-radius: 10px; border-spacing: 4px;
+  background: color-mix(in srgb, var(--cx-ink) 6%, transparent);
+}
+.cassini-preferences viewswitcher.preferences-inline-tabs > button { border-radius: 8px; margin: 0; }
+.cassini-preferences viewswitcher.preferences-inline-tabs > button:checked {
+  background: var(--cx-surface); box-shadow: 0 1px 2px var(--cx-shadow);
+}
