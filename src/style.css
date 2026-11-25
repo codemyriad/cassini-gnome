@@ -316,7 +316,7 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
   border-radius: 6px;
   font-size: 10.5pt;
   font-weight: 600;
-  color: var(--cx-accent-ink);
+  color: var(--cx-ink);
   background: transparent;
 }
 .library-window button.transcribing-stop-link:not(:disabled):hover {

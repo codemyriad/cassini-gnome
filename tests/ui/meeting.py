@@ -254,7 +254,7 @@ with tempfile.TemporaryDirectory() as temporary:
             window._updated(updated)
 
         # WP5 (L-45): queued/running meetings show the header transcribing status row,
-        # keep the desktop transcript area empty while transcribing, and open the chevron
+        # keep the transcript area empty until the first words arrive (D-1162), and open the chevron
         # details popover with 5 steps, 3 stats, and Stop and keep progress.
         from cassini_talk import i18n as fmt
         from cassini_talk.transcription import TranscriptionProgress
@@ -285,9 +285,14 @@ with tempfile.TemporaryDirectory() as temporary:
             assert page.transcribing_row.get_visible()
             assert "Transcribing" in labels(page.transcribing_row)
             assert "· about 3 min left" in labels(page.transcribing_row)
-            assert page.transcribing_blank.get_visible() and page.scroller.get_opacity() == 0.0, (
-                "L-45: desktop transcript area stays empty while transcribing"
-            )
+            # D-1162: the transcript so far shows while transcribing, as on Android.
+            assert running.turns and not page.transcribing_blank.get_visible() and page.scroller.get_opacity() == 1.0
+            # D-1162 (L-85): Stop while transcribing is a plain flat button in the text colour.
+            assert page.transcribing_row.stop_button.has_css_class("flat")
+            page._set_narrow(True)
+            assert page.transcribing_row.get_orientation() == Gtk.Orientation.VERTICAL
+            assert page.transcribing_row.stop_button.get_parent() is page.transcribing_row.progress_bar.get_parent()
+            page._set_narrow(False)
             assert not page.find_row.get_visible()
             assert not page.speakers_scroller.get_visible()
             assert page.player_overlay.get_visible()

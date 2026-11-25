@@ -626,6 +626,7 @@ class MeetingPage(Adw.NavigationPage):
             return
         self.narrow = narrow
         (self.outer.add_css_class if narrow else self.outer.remove_css_class)("narrow")
+        self.transcribing_row.set_narrow(narrow)
         side = 16 if narrow else 48
         for widget in (self.recording_notice, self.lines, self._companion):
             widget.set_margin_start(side)
@@ -1437,10 +1438,13 @@ class MeetingPage(Adw.NavigationPage):
         self.player_overlay.set_visible(bool(meeting.has_audio))
         self._can_listen = can_play and not is_transcribing
         self.find_row.set_visible(not is_transcribing and (bool(meeting.words) or bool(self._find_query)))
-        self.transcribing_blank.set_visible(is_transcribing)
-        self.scroller.set_opacity(0.0 if is_transcribing else 1.0)
-        self.scroller.set_can_target(not is_transcribing)
-        self.scroller.set_can_focus(not is_transcribing)
+        # D-1162: show the transcript so far while transcribing (the published partial snapshot), as
+        # Android does; the area stays empty only until the first words arrive.
+        blank = is_transcribing and not layout
+        self.transcribing_blank.set_visible(blank)
+        self.scroller.set_opacity(0.0 if blank else 1.0)
+        self.scroller.set_can_target(not blank)
+        self.scroller.set_can_focus(not blank)
         self.refresh_transcription_progress(stopping=stopping)
 
         if self._turns != layout or self._listening_turns is not meeting.listening_turns:
