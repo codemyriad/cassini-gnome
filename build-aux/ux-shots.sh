@@ -80,6 +80,8 @@ flow tests/ui/batch-import.py batch-import-gui.png
 flow tests/ui/batch-import.py dark/batch-import-gui.png CASSINI_SCREENSHOT_SCHEME=dark
 flow tests/ui/rename.py rename.png
 flow tests/ui/rename.py dark/rename.png CASSINI_SCREENSHOT_SCHEME=dark
+flow tests/ui/set-date.py set-date.png
+flow tests/ui/set-date.py dark/set-date.png CASSINI_SCREENSHOT_SCHEME=dark
 flow tests/ui/search.py search-gui.png
 flow tests/ui/starring.py starring.png
 flow tests/ui/starring.py dark/starring.png CASSINI_SCREENSHOT_SCHEME=dark

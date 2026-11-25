@@ -10,7 +10,7 @@ import threading
 from gi.repository import Adw, GLib, Gtk
 
 from . import calendar_formats
-from .meeting_date import changes, prefill, saved_ms, set_started_at, started_at
+from .meeting_date import changes, parse_clock_part, prefill, saved_ms, set_started_at, started_at
 from .strings import text
 
 LOG = logging.getLogger(__name__)
@@ -72,20 +72,31 @@ class SetDateDialog(Adw.Dialog):
         self.calendar.connect("day-selected", self._day_selected)
         for spin in (self.hour, self.minute):
             spin.connect("value-changed", self._changed)
+            spin.connect("changed", self._changed)
         self.connect("closed", self._closed)
         self._fill(prefill(meeting, tz=window.tz, now_ms=window.now_ms))
         if meeting.started_at_ms is None and meeting.recorded_at_local is None:
             threading.Thread(target=self._read_saved_time, args=(meeting,), daemon=True).start()
 
-    @staticmethod
-    def _spin(upper):
+    def _spin(self, upper):
         spin = Gtk.SpinButton.new_with_range(0, upper, 1)
         spin.set_wrap(True)
         spin.set_numeric(True)
         spin.set_width_chars(2)
         spin.set_orientation(Gtk.Orientation.VERTICAL)
-        spin.connect("output", lambda button: button.set_text(f"{int(button.get_value()):02d}") or True)
+        spin.connect("output", self._format_spin)
         return spin
+
+    def _format_spin(self, button):
+        formatted = f"{int(button.get_value()):02d}"
+        if button.get_text() != formatted:
+            was_filling = self._filling
+            self._filling = True
+            try:
+                button.set_text(formatted)
+            finally:
+                self._filling = was_filling
+        return True
 
     def _read_saved_time(self, meeting):
         saved = saved_ms(meeting)
@@ -136,8 +147,17 @@ class SetDateDialog(Adw.Dialog):
         self.hint.set_visible(False)
         self._validate()
 
+    @staticmethod
+    def _spin_value(spin, upper):
+        return parse_clock_part(spin.get_text(), upper)
+
     def value(self):
-        return started_at(*self._date(), int(self.hour.get_value()), int(self.minute.get_value()), tz=self.window.tz)
+        return started_at(
+            *self._date(),
+            self._spin_value(self.hour, 23),
+            self._spin_value(self.minute, 59),
+            tz=self.window.tz,
+        )
 
     def _validate(self):
         try:
@@ -154,7 +174,26 @@ class SetDateDialog(Adw.Dialog):
     def _save(self, *_):
         if self.closed or self.busy or self.app._quitting or not self.confirm.get_sensitive():
             return
-        value = self.value()
+        try:
+            # Validate pending text before spin.update() so out-of-range text is never silently clamped.
+            self.value()
+        except ValueError:
+            self._validate()
+            return
+        self._filling = True
+        try:
+            self.hour.update()
+            self.minute.update()
+        finally:
+            self._filling = False
+        try:
+            value = self.value()
+        except ValueError:
+            self._validate()
+            return
+        if not ((self.edited or self.ready) and changes(self.meeting, value)):
+            self._validate()
+            return
         self.busy = True
         self.set_can_close(False)
         self.confirm.grab_focus()

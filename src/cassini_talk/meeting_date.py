@@ -69,6 +69,17 @@ def prefill(meeting, *, tz, now_ms, saved=None):
     return Prefill(at.replace(second=0, microsecond=0, tzinfo=None), from_file)
 
 
+def parse_clock_part(raw, upper):
+    """Parse pending text from an hour/minute field; raises ValueError unless it is an integer in 0..upper."""
+    cleaned = raw.strip()
+    if not cleaned or not (cleaned.isascii() and cleaned.isdigit()):
+        raise ValueError(f"Invalid time component: {raw!r}")
+    value = int(cleaned)
+    if not (0 <= value <= upper):
+        raise ValueError(f"Time component out of range 0..{upper}: {value}")
+    return value
+
+
 def started_at(year, month, day, hour, minute, *, tz):
     """RFC 3339 for that local wall clock in the person's zone, with that day's UTC offset."""
     value = datetime(year, month, day, hour, minute, tzinfo=_zone(tz)).isoformat(timespec="seconds")

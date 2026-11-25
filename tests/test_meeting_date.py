@@ -11,7 +11,7 @@ import pytest
 from cassini_talk import portable
 from cassini_talk.library import LibraryScanner
 from cassini_talk.library_v2 import xschema
-from cassini_talk.meeting_date import changes, prefill, saved_ms, set_started_at, started_at
+from cassini_talk.meeting_date import changes, parse_clock_part, prefill, saved_ms, set_started_at, started_at
 from cassini_talk.meeting_store import read_metadata
 from cassini_talk.meeting_time import milliseconds, selected
 from cassini_talk.received import import_received
@@ -122,3 +122,24 @@ def test_set_date_rejects_values_outside_the_contract(library):
         with pytest.raises(ValueError):
             set_started_at(received.directory, value)
     assert "startedAt" not in read_metadata(received.directory)
+
+
+def test_parse_clock_part_accepts_in_range_integers_and_rejects_invalid_pending_text():
+    assert parse_clock_part("0", 23) == 0
+    assert parse_clock_part("09", 23) == 9
+    assert parse_clock_part("23", 23) == 23
+    assert parse_clock_part(" 59 ", 59) == 59
+    for bad, upper in (
+        ("", 23),
+        ("   ", 23),
+        ("-1", 23),
+        ("+5", 23),
+        ("1.5", 23),
+        ("12a", 23),
+        ("24", 23),
+        ("99", 23),
+        ("60", 59),
+        ("١٢", 23),
+    ):
+        with pytest.raises(ValueError):
+            parse_clock_part(bad, upper)
