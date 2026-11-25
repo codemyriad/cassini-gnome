@@ -371,6 +371,7 @@ with tempfile.TemporaryDirectory() as temporary:
     silent = text("details.sources.silent", source=text("common.yourMicrophone"))
     assert silent in dialog.report.plain_text()
     shown = dialog._bindings[("silent", "Me", 0)]
+    until(lambda: shown.get_mapped())
     assert shown.get_label() == silent and shown.get_mapped()
     assert shown.has_css_class("dim-label") and not shown.has_css_class("warning")
     me_card = shown.get_parent()
