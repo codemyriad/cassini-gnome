@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 @import url("tokens.css");
 
+/* D-1162: text follows the system text size (GNOME Large Text). Font sizes are in pt, which GTK
+   scales with the text-scaling factor (Xft DPI); px would stay fixed. 0.75 pt is 1 px at 100 %,
+   so at the default size every label renders exactly as drawn (15 px = 11.25 pt). */
+
 :root {
   /* Libadwaita 1.8 palette overrides for decided brand roles (HARMONY §10.1–10.15). */
   --window-bg-color: var(--cx-ground);
@@ -133,25 +137,25 @@ text > placeholder {
 }
 
 /* Shared Library boards, HARMONY §10 & WP2 (L-19, L-21, L-23, L-25, L-29..33, L-50..53). */
-.library-window { font-size: 15px; background: var(--app-view-bg); color: var(--app-view-fg); }
-.library-window .small { font-size: 13px; }
-.library-window .library-title { font-size: 24px; font-weight: 700; }
+.library-window { font-size: 11.25pt; background: var(--app-view-bg); color: var(--app-view-fg); }
+.library-window .small { font-size: 9.75pt; }
+.library-window .library-title { font-size: 18pt; font-weight: 700; }
 .library-window .library-header { min-height: 47px; padding: 0 10px; box-shadow: none; border-bottom: 1px solid transparent; }
 .library-window .library-header.scrolled { border-bottom-color: var(--app-hairline); }
 .library-window .library-sidebar { background: var(--app-sidebar-bg); color: var(--app-sidebar-fg); }
 .library-sidebar entry { background-color: var(--app-field-bg); color: var(--app-window-fg); border: 1px solid var(--app-field-border); }
 .library-window .import-audio-btn { min-width: 34px; min-height: 34px; padding: 0; border-radius: 999px; color: var(--cx-ink); }
 .library-window .sidebar-search-box { padding: 0 10px 8px; background: transparent; }
-.library-window .sidebar-search-entry { min-height: 34px; border-radius: 6px; padding: 0 9px; background-color: var(--cx-field); color: var(--cx-ink); border: 1px solid var(--cx-field-line); font-size: 14px; }
+.library-window .sidebar-search-entry { min-height: 34px; border-radius: 6px; padding: 0 9px; background-color: var(--cx-field); color: var(--cx-ink); border: 1px solid var(--cx-field-line); font-size: 10.5pt; }
 .library-window .sidebar-search-entry:focus-within { border-color: var(--cx-accent); outline: 2px solid var(--cx-accent); outline-offset: -1px; }
 .library-window .library-rows { background: transparent; padding: 0 10px 10px; }
 .library-window .library-filter-row { padding: 0 10px 8px; }
-.library-window button.library-filter { min-height: 28px; padding: 0 14px; font-size: 13px; }
+.library-window button.library-filter { min-height: 28px; padding: 0 14px; font-size: 9.75pt; }
 .library-window button.library-filter:checked { background: var(--app-primary-bg); color: var(--app-primary-fg); font-weight: 600; }
 .library-window .row-star { color: var(--cx-ink-2); }
 .library-window .library-starred-empty { color: var(--cx-ink-2); }
 .library-window .day-heading { padding: 10px 12px 4px; background: transparent; }
-.library-window .day-heading-label { font-size: 13px; font-weight: 700; color: var(--cx-ink-2); }
+.library-window .day-heading-label { font-size: 9.75pt; font-weight: 700; color: var(--cx-ink-2); }
 .library-window .meeting-row { padding: 0; border-radius: 10px; margin: 3px 0; color: var(--cx-ink); background: var(--cx-card-rest); border: 1px solid var(--cx-line); box-shadow: none; }
 .library-window .meeting-row:not(:selected):hover { background: color-mix(in srgb, var(--cx-ink) 4%, var(--cx-card-rest)); }
 .library-window .meeting-row:not(:selected):active { background: color-mix(in srgb, var(--cx-ink) 8%, var(--cx-card-rest)); }
@@ -162,11 +166,11 @@ text > placeholder {
   box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--cx-ink) 55%, var(--cx-surface)), 0 2px 8px var(--cx-shadow);
 }
 .library-window .meeting-row:focus-visible { outline: 2px solid var(--cx-accent); outline-offset: 2px; }
-.library-window .row-title { font-size: 15px; font-weight: 600; color: var(--cx-ink); }
+.library-window .row-title { font-size: 11.25pt; font-weight: 600; color: var(--cx-ink); }
 .library-window .row-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .dim-label, .library-window .dim-label { color: var(--app-dim-fg); opacity: 1; }
 .library-window .meeting-row:selected .dim-label { color: var(--app-dim-fg); }
-.library-window .drop-footer { padding: 10px 10px 12px; border-top: 1px solid var(--cx-line-soft); color: var(--cx-ink-3); font-size: 13px; }
+.library-window .drop-footer { padding: 10px 10px 12px; border-top: 1px solid var(--cx-line-soft); color: var(--cx-ink-3); font-size: 9.75pt; }
 .library-window .drop-footer.drag-enter { color: var(--cx-accent-ink); font-weight: 600; }
 .library-window .drop-list-frame.drag-enter { border-radius: 12px; outline: 2px dashed color-mix(in srgb, var(--cx-accent) 55%, transparent); outline-offset: -4px; }
 .library-window .drop-list-frame.drag-over > scrolledwindow { opacity: 0.3; }
@@ -180,15 +184,15 @@ text > placeholder {
   color: var(--cx-ink);
 }
 .library-window .drop-overlay .drop-overlay-glyph { color: var(--cx-accent); }
-.library-window .drop-overlay .drop-overlay-title { font-size: 17px; font-weight: 700; color: var(--cx-ink); }
+.library-window .drop-overlay .drop-overlay-title { font-size: 12.75pt; font-weight: 700; color: var(--cx-ink); }
 .library-window .drop-overlay.error {
   background: color-mix(in srgb, var(--cx-error-tint) 88%, transparent);
   outline-color: var(--cx-error);
 }
 .library-window .drop-overlay.error .drop-overlay-glyph,
 .library-window .drop-overlay.error .drop-overlay-title { color: var(--cx-error); }
-.badge { min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1; font-feature-settings: "tnum"; }
-.badge .badge-label { font-size: 12px; font-weight: 600; line-height: 1; font-feature-settings: "tnum"; }
+.badge { min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 9pt; font-weight: 600; line-height: 1; font-feature-settings: "tnum"; }
+.badge .badge-label { font-size: 9pt; font-weight: 600; line-height: 1; font-feature-settings: "tnum"; }
 .badge-kind-recording, .library-window .badge-red { background: var(--app-badge-red-bg); color: var(--app-badge-red-fg); }
 .badge-kind-importing, .badge-kind-saving, .badge-kind-transcribing, .library-window .badge-accent, .library-window .badge-grey { background: var(--app-badge-grey-bg); color: var(--app-badge-grey-fg); }
 .badge-kind-transcribing .badge-glyph { color: var(--app-badge-transcribing-spinner); }
@@ -217,7 +221,7 @@ levelbar.test-level block.filled { background: var(--cx-accent); }
 .library-window .speaker-ink-6 { color: var(--cx-speaker-6); }
 .library-window .speaker-name { font-weight: 600; }
 .library-window .speaker-chip .speaker-name { color: inherit; font-weight: 400; }
-.library-window .auto-tag { font-size: 11px; font-weight: 500; color: inherit; opacity: 0.72; border: 1px solid var(--app-auto-tag-border); border-radius: 5px; padding: 0 3px; }
+.library-window .auto-tag { font-size: 8.25pt; font-weight: 500; color: inherit; opacity: 0.72; border: 1px solid var(--app-auto-tag-border); border-radius: 5px; padding: 0 3px; }
 .library-window button { border-radius: 6px; }
 .library-window button.suggested-action,
 button.primary-action { background: var(--app-primary-bg); color: var(--app-primary-fg); }
@@ -229,30 +233,30 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
   background: var(--app-secondary-btn-bg);
   color: var(--app-window-fg);
 }
-.brand-wordmark { font-size: 18px; font-weight: 500; color: var(--app-window-fg); }
-.library-window .cassini-record { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; font-size: 15px; min-width: 98px; min-height: 34px; padding: 0 14px; border-radius: 999px; }
+.brand-wordmark { font-size: 13.5pt; font-weight: 500; color: var(--app-window-fg); }
+.library-window .cassini-record { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; font-size: 11.25pt; min-width: 98px; min-height: 34px; padding: 0 14px; border-radius: 999px; }
 .library-window .cassini-record:not(:disabled):hover,
 .library-window .static-stop:not(:disabled):hover { filter: brightness(0.92); }
 .library-window .cassini-record:not(:disabled):active,
 .library-window .static-stop:not(:disabled):active { filter: brightness(0.84); }
 .library-window .record-button-dot { background: var(--app-record-fg); border-radius: 999px; }
 .library-window .cassini-record:disabled .record-button-dot { background: currentColor; }
-.library-window .big-record { min-width: 74px; border-radius: 999px; min-height: 44px; padding: 0 22px; font-size: 15px; }
-.library-window .record-dot { font-size: 12px; }
+.library-window .big-record { min-width: 74px; border-radius: 999px; min-height: 44px; padding: 0 22px; font-size: 11.25pt; }
+.library-window .record-dot { font-size: 9pt; }
 /* D105 (L-70, L-71, P2FirstRun-Desktop): one left edge; the group sits 20 px above centre, as drawn. */
 .library-window .first-run { padding: 24px 48px 64px; }
 .library-window .first-run-heading { font-size: 1px; min-height: 0; min-width: 0; }
 .library-window .hero-mark-row { margin-bottom: 4px; }
 /* 64 px bold platform font, one sentence per line; the second sentence in grey. */
-.library-window .hero-title { font-size: 64px; font-weight: 700; line-height: 1.08; letter-spacing: -0.03em; color: var(--cx-ink); }
+.library-window .hero-title { font-size: 48pt; font-weight: 700; line-height: 1.08; letter-spacing: -0.03em; color: var(--cx-ink); }
 .library-window .hero-subtitle { color: var(--cx-ink-3); }
 /* The waveform is the hero's second-line grey, never red: red means recording (D105 §5). */
 .library-window .hero-wave { color: var(--cx-ink-3); }
-.library-window .big-record.hero-record { min-height: 46px; padding: 0 24px 0 20px; font-size: 15px; font-weight: 600; }
+.library-window .big-record.hero-record { min-height: 46px; padding: 0 24px 0 20px; font-size: 11.25pt; font-weight: 600; }
 .library-window .hero-record .record-button-dot { min-width: 10px; min-height: 10px; }
-.library-window .hero-shortcut { font-size: 15px; color: var(--cx-ink-2); }
-.library-window .hero-keycap { padding: 0 6px; margin: 0 1px; border-radius: 5px; font-size: 13.5px; font-weight: 600; color: var(--cx-ink); background: color-mix(in srgb, var(--cx-ink) 7%, transparent); box-shadow: inset 0 -1px color-mix(in srgb, var(--cx-ink) 14%, transparent); }
-.library-window .hero-privacy { font-size: 14px; line-height: 1.4; color: var(--cx-ink-2); }
+.library-window .hero-shortcut { font-size: 11.25pt; color: var(--cx-ink-2); }
+.library-window .hero-keycap { padding: 0 6px; margin: 0 1px; border-radius: 5px; font-size: 10.125pt; font-weight: 600; color: var(--cx-ink); background: color-mix(in srgb, var(--cx-ink) 7%, transparent); box-shadow: inset 0 -1px color-mix(in srgb, var(--cx-ink) 14%, transparent); }
+.library-window .hero-privacy { font-size: 10.5pt; line-height: 1.4; color: var(--cx-ink-2); }
 /* The shield is the accent, centred on the first 14 px line (19.6 px tall). */
 .library-window .hero-shield { color: var(--cx-accent); margin-top: 2px; }
 .library-window .hero-privacy link,
@@ -275,25 +279,25 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
 /* L-32: GNOME draws the header line only once content is scrolled under the bar; no permanent hairline. */
 .meeting-topbar { min-height: 47px; padding: 0 8px 0 14px; background: var(--cx-surface); color: var(--cx-ink); box-shadow: none; border-bottom: 1px solid transparent; }
 .meeting-topbar.scrolled { border-bottom-color: var(--cx-line-soft); }
-.meeting-compact-title { font-size: 15px; font-weight: 700; color: var(--cx-ink); }
-.meeting-compact-subtitle { font-size: 13.5px; font-weight: 400; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; }
-.meeting-export-btn { min-height: 34px; padding: 0 8px 0 10px; font-size: 14px; font-weight: 600; color: var(--cx-ink); }
+.meeting-compact-title { font-size: 11.25pt; font-weight: 700; color: var(--cx-ink); }
+.meeting-compact-subtitle { font-size: 10.125pt; font-weight: 400; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; }
+.meeting-export-btn { min-height: 34px; padding: 0 8px 0 10px; font-size: 10.5pt; font-weight: 600; color: var(--cx-ink); }
 .meeting-icon-btn { min-width: 34px; min-height: 34px; padding: 0; color: var(--cx-ink); }
 .meeting-empty-pane { background: var(--cx-surface); color: var(--cx-ink-3); }
-.meeting-empty-selection { font-size: 15px; color: var(--cx-ink-2); }
+.meeting-empty-selection { font-size: 11.25pt; color: var(--cx-ink-2); }
 .meeting-full-header { background: var(--cx-surface); color: var(--cx-ink); padding: 8px 48px 18px; }
 .recording-page .meeting-full-header { border-bottom: 1px solid transparent; }
 .recording-page .meeting-full-header.scrolled { border-bottom-color: var(--cx-line-soft); }
-.meeting-title { font-size: 24px; font-weight: 700; color: var(--cx-ink); }
+.meeting-title { font-size: 18pt; font-weight: 700; color: var(--cx-ink); }
 .meeting-rename-btn { min-width: 26px; min-height: 26px; padding: 0; color: var(--cx-ink-2); }
 .meeting-subtitle { color: var(--cx-ink-2); font-variant-numeric: tabular-nums; }
 .inline-speaker-button { min-height: 24px; min-width: 0; padding: 2px 4px; border-radius: 6px; font-weight: 400; }
 .inline-speaker-item { min-height: 24px; padding: 2px 4px; border-radius: 6px; }
 .inline-speaker-button.listening, .inline-speaker-item.listening { background: var(--app-accent-wash); }
-.inline-speaker-name { font-size: 14px; font-weight: 400; color: var(--cx-ink); }
+.inline-speaker-name { font-size: 10.5pt; font-weight: 400; color: var(--cx-ink); }
 .inline-speaker-name.speaker-unnamed { text-decoration-line: underline; text-decoration-color: color-mix(in srgb, var(--cx-ink-2) 55%, transparent); }
 /* WP5 (L-45, L-48): header transcribing status line and chevron details popover. */
-.transcribing-status-row { font-size: 14px; color: var(--cx-ink-2); }
+.transcribing-status-row { font-size: 10.5pt; color: var(--cx-ink-2); }
 .library-window menubutton.transcribing-details-btn > button {
   min-height: 24px;
   min-width: 0;
@@ -303,14 +307,14 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
   font-weight: 400;
   color: var(--cx-ink-2);
 }
-.transcribing-status-heading { font-size: 14px; font-weight: 600; color: var(--cx-ink); }
-.transcribing-status-eta { font-size: 14px; font-weight: 400; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.transcribing-status-heading { font-size: 10.5pt; font-weight: 600; color: var(--cx-ink); }
+.transcribing-status-eta { font-size: 10.5pt; font-weight: 400; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .library-window button.transcribing-stop-link {
   min-height: 24px;
   min-width: 0;
   padding: 2px 6px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 10.5pt;
   font-weight: 600;
   color: var(--cx-accent-ink);
   background: transparent;
@@ -326,7 +330,7 @@ popover.transcribing-popover > contents {
   color: var(--cx-ink);
   border: 1px solid var(--cx-line);
   box-shadow: 0 14px 36px -10px var(--cx-shadow);
-  font-size: 14px;
+  font-size: 10.5pt;
 }
 popover.transcribing-popover > arrow {
   background: var(--cx-raised);
@@ -342,14 +346,14 @@ popover.transcribing-popover > arrow {
   border: none;
   background-clip: border-box;
 }
-.transcribing-popover-title { font-size: 16px; font-weight: 700; color: var(--cx-ink); }
-.transcribing-popover-pct { font-size: 14px; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
-.transcribing-step-done { font-size: 14px; font-weight: 400; color: var(--cx-ink); }
-.transcribing-step-active { font-size: 14px; font-weight: 600; color: var(--cx-ink); }
-.transcribing-step-upcoming { font-size: 14px; font-weight: 400; color: var(--cx-ink-3); }
+.transcribing-popover-title { font-size: 12pt; font-weight: 700; color: var(--cx-ink); }
+.transcribing-popover-pct { font-size: 10.5pt; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.transcribing-step-done { font-size: 10.5pt; font-weight: 400; color: var(--cx-ink); }
+.transcribing-step-active { font-size: 10.5pt; font-weight: 600; color: var(--cx-ink); }
+.transcribing-step-upcoming { font-size: 10.5pt; font-weight: 400; color: var(--cx-ink-3); }
 .transcribing-stats-grid { border-top: 1px solid var(--cx-line-soft); padding-top: 12px; }
-.transcribing-stat-label { font-size: 12px; color: var(--cx-ink-2); }
-.transcribing-stat-value { font-size: 14px; font-weight: 600; color: var(--cx-ink); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.transcribing-stat-label { font-size: 9pt; color: var(--cx-ink-2); }
+.transcribing-stat-value { font-size: 10.5pt; font-weight: 600; color: var(--cx-ink); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 popover.transcribing-popover button.transcribing-popover-stop {
   min-height: 34px;
   min-width: 0;
@@ -359,7 +363,7 @@ popover.transcribing-popover button.transcribing-popover-stop {
   box-shadow: none;
   background: color-mix(in srgb, var(--cx-ink) 10%, transparent);
   color: var(--cx-ink);
-  font-size: 14px;
+  font-size: 10.5pt;
   font-weight: 600;
 }
 popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):hover {
@@ -368,7 +372,7 @@ popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):hov
 popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):active {
   background: color-mix(in srgb, var(--cx-ink) 20%, transparent);
 }
-.transcribing-popover-note { font-size: 12px; color: var(--cx-ink-2); margin-top: -4px; }
+.transcribing-popover-note { font-size: 9pt; color: var(--cx-ink-2); margin-top: -4px; }
 .speaker-dot { min-width: 7px; min-height: 7px; border-radius: 999px; }
 .speaker-dot-0 { background: var(--cx-speaker-0); }
 .speaker-dot-1 { background: var(--cx-speaker-1); }
@@ -379,13 +383,13 @@ popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):act
 .speaker-dot-6 { background: var(--cx-speaker-6); }
 .meeting-reading-surface { background: var(--cx-surface); color: var(--cx-ink); }
 .meeting-find-row { padding: 16px 48px 8px; background: var(--cx-surface); }
-.meeting-find-bar { min-height: 32px; border-radius: 6px; background: var(--cx-neutral-tint); padding: 0 6px 0 9px; color: var(--cx-ink-2); font-size: 14px; }
+.meeting-find-bar { min-height: 32px; border-radius: 6px; background: var(--cx-neutral-tint); padding: 0 6px 0 9px; color: var(--cx-ink-2); font-size: 10.5pt; }
 .meeting-find-bar.focused { box-shadow: 0 0 0 2px var(--cx-accent); }
 .meeting-find-icon { color: var(--cx-ink-3); }
 .meeting-find-bar.focused .meeting-find-icon { color: var(--cx-ink-2); }
-.meeting-find-input { color: var(--cx-ink); font-size: 14px; }
-.meeting-find-shortcut { font-size: 12.5px; font-weight: 600; color: var(--cx-ink-2); border: 1px solid var(--cx-line); border-radius: 5px; padding: 1px 5px; }
-.meeting-find-count { font-size: 13px; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; }
+.meeting-find-input { color: var(--cx-ink); font-size: 10.5pt; }
+.meeting-find-shortcut { font-size: 9.375pt; font-weight: 600; color: var(--cx-ink-2); border: 1px solid var(--cx-line); border-radius: 5px; padding: 1px 5px; }
+.meeting-find-count { font-size: 9.75pt; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; }
 .meeting-find-step { min-width: 22px; min-height: 22px; padding: 0; color: var(--cx-ink); }
 .meeting-scroll-fade { min-height: 40px; }
 .meeting-transcript { background: var(--app-view-bg); color: var(--app-view-fg); padding: 22px 48px; }
@@ -402,7 +406,7 @@ popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):act
 .cassini-preferences preferencespage > scrolledwindow > viewport > clamp > box { border-spacing: 26px; }
 .cassini-preferences preferencesgroup > box > box.header { margin-bottom: 6px; }
 /* Information under its card; the privacy footnote at the foot of the page. */
-.cassini-preferences label.preferences-caption { margin: 2px 12px 0; font-size: 13px; }
+.cassini-preferences label.preferences-caption { margin: 2px 12px 0; font-size: 9.75pt; }
 .cassini-preferences .preferences-footnote { margin-top: 10px; }
 /* Multi-line rows: switches, radios, "Built in" and buttons on the first line. */
 .cassini-preferences button.first-line, .cassini-preferences switch.first-line { margin-top: 2px; }
@@ -419,8 +423,8 @@ popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):act
 .meeting-player scale trough { min-height: 4px; border-radius: 2px; background: var(--cx-line); }
 .meeting-player scale trough highlight { min-height: 4px; border-radius: 2px; background: var(--cx-accent); }
 .meeting-player scale trough slider { min-width: 12px; min-height: 12px; margin: -4px; border-radius: 50%; background: var(--cx-accent); border: 0; box-shadow: 0 1px 3px var(--cx-shadow); }
-.meeting-player .player-time { font-size: 13px; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
-.meeting-player .player-rate-badge > button { min-height: 22px; min-width: 0; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--cx-line); background: transparent; font-size: 13px; font-weight: 600; color: var(--cx-ink); }
+.meeting-player .player-time { font-size: 9.75pt; color: var(--cx-ink-2); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.meeting-player .player-rate-badge > button { min-height: 22px; min-width: 0; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--cx-line); background: transparent; font-size: 9.75pt; font-weight: 600; color: var(--cx-ink); }
 .inline-line { border-radius: 10px; padding: 12px; margin-bottom: 8px; }
 .error-line { background-color: var(--app-error-line-bg); color: var(--app-error-line-fg); border-radius: 10px; padding: 10px 12px; }
 .cassini-preferences label.error-line { margin-top: 8px; }
@@ -430,43 +434,43 @@ row.error-line .title { color: var(--app-error-line-fg); }
 label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-line-fg); }
 .info-line { background: var(--app-accent-tint); }
 .info-line > label, .info-line > image, .info-line > spinner { color: var(--app-accent-ink); }
-.meeting-transcript .words { font-size: 15px; line-height: 1.5; }
+.meeting-transcript .words { font-size: 11.25pt; line-height: 1.5; }
 
 /* UX6 & WP4 (L-12, L-20, L-47, L-48): right-pane live Recording view. */
 .recording-page { background: var(--cx-surface); color: var(--cx-ink); }
 .recording-body { padding: 24px 48px; }
 .recording-page.narrow .meeting-full-header,
 .recording-page.narrow .recording-body { padding-left: 20px; padding-right: 20px; }
-.recording-timer { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; letter-spacing: -0.8px; line-height: 1.1; color: var(--cx-ink); }
+.recording-timer { font-size: 22.5pt; font-weight: 600; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; letter-spacing: -0.8px; line-height: 1.1; color: var(--cx-ink); }
 .recording-dot { background: var(--app-record-dot); border-radius: 999px; box-shadow: 0 0 0 6px var(--app-record-halo); }
 .recording-dot.saving { opacity: 0.45; box-shadow: none; }
-.library-window .recording-stop { min-height: 32px; min-width: 0; padding: 0 14px 0 12px; border-radius: 999px; font-size: 14px; font-weight: 600; }
+.library-window .recording-stop { min-height: 32px; min-width: 0; padding: 0 14px 0 12px; border-radius: 999px; font-size: 10.5pt; font-weight: 600; }
 .recording-stop-glyph { background: var(--app-record-fg); border-radius: 2px; }
 .library-window .recording-stop:disabled { background: var(--app-record-bg); background-image: none; color: var(--app-record-fg); filter: none; opacity: 1; padding: 0 14px; }
 .library-window .recording-stop:disabled label, .library-window .recording-stop:disabled spinner { opacity: 1; color: var(--app-record-fg); }
-.recording-title { min-height: 38px; font-size: 18px; font-weight: 600; padding: 0 12px; background: var(--cx-field); color: var(--cx-ink); border: 1px solid var(--cx-field-line); border-radius: 6px; }
+.recording-title { min-height: 38px; font-size: 13.5pt; font-weight: 600; padding: 0 12px; background: var(--cx-field); color: var(--cx-ink); border: 1px solid var(--cx-field-line); border-radius: 6px; }
 .recording-sources { background: var(--cx-surface); border: 1px solid var(--cx-line); border-radius: 12px; }
 .recording-source { padding: 12px 14px; min-height: 34px; }
-.recording-source-title { font-size: 15px; font-weight: 600; color: var(--cx-ink); }
-.recording-source-warning { font-size: 13px; color: var(--cx-warn-ink); }
+.recording-source-title { font-size: 11.25pt; font-weight: 600; color: var(--cx-ink); }
+.recording-source-warning { font-size: 9.75pt; color: var(--cx-warn-ink); }
 .recording-sources progressbar trough { min-width: 96px; min-height: 6px; border-radius: 2px; background: var(--app-wash-trough); }
 .recording-sources progressbar progress { min-height: 6px; background: var(--app-view-fg); }
 .mic-silent { background: var(--app-mic-silent-bg); color: var(--app-mic-silent-fg); border-radius: 11px 11px 0 0; }
 .mic-silent .recording-source-title { color: var(--app-mic-silent-fg); }
-.mic-silent button { background: var(--app-mic-silent-btn-bg); color: var(--app-mic-silent-btn-fg); border: 1px solid var(--cx-line); border-radius: 6px; font-size: 13px; font-weight: 700; min-height: 28px; padding: 0 12px; }
+.mic-silent button { background: var(--app-mic-silent-btn-bg); color: var(--app-mic-silent-btn-fg); border: 1px solid var(--cx-line); border-radius: 6px; font-size: 9.75pt; font-weight: 700; min-height: 28px; padding: 0 12px; }
 .mic-silent progressbar trough { background: var(--app-mic-silent-trough); }
 .recording-source-sep { background: var(--cx-line-soft); min-height: 1px; }
 .recording-change-row { padding: 12px 14px; min-height: 20px; border-radius: 0 0 11px 11px; }
 .recording-change-icon { color: var(--cx-ink-2); }
-.recording-change-label { font-size: 15px; font-weight: 500; color: var(--cx-ink); }
+.recording-change-label { font-size: 11.25pt; font-weight: 500; color: var(--cx-ink); }
 .recording-change-chevron { color: var(--cx-ink-3); }
 .recording-path-card { background: var(--app-wash-subtle); border-radius: 12px; padding: 12px 14px; }
-.what-is-recorded { font-size: 15px; }
-.what-is-recorded .small, .what-is-recorded .subtitle { font-size: 13px; }
-.what-is-recorded .title-2 { font-size: 20px; }
+.what-is-recorded { font-size: 11.25pt; }
+.what-is-recorded .small, .what-is-recorded .subtitle { font-size: 9.75pt; }
+.what-is-recorded .title-2 { font-size: 15pt; }
 .what-is-recorded row { min-height: 60px; }
 .what-is-recorded row .title { font-weight: 600; }
-.library-window .static-stop { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; font-size: 13px; min-width: 56px; min-height: 26px; padding: 0 10px; border-radius: 999px; }
+.library-window .static-stop { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; font-size: 9.75pt; min-width: 56px; min-height: 26px; padding: 0 10px; border-radius: 999px; }
 .library-window .live-pill button.flat { min-height: 0; min-width: 0; padding: 0; }
 
 .live-levels progressbar.mic-silent-meter trough { background: var(--app-live-silent-trough); }
@@ -474,18 +478,18 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .library-window .static-stop:disabled label { opacity: 1; color: var(--app-record-fg); }
 
 /* L-57 one-time Imported notice (inverse toast above the player) and UX7 export. */
-.imported-toast { background: var(--cx-inverse); color: var(--cx-on-inverse); border-radius: 12px; padding: 6px 6px 6px 16px; font-size: 13px; box-shadow: 0 10px 30px -12px var(--cx-shadow), 0 2px 6px -2px var(--cx-shadow); }
+.imported-toast { background: var(--cx-inverse); color: var(--cx-on-inverse); border-radius: 12px; padding: 6px 6px 6px 16px; font-size: 9.75pt; box-shadow: 0 10px 30px -12px var(--cx-shadow), 0 2px 6px -2px var(--cx-shadow); }
 .imported-toast image { color: var(--cx-on-inverse); }
 .imported-toast button.flat { color: var(--cx-on-inverse); min-width: 24px; min-height: 24px; padding: 0; }
-.export-dialog { font-size: 15px; }
-.export-heading { font-size: 17px; font-weight: 700; }
+.export-dialog { font-size: 11.25pt; }
+.export-heading { font-size: 12.75pt; font-weight: 700; }
 .export-choices { background: var(--cx-surface); border: 1px solid var(--app-export-border); border-radius: 10px; }
 .export-choice { padding: 14px; min-height: 48px; }
 .export-choice + .export-choice { border-top: 1px solid var(--app-hairline); }
 .export-choice.selected { background: var(--app-accent-tint); border-radius: 9px; }
-.export-ext { font-size: 13px; font-weight: 400; color: var(--cx-ink-2); }
+.export-ext { font-size: 9.75pt; font-weight: 400; color: var(--cx-ink-2); }
 .export-destination { background: var(--cx-surface); border: 1px solid var(--app-export-border); border-radius: 10px; padding: 12px; }
-.export-dialog .small { font-size: 13px; }
+.export-dialog .small { font-size: 9.75pt; }
 .export-choice:last-child { min-height: 32px; }
 /* L-11 (D99): More formats disclosure below Markdown, inside the same bordered group. */
 .export-more { border-top: 1px solid var(--app-hairline); }
@@ -494,7 +498,7 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 
 /* Search shares sidebar colours and L-19 neutral card rules with the Library. */
 .search-sidebar-filters { padding: 2px 10px 6px; }
-.search-count-heading { padding: 4px 2px 0; font-size: 13px; font-weight: 600; color: var(--cx-ink-2); }
+.search-count-heading { padding: 4px 2px 0; font-size: 9.75pt; font-weight: 600; color: var(--cx-ink-2); }
 .search-results { background: transparent; padding: 0 10px 10px; }
 .search-results > row {
   border-radius: 10px;
@@ -520,7 +524,7 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
   border-radius: 999px;
   min-height: 30px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: 9.75pt;
   font-weight: 500;
   border: 0;
   box-shadow: none;
@@ -548,7 +552,7 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .cassini-preferences .speech-model-selected { background: var(--app-model-selected-bg); }
 
 /* UX10: pending/connected companion steps. */
-.companion-setup { font-size: 15px; }
+.companion-setup { font-size: 11.25pt; }
 .companion-step-badge { min-width: 24px; min-height: 24px; border: 2px solid var(--app-accent-ink); border-radius: 50%; color: var(--app-accent-ink); font-weight: 700; }
 .companion-step-badge.done { border-color: var(--app-success-bg); background: var(--app-success-bg); color: var(--app-success-fg); }
 
@@ -556,28 +560,28 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .speaker-edit { padding: 0; }
 .speakers-dialog,
 .speakers-dialog sheet {
-  font-size: 15px;
+  font-size: 11.25pt;
   border-radius: 14px;
 }
-.speakers-dialog .small { font-size: 13px; }
+.speakers-dialog .small { font-size: 9.75pt; }
 .speakers-dialog .speaker-dialog-heading {
-  font-size: 18px;
+  font-size: 13.5pt;
   font-weight: 700;
   color: var(--cx-ink);
 }
 .speakers-dialog .speaker-dialog-meta {
-  font-size: 13px;
+  font-size: 9.75pt;
   color: var(--cx-ink-2);
 }
 .speakers-dialog .speaker-dialog-quote {
   padding-left: 12px;
   border-left: 3px solid var(--cx-line);
-  font-size: 14px;
+  font-size: 10.5pt;
   line-height: 1.5;
   color: var(--cx-ink-2);
 }
 .speakers-dialog .speaker-section-label {
-  font-size: 13px;
+  font-size: 9.75pt;
   font-weight: 600;
   color: var(--cx-ink-2);
 }
@@ -602,7 +606,7 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
   min-height: 26px;
   border-radius: 50%;
   background: var(--app-avatar-wash);
-  font-size: 11px;
+  font-size: 8.25pt;
   font-weight: 700;
   line-height: 1;
 }
@@ -621,7 +625,7 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
   border: 0;
 }
 .speaker-duplicate-text {
-  font-size: 14px;
+  font-size: 10.5pt;
   color: var(--cx-ink);
 }
 .speakers-dialog .speaker-voices-scroll {
@@ -651,16 +655,16 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
   background: color-mix(in srgb, var(--cx-ink) 8%, transparent);
 }
 .speakers-dialog .speaker-voice-name {
-  font-size: 15px;
+  font-size: 11.25pt;
   font-weight: 400;
   color: var(--cx-ink);
 }
 .speakers-dialog .speaker-voice-stale {
-  font-size: 12px;
+  font-size: 9pt;
   color: var(--cx-ink-2);
 }
 .speakers-dialog .speaker-likely-tag {
-  font-size: 13px;
+  font-size: 9.75pt;
   font-weight: 600;
   line-height: 1.2;
   padding: 4px 9px;
@@ -671,30 +675,30 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 /* L-63 (D106 §5): Saved voices stale notice/pill, grey list heading, top-aligned rows, caption, empty state and footnote. */
 .saved-voices-stale-notice { background: var(--cx-warn-tint); color: var(--cx-warn-ink); border-radius: 12px; padding: 12px 14px; }
 .saved-voices-stale-icon { color: var(--cx-warn-ink); margin-top: 2px; }
-.saved-voices-stale-title { font-size: 14px; font-weight: 600; color: var(--cx-warn-ink); }
-.saved-voices-stale-body { font-size: 13px; color: var(--cx-warn-ink); }
+.saved-voices-stale-title { font-size: 10.5pt; font-weight: 600; color: var(--cx-warn-ink); }
+.saved-voices-stale-body { font-size: 9.75pt; color: var(--cx-warn-ink); }
 .saved-voices-list-group label.title,
-.saved-voices-list-group label.heading { color: var(--cx-ink-2); font-size: 13px; font-weight: 600; }
-button.saved-voices-add { color: var(--cx-accent-ink); font-size: 13px; font-weight: 600; min-height: 28px; padding: 0 8px; }
-.saved-voice-row .speaker-avatar { min-width: 30px; min-height: 30px; font-size: 12px; font-weight: 600; }
-.saved-voice-row .saved-voice-name { font-size: 15px; font-weight: 500; }
-.saved-voice-row .saved-voice-meta { font-size: 13px; }
-.saved-voice-row .saved-voice-stale-pill { margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--cx-warn-tint); color: var(--cx-warn-ink); }
+.saved-voices-list-group label.heading { color: var(--cx-ink-2); font-size: 9.75pt; font-weight: 600; }
+button.saved-voices-add { color: var(--cx-accent-ink); font-size: 9.75pt; font-weight: 600; min-height: 28px; padding: 0 8px; }
+.saved-voice-row .speaker-avatar { min-width: 30px; min-height: 30px; font-size: 9pt; font-weight: 600; }
+.saved-voice-row .saved-voice-name { font-size: 11.25pt; font-weight: 500; }
+.saved-voice-row .saved-voice-meta { font-size: 9.75pt; }
+.saved-voice-row .saved-voice-stale-pill { margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 9pt; font-weight: 600; background: var(--cx-warn-tint); color: var(--cx-warn-ink); }
 .saved-voice-row .saved-voice-play { min-width: 30px; min-height: 30px; padding: 0; }
 .saved-voice-row .saved-voice-options > button { min-width: 30px; min-height: 30px; padding: 0; }
 .saved-voices-caption-group { margin-top: -14px; }
-.saved-voices-caption { font-size: 13px; }
-.saved-voices-empty-title { font-size: 20px; font-weight: 700; color: var(--cx-ink); }
-.saved-voices-empty-body { font-size: 14px; }
+.saved-voices-caption { font-size: 9.75pt; }
+.saved-voices-empty-title { font-size: 15pt; font-weight: 700; color: var(--cx-ink); }
+.saved-voices-empty-body { font-size: 10.5pt; }
 .saved-voices-shield { color: var(--cx-accent); }
-.saved-voices-footnote { font-size: 13px; }
+.saved-voices-footnote { font-size: 9.75pt; }
 /* Board: destructive text on a 12% error wash, not a filled button. */
 /* D-1162: "Forget everyone…" is the same quiet red text button on every app. */
 button.saved-voices-forget-all { color: var(--cx-error); font-weight: bold; padding-left: 0; padding-right: 0; }
 button.saved-voices-forget-all:hover { background: transparent; text-decoration: underline; }
 button.saved-voices-forget-all:disabled { opacity: 0.5; }
 /* D103 §3: the voices question's footnote sits a step under the body. */
-.voice-question-footnote { font-size: 14px; }
+.voice-question-footnote { font-size: 10.5pt; }
 .speakers-dialog .speaker-remember-card {
   padding: 10px 12px;
   border-radius: 12px;
@@ -702,12 +706,12 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
   background: var(--cx-surface);
 }
 .speakers-dialog .speaker-remember-title {
-  font-size: 15px;
+  font-size: 11.25pt;
   font-weight: 400;
   color: var(--cx-ink);
 }
 .speakers-dialog .speaker-remember-body {
-  font-size: 13px;
+  font-size: 9.75pt;
   line-height: 1.4;
   color: var(--cx-ink-2);
 }
@@ -726,7 +730,7 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
   box-shadow: none;
   background: var(--app-secondary-btn-bg);
   color: var(--cx-ink);
-  font-size: 15px;
+  font-size: 11.25pt;
   font-weight: 600;
 }
 .speakers-dialog button.speaker-btn-secondary:not(:disabled):hover,
@@ -745,7 +749,7 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
   box-shadow: none;
   background: var(--app-primary-bg);
   color: var(--app-primary-fg);
-  font-size: 15px;
+  font-size: 11.25pt;
   font-weight: 600;
 }
 .speakers-dialog button.speaker-btn-primary:not(:disabled):hover {
@@ -762,7 +766,7 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
 .speakers-dialog button.speaker-btn-small {
   min-height: 28px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: 9.75pt;
 }
 .details-side { padding: 12px; border: 1px solid var(--app-details-border); border-radius: 12px; }
 .details-span { padding: 6px 0; }
@@ -798,3 +802,22 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
 button.trash-restore { min-height: 28px; padding: 0 12px; }
 button.trash-delete-now { color: var(--cx-error); font-weight: bold; min-height: 28px; padding: 0 4px; }
 button.trash-delete-now:hover { background: transparent; text-decoration: underline; }
+
+/* D-1162 (L-75): icon buttons at the edge of a header bar (the sidebar's menu button and Import, the
+   narrow back button, the narrow Recording ⋮) get a soft round background, so their edge sits flush
+   on the content edge without the icon looking cramped. Icons in the middle of a bar stay flat; the
+   window close button keeps its own smaller circle. */
+button.edge-button,
+menubutton.edge-button > button,
+.narrow menubutton.recording-more-btn > button {
+  min-width: 34px; min-height: 34px; padding: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--cx-ink) 8%, transparent); color: var(--cx-ink);
+}
+button.edge-button:hover,
+menubutton.edge-button > button:hover,
+.narrow menubutton.recording-more-btn > button:hover { background: color-mix(in srgb, var(--cx-ink) 12%, transparent); }
+button.edge-button:active,
+menubutton.edge-button > button:active,
+menubutton.edge-button > button:checked,
+.narrow menubutton.recording-more-btn > button:active,
+.narrow menubutton.recording-more-btn > button:checked { background: color-mix(in srgb, var(--cx-ink) 16%, transparent); }

@@ -1057,13 +1057,14 @@ class LibraryWindow(Adw.ApplicationWindow):
             action_name="app.open",
             tooltip_text=text("import.action"),
             valign=Gtk.Align.CENTER,
-            css_classes=["flat", "import-audio-btn"],
+            # D-1162 (L-75): a soft round background, like the round close button.
+            css_classes=["flat", "edge-button", "import-audio-btn"],
         )
         button.set_child(BadgeGlyph("incoming", size_px=16))
         button.update_property([Gtk.AccessibleProperty.LABEL], [text("import.action")])
         return button
 
-    def _primary_menu_button(self, *, flat=False):
+    def _primary_menu_button(self, *, flat=False, edge=True):
         menu = Gio.Menu()
         top = Gio.Menu()
         top.append(text("import.action"), "app.open")
@@ -1085,7 +1086,9 @@ class LibraryWindow(Adw.ApplicationWindow):
             menu_model=menu,
             tooltip_text=text("common.mainMenu"),
             primary=True,
-            css_classes=["flat"] if flat else [],
+            # D-1162 (L-75): an icon button at the edge of a header bar gets a soft round background,
+            # so its edge sits flush on the content edge without the icon looking cramped.
+            css_classes=(["flat"] if flat else []) + (["edge-button"] if edge else []),
         )
         button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.mainMenu")])
         return button
@@ -1101,7 +1104,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         if record:
             header.pack_start(self.capture_controls())
         if close:
-            header.pack_end(self._primary_menu_button())
+            header.pack_end(self._primary_menu_button(edge=False))
             if not record:
                 header.pack_end(Gtk.Button(label=text("common.exportEllipsis"), action_name="win.export"))
         return header

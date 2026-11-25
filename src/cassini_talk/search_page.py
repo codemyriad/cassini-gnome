@@ -177,7 +177,7 @@ class SearchPage(Adw.Bin):
         self.back_button = Gtk.Button(
             icon_name="go-previous-symbolic",
             tooltip_text=text("search.results.a11y"),
-            css_classes=["flat", "meeting-icon-btn"],
+            css_classes=["flat", "meeting-icon-btn", "edge-button"],
             visible=False,
         )
         self.back_button.update_property([Gtk.AccessibleProperty.LABEL], [text("search.results.a11y")])

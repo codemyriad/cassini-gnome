@@ -165,7 +165,7 @@ def test_privacy_line_splits_the_folder_out_of_any_word_order(monkeypatch, tmp_p
 def test_hero_styles_read_brand_roles_only():
     css = (ROOT / "src/style.css").read_text()
     rules = dict(re.findall(r"\.library-window \.(hero-[\w-]+) \{([^}]*)\}", css))
-    assert "font-size: 64px" in rules["hero-title"] and "font-weight: 700" in rules["hero-title"]
+    assert "font-size: 48pt" in rules["hero-title"] and "font-weight: 700" in rules["hero-title"]
     # D105 §5: the wave is the hero's second-line grey, never the accent or red; the shield is the accent.
     assert "var(--cx-ink-3)" in rules["hero-wave"] and "record" not in rules["hero-wave"]
     assert "var(--cx-ink-3)" in rules["hero-subtitle"]

@@ -85,7 +85,7 @@ class RecordingPage(Adw.NavigationPage):
             icon_name="go-previous-symbolic",
             tooltip_text=text("common.backToLibrary"),
             action_name="win.back-library",
-            css_classes=["flat", "meeting-icon-btn"],
+            css_classes=["flat", "meeting-icon-btn", "edge-button"],
             valign=Gtk.Align.CENTER,
         )
         self.back_button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.backToLibrary")])
@@ -103,7 +103,8 @@ class RecordingPage(Adw.NavigationPage):
             icon_name="view-more-symbolic",
             tooltip_text=text("meeting.moreActions"),
             menu_model=menu,
-            css_classes=["flat", "meeting-icon-btn"],
+            # D-1162 (L-75): at the bar's edge in the narrow window, so round there (style.css).
+            css_classes=["flat", "meeting-icon-btn", "recording-more-btn"],
             valign=Gtk.Align.CENTER,
         )
         self.more_button.get_popover().set_halign(Gtk.Align.END)

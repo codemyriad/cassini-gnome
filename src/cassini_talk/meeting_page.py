@@ -136,7 +136,7 @@ class MeetingPage(Adw.NavigationPage):
         self.back_button = Gtk.Button(
             icon_name="go-previous-symbolic",
             tooltip_text=text("common.backToLibrary"),
-            css_classes=["flat", "meeting-icon-btn"],
+            css_classes=["flat", "meeting-icon-btn", "edge-button"],
             action_name="win.back-library",
             visible=False,
         )
