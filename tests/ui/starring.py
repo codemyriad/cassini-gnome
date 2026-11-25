@@ -76,12 +76,20 @@ def stars_on_disk(root):
 
 
 def chip_labels(page):
-    chips = next(node for node in widgets(page) if isinstance(node, Gtk.FlowBox))
-    return [
-        child.get_child().get_label()
-        for child in widgets(chips)
-        if isinstance(child, Gtk.FlowBoxChild) and child.get_child() is not None
-    ]
+    # D-1162: the filters are a wrap box (a FlowBox before libadwaita 1.7).
+    chips = page.filter_chips
+    if isinstance(chips, Gtk.FlowBox):
+        return [
+            child.get_child().get_label()
+            for child in widgets(chips)
+            if isinstance(child, Gtk.FlowBoxChild) and child.get_child() is not None
+        ]
+    found = []
+    child = chips.get_first_child()
+    while child is not None:
+        found.append(child.get_label())
+        child = child.get_next_sibling()
+    return found
 
 
 def prepare(tmp):

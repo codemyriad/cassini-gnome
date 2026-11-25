@@ -19,7 +19,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from dispatch_wait import dispatch_until  # noqa: E402
-from gi.repository import Gio, Gst, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from search_bindings import check_playability_bindings  # noqa: E402
@@ -97,6 +97,9 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page.entry is window.search_entry
     assert page.entry.has_focus() or window._focused_editors
     assert page.speaker_button.get_label() == "Speaker"
+    # D-1162: the filters wrap from the left with even gaps (a wrap box, not a column grid).
+    if hasattr(Adw, "WrapBox"):
+        assert isinstance(page.filter_chips, Adw.WrapBox) and page.starred.get_parent() is page.filter_chips
     assert page.date_button.get_label() == "Any date"
     assert not page.hits
     assert "Has summary" not in labels(page)
