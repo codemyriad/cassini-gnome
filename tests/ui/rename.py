@@ -217,6 +217,8 @@ with tempfile.TemporaryDirectory() as temporary:
         choose_rename(popover)
         until(lambda: window.rename_dialog is not None and not window.rename_dialog.closed)
         dialog = window.rename_dialog
+        # D-1162: "Rename meeting", in sentence case like the rest of the app.
+        assert dialog.get_title() == "Rename meeting"
         assert dialog.entry.get_text() == chosen.title
         until(lambda dialog=dialog, chosen=chosen: dialog.entry.get_selection_bounds() == (0, len(chosen.title)))
         assert not dialog.confirm.get_sensitive()
