@@ -196,8 +196,19 @@ with tempfile.TemporaryDirectory() as temporary:
     assert page.people.get_title() == "4 people"
     assert text("savedVoices.caption") in shown
     assert page.everyone.get_label() == "Forget everyone…"
-    assert not page.add_voice.get_sensitive() and page.add_voice.get_child().get_label() == "Add a voice…"
-    assert page.models_needed.get_visible()
+    # D-1162: Add a voice… stays clickable without the models and offers their download first.
+    assert page.add_voice.get_sensitive() and page.add_voice.get_child().get_label() == "Add a voice…"
+    assert text("speakers.rememberVoice.modelsNeeded") not in shown and not hasattr(page, "models_needed")
+    assert page.everyone.has_css_class("flat")  # Forget everyone…: quiet red text.
+    page.add_voice.emit("clicked")
+    offer = page.download_question
+    until(lambda: offer is not None and offer.get_mapped())
+    assert offer.get_heading() == text("voices.setup.title") and page.enroll_dialog is None
+    offer.emit("response", "not-now")
+    offer.force_close()
+    until(lambda: page.download_question is None)
+    assert tell.downloads == voices_model.downloads == 0  # Not now downloads nothing.
+    assert app.recording_settings.get_string("voice-setup") == "unanswered"
 
     # 1. One voices question over the first meeting with more than one speaker (D103 §3).
     from cassini_talk.voice_question import VoiceQuestion
@@ -282,7 +293,7 @@ with tempfile.TemporaryDirectory() as temporary:
     page = settings.saved_voices_page
     until(lambda: len(page.rows) == 4 and not page._loading)
     page.refresh()
-    assert not page.models_needed.get_visible() and page.add_voice.get_sensitive()
+    assert page.add_voice.get_sensitive()
 
     # 2. Saved voices rows (L-63, D106 §5): stale notice/pill, slot colours, meta, top alignment, play, menu.
     assert page.stale_group.get_visible()

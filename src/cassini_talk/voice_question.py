@@ -13,9 +13,11 @@ from .strings import text
 
 
 class VoiceQuestion(Adw.AlertDialog):
-    def __init__(self, app):
+    def __init__(self, app, *, ask_once=True):
         super().__init__(heading=text("voices.setup.title"), body=text("voices.setup.body.desktop"))
         self.app = app
+        # Saved voices › Add a voice… (D-1162) asks it again on purpose: its answer always counts.
+        self.ask_once = ask_once
         self.answered = None
         self.dismissed = False
         self.footnote = Gtk.Label(
@@ -41,11 +43,14 @@ class VoiceQuestion(Adw.AlertDialog):
     def _response(self, _dialog, response):
         if self.answered is not None or self.dismissed:
             return
-        if self.app.recording_settings.get_string("voice-setup") != "unanswered":
+        ask_once = getattr(self, "ask_once", True)
+        if ask_once and self.app.recording_settings.get_string("voice-setup") != "unanswered":
             # Answered elsewhere (Preferences) while this was open: never overwrite it
             # and never start downloads the person switched off.
             return
         self.answered = response == "enable"
+        if not ask_once and not self.answered:
+            return  # Not now from Add a voice… leaves the earlier answer as it was.
         self.app.answer_voice_setup(self.answered)
         settings = self.app.settings_dialog
         if settings is not None and not settings.closed:

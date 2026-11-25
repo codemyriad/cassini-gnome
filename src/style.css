@@ -689,8 +689,9 @@ button.saved-voices-add { color: var(--cx-accent-ink); font-size: 13px; font-wei
 .saved-voices-shield { color: var(--cx-accent); }
 .saved-voices-footnote { font-size: 13px; }
 /* Board: destructive text on a 12% error wash, not a filled button. */
-button.saved-voices-forget-all { background: color-mix(in srgb, var(--cx-error) 12%, transparent); color: var(--cx-error); }
-button.saved-voices-forget-all:hover { background: color-mix(in srgb, var(--cx-error) 18%, transparent); }
+/* D-1162: "Forget everyone…" is the same quiet red text button on every app. */
+button.saved-voices-forget-all { color: var(--cx-error); font-weight: bold; padding-left: 0; padding-right: 0; }
+button.saved-voices-forget-all:hover { background: transparent; text-decoration: underline; }
 button.saved-voices-forget-all:disabled { opacity: 0.5; }
 /* D103 §3: the voices question's footnote sits a step under the body. */
 .voice-question-footnote { font-size: 14px; }
