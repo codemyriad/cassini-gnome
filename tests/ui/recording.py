@@ -127,6 +127,9 @@ with tempfile.TemporaryDirectory() as tmp:
     assert window.navigation.get_navigation_stack().get_n_items() == 1
     until(lambda: not window.split.get_collapsed() and window.sidebar_header.get_mapped() and page.get_mapped())
     assert page.capture is window.capture_header
+    # D-1162: one Stop, as on Mac: the sidebar pill shows the time only; Stop is beside the timer.
+    until(lambda: not window.live_stop.get_visible())
+    assert window.capture_header._controls["live"].has_css_class("time-only")
     assert not page.back_button.get_visible()
     assert not hasattr(page, "details_button")
     assert any(
@@ -150,6 +153,7 @@ with tempfile.TemporaryDirectory() as tmp:
     live_row = window._row_by_key[live.key]
     window.rows.select_row(saved_row)
     assert window.recording_page is None and window.meeting_page is not None
+    until(lambda: window.live_stop.get_visible())  # Back to the pill's own Stop.
     assert window.detail_stack.get_visible_child_name() == "meeting"
     window.rows.select_row(live_row)
     page = window.recording_page

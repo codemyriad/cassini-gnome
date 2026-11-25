@@ -439,8 +439,11 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 /* UX6 & WP4 (L-12, L-20, L-47, L-48): right-pane live Recording view. */
 .recording-page { background: var(--cx-surface); color: var(--cx-ink); }
 .recording-body { padding: 24px 48px; }
+/* D-1162: 16 px side margins in the narrow window, the same edge as the narrow meeting, with the back
+   arrow and ⋮ on that edge too (10 px + the bar's 6 px). */
 .recording-page.narrow .meeting-full-header,
-.recording-page.narrow .recording-body { padding-left: 20px; padding-right: 20px; }
+.recording-page.narrow .recording-body { padding-left: 16px; padding-right: 16px; }
+.recording-page.narrow .meeting-topbar { padding-left: 10px; padding-right: 10px; }
 .recording-timer { font-size: 22.5pt; font-weight: 600; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; letter-spacing: -0.8px; line-height: 1.1; color: var(--cx-ink); }
 .recording-dot { background: var(--app-record-dot); border-radius: 999px; box-shadow: 0 0 0 6px var(--app-record-halo); }
 .recording-dot.saving { opacity: 0.45; box-shadow: none; }
@@ -837,3 +840,5 @@ menubutton.edge-button > button:checked,
 .meeting-pane.narrow .meeting-topbar { padding-left: 10px; padding-right: 10px; }
 /* D-1162: speaker names sit about 8 px under the date. */
 .inline-speaker-button { min-height: 0; padding-top: 0; padding-bottom: 0; }
+/* D-1162: one Stop. While the Recording screen is open the sidebar pill shows the time only. */
+.library-window .live-pill.time-only { padding-right: 13px; }

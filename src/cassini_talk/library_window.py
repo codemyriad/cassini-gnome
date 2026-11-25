@@ -1719,6 +1719,16 @@ class LibraryWindow(Adw.ApplicationWindow):
             controls["timer"].set_label(fmt.live_badge(ms))
             controls["stop"].set_label(text("states.badge.saving" if stopping else "common.stop"))
             controls["stop"].set_sensitive(not stopping and (own_native or browser))
+            # D-1162: one Stop, as on Mac. While the Recording screen of this meeting is open, the
+            # sidebar header shows the time only; Stop is the one beside the screen's timer.
+            one_stop = bool(
+                self.recording_page is not None
+                and controls is getattr(getattr(self, "capture_header", None), "_controls", None)
+                and target is not None
+                and self.recording_page.meeting.key == target.key
+            )
+            controls["stop"].set_visible(not one_stop)
+            (controls["live"].add_css_class if one_stop else controls["live"].remove_css_class)("time-only")
             (controls["live"].add_css_class if stopping else controls["live"].remove_css_class)("saving")
             state = app.comfort.status(target) if target else {}
             controls["muted"].set_visible(bool(state.get("output_muted")))
