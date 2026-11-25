@@ -148,6 +148,15 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.entry.get_text() == "Luca" and not dialog.duplicate.get_visible() and dialog.save.get_sensitive()
     dialog.entry.set_text("giulia")
     assert dialog.duplicate.get_visible() and not dialog.save.get_sensitive()
+    # D-1162: while Save is dimmed, the choice says why.
+    assert dialog.duplicate_hint.get_visible()
+    assert dialog.duplicate_hint.get_label() == "Pick Same person or Someone else"
+    # D-1162: a narrow window stacks the buttons: Save across the width, then Cancel and Merge into….
+    dialog._set_narrow(True)
+    assert dialog.save.get_parent() is dialog.footer and dialog.footer.get_first_child() is dialog.save
+    assert dialog.cancel.get_parent() is dialog.merge.get_parent() is dialog.footer_row
+    dialog._set_narrow(False)
+    assert dialog.footer_row.get_last_child() is dialog.save and dialog.footer_row.get_first_child() is dialog.merge
     until(
         lambda: (
             footer_visible()
