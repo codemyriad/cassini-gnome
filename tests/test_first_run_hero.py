@@ -108,7 +108,7 @@ def test_first_run_view_follows_harmony_section_10():
     for key in (
         "firstRun.hero.title",
         "firstRun.hero.subtitle.computer",
-        "firstRun.shortcutLine",
+        "firstRun.shortcutStarts",
         "common.shortcut.record",
         "firstRun.privacy.computer",
         "firstRun.openFolder.tooltip",

@@ -40,7 +40,7 @@ D103_IDS = (
     "companion.addTo",
     "about.tagline.computer",
     "about.help",
-    "firstRun.shortcutLine",
+    # firstRun.shortcutLine: superseded by firstRun.shortcutStarts on GNOME (D-1162).
     "recordFirst.lawPlain",
     "recordFirst.mic.plain",
     "recordFirst.sound.plain",

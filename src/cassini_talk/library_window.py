@@ -1152,11 +1152,14 @@ class LibraryWindow(Adw.ApplicationWindow):
         return True
 
     def _shortcut_line(self):
-        """D105 §4: "Ctrl + R" as two key chips, then "records from anywhere in Cassini." (firstRun.shortcutLine)."""
+        """D105 §4: "Ctrl + R" as two key chips, then "starts a recording" (firstRun.shortcutStarts).
+
+        D-1162: each shortcut is said once, as on Mac: Ctrl+R here, Ctrl+Alt+R in Preferences.
+        """
         shortcut = text("common.shortcut.record")
         line = Gtk.Box(valign=Gtk.Align.CENTER, css_classes=["hero-shortcut"])
-        line.update_property([Gtk.AccessibleProperty.LABEL], [text("firstRun.shortcutLine", shortcut=shortcut)])
-        before, _, after = text("firstRun.shortcutLine", shortcut="\0").partition("\0")
+        line.update_property([Gtk.AccessibleProperty.LABEL], [text("firstRun.shortcutStarts", shortcut=shortcut)])
+        before, _, after = text("firstRun.shortcutStarts", shortcut="\0").partition("\0")
         if before:
             line.append(label(before))
         for index, key in enumerate(shortcut.split("+")):
@@ -1208,8 +1211,10 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("firstRun.hero.title", ["hero-title"]),
             ("firstRun.hero.subtitle.computer", ["hero-title", "hero-subtitle"]),
         ):
-            # No wrap (drawn): ellipsize rather than reflow if a translation outgrows the column.
-            line = label(text(key), *classes, xalign=0, halign=Gtk.Align.START, ellipsize=Pango.EllipsizeMode.END)
+            # D-1162: a narrow window wraps the headline onto more lines instead of cutting it.
+            line = label(
+                text(key), *classes, xalign=0, halign=Gtk.Align.START, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR
+            )
             titles.append(line)
         self.hero_title, self.hero_subtitle = titles.get_first_child(), titles.get_last_child()
         hero.append(titles)
