@@ -184,8 +184,11 @@ try:
             diagnostics=diagnostics,
         )
         assert window.live_stop.get_sensitive() and window.capture_header.get_visible_child_name() == "live"
-        header = window.recording_page.capture if window.recording_page else window.capture_header
-        picture = header._controls["picture"]
+        # D-1162: the level strips live on the Recording screen; the Library's pill is dot, time and Stop.
+        if window.recording_page is None:
+            window.open_meeting(window.live_meeting())
+        wait_until(lambda: window.recording_page is not None, "Recording screen open", diagnostics=diagnostics)
+        picture = window.recording_page.mic_level
         wait_until(
             lambda: (
                 picture.texture is not None

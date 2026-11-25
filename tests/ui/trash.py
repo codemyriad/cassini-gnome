@@ -383,6 +383,8 @@ with tempfile.TemporaryDirectory() as temporary:
     ], "newest deletion first, as storage orders them"
     client_row = row_for(dialog, "Client call, Rossi & Partners")
     assert client_row.get_title() == GLib.markup_escape_text("Client call, Rossi & Partners")
+    assert client_row.title_label.get_label() == "Client call, Rossi & Partners"
+    assert client_row.delete_button.get_label() == "Delete now…" and client_row.delete_button.has_css_class("flat")
     assert client_row.get_subtitle().endswith(" · 30 days left"), client_row.get_subtitle()
     assert "Meetings in the Trash are deleted permanently after 30 days." in labels(dialog)
     assert dialog.empty_button.is_sensitive() and dialog.empty_button.get_label() == "Empty Trash…"

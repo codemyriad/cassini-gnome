@@ -74,6 +74,16 @@ from painted import painted_node  # noqa: E402
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.library import LibraryScanner  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
+from cassini_talk.strings import text  # noqa: E402
+
+
+def labels(widget):
+    found = [widget.get_label()] if isinstance(widget, Gtk.Label) else []
+    child = widget.get_first_child()
+    while child is not None:
+        found += labels(child)
+        child = child.get_next_sibling()
+    return found
 
 
 def until(predicate):
@@ -121,7 +131,8 @@ heights = {}
 
 def check_stable_refreshes(dialog, *, changing):
     first, bindings, report = dialog.body.get_first_child(), dict(dialog._bindings), dialog.report
-    value = bindings[("writing", 0)]
+    # D-1162: Transcribing has no rows while recording (nothing recorded yet), so a health value then.
+    value = bindings.get(("writing", 0)) or bindings[("health", 0)]
     value.grab_focus()
     until(lambda: dialog.window.get_focus() == value)
     adjustment = dialog.scroller.get_vadjustment()
@@ -240,7 +251,8 @@ with tempfile.TemporaryDirectory() as temporary:
             assert not window._trash_key(None, Gdk.KEY_Delete, 0, Gdk.ModifierType(0))
             assert paths[key].is_dir() and not app.meeting_trash.hides(paths[key])
         shot(window, {"fallback": "browser-fallback", "microphone": "microphone", "no-events": "no-events"}[key])
-        heights[key] = dialog.get_child().get_height()
+        # D-1162: the cards can fill the dialog, so compare the content's height, not the dialog's.
+        heights[key] = dialog.scroller.get_vadjustment().get_upper()
         body = dialog.report.plain_text()
         if key == "fallback":
             assert dialog.report.live and "3 audio streams" in body
@@ -253,9 +265,12 @@ with tempfile.TemporaryDirectory() as temporary:
                 "Guest: audio couldn’t be recorded.",
                 "Guest: not selected for recording.",
             ]
-            assert [dialog._bindings[("source", i)].get_label() for i in range(5)] == source_lines
-            assert dialog._bindings[("source", 3)].has_css_class("warning")
-            assert not dialog._bindings[("source", 4)].has_css_class("warning")
+            # D-1162: Audio sources folds into the cards; only a source's problem stays, as a warning.
+            quiet = {k: w for k, w in dialog._bindings.items() if k[0] == "quiet"}
+            shown_lines = [w.get_label() for w in quiet.values()]
+            assert "Guest: audio couldn’t be recorded." in shown_lines and "Guest: 2 s recorded." not in shown_lines
+            assert all(w.has_css_class("warning") for w in quiet.values() if w.get_label() in source_lines)
+            assert text("details.sources.title") not in labels(dialog.body)
             assert all(line in body for line in source_lines)
             page = window.recording_page
             state = app.comfort.states.setdefault(
@@ -320,11 +335,27 @@ with tempfile.TemporaryDirectory() as temporary:
     outside_metadata["recordingDetails"]["writingDown"].update(
         wallDurationMs=15680,
         resumed=True,
+        # D-1162 review: a partial result and a captured-but-silent source keep their explanations.
         speakerSeparation=dict(
-            status="completed", modelId=MODEL_ID, modelRevision=REVISION, speakersFound=2, reused=False
+            status="partial", modelId=MODEL_ID, modelRevision=REVISION, speakersFound=2, reused=False
         ),
+        silentTracks=["microphone"],
     )
     write_json(outside / "meeting.json", outside_metadata)
+    outside_session = json.loads((outside / "session.json").read_text())
+    outside_session["captureOutcome"] = dict(
+        sources=[
+            dict(
+                sourceTrackId="microphone",
+                kind="microphone",
+                label="Built-in Audio",
+                captureOutcome="captured",
+                audioMs=83000,
+                trackIds=["microphone"],
+            )
+        ]
+    )
+    write_json(outside / "session.json", outside_session)
     external = LibraryScanner(outside.parent).scan().meetings[0]
     assert external.key in {m.key for m in window.snapshot.meetings}
     window.open_meeting(external, external=True)
@@ -336,6 +367,21 @@ with tempfile.TemporaryDirectory() as temporary:
     assert dialog.report.title == outside_metadata["title"]
     assert REVISION in dialog.report.plain_text()
     assert dict(dialog.report.writing)["Time taken"] == "15.68 s (this run, after resuming)"
+    # R13: the silent line stays visible, neutral, inside the Me card (not dropped with Audio sources).
+    silent = text("details.sources.silent", source=text("common.yourMicrophone"))
+    assert silent in dialog.report.plain_text()
+    shown = dialog._bindings[("silent", "Me", 0)]
+    until(lambda: shown.get_mapped())
+    assert shown.get_label() == silent and shown.get_mapped()
+    assert shown.has_css_class("dim-label") and not shown.has_css_class("warning")
+    me_card = shown.get_parent()
+    assert me_card.has_css_class("details-side") and text("details.side.me") in labels(me_card)
+    assert ("silent", "The others", 0) not in dialog._bindings
+    # A partial speaker separation keeps "Some audio could not be separated" beside "On · 2 voices told apart".
+    separation = text("details.writing.separation")
+    index = [name for name, _value in dialog.report.writing_plain].index(separation)
+    value = dialog._bindings[("writing", index)].get_label()
+    assert value.startswith("On · 2 voices told apart") and text("details.separation.partial") in value
     shot(window, "speaker-separation")
     assert not window.lookup_action("move-to-trash").get_enabled()
     window._updated(window._source_snapshot)
@@ -356,7 +402,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert len(dialog.report.spans) >= 40
     check_stable_refreshes(dialog, changing=False)
     shot(window, "many-spans")
-    heights["many-spans"] = dialog.get_child().get_height()
+    heights["many-spans"] = dialog.scroller.get_vadjustment().get_upper()
     assert heights["microphone"] < heights["many-spans"], heights
     dialog.close()
     until(lambda: dialog.closed)

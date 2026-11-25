@@ -216,7 +216,7 @@ def child():
         rebuilt = []
         page.connect("rows-rebuilt", lambda *_: rebuilt.append(True))
         until(lambda: rebuilt and window.player._prerolled)
-        for identifier, position in (("silvio", "00:00:02"), ("guest", "00:00:09")):
+        for identifier, position in (("silvio", "00:02"), ("guest", "00:09")):
             _row, play, caption = page._speaker_rows[identifier]
             assert caption == text("speakers.when.once", position=position)
             assert play.get_visible() and play.get_mapped() and play.get_sensitive()
@@ -374,7 +374,7 @@ def parent():
                     "speakers.row.a11y",
                     name="Marta",
                     provenance=text("meeting.speakerCaption.namedByYou"),
-                    when=plural("speakers.when.times", 2, count=2, position="00:02:41"),
+                    when=plural("speakers.when.times", 2, count=2, position="02:41"),
                 ),
                 "speaker",
             )
@@ -384,7 +384,7 @@ def parent():
             wait_event("published-ready")
             # Recognised-but-unmatched has no provenance: exact row naming
             # omits the empty item, and activates speaker listening on a read-only file.
-            when = text("speakers.when.once", position="00:00:09")
+            when = text("speakers.when.once", position="00:09")
             activate("Dario, " + when, "published-play")
             assert process.wait() == 0
             assert not any(value in log_path.read_text() for value in ("Gtk-WARNING", "Gtk-CRITICAL"))

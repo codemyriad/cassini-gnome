@@ -76,12 +76,20 @@ def stars_on_disk(root):
 
 
 def chip_labels(page):
-    chips = next(node for node in widgets(page) if isinstance(node, Gtk.FlowBox))
-    return [
-        child.get_child().get_label()
-        for child in widgets(chips)
-        if isinstance(child, Gtk.FlowBoxChild) and child.get_child() is not None
-    ]
+    # D-1162: the filters are a wrap box (a FlowBox before libadwaita 1.7).
+    chips = page.filter_chips
+    if isinstance(chips, Gtk.FlowBox):
+        return [
+            child.get_child().get_label()
+            for child in widgets(chips)
+            if isinstance(child, Gtk.FlowBoxChild) and child.get_child() is not None
+        ]
+    found = []
+    child = chips.get_first_child()
+    while child is not None:
+        found.append(child.get_label())
+        child = child.get_next_sibling()
+    return found
 
 
 def prepare(tmp):
@@ -220,6 +228,14 @@ with tempfile.TemporaryDirectory() as temporary:
     page = window.meeting_page
     assert page.star_button.get_visible() and page.star_button.get_tooltip_text() == text("meeting.star")
     assert text("meeting.star") in menu_labels(page.more_menu)
+    # D-1162: one order in both meeting menus, as on the other apps (Set date and time… comes later).
+    order = [text(k) for k in ("meeting.star", "meeting.renameEllipsis", "meeting.nameSpeakers")]
+    order += [text("common.exportEllipsis"), text("details.menu"), text("common.moveToTrash")]
+    assert [label for label in menu_labels(page.more_menu) if label in order] == order, menu_labels(page.more_menu)
+    row_order = [text("meeting.star"), text("meeting.renameEllipsis"), text("common.exportEllipsis")]
+    row_menu = window._row_menu(row_for(window, "Interview 14"), 100, 20)
+    assert menu_labels(row_menu.get_menu_model())[:3] == row_order
+    row_menu.popdown()
     page.star_button.emit("clicked")
     until(lambda: page.star_button.get_tooltip_text() == text("meeting.unstar"))
     assert page.star_button.get_icon_name() == "starred-symbolic"

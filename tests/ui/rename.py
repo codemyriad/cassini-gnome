@@ -84,8 +84,10 @@ def labels(widget):
 def choose_rename(popover):
     until(popover.get_mapped)
     buttons = [w for w in widgets(popover) if w.__gtype__.name == "GtkModelButton"]
-    assert "Rename…" in labels(buttons[0]), "Rename must be first"
-    item = buttons[0]
+    # D-1162: one order in both meeting menus: Star (when it can be starred), then Rename….
+    first = 1 if any(label in ("Star", "Unstar") for label in labels(buttons[0])) else 0
+    assert "Rename…" in labels(buttons[first]), "Rename must follow Star"
+    item = buttons[first]
     until(lambda: item.get_mapped() and item.get_width() > 0)
     assert item.is_sensitive()
     assert item.activate()
@@ -217,6 +219,8 @@ with tempfile.TemporaryDirectory() as temporary:
         choose_rename(popover)
         until(lambda: window.rename_dialog is not None and not window.rename_dialog.closed)
         dialog = window.rename_dialog
+        # D-1162: "Rename meeting", in sentence case like the rest of the app.
+        assert dialog.get_title() == "Rename meeting"
         assert dialog.entry.get_text() == chosen.title
         until(lambda dialog=dialog, chosen=chosen: dialog.entry.get_selection_bounds() == (0, len(chosen.title)))
         assert not dialog.confirm.get_sensitive()

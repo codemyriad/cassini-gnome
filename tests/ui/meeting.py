@@ -134,6 +134,25 @@ with tempfile.TemporaryDirectory() as temporary:
     page = window.meeting_page
     assert page._exact
     until(lambda: page.list.ready and len(page.bound) == 5 and window.player._prerolled)
+    # D-1162: opening a meeting doesn't put the cursor in Find; the wide window keeps the name column.
+    assert not page.find_entry.has_focus() and not page.narrow
+    # D-1162: a long title wraps to two lines instead of being cut on the first.
+    assert page.title_label.get_wrap() and page.title_label.get_lines() == 2
+    assert page.bound[0][2].get_first_child().get_size_request()[0] == 120
+    # D-1162: the narrow window puts the name and time above each turn, with 16 px margins.
+    page._set_narrow(True)
+    until(lambda: page.list.ready and 0 in page.bound)
+    row = page.bound[0][2]
+    assert row.body.get_orientation() == Gtk.Orientation.VERTICAL and page.outer.has_css_class("narrow")
+    assert page.lines.get_margin_start() == 16
+    page._set_narrow(False)
+    until(
+        lambda: (
+            page.list.ready
+            and 0 in page.bound
+            and page.bound[0][2].body.get_orientation() == Gtk.Orientation.HORIZONTAL
+        )
+    )
     assert all(v in labels(page.speakers) for v in ["Marta", "Giulia Rossi", "Speaker 3"])
     # Imported recognition metadata has no corresponding local saved voice.
     assert "auto" not in labels(page.speakers)
@@ -170,7 +189,8 @@ with tempfile.TemporaryDirectory() as temporary:
     current = next(row for row in page.bound.values() if row[0].speaker == "guest")
     assert "background=" in current[1].get_label()
     assert 'alpha="60%"' in page.bound[3][1].get_label()
-    assert page.elapsed.get_label() == "00:03:08" and page.total.get_label() == "00:47:05"
+    # D-1162: a meeting under an hour drops the hours in its times.
+    assert page.elapsed.get_label() == "03:08" and page.total.get_label() == "47:05"
     assert isinstance(page.rate_button, Gtk.MenuButton)
     window.activate_action("win.rate", GLib.Variant("s", "1.5"))
     assert window.player.rate == 1.5 and page.rate_button.get_label() == "1.5×"
@@ -236,7 +256,7 @@ with tempfile.TemporaryDirectory() as temporary:
             window._updated(updated)
 
         # WP5 (L-45): queued/running meetings show the header transcribing status row,
-        # keep the desktop transcript area empty while transcribing, and open the chevron
+        # keep the transcript area empty until the first words arrive (D-1162), and open the chevron
         # details popover with 5 steps, 3 stats, and Stop and keep progress.
         from cassini_talk import i18n as fmt
         from cassini_talk.transcription import TranscriptionProgress
@@ -267,9 +287,14 @@ with tempfile.TemporaryDirectory() as temporary:
             assert page.transcribing_row.get_visible()
             assert "Transcribing" in labels(page.transcribing_row)
             assert "· about 3 min left" in labels(page.transcribing_row)
-            assert page.transcribing_blank.get_visible() and page.scroller.get_opacity() == 0.0, (
-                "L-45: desktop transcript area stays empty while transcribing"
-            )
+            # D-1162: the transcript so far shows while transcribing, as on Android.
+            assert running.turns and not page.transcribing_blank.get_visible() and page.scroller.get_opacity() == 1.0
+            # D-1162 (L-85): Stop while transcribing is a plain flat button in the text colour.
+            assert page.transcribing_row.stop_button.has_css_class("flat")
+            page._set_narrow(True)
+            assert page.transcribing_row.get_orientation() == Gtk.Orientation.VERTICAL
+            assert page.transcribing_row.stop_button.get_parent() is page.transcribing_row.progress_bar.get_parent()
+            page._set_narrow(False)
             assert not page.find_row.get_visible()
             assert not page.speakers_scroller.get_visible()
             assert page.player_overlay.get_visible()

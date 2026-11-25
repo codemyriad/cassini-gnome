@@ -22,7 +22,7 @@ D103_IDS = (
     "settings.recording.group.starting",
     "settings.recording.firstRecord.subtitle",
     "settings.recording.group.browser",
-    "settings.recording.group.browser.subtitle",
+    # settings.recording.group.browser.subtitle: superseded by ….browser.note on GNOME (D-1162).
     "settings.recording.autoRecord.subtitleShort",
     "settings.recording.test.button",
     "models.keepTranscript",
@@ -40,7 +40,7 @@ D103_IDS = (
     "companion.addTo",
     "about.tagline.computer",
     "about.help",
-    "firstRun.shortcutLine",
+    # firstRun.shortcutLine: superseded by firstRun.shortcutStarts on GNOME (D-1162).
     "recordFirst.lawPlain",
     "recordFirst.mic.plain",
     "recordFirst.sound.plain",
@@ -139,7 +139,7 @@ D107_IDS = (
     "test.refused.mic",
     "test.refused.action",
     "test.pill.couldNotStart",
-    "settings.recording.group.browser.subtitle",
+    # settings.recording.group.browser.subtitle: superseded by ….browser.note on GNOME (D-1162).
     "settings.phone.speakers.recognise.subtitle",
 )
 # Not GNOME's: Mac's computer-sound refusal (GNOME asks nothing for it); Updates is Mac only.

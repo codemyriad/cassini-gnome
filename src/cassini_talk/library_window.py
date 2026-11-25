@@ -24,7 +24,6 @@ from .meeting_page import MeetingPage
 from .meeting_state import import_entry_badge
 from .player import Player
 from .spectro_views import BrokerFeed, NativeFeed, WindowSpectrograms
-from .spectrogram_strip import SpectrogramStrip
 from .status_badge import BadgeGlyph, StatusBadge
 from .strings import plural, text
 from .tokens import speaker_slot
@@ -938,13 +937,12 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _row_menu(self, row, x, y):
         self.rows.select_row(row)
+        # D-1162: the same order as the meeting ⋮ menu: Star, Rename…, Export…, then Move to Trash.
         menu = Gio.Menu()
+        if self.star_allowed(row.meeting):
+            menu.append(text("meeting.unstar" if self.is_starred(row.meeting) else "meeting.star"), "win.toggle-star")
         menu.append_item(self.rename_item())
         menu.append(text("common.exportEllipsis"), "win.export")
-        if self.star_allowed(row.meeting):
-            star = Gio.Menu()
-            star.append(text("meeting.unstar" if self.is_starred(row.meeting) else "meeting.star"), "win.toggle-star")
-            menu.append_section(None, star)
         if self.get_application().meeting_trash.allowed(row.meeting, self) or (
             row.meeting.published_file is not None and not row.meeting.metadata_editable
         ):
@@ -1057,13 +1055,14 @@ class LibraryWindow(Adw.ApplicationWindow):
             action_name="app.open",
             tooltip_text=text("import.action"),
             valign=Gtk.Align.CENTER,
-            css_classes=["flat", "import-audio-btn"],
+            # D-1162 (L-75): a soft round background, like the round close button.
+            css_classes=["flat", "edge-button", "import-audio-btn"],
         )
         button.set_child(BadgeGlyph("incoming", size_px=16))
         button.update_property([Gtk.AccessibleProperty.LABEL], [text("import.action")])
         return button
 
-    def _primary_menu_button(self, *, flat=False):
+    def _primary_menu_button(self, *, flat=False, edge=True):
         menu = Gio.Menu()
         top = Gio.Menu()
         top.append(text("import.action"), "app.open")
@@ -1085,7 +1084,9 @@ class LibraryWindow(Adw.ApplicationWindow):
             menu_model=menu,
             tooltip_text=text("common.mainMenu"),
             primary=True,
-            css_classes=["flat"] if flat else [],
+            # D-1162 (L-75): an icon button at the edge of a header bar gets a soft round background,
+            # so its edge sits flush on the content edge without the icon looking cramped.
+            css_classes=(["flat"] if flat else []) + (["edge-button"] if edge else []),
         )
         button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.mainMenu")])
         return button
@@ -1101,7 +1102,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         if record:
             header.pack_start(self.capture_controls())
         if close:
-            header.pack_end(self._primary_menu_button())
+            header.pack_end(self._primary_menu_button(edge=False))
             if not record:
                 header.pack_end(Gtk.Button(label=text("common.exportEllipsis"), action_name="win.export"))
         return header
@@ -1152,11 +1153,14 @@ class LibraryWindow(Adw.ApplicationWindow):
         return True
 
     def _shortcut_line(self):
-        """D105 §4: "Ctrl + R" as two key chips, then "records from anywhere in Cassini." (firstRun.shortcutLine)."""
+        """D105 §4: "Ctrl + R" as two key chips, then "starts a recording" (firstRun.shortcutStarts).
+
+        D-1162: each shortcut is said once, as on Mac: Ctrl+R here, Ctrl+Alt+R in Preferences.
+        """
         shortcut = text("common.shortcut.record")
         line = Gtk.Box(valign=Gtk.Align.CENTER, css_classes=["hero-shortcut"])
-        line.update_property([Gtk.AccessibleProperty.LABEL], [text("firstRun.shortcutLine", shortcut=shortcut)])
-        before, _, after = text("firstRun.shortcutLine", shortcut="\0").partition("\0")
+        line.update_property([Gtk.AccessibleProperty.LABEL], [text("firstRun.shortcutStarts", shortcut=shortcut)])
+        before, _, after = text("firstRun.shortcutStarts", shortcut="\0").partition("\0")
         if before:
             line.append(label(before))
         for index, key in enumerate(shortcut.split("+")):
@@ -1208,8 +1212,10 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("firstRun.hero.title", ["hero-title"]),
             ("firstRun.hero.subtitle.computer", ["hero-title", "hero-subtitle"]),
         ):
-            # No wrap (drawn): ellipsize rather than reflow if a translation outgrows the column.
-            line = label(text(key), *classes, xalign=0, halign=Gtk.Align.START, ellipsize=Pango.EllipsizeMode.END)
+            # D-1162: a narrow window wraps the headline onto more lines instead of cutting it.
+            line = label(
+                text(key), *classes, xalign=0, halign=Gtk.Align.START, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR
+            )
             titles.append(line)
         self.hero_title, self.hero_subtitle = titles.get_first_child(), titles.get_last_child()
         hero.append(titles)
@@ -1319,8 +1325,8 @@ class LibraryWindow(Adw.ApplicationWindow):
         show = Gtk.Button(child=timer, css_classes=["flat"], tooltip_text=text("recording.pill.noSleep"))
         show.connect("clicked", lambda *_: self.open_live_recording())
         live.append(show)
-        picture = SpectrogramStrip(kind="pill", lanes=("me", "others"))
-        live.append(picture)
+        # D-1162: the pill fits its contents (dot, time, Stop), the same shape as the approved Mac
+        # recording pill: no level strip between the time and Stop. The Recording screen's rows keep theirs.
         muted = Gtk.Image(
             icon_name="dialog-warning-symbolic", visible=False, tooltip_text=text("recording.systemMuted")
         )
@@ -1335,7 +1341,6 @@ class LibraryWindow(Adw.ApplicationWindow):
             stack=stack,
             live=live,
             timer=timer,
-            picture=picture,
             stop=stop,
             muted=muted,
             meeting=meeting.key if meeting else None,
@@ -1480,8 +1485,10 @@ class LibraryWindow(Adw.ApplicationWindow):
         )
         list_content.append(self.received_hint)
 
+        # D-1162: the list stops at a hard line above "Drop audio files here to import", with the
+        # soft shadow GNOME lists show when there's more to scroll (libadwaita's undershoot-bottom).
         self.library_scroller = Gtk.ScrolledWindow(
-            hscrollbar_policy=Gtk.PolicyType.NEVER, child=list_content, vexpand=True
+            hscrollbar_policy=Gtk.PolicyType.NEVER, child=list_content, vexpand=True, css_classes=["undershoot-bottom"]
         )
         self._library_vadj = self.library_scroller.get_vadjustment()
         self._library_vadj.connect("value-changed", self._queue_sidebar_scrolled)
@@ -1711,10 +1718,19 @@ class LibraryWindow(Adw.ApplicationWindow):
             controls["timer"].set_label(fmt.live_badge(ms))
             controls["stop"].set_label(text("states.badge.saving" if stopping else "common.stop"))
             controls["stop"].set_sensitive(not stopping and (own_native or browser))
+            # D-1162: one Stop, as on Mac. While the Recording screen of this meeting is open, the
+            # sidebar header shows the time only; Stop is the one beside the screen's timer.
+            one_stop = bool(
+                self.recording_page is not None
+                and controls is getattr(getattr(self, "capture_header", None), "_controls", None)
+                and target is not None
+                and self.recording_page.meeting.key == target.key
+            )
+            controls["stop"].set_visible(not one_stop)
+            (controls["live"].add_css_class if one_stop else controls["live"].remove_css_class)("time-only")
             (controls["live"].add_css_class if stopping else controls["live"].remove_css_class)("saving")
             state = app.comfort.status(target) if target else {}
             controls["muted"].set_visible(bool(state.get("output_muted")))
-            self.bind_spectrogram(controls["picture"], target, silent=bool(state.get("silent")), stopping=stopping)
         self._recording_line(native)
         if self.recording_page:
             self.recording_page.update_status()

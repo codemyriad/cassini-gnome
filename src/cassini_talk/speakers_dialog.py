@@ -94,7 +94,10 @@ class SpeakersDialog(Adw.Dialog):
         field.append(name)
         field.append(self.entry)
         content.append(field)
-        self.duplicate = Gtk.Box(spacing=8, visible=False, css_classes=["speaker-duplicate"])
+        self.duplicate = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=4, visible=False, css_classes=["speaker-duplicate"]
+        )
+        self.duplicate_row = Gtk.Box(spacing=8)
         self.duplicate_title = Gtk.Label(
             xalign=0,
             wrap=True,
@@ -104,21 +107,31 @@ class SpeakersDialog(Adw.Dialog):
         )
         self.someone_else = Gtk.Button(
             label=text("speakers.duplicate.someoneElse"),
-            can_shrink=True,
             valign=Gtk.Align.CENTER,
             css_classes=["speaker-btn-secondary", "speaker-btn-small"],
         )
         self.same_person = Gtk.Button(
             label=text("speakers.duplicate.samePerson"),
-            can_shrink=True,
             valign=Gtk.Align.CENTER,
             css_classes=["suggested-action", "speaker-btn-primary", "speaker-btn-small"],
         )
         self.someone_else.connect("clicked", lambda *_: self._answer_duplicate(False))
         self.same_person.connect("clicked", lambda *_: self._answer_duplicate(True))
-        self.duplicate.append(self.duplicate_title)
-        self.duplicate.append(self.someone_else)
-        self.duplicate.append(self.same_person)
+        # D-1162: while Save is dimmed by this choice, say why under its line.
+        self.duplicate_hint = Gtk.Label(
+            label=text("speakers.duplicate.pickHint"),
+            xalign=0,
+            wrap=True,
+            visible=False,
+            css_classes=["dim-label", "caption", "speaker-duplicate-hint"],
+        )
+        self.duplicate_row.append(self.duplicate_title)
+        self.duplicate_buttons = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
+        self.duplicate_buttons.append(self.someone_else)
+        self.duplicate_buttons.append(self.same_person)
+        self.duplicate_row.append(self.duplicate_buttons)
+        self.duplicate.append(self.duplicate_row)
+        self.duplicate.append(self.duplicate_hint)
         content.append(self.duplicate)
         self.voices_section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, visible=False)
         self.voices_heading = Gtk.Label(
@@ -184,13 +197,18 @@ class SpeakersDialog(Adw.Dialog):
             css_classes=["error", "error-line"],
         )
         content.append(self.error)
-        footer = Gtk.Box(
+        # D-1162: wide, one row (Merge into… · Cancel · Save); narrow, the buttons stack: Save across
+        # the width, then Cancel and Merge into… side by side, so none is cut (_set_narrow).
+        self.footer = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
             spacing=8,
             margin_top=2,
             margin_bottom=20,
             margin_start=24,
             margin_end=24,
         )
+        footer = self.footer_row = Gtk.Box(spacing=8)
+        self.footer.append(footer)
         self.merge_menu = Gio.Menu()
         self.merge = Gtk.MenuButton(
             label=text("speakers.mergeInto"),
@@ -199,7 +217,8 @@ class SpeakersDialog(Adw.Dialog):
             css_classes=["speaker-btn-secondary"],
         )
         footer.append(self.merge)
-        footer.append(Gtk.Box(hexpand=True))
+        self.footer_spacer = Gtk.Box(hexpand=True)
+        footer.append(self.footer_spacer)
         self.cancel = Gtk.Button(
             label=text("common.cancel"),
             can_shrink=True,
@@ -214,8 +233,11 @@ class SpeakersDialog(Adw.Dialog):
         self.save.connect("clicked", self._save)
         footer.append(self.cancel)
         footer.append(self.save)
-        outer.append(footer)
+        outer.append(self.footer)
         self.set_child(outer)
+        self.narrow = False
+        # D-1162: on a phone-width window (where the dialog is a bottom sheet) the buttons stack.
+        self._set_narrow(0 < self.window.get_width() < 420)
         self.actions = Gio.SimpleActionGroup()
         action = Gio.SimpleAction.new("merge", GLib.VariantType.new("s"))
         action.connect("activate", lambda _a, target: self._merge(target.get_string()))
@@ -236,6 +258,29 @@ class SpeakersDialog(Adw.Dialog):
         self.set_default_widget(self.save)
         self.timer = GLib.timeout_add(50, self._tick)
         self._load_voices()
+
+    def _set_narrow(self, narrow):
+        """D-1162: stack the footer and the Same person / Someone else choice on a narrow window."""
+        if narrow == self.narrow:
+            return
+        self.narrow = narrow
+        for button in (self.merge, self.cancel, self.save):
+            button.get_parent().remove(button)
+        if narrow:
+            self.footer.prepend(self.save)
+            self.footer_row.set_homogeneous(True)
+            self.footer_spacer.set_visible(False)
+            self.footer_row.append(self.cancel)
+            self.footer_row.append(self.merge)
+        else:
+            self.footer_row.set_homogeneous(False)
+            self.footer_spacer.set_visible(True)
+            self.footer_row.prepend(self.merge)
+            self.footer_row.append(self.cancel)
+            self.footer_row.append(self.save)
+        self.duplicate_row.set_orientation(Gtk.Orientation.VERTICAL if narrow else Gtk.Orientation.HORIZONTAL)
+        self.duplicate_buttons.set_homogeneous(narrow)
+        self.duplicate_buttons.set_halign(Gtk.Align.FILL if narrow else Gtk.Align.END)
 
     def _place_caret(self):
         if not self.closed:
@@ -488,6 +533,7 @@ class SpeakersDialog(Adw.Dialog):
             }
             self.candidate = pick_name(self.entry.get_text(), self.voice_state["voices"], scores)
         self.duplicate.set_visible(self.candidate is not None)
+        self.duplicate_hint.set_visible(self.candidate is not None)
         if self.candidate:
             self.duplicate_title.set_markup(speaker_edits.duplicate_notice_markup(self.candidate["name"]))
         self.save.set_sensitive(

@@ -8,6 +8,7 @@ from threading import Event
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
 
 from . import ux_formats as fmt
+from .adw_compat import wrap_box
 from .folder_player import FolderPlayer
 from .search_index import SearchIndex
 from .strings import text
@@ -109,14 +110,8 @@ class SearchPage(Adw.Bin):
 
         left = box(6, vexpand=True, hexpand=True)
         filters = box(8, css_classes=["search-sidebar-filters"])
-        chips = Gtk.FlowBox(
-            selection_mode=Gtk.SelectionMode.NONE,
-            column_spacing=6,
-            row_spacing=6,
-            homogeneous=False,
-            max_children_per_line=4,
-            css_classes=["search-filters"],
-        )
+        # D-1162: the filters wrap from the left with even gaps, so none floats on its own in a column.
+        chips = self.filter_chips = wrap_box(child_spacing=6, line_spacing=6, css_classes=["search-filters"])
         chips.update_property([Gtk.AccessibleProperty.LABEL], [text("library.filters.a11y")])
         # L-35 order: Starred · Speaker · Any date · Recorded by me. Starred
         # carries over the Library's at-rest choice; every chip resets on close.
@@ -177,7 +172,7 @@ class SearchPage(Adw.Bin):
         self.back_button = Gtk.Button(
             icon_name="go-previous-symbolic",
             tooltip_text=text("search.results.a11y"),
-            css_classes=["flat", "meeting-icon-btn"],
+            css_classes=["flat", "meeting-icon-btn", "edge-button"],
             visible=False,
         )
         self.back_button.update_property([Gtk.AccessibleProperty.LABEL], [text("search.results.a11y")])

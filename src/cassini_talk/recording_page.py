@@ -68,8 +68,8 @@ class RecordingPage(Adw.NavigationPage):
         outer = vertical(vexpand=True, hexpand=True, css_classes=["recording-page"])
         responsive = Adw.BreakpointBin(child=outer, width_request=320, height_request=100)
         narrow = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 560sp"))
-        narrow.connect("apply", lambda *_: outer.add_css_class("narrow"))
-        narrow.connect("unapply", lambda *_: outer.remove_css_class("narrow"))
+        narrow.connect("apply", lambda *_: self._set_narrow(outer, True))
+        narrow.connect("unapply", lambda *_: self._set_narrow(outer, False))
         responsive.add_breakpoint(narrow)
         self.set_child(responsive)
 
@@ -85,7 +85,7 @@ class RecordingPage(Adw.NavigationPage):
             icon_name="go-previous-symbolic",
             tooltip_text=text("common.backToLibrary"),
             action_name="win.back-library",
-            css_classes=["flat", "meeting-icon-btn"],
+            css_classes=["flat", "meeting-icon-btn", "edge-button"],
             valign=Gtk.Align.CENTER,
         )
         self.back_button.update_property([Gtk.AccessibleProperty.LABEL], [text("common.backToLibrary")])
@@ -103,7 +103,8 @@ class RecordingPage(Adw.NavigationPage):
             icon_name="view-more-symbolic",
             tooltip_text=text("meeting.moreActions"),
             menu_model=menu,
-            css_classes=["flat", "meeting-icon-btn"],
+            # D-1162 (L-75): at the bar's edge in the narrow window, so round there (style.css).
+            css_classes=["flat", "meeting-icon-btn", "recording-more-btn"],
             valign=Gtk.Align.CENTER,
         )
         self.more_button.get_popover().set_halign(Gtk.Align.END)
@@ -120,6 +121,9 @@ class RecordingPage(Adw.NavigationPage):
             draft.get("title") or meeting.title,
             "meeting-title",
             xalign=0,
+            wrap=True,
+            wrap_mode=Pango.WrapMode.WORD_CHAR,
+            lines=2,
             ellipsize=Pango.EllipsizeMode.END,
         )
         self.set_title(self.headline.get_label())
@@ -217,7 +221,13 @@ class RecordingPage(Adw.NavigationPage):
         self.mic_row = Gtk.Box(spacing=14, valign=Gtk.Align.CENTER, css_classes=["recording-source"])
         mic_labels = vertical(2, hexpand=True, valign=Gtk.Align.CENTER)
         mic_labels.append(
-            label(text("common.yourMicrophone"), "recording-source-title", xalign=0, ellipsize=Pango.EllipsizeMode.END)
+            label(
+                text("common.yourMicrophone"),
+                "recording-source-title",
+                xalign=0,
+                wrap=True,
+                wrap_mode=Pango.WrapMode.WORD_CHAR,
+            )
         )
         self.mic_warning = label(
             text("errors.micSilentRow.line"),
@@ -234,6 +244,7 @@ class RecordingPage(Adw.NavigationPage):
         self.check = Gtk.Button(
             label=text("errors.micSilentRow.action"),
             valign=Gtk.Align.CENTER,
+            halign=Gtk.Align.START,
             visible=False,
             css_classes=["spectro-check"],
         )
@@ -293,6 +304,17 @@ class RecordingPage(Adw.NavigationPage):
             self._split_collapsed_handler = window.split.connect("notify::collapsed", self._sync_back_button)
         self._sync_back_button()
         self.update_status()
+
+    def _set_narrow(self, outer, narrow):
+        """D-1162: the narrow microphone card wraps normally: the title on one line, the text below,
+        and Check under it; the level strips need the wide window's room."""
+        (outer.add_css_class if narrow else outer.remove_css_class)("narrow")
+        if not hasattr(self, "mic_row"):
+            return
+        self.mic_row.set_orientation(Gtk.Orientation.VERTICAL if narrow else Gtk.Orientation.HORIZONTAL)
+        self.mic_row.set_spacing(8 if narrow else 14)
+        self.mic_level.set_visible(not narrow)
+        self.others_level.set_visible(not narrow)
 
     def _subtitle_text(self, meeting):
         return fmt.preview_subtitle(meeting.started_at_ms, None, now_ms=self.window.now_ms, tz=self.window.tz)
@@ -527,7 +549,7 @@ class RecordingPage(Adw.NavigationPage):
             self.sources_dialog.force_close()
         self.window._editor_focus(self.title_entry, False)
         self.flush_edits()
-        for picture in (self.mic_level, self.others_level, self.capture._controls["picture"]):
+        for picture in (self.mic_level, self.others_level):
             self.window.spectrograms.remove(picture)
         if (
             self.capture is not getattr(self.window, "capture_header", None)

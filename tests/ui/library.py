@@ -23,7 +23,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from dispatch_wait import dispatch_until  # noqa: E402
-from gi.repository import Adw, Gio, Gst, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, Gst, Gtk, Pango  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(build / "src/cassini-talk.gresource")))
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
@@ -320,6 +320,11 @@ with tempfile.TemporaryDirectory() as tmp:
     assert keys == text("common.shortcut.record").split("+") == ["Ctrl", "R"], keys
     assert empty.hero_shortcut.get_parent() is empty.hero_record.get_parent()
     assert empty.hero_shortcut.get_prev_sibling() is empty.hero_record
+    # D-1162: "Ctrl+R starts a recording", said once; the anywhere shortcut lives in Preferences.
+    shortcut_words = [w.get_label() for w in walk(empty.hero_shortcut) if isinstance(w, Gtk.Label)]
+    assert shortcut_words[-1].strip() == "starts a recording", shortcut_words
+    # D-1162: a narrow window wraps the headline instead of cutting it.
+    assert empty.hero_title.get_wrap() and empty.hero_title.get_ellipsize() == Pango.EllipsizeMode.NONE
     # D105 §4: "Transcribed on this computer, kept in {folder}", no full stop, the folder a link.
     from cassini_talk.library_location import folder_caption
 

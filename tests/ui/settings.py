@@ -22,7 +22,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from dispatch_wait import dispatch_until  # noqa: E402
-from gi.repository import Gio, Gst, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.browser_service import BrowserService, request, send_packet  # noqa: E402
@@ -202,14 +202,37 @@ with tempfile.TemporaryDirectory() as temporary:
             gaps = {round(b[0] - (a[0] + a[1])) for a, b in zip(tops, tops[1:], strict=False)}
             assert gaps <= {26, 36}, (page.get_name(), gaps)  # The footnote adds 10 px above itself.
     assert dialog.test_button.get_label() == "Test"
-    # D107 §1: never set up, so "Needs the browser companion · Set it up", the switch greyed and a red dot.
-    assert dialog.browser_meetings_status.get_label() == "Needs the browser companion ·"
+    # D-1162 (L-90): never set up, so the note under the title reads "Needs the browser companion. Set it
+    # up", the switch greyed and a red dot; every button and switch in a card, in the middle of its row.
+    assert dialog.browser_meetings.get_description() == (
+        'Needs the browser companion. <a href="cassini:browser-companion">Set it up</a>'
+    )
+    assert dialog.browser_meetings_note is not None and dialog.browser_meetings_note.get_text().endswith("Set it up")
     assert dialog.browser_set_up.get_visible() and dialog.browser_set_up.get_label() == "Set it up"
+    assert dialog.test_row.get_title() == "Test recording" and dialog.test_button.get_parent() is not None
+    assert all(w.get_valign() == Gtk.Align.CENTER for w in (dialog.change_shortcut, dialog.test_button))
+    assert isinstance(dialog.test_row, Adw.ActionRow)
+    # D-1162 (L-90): narrow keeps the tabs at the top (icons above short labels, "Browser" last).
+    until(lambda: dialog.inline_tabs is not None)
+    dialog._tabs_bar.set_reveal(True)
+    assert dialog.inline_tabs.get_visible() and not dialog._tabs_bar.get_visible()
+    assert dialog.pages["browserCompanion"].get_title() == "Browser"
+    dialog._tabs_bar.set_reveal(False)
+    assert not dialog.inline_tabs.get_visible() and dialog.pages["browserCompanion"].get_title() == "Browser companion"
     assert not dialog.browser_meetings_dot.get_visible() and not dialog.automatic.get_sensitive()
     # The card's title names this container's state (no browser here); not connected, so a red dot.
     assert dialog.browser_dot.has_css_class("status-dot-off"), dialog.browser.get_title()
     assert not dialog.browser_remove.get_visible()
-    dialog.browser_set_up.emit("clicked")
+    # D-1162 (L-90): "Not set up" without a connection state still has its action on the row.
+    real_companion = dialog._companion
+    dialog._companion = lambda: (None, False, False, [])
+    dialog.render_browser()
+    assert dialog.browser.get_title() == "Not set up"
+    assert dialog.browser_add.get_visible() and dialog.browser_add.get_sensitive()
+    assert dialog.browser_add.get_label() == "Add the browser companion"
+    dialog._companion = real_companion
+    dialog.render_browser()
+    assert dialog.browser_meetings_note.emit("activate-link", "cassini:browser-companion")
     assert dialog.get_visible_page_name() == "browserCompanion"
     dialog.set_visible_page_name("recording")
     # "9 meetings · 263 MB": sized off the GTK thread, then shown under the folder path.

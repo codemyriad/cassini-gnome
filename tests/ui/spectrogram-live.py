@@ -37,6 +37,14 @@ from cassini_talk.spectro_view_model import HOLE, OFF, SILENT  # noqa: E402
 from cassini_talk.spectrogram_strip import SpectrogramStrip  # noqa: E402
 
 
+def descendants(widget):
+    child = widget.get_first_child()
+    while child is not None:
+        yield child
+        yield from descendants(child)
+        child = child.get_next_sibling()
+
+
 def until(condition, message):
     return wait_until(
         condition,
@@ -159,7 +167,7 @@ def stop_picture(window, recorder):
             "actual Stop entered saving",
         )
         page = window.recording_page
-        strips = (page.capture._controls["picture"], page.mic_level, page.others_level)
+        strips = (page.mic_level, page.others_level)
         until(
             lambda: not window.spectrograms.tick_id and all(s.has_css_class("spectro-stopping") for s in strips),
             "stopping unsubscribed and froze every strip",
@@ -302,14 +310,9 @@ with tempfile.TemporaryDirectory() as temporary:
         recorder = app.recorder
         window.back_to_library()
         until(lambda: window.recording_page is None and window.capture_header.get_mapped(), "Library header mapped")
-        picture = window.capture_header._controls["picture"]
-        enabled = os.environ.get("CASSINI_SPECTRO") != "0"
-        if enabled:
-            until(
-                lambda: picture.model and all(any(picture.model.bands[s]) for s in ("me", "others")),
-                "both committed native lanes rendered",
-            )
-            assert len(recorder.spectrogram.subscribers) == 1 and window.spectrograms.tick_id
+        # D-1162: the Library's recording pill is dot, time and Stop only; no level strip in it.
+        assert "picture" not in window.capture_header._controls
+        assert not any(isinstance(w, SpectrogramStrip) for w in descendants(window.capture_header))
         case = os.environ.get("CASSINI_SPECTRO_MEASURE")
         if case:
             measure(window, recorder, case)
@@ -325,7 +328,7 @@ with tempfile.TemporaryDirectory() as temporary:
                 lambda: page.get_mapped() and page.mic_level.texture and page.others_level.texture,
                 "real Recording row textures",
             )
-            views = (page.capture._controls["picture"], page.mic_level, page.others_level)
+            views = (page.mic_level, page.others_level)
             until(
                 lambda: all(v.texture is not None and v.model is views[0].model for v in views),
                 "all mapped strips share the current model",
@@ -333,8 +336,8 @@ with tempfile.TemporaryDirectory() as temporary:
             assert all(isinstance(v, SpectrogramStrip) and v.model is views[0].model for v in views)
             assert len(recorder.spectrogram.subscribers) == 1
             assert render_state_bytes(views) <= 128 * 1024, render_state_bytes(views)
-            assert [v.get_width() for v in views] == [50, 200, 200]
-            assert [v.get_height() for v in views] == [20, 32, 32]
+            assert [v.get_width() for v in views] == [200, 200]
+            assert [v.get_height() for v in views] == [32, 32]
             assert all(v.get_accessible_role() == Gtk.AccessibleRole.PRESENTATION for v in views)
             shot(window, "spectrogram-recording")
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
@@ -353,7 +356,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.update_status()
             assert not page.others_row.get_visible()
             until(
-                lambda: any(flag == OFF for flag in page.capture._controls["picture"].model.flags["others"]),
+                lambda: any(flag == OFF for flag in page.mic_level.model.flags["others"]),
                 "off selection reached the pill",
             )
             shot(window, "spectrogram-others-off")

@@ -29,14 +29,16 @@ def path_caption(path):
 
 
 def first_line(widget):
-    """D107 §1: on a multi-line row a switch, radio, "Built in" or button aligns to the first line."""
-    widget.set_valign(Gtk.Align.START)
-    widget.add_css_class("first-line")
+    """D-1162 (L-90): a switch, radio, "Built in" or button sits in the vertical middle of its row.
+
+    D107 §1 put them on a multi-line row's first line; Alex moved them to the middle on 25 Nov.
+    """
+    widget.set_valign(Gtk.Align.CENTER)
     return widget
 
 
 def first_line_switch(row):
-    """The switch of a multi-line Adw.SwitchRow, aligned to the row's first line (D107 §1)."""
+    """The switch of a multi-line Adw.SwitchRow, in the vertical middle of its row (D-1162)."""
     stack = [row]
     while stack:
         widget = stack.pop()
@@ -86,6 +88,8 @@ def caption(key):
 # D107 §1: settings.browser.remove.howTo is a draft Alex has not worded yet; it is said here only,
 # so it is easy to change.
 REMOVE_HOW_TO = "settings.browser.remove.howTo"
+# The Browser meetings note's "Set it up" link (D-1162): handled in the app, never opened as a URI.
+SET_UP_LINK = "cassini:browser-companion"
 
 
 class SettingsDialog(Adw.PreferencesDialog):
@@ -99,6 +103,8 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         self._cairo_shadows = CairoShadows()
         self.connect("map", self._fit_switcher_tabs)
+        self.inline_tabs = None
+        self.connect("map", self._inline_tabs)
         self.connect("unmap", lambda *_: GLib.idle_add(self._cairo_shadows.clear))
         self.saved_voices_page = None
         self.app = app
@@ -146,14 +152,52 @@ class SettingsDialog(Adw.PreferencesDialog):
                 stack.append(child)
                 child = child.get_next_sibling()
 
+    def _inline_tabs(self, *_args):
+        """D-1162 (L-90): the narrow window keeps the tabs at the top, pinned under "Preferences" while
+        the page scrolls, instead of a bar at the bottom: icons above short labels, the last reading
+        "Browser" so it isn't cut."""
+        if self.inline_tabs is not None:
+            return
+        found = {}
+        stack = [self]
+        while stack:
+            widget = stack.pop()
+            for kind in (Adw.ViewStack, Adw.ViewSwitcherBar, Adw.ToolbarView):
+                if isinstance(widget, kind):
+                    found.setdefault(kind, widget)
+            child = widget.get_first_child()
+            while child is not None:
+                stack.append(child)
+                child = child.get_next_sibling()
+        view_stack, bar = found.get(Adw.ViewStack), found.get(Adw.ViewSwitcherBar)
+        toolbar = bar.get_ancestor(Adw.ToolbarView) if bar is not None else None
+        if view_stack is None or toolbar is None:
+            return
+        # The bottom bar's own switcher (icons above labels), moved to the top as one segmented row.
+        self.inline_tabs = Adw.ViewSwitcher(
+            stack=view_stack,
+            policy=Adw.ViewSwitcherPolicy.NARROW,
+            visible=False,
+            css_classes=["preferences-inline-tabs"],
+        )
+        toolbar.add_top_bar(self.inline_tabs)
+        self._tabs_bar = bar
+        bar.connect("notify::reveal", self._narrow_tabs)
+        self._narrow_tabs()
+
+    def _narrow_tabs(self, *_args):
+        narrow = self._tabs_bar.get_reveal()
+        self.inline_tabs.set_visible(narrow)
+        self._tabs_bar.set_visible(not narrow)
+        key = "settings.tab.browserCompanion" + (".short" if narrow else "")
+        self.pages["browserCompanion"].set_title(text(key))
+
     def _recording(self):
         # L-58 (D103 §1): grouped by question.
         group = Adw.PreferencesGroup(title=text("settings.recording.group.starting"))
         self.pages["recording"].add(group)
         self.shortcut = Adw.ActionRow(title=text("settings.recording.shortcut.title"), use_markup=False)
-        self.change_shortcut = Gtk.Button(
-            label=text("settings.recording.changeShortcut"), valign=Gtk.Align.START, css_classes=["first-line"]
-        )
+        self.change_shortcut = Gtk.Button(label=text("settings.recording.changeShortcut"), valign=Gtk.Align.CENTER)
         self.change_shortcut.connect("clicked", lambda *_: self.app.configure_global_shortcut())
         self.shortcut.add_suffix(self.change_shortcut)
         group.add(self.shortcut)
@@ -164,21 +208,21 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         self.settings.bind("skip-record-first", self.explain, "active", Gio.SettingsBindFlags.INVERT_BOOLEAN)
         group.add(first_line_switch(self.explain))
-        # D107 §1: the status sits right of the heading. Not set up: "Needs the browser companion · Set it
-        # up" (the link opens Browser companion) and the switch greyed; connected: a green dot and the browser.
+        # D107 §1: connected, a green dot and the browser right of the heading. D-1162 (L-90): any other
+        # state is the group's note, one line under its title: "Needs the browser companion. Set it up"
+        # (the link opens Browser companion), with the switch greyed.
         status = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
         self.browser_meetings_dot = status_dot(connected=True)
         status.append(self.browser_meetings_dot)
         self.browser_meetings_status = Gtk.Label(xalign=1, wrap=True, css_classes=["dim-label"])
         status.append(self.browser_meetings_status)
-        self.browser_set_up = Gtk.Button(
-            label=text("settings.recording.browser.setUp"), css_classes=["link", "preferences-link"]
-        )
+        # Kept for its label and its click: the note's link activates it.
+        self.browser_set_up = Gtk.Button(label=text("settings.recording.browser.setUp"))
         self.browser_set_up.connect("clicked", lambda *_: self.set_visible_page_name("browserCompanion"))
-        status.append(self.browser_set_up)
         self.browser_meetings = Adw.PreferencesGroup(
             title=text("settings.recording.group.browser"), header_suffix=status
         )
+        self.browser_meetings_note = None
         self.pages["recording"].add(self.browser_meetings)
         self.automatic = Adw.SwitchRow(
             title=text("settings.recording.autoRecord.title"),
@@ -188,17 +232,18 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.automatic.connect("notify::active", self._automatic_changed)
         self.browser_meetings.add(first_line_switch(self.automatic))
         self.browser_meetings.set_visible(self.app.browser_companion_available)
-        # D60, D107 §1: Test recording on its own at the foot, not in a card; disabled while any
-        # recording or test runs.
-        self.test_button = Gtk.Button(label=text("settings.recording.test.button"), valign=Gtk.Align.START)
-        # Its accessible name is its text, "Test", read inside the "Test recording" group.
+        # D60: Test recording at the foot, disabled while any recording or test runs. D-1162 (L-90):
+        # every row with a button sits in a card, so Test ends on the same right edge as the others.
+        self.test_button = Gtk.Button(label=text("settings.recording.test.button"), valign=Gtk.Align.CENTER)
+        # Its accessible name is its text, "Test", read inside the "Test recording" row.
         self.test_button.connect("clicked", lambda *_: self.app.open_test_recording(self))
-        self.test_row = Adw.PreferencesGroup(
-            title=text("test.action"),
-            description=text("settings.recording.test.descriptionShort"),
-            header_suffix=self.test_button,
+        self.test_row = Adw.ActionRow(
+            title=text("test.action"), subtitle=text("settings.recording.test.descriptionShort"), use_markup=False
         )
-        self.pages["recording"].add(self.test_row)
+        self.test_row.add_suffix(self.test_button)
+        test_group = Adw.PreferencesGroup()
+        test_group.add(self.test_row)
+        self.pages["recording"].add(test_group)
         self._test_handler = self.app.sound_check.connect("changed", self.refresh_test) if self.app.sound_check else 0
 
     def _transcription(self):
@@ -334,12 +379,10 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         details.append(self.nemotron_progress)
         row.append(details)
-        self.nemotron_remove = Gtk.Button(
-            label=text("models.remove"), valign=Gtk.Align.START, css_classes=["first-line"], visible=False
-        )
+        self.nemotron_remove = Gtk.Button(label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False)
         self.nemotron_remove.connect("clicked", lambda *_: self._remove_optional(self.app.diarization_models))
         row.append(self.nemotron_remove)
-        self.nemotron_action = Gtk.Button(valign=Gtk.Align.START, css_classes=["first-line"])
+        self.nemotron_action = Gtk.Button(valign=Gtk.Align.CENTER)
         self.nemotron_action.connect("clicked", self._nemotron_action)
         row.append(self.nemotron_action)
         self.nemotron.set_child(row)
@@ -376,14 +419,10 @@ class SettingsDialog(Adw.PreferencesDialog):
         details.append(self.voice_status)
         details.append(self.voice_progress)
         row.append(details)
-        self.voice_remove = Gtk.Button(
-            label=text("models.remove"), valign=Gtk.Align.START, css_classes=["first-line"], visible=False
-        )
+        self.voice_remove = Gtk.Button(label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False)
         self.voice_remove.connect("clicked", lambda *_: self._remove_optional(self.app.voice_models))
         row.append(self.voice_remove)
-        self.voice_action = Gtk.Button(
-            label=text("models.download"), valign=Gtk.Align.START, css_classes=["first-line"]
-        )
+        self.voice_action = Gtk.Button(label=text("models.download"), valign=Gtk.Align.CENTER)
         self.voice_action.connect("clicked", self._voice_action)
         row.append(self.voice_action)
         self.recognise.set_child(row)
@@ -634,11 +673,9 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         page.add(group)
         self.folder = Adw.ActionRow(use_markup=False, subtitle_lines=0)
-        self.show_folder = Gtk.Button(
-            label=text("settings.library.show"), valign=Gtk.Align.START, css_classes=["first-line"]
-        )
+        self.show_folder = Gtk.Button(label=text("settings.library.show"), valign=Gtk.Align.CENTER)
         self.show_folder.connect("clicked", lambda *_: self._show_folder())
-        self.move = Gtk.Button(label=text("settings.library.move"), valign=Gtk.Align.START, css_classes=["first-line"])
+        self.move = Gtk.Button(label=text("settings.library.move"), valign=Gtk.Align.CENTER)
         self.move.connect("clicked", lambda *_: self._choose_folder())
         self.move.set_sensitive(True)
         self.move.set_visible(not self.app.in_flatpak)
@@ -663,9 +700,7 @@ class SettingsDialog(Adw.PreferencesDialog):
             title=text("settings.library.zip.title"), subtitle=text("settings.library.zip.subtitle"), use_markup=False
         )
         self.zip_row.set_subtitle_lines(0)
-        self.zip_button = Gtk.Button(
-            label=text("common.exportEllipsis"), valign=Gtk.Align.START, css_classes=["first-line"], sensitive=False
-        )
+        self.zip_button = Gtk.Button(label=text("common.exportEllipsis"), valign=Gtk.Align.CENTER, sensitive=False)
         self.zip_button.connect("clicked", self._export_zip)
         self.zip_row.add_suffix(self.zip_button)
         copy.add(self.zip_row)
@@ -753,29 +788,24 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.browser.add_prefix(self.browser_dot)
         setup = self.browser_setup = Gtk.Button(
             label=text("common.tryAgain"),
-            valign=Gtk.Align.START,
-            css_classes=["first-line"],
+            valign=Gtk.Align.CENTER,
             visible=False,
         )
         setup.connect("clicked", self.app.retry_browser_connection)
         self.browser.add_suffix(setup)
-        self.browser_add = Gtk.Button(
-            label=text("browser.state.addGeneric"), valign=Gtk.Align.START, css_classes=["first-line"], visible=False
-        )
-        self.browser_add.connect("clicked", lambda *_: self.app.on_companion_add(parent=self))
+        self.browser_add = Gtk.Button(label=text("browser.state.addGeneric"), valign=Gtk.Align.CENTER, visible=False)
+        self.browser_add.connect("clicked", self._add_companion)
         self.browser.add_suffix(self.browser_add)
         self.browser_add_local = Gtk.Button(
             label=text("companion.local.add"),
-            valign=Gtk.Align.START,
-            css_classes=["flat", "first-line"],
+            valign=Gtk.Align.CENTER,
+            css_classes=["flat"],
             visible=False,
         )
         self.browser_add_local.connect("clicked", lambda *_: self.app.on_companion_add(parent=self, local=True))
         self.browser.add_suffix(self.browser_add_local)
         # New in D107: Remove… opens the browser's Extensions page; Cassini can't remove the extension itself.
-        self.browser_remove = Gtk.Button(
-            label=text("settings.browser.remove"), valign=Gtk.Align.START, css_classes=["first-line"], visible=False
-        )
+        self.browser_remove = Gtk.Button(label=text("settings.browser.remove"), valign=Gtk.Align.CENTER, visible=False)
         self.browser_remove.connect("clicked", self._remove_companion)
         self.browser.add_suffix(self.browser_remove)
         group.add(self.browser)
@@ -819,12 +849,19 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.browser.set_title(title)
         set_dot(self.browser_dot, connected)
         self.browser_setup.set_visible(bool(state and state["phase"] == "failed"))
-        self.browser_add.set_visible(bool(state and state["phase"] in ("waiting", "needsBrowser")))
-        self.browser_add.set_sensitive(bool(state and state["browser"]))
+        # D-1162 (L-90): "Not set up" always has its action on the row, a neutral button. Without a
+        # connection state yet it starts the two-step set-up (add Cassini to the browser, then Connect).
+        not_set_up = state is None and self.app.browser_companion_available and not connected
+        self.browser_add.set_visible(not_set_up or bool(state and state["phase"] in ("waiting", "needsBrowser")))
+        self.browser_add.set_sensitive(not_set_up or bool(state and state["browser"]))
         browser = state.get("browser") if state else None
         # L-58: one "Add to {browser}" button; before the store listing is public it is D39's local add.
         self.browser_add.set_label(
-            text("companion.addTo", browser=browser.name) if browser and store_listing_public() else add_text(state)
+            text("browser.state.addGeneric")
+            if not_set_up
+            else text("companion.addTo", browser=browser.name)
+            if browser and store_listing_public()
+            else add_text(state)
         )
         self.browser_add_local.set_visible(bool(state and store_listing_public() and not connected))
         self.browser_add_local.set_sensitive(bool(state and state["browser"]))
@@ -834,19 +871,58 @@ class SettingsDialog(Adw.PreferencesDialog):
             self.remove_help.set_visible(False)
         self.render_browser_meetings(title, connected, set_up)
 
+    def _add_companion(self, *_args):
+        state, _connected, _set_up, _names = self._companion()
+        if state is None:
+            self.app.on_companion_setup(parent=self)
+        else:
+            self.app.on_companion_add(parent=self)
+
     def render_browser_meetings(self, title, connected, set_up):
-        # D107 §1: connected, a green dot and "Connected to Chrome" (no full stop); never set up,
-        # "Needs the browser companion · Set it up" and the switch greyed.
+        # D107 §1: connected, a green dot and "Connected to Chrome" (no full stop) right of the heading.
+        # D-1162 (L-90): otherwise the note under the title; never set up, "Needs the browser companion.
+        # Set it up" and the switch greyed.
         self.browser_meetings_dot.set_visible(connected)
+        self.browser_meetings_status.set_label(title if connected else "")
+        self.browser_meetings_status.get_parent().set_visible(connected)
         self.browser_set_up.set_visible(not set_up)
         if connected:
-            self.browser_meetings_status.set_label(title)
+            note = ""
         elif not set_up:
-            self.browser_meetings_status.set_label(text("settings.recording.group.browser.subtitle") + " ·")
+            link = GLib.markup_escape_text(self.browser_set_up.get_label())
+            note = (
+                f"{GLib.markup_escape_text(text('settings.recording.group.browser.note'))} "
+                f'<a href="{SET_UP_LINK}">{link}</a>'
+            )
         else:
-            self.browser_meetings_status.set_label(title)
+            note = GLib.markup_escape_text(title)
+        if note != (self.browser_meetings.get_description() or ""):
+            self.browser_meetings.set_description(note or None)
+            self._connect_note_link()
         self._browser_set_up = set_up
         self._sync_automatic()
+
+    def _connect_note_link(self):
+        """The group draws its note; its "Set it up" link opens Browser companion."""
+        if self.browser_meetings_note is not None:
+            return
+        stack = [self.browser_meetings]
+        while stack:
+            widget = stack.pop()
+            if isinstance(widget, Gtk.Label) and widget.get_use_markup() and SET_UP_LINK in widget.get_label():
+                self.browser_meetings_note = widget
+                widget.connect("activate-link", self._note_link)
+                return
+            child = widget.get_first_child()
+            while child is not None:
+                stack.append(child)
+                child = child.get_next_sibling()
+
+    def _note_link(self, _label, uri):
+        if uri != SET_UP_LINK:
+            return False
+        self.browser_set_up.emit("clicked")
+        return True
 
     def _sync_automatic(self):
         self.automatic.set_sensitive(getattr(self, "_browser_set_up", False) and not self._writing)

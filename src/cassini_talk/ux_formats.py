@@ -26,6 +26,17 @@ def position(ms):
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
+def meeting_position(ms, duration_ms):
+    """D-1162: times inside a meeting under an hour drop the hours (`00:04`), as on iPhone and iPad.
+
+    A meeting of an hour or longer, or one whose length is unknown, keeps HH:MM:SS (`position`).
+    """
+    if type(duration_ms) not in (int, float) or not math.isfinite(duration_ms) or not 0 <= duration_ms < 3600000:
+        return position(ms)
+    minutes, seconds = divmod(_seconds(ms), 60)
+    return f"{minutes:02d}:{seconds:02d}"
+
+
 def live_badge(ms):
     seconds = _seconds(ms)
     hours, remainder = divmod(seconds, 3600)

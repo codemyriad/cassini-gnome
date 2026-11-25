@@ -454,9 +454,14 @@ class TranscribingStatusRow(_GtkBoxBase):
             inner_toggle.update_property([Gtk.AccessibleProperty.LABEL], [a11y_label])
         self.append(self.details_button)
 
+        # D-1162: the progress bar and Stop travel together: beside the status line on a wide
+        # window, under it on a narrow one (set_narrow).
+        self.controls = Gtk.Box(spacing=10, valign=Gtk.Align.CENTER, halign=Gtk.Align.START)
         self.progress_bar = ThinProgressBar(width_px=120, height_px=4, radius_px=2.0)
-        self.append(self.progress_bar)
+        self.controls.append(self.progress_bar)
 
+        # D-1162 (L-85): Stop in the normal text colour, a plain flat button: it keeps what is
+        # transcribed so far and the meeting offers Resume, so it is neither red nor the accent.
         self.stop_button = Gtk.Button(
             label=text("common.stop"),
             css_classes=["flat", "transcribing-stop-link"],
@@ -464,7 +469,14 @@ class TranscribingStatusRow(_GtkBoxBase):
             margin_start=2,
         )
         self.stop_button.connect("clicked", lambda *_: self._trigger_stop())
-        self.append(self.stop_button)
+        self.controls.append(self.stop_button)
+        self.append(self.controls)
+
+    def set_narrow(self, narrow):
+        """D-1162: narrow puts the status line on its own, with the progress bar and Stop under it."""
+        self.set_orientation(Gtk.Orientation.VERTICAL if narrow else Gtk.Orientation.HORIZONTAL)
+        self.set_spacing(4 if narrow else 10)
+        self.set_halign(Gtk.Align.START if narrow else Gtk.Align.FILL)
 
     def _build_popover_body(self) -> None:
         body = Gtk.Box(

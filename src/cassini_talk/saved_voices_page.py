@@ -100,15 +100,6 @@ class SavedVoicesPage(Adw.NavigationPage):
             css_classes=["dim-label", "saved-voices-caption"],
         )
         self.caption_group.add(self.caption)
-        self.models_needed = Gtk.Label(
-            label=text("speakers.rememberVoice.modelsNeeded"),
-            wrap=True,
-            xalign=0,
-            margin_top=6,
-            visible=False,
-            css_classes=["dim-label", "caption"],
-        )
-        self.caption_group.add(self.models_needed)
         page.add(self.caption_group)
         self.error_group = Adw.PreferencesGroup(visible=False)
         self.error = Adw.ActionRow(
@@ -124,7 +115,7 @@ class SavedVoicesPage(Adw.NavigationPage):
         self.everyone = Gtk.Button(
             label=text("savedVoices.forgetEveryone"),
             halign=Gtk.Align.START,
-            css_classes=["saved-voices-forget-all"],
+            css_classes=["flat", "saved-voices-forget-all"],
         )
         self.everyone.connect("clicked", lambda *_: self.confirm(None))
         self.forget_group.add(self.everyone)
@@ -162,16 +153,6 @@ class SavedVoicesPage(Adw.NavigationPage):
         )
         self.empty_add_voice.connect("clicked", lambda *_: self.enroll())
         empty_box.append(self.empty_add_voice)
-        self.empty_models_needed = Gtk.Label(
-            label=text("speakers.rememberVoice.modelsNeeded"),
-            wrap=True,
-            justify=Gtk.Justification.CENTER,
-            max_width_chars=44,
-            margin_top=4,
-            visible=False,
-            css_classes=["dim-label", "caption"],
-        )
-        empty_box.append(self.empty_models_needed)
         self.empty_group.add(empty_box)
         page.add(self.empty_group)
         # Bottom privacy footnote: one centred line with the shield icon, same with voices and empty.
@@ -196,6 +177,8 @@ class SavedVoicesPage(Adw.NavigationPage):
         toolbar.set_bottom_bar_style(Adw.ToolbarStyle.FLAT)
         toolbar.add_bottom_bar(self.privacy_group)
         self.enroll_dialog = None
+        self.download_question = None
+        self._enroll_when_ready = False
         self.rename_dialog = None
         toolbar.set_content(page)
         self.set_child(toolbar)
@@ -204,6 +187,10 @@ class SavedVoicesPage(Adw.NavigationPage):
 
     def can_enroll(self):
         return self.app.recognition_ready()
+
+    def can_offer_enroll(self):
+        """D-1162: Add a voice… stays clickable while the voice models can still be downloaded."""
+        return self.can_enroll() or (self.app.diarization_models is not None and self.app.voice_models is not None)
 
     def refresh(self):
         if self.closed:
@@ -223,7 +210,7 @@ class SavedVoicesPage(Adw.NavigationPage):
         )
         has_voices = bool(voices)
         writable = not state["readOnly"] and not self.busy
-        ready = self.can_enroll()
+        offer = self.can_offer_enroll()
         self.newer_group.set_visible(state["readOnly"])
         self.newer.set_visible(state["readOnly"])
         stale_names = [voice["name"] for voice in voices if stale(voice)]
@@ -240,10 +227,12 @@ class SavedVoicesPage(Adw.NavigationPage):
         self.empty_group.set_visible(not has_voices)
         self.empty.set_visible(not has_voices)
         self.everyone.set_sensitive(has_voices and writable)
-        self.add_voice.set_sensitive(ready and writable)
-        self.empty_add_voice.set_sensitive(ready and writable)
-        self.models_needed.set_visible(has_voices and not ready)
-        self.empty_models_needed.set_visible(not has_voices and not ready)
+        self.add_voice.set_sensitive(offer and writable)
+        self.empty_add_voice.set_sensitive(offer and writable)
+        if self._enroll_when_ready and self.can_enroll() and writable:
+            # The download Add a voice… asked for has finished: go on to the phrase.
+            self._enroll_when_ready = False
+            GLib.idle_add(self._enroll_after_download)
         if signature != self._signature:
             self._signature = signature
             for row in self.rows.values():
@@ -256,10 +245,43 @@ class SavedVoicesPage(Adw.NavigationPage):
             self._load_samples(voices)
         self._tick()
 
+    def _enroll_after_download(self):
+        if not self.closed and self.get_mapped():
+            self.enroll()
+        return False
+
+    def offer_download(self):
+        """D-1162: without the voice models, Add a voice… offers their download first, then the phrase.
+
+        The same question and answer as the one voices question (D103 §3): Remember voices asks for
+        both optional models; Not now and Escape download nothing.
+        """
+        from .voice_question import VoiceQuestion
+
+        if self.download_question is not None:
+            return
+        question = self.download_question = VoiceQuestion(self.app, ask_once=False)
+
+        def answered(_dialog, response):
+            if response == "enable":
+                self._enroll_when_ready = True
+
+        def closed(*_args):
+            if self.download_question is question:
+                self.download_question = None
+
+        question.connect("response", answered)
+        question.connect("closed", closed)
+        question.present(self.settings)
+
     def enroll(self):
         from .voice_enroll_dialog import VoiceEnrollDialog
 
-        if not self.can_enroll() or self.busy or self.app.voice_store.snapshot()["readOnly"]:
+        if self.busy or self.app.voice_store.snapshot()["readOnly"]:
+            return
+        if not self.can_enroll():
+            if self.can_offer_enroll():
+                self.offer_download()
             return
         self._stop_sample()
         self.enroll_dialog = VoiceEnrollDialog(self.settings)
