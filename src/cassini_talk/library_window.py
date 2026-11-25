@@ -937,13 +937,12 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _row_menu(self, row, x, y):
         self.rows.select_row(row)
+        # D-1162: the same order as the meeting ⋮ menu: Star, Rename…, Export…, then Move to Trash.
         menu = Gio.Menu()
+        if self.star_allowed(row.meeting):
+            menu.append(text("meeting.unstar" if self.is_starred(row.meeting) else "meeting.star"), "win.toggle-star")
         menu.append_item(self.rename_item())
         menu.append(text("common.exportEllipsis"), "win.export")
-        if self.star_allowed(row.meeting):
-            star = Gio.Menu()
-            star.append(text("meeting.unstar" if self.is_starred(row.meeting) else "meeting.star"), "win.toggle-star")
-            menu.append_section(None, star)
         if self.get_application().meeting_trash.allowed(row.meeting, self) or (
             row.meeting.published_file is not None and not row.meeting.metadata_editable
         ):

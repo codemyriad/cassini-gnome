@@ -121,6 +121,7 @@ class MeetingPage(Adw.NavigationPage):
         self.bound = {}
         self._signature = None
         self._star_menu_state = None
+        self._more_menu_inputs = None
         self._reading_index = -1
         self._follow_rows = FollowRows(())
         self._turns = ()
@@ -1389,6 +1390,31 @@ class MeetingPage(Adw.NavigationPage):
             self.star_menu.remove_all()
             if allowed:
                 self.star_menu.append(wording, "win.toggle-star")
+            if self._more_menu_inputs is not None:
+                self._fill_more_menu()
+
+    def _fill_more_menu(self):
+        """D-1162: one order in both meeting menus, as on the other apps: Star, Rename…, Name the
+        speakers, Export…, Recording details…, then Move to Trash on its own."""
+        name_speakers, undo, trash = self._more_menu_inputs
+        menu = self.more_menu
+        menu.remove_all()
+        allowed, starred = self._star_menu_state or (False, False)
+        if allowed:
+            menu.append(text("meeting.unstar" if starred else "meeting.star"), "win.toggle-star")
+        menu.append_item(self.window.rename_item())
+        if name_speakers:
+            menu.append(text("meeting.nameSpeakers"), "win.name-speakers")
+        menu.append(text("common.exportEllipsis"), "win.export")
+        menu.append(text("details.menu"), "win.recording-details")
+        if undo:
+            menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
+        if trash:
+            section = Gio.Menu()
+            from .meeting_trash import menu_item
+
+            section.append_item(menu_item())
+            menu.append_section(None, section)
 
     def _clock(self, ms, meeting=None):
         """Turn and player times: `00:04` in a meeting under an hour, `01:02:05` from an hour on (D-1162)."""
@@ -1515,22 +1541,12 @@ class MeetingPage(Adw.NavigationPage):
             self._listening_changed()
             return
         self._signature = signature
-        self.more_menu.remove_all()
-        self.more_menu.append_item(self.window.rename_item())
-        if meeting.speakers and (meeting.metadata_editable or meeting.published_file is not None):
-            self.more_menu.append(text("meeting.nameSpeakers"), "win.name-speakers")
-        self.more_menu.append(text("details.menu"), "win.recording-details")
-        self.more_menu.append(text("common.exportEllipsis"), "win.export")
-        if undo:
-            self.more_menu.append(text("meeting.undoMerge"), "win.undo-speaker-merge")
-        # Rename stays first (HARMONY); the per-device star sits above Trash.
-        self.more_menu.append_section(None, self.star_menu)
-        if trash_allowed or (meeting.published_file is not None and not meeting.metadata_editable):
-            section = Gio.Menu()
-            from .meeting_trash import menu_item
-
-            section.append_item(menu_item())
-            self.more_menu.append_section(None, section)
+        self._more_menu_inputs = (
+            bool(meeting.speakers and (meeting.metadata_editable or meeting.published_file is not None)),
+            undo,
+            bool(trash_allowed or (meeting.published_file is not None and not meeting.metadata_editable)),
+        )
+        self._fill_more_menu()
 
         while child := self.speakers.get_first_child():
             self.speakers.remove(child)

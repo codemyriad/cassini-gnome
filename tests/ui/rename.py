@@ -84,8 +84,10 @@ def labels(widget):
 def choose_rename(popover):
     until(popover.get_mapped)
     buttons = [w for w in widgets(popover) if w.__gtype__.name == "GtkModelButton"]
-    assert "Rename…" in labels(buttons[0]), "Rename must be first"
-    item = buttons[0]
+    # D-1162: one order in both meeting menus: Star (when it can be starred), then Rename….
+    first = 1 if any(label in ("Star", "Unstar") for label in labels(buttons[0])) else 0
+    assert "Rename…" in labels(buttons[first]), "Rename must follow Star"
+    item = buttons[first]
     until(lambda: item.get_mapped() and item.get_width() > 0)
     assert item.is_sensitive()
     assert item.activate()
