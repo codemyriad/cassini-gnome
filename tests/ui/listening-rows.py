@@ -572,7 +572,7 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog = page.speakers_dialog
     window.monitor.close()
     row, play, when = page._speaker_rows["voice-12"]
-    assert when.endswith("00:00:34")
+    assert when.endswith("00:34")  # D-1162: no hours under an hour
     assert isinstance(row, Gtk.Button) and play is row
     target_turn = next(t for t in page.meeting.turns if t.speaker == "voice-12")
     page.list.scroll_to(target_turn.index, Gtk.ListScrollFlags.NONE, None)

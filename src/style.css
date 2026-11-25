@@ -827,3 +827,13 @@ menubutton.edge-button > button:checked,
 .library-window .library-sidebar .library-header { padding: 0 4px; }
 /* D-1162: the recording pill fits its contents (dot, time, Stop), like the approved Mac pill. */
 .library-window .live-pill .static-stop { margin-left: 4px; padding: 0 15px; }
+
+/* D-1162: the narrow meeting has 16 px side margins instead of 48, in line with the player, so the
+   title, banner, find field and transcript get the width; the top bar's back arrow and its buttons on
+   the right line up with the same edge (10 px + the bar's 6 px). */
+.meeting-pane.narrow .meeting-full-header { padding-left: 16px; padding-right: 16px; }
+.meeting-pane.narrow .meeting-find-row { padding-left: 16px; padding-right: 16px; }
+.meeting-pane.narrow .meeting-transcript { padding-left: 16px; padding-right: 16px; }
+.meeting-pane.narrow .meeting-topbar { padding-left: 10px; padding-right: 10px; }
+/* D-1162: speaker names sit about 8 px under the date. */
+.inline-speaker-button { min-height: 0; padding-top: 0; padding-bottom: 0; }

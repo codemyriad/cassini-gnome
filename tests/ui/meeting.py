@@ -134,6 +134,23 @@ with tempfile.TemporaryDirectory() as temporary:
     page = window.meeting_page
     assert page._exact
     until(lambda: page.list.ready and len(page.bound) == 5 and window.player._prerolled)
+    # D-1162: opening a meeting doesn't put the cursor in Find; the wide window keeps the name column.
+    assert not page.find_entry.has_focus() and not page.narrow
+    assert page.bound[0][2].get_first_child().get_size_request()[0] == 120
+    # D-1162: the narrow window puts the name and time above each turn, with 16 px margins.
+    page._set_narrow(True)
+    until(lambda: page.list.ready and 0 in page.bound)
+    row = page.bound[0][2]
+    assert row.body.get_orientation() == Gtk.Orientation.VERTICAL and page.outer.has_css_class("narrow")
+    assert page.lines.get_margin_start() == 16
+    page._set_narrow(False)
+    until(
+        lambda: (
+            page.list.ready
+            and 0 in page.bound
+            and page.bound[0][2].body.get_orientation() == Gtk.Orientation.HORIZONTAL
+        )
+    )
     assert all(v in labels(page.speakers) for v in ["Marta", "Giulia Rossi", "Speaker 3"])
     # Imported recognition metadata has no corresponding local saved voice.
     assert "auto" not in labels(page.speakers)
@@ -170,7 +187,8 @@ with tempfile.TemporaryDirectory() as temporary:
     current = next(row for row in page.bound.values() if row[0].speaker == "guest")
     assert "background=" in current[1].get_label()
     assert 'alpha="60%"' in page.bound[3][1].get_label()
-    assert page.elapsed.get_label() == "00:03:08" and page.total.get_label() == "00:47:05"
+    # D-1162: a meeting under an hour drops the hours in its times.
+    assert page.elapsed.get_label() == "03:08" and page.total.get_label() == "47:05"
     assert isinstance(page.rate_button, Gtk.MenuButton)
     window.activate_action("win.rate", GLib.Variant("s", "1.5"))
     assert window.player.rate == 1.5 and page.rate_button.get_label() == "1.5×"

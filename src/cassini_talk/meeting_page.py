@@ -73,12 +73,44 @@ class TurnItem(GObject.Object):
         self.turn = turn
 
 
+NARROW_PX = 560  # D-1162: below this the meeting uses its narrow layout (as the Recording page).
+
+
+class _WidthWatch(Gtk.Widget):
+    """Reports its allocated width on the next idle; draws nothing and takes no height."""
+
+    def __init__(self, changed):
+        super().__init__(hexpand=True, can_target=False, accessible_role=Gtk.AccessibleRole.PRESENTATION)
+        self._changed = changed
+        self._width = None
+        self._source = 0
+
+    def do_measure(self, orientation, for_size):
+        return 0, 0, -1, -1
+
+    def do_size_allocate(self, width, height, baseline):
+        if width != self._width:
+            self._width = width
+            if not self._source:
+                self._source = GLib.idle_add(self._report)
+
+    def _report(self):
+        self._source = 0
+        if self._width:
+            self._changed(self._width)
+        return GLib.SOURCE_REMOVE
+
+
 class MeetingPage(Adw.NavigationPage):
     __gsignals__ = {"rows-rebuilt": (GObject.SignalFlags.RUN_LAST, None, ())}
 
     def __init__(self, window, meeting):
         super().__init__(title=meeting.title)
         self.window, self.meeting = window, meeting
+        self.narrow = False
+        # D-1162: opening a meeting never puts the cursor in Find; Ctrl+F still goes straight there.
+        self._find_requested = False
+        self._first_focus_handler = window.connect("notify::focus-widget", self._first_focus)
         self.speakers_dialog = None
         self._speaker_future = None
         self._merge_toast = None
@@ -121,8 +153,11 @@ class MeetingPage(Adw.NavigationPage):
         self._find_focused = False
         self.settings = Gio.Settings.new(window.get_application().settings_schema)
 
-        outer = box(hexpand=True, vexpand=True, css_classes=["meeting-pane"])
+        outer = self.outer = box(hexpand=True, vexpand=True, css_classes=["meeting-pane"])
         self.set_child(outer)
+        # D-1162: the narrow window puts each turn's name and time above its text, with 16 px margins.
+        # A zero-height watcher, not a breakpoint bin: the listening bar inside has its own breakpoints.
+        outer.append(_WidthWatch(lambda width: self._set_narrow(width < NARROW_PX)))
 
         self.headline = Adw.WindowTitle()
         self.top_bar = Adw.HeaderBar(
@@ -241,7 +276,8 @@ class MeetingPage(Adw.NavigationPage):
         self.subtitle_label = label("", "meeting-subtitle", xalign=0, wrap=True)
         self.full_header.append(self.subtitle_label)
 
-        self.speakers = wrap_box(child_spacing=16, line_spacing=8, margin_top=2)
+        # D-1162: the names sit about 8 px under the date, as agreed on iPad.
+        self.speakers = wrap_box(child_spacing=16, line_spacing=8, margin_top=0)
         self.speakers.update_property([Gtk.AccessibleProperty.LABEL], [text("meeting.speakersPane.a11y")])
         self.speakers_scroller = Gtk.ScrolledWindow(
             hscrollbar_policy=Gtk.PolicyType.NEVER,
@@ -520,6 +556,9 @@ class MeetingPage(Adw.NavigationPage):
         focus.connect("enter", lambda *_: self._set_find_focused(True))
         focus.connect("leave", lambda *_: self._set_find_focused(False))
         self.find_entry.add_controller(focus)
+        click = Gtk.GestureClick(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        click.connect("pressed", lambda *_: setattr(self, "_find_requested", True))
+        self.find_bar.add_controller(click)
         self.find_entry.connect("changed", self._on_find_changed)
 
         keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
@@ -563,9 +602,46 @@ class MeetingPage(Adw.NavigationPage):
         (self.find_bar.add_css_class if self._find_focused else self.find_bar.remove_css_class)("focused")
         self._sync_find_chrome()
 
+    def _first_focus(self, window, _pspec):
+        """The first focus move after opening: if it lands in Find on its own, move it to Play."""
+        self._stop_first_focus()
+        focus = window.get_focus()
+        if focus is not None and not self._find_requested and focus.is_ancestor(self.find_bar):
+            GLib.idle_add(self._unfocus_find)
+
+    def _unfocus_find(self):
+        focus = self.window.get_focus()
+        if not self._closed and not self._find_requested and focus is not None and focus.is_ancestor(self.find_bar):
+            self._restore_imported_toast_focus()
+        return GLib.SOURCE_REMOVE
+
+    def _stop_first_focus(self):
+        if self._first_focus_handler:
+            self.window.disconnect(self._first_focus_handler)
+            self._first_focus_handler = 0
+
+    def _set_narrow(self, narrow):
+        """D-1162: narrow puts name and time above each turn; margins go from 48 px to 16 px."""
+        if narrow == self.narrow:
+            return
+        self.narrow = narrow
+        (self.outer.add_css_class if narrow else self.outer.remove_css_class)("narrow")
+        side = 16 if narrow else 48
+        for widget in (self.recording_notice, self.lines, self._companion):
+            widget.set_margin_start(side)
+            widget.set_margin_end(side)
+        if self._exact:
+            self.list.clear_rows()
+            self.list.invalidate()
+        else:
+            model = self.list.get_model()
+            self.list.set_model(None)
+            self.list.set_model(model)
+
     def focus_find(self):
         if not self.find_row.get_visible():
             return False
+        self._find_requested = True
         self.find_entry.grab_focus()
         current = self.find_entry.get_text()
         if current:
@@ -748,7 +824,7 @@ class MeetingPage(Adw.NavigationPage):
         self.transport_buttons = [self.play]
         bar.append(self.play)
 
-        self.elapsed = label(fmt.position(0), "player-time", valign=Gtk.Align.CENTER)
+        self.elapsed = label(self._clock(0), "player-time", valign=Gtk.Align.CENTER)
         bar.append(self.elapsed)
 
         self.seek = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, max(1, self.meeting.duration_ms or 1), 100)
@@ -760,7 +836,7 @@ class MeetingPage(Adw.NavigationPage):
         self.timeline = ListeningTimeline(self, self.seek)
         bar.append(self.timeline)
 
-        self.total = label(fmt.position(self.meeting.duration_ms or 0), "player-time", valign=Gtk.Align.CENTER)
+        self.total = label(self._clock(self.meeting.duration_ms or 0), "player-time", valign=Gtk.Align.CENTER)
         bar.append(self.total)
 
         rates = Gio.Menu()
@@ -989,9 +1065,18 @@ class MeetingPage(Adw.NavigationPage):
         item.set_child(self._build_row(turn))
 
     def _build_row(self, turn, *, register=True):
-        row = ExactTurnRow() if self._exact else Gtk.Box(spacing=16, margin_bottom=24)
+        # D-1162: narrow puts the name and time above the turn, and the text takes the full width.
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2) if self.narrow else Gtk.Box(spacing=16)
+        if self._exact:
+            row = ExactTurnRow(body=body)
+        else:
+            row = body
+            row.set_margin_bottom(24)
         row._turn = turn
-        names = box(5, width_request=120, valign=Gtk.Align.START)
+        if self.narrow:
+            names = Gtk.Box(spacing=8, valign=Gtk.Align.START)
+        else:
+            names = box(5, width_request=120, valign=Gtk.Align.START)
         caption = label("", "heading", xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=16)
         name = Gtk.Button(
             child=caption,
@@ -1004,14 +1089,14 @@ class MeetingPage(Adw.NavigationPage):
         names.append(row._over_label)
         row._auto_tag = None
         time = Gtk.Button(
-            label=fmt.position(turn.start_ms),
+            label=self._clock(turn.start_ms),
             css_classes=["flat", "small", "transcript-time"],
             halign=Gtk.Align.START,
             tooltip_text=text("player.playFromHere"),
             sensitive=self._can_listen,
         )
         time.update_property(
-            [Gtk.AccessibleProperty.LABEL], [text("player.playFromHere") + ", " + fmt.position(turn.start_ms)]
+            [Gtk.AccessibleProperty.LABEL], [text("player.playFromHere") + ", " + self._clock(turn.start_ms)]
         )
         time.connect("clicked", lambda *_: self.play_from(turn.start_ms))
         names.append(time)
@@ -1046,7 +1131,7 @@ class MeetingPage(Adw.NavigationPage):
     def _set_probe_turn(self, turn, probe, markup):
         probe.get_last_child().set_markup(markup)
         self._refresh_header(turn, probe)
-        probe.get_first_child().get_last_child().set_label(fmt.position(turn.start_ms))
+        probe.get_first_child().get_last_child().set_label(self._clock(turn.start_ms))
 
     def _refresh_header(self, turn, row):
         # Idle callbacks run outside a caller's temporary locale context.
@@ -1084,7 +1169,7 @@ class MeetingPage(Adw.NavigationPage):
             return
         row._header_state = state
         if self._exact:
-            row.update_property([Gtk.AccessibleProperty.LABEL], [speaker.name + ", " + fmt.position(turn.start_ms)])
+            row.update_property([Gtk.AccessibleProperty.LABEL], [speaker.name + ", " + self._clock(turn.start_ms)])
         caption = name.get_child() if interactive else name
         slot = speaker_slot(speaker)
         for idx in range(7):
@@ -1115,7 +1200,7 @@ class MeetingPage(Adw.NavigationPage):
             row._auto_tag = None
         time.set_tooltip_text(time_tip)
         if isinstance(time, Gtk.Button):
-            time.update_property([Gtk.AccessibleProperty.LABEL], [time_tip + ", " + fmt.position(turn.start_ms)])
+            time.update_property([Gtk.AccessibleProperty.LABEL], [time_tip + ", " + self._clock(turn.start_ms)])
 
     def _queue_transcript_headers(self, signature):
         if signature == self._header_signature:
@@ -1300,6 +1385,10 @@ class MeetingPage(Adw.NavigationPage):
             if allowed:
                 self.star_menu.append(wording, "win.toggle-star")
 
+    def _clock(self, ms, meeting=None):
+        """Turn and player times: `00:04` in a meeting under an hour, `01:02:05` from an hour on (D-1162)."""
+        return fmt.meeting_position(ms, (meeting or self.meeting).duration_ms)
+
     def update(self, meeting):
         self._updating_transcript = True
         self._updating_rows = True
@@ -1330,7 +1419,7 @@ class MeetingPage(Adw.NavigationPage):
         self.rename_button.set_visible(bool(self.window.rename_allowed(meeting)))
         self.sync_star()
 
-        self.total.set_label(fmt.position(meeting.duration_ms or 0))
+        self.total.set_label(self._clock(meeting.duration_ms or 0, meeting))
         app = self.window.get_application()
         writing = getattr(app, "writing_available", True)
         stopping = app.transcription_stopping(meeting) if hasattr(app, "transcription_stopping") else False
@@ -1549,7 +1638,7 @@ class MeetingPage(Adw.NavigationPage):
         turns = self.window.listen.turns_of(speaker.id)
         when = ""
         if turns:
-            position = fmt.position(turns[0].start_ms)
+            position = self._clock(turns[0].start_ms)
             when = (
                 text("speakers.when.once", position=position)
                 if len(turns) == 1
@@ -1927,7 +2016,7 @@ class MeetingPage(Adw.NavigationPage):
             self._reading_index = index
             self.list.scroll_to(index, Gtk.ListScrollFlags.NONE, None)
         self._updating = True
-        self.elapsed.set_label(fmt.position(position_ms))
+        self.elapsed.set_label(self._clock(position_ms))
         self.seek.set_value(position_ms)
         self._updating = False
         self.play.set_icon_name("media-playback-pause-symbolic" if playing_here else "media-playback-start-symbolic")
@@ -1973,6 +2062,7 @@ class MeetingPage(Adw.NavigationPage):
 
     def close(self):
         self._closed = True
+        self._stop_first_focus()
         if self._voice_question_idle:
             GLib.source_remove(self._voice_question_idle)
             self._voice_question_idle = 0
