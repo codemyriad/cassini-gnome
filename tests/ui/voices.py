@@ -193,7 +193,7 @@ with tempfile.TemporaryDirectory() as temporary:
             == "A different person"
         )
     dialog.remember.set_active(False)
-    assert dialog.retry is None and dialog.save.get_label() == "Save name"
+    assert dialog.retry is None and dialog.save.get_label() == "Save"  # D112: was "Save name"
     dialog.save.emit("clicked")
     until(lambda: dialog.closed)
     # A same-name person can explicitly become a separate private profile.
