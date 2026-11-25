@@ -117,6 +117,16 @@ SHOTS = []
 def shoot(window, stem, settle=0.6):
     """Let animations, idle loads and the paint finish, then save the window."""
     idle(settle)
+    # D-1162: repaint every pixel before the grab. Under Xvfb's software GL a fragment of the screen
+    # shown before could survive the partial redraw: the "stray dot" after the last speaker in the
+    # Imported recording shot was the underline of the previous meeting's "Speaker 3". A frame
+    # with the window's content hidden makes the next frame a full repaint.
+    content = window.get_child()
+    content.set_opacity(0.0)
+    hidden = []
+    window.add_tick_callback(lambda *_: (hidden.append(True), len(hidden) < 2)[1])
+    until(lambda: len(hidden) >= 2)
+    content.set_opacity(1.0)
     ticks = []
     window.add_tick_callback(lambda *_: (ticks.append(True), len(ticks) < 4)[1])
     window.queue_draw()

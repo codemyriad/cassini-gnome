@@ -121,6 +121,9 @@ class RecordingPage(Adw.NavigationPage):
             draft.get("title") or meeting.title,
             "meeting-title",
             xalign=0,
+            wrap=True,
+            wrap_mode=Pango.WrapMode.WORD_CHAR,
+            lines=2,
             ellipsize=Pango.EllipsizeMode.END,
         )
         self.set_title(self.headline.get_label())

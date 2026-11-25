@@ -255,10 +255,14 @@ class MeetingPage(Adw.NavigationPage):
 
         self.full_header = box(6, css_classes=["meeting-full-header"])
         title_row = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
+        # D-1162: a long title wraps to two lines (narrow window) instead of being cut on the first.
         self.title_label = label(
             "",
             "meeting-title",
             xalign=0,
+            wrap=True,
+            wrap_mode=Pango.WrapMode.WORD_CHAR,
+            lines=2,
             ellipsize=Pango.EllipsizeMode.END,
         )
         title_row.append(self.title_label)

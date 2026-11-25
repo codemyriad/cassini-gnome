@@ -136,6 +136,8 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: page.list.ready and len(page.bound) == 5 and window.player._prerolled)
     # D-1162: opening a meeting doesn't put the cursor in Find; the wide window keeps the name column.
     assert not page.find_entry.has_focus() and not page.narrow
+    # D-1162: a long title wraps to two lines instead of being cut on the first.
+    assert page.title_label.get_wrap() and page.title_label.get_lines() == 2
     assert page.bound[0][2].get_first_child().get_size_request()[0] == 120
     # D-1162: the narrow window puts the name and time above each turn, with 16 px margins.
     page._set_narrow(True)
