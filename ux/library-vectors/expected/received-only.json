@@ -2,7 +2,7 @@
   "scan": "ok",
   "groups": [
     {
-      "title": "Friday 23 October",
+      "title": "Date unknown",
       "meetings": [
         {
           "id": "a0000000-0000-4000-8000-000000000006",
@@ -14,7 +14,7 @@
           "error": null,
           "badge": "Imported",
           "title": "Onboarding walkthrough",
-          "startMs": 1792760400000,
+          "startMs": null,
           "durationMs": 2040000,
           "names": [
             "Silvio",

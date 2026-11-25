@@ -6,9 +6,10 @@ empty. It builds `OUT/<case>/root` and `activity.json`; it never reads or writes
 `expected/`. Every case uses now=1793107080000, Europe/Rome (27 October 2026,
 14:18). Activity maps canonical IDs to recording/saving; readers normalise case.
 
-Per D7 the suite has 22 cases: main + one combined case per rule group R1–R9,
+Per D7 the suite originally had 22 cases (main + one combined case per rule group R1–R9,
 plus empty, first-record and received-only, plus the nine shared test 8 cases (T8,
-below). The longer rare-edge checklist is
+below)), plus three D112 scanner cases (`d112-unknown-date`, `d112-user-set-date`,
+`d112-legacy-import-time-date`, 25 cases total). The longer rare-edge checklist is
 not a release gate. `cases.json` is an explicit filesystem recipe. Expected
 JSON files were written from the rules, using literal values with serialization
 helpers, before updating or running the GNOME scanner. No app output has been

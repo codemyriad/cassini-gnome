@@ -157,9 +157,11 @@ playback failed, microphone permission declined, Connect failed, device changed 
 - The time zone is the system time zone. The vectors pass `tz` explicitly.
 - Position in a meeting: `00:14:32`. Always HH:MM:SS, zero-padded, floored to whole seconds. This replaces GNOME's
   m:ss and the Mac's formatClock.
-  - Exception, Mac player only (`D108` §10): elapsed and length read `0:01` and `35:54`, minutes unpadded, and
-    `h:mm:ss` for a meeting of an hour or longer. Turn times, search contexts and copied positions keep HH:MM:SS.
-    GNOME keeps HH:MM:SS in its player until Alex says whether it follows.
+  - Exception, Mac player (`D108` §10): elapsed and length read `0:01` and `35:54`, minutes unpadded, and
+    `h:mm:ss` for a meeting of an hour or longer.
+  - Exception, GNOME player (`D112`, `D-1162` Meeting row): elapsed and length omit hours for meetings under an hour
+    (`00:04`, not `00:00:04`), and use `HH:MM:SS` from one hour on.
+  - Turn times, search contexts and copied positions keep `HH:MM:SS` on both desktop apps.
 - Live timer:
   - big timer and notification: `00:12:48`
   - badge and header pill: `12:48`, minutes unpadded, `1:02:48` from one hour on.

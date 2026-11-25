@@ -87,6 +87,11 @@
       "const": true,
       "$comment": "D25 amendment (GNOME question). Optional; version stays 1. Written only by an explicit Clear in the Speakers dialog, only with provenance unnamed, and removed when a nonempty name is saved. While present, automatic recognition (AUTO) never names this speaker; SUGGESTED rows (Likely) may still be shown. Readers that don't know it ignore it."
      },
+     "background": {
+      "type": "boolean",
+      "const": true,
+      "$comment": "D112 (L-86). Optional; version stays 1. Absent means not a background voice; switching it off removes the key (never false). The speaker's name and provenance are kept as they are so switching back restores them; no voiceprint is enrolled while it is on; speakerMerges and transcript bodies are unchanged. Readers leave background speakers out of the header names row, Library card names, Search, text/subtitle exports and Copy, and fold consecutive background turns into '{n} background voices hidden'. Older readers ignore it."
+     },
      "label": {
       "type": "string",
       "minLength": 1,
@@ -580,7 +585,30 @@
   "published": {
    "type": "boolean",
    "description": "S-12 §4.6: true once the meeting's Cassini file was durably published."
+  },
+  "startedAt": {
+   "type": "string",
+   "format": "date-time",
+   "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|\\+(?:(?:0[0-9]|1[0-3]):[0-5][0-9]|14:00)|-(?:00:(?:0[1-9]|[1-5][0-9])|(?:0[1-9]|1[01]):[0-5][0-9]|12:00))$",
+   "not": {
+    "pattern": "-00:00$"
+   },
+   "description": "D112 (L-87, aligned with A4 and S-12 Q17): meeting start time as RFC 3339 with explicit UTC offset (-12:00..+14:00 or Z, never -00:00, boundary minutes 00 only), seconds floored. Paired with startedAtSource. Never invented from import, copy, or file mtime."
+  },
+  "startedAtSource": {
+   "enum": [
+    "user"
+   ],
+   "description": "D112 (L-87): where startedAt came from. 'user' means set by the person in Set date and time; wins over every other start timestamp."
   }
+ },
+ "dependentRequired": {
+  "startedAt": [
+   "startedAtSource"
+  ],
+  "startedAtSource": [
+   "startedAt"
+  ]
  },
  "required": [
   "version",

@@ -34,6 +34,7 @@ KEYWORDS = ANNOTATIONS | {
     "then",
     "else",
     "not",
+    "dependentRequired",
 }
 UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")
 
@@ -73,6 +74,12 @@ def valid(value, schema=SCHEMA):
         if not set(schema.get("required", ())) <= value.keys():
             return False
         if any(key in value and not valid(value[key], child) for key, child in schema.get("properties", {}).items()):
+            return False
+        # D112: startedAt and startedAtSource travel as a pair.
+        if any(
+            key in value and not set(needed) <= value.keys()
+            for key, needed in schema.get("dependentRequired", {}).items()
+        ):
             return False
     if isinstance(value, list):
         if len(value) > schema.get("maxItems", math.inf):

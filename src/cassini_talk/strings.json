@@ -9647,34 +9647,37 @@
   },
   {
    "id": "speakers.saveName",
-   "en": "Save name",
+   "en": "Save",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "role": "button",
    "boards": [
     "Speakers",
-    "Speakers-mac"
+    "Speakers-mac",
+    "Feature-BackgroundVoices"
    ],
    "milestone": "UX16",
-   "note": "Accent-filled default (suggested) button, trailing in the footer. The secondary button is common.cancel.",
+   "note": "D112 (L-86): was “Save name”. Accent-filled default (suggested) button, trailing in the footer; applies all pending speaker changes (names and background voices) at once. The secondary button is common.cancel.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Salva il nome"
+     "text": "Salva"
     },
     "fr": {
-     "text": "Enregistrer le nom"
+     "text": "Enregistrer"
     },
     "es": {
-     "text": "Guardar nombre"
+     "text": "Guardar"
     },
     "pt-BR": {
-     "text": "Salvar nome"
+     "text": "Salvar"
     },
     "pt-PT": {
-     "text": "Guardar nome"
+     "text": "Guardar"
     }
    }
   },
@@ -12094,12 +12097,15 @@
    "en": "Undo",
    "role": "button",
    "boards": [
-    "TrashAfter"
+    "TrashAfter",
+    "Feature-BackgroundVoices"
    ],
-   "note": "Coordinator (D29). Toast action on GNOME. On the Mac the Edit menu item reads \"Undo Move to Trash\" (system-provided from the undo action name common.moveToTrash).",
+   "note": "Coordinator (D29). Toast action on GNOME. On the Mac the Edit menu item reads \"Undo Move to Trash\" (system-provided from the undo action name common.moveToTrash). D112 (L-86): also used on all four apps for the speaker-changes / background-voice Undo toast.",
    "platforms": [
     "gnome",
-    "mac"
+    "mac",
+    "ios",
+    "android"
    ],
    "milestone": "D29",
    "status": "harmony",
@@ -37718,6 +37724,529 @@
     },
     "pt-PT": {
      "text": "Nada foi gravado dos outros"
+    }
+   }
+  },
+  {
+   "id": "meeting.setDateTimeEllipsis",
+   "en": "Set date and time…",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "menu item",
+   "boards": [
+    "Feature-SetDateAndTime"
+   ],
+   "milestone": "Set date and time (L-87, D112)",
+   "note": "D112 (L-87): desktop menu item under Rename… (meeting context menu, GNOME header ⋮ menu, Mac File menu), for every meeting. Phones use meeting.setDateTime without ellipsis.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Imposta data e ora…"
+    },
+    "fr": {
+     "text": "Définir la date et l’heure…"
+    },
+    "es": {
+     "text": "Establecer fecha y hora…"
+    },
+    "pt-BR": {
+     "text": "Definir data e hora…"
+    },
+    "pt-PT": {
+     "text": "Definir data e hora…"
+    }
+   }
+  },
+  {
+   "id": "meeting.setDateTime",
+   "en": "Set date and time",
+   "platforms": [
+    "ios",
+    "android"
+   ],
+   "role": "menu item",
+   "boards": [
+    "Feature-SetDateAndTime"
+   ],
+   "milestone": "Set date and time (L-87, D112)",
+   "note": "D112 (L-87): phone menu/sheet item under Rename (iOS long-press & ⋯ menu, Android actions sheet), for every meeting. Desktop uses meeting.setDateTimeEllipsis with ellipsis.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Imposta data e ora"
+    },
+    "fr": {
+     "text": "Définir la date et l’heure"
+    },
+    "es": {
+     "text": "Establecer fecha y hora"
+    },
+    "pt-BR": {
+     "text": "Definir data e hora"
+    },
+    "pt-PT": {
+     "text": "Definir data e hora"
+    }
+   }
+  },
+  {
+   "id": "meeting.setDateTime.title",
+   "en": "When was this recorded?",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "heading",
+   "boards": [
+    "Feature-SetDateAndTime"
+   ],
+   "milestone": "Set date and time (L-87, D112)",
+   "note": "D112 (L-87): title of the Set date and time dialog/sheet on all four apps.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Quando è stata registrata?"
+    },
+    "fr": {
+     "text": "Quand cela a-t-il été enregistré ?"
+    },
+    "es": {
+     "text": "¿Cuándo se grabó?"
+    },
+    "pt-BR": {
+     "text": "Quando isso foi gravado?"
+    },
+    "pt-PT": {
+     "text": "Quando foi gravado?"
+    }
+   }
+  },
+  {
+   "id": "meeting.setDateTime.dateLabel",
+   "en": "Date",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Feature-SetDateAndTime"
+   ],
+   "milestone": "Set date and time (L-87, D112)",
+   "note": "D112 (L-87): date picker row label in the Set date and time dialog/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Data"
+    },
+    "fr": {
+     "text": "Date"
+    },
+    "es": {
+     "text": "Fecha"
+    },
+    "pt-BR": {
+     "text": "Data"
+    },
+    "pt-PT": {
+     "text": "Data"
+    }
+   }
+  },
+  {
+   "id": "meeting.setDateTime.timeLabel",
+   "en": "Started at",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Feature-SetDateAndTime"
+   ],
+   "milestone": "Set date and time (L-87, D112)",
+   "note": "D112 (L-87): start-time picker row label in the Set date and time dialog/sheet.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Iniziata alle"
+    },
+    "fr": {
+     "text": "Début à"
+    },
+    "es": {
+     "text": "Empezó a las"
+    },
+    "pt-BR": {
+     "text": "Iniciada às"
+    },
+    "pt-PT": {
+     "text": "Iniciada às"
+    }
+   }
+  },
+  {
+   "id": "meeting.setDateTime.prefillSavedHint",
+   "en": "Filled in from when the file was saved. Change it if it’s wrong.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [
+    "Feature-SetDateAndTime"
+   ],
+   "milestone": "Set date and time (L-87, D112)",
+   "note": "D112 (L-87): shown under the title when the meeting had no recording time and the picker was prefilled from the file’s last-saved time minus its length. Omitted when prefilling a known recording time or today’s current time.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Compilato dalla data di salvataggio del file. Modificalo se non è corretto."
+    },
+    "fr": {
+     "text": "Prérempli à partir de la date d’enregistrement du fichier. Modifiez-le s’il est inexact."
+    },
+    "es": {
+     "text": "Rellenado según cuándo se guardó el archivo. Cámbialo si no es correcto."
+    },
+    "pt-BR": {
+     "text": "Preenchido com base em quando o arquivo foi salvo. Altere se estiver errado."
+    },
+    "pt-PT": {
+     "text": "Preenchido com base em quando o ficheiro foi guardado. Altere se estiver errado."
+    }
+   }
+  },
+  {
+   "id": "speakers.backgroundVoice",
+   "en": "Background voice",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Feature-BackgroundVoices"
+   ],
+   "milestone": "Background voices (L-86, D112)",
+   "note": "D112 (L-86): switch label in Name the speakers, under the Name field.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Voce di sottofondo"
+    },
+    "fr": {
+     "text": "Voix en arrière-plan"
+    },
+    "es": {
+     "text": "Voz de fondo"
+    },
+    "pt-BR": {
+     "text": "Voz de fundo"
+    },
+    "pt-PT": {
+     "text": "Voz de fundo"
+    }
+   }
+  },
+  {
+   "id": "speakers.backgroundVoice.description",
+   "en": "Not part of the conversation. Their words fold away in the transcript. The recording isn’t changed.",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "description",
+   "boards": [
+    "Feature-BackgroundVoices"
+   ],
+   "milestone": "Background voices (L-86, D112)",
+   "note": "D112 (L-86): description under the Background voice switch in Name the speakers.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Non fa parte della conversazione. Le sue parole vengono nascoste nella trascrizione. La registrazione non viene modificata."
+    },
+    "fr": {
+     "text": "Ne fait pas partie de la conversation. Ses paroles sont repliées dans la transcription. L’enregistrement n’est pas modifié."
+    },
+    "es": {
+     "text": "No forma parte de la conversación. Sus palabras se ocultan en la transcripción. La grabación no cambia."
+    },
+    "pt-BR": {
+     "text": "Não faz parte da conversa. As palavras ficam recolhidas na transcrição. A gravação não é alterada."
+    },
+    "pt-PT": {
+     "text": "Não faz parte da conversa. As palavras ficam recolhidas na transcrição. A gravação não é alterada."
+    }
+   }
+  },
+  {
+   "id": "speakers.backgroundVoice.namePlaceholder",
+   "en": "Not needed for a background voice",
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "placeholder",
+   "boards": [
+    "Feature-BackgroundVoices"
+   ],
+   "milestone": "Background voices (L-86, D112)",
+   "note": "D112 (L-86): shown inside the disabled Name field when Background voice is switched on.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Non necessario per una voce di sottofondo"
+    },
+    "fr": {
+     "text": "Inutile pour une voix en arrière-plan"
+    },
+    "es": {
+     "text": "No es necesario para una voz de fondo"
+    },
+    "pt-BR": {
+     "text": "Não é necessário para uma voz de fundo"
+    },
+    "pt-PT": {
+     "text": "Não é necessário para uma voz de fundo"
+    }
+   }
+  },
+  {
+   "id": "speakers.backgroundVoice.hidden",
+   "en": "{n} background voices hidden",
+   "plural": {
+    "one": "1 background voice hidden",
+    "other": "{n} background voices hidden"
+   },
+   "placeholders": {
+    "n": "number of distinct background voices in the folded run of turns"
+   },
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "label",
+   "boards": [
+    "Feature-BackgroundVoices"
+   ],
+   "milestone": "Background voices (L-86, D112)",
+   "note": "D112 (L-86): folded transcript row replacing a consecutive run of background turns, indented to the transcript-text edge with a trailing chevron.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{n} voci di sottofondo nascoste",
+     "plural": {
+      "one": "1 voce di sottofondo nascosta",
+      "other": "{n} voci di sottofondo nascoste"
+     }
+    },
+    "fr": {
+     "text": "{n} voix en arrière-plan masquées",
+     "plural": {
+      "one": "1 voix en arrière-plan masquée",
+      "other": "{n} voix en arrière-plan masquées"
+     }
+    },
+    "es": {
+     "text": "{n} voces de fondo ocultas",
+     "plural": {
+      "one": "1 voz de fondo oculta",
+      "other": "{n} voces de fondo ocultas"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} vozes de fundo ocultas",
+     "plural": {
+      "one": "1 voz de fundo oculta",
+      "other": "{n} vozes de fundo ocultas"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} vozes de fundo ocultas",
+     "plural": {
+      "one": "1 voz de fundo oculta",
+      "other": "{n} vozes de fundo ocultas"
+     }
+    }
+   }
+  },
+  {
+   "id": "speakers.backgroundVoice.toast.single",
+   "en": "{name} is now a background voice",
+   "placeholders": {
+    "name": "speaker name or Speaker N (sample: Speaker 5)"
+   },
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "toast",
+   "boards": [
+    "Feature-BackgroundVoices"
+   ],
+   "milestone": "Background voices (L-86, D112)",
+   "note": "D112 (L-86): toast/snackbar with common.undo when a single speaker is marked as a background voice.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{name} ora è una voce di sottofondo"
+    },
+    "fr": {
+     "text": "{name} est maintenant une voix en arrière-plan"
+    },
+    "es": {
+     "text": "{name} ahora es una voz de fondo"
+    },
+    "pt-BR": {
+     "text": "{name} agora é uma voz de fundo"
+    },
+    "pt-PT": {
+     "text": "{name} é agora uma voz de fundo"
+    }
+   }
+  },
+  {
+   "id": "speakers.backgroundVoice.toast.namedAndBackground",
+   "en": "Named {name} · {n} background voices",
+   "plural": {
+    "one": "Named {name} · 1 background voice",
+    "other": "Named {name} · {n} background voices"
+   },
+   "placeholders": {
+    "name": "speaker name that was set (sample: Marta)",
+    "n": "number of speakers marked as background voices (sample: 4)"
+   },
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "toast",
+   "boards": [
+    "Feature-BackgroundVoices"
+   ],
+   "milestone": "Background voices (L-86, D112)",
+   "note": "D112 (L-86): combined toast/snackbar with common.undo when saving both a speaker name and one or more background voices.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Nome impostato su {name} · {n} voci di sottofondo",
+     "plural": {
+      "one": "Nome impostato su {name} · 1 voce di sottofondo",
+      "other": "Nome impostato su {name} · {n} voci di sottofondo"
+     }
+    },
+    "fr": {
+     "text": "Nommé {name} · {n} voix en arrière-plan",
+     "plural": {
+      "one": "Nommé {name} · 1 voix en arrière-plan",
+      "other": "Nommé {name} · {n} voix en arrière-plan"
+     }
+    },
+    "es": {
+     "text": "Llamado {name} · {n} voces de fondo",
+     "plural": {
+      "one": "Llamado {name} · 1 voz de fondo",
+      "other": "Llamado {name} · {n} voces de fondo"
+     }
+    },
+    "pt-BR": {
+     "text": "Nomeado como {name} · {n} vozes de fundo",
+     "plural": {
+      "one": "Nomeado como {name} · 1 voz de fundo",
+      "other": "Nomeado como {name} · {n} vozes de fundo"
+     }
+    },
+    "pt-PT": {
+     "text": "Nomeado como {name} · {n} vozes de fundo",
+     "plural": {
+      "one": "Nomeado como {name} · 1 voz de fundo",
+      "other": "Nomeado como {name} · {n} vozes de fundo"
+     }
+    }
+   }
+  },
+  {
+   "id": "speakers.backgroundVoice.toast.count",
+   "en": "{n} background voices",
+   "plural": {
+    "one": "1 background voice",
+    "other": "{n} background voices"
+   },
+   "placeholders": {
+    "n": "number of speakers marked as background voices (sample: 4)"
+   },
+   "platforms": [
+    "gnome",
+    "mac",
+    "ios",
+    "android"
+   ],
+   "role": "toast",
+   "boards": [
+    "Feature-BackgroundVoices"
+   ],
+   "milestone": "Background voices (L-86, D112)",
+   "note": "D112 (L-86): toast/snackbar with common.undo when saving multiple background voices without renaming another speaker.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{n} voci di sottofondo",
+     "plural": {
+      "one": "1 voce di sottofondo",
+      "other": "{n} voci di sottofondo"
+     }
+    },
+    "fr": {
+     "text": "{n} voix en arrière-plan",
+     "plural": {
+      "one": "1 voix en arrière-plan",
+      "other": "{n} voix en arrière-plan"
+     }
+    },
+    "es": {
+     "text": "{n} voces de fondo",
+     "plural": {
+      "one": "1 voz de fondo",
+      "other": "{n} voces de fondo"
+     }
+    },
+    "pt-BR": {
+     "text": "{n} vozes de fundo",
+     "plural": {
+      "one": "1 voz de fundo",
+      "other": "{n} vozes de fundo"
+     }
+    },
+    "pt-PT": {
+     "text": "{n} vozes de fundo",
+     "plural": {
+      "one": "1 voz de fundo",
+      "other": "{n} vozes de fundo"
+     }
     }
    }
   }

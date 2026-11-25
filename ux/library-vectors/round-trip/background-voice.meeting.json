@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "revision": 4,
+  "id": "11111111-2222-4333-8444-555555555555",
+  "title": "Project sync",
+  "titleSource": "user",
+  "notes": [],
+  "speakers": [
+    {
+      "id": "spk-1",
+      "name": "Sam",
+      "provenance": "user",
+      "colourIndex": 0
+    },
+    {
+      "id": "spk-2",
+      "name": "Robin",
+      "provenance": "user",
+      "colourIndex": 1
+    },
+    {
+      "id": "spk-3",
+      "name": "Marta",
+      "provenance": "user",
+      "colourIndex": 2,
+      "background": true
+    },
+    {
+      "id": "spk-4",
+      "name": null,
+      "provenance": "unnamed",
+      "colourIndex": 3,
+      "background": true
+    }
+  ],
+  "transcript": {
+    "status": "done",
+    "reference": {
+      "kind": "sidecar",
+      "file": "transcript.json",
+      "format": "cassini.words.v1"
+    },
+    "model": "whistle"
+  },
+  "etaMinutes": null,
+  "error": null,
+  "quoteOverride": null,
+  "received": null,
+  "namePrefix": "2026-11-23--14.36-",
+  "namePrefixSource": "recorded"
+}
