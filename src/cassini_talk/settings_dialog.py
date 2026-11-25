@@ -197,9 +197,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         group = Adw.PreferencesGroup(title=text("settings.recording.group.starting"))
         self.pages["recording"].add(group)
         self.shortcut = Adw.ActionRow(title=text("settings.recording.shortcut.title"), use_markup=False)
-        self.change_shortcut = Gtk.Button(
-            label=text("settings.recording.changeShortcut"), valign=Gtk.Align.CENTER
-        )
+        self.change_shortcut = Gtk.Button(label=text("settings.recording.changeShortcut"), valign=Gtk.Align.CENTER)
         self.change_shortcut.connect("clicked", lambda *_: self.app.configure_global_shortcut())
         self.shortcut.add_suffix(self.change_shortcut)
         group.add(self.shortcut)
@@ -381,9 +379,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         details.append(self.nemotron_progress)
         row.append(details)
-        self.nemotron_remove = Gtk.Button(
-            label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False
-        )
+        self.nemotron_remove = Gtk.Button(label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False)
         self.nemotron_remove.connect("clicked", lambda *_: self._remove_optional(self.app.diarization_models))
         row.append(self.nemotron_remove)
         self.nemotron_action = Gtk.Button(valign=Gtk.Align.CENTER)
@@ -423,14 +419,10 @@ class SettingsDialog(Adw.PreferencesDialog):
         details.append(self.voice_status)
         details.append(self.voice_progress)
         row.append(details)
-        self.voice_remove = Gtk.Button(
-            label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False
-        )
+        self.voice_remove = Gtk.Button(label=text("models.remove"), valign=Gtk.Align.CENTER, visible=False)
         self.voice_remove.connect("clicked", lambda *_: self._remove_optional(self.app.voice_models))
         row.append(self.voice_remove)
-        self.voice_action = Gtk.Button(
-            label=text("models.download"), valign=Gtk.Align.CENTER
-        )
+        self.voice_action = Gtk.Button(label=text("models.download"), valign=Gtk.Align.CENTER)
         self.voice_action.connect("clicked", self._voice_action)
         row.append(self.voice_action)
         self.recognise.set_child(row)
@@ -681,9 +673,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         page.add(group)
         self.folder = Adw.ActionRow(use_markup=False, subtitle_lines=0)
-        self.show_folder = Gtk.Button(
-            label=text("settings.library.show"), valign=Gtk.Align.CENTER
-        )
+        self.show_folder = Gtk.Button(label=text("settings.library.show"), valign=Gtk.Align.CENTER)
         self.show_folder.connect("clicked", lambda *_: self._show_folder())
         self.move = Gtk.Button(label=text("settings.library.move"), valign=Gtk.Align.CENTER)
         self.move.connect("clicked", lambda *_: self._choose_folder())
@@ -710,9 +700,7 @@ class SettingsDialog(Adw.PreferencesDialog):
             title=text("settings.library.zip.title"), subtitle=text("settings.library.zip.subtitle"), use_markup=False
         )
         self.zip_row.set_subtitle_lines(0)
-        self.zip_button = Gtk.Button(
-            label=text("common.exportEllipsis"), valign=Gtk.Align.CENTER, sensitive=False
-        )
+        self.zip_button = Gtk.Button(label=text("common.exportEllipsis"), valign=Gtk.Align.CENTER, sensitive=False)
         self.zip_button.connect("clicked", self._export_zip)
         self.zip_row.add_suffix(self.zip_button)
         copy.add(self.zip_row)
@@ -805,10 +793,8 @@ class SettingsDialog(Adw.PreferencesDialog):
         )
         setup.connect("clicked", self.app.retry_browser_connection)
         self.browser.add_suffix(setup)
-        self.browser_add = Gtk.Button(
-            label=text("browser.state.addGeneric"), valign=Gtk.Align.CENTER, visible=False
-        )
-        self.browser_add.connect("clicked", lambda *_: self.app.on_companion_add(parent=self))
+        self.browser_add = Gtk.Button(label=text("browser.state.addGeneric"), valign=Gtk.Align.CENTER, visible=False)
+        self.browser_add.connect("clicked", self._add_companion)
         self.browser.add_suffix(self.browser_add)
         self.browser_add_local = Gtk.Button(
             label=text("companion.local.add"),
@@ -819,9 +805,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.browser_add_local.connect("clicked", lambda *_: self.app.on_companion_add(parent=self, local=True))
         self.browser.add_suffix(self.browser_add_local)
         # New in D107: Remove… opens the browser's Extensions page; Cassini can't remove the extension itself.
-        self.browser_remove = Gtk.Button(
-            label=text("settings.browser.remove"), valign=Gtk.Align.CENTER, visible=False
-        )
+        self.browser_remove = Gtk.Button(label=text("settings.browser.remove"), valign=Gtk.Align.CENTER, visible=False)
         self.browser_remove.connect("clicked", self._remove_companion)
         self.browser.add_suffix(self.browser_remove)
         group.add(self.browser)
@@ -865,12 +849,19 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.browser.set_title(title)
         set_dot(self.browser_dot, connected)
         self.browser_setup.set_visible(bool(state and state["phase"] == "failed"))
-        self.browser_add.set_visible(bool(state and state["phase"] in ("waiting", "needsBrowser")))
-        self.browser_add.set_sensitive(bool(state and state["browser"]))
+        # D-1162 (L-90): "Not set up" always has its action on the row, a neutral button. Without a
+        # connection state yet it starts the two-step set-up (add Cassini to the browser, then Connect).
+        not_set_up = state is None and self.app.browser_companion_available and not connected
+        self.browser_add.set_visible(not_set_up or bool(state and state["phase"] in ("waiting", "needsBrowser")))
+        self.browser_add.set_sensitive(not_set_up or bool(state and state["browser"]))
         browser = state.get("browser") if state else None
         # L-58: one "Add to {browser}" button; before the store listing is public it is D39's local add.
         self.browser_add.set_label(
-            text("companion.addTo", browser=browser.name) if browser and store_listing_public() else add_text(state)
+            text("browser.state.addGeneric")
+            if not_set_up
+            else text("companion.addTo", browser=browser.name)
+            if browser and store_listing_public()
+            else add_text(state)
         )
         self.browser_add_local.set_visible(bool(state and store_listing_public() and not connected))
         self.browser_add_local.set_sensitive(bool(state and state["browser"]))
@@ -879,6 +870,13 @@ class SettingsDialog(Adw.PreferencesDialog):
         if not connected:
             self.remove_help.set_visible(False)
         self.render_browser_meetings(title, connected, set_up)
+
+    def _add_companion(self, *_args):
+        state, _connected, _set_up, _names = self._companion()
+        if state is None:
+            self.app.on_companion_setup(parent=self)
+        else:
+            self.app.on_companion_add(parent=self)
 
     def render_browser_meetings(self, title, connected, set_up):
         # D107 §1: connected, a green dot and "Connected to Chrome" (no full stop) right of the heading.

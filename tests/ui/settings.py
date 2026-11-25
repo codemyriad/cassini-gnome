@@ -223,6 +223,15 @@ with tempfile.TemporaryDirectory() as temporary:
     # The card's title names this container's state (no browser here); not connected, so a red dot.
     assert dialog.browser_dot.has_css_class("status-dot-off"), dialog.browser.get_title()
     assert not dialog.browser_remove.get_visible()
+    # D-1162 (L-90): "Not set up" without a connection state still has its action on the row.
+    real_companion = dialog._companion
+    dialog._companion = lambda: (None, False, False, [])
+    dialog.render_browser()
+    assert dialog.browser.get_title() == "Not set up"
+    assert dialog.browser_add.get_visible() and dialog.browser_add.get_sensitive()
+    assert dialog.browser_add.get_label() == "Add the browser companion"
+    dialog._companion = real_companion
+    dialog.render_browser()
     assert dialog.browser_meetings_note.emit("activate-link", "cassini:browser-companion")
     assert dialog.get_visible_page_name() == "browserCompanion"
     dialog.set_visible_page_name("recording")
