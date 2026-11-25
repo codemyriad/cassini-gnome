@@ -794,3 +794,7 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
 
 /* D-1140: Gtk.FlowBox stands in for Adw.WrapBox on libadwaita 1.5. */
 .cassini-wrap-box > flowboxchild { padding: 0; }
+/* D-1162 (L-77): Trash rows: a compact Restore, then "Delete now…" as red text, under the title and date. */
+button.trash-restore { min-height: 28px; padding: 0 12px; }
+button.trash-delete-now { color: var(--cx-error); font-weight: bold; min-height: 28px; padding: 0 4px; }
+button.trash-delete-now:hover { background: transparent; text-decoration: underline; }

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """☰ › Trash: the in-app list of deleted meetings (HARMONY §7, §7.1; D100, D-1032).
 
-Rows: the title, then `format.previewSubtitle` · days left, newest deletion first. Each row
-has Restore (no confirmation) and Delete permanently… (confirmation 4) as buttons and in its
-context menu; Delete on a focused row is Delete permanently…. The header's Empty Trash…
+Rows: the title, then `format.previewSubtitle` · days left, newest deletion first. Under them each
+row has a compact Restore (no confirmation) and red-text Delete now… (confirmation 4; D-1162, L-77),
+also in its context menu; Delete on a focused row is Delete now…. The header's Empty Trash…
 (confirmation 5) is insensitive while the Trash is empty. Return is Cancel on both
 confirmations. Rows never open or play. File work runs on the trash worker
 (meeting_trash.MeetingTrash); this view only renders its results.
@@ -11,7 +11,7 @@ confirmations. Rows never open or play. File work runs on the trash worker
 
 from datetime import UTC, datetime
 
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from . import ux_formats as fmt
 from .inline_line import InlineLine
@@ -58,6 +58,35 @@ def confirm(parent, heading, body, primary, on_confirm):
     dialog.connect("map", lambda *_: GLib.idle_add(focus_cancel))
     dialog.present(parent)
     return dialog
+
+
+class TrashRow(Adw.PreferencesRow):
+    """One deleted meeting: its title, `row_meta` in grey, then Restore and Delete now… under them."""
+
+    def __init__(self, title, meta):
+        super().__init__(title=GLib.markup_escape_text(title), activatable=False, focusable=True)
+        self.subtitle = meta
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=2,
+            margin_top=11,
+            margin_bottom=12,
+            margin_start=14,
+            margin_end=14,
+        )
+        self.title_label = Gtk.Label(label=title, xalign=0, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        self.meta_label = Gtk.Label(
+            label=meta, xalign=0, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, css_classes=["dim-label", "caption"]
+        )
+        self.actions = Gtk.Box(spacing=16, margin_top=8, halign=Gtk.Align.START, css_classes=["trash-row-actions"])
+        box.append(self.title_label)
+        box.append(self.meta_label)
+        box.append(self.actions)
+        self.set_child(box)
+        self.update_property([Gtk.AccessibleProperty.DESCRIPTION], [meta])
+
+    def get_subtitle(self):
+        return self.subtitle
 
 
 class TrashDialog(Adw.Dialog):
@@ -156,21 +185,18 @@ class TrashDialog(Adw.Dialog):
 
     def _row(self, entry):
         title = entry.title or text("library.untitled")
-        row = Adw.ActionRow(
-            title=GLib.markup_escape_text(title),
-            subtitle=GLib.markup_escape_text(row_meta(entry, now_ms=self.window.now_ms, tz=self.window.tz)),
-            activatable=False,
-            focusable=True,
-        )
+        meta = row_meta(entry, now_ms=self.window.now_ms, tz=self.window.tz)
+        row = TrashRow(title, meta)
         row.entry = entry
-        restore = Gtk.Button(label=text("trash.restore"), valign=Gtk.Align.CENTER)
+        # D-1162 (L-77): a compact Restore, then “Delete now…” as red text, under the title and date.
+        restore = Gtk.Button(label=text("trash.restore"), valign=Gtk.Align.CENTER, css_classes=["trash-restore"])
         restore.connect("clicked", lambda *_: self.restore(entry))
-        delete = Gtk.Button(label=text("trash.deletePermanently"), valign=Gtk.Align.CENTER)
+        delete = Gtk.Button(
+            label=text("trash.deleteNow"), valign=Gtk.Align.CENTER, css_classes=["flat", "trash-delete-now"]
+        )
         delete.connect("clicked", lambda *_: self.ask_delete(entry))
-        box = Gtk.Box(spacing=6)
-        box.append(restore)
-        box.append(delete)
-        row.add_suffix(box)
+        row.actions.append(restore)
+        row.actions.append(delete)
         row.restore_button, row.delete_button = restore, delete
 
         keys = Gtk.EventControllerKey()
@@ -201,10 +227,10 @@ class TrashDialog(Adw.Dialog):
         return row
 
     def context_menu(self, row, x, y):
-        """Restore and Delete permanently…, the same as the row's buttons (HARMONY §7.1)."""
+        """Restore and Delete now…, the same as the row's buttons (HARMONY §7.1)."""
         menu = Gio.Menu()
         menu.append(text("trash.restore"), "trash-row.restore")
-        menu.append(text("trash.deletePermanently"), "trash-row.delete")
+        menu.append(text("trash.deleteNow"), "trash-row.delete")
         popover = Gtk.PopoverMenu(menu_model=menu, has_arrow=False)
         popover.set_parent(row)
         rect = Gdk.Rectangle()
