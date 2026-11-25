@@ -76,6 +76,7 @@ class LibraryWindow(Adw.ApplicationWindow):
         self.zip_export_dialog = None
         self.recording_details_dialog = None
         self.rename_dialog = None
+        self.set_date_dialog = None
         self._pending_selection = None
         # L-57: meetings newly copied into the Library in this session that have
         # not yet shown their one-time "Imported from …" notice.
@@ -198,6 +199,7 @@ class LibraryWindow(Adw.ApplicationWindow):
             ("export", self.show_export),
             ("export-zip", self.show_zip_export),
             ("rename", self.show_rename),
+            ("set-date", self.show_set_date),
             ("name-speakers", lambda *_: self.meeting_page.name_speakers() if self.meeting_page else None),
             ("move-to-trash", self.move_to_trash),
             ("toggle-star", self.toggle_star),
@@ -567,6 +569,9 @@ class LibraryWindow(Adw.ApplicationWindow):
         rename = self.lookup_action("rename")
         if rename:
             rename.set_enabled(self.rename_allowed(meeting))
+        set_date = self.lookup_action("set-date")
+        if set_date:
+            set_date.set_enabled(self.rename_allowed(meeting))
         name_speakers = self.lookup_action("name-speakers")
         if name_speakers:
             name_speakers.set_enabled(
@@ -639,6 +644,21 @@ class LibraryWindow(Adw.ApplicationWindow):
         item = Gio.MenuItem.new(text("meeting.renameEllipsis"), "win.rename")
         item.set_attribute_value("accel", GLib.Variant("s", text("common.shortcut.rename")))
         return item
+
+    @staticmethod
+    def set_date_item():
+        """D112 (L-87): under Rename… in both meeting menus, for every meeting."""
+        return Gio.MenuItem.new(text("meeting.setDateTimeEllipsis"), "win.set-date")
+
+    def show_set_date(self):
+        from .set_date_dialog import SetDateDialog
+
+        meeting = self.meeting_page.meeting if self.meeting_page else self.selected
+        if not self.rename_allowed(meeting) or self._text_focused():
+            return
+        if self.set_date_dialog is None or self.set_date_dialog.closed:
+            self.set_date_dialog = SetDateDialog(self, meeting)
+        self.set_date_dialog.present(self)
 
     def show_rename(self):
         from .rename_dialog import RenameDialog
@@ -937,11 +957,13 @@ class LibraryWindow(Adw.ApplicationWindow):
 
     def _row_menu(self, row, x, y):
         self.rows.select_row(row)
-        # D-1162: the same order as the meeting ⋮ menu: Star, Rename…, Export…, then Move to Trash.
+        # D-1162: the same order as the meeting ⋮ menu: Star, Rename…, Set date and time… (D112),
+        # Export…, then Move to Trash.
         menu = Gio.Menu()
         if self.star_allowed(row.meeting):
             menu.append(text("meeting.unstar" if self.is_starred(row.meeting) else "meeting.star"), "win.toggle-star")
         menu.append_item(self.rename_item())
+        menu.append_item(self.set_date_item())
         menu.append(text("common.exportEllipsis"), "win.export")
         if self.get_application().meeting_trash.allowed(row.meeting, self) or (
             row.meeting.published_file is not None and not row.meeting.metadata_editable
@@ -2259,6 +2281,12 @@ class LibraryWindow(Adw.ApplicationWindow):
                 self.rename_dialog.update(current)
             else:
                 self.rename_dialog.force_close()
+        if self.set_date_dialog and not self.set_date_dialog.closed:
+            current = next((m for m in snapshot.meetings if m.key == self.set_date_dialog.meeting.key), None)
+            if current is not None and self.rename_allowed(current):
+                self.set_date_dialog.update(current)
+            elif not self.set_date_dialog.busy:
+                self.set_date_dialog.force_close()
         self._update_live()
         self._refresh_export()
         self.received_hint.set_visible(
@@ -3157,6 +3185,8 @@ class LibraryWindow(Adw.ApplicationWindow):
             self.zip_export_dialog.cancel()
         if self.rename_dialog and not self.rename_dialog.closed:
             self.rename_dialog.force_close()
+        if self.set_date_dialog and not self.set_date_dialog.closed:
+            self.set_date_dialog.force_close()
         if self.recording_page:
             self.recording_page.close()
             self.recording_page = None

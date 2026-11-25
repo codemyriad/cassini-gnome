@@ -69,7 +69,9 @@ def test_seal_only_is_never_a_display_or_search_date(tmp_path):
     target = changed_file(tmp_path)
     meeting = load_open_meeting(target)
     assert meeting.display_start is None
-    assert meeting.sort_time == meeting_time.milliseconds("2026-11-09T09:40:48Z")
+    # D112 (R6.2/R6.3): createdAtUtc is never the meeting date, not even for
+    # sorting; an unknown start sorts into the last group, "Date unknown".
+    assert meeting.sort_time is None
     text = markdown(projection(meeting))
     assert "2026" not in text and "09:40" not in text
     with closing(SearchIndex(tmp_path / "Library", tmp_path / "cache")) as index:

@@ -87,6 +87,24 @@ def mutation(directory):
             yield
 
 
+def project_start(meeting, metadata):
+    """MAPPING.md (D112 / L-87): project a set startedAt into the file, in place; returns tag changes.
+
+    DATE and manifest meeting.startedAt carry it with the person's offset,
+    recordedAtLocal its wall clock, and GNOME's D95 recordedAtUtc (and its
+    mirror tag) the same instant in UTC. createdAtUtc, namePrefix and the file
+    name never change.
+    """
+    from .meeting_time import user_start, utc, wall_clock
+
+    value = user_start(metadata)
+    if value is None:
+        raise ValueError("A set date and time needs startedAt with startedAtSource user")
+    instant = utc(value)
+    meeting.update(startedAt=value, recordedAtLocal=wall_clock(value), recordedAtUtc=instant)
+    return dict(DATE=value, CASSINI_RECORDED_AT_UTC=instant)
+
+
 def commit_metadata(directory, current, changes, *, before_commit=None, words=None):
     """Commit one snapshot; caller holds transaction(directory).
 
@@ -138,6 +156,8 @@ def commit_metadata(directory, current, changes, *, before_commit=None, words=No
         extension.pop(xschema.NOTES_DOMAIN, None)
     manifest["meeting"]["title"] = displayed
     replacements, prefixes = {}, [edit.MANIFEST_PREFIX]
+    if "startedAt" in changes:
+        replacements.update(project_start(manifest["meeting"], updated))
     # D47 writes labels into the manifest. Merge history stays in x and
     # original body IDs remain available, with the resolved label on each ID.
     original_words = portable.load_words(live, live.default_transcript_id)

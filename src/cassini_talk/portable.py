@@ -167,9 +167,14 @@ class Meeting:
     @property
     def recorded_at_local(self) -> str | None:
         if self.manifest:
-            value = self.manifest["meeting"].get("recordedAtLocal")
-            from .meeting_time import local
+            from .meeting_time import excluded, local, ours, wall_clock
 
+            start = self.meeting_start
+            if start is not None and start["source"] == "startedAt":
+                return wall_clock(start["value"])
+            if excluded(ours(self.manifest)):
+                return None
+            value = self.manifest["meeting"].get("recordedAtLocal")
             return value if local(value) is not None else None
         return None
 

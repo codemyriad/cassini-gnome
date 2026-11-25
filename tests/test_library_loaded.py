@@ -255,6 +255,7 @@ def test_stop_updates_live_row_in_place_without_rebuilding_unrelated_5000_rows(t
         export_dialog=None,
         zip_export_dialog=None,
         rename_dialog=None,
+        set_date_dialog=None,
         _pending_recording=None,
         _pending_selection=None,
         _opening_files=0,

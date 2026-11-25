@@ -216,6 +216,7 @@ class PublishedIndex:
 
     def _meeting(self, path, audio, raw, activity, safe_sessions):
         from .library import Meeting, _date, _quote, _speakers, turn_gaps
+        from .meeting_time import excluded, milliseconds, user_start
         from .speaker_merges import apply_merges
 
         embedded = audio.embedded
@@ -300,6 +301,8 @@ class PublishedIndex:
                 and reference.get("transcriptId", embedded.default_transcript_id) == embedded.default_transcript_id
             )
         )
+        # R6.2 (D112): the person's date wins; the file's x carries it (and the import-time prefix).
+        started_at_user = user_start(metadata)
         preview_key = "v2:" + "/".join(identity)
         speakers = _speakers(words, metadata.get("speakers", []), embedded, stored_labels=True, raw_words=raw_words)
         names = {speaker.id: speaker.name for speaker in speakers}
@@ -315,10 +318,13 @@ class PublishedIndex:
                 collection_key=key,
                 title=title or text("library.untitled"),
                 title_is_fallback=not title,
-                started_at_ms=embedded.recorded_at_ms
-                if embedded.recorded_at_ms is not None or not working
+                started_at_ms=milliseconds(started_at_user)
+                if started_at_user is not None
+                else embedded.recorded_at_ms
+                if embedded.recorded_at_ms is not None or not working or excluded(metadata)
                 else working.started_at_ms,
-                recorded_at_local=embedded.recorded_at_local,
+                recorded_at_local=None if started_at_user is not None else embedded.recorded_at_local,
+                started_at_user=started_at_user,
                 created_at_ms=_date(embedded.created_at),
                 duration_ms=audio.duration,
                 lifecycle=lifecycle,

@@ -41,10 +41,10 @@ def test_shared_library_vector(case, shared_library):
         # D84 supersedes R8's separate chronological run renderer. Keep the
         # historical shared vector intact; the derived quote now includes chips.
         expected["groups"][0]["meetings"][0]["quote"] = "“first half (Speaker 2: yeah) second half”"
-    if case["id"] in {"r3-transcript-precedence", "r9-received-once", "main", "received-only"}:
-        # D95 supersedes these historical seal/import-time labels. These assets
-        # have no recording instant or wall label. Keep shared source bytes
-        # intact; the proposed source amendment is documented in this PR.
+    if case["id"] == "r3-transcript-precedence":
+        # D95 supersedes this historical seal-time label: the asset has no
+        # recording instant or wall label. (D112 updated r9, main and
+        # received-only upstream to the same reading.)
         groups = []
         for group in expected["groups"]:
             if all(row["origin"] == "received" for row in group["meetings"]):
@@ -55,9 +55,18 @@ def test_shared_library_vector(case, shared_library):
                 groups[-1]["meetings"].extend(group["meetings"])
             else:
                 groups.append(group)
-        if case["id"] == "r9-received-once":
-            groups[0]["meetings"].reverse()  # Known seal sorts before a completely unknown plain file.
         expected["groups"] = groups
+    if case["id"] == "r9-received-once":
+        # D95 (binding on every app): a DATE that is the same instant as
+        # createdAtUtc is the seal time, not the meeting time, and D112 R6.2
+        # keeps createdAtUtc out of the meeting date. Vector 001's DATE equals
+        # its createdAtUtc, so GNOME files it under "Date unknown" too. Raised
+        # upstream in the D-1166 PR; keep the shared bytes intact.
+        rows = [row for group in expected["groups"] for row in group["meetings"]]
+        for row in rows:
+            row["startMs"] = None
+        rows.sort(key=lambda row: (row["title"].casefold(), row["title"], row["id"]))
+        expected["groups"] = [dict(title="Date unknown", meetings=rows)]
     if artifact_root := os.environ.get("CASSINI_UX_ARTIFACTS"):
         output = Path(artifact_root) / "library-cases"
         output.mkdir(parents=True, exist_ok=True)
