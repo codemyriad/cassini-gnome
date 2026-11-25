@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/codemyriad/cassini-ux",
-  "commit": "ae9cbe138e741f8e730c24ee0bebce8308aaa40b",
+  "commit": "29a989c31ff1bef6b470e8b4ac41e648f395d4ff",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
@@ -118,7 +118,7 @@
     "library-vectors/assets/plain-title.opus": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
     "library-vectors/assets/plain-untitled.opus": "6b4d618c42e0b1cc5c8a84fb9e782ebe79bafbe6e23f7b7ff6dfed97a0ee0cc8",
     "library-vectors/assets/build.py": "4fe25ea82f6971f2deae6887d879bfa5e1cdf174a4a2df7cdf934c79cff9c1ad",
-    "strings.json": "fedf8cfa51992ded96fafb5d4f15af7e5d1700f877575b51caf0f5da6ad970fa",
+    "strings.json": "ecd8fe179b762c86cf96085c050fb9ffc79a765a452cddb15592dd9291dbf1c0",
     "LIBRARY.md": "6cd4063cdd58567c75a4733c8862e9fe0983863df890b86a91e9a9bb17749751",
     "session-events/session.json": "6bcec60cf4024421b57683d86a44d7ffd92efdc84a3e5b67e24cb09fcfb55723",
     "session-events/expected.json": "905ad1966fa3cac23aa348109d4f694a5606ea685f3a5689cc052cf092a8a920",

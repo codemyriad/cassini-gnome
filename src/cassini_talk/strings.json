@@ -12690,7 +12690,7 @@
   },
   {
    "id": "meeting.rename.title",
-   "en": "Rename Meeting",
+   "en": "Rename meeting",
    "platforms": [
     "gnome",
     "mac"
@@ -12699,24 +12699,30 @@
    "boards": [],
    "milestone": "D35",
    "status": "harmony",
-   "note": "Coordinator (D35, rename a meeting).",
+   "note": "Coordinator (D35, rename a meeting). D-1162 (Alex, 25 Nov): sentence case on GNOME, like the rest of the app; English was “Rename Meeting”, which Mac keeps.",
    "l10n": {
     "it": {
-     "text": "Rinomina riunione"
+     "text": "Rinomina riunione",
+     "mac": "Rinomina riunione"
     },
     "fr": {
-     "text": "Renommer la réunion"
+     "text": "Renommer la réunion",
+     "mac": "Renommer la réunion"
     },
     "es": {
-     "text": "Renombrar reunión"
+     "text": "Renombrar reunión",
+     "mac": "Renombrar reunión"
     },
     "pt-BR": {
-     "text": "Renomear reunião"
+     "text": "Renomear reunião",
+     "mac": "Renomear reunião"
     },
     "pt-PT": {
-     "text": "Mudar o nome da reunião"
+     "text": "Mudar o nome da reunião",
+     "mac": "Mudar o nome da reunião"
     }
-   }
+   },
+   "mac": "Rename Meeting"
   },
   {
    "id": "meeting.rename.field",
@@ -37374,6 +37380,344 @@
     },
     "pt-PT": {
      "text": "Não foi possível iniciar"
+    }
+   }
+  },
+  {
+   "id": "trash.deleteNow",
+   "en": "Delete now…",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "button",
+   "boards": [
+    "GnomeMocks-SavedVoices"
+   ],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (L-77, approved by Alex 25 Nov): Trash row action, red text after the compact trash.restore button, under the meeting’s title and date; also the row context menu. Still opens confirmation 4 (confirm.deletePermanently.*) first, hence the ellipsis. Replaces trash.deletePermanently on GNOME (kept for Mac).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Elimina ora…"
+    },
+    "fr": {
+     "text": "Supprimer maintenant…"
+    },
+    "es": {
+     "text": "Eliminar ahora…"
+    },
+    "pt-BR": {
+     "text": "Excluir agora…"
+    },
+    "pt-PT": {
+     "text": "Eliminar agora…"
+    }
+   }
+  },
+  {
+   "id": "firstRun.shortcutStarts",
+   "en": "{shortcut} starts a recording",
+   "platforms": [
+    "gnome",
+    "mac"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (Alex, 25 Nov): first run, beside the big Record pill. Say each shortcut once, as on Mac: {shortcut} is common.shortcut.record (Ctrl+R / ⌘R), drawn as key chips; the anywhere shortcut (common.shortcut.recordAnywhere) is said only in Preferences (settings.recording.shortcut.title). No final full stop. Replaces firstRun.shortcutLine on GNOME.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "{shortcut} avvia una registrazione"
+    },
+    "fr": {
+     "text": "{shortcut} lance un enregistrement"
+    },
+    "es": {
+     "text": "{shortcut} inicia una grabación"
+    },
+    "pt-BR": {
+     "text": "{shortcut} inicia uma gravação"
+    },
+    "pt-PT": {
+     "text": "{shortcut} inicia uma gravação"
+    }
+   }
+  },
+  {
+   "id": "settings.recording.group.browser.note",
+   "en": "Needs the browser companion.",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "description",
+   "boards": [
+    "GnomeMocks-RecordingDetails"
+   ],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (L-90, Alex 25 Nov): the Browser meetings group note, one line under the group title (not beside it), followed by the settings.recording.browser.setUp link: “Needs the browser companion. Set it up”. Shown while the companion is not set up.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Richiede l’estensione per il browser."
+    },
+    "fr": {
+     "text": "Nécessite l’extension de navigateur."
+    },
+    "es": {
+     "text": "Requiere la extensión del navegador."
+    },
+    "pt-BR": {
+     "text": "Requer a extensão do navegador."
+    },
+    "pt-PT": {
+     "text": "Requer a extensão do navegador."
+    }
+   }
+  },
+  {
+   "id": "settings.tab.browserCompanion.short",
+   "en": "Browser",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "label",
+   "boards": [
+    "GnomeMocks-RecordingDetails"
+   ],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (L-90): the Browser companion tab in the narrow Preferences window, where the inline switcher shows icons above short labels, so it isn’t cut. The wide window keeps settings.tab.browserCompanion.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Browser"
+    },
+    "fr": {
+     "text": "Navigateur"
+    },
+    "es": {
+     "text": "Navegador"
+    },
+    "pt-BR": {
+     "text": "Navegador"
+    },
+    "pt-PT": {
+     "text": "Navegador"
+    }
+   }
+  },
+  {
+   "id": "speakers.duplicate.pickHint",
+   "en": "Pick Same person or Someone else",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "caption",
+   "boards": [],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (Alex, 25 Nov): Name the speakers, under the “Is this the same person?” choice while Save is dimmed, saying why. Quotes speakers.duplicate.samePerson and speakers.duplicate.someoneElse: keep those button labels exactly. No final full stop.",
+   "status": "harmony",
+   "l10n": {
+    "it": {
+     "text": "Scegli Stessa persona o Un’altra persona"
+    },
+    "fr": {
+     "text": "Choisissez Même personne ou Quelqu’un d’autre"
+    },
+    "es": {
+     "text": "Elige Misma persona u Otra persona"
+    },
+    "pt-BR": {
+     "text": "Escolha Mesma pessoa ou Outra pessoa"
+    },
+    "pt-PT": {
+     "text": "Escolha Mesma pessoa ou Outra pessoa"
+    }
+   }
+  },
+  {
+   "id": "details.span.range",
+   "en": "{start} to {end}",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "format",
+   "boards": [
+    "GnomeMocks-RecordingDetails"
+   ],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (L-82, Alex 25 Nov): Recording details, the times of one source in plain words, as in “Microphone · 0:00 to 52:00”. {start} and {end} are positions with minutes unpadded (0:00, 52:00, 1:02:05). Copy details keeps HH:MM:SS.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "da {start} a {end}"
+    },
+    "fr": {
+     "text": "de {start} à {end}"
+    },
+    "es": {
+     "text": "de {start} a {end}"
+    },
+    "pt-BR": {
+     "text": "de {start} a {end}"
+    },
+    "pt-PT": {
+     "text": "de {start} a {end}"
+    }
+   }
+  },
+  {
+   "id": "details.end.stopped",
+   "en": "Stopped",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "field-label",
+   "boards": [
+    "GnomeMocks-RecordingDetails"
+   ],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (L-82): Recording details › How it ended, the small grey label above details.end.userAt when you stopped the recording.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Fermata"
+    },
+    "fr": {
+     "text": "Arrêté"
+    },
+    "es": {
+     "text": "Detenida"
+    },
+    "pt-BR": {
+     "text": "Parada"
+    },
+    "pt-PT": {
+     "text": "Parada"
+    }
+   }
+  },
+  {
+   "id": "details.end.userAt",
+   "en": "You stopped it at {time}",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "value",
+   "boards": [
+    "GnomeMocks-RecordingDetails"
+   ],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (L-82): Recording details › How it ended, in plain words, when you stopped the recording. {time} is the position, minutes unpadded (52:00). Copy details keeps details.end.at.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "L’hai fermata a {time}"
+    },
+    "fr": {
+     "text": "Vous l’avez arrêté à {time}"
+    },
+    "es": {
+     "text": "La detuviste en {time}"
+    },
+    "pt-BR": {
+     "text": "Você parou em {time}"
+    },
+    "pt-PT": {
+     "text": "Parou-a aos {time}"
+    }
+   }
+  },
+  {
+   "id": "details.separation.on.one",
+   "en": "On · {n} voice told apart",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "format",
+   "boards": [
+    "GnomeMocks-RecordingDetails"
+   ],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (L-82): Recording details › Transcribing › Speaker separation, in plain words, n=1. The model name and revision stay in Copy details (details.separation.voices.*).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Attiva · {n} voce distinta"
+    },
+    "fr": {
+     "text": "Activée · {n} voix distinguée"
+    },
+    "es": {
+     "text": "Activada · {n} voz distinguida"
+    },
+    "pt-BR": {
+     "text": "Ativada · {n} voz distinguida"
+    },
+    "pt-PT": {
+     "text": "Ativada · {n} voz distinguida"
+    }
+   }
+  },
+  {
+   "id": "details.separation.on.other",
+   "en": "On · {n} voices told apart",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "format",
+   "boards": [
+    "GnomeMocks-RecordingDetails"
+   ],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (L-82): Recording details › Transcribing › Speaker separation, in plain words. The model name and revision stay in Copy details (details.separation.voices.*).",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "Attiva · {n} voci distinte"
+    },
+    "fr": {
+     "text": "Activée · {n} voix distinguées"
+    },
+    "es": {
+     "text": "Activada · {n} voces distinguidas"
+    },
+    "pt-BR": {
+     "text": "Ativada · {n} vozes distinguidas"
+    },
+    "pt-PT": {
+     "text": "Ativada · {n} vozes distinguidas"
+    }
+   }
+  },
+  {
+   "id": "details.capture.othersNothing",
+   "en": "Nothing was recorded from the others",
+   "platforms": [
+    "gnome"
+   ],
+   "role": "value",
+   "boards": [
+    "GnomeMocks-RecordingDetails"
+   ],
+   "milestone": "QA GNOME (D-1162)",
+   "note": "D-1162 (L-84, open): proposed for Alex. Recording details › The others card when nothing was recorded from the other people, replacing “No source details recorded” there. The card stays: it tells you whether the others were captured.",
+   "status": "draft",
+   "l10n": {
+    "it": {
+     "text": "Non è stato registrato nulla degli altri"
+    },
+    "fr": {
+     "text": "Rien n’a été enregistré des autres"
+    },
+    "es": {
+     "text": "No se grabó nada de los demás"
+    },
+    "pt-BR": {
+     "text": "Nada foi gravado dos outros"
+    },
+    "pt-PT": {
+     "text": "Nada foi gravado dos outros"
     }
    }
   }
