@@ -19,7 +19,7 @@ SVG = "{http://www.w3.org/2000/svg}"
 
 def _nav_body() -> str:
     text = SATURN_NAV.read_text(encoding="utf-8")
-    return text[text.index("<defs>"):text.rindex("</svg>")]
+    return text[text.index("<defs>") : text.rindex("</svg>")]
 
 
 def test_app_icon_embeds_saturn_nav_unchanged():
