@@ -243,12 +243,13 @@ class SearchIndex:
                 if old is not None and old[0] is meeting.words and old[1:] == signature[1:]:
                     continue
                 labels = {s.id: s.name for s in meeting.speakers}
+                # D112 (L-86): Search leaves background voices out.
+                background = {s.id for s in meeting.speakers if getattr(s, "background", False)}
+                words = tuple(w for w in meeting.words if w.speaker not in background) if background else meeting.words
                 turns = tuple(
-                    search_turns(
-                        meeting.words, meeting.turn_gaps, lambda speaker, labels=labels: labels.get(speaker, speaker)
-                    )
+                    search_turns(words, meeting.turn_gaps, lambda speaker, labels=labels: labels.get(speaker, speaker))
                 )
-                names = {s.id: s.name.casefold() for s in meeting.speakers}
+                names = {s.id: s.name.casefold() for s in meeting.speakers if s.id not in background}
                 rows = []
                 for i, turn in enumerate(turns):
                     # Unfiltered queries index the whole rendered paragraph once.
@@ -297,6 +298,8 @@ class SearchIndex:
         names = {}
         for meeting in self.current.values():
             for speaker in meeting.speakers:
+                if getattr(speaker, "background", False):
+                    continue
                 if speaker.provenance != "unnamed" and not re.fullmatch(r"Speaker \d+", speaker.name):
                     names.setdefault(speaker.name.casefold(), speaker.name)
         return tuple(names[key] for key in sorted(names))

@@ -179,8 +179,12 @@ with tempfile.TemporaryDirectory() as temporary:
                 and dialog.voices_section.get_height() > 0
                 and (save_in_dialog := dialog.save.compute_bounds(dialog))[0]
                 and save_in_dialog[1].get_y() + save_in_dialog[1].get_height() <= dialog.get_height()
+                # D112: with the speaker row and Background voice too, the body may scroll in a 710 px
+                # window; the footer stays put and the last card is reachable inside the body.
+                and dialog.background_card.get_height() > 0
                 and dialog.body_scroll.get_vadjustment().get_upper()
-                <= dialog.body_scroll.get_vadjustment().get_page_size() + 1
+                >= dialog.background_card.compute_bounds(dialog.body_scroll.get_child())[1].get_y()
+                + dialog.background_card.get_height()
             )
         )
     except AssertionError:

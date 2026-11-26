@@ -1,15 +1,22 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""UX16 speaker naming and merge dialog; metadata IO uses the Library worker."""
+"""UX16 speaker naming and merge dialog; metadata IO uses the Library worker.
+
+D112 (L-86): every speaker sits in a row at the top; each keeps its own form
+(name, saved voice, Remember this voice, Background voice) while you move
+between them, and one Save applies every change.
+"""
 
 import logging
 import re
 from concurrent.futures import CancelledError
+from dataclasses import dataclass
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from . import speaker_edits, ux_formats
+from .adw_compat import wrap_box
 from .strings import text
-from .tokens import saved_voice_slot
+from .tokens import saved_voice_slot, speaker_slot
 from .voices_logic import name_key, pick_name, ranked
 
 LOG = logging.getLogger(__name__)
@@ -17,6 +24,32 @@ LOG = logging.getLogger(__name__)
 
 class VoiceWriteError(OSError):
     pass
+
+
+@dataclass
+class _Form:
+    """One speaker's pending changes, kept while the dialog moves between speakers."""
+
+    identifier: str
+    initial_name: str
+    name: str
+    initial_background: bool
+    background: bool
+    remember: bool
+    chosen_voice: str | None = None
+    declined_duplicate: str | None = None
+    # A duplicate-voice question was left unanswered on this speaker.
+    blocked: bool = False
+    visited: bool = False
+    initial_remember: bool | None = None
+
+    @property
+    def remember_changed(self):
+        return self.initial_remember is not None and self.remember != self.initial_remember
+
+    @property
+    def name_changed(self):
+        return self.name.strip() != self.initial_name.strip()
 
 
 class _WidthHint(Gtk.Widget):
@@ -78,6 +111,28 @@ class SpeakersDialog(Adw.Dialog):
             vexpand=True,
         )
         outer.append(self.body_scroll)
+        self.forms = {}
+        self.chips = {}
+        self._chip_key = None
+        self._loading_form = False
+        self.voice_items = {}
+        narrow = 0 < self.window.get_width() < 420
+        # D112 (2C): every speaker across the top, in the order of the names under the title.
+        # Wide, the row wraps; narrow, it scrolls sideways (D-1162 bottom sheet).
+        if narrow:
+            self.chip_box = Gtk.Box(spacing=6)
+            chip_holder = Gtk.ScrolledWindow(
+                child=self.chip_box,
+                hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+                vscrollbar_policy=Gtk.PolicyType.NEVER,
+                propagate_natural_height=True,
+            )
+        else:
+            self.chip_box = chip_holder = wrap_box(child_spacing=6, line_spacing=4)
+        self.chip_box.update_property([Gtk.AccessibleProperty.LABEL], [text("common.speakers")])
+        self.speaker_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["speaker-chip-row"])
+        self.speaker_row.append(chip_holder)
+        content.append(self.speaker_row)
         header = Gtk.Box(spacing=12)
         details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
         self.heading = Gtk.Label(xalign=0, wrap=True, css_classes=["speaker-dialog-heading"])
@@ -197,8 +252,9 @@ class SpeakersDialog(Adw.Dialog):
         remember_copy.append(self.remember_description)
         remember_copy.append(self.voice_settings)
         # D103 §3: the default follows the voices question / "Remember people I name".
+        self._remember_default = self.window.get_application().recording_settings.get_boolean("remember-voices")
         self.remember = Gtk.Switch(
-            active=self.window.get_application().recording_settings.get_boolean("remember-voices"),
+            active=self._remember_default,
             sensitive=False,
             valign=Gtk.Align.START,
             css_classes=["speaker-remember-switch"],
@@ -208,6 +264,34 @@ class SpeakersDialog(Adw.Dialog):
         self.remember_card.append(remember_copy)
         self.remember_card.append(self.remember)
         content.append(self.remember_card)
+        # D112 (L-86): styled like Remember this voice.
+        self.background_card = Gtk.Box(spacing=16, css_classes=["speaker-remember-card", "speaker-background-card"])
+        background_copy = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
+        background_copy.append(
+            Gtk.Label(
+                label=text("speakers.backgroundVoice"),
+                xalign=0,
+                wrap=True,
+                css_classes=["speaker-remember-title"],
+            )
+        )
+        background_copy.append(
+            Gtk.Label(
+                label=text("speakers.backgroundVoice.description"),
+                xalign=0,
+                wrap=True,
+                css_classes=["speaker-remember-body"],
+            )
+        )
+        self.background = Gtk.Switch(valign=Gtk.Align.START, css_classes=["speaker-remember-switch"])
+        self.background.update_property(
+            [Gtk.AccessibleProperty.LABEL, Gtk.AccessibleProperty.DESCRIPTION],
+            [text("speakers.backgroundVoice"), text("speakers.backgroundVoice.description")],
+        )
+        self.background.connect("notify::active", self._background_changed)
+        self.background_card.append(background_copy)
+        self.background_card.append(self.background)
+        content.append(self.background_card)
         self.error = Gtk.Label(
             label=text("speakers.changeFailed"),
             xalign=0,
@@ -264,20 +348,180 @@ class SpeakersDialog(Adw.Dialog):
         self.actions.add_action(action)
         self.insert_action_group("speaker", self.actions)
         self.update(self.meeting)
-        selected = next(s for s in self.meeting.speakers if s.id == identifier)
-        # Generated Speaker n is a display placeholder, not a stored name.
-        raw = next((s for s in self.meeting.metadata.get("speakers", []) if s["id"] == identifier), {})
-        value = raw.get("name")
-        if value is None and selected.provenance != "unnamed" and not re.fullmatch(r"Speaker \d+", selected.name):
-            value = selected.name
-        self.initial_name = value or ""
-        self.entry.set_text(self.initial_name)
+        form = self._form(identifier)
+        form.visited = True
+        self.initial_name = form.initial_name
+        self.entry.set_text("" if form.background else form.name)
+        self._loading_form = True
+        self.background.set_active(form.background)
+        self._loading_form = False
+        self._apply_background()
         self.entry.connect("changed", self._changed)
         self.entry.connect("map", lambda *_: GLib.idle_add(self._place_caret))
         self._validate()
         self.set_default_widget(self.save)
         self.timer = GLib.timeout_add(50, self._tick)
         self._load_voices()
+
+    def _stored_name(self, speaker):
+        # Generated Speaker n is a display placeholder, not a stored name.
+        raw = next((s for s in self.meeting.metadata.get("speakers", []) if s.get("id") == speaker.id), {})
+        value = raw.get("name")
+        if value is None and speaker.provenance != "unnamed" and not re.fullmatch(r"Speaker \d+", speaker.name):
+            value = speaker.name
+        return value or ""
+
+    def _form(self, identifier):
+        form = self.forms.get(identifier)
+        if form is None:
+            speaker = next(s for s in self.meeting.speakers if s.id == identifier)
+            name = self._stored_name(speaker)
+            background = bool(getattr(speaker, "background", False))
+            form = _Form(identifier, name, name, background, background, self._remember_default)
+            form.initial_remember = form.remember
+            self.forms[identifier] = form
+            if self.voices_loaded:
+                old = (self.voice_items.get(identifier) or {}).get("match", {})
+                voice = next((v for v in self.voice_state["voices"] if v["id"] == old.get("voiceId")), None)
+                if voice and name and name_key(voice["name"]) == name_key(name):
+                    form.chosen_voice = voice["id"]
+        return form
+
+    def _keep_form(self):
+        """Copy the shown speaker's widgets into its form."""
+        form = self.forms.get(self.identifier)
+        if form is None:
+            return
+        if not form.background:
+            form.name = self.entry.get_text()
+        form.background = self.background.get_active()
+        form.remember = self.remember.get_active()
+        form.chosen_voice = self.chosen_voice
+        form.declined_duplicate = self.declined_duplicate
+        form.blocked = self.candidate is not None and not form.background
+
+    def select_speaker(self, identifier):
+        """D112 (2C): switch the form to another speaker without closing."""
+        if identifier == self.identifier or self.busy or self.closed:
+            self._sync_chips()
+            return
+        if not any(s.id == identifier for s in self.meeting.speakers):
+            return
+        self._finish_sample()
+        self._keep_form()
+        self.identifier = identifier
+        self.page._selected_speaker = identifier
+        form = self._form(identifier)
+        form.visited = True
+        self.initial_name = form.initial_name
+        self.retry = None
+        self.error.set_visible(False)
+        self.save.set_label(text("speakers.saveName"))
+        self._loading_form = True
+        self.chosen_voice = form.chosen_voice
+        self.declined_duplicate = form.declined_duplicate
+        self.remember.set_active(form.remember)
+        self.background.set_active(form.background)
+        self.entry.set_text("" if form.background else form.name)
+        self._loading_form = False
+        self._content_key = None
+        self.update(self.meeting)
+        self.voice_data = self.voice_items.get(identifier)
+        self._apply_background()
+        self._voice_rows()
+        self._validate()
+        self._sync_chips()
+
+    def _display_name(self, speaker):
+        form = self.forms.get(speaker.id)
+        if form is not None and not form.background and form.name.strip():
+            return form.name.strip()
+        return speaker.name
+
+    def _chip(self, speaker):
+        dot = Gtk.Box(valign=Gtk.Align.CENTER, css_classes=["speaker-dot"])
+        dot.set_accessible_role(Gtk.AccessibleRole.PRESENTATION)
+        name = Gtk.Label(
+            xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=18, css_classes=["speaker-chip-name"]
+        )
+        content = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+        content.append(dot)
+        content.append(name)
+        chip = Gtk.ToggleButton(child=content, css_classes=["flat", "speaker-chip"], can_shrink=True)
+        chip._dot, chip._name, chip._id = dot, name, speaker.id
+        chip.connect("toggled", self._chip_toggled)
+        return chip
+
+    def _chip_toggled(self, chip):
+        if self._loading_form:
+            return
+        if chip.get_active():
+            self.select_speaker(chip._id)
+        elif chip._id == self.identifier:
+            # Clicking the shown speaker keeps it shown.
+            self._sync_chips()
+
+    def _sync_chips(self):
+        """Rebuild the speaker row when the roster changes; restyle chips for pending changes."""
+        speakers = self.meeting.speakers
+        key = tuple(s.id for s in speakers)
+        if key != self._chip_key:
+            self._chip_key = key
+            while child := self.chip_box.get_first_child():
+                self.chip_box.remove(child)
+            self.chips = {}
+            for speaker in speakers:
+                chip = self._chip(speaker)
+                self.chips[speaker.id] = chip
+                self.chip_box.append(chip)
+        self.speaker_row.set_visible(len(speakers) > 1)
+        self._loading_form = True
+        for speaker in speakers:
+            chip = self.chips[speaker.id]
+            form = self.forms.get(speaker.id)
+            background = form.background if form is not None else bool(getattr(speaker, "background", False))
+            shown = self._display_name(speaker)
+            slot = speaker_slot(speaker)
+            for index in range(7):
+                (chip._dot.add_css_class if index == slot else chip._dot.remove_css_class)(f"speaker-dot-{index}")
+            (chip._dot.add_css_class if background else chip._dot.remove_css_class)("speaker-dot-hollow")
+            (chip._name.add_css_class if background else chip._name.remove_css_class)("speaker-chip-background")
+            unnamed = slot == 0 and not background and shown == speaker.name
+            (chip._name.add_css_class if unnamed else chip._name.remove_css_class)("speaker-unnamed")
+            chip._name.set_label(shown)
+            label = text("speakers.backgroundVoice") if background else ""
+            chip.update_property([Gtk.AccessibleProperty.LABEL, Gtk.AccessibleProperty.DESCRIPTION], [shown, label])
+            chip.set_active(speaker.id == self.identifier)
+            chip.set_sensitive(not self.busy)
+        self._loading_form = False
+
+    def _apply_background(self):
+        """Background voice on: the name, saved voices and Merge into… step back; Remember is hidden."""
+        on = self.background.get_active()
+        self.entry.set_sensitive(not on and not self.busy)
+        self.entry.set_placeholder_text(text("speakers.backgroundVoice.namePlaceholder") if on else "")
+        self.voices_section.set_sensitive(not on)
+        self.merge.set_sensitive(not on and not self.busy and len(self.meeting.speakers) > 1)
+
+    def _background_changed(self, *_):
+        if self._loading_form:
+            return
+        form = self.forms.get(self.identifier)
+        on = self.background.get_active()
+        if form is not None:
+            if on:
+                form.name = self.entry.get_text()
+            form.background = on
+        self._loading_form = True
+        # The stored name is kept; the field shows "Not needed for a background voice" while on.
+        self.entry.set_text("" if on else (form.name if form is not None else self.entry.get_text()))
+        self._loading_form = False
+        self.retry = None
+        self.save.set_label(text("speakers.saveName"))
+        self.error.set_visible(False)
+        self._apply_background()
+        self._validate()
+        self._sync_chips()
 
     def _set_narrow(self, narrow):
         """D-1162: stack the footer and the Same person / Someone else choice on a narrow window."""
@@ -316,6 +560,7 @@ class SpeakersDialog(Adw.Dialog):
         # The Library republishes the meeting every activity tick; only rebuild
         # the quote and merge menu when speakers, merges or transcript changed.
         key = (
+            self.identifier,
             meeting.speakers,
             meeting.metadata.get("speakerMerges"),
             meeting.listening_turns,
@@ -324,7 +569,7 @@ class SpeakersDialog(Adw.Dialog):
         )
         previous = getattr(self, "_content_key", None)
         if previous is None or not (
-            key[:2] == previous[:2] and all(a is b for a, b in zip(key[2:], previous[2:], strict=True))
+            key[:3] == previous[:3] and all(a is b for a, b in zip(key[3:], previous[3:], strict=True))
         ):
             self._content_key = key
             self.heading.set_label(speaker.name)
@@ -339,7 +584,9 @@ class SpeakersDialog(Adw.Dialog):
                     item = Gio.MenuItem.new(target.name, None)
                     item.set_action_and_target_value("speaker.merge", GLib.Variant("s", target.id))
                     self.merge_menu.append_item(item)
-        self.merge.set_sensitive(not self.busy and len(meeting.speakers) > 1)
+        background = self.background.get_active()
+        self.merge.set_sensitive(not self.busy and not background and len(meeting.speakers) > 1)
+        self._sync_chips()
 
     def _load_voices(self):
         if self.closed or self.window.monitor._closed:
@@ -355,7 +602,7 @@ class SpeakersDialog(Adw.Dialog):
             if state["readOnly"]:
                 return state, None, False
             cache, prepared = store.preparation(self.meeting.directory)
-            return state, cache["speakers"].get(self.identifier), prepared
+            return state, dict(cache["speakers"]), prepared
 
         future = self.window.monitor._executor.submit(load)
         future.add_done_callback(lambda f: GLib.idle_add(self._voices_loaded, f))
@@ -363,21 +610,28 @@ class SpeakersDialog(Adw.Dialog):
     def _voices_loaded(self, future):
         self._voices_loading = False
         try:
-            state, item, prepared = future.result()
+            state, items, prepared = future.result()
         except CancelledError:
             return False
         except (OSError, ValueError):
             LOG.exception("Could not load private speaker print")
-            state, item, prepared = dict(voices=[], readOnly=False), None, False
+            state, items, prepared = dict(voices=[], readOnly=False), None, False
         if self.closed:
             return False
         self.voices_loaded = True
+        self.voice_items = items or {}
+        item = self.voice_items.get(self.identifier)
         self.voice_state, self.voice_data = state, item
         self.voice_prepared = prepared
-        old = (item or {}).get("match", {})
-        voice = next((v for v in state["voices"] if v["id"] == old.get("voiceId")), None)
-        if voice and name_key(voice["name"]) == name_key(self.initial_name) == name_key(self.entry.get_text()):
-            self.chosen_voice = voice["id"]
+        for form in self.forms.values():
+            # A speaker already confirmed as a saved voice keeps that voice while its name is unchanged.
+            old = (self.voice_items.get(form.identifier) or {}).get("match", {})
+            voice = next((v for v in state["voices"] if v["id"] == old.get("voiceId")), None)
+            current = self.entry.get_text() if form.identifier == self.identifier else form.name
+            if voice and name_key(voice["name"]) == name_key(form.initial_name) == name_key(current):
+                form.chosen_voice = voice["id"]
+                if form.identifier == self.identifier:
+                    self.chosen_voice = voice["id"]
         self._voice_rows()
         self._validate()
         if self._voices_again:
@@ -484,30 +738,56 @@ class SpeakersDialog(Adw.Dialog):
         self._validate()
 
     def _remember_changed(self, *_):
+        if self._loading_form:
+            return
         self.retry = None
         self.save.set_label(text("speakers.saveName"))
         self.error.set_visible(False)
         self._validate()
 
     def _changed(self, *_):
+        if self._loading_form:
+            return
         self.chosen_voice = None
         self.retry = None
         self.save.set_label(text("speakers.saveName"))
         self.error.set_visible(False)
+        form = self.forms.get(self.identifier)
+        if form is not None and not form.background:
+            form.name = self.entry.get_text()
         self._validate()
+        self._sync_chips()
+
+    def _enough(self, identifier, item, pending):
+        return bool(item and item["seconds"] >= 4 and identifier != "me" and not pending)
+
+    def _others_ready(self):
+        """Every other speaker's pending form can be saved."""
+        for form in self.forms.values():
+            if form.identifier == self.identifier or form.background or not form.name_changed:
+                continue
+            if form.blocked:
+                return False
+            try:
+                speaker_edits.name_value(form.name)
+            except ValueError:
+                return False
+        return True
 
     def _validate(self, *_):
+        background = self.background.get_active()
         try:
             speaker_edits.name_value(self.entry.get_text())
         except ValueError:
-            valid = False
+            valid = background
         else:
             valid = True
+        valid = valid and self._others_ready()
         # A queued or running transcription job may re-diarize this id and
         # restamp it (G12); remember() would then refuse the print, so wait.
         transcriber = getattr(self.window.get_application(), "transcriber", None)
         pending = transcriber is not None and transcriber.transcribing(self.meeting.directory)
-        enough = bool(self.voice_data and self.voice_data["seconds"] >= 4 and self.identifier != "me" and not pending)
+        enough = self._enough(self.identifier, self.voice_data, pending)
         writable = not self.voice_state["readOnly"]
         app = self.window.get_application()
         ready = all(
@@ -533,7 +813,8 @@ class SpeakersDialog(Adw.Dialog):
             if not self.voice_prepared or pending
             else text("speakers.rememberVoice.tooShort")
         )
-        show_remember = self.identifier != "me"
+        # D112: no voiceprint is kept for a background voice, so Remember this voice is hidden.
+        show_remember = self.identifier != "me" and not background
         self.remember_card.set_visible(show_remember)
         self.remember.set_visible(show_remember)
         self.remember_description.set_visible(show_remember)
@@ -542,6 +823,7 @@ class SpeakersDialog(Adw.Dialog):
         if (
             enough
             and writable
+            and not background
             and self.remember.get_active()
             and self.chosen_voice is None
             and name_key(self.entry.get_text()) != self.declined_duplicate
@@ -560,28 +842,71 @@ class SpeakersDialog(Adw.Dialog):
             self.voices_loaded and not self.busy and (valid and self.candidate is None or self.retry is not None)
         )
 
+    def _changes(self):
+        """The pending speaker changes for one Save, plus their forms (D112)."""
+        self._keep_form()
+        changes, forms = {}, []
+        visible = {s.id for s in self.meeting.speakers}
+        for form in self.forms.values():
+            if form.identifier not in visible:
+                continue
+            change = {}
+            if form.background != form.initial_background:
+                change["background"] = form.background
+            # The shown speaker is saved as before (a Save confirms its name or saved voice);
+            # others only when their name, chosen voice or Remember changed.
+            if not form.background and (
+                form.name_changed
+                or form.chosen_voice is not None
+                or form.remember_changed
+                or form.identifier == self.identifier
+            ):
+                change["name"] = form.name
+            if change:
+                changes[form.identifier] = change
+                forms.append(form)
+        return changes, forms
+
     def _save(self, *_):
         if not self.voices_loaded or self.closed or self.busy:
             return
         if self.retry is not None:
             operation = self.retry
         else:
-            value = self.entry.get_text()
-            remember = self.remember.get_sensitive() and self.remember.get_active()
-            voice_id = self.chosen_voice
+            changes, forms = self._changes()
+            if not changes:
+                self.close()
+                return
             directory = self.meeting.directory
             app = self.window.get_application()
+            scanner = self.window.monitor.scanner
+            transcriber = getattr(app, "transcriber", None)
+            pending = transcriber is not None and transcriber.transcribing(directory)
+            writable = not self.voice_state["readOnly"]
+            voices = []
+            for form in forms:
+                item = self.voice_items.get(form.identifier)
+                if "name" in changes[form.identifier] and item is not None and writable:
+                    remember = form.remember and self._enough(form.identifier, item, pending)
+                    voices.append((form.identifier, form.name, form.chosen_voice, remember))
+            names = {s.id: s.name for s in self.meeting.speakers}
+            summary = speaker_edits.save_summary(
+                [(f.identifier, f.initial_background, f.background, f.name if f.name_changed else None) for f in forms],
+                names,
+            )
+            # A retry after a saved-voices failure must not replace the first write's Undo snapshot.
+            outcome = {}
 
             def operation():
-                result = speaker_edits.save_name(directory, self.identifier, value, scanner=self.window.monitor.scanner)
-                if self.voice_data is not None and not self.voice_state["readOnly"]:
+                result, previous = speaker_edits.save_speakers(directory, changes, scanner=scanner)
+                outcome.setdefault("previous", previous)
+                outcome["summary"] = summary
+                for identifier, value, voice_id, remember in voices:
                     try:
-                        app.voice_store.remember(
-                            directory, self.identifier, value, voice_id=voice_id, remember=remember
-                        )
+                        app.voice_store.remember(directory, identifier, value, voice_id=voice_id, remember=remember)
                     except (OSError, ValueError) as error:
                         raise VoiceWriteError(str(error)) from error
-                return result
+                return outcome
 
         self._submit(operation)
 
@@ -606,6 +931,7 @@ class SpeakersDialog(Adw.Dialog):
         self.merge.set_sensitive(False)
         self.entry.set_sensitive(False)
         self._validate()
+        self._sync_chips()
         directory = self.meeting.directory
         meeting_key = self.meeting.key
         app = self.window.get_application()
@@ -623,7 +949,7 @@ class SpeakersDialog(Adw.Dialog):
     def _finished(self, future, operation, directory, meeting_key, app):
         self.busy = False
         try:
-            future.result()
+            outcome = future.result()
         except CancelledError:
             return False
         except (OSError, ValueError) as error:
@@ -637,7 +963,7 @@ class SpeakersDialog(Adw.Dialog):
                 if isinstance(error, VoiceWriteError):
                     self.window.monitor.refresh_now()
                 self.save.set_label(text("common.tryAgain"))
-                self.entry.set_sensitive(True)
+                self._apply_background()
                 self.update(self.meeting)
                 self._validate()
         else:
@@ -650,6 +976,10 @@ class SpeakersDialog(Adw.Dialog):
                 ):
                     self.page.speaker_merged(*self._recompute, transition=self._listening_merge)
                 app.recompute_voices(directory, self._recompute)
+            elif isinstance(outcome, dict) and outcome.get("previous"):
+                saved = getattr(self.page, "speakers_saved", None)
+                if saved is not None:
+                    saved(directory, meeting_key, outcome["previous"], outcome.get("summary"))
             if not self.window.monitor._closed:
                 self.window.monitor.refresh_now()
             self.close()

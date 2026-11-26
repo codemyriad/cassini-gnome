@@ -104,7 +104,10 @@ def test_paused_and_within_word_ticks_do_not_replace_existing_label_markup(monke
     monkeypatch.setattr(Adw.StyleManager, "get_default", lambda: SimpleNamespace(get_dark=lambda: False))
     row = turn(0, "a")
     page = SimpleNamespace(
-        player=SimpleNamespace(position=10), meeting=SimpleNamespace(), _turn_markup=Mock(return_value="word")
+        player=SimpleNamespace(position=10),
+        meeting=SimpleNamespace(),
+        _turn_markup=Mock(return_value="word"),
+        _aside_hider=lambda _turn: None,
     )
     words = SimpleNamespace(set_markup=Mock(), get_root=lambda: None)
     page_type._render_words(page, row, words)
@@ -149,7 +152,10 @@ def test_mapping_and_inherited_colour_refresh_separator_markup_without_repeated_
     row = turn(0, "a")
     markup = '<a href="item:0">Before</a> <a href="item:1">after</a>'
     page = SimpleNamespace(
-        player=SimpleNamespace(position=500), meeting=SimpleNamespace(), _turn_markup=Mock(return_value=markup)
+        player=SimpleNamespace(position=500),
+        meeting=SimpleNamespace(),
+        _turn_markup=Mock(return_value=markup),
+        _aside_hider=lambda _turn: None,
     )
     colour = SimpleNamespace(red=0.0, green=0.0, blue=0.0, alpha=1.0)
     rooted = [False]

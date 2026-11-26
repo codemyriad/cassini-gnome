@@ -144,7 +144,8 @@ class WordActions:
             if row._action_pending is not None:
                 missing = True
                 pending_rows.add(number)
-            previous = row.body
+            # Word actions follow the row's own top-level child (the turn, or the fold box over it).
+            previous = getattr(row, "_outer", row.body)
             for uri, value, x, local_y, width, word_height in row._action_geometry:
                 if top + local_y + word_height <= 0 or top + local_y >= height:
                     continue

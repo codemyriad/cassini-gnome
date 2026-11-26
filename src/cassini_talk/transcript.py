@@ -393,8 +393,9 @@ def join_items(turn: Turn, link, chip) -> tuple[str, list[int]]:
     """Markup for *turn* and the UTF-8 byte offset of each item in its text.
 
     ``link(owner, i)`` is the markup of a displayed item and ``chip(aside)``
-    returns an aside's (markup, plain text). Items displayed as "" (D38.5) emit
-    nothing and no separator, so offsets match the rendered layout.
+    returns an aside's (markup, plain text), or None to leave it out. Items
+    displayed as "" (D38.5) emit nothing and no separator, so offsets match the
+    rendered layout.
     """
     asides = {}
     for after, aside in turn.asides:
@@ -405,7 +406,10 @@ def join_items(turn: Turn, link, chip) -> tuple[str, list[int]]:
     def append_chips(after):
         nonlocal length
         for aside in asides.get(after, ()):
-            markup, plain = chip(aside)
+            value = chip(aside)
+            if value is None:
+                continue
+            markup, plain = value
             if parts:
                 parts.append(" ")
                 length += 1

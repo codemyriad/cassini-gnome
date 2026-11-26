@@ -124,7 +124,7 @@ with tempfile.TemporaryDirectory() as temporary:
     dialog._tick()
     assert dialog.play.get_sensitive()
     # A real failed update stays open and retains the field for Try again.
-    with patch.object(speaker_edits, "save_name", side_effect=OSError("fixture read-only volume")):
+    with patch.object(speaker_edits, "save_speakers", side_effect=OSError("fixture read-only volume")):
         dialog.save.emit("clicked")
         until(lambda: not dialog.busy)
         assert not dialog.closed and dialog.error.get_visible() and dialog.save.get_label() == "Try again"

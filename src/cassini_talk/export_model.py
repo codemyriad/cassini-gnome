@@ -341,6 +341,7 @@ def available_formats(meeting):
 
 
 def model_projection(meeting, *, tz=None):
+    background = getattr(meeting, "background_speakers", frozenset())
     items = (
         [
             dict(
@@ -351,6 +352,8 @@ def model_projection(meeting, *, tz=None):
                 lowConfidenceSpeaker=w.low_confidence,
             )
             for w in meeting.words
+            # D112 (L-86): text and subtitle exports leave background voices out.
+            if w.speaker not in background
         ]
         if meeting.transcript == "done"
         else []

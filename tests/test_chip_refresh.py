@@ -32,6 +32,7 @@ def test_header_refresh_updates_chip_names_and_theme_without_replacing_rows(monk
         player=SimpleNamespace(position=0),
         _style_manager=SimpleNamespace(get_dark=lambda: dark[0]),
         meeting=SimpleNamespace(speaker_for=lambda s: SimpleNamespace(name=names[s])),
+        _aside_hider=lambda _turn: None,
     )
     monkeypatch.setattr(Adw.StyleManager, "get_default", lambda: page._style_manager)
     page._render_words = lambda turn, words: MeetingPage._render_words(page, turn, words)
