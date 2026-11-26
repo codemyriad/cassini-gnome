@@ -189,6 +189,7 @@ def test_find_after_equal_content_refresh_targets_displayed_layout_chunk():
         _sync_find_chrome=Mock(),
         _refresh_find_highlights=Mock(),
         _scroll_to_find_match=lambda: scrolled.append(page._find_matches[page._find_index].row_index),
+        _row_background=lambda _index: False,
     )
     page_class._recompute_find_matches(page, scroll=True)
     assert len(page._find_matches) == 1
