@@ -30,7 +30,7 @@ gi.require_version("GdkX11", "4.0")
 gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
 from dispatch_wait import dispatch_until  # noqa: E402
-from gi.repository import GdkX11, Gio, Graphene, Gtk  # noqa: E402
+from gi.repository import GdkX11, Gio, Graphene, Gtk, Pango  # noqa: E402
 from painted import apply_screenshot_scheme, painted_node  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
@@ -101,27 +101,48 @@ def send_keys(window, symbols):
         x11.XCloseDisplay(display)
 
 
-def point_at(window, widget, x=None):
+def point_at(window, widget, x=None, y=None):
     ok, point = widget.compute_point(
-        window, Graphene.Point().init(widget.get_width() / 2 if x is None else x, widget.get_height() / 2)
+        window,
+        Graphene.Point().init(widget.get_width() / 2 if x is None else x, widget.get_height() / 2 if y is None else y),
     )
     assert ok, "could not map widget coordinates to window"
     return int(point.x), int(point.y)
 
 
-def pointer(window, widget, *, click=False, x=None):
-    px, py = point_at(window, widget, x)
+def pointer(window, widget, *, click=False, x=None, y=None):
+    px, py = point_at(window, widget, x, y)
     xid = GdkX11.X11Surface.get_xid(window.get_surface())
     window.get_display().sync()
     command = ["xdotool", "mousemove", "--sync", "--window", str(xid), str(px), str(py)]
     subprocess.run(command + (["click", "1"] if click else []), check=True)
 
 
-def frames(window, count=3):
-    ticks = []
-    window.add_tick_callback(lambda *_: (ticks.append(True), len(ticks) < count)[1])
-    window.queue_draw()
-    until(lambda: len(ticks) >= count, "frame ticks did not advance")
+class Releases:
+    """Counts primary releases a widget receives (bubble phase, never claimed)."""
+
+    def __init__(self, widget):
+        self.count = 0
+        gesture = Gtk.GestureClick(propagation_phase=Gtk.PropagationPhase.BUBBLE)
+        gesture.connect("released", self._released)
+        widget.add_controller(gesture)
+
+    def _released(self, *_args):
+        self.count += 1
+
+
+def click_plain(window, label, x, y, message):
+    """Click the line's plain text and prove GTK dispatched that release before checking no dialog opened.
+
+    The release reaches the label, not the date button. until() checks between
+    main-loop iterations, so once the label has counted it GTK has finished
+    dispatching the event; show_set_date presents the dialog synchronously from
+    a button's release, so it would already be open.
+    """
+    on_label = Releases(label)
+    pointer(window, label, click=True, x=x, y=y)
+    until(lambda: on_label.count, f"{message}: the click did not reach the line's text")
+    assert not dialog_open(window), message
 
 
 def dialog_open(window):
@@ -206,11 +227,11 @@ with tempfile.TemporaryDirectory() as temporary:
     date = check_line(window, page, chosen)
     rest_x = page.date_button.get_width() + 40  # on "52 min"
     pointer(window, page.subtitle_label, x=rest_x)
-    frames(window)
+    # GTK sets PRELIGHT along the hovered chain while it dispatches the motion.
+    until(lambda: page.subtitle_label.get_state_flags() & Gtk.StateFlags.PRELIGHT, "the length did not take hover")
     assert not page.date_button.get_state_flags() & Gtk.StateFlags.PRELIGHT
     pointer(window, page.date_button)
     until(lambda: page.date_button.get_state_flags() & Gtk.StateFlags.PRELIGHT, "hover did not highlight the date")
-    frames(window)
     node = painted_node(window)
     texture = window.get_renderer().render_texture(node, node.get_bounds())
     assert texture.save_to_png(os.environ["CASSINI_SCREENSHOT_OUT"])
@@ -238,9 +259,7 @@ with tempfile.TemporaryDirectory() as temporary:
         close_with_escape(window, wait_dialog(window, f"Key {key:#x} on the date"))
 
     # 3) The length and "Imported" do nothing on click.
-    pointer(window, page.subtitle_label, click=True, x=rest_x)
-    frames(window, 6)
-    assert not dialog_open(window), "clicking the length opened Set date and time"
+    click_plain(window, page.subtitle_label, rest_x, None, "clicking the length opened Set date and time")
 
     # 4) Where Set date and time… is unavailable the date is plain text with no hover.
     action = window.lookup_action("set-date")
@@ -265,16 +284,93 @@ with tempfile.TemporaryDirectory() as temporary:
 
     # 7) Narrow: the line still fits the header, wrapping when it must.
     window.set_default_size(360, 780)
-    until(lambda: window.get_width() <= 380, "window did not narrow")
-    frames(window, 6)
     line = page.subtitle_line
-    until(lambda: 0 < line.get_width() < 360, "the date line did not narrow")
+
+    def narrowed():
+        # The header is laid out for the new width: the line fills it and wraps.
+        return (
+            window.get_width() <= 380
+            and 0 < line.get_width() < 360
+            and line.get_width() == page.subtitle_label.get_width()
+            and page.subtitle_label.get_layout().get_width() == line.get_width() * Pango.SCALE
+        )
+
+    until(narrowed, "the date line did not narrow")
     ok, end = line.compute_point(page.full_header, Graphene.Point().init(line.get_width(), 0))
     assert ok and end.x <= page.full_header.get_width(), "the date line overflows the narrow header"
     # Still one label wrapping word by word ("… Transcribed / on another device"), the button on its date.
     assert page.subtitle_label.get_layout().get_line_count() == 2
     ok, at = page.date_button.get_child().compute_point(page.subtitle_label, Graphene.Point().init(0, 0))
     assert ok and abs(at.x - page.subtitle_label.get_layout_offsets()[0]) <= 1
+
+    # 8) A long date with Large Text (125%) wraps inside the button at the line's
+    # own breaks: nothing is cut at the window's edge, the date's second line is
+    # the button and the length after it on that line stays plain text.
+    from cassini_talk.i18n import using_language
+
+    with using_language("pt-BR"):
+        long_date, long_rest = fmt.preview_subtitle_parts(
+            1763024400000, 52 * 60_000, now_ms=window.now_ms, tz=window.tz
+        )  # Thursday 13 November 2025, a year before "now": weekday, month and year spelled out
+    Gtk.Settings.get_default().props.gtk_xft_dpi = int(96 * 1.25 * 1024)
+    page.subtitle_line.set_parts(long_date, long_rest)
+    button, inner, whole = page.date_button, page.date_button.get_child(), page.subtitle_label
+    date_bytes = len(long_date.encode())
+
+    def line_texts(widget):
+        raw = widget.get_label().encode()
+        return [
+            raw[ln.start_index : ln.start_index + ln.length].decode() for ln in widget.get_layout().get_lines_readonly()
+        ]
+
+    def date_lines():
+        return whole.get_layout().index_to_line_x(date_bytes - 1, False)[0] + 1
+
+    def wrapped_laid_out():
+        return (
+            whole.get_label() == long_date + long_rest
+            and date_lines() >= 2
+            and button.wrapped
+            and inner.get_layout().get_width() == whole.get_layout().get_width()
+            and inner.get_layout().get_line_count() == date_lines()
+        )
+
+    until(wrapped_laid_out, "the long date did not wrap inside the button")
+    print("Long date lines:", line_texts(inner), "line:", line_texts(whole), flush=True)
+    ok, end = inner.compute_point(page.full_header, Graphene.Point().init(inner.get_width(), inner.get_height()))
+    assert ok and end.x <= page.full_header.get_width(), "the long date runs past the narrow header"
+    # The button's lines are the line's own: same breaks, same place.
+    ours, theirs = line_texts(inner), line_texts(whole)
+    assert "".join(ours) == long_date
+    assert ours[:-1] == theirs[: len(ours) - 1] and theirs[len(ours) - 1].startswith(ours[-1]), (ours, theirs)
+    ok, at = inner.compute_point(whole, Graphene.Point().init(0, 0))
+    x, y = whole.get_layout_offsets()
+    ix, iy = inner.get_layout_offsets()
+    assert ok and abs(at.x + ix - x) <= 1 and abs(at.y + iy - y) <= 1, "the wrapped date is not over the line's"
+
+    def label_point(index):
+        pos = whole.get_layout().index_to_pos(index)
+        return x + (pos.x + pos.width / 2) / Pango.SCALE, y + (pos.y + pos.height / 2) / Pango.SCALE
+
+    last_date_char = long_date.encode().rindex(long_date[-1].encode())
+    date_x, date_y = label_point(last_date_char)  # the time's last digit, on the date's last line
+    rest_index = date_bytes + long_rest.encode().index(long_rest.strip()[-1].encode())
+    plain_x, plain_y = label_point(rest_index)  # the length's last letter
+    for px, py, expected in ((date_x, date_y, button), (plain_x, plain_y, whole)):
+        ok, there = whole.compute_point(window, Graphene.Point().init(px, py))
+        picked = window.pick(there.x, there.y, Gtk.PickFlags.DEFAULT)
+        assert ok and picked is not None and (picked is expected or picked.is_ancestor(expected)), (
+            px,
+            py,
+            picked,
+        )
+    if abs(plain_y - date_y) < 1:
+        print("The length shares the date's last line", flush=True)
+    click_plain(window, whole, plain_x, plain_y, "clicking the length after a wrapped date opened Set date and time")
+    pointer(window, whole, x=date_x, y=date_y)
+    until(lambda: button.get_state_flags() & Gtk.StateFlags.PRELIGHT, "the wrapped date's last line took no hover")
+    pointer(window, whole, click=True, x=date_x, y=date_y)
+    close_with_escape(window, wait_dialog(window, "Clicking the wrapped date's last line"))
 
     window._fixture_activity = window._activity = {}
     window.monitor.capture_activity = lambda: {}

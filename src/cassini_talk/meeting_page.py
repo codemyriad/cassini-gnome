@@ -98,13 +98,90 @@ class TurnItem(GObject.Object):
 NARROW_PX = 560  # D-1162: below this the meeting uses its narrow layout (as the Recording page).
 
 
+class _DateButton(Gtk.Button):
+    """D-1177: the header date's flat button. Its label wraps like the line's own copy of the date.
+
+    When the date is longer than the line (narrow window, large text, a long
+    language) the button spans the date's lines, but only the wrapped lines'
+    text takes the pointer and the hover background, never the plain text
+    ("· 52 min") that follows on its last line.
+    """
+
+    PAD_X, PAD_Y = 4, 1  # .meeting-date-btn padding, cancelled by its margins
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.wrapped = False
+        # Picking skips the label, so do_contains decides what the date covers.
+        self.get_child().set_can_target(False)
+        # While wrapped the CSS states draw nothing, so GTK would not repaint.
+        self.connect("state-flags-changed", lambda *_: self.wrapped and self.queue_draw())
+
+    def line_rects(self):
+        """The date's wrapped lines, padded as the hover background, in button coordinates."""
+        child = self.get_child()
+        ok, origin = child.compute_point(self, Graphene.Point().init(0, 0))
+        if not ok:
+            return []
+        ox, oy = child.get_layout_offsets()
+        rects = []
+        lines = child.get_layout().get_iter()
+        while True:
+            logical = lines.get_line_extents()[1]
+            rect = Graphene.Rect()  # kept: init()'s return value points into a temporary
+            rect.init(
+                origin.x + ox + logical.x / Pango.SCALE - self.PAD_X,
+                origin.y + oy + logical.y / Pango.SCALE - self.PAD_Y,
+                logical.width / Pango.SCALE + 2 * self.PAD_X,
+                logical.height / Pango.SCALE + 2 * self.PAD_Y,
+            )
+            rects.append(rect)
+            if not lines.next_line():
+                return rects
+
+    def do_contains(self, x, y):
+        if not self.wrapped:
+            return Gtk.Button.do_contains(self, x, y)
+        point = Graphene.Point()
+        point.init(x, y)
+        return any(rect.contains_point(point) for rect in self.line_rects())
+
+    @staticmethod
+    def _rounded(rect):
+        rounded = Gsk.RoundedRect()
+        rounded.init_from_rect(rect, 6)
+        return rounded
+
+    def do_snapshot(self, snapshot):
+        flags = self.get_state_flags()
+        if self.wrapped:
+            # The CSS background and outline are off while wrapped (they would
+            # cover the whole box, plain text included); draw libadwaita's flat
+            # hover/active wash and the app's 2 px accent focus ring per line.
+            rects = self.line_rects()
+            if flags & (Gtk.StateFlags.PRELIGHT | Gtk.StateFlags.ACTIVE):
+                wash = self.get_color()
+                wash.alpha *= 0.16 if flags & Gtk.StateFlags.ACTIVE else 0.07
+                for rect in rects:
+                    snapshot.push_rounded_clip(self._rounded(rect))
+                    snapshot.append_color(wash, rect)
+                    snapshot.pop()
+            if flags & Gtk.StateFlags.FOCUS_VISIBLE:
+                ring = Gdk.RGBA()
+                ring.parse(token("accent", dark=Adw.StyleManager.get_default().get_dark()))
+                for rect in rects:
+                    snapshot.append_border(self._rounded(rect), [2] * 4, [ring] * 4)
+        self.snapshot_child(self.get_child(), snapshot)
+
+
 class _DateLine(Gtk.Widget):
     """D-1177: the header's date line, one wrapping label with a flat button over its date.
 
     The label keeps the whole line ("Today, 09:00 · 52 min · Imported"), so it
     wraps word by word as before. While win.set-date is enabled the date's own
     run is drawn by the button laid exactly over it (the label's copy is made
-    transparent); otherwise the button hides and the date is plain text.
+    transparent); otherwise the button hides and the date is plain text. A date
+    longer than the line wraps inside the button at the label's own breaks.
     """
 
     def __init__(self):
@@ -112,11 +189,11 @@ class _DateLine(Gtk.Widget):
         self._date = ""
         self.label = label("", "meeting-subtitle", xalign=0, wrap=True)
         self.label.set_parent(self)
-        self.button = Gtk.Button(
+        self.button = _DateButton(
             action_name="win.set-date",
             tooltip_text=text("meeting.setDateTimeEllipsis"),
             css_classes=["flat", "meeting-subtitle", "meeting-date-btn"],
-            child=label("", xalign=0),
+            child=label("", xalign=0, wrap=True, wrap_mode=self.label.get_wrap_mode()),
         )
         self.button.set_cursor_from_name("pointer")
         self.button.update_property([Gtk.AccessibleProperty.LABEL], [text("meeting.setDateTimeEllipsis")])
@@ -157,13 +234,23 @@ class _DateLine(Gtk.Widget):
         if not self.button.get_visible():
             return
         # The date starts the line (no app language is right-to-left): put the
-        # button's text on the label's first glyph. Its CSS padding is cancelled by equal negative margins, so its
-        # size is the date's own and the hover background spills around it.
+        # button's text on the label's first glyph. Its CSS padding is cancelled
+        # by equal negative margins, so its size is the date's own and the hover
+        # background spills around it. A date wider than the line gets the line's
+        # width, so the button's label breaks where the line's label does.
         x, y = self.label.get_layout_offsets()
         start = self.label.get_layout().index_to_pos(0)
-        size = self.button.get_preferred_size()[1]
-        point = Graphene.Point().init(x + start.x / Pango.SCALE, y + start.y / Pango.SCALE)
-        self.button.allocate(min(size.width, width), size.height, -1, Gsk.Transform().translate(point))
+        room = max(1, width - x - start.x // Pango.SCALE)
+        natural = self.button.get_preferred_size()[1].width
+        wrapped = natural > room
+        if wrapped != self.button.wrapped:
+            self.button.wrapped = wrapped
+            (self.button.add_css_class if wrapped else self.button.remove_css_class)("wrapped")
+        button_width = room if wrapped else natural
+        button_height = self.button.measure(Gtk.Orientation.VERTICAL, button_width)[1]
+        point = Graphene.Point()
+        point.init(x + start.x / Pango.SCALE, y + start.y / Pango.SCALE)
+        self.button.allocate(button_width, button_height, -1, Gsk.Transform().translate(point))
 
     def do_dispose(self):
         for child in (self.button, self.label):
