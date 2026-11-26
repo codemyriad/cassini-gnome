@@ -17,6 +17,7 @@ from .listening_timeline import ListeningTimeline
 from .markup_runs import bridge_link_spaces
 from .meeting_text import (
     FollowRows,
+    background_runs,
     build_find_row_highlights,
     changed_header_rows,
     find_transcript_matches,
@@ -65,6 +66,26 @@ class _ScrollFade(Gtk.Widget):
             Graphene.Point().init(0, h),
             [s0, s1],
         )
+
+
+class _ListRow(Gtk.Box):
+    """ListView row: the optional folded-background-voices row over the turn's own columns (D112)."""
+
+    def __init__(self, body, fold):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        self.body, self.fold = body, fold
+        self._outer = self
+        Gtk.Box.append(self, fold)
+        Gtk.Box.append(self, body)
+
+    def append(self, child):
+        self.body.append(child)
+
+    def get_first_child(self):
+        return self.body.get_first_child()
+
+    def get_last_child(self):
+        return self.body.get_last_child()
 
 
 class TurnItem(GObject.Object):
@@ -126,6 +147,11 @@ class MeetingPage(Adw.NavigationPage):
         self._follow_rows = FollowRows(())
         self._turns = ()
         self._header_signature = None
+        # D112 (L-86): runs of background turns fold into one row; opened runs by first-turn start.
+        self._unfolded = set()
+        self._fold_key = None
+        self._fold_runs = ()
+        self._fold_background = frozenset()
         self._header_source = 0
         self._header_pending = []
         self._listening_turns = None
@@ -461,6 +487,10 @@ class MeetingPage(Adw.NavigationPage):
                 self._merge_toast = None
             self._reading_index = -1
             self._follow_until = 0
+            self._unfolded = set()
+            if getattr(self, "_speakers_toast", None) is not None:
+                self._speakers_toast.dismiss()
+                self._speakers_toast = None
             self._selected_speaker = None
             self._merge_transition = None
             self._header_signature = None
@@ -689,7 +719,12 @@ class MeetingPage(Adw.NavigationPage):
             if changed:
                 self._refresh_find_highlights()
             return
-        self._find_matches = find_transcript_matches(self._turns, self._find_query)
+        # D112 (L-86): Find leaves background voices out, like Search.
+        self._find_matches = tuple(
+            match
+            for match in find_transcript_matches(self._turns, self._find_query)
+            if not self._row_background(match.row_index)
+        )
         if not self._find_matches:
             self._find_index = -1
             self._find_row_highlights = {}
@@ -1070,14 +1105,34 @@ class MeetingPage(Adw.NavigationPage):
         turn = item.get_item().turn
         item.set_child(self._build_row(turn))
 
+    def _build_fold(self, turn):
+        """D112 (L-86): "{n} background voices hidden", text only, with a trailing chevron."""
+        content = Gtk.Box(spacing=6)
+        fold_label = label("", "background-fold-label", xalign=0, wrap=True)
+        icon = Gtk.Image(icon_name="pan-down-symbolic", css_classes=["background-fold-icon"])
+        icon.set_accessible_role(Gtk.AccessibleRole.PRESENTATION)
+        content.append(fold_label)
+        content.append(icon)
+        fold = Gtk.Button(
+            child=content,
+            halign=Gtk.Align.START,
+            visible=False,
+            css_classes=["flat", "background-fold"],
+        )
+        fold.connect("clicked", lambda *_: self._toggle_fold(turn))
+        fold._label, fold._icon = fold_label, icon
+        return fold
+
     def _build_row(self, turn, *, register=True):
         # D-1162: narrow puts the name and time above the turn, and the text takes the full width.
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2) if self.narrow else Gtk.Box(spacing=16)
+        fold = self._build_fold(turn)
         if self._exact:
-            row = ExactTurnRow(body=body)
+            row = ExactTurnRow(body=body, fold=fold)
         else:
-            row = body
+            row = _ListRow(body, fold)
             row.set_margin_bottom(24)
+        row._fold = fold
         row._turn = turn
         if self.narrow:
             names = Gtk.Box(spacing=8, valign=Gtk.Align.START)
@@ -1089,7 +1144,7 @@ class MeetingPage(Adw.NavigationPage):
             css_classes=["flat", "transcript-name"],
             sensitive=self._can_listen,
         )
-        name.connect("clicked", lambda button: self.listen_from_row(turn, button))
+        name.connect("clicked", lambda button: self._name_clicked(turn, button))
         names.append(name)
         row._over_label = label("", "small", "dim-label", xalign=0, wrap=True)
         names.append(row._over_label)
@@ -1145,8 +1200,10 @@ class MeetingPage(Adw.NavigationPage):
             self._render_header(turn, row)
 
     def _render_header(self, turn, row):
+        fold_info = self._fold_info(turn) if getattr(row, "_fold", None) is not None else None
         if self._exact:
-            row.set_margin_bottom(0 if getattr(turn, "has_more", False) else 24)
+            row.set_margin_bottom(0 if getattr(turn, "has_more", False) and not fold_info else 24)
+        self._render_fold(row, fold_info)
         speaker = self.meeting.speaker_for(turn.speaker)
         recognised = speaker.provenance == "recognised" and self.window.get_application().voice_store.has_match(
             self.meeting.directory, speaker.id
@@ -1159,9 +1216,12 @@ class MeetingPage(Adw.NavigationPage):
         tag_name, tag_tip = text("common.autoTag"), text("common.autoTag.tooltip")
         caption_text = row_caption(turn, lambda identifier: self.meeting.speaker_for(identifier).name)
         over_tip = text("meeting.turn.over.tooltip") if turn.over else None
+        greyed = fold_info is not None
+        if interactive:
+            name.set_sensitive(self._can_listen or (greyed and self.meeting.metadata_editable))
         state = (
             speaker.name,
-            self._colour(speaker),
+            token("ink-3", dark=Adw.StyleManager.get_default().get_dark()) if greyed else self._colour(speaker),
             recognised,
             name_tip,
             time_tip,
@@ -1207,6 +1267,98 @@ class MeetingPage(Adw.NavigationPage):
         time.set_tooltip_text(time_tip)
         if isinstance(time, Gtk.Button):
             time.update_property([Gtk.AccessibleProperty.LABEL], [time_tip + ", " + self._clock(turn.start_ms)])
+
+    def _runs(self):
+        """D112 (L-86): per-row background runs for the current layout (see meeting_text.background_runs)."""
+        background = getattr(self.meeting, "background_speakers", frozenset())
+        key = (id(self._turns), len(self._turns), background)
+        if self._fold_key != key:
+            meeting = self.meeting
+
+            def background_of(identifier):
+                speaker = meeting.speaker_for(identifier)
+                return speaker.id if speaker.background else None
+
+            self._fold_runs = background_runs(self._turns, background_of) if background else ()
+            self._fold_key = key
+        return self._fold_runs
+
+    def _fold_info(self, turn):
+        """(first in run, voices in run, opened) for a background row, else None."""
+        runs = self._runs()
+        index = getattr(turn, "index", None)
+        if not runs or index is None or not 0 <= index < len(runs) or runs[index] is None:
+            return None
+        start, voices = runs[index]
+        return index == start, voices, self._turns[start].start_ms in self._unfolded
+
+    def _row_background(self, index):
+        runs = self._runs()
+        return bool(runs) and 0 <= index < len(runs) and runs[index] is not None
+
+    def row_hidden(self, index):
+        """A background row folded away under its run's first row (takes no space or focus)."""
+        runs = self._runs()
+        if not runs or not 0 <= index < len(runs) or runs[index] is None:
+            return False
+        start = runs[index][0]
+        return index != start and self._turns[start].start_ms not in self._unfolded
+
+    def _render_fold(self, row, info):
+        fold = getattr(row, "_fold", None)
+        if fold is None:
+            return
+        state = (info, self.narrow)
+        if getattr(row, "_fold_state", None) == state:
+            return
+        row._fold_state = state
+        if info is None:
+            row.set_visible(True)
+            fold.set_visible(False)
+            row.body.set_visible(True)
+            row.body.remove_css_class("background-turn")
+            return
+        first, voices, opened = info
+        row.set_visible(first or opened)
+        fold.set_visible(first)
+        row.body.set_visible(opened)
+        (row.body.add_css_class if opened else row.body.remove_css_class)("background-turn")
+        if first:
+            fold._label.set_label(plural("speakers.backgroundVoice.hidden", voices))
+            fold._icon.set_from_icon_name("pan-up-symbolic" if opened else "pan-down-symbolic")
+            # Line up with the transcript text: the words column's 3 px border and 8 px padding,
+            # after the 120 px names and 16 px gap when wide; narrow, the paragraph edge.
+            fold.set_margin_start(11 if self.narrow else 147)
+            fold.set_margin_bottom(8 if opened else 0)
+            fold.update_state([Gtk.AccessibleState.EXPANDED], [1 if opened else 0])
+
+    def _toggle_fold(self, turn):
+        runs = self._runs()
+        index = getattr(turn, "index", None)
+        if not runs or index is None or not 0 <= index < len(runs) or runs[index] is None:
+            return
+        key = self._turns[runs[index][0]].start_ms
+        if key in self._unfolded:
+            self._unfolded.discard(key)
+        else:
+            self._unfolded.add(key)
+        self._relayout_folds()
+
+    def _relayout_folds(self):
+        self._fold_key = None
+        if self._exact:
+            self.list.invalidate()
+        for turn, _words, row in list(self.bound.values()):
+            self._refresh_header(turn, row)
+        if self._find_query:
+            self._recompute_find_matches(scroll=False)
+
+    def _name_clicked(self, turn, button):
+        """A greyed (background) name opens Name the speakers to switch it back (D112)."""
+        if self.meeting.metadata_editable and self._row_background(getattr(turn, "index", -1)):
+            self.name_speakers(self.meeting.speaker_for(turn.speaker).id)
+        else:
+            self.listen_from_row(turn, button)
 
     def _queue_transcript_headers(self, signature):
         if signature == self._header_signature:
@@ -1506,6 +1658,9 @@ class MeetingPage(Adw.NavigationPage):
         self._queue_transcript_headers(
             (dark, matches, meeting.speakers, meeting.metadata.get("speakerMerges"), language())
         )
+        if getattr(meeting, "background_speakers", frozenset()) != self._fold_background:
+            self._fold_background = getattr(meeting, "background_speakers", frozenset())
+            self._relayout_folds()
         trash_allowed = self.window.get_application().meeting_trash.allowed(meeting, self.window)
         trash_failure = self.window.get_application().meeting_trash.errors.get(meeting.directory)
         self.trash_button.set_visible(
@@ -1760,9 +1915,10 @@ class MeetingPage(Adw.NavigationPage):
             listen.start(identifier)
 
     def _listening_changed(self, *_):
-        for _turn, _words, row in self.bound.values():
+        for turn, _words, row in self.bound.values():
             headers = row.get_first_child()
-            headers.get_first_child().set_sensitive(self._can_listen)
+            greyed = self.meeting.metadata_editable and self._row_background(turn.index)
+            headers.get_first_child().set_sensitive(self._can_listen or greyed)
             headers.get_last_child().set_sensitive(self._can_listen)
         listen = self.window.listen
         for identifier, (row, target, _when) in self._speaker_rows.items():
@@ -1912,6 +2068,48 @@ class MeetingPage(Adw.NavigationPage):
         )
         self._merge_toast = toast
         self.window.toasts.add_toast(toast)
+
+    def speakers_saved(self, directory, meeting_key, previous, summary):
+        """D112 (L-86): one toast sums up a Save in Name the speakers, with Undo."""
+        if summary is None or self._closed or self.meeting.key != meeting_key or self.meeting.directory != directory:
+            return
+        if getattr(self, "_speakers_toast", None) is not None:
+            self._speakers_toast.dismiss()
+        toast = Adw.Toast(title=GLib.markup_escape_text(summary), button_label=text("common.undo"))
+        toast.connect("button-clicked", lambda *_: self.undo_speaker_changes(directory, meeting_key, previous))
+        toast.connect("dismissed", lambda dismissed: self._forget_speakers_toast(dismissed))
+        self._speakers_toast = toast
+        self.window.toasts.add_toast(toast)
+
+    def _forget_speakers_toast(self, toast):
+        if getattr(self, "_speakers_toast", None) is toast:
+            self._speakers_toast = None
+
+    def undo_speaker_changes(self, directory, meeting_key, previous):
+        """Put back every speaker change of one Save (names and background voices)."""
+        if self._closed or self.window.monitor._closed:
+            return
+        from concurrent.futures import CancelledError
+
+        from .speaker_edits import restore_speakers
+
+        future = self.window.monitor._executor.submit(
+            restore_speakers, directory, previous, scanner=self.window.monitor.scanner
+        )
+
+        def done(future):
+            try:
+                future.result()
+            except CancelledError:
+                return False
+            except (OSError, ValueError):
+                if not self._closed and self.meeting.key == meeting_key and self.meeting.directory == directory:
+                    self.window.toast(text("speakers.changeFailed"))
+            if not self.window.monitor._closed:
+                self.window.monitor.refresh_now()
+            return False
+
+        future.add_done_callback(lambda f: GLib.idle_add(done, f))
 
     def merge_speaker(self, source, target):
         if not self.meeting.metadata_editable or self._speaker_future is not None or self.window.monitor._closed:

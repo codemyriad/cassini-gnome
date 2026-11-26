@@ -166,6 +166,9 @@ class LibrarySpeaker:
     talk_ms: int = 0
     sample_span: tuple[int, int] | None = None
     stored_colour_index: int | None = None
+    # D112 (L-86): meeting.json speakers[].background is true. The name, colour and
+    # fallback number are kept; readers leave the speaker out of names, Search and exports.
+    background: bool = False
 
 
 @dataclass(frozen=True)
@@ -251,7 +254,17 @@ class Meeting(MeetingState):
 
     @property
     def speaker_names(self):
-        return tuple(s.name for s in self.speakers)
+        """R7.3: the names row and Library card leave background voices out (D112 / L-86)."""
+        return tuple(s.name for s in self.speakers if not s.background)
+
+    @property
+    def background_speakers(self):
+        """Visible (merged) speaker ids marked as background voices (D112 / L-86)."""
+        return frozenset(s.id for s in self.speakers if s.background)
+
+    def is_background(self, identifier):
+        """Whether a raw transcript speaker id resolves to a background voice."""
+        return bool(self.background_speakers) and self.speaker_for(identifier).background
 
     def speaker_for(self, identifier):
         """Resolve a cached turn's speaker through merges, without repairing data."""
@@ -277,7 +290,8 @@ class Meeting(MeetingState):
         for identifier in [s.id for s in self.speakers] + [t.speaker for t in self.preview_turns]:
             speaker = self.speaker_for(identifier)
             resolved.setdefault(speaker.id, speaker)
-        return tuple(resolved.values())
+        # D112 (L-86): background voices leave the names under the meeting title.
+        return tuple(speaker for speaker in resolved.values() if not speaker.background)
 
     def row_texts(self):
         """R11 state-specific meta and second line; no capture labels become names."""
@@ -1265,6 +1279,7 @@ def _speakers(words, values, embedded, *, stored_labels=False, raw_words=None):
                 metrics[identifier]["talkMs"],
                 metrics[identifier]["sample"],
                 stored_colour,
+                value.get("background") is True,
             )
         )
     return tuple(result)

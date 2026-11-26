@@ -52,6 +52,8 @@ done
 flow tests/ui/trash.py trash.png
 flow tests/ui/trash.py dark/trash.png CASSINI_SCREENSHOT_SCHEME=dark
 flow tests/ui/speakers.py speakers-gui.png
+flow tests/ui/background-voices.py background-voices.png
+flow tests/ui/background-voices.py dark/background-voices.png CASSINI_SCREENSHOT_SCHEME=dark
 flow tests/ui/wide-speakers.py wide-speakers.png
 flow tests/ui/wide-speakers.py dark/wide-speakers.png CASSINI_SCREENSHOT_SCHEME=dark
 flow tests/ui/listening-rows.py listening-rows.png

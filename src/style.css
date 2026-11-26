@@ -714,6 +714,17 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
   line-height: 1.4;
   color: var(--cx-ink-2);
 }
+/* D112 (2C): Name the speakers shows every speaker across the top; the shown one is outlined.
+   A background voice has a hollow dot and a grey name. */
+.speakers-dialog .speaker-chip-row { margin-left: -9px; margin-right: -9px; padding-bottom: 12px; border-bottom: 1px solid var(--cx-line-soft); }
+.speakers-dialog button.speaker-chip { min-height: 28px; min-width: 0; padding: 0 9px; border-radius: 8px; font-weight: 400; }
+.speakers-dialog button.speaker-chip:not(:checked) { background: transparent; }
+.speakers-dialog button.speaker-chip:not(:checked):hover { background: color-mix(in srgb, var(--cx-ink) 8%, transparent); }
+.speakers-dialog button.speaker-chip:checked { background: color-mix(in srgb, var(--cx-ink) 14%, transparent); box-shadow: inset 0 0 0 1.5px var(--cx-accent); }
+.speakers-dialog .speaker-chip-name { font-size: 10.5pt; font-weight: 400; color: var(--cx-ink); }
+.speakers-dialog .speaker-chip-name.speaker-unnamed { text-decoration-line: underline; text-decoration-color: color-mix(in srgb, var(--cx-ink-2) 55%, transparent); }
+.speakers-dialog .speaker-chip-name.speaker-chip-background { color: var(--cx-ink-3); }
+.speaker-dot.speaker-dot-hollow { background: transparent; min-width: 4px; min-height: 4px; border: 1.5px solid var(--cx-ink-3); }
 .speakers-dialog switch.speaker-remember-switch:checked {
   background: var(--app-primary-bg);
 }
@@ -793,6 +804,12 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
 .transcript-name:not(:disabled):hover label, .transcript-time:not(:disabled):hover label { text-decoration-line: underline; }
 .transcript-time { color: var(--cx-ink-2); font-weight: 400; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .transcript-name:disabled, .transcript-time:disabled { filter: none; opacity: 1; }
+/* D112 (L-86): a run of background turns folds into one text-only row in the tertiary ink,
+   with a trailing chevron; opened, the turns show in place, greyed. */
+button.background-fold { padding: 0; min-height: 0; min-width: 0; background: transparent; box-shadow: none; font-weight: 400; color: var(--cx-ink-3); }
+button.background-fold:hover, button.background-fold:active { background: transparent; }
+button.background-fold:hover .background-fold-label { text-decoration-line: underline; }
+.background-turn { opacity: 0.55; }
 
 /* D-1140: Gtk.FlowBox stands in for Adw.WrapBox on libadwaita 1.5. */
 .cassini-wrap-box > flowboxchild { padding: 0; }

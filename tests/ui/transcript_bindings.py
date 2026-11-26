@@ -78,8 +78,15 @@ def meeting_bindings():
         _header_signature=None,
         bound={},
         _colour=lambda _speaker: speaker_colour(0),
+        _turns=(turn,),
+        _unfolded=set(),
+        _fold_key=None,
+        _fold_runs=(),
     )
-    for name in ("_build_row", "_clock", "_turn_markup", "_render_words", "_refresh_header", "_render_header"):
+    methods = ("_build_row", "_clock", "_turn_markup", "_render_words", "_refresh_header", "_render_header")
+    # D112: the folded background-voices row each turn row carries.
+    methods += ("_build_fold", "_runs", "_fold_info", "_render_fold", "_row_background", "_name_clicked")
+    for name in methods:
         setattr(page, name, MethodType(getattr(MeetingPage, name), page))
     container = Gtk.Box()
     item = SimpleNamespace(get_item=lambda: SimpleNamespace(turn=turn), set_child=container.append)

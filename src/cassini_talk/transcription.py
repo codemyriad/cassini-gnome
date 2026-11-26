@@ -1880,6 +1880,7 @@ class TranscriptionQueue:
                                 if (
                                     previous.get("provenance") != "user"
                                     and not previous.get("nameCleared")
+                                    and not previous.get("background")
                                     and identifier in speakers
                                 ):
                                     speakers[identifier] = dict(
@@ -1899,10 +1900,11 @@ class TranscriptionQueue:
                     def auto_eligible():
                         # commit_job evaluates this under the same metadata lock
                         # held through naming, so a concurrent Clear cannot race it.
+                        # D112 (L-86): no voiceprint is kept for a background voice.
                         protected = {
                             s["id"]
                             for s in read_metadata(directory)["speakers"]
-                            if s.get("provenance") == "user" or s.get("nameCleared")
+                            if s.get("provenance") == "user" or s.get("nameCleared") or s.get("background")
                         }
                         return prints.keys() - protected
 

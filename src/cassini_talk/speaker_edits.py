@@ -7,10 +7,11 @@ from itertools import groupby
 from pathlib import Path
 from types import SimpleNamespace
 
+from .i18n import join_list
 from .library_edits import mutation as transaction
 from .library_location import owned_directory
 from .meeting_store import read_metadata, update_metadata
-from .strings import text
+from .strings import plural, text
 from .transcript import display_items
 
 
@@ -121,12 +122,108 @@ def save_name(directory, identifier, value, *, scanner=None):
         stored = visible[identifier].stored_colour_index
         colour_index = stored if stored is not None else visible[identifier].colour_index
         entry = speakers.setdefault(identifier, dict(id=identifier, colourIndex=colour_index))
-        entry.update(name=value, provenance="user" if value is not None else "unnamed")
-        if value is None:
-            entry["nameCleared"] = True
-        else:
-            entry.pop("nameCleared", None)
+        _apply_name(entry, value)
         return update_metadata(meeting.directory, speakers=list(speakers.values()))
+
+
+# D112 (L-86): the members one Save in Name the speakers may change, and Undo puts back.
+SPEAKER_KEYS = ("name", "provenance", "nameCleared", "background")
+
+
+def _apply_name(entry, value):
+    entry.update(name=value, provenance="user" if value is not None else "unnamed")
+    if value is None:
+        entry["nameCleared"] = True
+    else:
+        entry.pop("nameCleared", None)
+
+
+def save_speakers(directory, changes, *, scanner=None):
+    """Apply every pending speaker change from one Save in one metadata revision.
+
+    *changes* maps a visible speaker id to ``{"name": str}`` and/or
+    ``{"background": bool}``. A background voice keeps its stored name, so
+    switching it off restores it; ``background`` is written only as ``true``
+    and removed when switched off (meeting.schema.json, D112 / L-86).
+    Returns ``(metadata, previous)``: *previous* maps each changed id to its
+    earlier ``SPEAKER_KEYS`` members, or None when it had no stored entry, for
+    ``restore_speakers`` (Undo).
+    """
+    values = {}
+    for identifier, change in changes.items():
+        values[identifier] = dict(change)
+        if "name" in change:
+            values[identifier]["name"] = name_value(change["name"])
+    directory = owned_directory(Path(directory))
+    with transaction(directory):
+        meeting = current_meeting(directory, scanner=scanner)
+        visible = {s.id: s for s in meeting.speakers}
+        if not values or any(identifier not in visible for identifier in values):
+            raise ValueError("Speaker is no longer visible")
+        metadata = read_metadata(meeting.directory)
+        speakers = {s["id"]: dict(s) for s in metadata["speakers"]}
+        previous = {}
+        for identifier, change in values.items():
+            old = speakers.get(identifier)
+            previous[identifier] = None if old is None else {k: old[k] for k in SPEAKER_KEYS if k in old}
+            stored = visible[identifier].stored_colour_index
+            colour_index = stored if stored is not None else visible[identifier].colour_index
+            entry = speakers.setdefault(
+                identifier, dict(id=identifier, name=None, provenance="unnamed", colourIndex=colour_index)
+            )
+            if "name" in change:
+                _apply_name(entry, change["name"])
+            if change.get("background") is True:
+                entry["background"] = True
+            elif "background" in change:
+                entry.pop("background", None)
+        return update_metadata(meeting.directory, speakers=list(speakers.values())), previous
+
+
+def restore_speakers(directory, previous, *, scanner=None):
+    """Undo one ``save_speakers``: put back each speaker's earlier name and background members."""
+    directory = owned_directory(Path(directory))
+    with transaction(directory):
+        meeting = current_meeting(directory, scanner=scanner)
+        metadata = read_metadata(meeting.directory)
+        speakers = {s["id"]: dict(s) for s in metadata["speakers"]}
+        for identifier, members in previous.items():
+            entry = speakers.get(identifier)
+            if entry is None:
+                continue
+            for key in SPEAKER_KEYS:
+                entry.pop(key, None)
+            if members is None:
+                entry.update(name=None, provenance="unnamed")
+            else:
+                entry.update(members)
+                entry.setdefault("name", None)
+                entry.setdefault("provenance", "unnamed")
+        updated = list(speakers.values())
+        if updated == metadata["speakers"]:
+            return metadata
+        return update_metadata(meeting.directory, speakers=updated)
+
+
+def save_summary(changes, display_names):
+    """D112 (L-86): the one toast for a Save, or None when no speaker became a background voice.
+
+    *changes* holds ``(id, was_background, background, new_name_or_None)`` per changed speaker;
+    *display_names* maps ids to their shown names ("Speaker 5").
+    """
+    backgrounds = [identifier for identifier, was, now, _name in changes if now and not was]
+    named = [name.strip() for _id, _was, now, name in changes if not now and name and name.strip()]
+    if backgrounds and named:
+        return plural(
+            "speakers.backgroundVoice.toast.namedAndBackground",
+            len(backgrounds),
+            name=join_list(named),
+        )
+    if len(backgrounds) == 1:
+        return text("speakers.backgroundVoice.toast.single", name=display_names[backgrounds[0]])
+    if backgrounds:
+        return plural("speakers.backgroundVoice.toast.count", len(backgrounds))
+    return None
 
 
 def merge_into(directory, source, target, *, scanner=None):

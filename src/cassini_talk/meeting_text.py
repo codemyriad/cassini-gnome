@@ -661,3 +661,37 @@ class ReadingRows(tuple):
             result.layout = ReadingRows(_layout_rows(result), build_layout=False)
             result.layout.logical = result
         return result
+
+
+def background_runs(turns, background_of):
+    """D112 (L-86): fold consecutive background turns into one row each.
+
+    *background_of(speaker)* returns the resolved speaker id when a raw turn
+    speaker is a background voice, else None. Returns a list aligned with
+    *turns*: None for an ordinary turn, else ``(run_start, voices)`` where
+    *run_start* is the position of the run's first turn and *voices* counts
+    the distinct background voices in that run ("{n} background voices hidden").
+    """
+    turns = tuple(turns)
+    resolved = {}
+
+    def owner(turn):
+        speaker = turn.speaker
+        if speaker not in resolved:
+            resolved[speaker] = background_of(speaker)
+        return resolved[speaker]
+
+    runs = [None] * len(turns)
+    index = 0
+    while index < len(turns):
+        if owner(turns[index]) is None:
+            index += 1
+            continue
+        end, voices = index, set()
+        while end < len(turns) and (value := owner(turns[end])) is not None:
+            voices.add(value)
+            end += 1
+        for position in range(index, end):
+            runs[position] = (index, len(voices))
+        index = end
+    return runs

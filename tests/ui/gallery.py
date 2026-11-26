@@ -449,6 +449,56 @@ def set_date_saved(app, window):
     shoot(window, "23-set-date-saved")
 
 
+def background_dialog(window):
+    """D112 (2C): Name the speakers on "Budget review", with Dario switched to a background voice."""
+    open_meeting(window, "Budget review")
+    page = window.meeting_page
+    page.name_speakers("guest")
+    dialog = page.speakers_dialog
+    until(lambda: dialog.voices_loaded and dialog.get_mapped())
+    dialog.entry.set_text("Giulia")
+    return page, dialog
+
+
+def speaker_row(app, window):
+    _page, dialog = background_dialog(window)
+    shoot(window, "24-speaker-row")
+    return dialog
+
+
+def background_voice(app, window):
+    _page, dialog = background_dialog(window)
+    dialog.select_speaker("dario")
+    dialog.background.set_active(True)
+    shoot(window, "25-background-voice")
+
+
+def background_saved(window):
+    page, dialog = background_dialog(window)
+    dialog.select_speaker("dario")
+    dialog.background.set_active(True)
+    dialog.save.emit("clicked")
+    until(lambda: dialog.closed and page.meeting.background_speakers == {"dario"}, "Save did not apply")
+    runs = page._runs()
+    index = next(i for i, run in enumerate(runs) if run is not None and run[0] == i)
+    page.list.scroll_to(max(0, index - 1), Gtk.ListScrollFlags.NONE, None)
+    until(lambda: index in page.bound and page.bound[index][2].get_mapped(), "folded row never shown")
+    return page, index
+
+
+def background_folded(app, window):
+    """After Save: the names row keeps the real speakers, the turns fold, and the toast offers Undo."""
+    background_saved(window)
+    shoot(window, "26-background-folded", settle=0.3)
+
+
+def background_opened(app, window):
+    page, index = background_saved(window)
+    page.bound[index][2]._fold.emit("clicked")
+    until(lambda: index in page.bound and page.bound[index][2].body.get_visible(), "fold did not open")
+    shoot(window, "27-background-opened", settle=0.3)
+
+
 # screen -> (fixture case, function)
 SCREENS = {
     "library": ("main", library),
@@ -474,6 +524,10 @@ SCREENS = {
     "rename": ("main", rename),
     "set-date": ("main", set_date),
     "set-date-saved": ("main", set_date_saved),
+    "speaker-row": ("main", speaker_row),
+    "background-voice": ("main", background_voice),
+    "background-folded": ("main", background_folded),
+    "background-opened": ("main", background_opened),
 }
 
 

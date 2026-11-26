@@ -91,7 +91,12 @@ class TranscriptNavigation:
         if current is not None:
             if self.view.rows[current].child_focus(direction):
                 return True
-            next_row = current + (1 if forward else -1)
+            step = 1 if forward else -1
+            next_row = current + step
+            # D112 (L-86): rows folded into a "background voices hidden" row take no focus.
+            hidden = getattr(self.view.page, "row_hidden", None)
+            while hidden is not None and 0 <= next_row < len(self.view.items) and hidden(next_row):
+                next_row += step
             return 0 <= next_row < len(self.view.items) and self.request(next_row, direction)
         if self.pending:
             # GTK can ask the container to take focus while the old focused
