@@ -165,6 +165,7 @@ with tempfile.TemporaryDirectory() as temporary:
             footerVisible=footer_visible(),
             saveBottom=bounds.get_y() + bounds.get_height() if shown else None,
             dialog=(dialog.get_width(), dialog.get_height()),
+            body=(dialog.body_scroll.get_width(), dialog.duplicate.get_height(), dialog.voices_section.get_height()),
             window=(window.get_width(), window.get_height()),
             scroll=(adjustment.get_upper(), adjustment.get_page_size()),
         )
@@ -173,6 +174,9 @@ with tempfile.TemporaryDirectory() as temporary:
         until(
             lambda: (
                 footer_visible()
+                # Visible sections must be laid out, or a fit check can pass on a stale allocation.
+                and dialog.duplicate.get_height() > 0
+                and dialog.voices_section.get_height() > 0
                 and (save_in_dialog := dialog.save.compute_bounds(dialog))[0]
                 and save_in_dialog[1].get_y() + save_in_dialog[1].get_height() <= dialog.get_height()
                 and dialog.body_scroll.get_vadjustment().get_upper()
