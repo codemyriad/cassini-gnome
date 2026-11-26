@@ -15,7 +15,7 @@ screens=("$@")
 if [ "${#screens[@]}" -eq 0 ]; then
   screens=(library meeting search recording transcribing speakers preferences saved-voices recently-deleted
     export received first-run what-is-recorded meeting-menu main-menu library-row-menu recording-details
-    keyboard-shortcuts help about rename set-date set-date-saved speaker-row background-voice background-folded
+    keyboard-shortcuts help about rename set-date set-date-saved date-hover speaker-row background-voice background-folded
     background-opened)
 fi
 mkdir -p "$out"

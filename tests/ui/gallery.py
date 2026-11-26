@@ -35,7 +35,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 gi.require_version("GdkX11", "4.0")
-from gi.repository import Adw, GdkX11, Gio, GLib, Gst, Gtk  # noqa: E402
+gi.require_version("Graphene", "1.0")
+from gi.repository import Adw, GdkX11, Gio, GLib, Graphene, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.main import CassiniApplication  # noqa: E402
@@ -316,6 +317,21 @@ def received(app, window):
     shoot(window, "11-received")
 
 
+def date_hover(app, window):
+    """D-1177: the pointer on "Date unknown" in the Imported recording's header."""
+    open_meeting(window, test=lambda m: m.directory.name.startswith("Received-"), seek=2000)
+    button = window.meeting_page.date_button
+    until(lambda: button.get_mapped() and button.get_width() > 0)
+    ok, point = button.compute_point(window, Graphene.Point().init(button.get_width() / 2, button.get_height() / 2))
+    assert ok
+    x, y = point.x, point.y
+    xid = GdkX11.X11Surface.get_xid(window.get_surface())
+    window.get_display().sync()
+    subprocess.run(["xdotool", "mousemove", "--sync", "--window", str(xid), str(int(x)), str(int(y))], check=True)
+    until(lambda: button.get_state_flags() & Gtk.StateFlags.PRELIGHT)
+    shoot(window, "24-date-hover")
+
+
 def first_run(app, window):
     shoot(window, "12-first-run")
 
@@ -524,6 +540,7 @@ SCREENS = {
     "rename": ("main", rename),
     "set-date": ("main", set_date),
     "set-date-saved": ("main", set_date_saved),
+    "date-hover": ("main", date_hover),
     "speaker-row": ("main", speaker_row),
     "background-voice": ("main", background_voice),
     "background-folded": ("main", background_folded),

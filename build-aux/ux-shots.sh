@@ -84,6 +84,8 @@ flow tests/ui/rename.py rename.png
 flow tests/ui/rename.py dark/rename.png CASSINI_SCREENSHOT_SCHEME=dark
 flow tests/ui/set-date.py set-date.png
 flow tests/ui/set-date.py dark/set-date.png CASSINI_SCREENSHOT_SCHEME=dark
+flow tests/ui/date-button.py date-button.png
+flow tests/ui/date-button.py dark/date-button.png CASSINI_SCREENSHOT_SCHEME=dark
 flow tests/ui/search.py search-gui.png
 flow tests/ui/starring.py starring.png
 flow tests/ui/starring.py dark/starring.png CASSINI_SCREENSHOT_SCHEME=dark

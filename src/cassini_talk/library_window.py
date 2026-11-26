@@ -2697,6 +2697,12 @@ class LibraryWindow(Adw.ApplicationWindow):
     def _play_selected(self):
         if self.recording_page:
             return
+        # D-1177: Space on the focused header date opens Set date and time,
+        # as Space activates any focused button; the app-wide Space = play/pause
+        # accelerator runs before the button sees the key.
+        if self.meeting_page and self.get_focus() is getattr(self.meeting_page, "date_button", False):
+            self.activate_action("win.set-date", None)
+            return
         if self.search_page:
             if self.search_page.hit and self._loaded_key == self.search_page.hit.key:
                 self.player.toggle()

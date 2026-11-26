@@ -98,6 +98,80 @@ class TurnItem(GObject.Object):
 NARROW_PX = 560  # D-1162: below this the meeting uses its narrow layout (as the Recording page).
 
 
+class _DateLine(Gtk.Widget):
+    """D-1177: the header's date line, one wrapping label with a flat button over its date.
+
+    The label keeps the whole line ("Today, 09:00 · 52 min · Imported"), so it
+    wraps word by word as before. While win.set-date is enabled the date's own
+    run is drawn by the button laid exactly over it (the label's copy is made
+    transparent); otherwise the button hides and the date is plain text.
+    """
+
+    def __init__(self):
+        super().__init__(accessible_role=Gtk.AccessibleRole.GROUP)
+        self._date = ""
+        self.label = label("", "meeting-subtitle", xalign=0, wrap=True)
+        self.label.set_parent(self)
+        self.button = Gtk.Button(
+            action_name="win.set-date",
+            tooltip_text=text("meeting.setDateTimeEllipsis"),
+            css_classes=["flat", "meeting-subtitle", "meeting-date-btn"],
+            child=label("", xalign=0),
+        )
+        self.button.set_cursor_from_name("pointer")
+        self.button.update_property([Gtk.AccessibleProperty.LABEL], [text("meeting.setDateTimeEllipsis")])
+        self.button.set_parent(self)
+        # The action's enabled state drives the button's sensitivity.
+        self.button.connect("notify::sensitive", lambda *_: self._sync())
+        self._sync()
+
+    def set_parts(self, date, rest):
+        self._date = date
+        self.label.set_label(date + rest)
+        self.button.get_child().set_label(date)
+        self._sync()
+
+    @property
+    def clickable(self):
+        return self.button.get_visible()
+
+    def _sync(self):
+        clickable = bool(self._date) and self.button.get_sensitive()
+        self.button.set_visible(clickable)
+        attributes = Pango.AttrList()
+        if clickable:
+            hidden = Pango.attr_foreground_alpha_new(1)  # 1 of 65535: the button draws the date
+            hidden.start_index, hidden.end_index = 0, len(self._date.encode())
+            attributes.insert(hidden)
+        self.label.set_attributes(attributes)
+        self.queue_allocate()
+
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
+    def do_measure(self, orientation, for_size):
+        return self.label.measure(orientation, for_size)
+
+    def do_size_allocate(self, width, height, baseline):
+        self.label.allocate(width, height, baseline, None)
+        if not self.button.get_visible():
+            return
+        # The date starts the line (no app language is right-to-left): put the
+        # button's text on the label's first glyph. Its CSS padding is cancelled by equal negative margins, so its
+        # size is the date's own and the hover background spills around it.
+        x, y = self.label.get_layout_offsets()
+        start = self.label.get_layout().index_to_pos(0)
+        size = self.button.get_preferred_size()[1]
+        point = Graphene.Point().init(x + start.x / Pango.SCALE, y + start.y / Pango.SCALE)
+        self.button.allocate(min(size.width, width), size.height, -1, Gsk.Transform().translate(point))
+
+    def do_dispose(self):
+        for child in (self.button, self.label):
+            if child.get_parent() is self:
+                child.unparent()
+        Gtk.Widget.do_dispose(self)
+
+
 class _WidthWatch(Gtk.Widget):
     """Reports its allocated width on the next idle; draws nothing and takes no height."""
 
@@ -306,8 +380,12 @@ class MeetingPage(Adw.NavigationPage):
         title_row.append(self.rename_button)
         self.full_header.append(title_row)
 
-        self.subtitle_label = label("", "meeting-subtitle", xalign=0, wrap=True)
-        self.full_header.append(self.subtitle_label)
+        # D-1177: the date under the title opens Set date and time…; the length
+        # and "Imported" after it stay plain text, and the line wraps as one label.
+        self.subtitle_line = _DateLine()
+        self.subtitle_label = self.subtitle_line.label
+        self.date_button = self.subtitle_line.button
+        self.full_header.append(self.subtitle_line)
 
         # D-1162: the names sit about 8 px under the date, as agreed on iPad.
         self.speakers = wrap_box(child_spacing=16, line_spacing=8, margin_top=0)
@@ -1622,7 +1700,7 @@ class MeetingPage(Adw.NavigationPage):
         if is_transcribing and self._header_scrolled:
             self._set_header_scrolled(False)
         layout = getattr(meeting.turns, "layout", meeting.turns) if self._exact else meeting.turns
-        subtitle = fmt.preview_subtitle(
+        date, rest = fmt.preview_subtitle_parts(
             meeting.display_start,
             meeting.duration_ms,
             now_ms=self.window.now_ms,
@@ -1630,11 +1708,12 @@ class MeetingPage(Adw.NavigationPage):
             received=meeting.origin == "received",
             transcribed_elsewhere=meeting.transcribed_elsewhere,
         )
+        subtitle = date + rest
         self.headline.set_title(meeting.title)
         self.headline.set_subtitle(subtitle)
         self.title_label.set_label(meeting.title)
         self.title_label.set_tooltip_text(meeting.title)
-        self.subtitle_label.set_label(subtitle)
+        self.subtitle_line.set_parts(date, rest)
         self.compact_title.set_label(meeting.title)
         self.compact_subtitle.set_label(subtitle)
         if self.window._external_meeting:
