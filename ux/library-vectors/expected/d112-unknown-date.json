@@ -1,0 +1,49 @@
+{
+  "scan": "ok",
+  "groups": [
+    {
+      "title": "Today",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000001",
+          "origin": "own",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "none",
+          "etaMinutes": null,
+          "error": null,
+          "badge": null,
+          "title": "Morning standup",
+          "startMs": 1793088000000,
+          "durationMs": 1000,
+          "names": [],
+          "quote": null,
+          "canWriteDown": true,
+          "speakers": []
+        }
+      ]
+    },
+    {
+      "title": "Date unknown",
+      "meetings": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000002",
+          "origin": "received",
+          "lifecycle": "saved",
+          "interruptedAtMs": null,
+          "transcript": "none",
+          "etaMinutes": null,
+          "error": null,
+          "badge": "Imported",
+          "title": "Vorbis title",
+          "startMs": null,
+          "durationMs": 60,
+          "names": [],
+          "quote": null,
+          "canWriteDown": true,
+          "speakers": []
+        }
+      ]
+    }
+  ]
+}

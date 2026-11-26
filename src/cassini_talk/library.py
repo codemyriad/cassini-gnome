@@ -17,6 +17,7 @@ from .library_files import FileCache, basename, key
 from .library_schema import valid
 from .meeting_state import MeetingError, MeetingState
 from .meeting_text import reading_turns, speaker_turns
+from .meeting_time import import_time, milliseconds, user_start
 from .recording_session import KINDS, METADATA_LIMIT, strict_json
 from .refusals import read as read_refusals
 from .session_events import meeting_sources, read_events
@@ -183,6 +184,9 @@ class Meeting(MeetingState):
     started_at_ms: int | None
     duration_ms: int | None
     recorded_at_local: str | None = None
+    # D112 (L-87): the start the person set in Set date and time (RFC 3339 with
+    # its UTC offset), which started_at_ms already reflects; None otherwise.
+    started_at_user: str | None = None
     created_at_ms: int | None = None
     speakers: tuple[LibrarySpeaker, ...] = ()
     words: tuple[portable.Word, ...] = ()
@@ -241,7 +245,9 @@ class Meeting(MeetingState):
         if wall is not None:
             # Ordering only. This is never exposed as a recording instant.
             return int(wall.replace(tzinfo=UTC).timestamp() * 1000)
-        return self.created_at_ms
+        # R6.2/R6.3 (D112): createdAtUtc is never the meeting date, so an unknown
+        # start sorts into the last group, "Date unknown", by title.
+        return None
 
     @property
     def speaker_names(self):
@@ -748,9 +754,15 @@ class LibraryScanner:
                 name = basename(received["originalName"])
                 audio_file = directory / name
                 embedded, duration, trusted, embedded_words, audio_size = self._load(fd, directory, name, "opus", _opus)
-                started = embedded.recorded_at_ms
+                # R6.2 (D112): an import-time prefix means the file had no start; its DATE is not one.
+                started = None if import_time(metadata) else embedded.recorded_at_ms
             except (OSError, ValueError):
                 diagnostics.append(Diagnostic(directory, "received-audio-unreadable"))
+        recorded_at_local = embedded.recorded_at_local if embedded and not import_time(metadata) else None
+        started_at_user = user_start(metadata)
+        if started_at_user is not None:
+            # R6.2 (D112): a date the person set wins over every other start.
+            started, recorded_at_local = milliseconds(started_at_user), None
         words, transcript, eta, error = self._transcript(
             fd, directory, metadata, origin, embedded, trusted, embedded_words, diagnostics
         )
@@ -832,7 +844,8 @@ class LibraryScanner:
             title=title or text("library.untitled"),
             title_is_fallback=title is None,
             started_at_ms=started,
-            recorded_at_local=embedded.recorded_at_local if embedded else None,
+            recorded_at_local=recorded_at_local,
+            started_at_user=started_at_user,
             created_at_ms=_date(embedded.created_at) if embedded else None,
             duration_ms=duration,
             words=tuple(words),

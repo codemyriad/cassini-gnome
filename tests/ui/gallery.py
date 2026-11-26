@@ -398,6 +398,57 @@ def rename(app, window):
     shoot(window, "21-rename")
 
 
+def set_date_dialog(window):
+    """D112: Set date and time… from the meeting menu of the imported meeting with no date."""
+    from cassini_talk.strings import text
+
+    chosen = meeting(window, test=lambda m: m.directory.name.startswith("Received-"))
+    # Saved at 15:12 UTC the day before and 34 min long: the dialog suggests 34 min earlier, local time.
+    day = 86_400_000
+    saved = int(NOW) // day * day - day + (15 * 60 + 12) * 60_000
+    os.utime(chosen.audio_file, ns=(saved * 1_000_000, saved * 1_000_000))
+    open_meeting(window, test=lambda m: m.directory.name.startswith("Received-"))
+    assert window.meeting_page.meeting.started_at_ms is None
+    menu = window.meeting_page.more_menu
+    button = next(
+        w for w in widgets(window.meeting_page) if isinstance(w, Gtk.MenuButton) and w.get_menu_model() == menu
+    )
+    activate_menu_item(open_menu(window, button), text("meeting.setDateTimeEllipsis"))
+    until(lambda: window.set_date_dialog is not None, "Meeting menu › Set date and time… opened no dialog")
+    dialog = window.set_date_dialog
+    # The fixture's audio file was saved when the fixtures were made: the prefill comes from it.
+    until(lambda: dialog.hint.get_visible(), "Set date and time did not prefill from the file")
+    return dialog
+
+
+def set_date(app, window):
+    set_date_dialog(window)
+    shoot(window, "22-set-date")
+
+
+def set_date_saved(app, window):
+    """After Save the meeting moves to its day and "Date unknown" disappears when it's empty."""
+    from cassini_talk.strings import text
+
+    dialog = set_date_dialog(window)
+    directory = dialog.meeting.directory
+    dialog.calendar.select_day(GLib.DateTime.new_local(2026, 10, 26, 12, 0, 0))
+    dialog.hour.set_value(10)
+    dialog.minute.set_value(30)
+    assert dialog.confirm.get_sensitive()
+    dialog.confirm.emit("clicked")
+    until(lambda: dialog.closed, "Set date and time did not save")
+    until(
+        lambda: any(m.directory == directory and m.started_at_user for m in window.snapshot.meetings),
+        "The saved date did not reach the Library",
+    )
+    window.back_to_library()
+    until(lambda: window.root_box.get_visible_child_name() == "library")
+    titles = [g.title for g in window.snapshot.groups(now_ms=window.now_ms, tz=window.tz)]
+    assert text("library.group.unknownDate") not in titles, titles
+    shoot(window, "23-set-date-saved")
+
+
 # screen -> (fixture case, function)
 SCREENS = {
     "library": ("main", library),
@@ -421,6 +472,8 @@ SCREENS = {
     "help": ("main", help_screen),
     "about": ("main", about),
     "rename": ("main", rename),
+    "set-date": ("main", set_date),
+    "set-date-saved": ("main", set_date_saved),
 }
 
 

@@ -33,6 +33,8 @@ MEETING_KEYS = (
     "quoteOverride",
     "received",
     "recordingDetails",
+    "startedAt",
+    "startedAtSource",
 )
 TOP_KEYS = ("id", "revision", "notes", "namePrefix", "namePrefixSource", "published")
 EXTRA = {"$ref", "propertyNames", "dependentRequired", "minItems", "examples"}

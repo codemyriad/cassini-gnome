@@ -43,7 +43,7 @@
   },
   "meeting": {
    "type": "object",
-   "description": "meeting.json members that meeting.schema.json v1 defines, other than id, revision, notes, namePrefix, namePrefixSource and published (which live at the x top level or nowhere), each verbatim (unknown members nested inside them stay in place). A schema-1 writer puts exactly these keys here and every other top-level meeting.json member in passthrough. Members absent from meeting.json are absent here (speakerMerges and recordingDetails are optional): absence is preserved, never normalised to [] or {}.",
+   "description": "meeting.json members that meeting.schema.json v1 defines, other than id, revision, notes, namePrefix, namePrefixSource and published (which live at the x top level or nowhere), each verbatim (unknown members nested inside them stay in place). A schema-1 writer puts exactly these keys here and every other top-level meeting.json member in passthrough. Members absent from meeting.json are absent here (speakerMerges, recordingDetails, startedAt and startedAtSource are optional): absence is preserved, never normalised to [] or {}.",
    "properties": {
     "version": {
      "$ref": "../meeting.schema.json#/properties/version"
@@ -57,7 +57,7 @@
     },
     "speakers": {
      "$ref": "../meeting.schema.json#/properties/speakers",
-     "description": "Verbatim and in order: id, name (null when unnamed), provenance, colourIndex, nameCleared. Ids are the original, unmerged speaker ids the transcript bodies use."
+     "description": "Verbatim and in order: id, name (null when unnamed), provenance, colourIndex, nameCleared, background. Ids are the original, unmerged speaker ids the transcript bodies use."
     },
     "speakerMerges": {
      "$ref": "../meeting.schema.json#/properties/speakerMerges",
@@ -82,7 +82,21 @@
     },
     "recordingDetails": {
      "$ref": "../meeting.schema.json#/properties/recordingDetails"
+    },
+    "startedAt": {
+     "$ref": "../meeting.schema.json#/properties/startedAt"
+    },
+    "startedAtSource": {
+     "$ref": "../meeting.schema.json#/properties/startedAtSource"
     }
+   },
+   "dependentRequired": {
+    "startedAt": [
+     "startedAtSource"
+    ],
+    "startedAtSource": [
+     "startedAt"
+    ]
    },
    "required": [
     "version",
@@ -127,7 +141,9 @@
       "error",
       "quoteOverride",
       "received",
-      "recordingDetails"
+      "recordingDetails",
+      "startedAt",
+      "startedAtSource"
      ]
     }
    },

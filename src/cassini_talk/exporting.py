@@ -11,6 +11,7 @@ from pathlib import Path
 from . import portable
 from .export_audio import check_cancel, encode_pcm
 from .export_model import TEXT_FORMATS, encode_choice, file_stem, has_completed_transcript, model_projection
+from .meeting_time import import_time
 from .portable_writer import descriptors, rewrite_tags
 from .received import regular_input
 
@@ -121,18 +122,19 @@ def write_cassini_opus(meeting, output, directory, *, tz=None, cancel=None, pres
                 ):
                     policy = original.manifest.get("audioEncode")
                     trusted_source = True
+            # R6.2 (D112): an import-time file's own dates are not its start; don't export them as one.
+            dated = (
+                original and trusted_source and not (import_time(meeting.metadata) and meeting.started_at_ms is None)
+            )
             tags, _manifest = descriptors(
                 meeting,
                 digest,
                 policy=policy,
                 tz=tz,
                 allow_recording_start=trusted_source or meeting.audio_file is None,
-                recorded_at_local=original.recorded_at_local if original and trusted_source else None,
+                recorded_at_local=original.recorded_at_local if dated else None,
                 recorded_date=original.meeting_start["value"]
-                if original
-                and trusted_source
-                and original.meeting_start
-                and original.meeting_start["source"] != "recordedAtLocal"
+                if dated and original.meeting_start and original.meeting_start["source"] != "recordedAtLocal"
                 else None,
                 preserve_stored_transcript=preserve_stored_transcript,
             )

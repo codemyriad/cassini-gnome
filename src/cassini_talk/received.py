@@ -9,6 +9,7 @@ import stat
 import tempfile
 import threading
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -194,6 +195,17 @@ def _copy_opus(original, copied, expected_bytes, cancel):
     return digest.hexdigest()
 
 
+def _keep_saved_time(original, copied):
+    """D112 (L-87): the copy keeps the original's last-saved time.
+
+    Set date and time prefills from it (minus the length) as a suggestion; it is
+    never stored or shown as the meeting's start.
+    """
+    with suppress(OSError):
+        info = os.stat(original)
+        os.utime(copied, ns=(info.st_atime_ns, info.st_mtime_ns))
+
+
 def _hash_source(original, expected_bytes, cancel):
     """Full-file SHA-256 of a plain-audio original (the dedup key) and its (size, mtime).
 
@@ -293,6 +305,7 @@ def _prepare_one(
                     return existing, False, None
                 if prior is not None:
                     return None, False, prior
+            _keep_saved_time(original, copied)
             check_cancel(cancel)
             opened = load_open_meeting(copied, root)
             if not opened.has_audio:

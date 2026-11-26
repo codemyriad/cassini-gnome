@@ -19,6 +19,25 @@ class VoiceWriteError(OSError):
     pass
 
 
+class _WidthHint(Gtk.Widget):
+    """Zero-height child asking for a natural width without raising the minimum.
+
+    The dialog follows its content's size (so it grows when the duplicate notice
+    or saved voices appear), which made the footer buttons set its width: the
+    shorter D112 "Save" label shrank the sheet until the wrapped body no longer
+    fit a 710 px window. This keeps the designed width, still narrowing on a
+    phone-width window.
+    """
+
+    def __init__(self, width):
+        super().__init__(accessible_role=Gtk.AccessibleRole.PRESENTATION)
+        self._width = width
+
+    def do_measure(self, orientation, _for_size):
+        natural = self._width if orientation == Gtk.Orientation.HORIZONTAL else 0
+        return 0, natural, -1, -1
+
+
 class SpeakersDialog(Adw.Dialog):
     def __init__(self, page, identifier):
         super().__init__(
@@ -234,6 +253,7 @@ class SpeakersDialog(Adw.Dialog):
         footer.append(self.cancel)
         footer.append(self.save)
         outer.append(self.footer)
+        outer.append(_WidthHint(540))
         self.set_child(outer)
         self.narrow = False
         # D-1162: on a phone-width window (where the dialog is a bottom sheet) the buttons stack.

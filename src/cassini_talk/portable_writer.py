@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 from . import portable
 from .export_audio import check_cancel
-from .meeting_time import absolute, utc
+from .meeting_time import absolute, utc, wall_clock
 from .transcript import normalize_quote_items
 
 ENCODING = "base64url+gzip+utf8json"
@@ -147,7 +147,12 @@ def descriptors(
         manifest["meeting"]["recordedAtUtc"] = capture_date
     if items and all(word.ends_bounded_by_audio for word in meeting.words):
         manifest["provenance"] = {"wordTimings": {"endsBoundedByAudio": True}}
-    if recorded_at_local is not None:
+    user = getattr(meeting, "started_at_user", None)
+    if absolute(user) is not None:
+        # D112 (L-87): a date the person set travels as the start: DATE and
+        # meeting.startedAt with their offset, recordedAtLocal its wall clock.
+        manifest["meeting"].update(startedAt=user, recordedAtUtc=utc(user), recordedAtLocal=wall_clock(user))
+    elif recorded_at_local is not None:
         # A Received row's Library date may be artifact/export/import time.
         # Carry only an explicitly stored recording wall-clock label forward.
         try:
@@ -192,8 +197,12 @@ def descriptors(
     return file_tags(manifest, words_tags), manifest
 
 
-def file_tags(manifest, words_tags):
-    """Every tag of a file with one default `words` transcript, mirroring `manifest`."""
+def file_tags(manifest, words_tags, *, date_fallback=True):
+    """Every tag of a file with one default `words` transcript, mirroring `manifest`.
+
+    Without `date_fallback` (Library files, MAPPING.md D112) an unknown start
+    leaves DATE out instead of writing the publish time there.
+    """
     manifest_tags, _ = chunk_set("CASSINI_PAYLOAD_", manifest, MANIFEST_MIME)
     meeting, audio, integrity = manifest["meeting"], manifest["audio"], manifest["integrity"]
     tags = dict(
@@ -213,11 +222,14 @@ def file_tags(manifest, words_tags):
         CASSINI_AUDIO_MATCH_POLICY="exact-opus-audio-v1",
         CASSINI_AUDIO_OPUS_SHA256=integrity["opusAudioSha256"],
         TITLE=meeting["title"],
-        DATE=meeting.get("recordedAtUtc", meeting["createdAtUtc"]),
+        # MAPPING.md (D112): a start the person set rides in DATE with their offset.
+        DATE=meeting.get("startedAt") or meeting.get("recordedAtUtc", meeting["createdAtUtc"]),
         DESCRIPTION="Cassini portable meeting. " + HINT,
     )
     if "recordedAtUtc" in meeting:
         tags["CASSINI_RECORDED_AT_UTC"] = meeting["recordedAtUtc"]
+    elif not date_fallback and not meeting.get("startedAt"):
+        del tags["DATE"]
     tags.update(manifest_tags)
     tags.update(words_tags)
     return tags

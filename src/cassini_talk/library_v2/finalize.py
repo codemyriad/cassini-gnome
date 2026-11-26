@@ -26,6 +26,7 @@ from pathlib import Path
 
 from .. import library_schema, meeting_store, portable
 from ..library_files import regular
+from ..meeting_time import user_start
 from ..portable_writer import WORDS_MIME, chunk_set, file_tags, rewrite_tags
 from ..recording_details import disk_reserve
 from ..recording_session import METADATA_LIMIT, strict_json
@@ -119,16 +120,21 @@ def start_of(session, meeting, zone, now):
     prefix, minutes, source = names.prefix_for(spec)
     if isinstance(meeting.get("namePrefix"), str):  # chosen once and kept (§2)
         prefix, source = meeting["namePrefix"], meeting.get("namePrefixSource")
+    from ..meeting_time import utc, wall_clock
+
+    if (started := user_start(meeting)) is not None:
+        # MAPPING.md (D112): a date the person set is the start the file carries; never a rename.
+        return prefix, source, utc(started), wall_clock(started)
     if instant is None:
         return prefix, source, None, None
     local = (instant + timedelta(minutes=minutes)).replace(microsecond=0, tzinfo=None)
-    from ..meeting_time import utc
-
     known_zone = names.valid_offset(offset)
     return prefix, source, utc(start), local.strftime("%Y-%m-%dT%H:%M:%S") if known_zone else None
 
 
-def library_manifest(*, digest, title, created, recorded_at_local, choice, words_ref, extension, recorded_at_utc=None):
+def library_manifest(
+    *, digest, title, created, recorded_at_local, choice, words_ref, extension, recorded_at_utc=None, started_at=None
+):
     shape = dict(
         sampleRate=48000,
         channels=digest["channels"],
@@ -140,6 +146,8 @@ def library_manifest(*, digest, title, created, recorded_at_local, choice, words
         meeting["recordedAtUtc"] = recorded_at_utc
     if recorded_at_local is not None:
         meeting["recordedAtLocal"] = recorded_at_local
+    if started_at is not None:
+        meeting["startedAt"] = started_at
     manifest = dict(
         kind="cassini-portable-meeting",
         version=1,
@@ -217,11 +225,12 @@ def tag(audio_path, stage, digest, plan, choice, now):
         created=created,
         recorded_at_local=plan.recorded_at_local,
         recorded_at_utc=plan.recorded_at_utc,
+        started_at=user_start(plan.extension[xschema.DOMAIN].get("meeting")),
         choice=choice,
         words_ref=words_ref,
         extension=plan.extension,
     )
-    tags = file_tags(manifest, words_tags)
+    tags = file_tags(manifest, words_tags, date_fallback=False)
     with open(audio_path, "rb") as audio, open(stage, "xb") as output:
         rewrite_tags(audio, output, tags)
         output.flush()

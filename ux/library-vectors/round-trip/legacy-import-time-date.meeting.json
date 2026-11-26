@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "revision": 1,
+  "id": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+  "title": "Legacy unknown-start clip",
+  "titleSource": "user",
+  "notes": [],
+  "speakers": [
+    {
+      "id": "spk-1",
+      "name": "Sam",
+      "provenance": "user",
+      "colourIndex": 0
+    }
+  ],
+  "transcript": {
+    "status": "done",
+    "reference": {
+      "kind": "embedded",
+      "file": "legacy-clip.opus",
+      "transcriptId": "main"
+    },
+    "model": "whistle"
+  },
+  "etaMinutes": null,
+  "error": null,
+  "quoteOverride": null,
+  "received": {
+    "originalName": "legacy-clip.opus",
+    "originalFolderName": "Downloads",
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "importedAtMs": 1795508100000
+  },
+  "namePrefix": "2026-11-24--09.15-",
+  "namePrefixSource": "import-time"
+}

@@ -13,7 +13,8 @@ import tempfile
 
 HERE=Path(__file__).resolve().parent
 FIELDS={'id','origin','lifecycle','interruptedAtMs','transcript','etaMinutes','error','badge','title','startMs','durationMs','names','quote','canWriteDown','speakers'}
-CASE_COUNT=22
+CASE_COUNT=25
+D112_CASES=['d112-unknown-date','d112-user-set-date','d112-legacy-import-time-date']
 # The three outcome states and their control (D67), then guards: R3/D67.2 failed shown as stored, R13.1 done
 # and every track, R13.3 place, R3/D67.8a none shown as stored, R13.1/D67.8b lowAudio gets no silent line.
 T8_STATES=['t8-control-others-spoke','t8-others-silent','t8-others-never-captured','t8-others-transcription-failed']
@@ -189,7 +190,17 @@ def main():
     assert len(names)==len(cases)
     assert {p.stem for p in (HERE/'expected').glob('*.json')}==names
     assert len(cases)==CASE_COUNT,len(cases)
-    assert {f'R{i}' for i in range(1,10)}|{'T8'} <= {rule for case in cases for rule in case['rules']}
+    assert {f'R{i}' for i in range(1,10)}|{'T8','D112'} <= {rule for case in cases for rule in case['rules']}
+    assert [case['id'] for case in cases if 'D112' in case['rules']]==D112_CASES
+    # D112 scanner invariants: unknown date -> user-set date -> removal of empty "Date unknown" group,
+    # and exclusion of legacy synthesized DATE under namePrefixSource: "import-time".
+    exp_unknown=json.loads((HERE/'expected'/'d112-unknown-date.json').read_text())
+    exp_set=json.loads((HERE/'expected'/'d112-user-set-date.json').read_text())
+    exp_legacy=json.loads((HERE/'expected'/'d112-legacy-import-time-date.json').read_text())
+    assert [g['title'] for g in exp_unknown['groups']]==['Today','Date unknown']
+    assert [g['title'] for g in exp_set['groups']]==['Today','Yesterday']
+    assert all(g['title']!='Date unknown' for g in exp_set['groups'])
+    assert [g['title'] for g in exp_legacy['groups']]==['Yesterday','Date unknown']
     for case in cases:
         for entry in case['entries']:
             if 'toneFrames' in entry:
@@ -211,6 +222,9 @@ def main():
         assert tree(a)==tree(b),'Fixture generation is nondeterministic'
         assert {name:legacy_digest(a/name) for name in LEGACY}==LEGACY,'A pre-T8 case changed bytes'
         assert {name:legacy_digest(a/name) for name in LEGACY_T8}==LEGACY_T8,'A pre-D67.8 T8 case changed bytes'
+    round_trip = HERE / 'round-trip' / 'verify.py'
+    if round_trip.is_file():
+        subprocess.run([sys.executable, '-I', str(round_trip)], check=True)
     print(f'Verified {len(cases)} hand-authored cases, R1–R9 and T8 coverage, byte-identical builds, '
           f'{len(LEGACY)} unchanged pre-T8 trees, {len(LEGACY_T8)} unchanged pre-D67.8 T8 trees and T8 outcome lines'
           +(' against strings.json' if catalog_checked else ' (catalog ids checked where strings.json is beside)'))

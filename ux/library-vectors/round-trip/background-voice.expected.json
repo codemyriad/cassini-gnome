@@ -1,0 +1,99 @@
+{
+  "vector": "background-voice",
+  "decision": "D112 (L-86)",
+  "rebuiltMeetingJson": {
+    "version": 1,
+    "revision": 4,
+    "id": "11111111-2222-4333-8444-555555555555",
+    "title": "Project sync",
+    "titleSource": "user",
+    "notes": [],
+    "speakers": [
+      {
+        "id": "spk-1",
+        "name": "Sam",
+        "provenance": "user",
+        "colourIndex": 0
+      },
+      {
+        "id": "spk-2",
+        "name": "Robin",
+        "provenance": "user",
+        "colourIndex": 1
+      },
+      {
+        "id": "spk-3",
+        "name": "Marta",
+        "provenance": "user",
+        "colourIndex": 2,
+        "background": true
+      },
+      {
+        "id": "spk-4",
+        "name": null,
+        "provenance": "unnamed",
+        "colourIndex": 3,
+        "background": true
+      }
+    ],
+    "transcript": {
+      "status": "done",
+      "reference": {
+        "kind": "sidecar",
+        "file": "transcript.json",
+        "format": "cassini.words.v1"
+      },
+      "model": "whistle"
+    },
+    "etaMinutes": null,
+    "error": null,
+    "quoteOverride": null,
+    "received": null,
+    "namePrefix": "2026-11-23--14.36-",
+    "namePrefixSource": "recorded"
+  },
+  "manifestSpeakers": [
+    {
+      "id": "spk-1",
+      "label": "Sam"
+    },
+    {
+      "id": "spk-2",
+      "label": "Robin"
+    },
+    {
+      "id": "spk-3",
+      "label": "Marta"
+    },
+    {
+      "id": "spk-4",
+      "label": "Speaker 4"
+    }
+  ],
+  "speakerCountTag": "4",
+  "visibleSpeakerIds": [
+    "spk-1",
+    "spk-2"
+  ],
+  "backgroundSpeakerIds": [
+    "spk-3",
+    "spk-4"
+  ],
+  "libraryRowNames": [
+    "Sam",
+    "Robin"
+  ],
+  "foldedRuns": [
+    {
+      "count": 2,
+      "speakerIds": [
+        "spk-3",
+        "spk-4"
+      ]
+    }
+  ],
+  "preservedNameOnBackgroundSpeaker": {
+    "id": "spk-3",
+    "name": "Marta"
+  }
+}

@@ -1394,8 +1394,8 @@ class MeetingPage(Adw.NavigationPage):
                 self._fill_more_menu()
 
     def _fill_more_menu(self):
-        """D-1162: one order in both meeting menus, as on the other apps: Star, Rename…, Name the
-        speakers, Export…, Recording details…, then Move to Trash on its own."""
+        """D-1162: one order in both meeting menus, as on the other apps: Star, Rename…, Set date and
+        time… (D112), Name the speakers, Export…, Recording details…, then Move to Trash on its own."""
         name_speakers, undo, trash = self._more_menu_inputs
         menu = self.more_menu
         menu.remove_all()
@@ -1403,6 +1403,7 @@ class MeetingPage(Adw.NavigationPage):
         if allowed:
             menu.append(text("meeting.unstar" if starred else "meeting.star"), "win.toggle-star")
         menu.append_item(self.window.rename_item())
+        menu.append_item(self.window.set_date_item())
         if name_speakers:
             menu.append(text("meeting.nameSpeakers"), "win.name-speakers")
         menu.append(text("common.exportEllipsis"), "win.export")

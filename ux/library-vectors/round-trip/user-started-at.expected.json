@@ -1,0 +1,50 @@
+{
+  "vector": "user-started-at",
+  "decision": "D112 (L-87)",
+  "rebuiltMeetingJson": {
+    "version": 1,
+    "revision": 2,
+    "id": "66666666-7777-4888-8999-aaaaaaaaaaaa",
+    "title": "Imported recorder clip",
+    "titleSource": "user",
+    "notes": [],
+    "speakers": [
+      {
+        "id": "spk-1",
+        "name": "Sam",
+        "provenance": "user",
+        "colourIndex": 0
+      }
+    ],
+    "transcript": {
+      "status": "done",
+      "reference": {
+        "kind": "embedded",
+        "file": "recorder-clip.opus",
+        "transcriptId": "main"
+      },
+      "model": "whistle"
+    },
+    "etaMinutes": null,
+    "error": null,
+    "quoteOverride": null,
+    "received": {
+      "originalName": "recorder-clip.opus",
+      "originalFolderName": "Downloads",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "importedAtMs": 1795508100000
+    },
+    "namePrefix": "2026-11-24--09.15-",
+    "namePrefixSource": "import-time",
+    "startedAt": "2026-11-23T14:36:00+01:00",
+    "startedAtSource": "user"
+  },
+  "dateTag": "2026-11-23T14:36:00+01:00",
+  "manifestStartedAt": "2026-11-23T14:36:00+01:00",
+  "manifestRecordedAtLocal": "2026-11-23T14:36:00",
+  "manifestCreatedAtUtc": "2026-11-24T08:15:00Z",
+  "namePrefixUnchanged": "2026-11-24--09.15-",
+  "namePrefixSourceUnchanged": "import-time",
+  "fileRenamed": false,
+  "inDateUnknownGroup": false
+}

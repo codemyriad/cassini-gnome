@@ -4401,6 +4401,313 @@
           }
         }
       ]
+    },
+    {
+      "id": "d112-unknown-date",
+      "rules": [
+        "R6",
+        "D112"
+      ],
+      "description": "D112 before Set date and time: received file without a recording start lands in Date unknown (never importedAtMs).",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Morning standup",
+            "createdAt": "2026-10-27T08:00:00Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000002/original.opus",
+          "type": "asset",
+          "name": "plain-title.opus"
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000002/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": {
+              "originalName": "original.opus",
+              "originalFolderName": "Downloads",
+              "sha256": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
+              "importedAtMs": 1793107079000
+            },
+            "namePrefix": "2026-10-27--14.17-",
+            "namePrefixSource": "import-time"
+          }
+        }
+      ]
+    },
+    {
+      "id": "d112-user-set-date",
+      "rules": [
+        "R6",
+        "D112"
+      ],
+      "description": "D112 after Set date and time: startedAt (user) moves the received meeting to Yesterday without renaming and removes the now-empty Date unknown group.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Morning standup",
+            "createdAt": "2026-10-27T08:00:00Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null
+          }
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000002/original.opus",
+          "type": "asset",
+          "name": "plain-title.opus"
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000002/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 1,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": {
+              "originalName": "original.opus",
+              "originalFolderName": "Downloads",
+              "sha256": "8d0c09765cb6e6cb6c37b0e9655fbf53e30a3a030ac62e2c12147fd3f078d280",
+              "importedAtMs": 1793107079000
+            },
+            "namePrefix": "2026-10-27--14.17-",
+            "namePrefixSource": "import-time",
+            "startedAt": "2026-10-26T15:30:00+01:00",
+            "startedAtSource": "user"
+          }
+        }
+      ]
+    },
+    {
+      "id": "d112-legacy-import-time-date",
+      "rules": [
+        "R6",
+        "D112"
+      ],
+      "description": "D112 precedence and legacy exclusion: user startedAt overrides session.json createdAt; legacy DATE under namePrefixSource=import-time without user startedAt is excluded to Date unknown.",
+      "root": "directory",
+      "activity": {},
+      "entries": [
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/session.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "source": "gnome",
+            "title": "Morning standup",
+            "createdAt": "2026-10-27T08:00:00Z",
+            "state": "completed",
+            "tracks": [
+              {
+                "id": "microphone",
+                "file": "track-microphone.wav",
+                "kind": "microphone",
+                "label": "Input, not a person",
+                "labelSource": "source",
+                "sampleRate": 8000,
+                "channels": 1,
+                "frames": 8000,
+                "ended": true,
+                "startOffsetMs": 0,
+                "endOffsetMs": 1000
+              }
+            ]
+          }
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/track-microphone.wav",
+          "type": "wav",
+          "rate": 8000,
+          "channels": 1,
+          "frames": 8000,
+          "tone": true
+        },
+        {
+          "path": "root/Recording-a0000000-0000-4000-8000-000000000001/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 1,
+            "id": "a0000000-0000-4000-8000-000000000001",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": null,
+            "startedAt": "2026-10-26T15:30:00+01:00",
+            "startedAtSource": "user"
+          }
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000002/original.opus",
+          "type": "asset",
+          "name": "001-minimal-v1.opus"
+        },
+        {
+          "path": "root/Received-a0000000-0000-4000-8000-000000000002/meeting.json",
+          "type": "json",
+          "value": {
+            "version": 1,
+            "revision": 0,
+            "id": "a0000000-0000-4000-8000-000000000002",
+            "title": null,
+            "titleSource": "meeting-window",
+            "notes": [],
+            "speakers": [],
+            "transcript": {
+              "status": "none",
+              "reference": null
+            },
+            "etaMinutes": null,
+            "error": null,
+            "quoteOverride": null,
+            "received": {
+              "originalName": "original.opus",
+              "originalFolderName": "Downloads",
+              "sha256": "d0ad2b147822c9edc39203b1e7ee51ca38c9b41835b857a42cc639ed30743662",
+              "importedAtMs": 1793107079000
+            },
+            "namePrefix": "2026-09-01--02.00-",
+            "namePrefixSource": "import-time"
+          }
+        }
+      ]
     }
   ]
 }

@@ -122,13 +122,38 @@ Tested by `library-vectors` `t8-failed-referenced-words` and `t8-none-referenced
    - `received.originalName` without its extension
 
    Otherwise use **"Untitled meeting"** (catalog `library.untitled`).
-2. **Start.** Use, in order: session.json `createdAt`, embedded `createdAtUtc`, `received.importedAtMs`. Otherwise
-   the start is unknown. Never use file mtimes.
+2. **Start (amended by D112 / L-87).** A date the person set (`meeting.json` `startedAt` with `startedAtSource: "user"`)
+   **wins over everything**. Full reader precedence:
+   - `meeting.json` `startedAt` (when `startedAtSource == "user"`)
+   - `session.json` `createdAt` (own recordings)
+   - embedded manifest `meeting.startedAt` (RFC 3339 with offset, A4) — **ignored** if `namePrefixSource == "import-time"` and `startedAtSource != "user"`
+   - embedded Vorbis `DATE` tag (when a complete timestamp with explicit offset `-12:00`..`+14:00` or `Z`, never `-00:00`, per S-12 Q8/Q17) — **ignored** if `namePrefixSource == "import-time"` and `startedAtSource != "user"`
+   - embedded manifest `meeting.recordedAtLocal` (wall-clock label when no offset-bearing start is present) — **ignored** if `namePrefixSource == "import-time"` and `startedAtSource != "user"`
+
+   **Legacy synthesized dates (superseding S-12 §11 step-3a #8):** pre-D112 writers were permitted to write publish
+   time into `DATE` for unknown-start files tagged with `namePrefixSource: "import-time"`. D112 supersedes that
+   writer rule (writers MUST omit `DATE`, `meeting.startedAt`, and `meeting.recordedAtLocal` when start is unknown).
+   Because `namePrefixSource: "import-time"` is written exclusively when no usable start date existed at publish or
+   import time (Q12/Q16), readers MUST exclude embedded `DATE`, `meeting.startedAt`, and `meeting.recordedAtLocal`
+   whenever `namePrefixSource == "import-time"` (in `meeting.json` or `x["codemyriad.io"]`) and `startedAtSource` is
+   not `"user"`. External files without `namePrefixSource: "import-time"` still read their valid `DATE` normally.
+
+   Otherwise the start is **unknown** ("Date unknown"). **The import or copy time (`received.importedAtMs`, file
+   mtimes, `namePrefix` with `namePrefixSource: "import-time"`, or `meeting.createdAtUtc`) is never the meeting
+   date.** (A received file's mtime may be used only as a prefill suggestion in the *Set date and time* dialog,
+   never stored or displayed as the meeting start unless the person saves it. Shared scanner expectations in
+   `vectors/library-vectors/expected/` reflect this rule, including `r9-received-once`, `received-only`, `main`,
+   and the `d112-*` scanner cases.)
+   Setting a date and time updates `startedAt` / `startedAtSource: "user"` (and projected `DATE` / `recordedAtLocal`
+   in the `.opus` file) in place and **never renames the Library file** (`namePrefix` stays as chosen once, S-12 §2).
 3. **Order:**
    - Meetings with a known start: by start, newest first. Ties are broken by uuid, ascending.
    - Groups: day groups per format-vectors `dayGroup`, newest day first.
    - Meetings with an unknown start go in a last group, **"Date unknown"** (catalog `library.group.unknownDate`),
      ordered by title (case-insensitive, then exact), then uuid.
+   - **Emptying "Date unknown" (D112 / L-87):** the **"Date unknown"** group is shown **only** while at least one
+     listed meeting has an unknown start. When the person sets a date and time on a meeting in "Date unknown", it
+     immediately moves to its day group; as soon as no unknown-date meetings remain, "Date unknown" disappears.
 4. **Activity ids.** Capture-activity ids are compared in canonical lowercase.
 
 ## R7. Speakers, names, numbering
@@ -144,8 +169,19 @@ Tested by `library-vectors` `t8-failed-referenced-words` and `t8-none-referenced
    - otherwise **"Speaker {position+1}"**, where the position is in the speaking order of rule 1
 
    The stored `colourIndex` is used for colour (`HARMONY 10.11`) and ignored for fallback `"Speaker {position+1}"` numbering.
-3. **Row meta names** list only speaking speakers, in speaking order, with at most 3 names and then `+{k}`
-   (format-vectors `rowMeta`). Speakers stored in meeting.json who never speak are not listed.
+3. **Row meta names** list only speaking speakers who are not marked as background voices (R7.4), in speaking order,
+   with at most 3 names and then `+{k}` (format-vectors `rowMeta`). Speakers stored in meeting.json who never speak
+   are not listed.
+4. **Background voices (D112 / L-86).** A speaker entry in `meeting.json` may carry optional `background: true`
+   (absent means not a background voice; switching it off removes the key).
+   - The speaker's `name`, `provenance`, `colourIndex`, and speaking-order fallback number are kept as they are so
+     switching `background` off restores them without shifting other speakers' numbers or colours.
+   - No voiceprint is enrolled while `background: true` is on. `speakerMerges` and the transcript body are unchanged.
+   - Background speakers are left out of the meeting header names row, Library card row meta names (R7.3), Search,
+     non-`.opus` exports (Markdown, Plain text, SRT, WebVTT) and Copy.
+   - In the transcript view, each consecutive run of background turns folds into one text-only row showing
+     `"{n} background voices hidden"` (counting the background voices in that run), expandable in place. Playback,
+     the timeline and the audio are unchanged.
 
 ## R8. Quote (data derivation; hidden on Library rows per L-53)
 
