@@ -21,6 +21,7 @@ from .meeting_text import (
     build_find_row_highlights,
     changed_header_rows,
     find_transcript_matches,
+    match_owner,
     reading_markup,
     reading_markup_signature,
     reading_word,
@@ -151,6 +152,7 @@ class MeetingPage(Adw.NavigationPage):
         self._unfolded = set()
         self._fold_key = None
         self._fold_runs = ()
+        self._fold_ends = {}
         self._fold_background = frozenset()
         self._header_source = 0
         self._header_pending = []
@@ -719,12 +721,12 @@ class MeetingPage(Adw.NavigationPage):
             if changed:
                 self._refresh_find_highlights()
             return
-        # D112 (L-86): Find leaves background voices out, like Search.
-        self._find_matches = tuple(
-            match
-            for match in find_transcript_matches(self._turns, self._find_query)
-            if not self._row_background(match.row_index)
-        )
+        # D112 (L-86): Find leaves background voices out, like Search: each hit by the voice that said it,
+        # so a background reply inside a participant's turn drops out and a participant's reply stays.
+        matches = find_transcript_matches(self._turns, self._find_query)
+        if getattr(self.meeting, "background_speakers", frozenset()):
+            matches = tuple(m for m in matches if not self._speaker_background(match_owner(self._turns, m)))
+        self._find_matches = matches
         if not self._find_matches:
             self._find_index = -1
             self._find_row_highlights = {}
@@ -1077,6 +1079,7 @@ class MeetingPage(Adw.NavigationPage):
             dark=Adw.StyleManager.get_default().get_dark(),
             chip_links=self._exact,
             row_highlights=row_hl,
+            hide_aside=self._aside_hider(turn),
         )
 
     def _render_words(self, turn, words):
@@ -1091,6 +1094,7 @@ class MeetingPage(Adw.NavigationPage):
                 lambda speaker: self.meeting.speaker_for(speaker).name,
                 dark=Adw.StyleManager.get_default().get_dark(),
                 row_highlights=row_hl,
+                hide_aside=self._aside_hider(turn),
             ),
             rgba,
         )
@@ -1216,7 +1220,7 @@ class MeetingPage(Adw.NavigationPage):
         tag_name, tag_tip = text("common.autoTag"), text("common.autoTag.tooltip")
         caption_text = row_caption(turn, lambda identifier: self.meeting.speaker_for(identifier).name)
         over_tip = text("meeting.turn.over.tooltip") if turn.over else None
-        greyed = fold_info is not None
+        greyed = fold_info is not None or self._host_background(turn)
         if interactive:
             name.set_sensitive(self._can_listen or (greyed and self.meeting.metadata_editable))
         state = (
@@ -1279,7 +1283,12 @@ class MeetingPage(Adw.NavigationPage):
                 speaker = meeting.speaker_for(identifier)
                 return speaker.id if speaker.background else None
 
-            self._fold_runs = background_runs(self._turns, background_of) if background else ()
+            self._fold_runs = runs = background_runs(self._turns, background_of) if background else ()
+            ends = {}
+            for position, run in enumerate(runs):
+                if run is not None:
+                    ends[run[0]] = position + 1
+            self._fold_ends = ends
             self._fold_key = key
         return self._fold_runs
 
@@ -1295,6 +1304,34 @@ class MeetingPage(Adw.NavigationPage):
     def _row_background(self, index):
         runs = self._runs()
         return bool(runs) and 0 <= index < len(runs) and runs[index] is not None
+
+    def _speaker_background(self, identifier):
+        """Whether a raw word speaker resolves to a background voice (D112)."""
+        if not getattr(self.meeting, "background_speakers", frozenset()):
+            return False
+        return bool(getattr(self.meeting.speaker_for(identifier), "background", False))
+
+    def _host_background(self, turn):
+        return self._speaker_background(turn.speaker)
+
+    def _aside_hider(self, turn):
+        """Inline replies by background voices leave an ordinary row (D112); an opened background run shows all."""
+        if not getattr(self.meeting, "background_speakers", frozenset()) or not turn.asides:
+            return None
+        if self._row_background(getattr(turn, "index", -1)):
+            return None
+        return self._speaker_background
+
+    def next_shown(self, index, step=1):
+        """The nearest row at or after *index* (before, with step -1) that isn't folded away.
+
+        A folded run's first row always shows, so this jumps a whole run at once (D112)."""
+        if not self.row_hidden(index):
+            return index
+        start = self._runs()[index][0]
+        if step < 0:
+            return start
+        return self._fold_ends.get(start, index + 1)
 
     def row_hidden(self, index):
         """A background row folded away under its run's first row (takes no space or focus)."""
@@ -1355,7 +1392,9 @@ class MeetingPage(Adw.NavigationPage):
 
     def _name_clicked(self, turn, button):
         """A greyed (background) name opens Name the speakers to switch it back (D112)."""
-        if self.meeting.metadata_editable and self._row_background(getattr(turn, "index", -1)):
+        if self.meeting.metadata_editable and (
+            self._row_background(getattr(turn, "index", -1)) or self._host_background(turn)
+        ):
             self.name_speakers(self.meeting.speaker_for(turn.speaker).id)
         else:
             self.listen_from_row(turn, button)
@@ -1917,7 +1956,9 @@ class MeetingPage(Adw.NavigationPage):
     def _listening_changed(self, *_):
         for turn, _words, row in self.bound.values():
             headers = row.get_first_child()
-            greyed = self.meeting.metadata_editable and self._row_background(turn.index)
+            greyed = self.meeting.metadata_editable and (
+                self._row_background(turn.index) or self._host_background(turn)
+            )
             headers.get_first_child().set_sensitive(self._can_listen or greyed)
             headers.get_last_child().set_sensitive(self._can_listen)
         listen = self.window.listen

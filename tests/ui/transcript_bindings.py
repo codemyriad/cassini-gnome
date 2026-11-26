@@ -86,6 +86,7 @@ def meeting_bindings():
     methods = ("_build_row", "_clock", "_turn_markup", "_render_words", "_refresh_header", "_render_header")
     # D112: the folded background-voices row each turn row carries.
     methods += ("_build_fold", "_runs", "_fold_info", "_render_fold", "_row_background", "_name_clicked")
+    methods += ("_speaker_background", "_host_background", "_aside_hider")
     for name in methods:
         setattr(page, name, MethodType(getattr(MeetingPage, name), page))
     container = Gtk.Box()

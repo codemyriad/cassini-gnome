@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+from dataclasses import replace
 from pathlib import Path
 
 if os.environ.get("CASSINI_SCREENSHOT_ISOLATED") != "1" or os.environ.get("WAYLAND_DISPLAY"):
@@ -19,12 +21,18 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 from dispatch_wait import dispatch_until  # noqa: E402
-from gi.repository import Adw, Gio, Gst, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gst, Gtk  # noqa: E402
 
 Gio.resources_register(Gio.Resource.load(str(Path(os.environ["CASSINI_TEST_BUILD"]) / "src/cassini-talk.gresource")))
 from cassini_talk.folder_player import FolderPlayer  # noqa: E402
 from cassini_talk.main import CassiniApplication  # noqa: E402
 from cassini_talk.meeting_store import read_metadata  # noqa: E402
+from cassini_talk.meeting_text import reading_turns, speaker_turns  # noqa: E402
+from cassini_talk.portable import Word  # noqa: E402
+
+# A folded run must cost what a few rows cost, not what its thousands of rows would (review #481:
+# 5,000 folded turns built 5,003 row widgets in one 2.24 s allocation). Thread CPU, never wall clock.
+FOLDED_FRAME_CPU_MS = 500
 
 
 def until(check, message="Background voices GUI did not complete"):
@@ -42,6 +50,65 @@ def labels(widget):
 
 def stored(directory):
     return {s["id"]: s for s in read_metadata(directory)["speakers"]}
+
+
+def paint(window):
+    loop = GLib.MainLoop()
+    clock = window.get_frame_clock()
+    handler = clock.connect("after-paint", lambda *_: loop.quit())
+    window.add_tick_callback(lambda *_: GLib.SOURCE_REMOVE)
+    try:
+        loop.run()
+    finally:
+        clock.disconnect(handler)
+
+
+class FrameCpu:
+    """Thread CPU spent inside each frame (layout and paint)."""
+
+    def __init__(self, window):
+        self.clock = window.get_frame_clock()
+        self.cpu, self.start = [], 0
+        self.handlers = [
+            self.clock.connect("before-paint", lambda *_: setattr(self, "start", time.thread_time_ns())),
+            self.clock.connect("after-paint", lambda *_: self.cpu.append((time.thread_time_ns() - self.start) / 1e6)),
+        ]
+
+    def close(self):
+        for handler in self.handlers:
+            self.clock.disconnect(handler)
+        return max(self.cpu, default=0)
+
+
+def interrupted_words(host, reply, closing):
+    """*host*'s sentence with *reply*'s answer inside it, then *closing* on their own."""
+    return [
+        Word(host, 0, 1000, "We should"),
+        Word(reply, 900, 1200, "Yes."),
+        Word(host, 1000, 2000, "ship it."),
+        Word(closing, 2200, 2600, "Agreed."),
+    ]
+
+
+def synthetic(model, words, background):
+    speakers = tuple(replace(s, background=s.id in background) for s in model.speakers)
+    return replace(
+        model, speakers=speakers, words=words, turns=reading_turns(words), listening_turns=speaker_turns(words)
+    )
+
+
+def find(page, query):
+    page.find_entry.set_text(query)
+    until(lambda: page._find_query == query)
+    return page._find_matches
+
+
+def press(page, key):
+    assert page.list.navigation.key(None, key, 0, Gdk.ModifierType(0))
+
+
+def focused_on(page, index):
+    until(lambda: page.list.navigation.focused() == index, f"focus never reached row {index}")
 
 
 def fold_row(page):
@@ -170,6 +237,76 @@ with tempfile.TemporaryDirectory() as temporary:
     until(lambda: stored(directory) == {s["id"]: s for s in before} and not page.meeting.background_speakers)
     until(lambda: "Dario" in labels(page.speakers))
     assert not any(run is not None for run in page._runs())
+
+    # Remember switched alone on another speaker is part of the Save (review #481).
+    remembered = []
+    store = app.voice_store
+    original_remember = store.remember
+    store.remember = lambda directory, identifier, *args, **kwargs: remembered.append(identifier)
+    page.name_speakers("guest")
+    dialog = page.speakers_dialog
+    until(lambda: dialog.voices_loaded and dialog.get_mapped())
+    dialog.chips["dario"].set_active(True)
+    dialog.remember.set_active(not dialog.remember.get_active())
+    dialog.chips["marta"].set_active(True)
+    # Without diarization models the fixture has no voice sample; Save only needs one to exist.
+    dialog.voice_items.setdefault("dario", {"seconds": 10})
+    assert not dialog.voice_state["readOnly"]
+    dialog.save.emit("clicked")
+    until(lambda: dialog.closed, "Save did not finish")
+    store.remember = original_remember
+    assert "dario" in remembered, remembered
+
+    # Inline replies are judged by who said them: a background reply drops out of a participant's row
+    # and out of Find; a participant's reply inside a background host stays in view and is found.
+    model = page.meeting
+    window.open_meeting(synthetic(model, interrupted_words("marta", "dario", "guest"), {"dario"}), external=True)
+    page = window.meeting_page
+    until(lambda: page.list.ready and 0 in page.bound)
+    assert not any(run is not None for run in page._runs())
+    until(lambda: "ship it." in page.bound[0][1].get_label())
+    assert "Yes." not in page.bound[0][1].get_label() and "Dario" not in page.bound[0][1].get_label()
+    assert not find(page, "yes") and len(find(page, "ship")) == 1
+    page.clear_find()
+    window.open_meeting(synthetic(model, interrupted_words("marta", "dario", "guest"), {"marta"}), external=True)
+    page = window.meeting_page
+    until(lambda: page.list.ready and 0 in page.bound)
+    assert not page.row_hidden(0) and not page.bound[0][2]._fold.get_visible()
+    until(lambda: "Yes." in page.bound[0][1].get_label())
+    assert [m.row_index for m in find(page, "yes")] == [0] and not find(page, "ship")
+    page.clear_find()
+
+    # A 5,000-turn folded run: only the rows on screen get widgets, frames stay cheap, and the
+    # arrow keys step over the run in one press.
+    count = 5000
+    words = [Word("marta", 0, 500, "Opening")]
+    words += [Word(("dario", "guest")[i % 2], (i + 1) * 1000, (i + 1) * 1000 + 500, f"w{i}") for i in range(count)]
+    words.append(Word("marta", (count + 2) * 1000, (count + 2) * 1000 + 500, "Closing"))
+    frames = FrameCpu(window)
+    window.open_meeting(synthetic(model, words, {"dario", "guest"}), external=True)
+    page = window.meeting_page
+    until(lambda: page.list.ready and 1 in page.bound)
+    paint(window)
+    worst = frames.close()
+    last = count + 1
+    assert len(page._turns) == count + 2 and page._runs()[1] == (1, 2)
+    assert all(page.row_hidden(i) for i in (2, count // 2, count))
+    assert set(page.list.rows) <= {0, 1, last}, sorted(page.list.rows)[:10]
+    assert worst < FOLDED_FRAME_CPU_MS, f"folded run frame CPU {worst:.1f} ms"
+    print(f"folded run: {len(page.list.rows)} row widgets, worst frame CPU {worst:.1f} ms")
+    page.list.navigation.request(0)
+    focused_on(page, 0)
+    press(page, Gdk.KEY_Down)
+    focused_on(page, 1)
+    press(page, Gdk.KEY_Down)
+    focused_on(page, last)
+    press(page, Gdk.KEY_Up)
+    focused_on(page, 1)
+    press(page, Gdk.KEY_End)
+    focused_on(page, last)
+    press(page, Gdk.KEY_Home)
+    focused_on(page, 0)
+    assert not any(page.row_hidden(i) for i in page.list.rows)
 
     window._fixture_activity = window._activity = {}
     window.monitor.capture_activity = lambda: {}

@@ -41,6 +41,11 @@ class _Form:
     # A duplicate-voice question was left unanswered on this speaker.
     blocked: bool = False
     visited: bool = False
+    initial_remember: bool | None = None
+
+    @property
+    def remember_changed(self):
+        return self.initial_remember is not None and self.remember != self.initial_remember
 
     @property
     def name_changed(self):
@@ -373,6 +378,7 @@ class SpeakersDialog(Adw.Dialog):
             name = self._stored_name(speaker)
             background = bool(getattr(speaker, "background", False))
             form = _Form(identifier, name, name, background, background, self._remember_default)
+            form.initial_remember = form.remember
             self.forms[identifier] = form
             if self.voices_loaded:
                 old = (self.voice_items.get(identifier) or {}).get("match", {})
@@ -848,9 +854,12 @@ class SpeakersDialog(Adw.Dialog):
             if form.background != form.initial_background:
                 change["background"] = form.background
             # The shown speaker is saved as before (a Save confirms its name or saved voice);
-            # others only when their name or chosen voice changed.
+            # others only when their name, chosen voice or Remember changed.
             if not form.background and (
-                form.name_changed or form.chosen_voice is not None or form.identifier == self.identifier
+                form.name_changed
+                or form.chosen_voice is not None
+                or form.remember_changed
+                or form.identifier == self.identifier
             ):
                 change["name"] = form.name
             if change:

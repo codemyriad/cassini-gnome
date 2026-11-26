@@ -21,10 +21,16 @@ class TranscriptNavigation:
             None,
         )
 
-    def request(self, index, direction=None):
+    def request(self, index, direction=None, step=1):
         if not self.view.items:
             return False
-        index = min(len(self.view.items) - 1, max(0, index))
+        last = len(self.view.items) - 1
+        index = min(last, max(0, index))
+        # D112 (L-86): rows folded under a "background voices hidden" row take no focus.
+        shown = self.view.next_shown(index, step)
+        if not 0 <= shown <= last:
+            shown = self.view.next_shown(index, -step)
+        index = shown
         self.view.page._hand_scroll()
         self.pending = index, direction
         self.view.scroll_to(index)
@@ -62,16 +68,23 @@ class TranscriptNavigation:
         if current is None:
             current = max(0, bisect_right(self.view.prefix, self.view._value()) - 1)
         if key in (Gdk.KEY_Up, Gdk.KEY_Down):
-            return self.request(current + (1 if key == Gdk.KEY_Down else -1))
+            step = 1 if key == Gdk.KEY_Down else -1
+            target = current + step
+            if not 0 <= target < len(self.view.items):
+                # Already at an edge: stay on the current row.
+                target = current
+            return self.request(target, step=step)
         if key in (Gdk.KEY_Home, Gdk.KEY_End):
-            return self.request(0 if key == Gdk.KEY_Home else len(self.view.items) - 1)
+            if key == Gdk.KEY_Home:
+                return self.request(0)
+            return self.request(len(self.view.items) - 1, step=-1)
         if key in (Gdk.KEY_Page_Up, Gdk.KEY_Page_Down):
             adjustment = self.view.props.vadjustment
             delta = adjustment.get_page_size() * (1 if key == Gdk.KEY_Page_Down else -1)
             index = max(0, bisect_right(self.view.prefix, adjustment.get_value() + delta) - 1)
             if key == Gdk.KEY_Page_Down and index <= current:
                 index = current + 1
-            return self.request(index)
+            return self.request(index, step=1 if key == Gdk.KEY_Page_Down else -1)
         if key in (Gdk.KEY_Left, Gdk.KEY_Right):
             # Keep GtkLabel's own per-word/link focus traversal.
             focus = self.view.get_root().get_focus()
@@ -92,12 +105,9 @@ class TranscriptNavigation:
             if self.view.rows[current].child_focus(direction):
                 return True
             step = 1 if forward else -1
-            next_row = current + step
             # D112 (L-86): rows folded into a "background voices hidden" row take no focus.
-            hidden = getattr(self.view.page, "row_hidden", None)
-            while hidden is not None and 0 <= next_row < len(self.view.items) and hidden(next_row):
-                next_row += step
-            return 0 <= next_row < len(self.view.items) and self.request(next_row, direction)
+            next_row = self.view.next_shown(current + step, step)
+            return 0 <= next_row < len(self.view.items) and self.request(next_row, direction, step)
         if self.pending:
             # GTK can ask the container to take focus while the old focused
             # row is being removed. Let allocation restore the pending row.

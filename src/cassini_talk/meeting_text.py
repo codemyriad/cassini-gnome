@@ -257,8 +257,11 @@ def item_markup(words, position, *, dark=False, values=None):
     )
 
 
-def reading_markup(turn, position, speaker_name, *, dark=False, chip_links=False, row_highlights=None):
-    """A bounded paragraph with named, individually seekable interjections."""
+def reading_markup(turn, position, speaker_name, *, dark=False, chip_links=False, row_highlights=None, hide_aside=None):
+    """A bounded paragraph with named, individually seekable interjections.
+
+    *hide_aside(speaker)* true leaves that inline reply out (D112 background voices).
+    """
 
     prefixes = {id(turn): "item"}
     prefixes.update((id(aside), f"aside:{i}") for i, (_, aside) in enumerate(turn.asides))
@@ -282,6 +285,8 @@ def reading_markup(turn, position, speaker_name, *, dark=False, chip_links=False
         )
 
     def chip(aside):
+        if hide_aside is not None and hide_aside(aside.speaker):
+            return None
         name = speaker_name(aside.speaker)
         part = isinstance(aside, LayoutChip)
         opening = not part or aside.opens
@@ -455,16 +460,22 @@ def changed_header_rows(turns, before, after):
     )
 
 
-def reading_markup_signature(turn, position, speaker_name, *, dark=False, row_highlights=None):
+def reading_markup_signature(turn, position, speaker_name, *, dark=False, row_highlights=None, hide_aside=None):
     """Only changes that affect rendered word/chip markup, not elapsed ticks."""
-    owners = [turn, *(aside for _after, aside in turn.asides)]
+    owners = [
+        turn,
+        *(aside for _after, aside in turn.asides if hide_aside is None or not hide_aside(aside.speaker)),
+    ]
     states = tuple(
         (word.start_ms <= position < word.end_ms, word.start_ms > position)
         for owner in owners
         for word, value in zip(owner.words, owner.items, strict=True)
         if value
     )
-    names = tuple(speaker_name(aside.speaker) for _after, aside in turn.asides)
+    names = tuple(
+        None if hide_aside is not None and hide_aside(aside.speaker) else speaker_name(aside.speaker)
+        for _after, aside in turn.asides
+    )
     find_sig = (
         tuple((ok, tuple(sorted(omap.items()))) for ok, omap in sorted(row_highlights.items()))
         if row_highlights
@@ -667,7 +678,9 @@ def background_runs(turns, background_of):
     """D112 (L-86): fold consecutive background turns into one row each.
 
     *background_of(speaker)* returns the resolved speaker id when a raw turn
-    speaker is a background voice, else None. Returns a list aligned with
+    speaker is a background voice, else None. A row is a background row only
+    when its host and every inline reply in it are background voices: a
+    foreground reply keeps its row in view. Returns a list aligned with
     *turns*: None for an ordinary turn, else ``(run_start, voices)`` where
     *run_start* is the position of the run's first turn and *voices* counts
     the distinct background voices in that run ("{n} background voices hidden").
@@ -675,23 +688,41 @@ def background_runs(turns, background_of):
     turns = tuple(turns)
     resolved = {}
 
-    def owner(turn):
-        speaker = turn.speaker
+    def resolve(speaker):
         if speaker not in resolved:
             resolved[speaker] = background_of(speaker)
         return resolved[speaker]
 
+    def owners(turn):
+        host = resolve(turn.speaker)
+        if host is None:
+            return None
+        values = {host}
+        for _after, aside in getattr(turn, "asides", ()):
+            value = resolve(aside.speaker)
+            if value is None:
+                return None
+            values.add(value)
+        return values
+
     runs = [None] * len(turns)
     index = 0
     while index < len(turns):
-        if owner(turns[index]) is None:
+        if owners(turns[index]) is None:
             index += 1
             continue
         end, voices = index, set()
-        while end < len(turns) and (value := owner(turns[end])) is not None:
-            voices.add(value)
+        while end < len(turns) and (values := owners(turns[end])) is not None:
+            voices |= values
             end += 1
         for position in range(index, end):
             runs[position] = (index, len(voices))
         index = end
     return runs
+
+
+def match_owner(turns, match):
+    """The raw speaker who said a Find match's first word: the row's host or one of its inline replies."""
+    (row, slot), *_rest = match.spans[0]
+    turn = turns[row]
+    return turn.speaker if slot < 0 else turn.asides[slot][1].speaker

@@ -256,6 +256,11 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
         started = time.thread_time_ns()
         while len(index.prefix) <= len(self.items):
             number = len(index.prefix) - 1
+            if self.row_hidden(number):
+                # Folded rows take no height; skip the whole run without measuring it.
+                end = min(self.next_shown(number), len(self.items))
+                index.prefix.extend([index.prefix[-1]] * (end - number))
+                continue
             turn = self.items[number]
             markup = self._metric_markup.get(number)
             if markup is None:
@@ -320,6 +325,13 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             self.prefix = self._active.prefix = DisplayPrefix(self.prefix, len(self._display_items))
 
         def measure(index):
+            if self.row_hidden(index):
+                # Folded away: no widget, no height.
+                if index + 1 == len(self.prefix):
+                    self.prefix.append(self.prefix[-1])
+                else:
+                    self.prefix.set_height(index, 0)
+                return
             row = self._display_row(index)
             turn = self._display_items[index]
             self.page._refresh_header(turn, row)
@@ -330,7 +342,7 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             else:
                 self.prefix.set_height(index, natural)
 
-        measured = {index for index in self.rows if index + 1 < len(self.prefix)}
+        measured = {index for index in self.rows if index + 1 < len(self.prefix) and not self.row_hidden(index)}
         for index in measured:
             measure(index)
         end = anchor
@@ -394,14 +406,18 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
             # grows, spending a frame on offscreen widgets delays visible text.
             first = max(0, min(first - 1, bisect_right(self.prefix, value - height / 2) - 1))
             end = min(len(self.prefix) - 1, max(end + 1, bisect_right(self.prefix, value + height * 1.5)))
-        needed = set(range(first, end))
+        needed = set(self.shown_rows(first, end))
         if self._active.complete:
             self._retained_rows.clear()
         else:
             # Keep the pre-rebuild widgets until the replacement prefix is
             # complete. Header refreshes preserve their signal/focus identity.
-            needed.update(self._retained_rows & self.rows.keys())
+            needed.update(i for i in self._retained_rows & self.rows.keys() if not self.row_hidden(i))
         focused = self.navigation.focused()
+        if focused is not None and self.row_hidden(focused):
+            # Its run folded under it: focus moves to the run's first row.
+            self.navigation.pending = self.next_shown(focused, -1), None
+            focused = None
         if focused is not None:
             if focused + 1 < len(self.prefix):
                 needed.add(focused)
@@ -439,6 +455,23 @@ class ExactTranscript(Gtk.Widget, Gtk.Scrollable):
 
     def _value(self):
         return self.props.vadjustment.get_value() if self.props.vadjustment else 0
+
+    def row_hidden(self, index):
+        """D112 (L-86): a background row folded under its run's first row: no height and no widget."""
+        hidden = getattr(self.page, "row_hidden", None)
+        return hidden is not None and hidden(index)
+
+    def next_shown(self, index, step=1):
+        """The nearest shown row from *index* in *step*'s direction, jumping folded runs whole."""
+        shown = getattr(self.page, "next_shown", None)
+        return index if shown is None else shown(index, step)
+
+    def shown_rows(self, first, end):
+        """Rows in [first, end) that take space, without walking folded runs one by one."""
+        index = self.next_shown(first) if first < end else end
+        while index < end:
+            yield index
+            index = self.next_shown(index + 1)
 
     def cancel_pending_scroll(self):
         self._pending_scroll = None

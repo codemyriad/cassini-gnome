@@ -13,7 +13,14 @@ from cassini_talk.export_model import markdown, model_projection
 from cassini_talk.library import LibraryScanner
 from cassini_talk.library_v2 import xschema
 from cassini_talk.meeting_store import atomic_json, read_metadata, update_metadata
-from cassini_talk.meeting_text import background_runs, reading_turns
+from cassini_talk.meeting_text import (
+    background_runs,
+    find_transcript_matches,
+    match_owner,
+    reading_markup,
+    reading_markup_signature,
+    reading_turns,
+)
 from cassini_talk.portable_writer import descriptors
 from cassini_talk.recording_session import RecordingSession
 from cassini_talk.search_index import SearchIndex
@@ -226,3 +233,51 @@ def test_background_runs_resolve_each_speaker_once_on_long_transcripts():
     assert sorted(calls) == ["a", "b", "bg1", "bg2"]
     assert runs[:5] == [(0, 2), (0, 2), None, (3, 1), None] and runs[5] == (5, 2)
     assert sum(run is not None and run[0] == i for i, run in enumerate(runs)) == 40_000
+
+
+def interrupted():
+    """Alice's sentence with Ben's reply inside it, then Carla on her own."""
+    words = [
+        portable.Word("a", 0, 1000, "We should"),
+        portable.Word("b", 900, 1200, "Yes."),
+        portable.Word("a", 1000, 2000, "ship it."),
+        portable.Word("c", 2200, 2600, "Agreed."),
+    ]
+    rows = reading_turns(words)
+    assert [row.speaker for row in rows] == ["a", "c"] and rows[0].asides[0][1].speaker == "b"
+    return rows
+
+
+def visible_hits(rows, query, background):
+    """What Find keeps: each hit judged by the voice that said it (MeetingPage._recompute_find_matches)."""
+    return [m for m in find_transcript_matches(rows, query) if match_owner(rows, m) not in background]
+
+
+def test_a_background_voice_only_in_an_inline_reply_is_hidden_and_not_found():
+    """Review #481: the reply is dropped from its participant's row, and Find skips it."""
+    rows = interrupted()
+    background = {"b"}
+    # The host row stays an ordinary row: nothing folds.
+    assert background_runs(rows, lambda s: s if s in background else None) == [None, None]
+    shown = reading_markup(rows[0], 0, str.upper, hide_aside=background.__contains__)
+    assert "Yes." not in shown and "B:" not in shown and "We should" in shown and "ship it." in shown
+    assert "Yes." in reading_markup(rows[0], 0, str.upper)
+    # The rendered-markup cache key changes with the reply's treatment.
+    assert reading_markup_signature(rows[0], 0, str.upper) != reading_markup_signature(
+        rows[0], 0, str.upper, hide_aside=background.__contains__
+    )
+    assert find_transcript_matches(rows, "yes") and not visible_hits(rows, "yes", background)
+    assert visible_hits(rows, "ship", background)
+
+
+def test_a_background_host_keeps_a_participants_reply_in_view_and_found():
+    """Review #481: marking the host as background doesn't fold away or unfind a foreground reply."""
+    rows = interrupted()
+    background = {"a"}
+    assert background_runs(rows, lambda s: s if s in background else None) == [None, None]
+    assert [m.row_index for m in visible_hits(rows, "yes", background)] == [0]
+    assert not visible_hits(rows, "ship", background)
+    # When every voice in the row is background, it folds, counting each voice once.
+    background = {"a", "b"}
+    assert background_runs(rows, lambda s: s if s in background else None) == [(0, 2), None]
+    assert not visible_hits(rows, "yes", background)
