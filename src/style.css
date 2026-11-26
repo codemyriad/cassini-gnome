@@ -291,6 +291,11 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
 .meeting-title { font-size: 18pt; font-weight: 700; color: var(--cx-ink); }
 .meeting-rename-btn { min-width: 26px; min-height: 26px; padding: 0; color: var(--cx-ink-2); }
 .meeting-subtitle { color: var(--cx-ink-2); font-variant-numeric: tabular-nums; }
+/* D-1177: the date drawn as the line's text; the flat button's soft background only on hover. Negative margins keep the text where the plain label was. */
+.meeting-date-btn { min-height: 0; min-width: 0; padding: 1px 4px; margin: -1px -4px; border-radius: 6px; font-weight: inherit; }
+/* A date wider than the line wraps in the button, which draws its hover per line itself. */
+button.meeting-date-btn.wrapped, button.meeting-date-btn.wrapped:hover, button.meeting-date-btn.wrapped:active { background: none; }
+button.meeting-date-btn.wrapped:focus-visible { outline: none; }
 .inline-speaker-button { min-height: 24px; min-width: 0; padding: 2px 4px; border-radius: 6px; font-weight: 400; }
 .inline-speaker-item { min-height: 24px; padding: 2px 4px; border-radius: 6px; }
 .inline-speaker-button.listening, .inline-speaker-item.listening { background: var(--app-accent-wash); }

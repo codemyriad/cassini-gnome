@@ -159,12 +159,20 @@ def _imported_suffix(transcribed_elsewhere):
 
 
 def preview_subtitle(at_ms, duration_ms, *, now_ms, tz, received=False, transcribed_elsewhere=False):
-    value = day_group(at_ms, now_ms=now_ms, tz=tz)
+    return "".join(
+        preview_subtitle_parts(
+            at_ms, duration_ms, now_ms=now_ms, tz=tz, received=received, transcribed_elsewhere=transcribed_elsewhere
+        )
+    )
+
+
+def preview_subtitle_parts(at_ms, duration_ms, *, now_ms, tz, received=False, transcribed_elsewhere=False):
+    """preview_subtitle() as (date, rest): the meeting header's date is a button (D-1177)."""
+    date = day_group(at_ms, now_ms=now_ms, tz=tz)
     if at_ms is not None:
-        value += f", {row_time(at_ms, tz=tz)}"
-    if duration_ms is not None:
-        value += f" · {meeting_duration(duration_ms)}"
-    return value + (_imported_suffix(transcribed_elsewhere) if received else "")
+        date += f", {row_time(at_ms, tz=tz)}"
+    rest = f" · {meeting_duration(duration_ms)}" if duration_ms is not None else ""
+    return date, rest + (_imported_suffix(transcribed_elsewhere) if received else "")
 
 
 def search_date(at_ms, *, now_ms, tz):

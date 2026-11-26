@@ -35,7 +35,7 @@ FLOW_SOURCES = (
     ("listening-rows", "tests/ui/listening-rows.py"), ("meeting-gui-", "tests/ui/meeting.py"),
     ("recording-details-", "tests/ui/recording-details.py"), ("recording-gui", "tests/ui/recording.py"),
     ("recording-saving", "tests/ui/recording.py"),
-    ("rename", "tests/ui/rename.py"), ("set-date", "tests/ui/set-date.py"),
+    ("rename", "tests/ui/rename.py"), ("set-date", "tests/ui/set-date.py"), ("date-button", "tests/ui/date-button.py"),
     ("spectrogram-browser", "tests/ui/spectrogram-browser.py"),
     ("spectrogram-components", "tests/ui/spectrogram.py"), ("spectrogram-", "tests/ui/spectrogram-live.py"),
     ("speech-models-", "tests/ui/speech-models.py"), ("starring", "tests/ui/starring.py"), ("test-recording-", "tests/ui/test-recording.py"),
