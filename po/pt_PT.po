@@ -6,20 +6,44 @@ msgstr "Project-Id-Version: cassini-talk 0.3.0\nReport-Msgid-Bugs-To: https://gi
 msgid "@APP_NAME@"
 msgstr "@APP_NAME@"
 
-msgid "Meeting Player"
-msgstr "Leitor de reuniões"
-
-msgid "Play meeting recordings and read along with their transcripts"
-msgstr "Ouça gravações de reuniões e acompanhe as transcrições"
-
 msgid "meeting;transcript;recording;opus;captions;speech;"
 msgstr "reunião;transcrição;gravação;opus;legendas;fala;"
 
-msgid "Read along with meeting recordings"
-msgstr "Acompanhe as transcrições das reuniões"
+msgid "Meeting Recorder"
+msgstr "Gravador de reuniões"
 
-msgid "Cassini plays meeting recordings in the Cassini portable meeting format: ordinary Ogg Opus files that carry their own word-by-word transcript, speaker names and summary."
-msgstr "O Cassini reproduz gravações de reuniões no formato portátil Cassini: ficheiros Ogg Opus comuns que incluem a transcrição palavra por palavra, os nomes dos oradores e o resumo."
+msgid "Record meetings and write them down on this computer"
+msgstr "Grave as suas reuniões e transcreva-as neste computador"
+
+msgid "Record meetings and write them down"
+msgstr "Grave e transcreva as suas reuniões"
+
+msgid "Cassini records your meetings and writes them down on this computer, offline. There is no account and nothing is uploaded."
+msgstr "O Cassini grava as suas reuniões e transcreve-as neste computador, sem ligação à internet. Não é preciso criar conta e nada é enviado."
+
+msgid "Record your microphone and this computer’s sound, or calls in your browser with each person kept apart"
+msgstr "Grave o seu microfone e o som deste computador, ou chamadas no navegador com cada pessoa separada"
+
+msgid "Write meetings down with the included Whistle model or the optional Parakeet Ultra"
+msgstr "Transcreva as reuniões com o modelo Whistle incluído ou com o Parakeet Ultra opcional"
+
+msgid "Tell speakers apart, name them, and recognise saved voices in later meetings"
+msgstr "Distinga os oradores, dê-lhes nomes e reconheça as vozes guardadas nas reuniões seguintes"
+
+msgid "Search every meeting by phrase, speaker or date"
+msgstr "Pesquise em todas as reuniões por frase, orador ou data"
+
+msgid "Import audio files and export meetings as Cassini files, Markdown, text or subtitles"
+msgstr "Importe ficheiros de áudio e exporte reuniões como ficheiros Cassini, Markdown, texto ou legendas"
+
+msgid "Cassini files are ordinary Ogg Opus audio files that carry their transcript, speakers and notes inside, and play in any audio player."
+msgstr "Os ficheiros Cassini são ficheiros de áudio Ogg Opus comuns que contêm a transcrição, os oradores e as notas, e são reproduzidos em qualquer leitor de áudio."
+
+msgid "The Library with sample meetings"
+msgstr "A Biblioteca com reuniões de exemplo"
+
+msgid "A sample meeting being written down while its audio plays"
+msgstr "Uma reunião de exemplo a ser transcrita enquanto o áudio é reproduzido"
 
 msgid "Follow the transcript as it plays, with the spoken word highlighted"
 msgstr "Acompanhe a transcrição durante a reprodução, com a palavra pronunciada realçada"
@@ -27,29 +51,8 @@ msgstr "Acompanhe a transcrição durante a reprodução, com a palavra pronunci
 msgid "Click any word to play from there"
 msgstr "Clique numa palavra para reproduzir a partir daí"
 
-msgid "See participants and who is speaking, and switch between transcripts"
-msgstr "Veja os participantes e quem está a falar e alterne entre transcrições"
-
-msgid "Search the transcript"
-msgstr "Pesquise na transcrição"
-
-msgid "Read the meeting summary and jump to its topics"
-msgstr "Leia o resumo da reunião e avance para os tópicos"
-
-msgid "Check that the audio still matches the transcript recorded with it"
-msgstr "Verifique se o áudio continua a corresponder à transcrição associada"
-
-msgid "Export the transcript as text or WebVTT subtitles"
-msgstr "Exporte a transcrição como texto ou legendas WebVTT"
-
-msgid "Files without a transcript play like in any other audio player."
-msgstr "Os ficheiros sem transcrição são reproduzidos como em qualquer outro leitor de áudio."
-
 msgid "Codemyriad"
 msgstr "Codemyriad"
-
-msgid "A meeting transcript following playback"
-msgstr "Uma transcrição de reunião a acompanhar a reprodução"
 
 msgid "Keep recordings and received meetings in the Library, follow their transcripts, search across meetings, and import or export audio and transcripts."
 msgstr "Guarde gravações e reuniões recebidas na Biblioteca, acompanhe as transcrições, pesquise nas reuniões e importe ou exporte áudio e transcrições."

@@ -6,20 +6,44 @@ msgstr "Project-Id-Version: cassini-talk 0.3.0\nReport-Msgid-Bugs-To: https://gi
 msgid "@APP_NAME@"
 msgstr "@APP_NAME@"
 
-msgid "Meeting Player"
-msgstr "Lecteur de réunions"
-
-msgid "Play meeting recordings and read along with their transcripts"
-msgstr "Écoutez les enregistrements de réunions en suivant leur transcription"
-
 msgid "meeting;transcript;recording;opus;captions;speech;"
 msgstr "réunion;transcription;enregistrement;opus;sous-titres;parole;"
 
-msgid "Read along with meeting recordings"
-msgstr "Suivez la transcription des réunions"
+msgid "Meeting Recorder"
+msgstr "Enregistreur de réunions"
 
-msgid "Cassini plays meeting recordings in the Cassini portable meeting format: ordinary Ogg Opus files that carry their own word-by-word transcript, speaker names and summary."
-msgstr "Cassini lit les enregistrements de réunions au format portable Cassini : des fichiers Ogg Opus ordinaires contenant leur transcription mot à mot, les noms des intervenants et un résumé."
+msgid "Record meetings and write them down on this computer"
+msgstr "Enregistrez vos réunions et transcrivez-les sur cet ordinateur"
+
+msgid "Record meetings and write them down"
+msgstr "Enregistrez et transcrivez vos réunions"
+
+msgid "Cassini records your meetings and writes them down on this computer, offline. There is no account and nothing is uploaded."
+msgstr "Cassini enregistre vos réunions et les transcrit sur cet ordinateur, hors ligne. Aucun compte n’est nécessaire et rien n’est envoyé en ligne."
+
+msgid "Record your microphone and this computer’s sound, or calls in your browser with each person kept apart"
+msgstr "Enregistrez votre microphone et le son de cet ordinateur, ou les appels dans votre navigateur avec chaque personne séparée"
+
+msgid "Write meetings down with the included Whistle model or the optional Parakeet Ultra"
+msgstr "Transcrivez vos réunions avec le modèle Whistle inclus ou avec Parakeet Ultra en option"
+
+msgid "Tell speakers apart, name them, and recognise saved voices in later meetings"
+msgstr "Distinguez les intervenants, nommez-les et reconnaissez les voix mémorisées dans les réunions suivantes"
+
+msgid "Search every meeting by phrase, speaker or date"
+msgstr "Recherchez dans toutes les réunions par expression, intervenant ou date"
+
+msgid "Import audio files and export meetings as Cassini files, Markdown, text or subtitles"
+msgstr "Importez des fichiers audio et exportez les réunions en fichiers Cassini, Markdown, texte ou sous-titres"
+
+msgid "Cassini files are ordinary Ogg Opus audio files that carry their transcript, speakers and notes inside, and play in any audio player."
+msgstr "Les fichiers Cassini sont des fichiers audio Ogg Opus ordinaires qui contiennent leur transcription, leurs intervenants et leurs notes, et se lisent dans n’importe quel lecteur audio."
+
+msgid "The Library with sample meetings"
+msgstr "La Bibliothèque avec des réunions d’exemple"
+
+msgid "A sample meeting being written down while its audio plays"
+msgstr "Une réunion d’exemple en cours de transcription pendant la lecture de son audio"
 
 msgid "Follow the transcript as it plays, with the spoken word highlighted"
 msgstr "Suivez la transcription pendant la lecture, avec le mot prononcé en surbrillance"
@@ -27,29 +51,8 @@ msgstr "Suivez la transcription pendant la lecture, avec le mot prononcé en sur
 msgid "Click any word to play from there"
 msgstr "Cliquez sur un mot pour lire à partir de là"
 
-msgid "See participants and who is speaking, and switch between transcripts"
-msgstr "Affichez les participants, voyez qui parle et changez de transcription"
-
-msgid "Search the transcript"
-msgstr "Recherchez dans la transcription"
-
-msgid "Read the meeting summary and jump to its topics"
-msgstr "Lisez le résumé de la réunion et accédez à ses sujets"
-
-msgid "Check that the audio still matches the transcript recorded with it"
-msgstr "Vérifiez que l’audio correspond toujours à la transcription associée"
-
-msgid "Export the transcript as text or WebVTT subtitles"
-msgstr "Exportez la transcription en texte ou en sous-titres WebVTT"
-
-msgid "Files without a transcript play like in any other audio player."
-msgstr "Les fichiers sans transcription sont lus comme dans tout autre lecteur audio."
-
 msgid "Codemyriad"
 msgstr "Codemyriad"
-
-msgid "A meeting transcript following playback"
-msgstr "Une transcription de réunion qui suit la lecture"
 
 msgid "Keep recordings and received meetings in the Library, follow their transcripts, search across meetings, and import or export audio and transcripts."
 msgstr "Conservez les enregistrements et les réunions reçues dans la bibliothèque, suivez leur transcription, recherchez dans les réunions et importez ou exportez l’audio et les transcriptions."
