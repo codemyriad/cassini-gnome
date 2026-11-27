@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/codemyriad/cassini-ux",
-  "commit": "60ac93da94ce433412c93d8e96a76c68503dcec3",
+  "commit": "e709094d283434fa59428544e0065e8deb49967b",
   "paths": {
     "format-vectors.json": "tests/ux/format-vectors.json",
     "states-vectors.json": "tests/ux/states-vectors.json",
