@@ -262,10 +262,6 @@ class Meeting(MeetingState):
         """Visible (merged) speaker ids marked as background voices (D112 / L-86)."""
         return frozenset(s.id for s in self.speakers if s.background)
 
-    def is_background(self, identifier):
-        """Whether a raw transcript speaker id resolves to a background voice."""
-        return bool(self.background_speakers) and self.speaker_for(identifier).background
-
     def speaker_for(self, identifier):
         """Resolve a cached turn's speaker through merges, without repairing data."""
         from .speaker_merges import resolve_merges
