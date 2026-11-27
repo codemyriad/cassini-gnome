@@ -6,24 +6,24 @@
   <project_license>GPL-3.0-or-later AND Apache-2.0 AND MIT AND Unicode-3.0</project_license>
 
   <name translate="no">@APP_NAME@</name>
-  <summary>Read along with meeting recordings</summary>
+  <summary>Record meetings and write them down</summary>
   <description>
     <p>
-      Cassini plays meeting recordings in the Cassini portable meeting format:
-      ordinary Ogg Opus files that carry their own word-by-word transcript,
-      speaker names and summary.
+      Cassini records your meetings and writes them down on this computer, offline.
+      There is no account and nothing is uploaded.
     </p>
     <ul>
+      <li>Record your microphone and this computer’s sound, or calls in your browser with each person kept apart</li>
+      <li>Write meetings down with the included Whistle model or the optional Parakeet Ultra</li>
+      <li>Tell speakers apart, name them, and recognise saved voices in later meetings</li>
       <li>Follow the transcript as it plays, with the spoken word highlighted</li>
       <li>Click any word to play from there</li>
-      <li>See participants and who is speaking, and switch between transcripts</li>
-      <li>Search the transcript</li>
-      <li>Read the meeting summary and jump to its topics</li>
-      <li>Check that the audio still matches the transcript recorded with it</li>
-      <li>Export the transcript as text or WebVTT subtitles</li>
+      <li>Search every meeting by phrase, speaker or date</li>
+      <li>Import audio files and export meetings as Cassini files, Markdown, text or subtitles</li>
     </ul>
     <p>
-      Files without a transcript play like in any other audio player.
+      Cassini files are ordinary Ogg Opus audio files that carry their transcript, speakers
+      and notes inside, and play in any audio player.
     </p>
   </description>
 
@@ -75,8 +75,12 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/codemyriad/cassini-gnome/main/data/screenshots/transcript.png</image>
-      <caption>A meeting transcript following playback</caption>
+      <image>https://raw.githubusercontent.com/codemyriad/cassini-gnome/main/docs/screenshots/library.png</image>
+      <caption>The Library with sample meetings</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/codemyriad/cassini-gnome/main/docs/screenshots/meeting.png</image>
+      <caption>A sample meeting being written down while its audio plays</caption>
     </screenshot>
   </screenshots>
 

@@ -598,6 +598,11 @@ with tempfile.TemporaryDirectory() as temporary:
     assert window.get_focus() is row_name_btn
     play.grab_focus()
     window.player.pause()
+    # Listening just started and playback paused: let GTK lay out the
+    # timestamp/slider for that state before reading the drawn geometry.
+    frames = []
+    window.add_tick_callback(lambda *_: (frames.append(True), len(frames) < 2)[1])
+    until(window, lambda: len(frames) >= 2)
     left, track_width = timeline._geometry()
     point = Graphene.Point()
     point.init(round(left + 34000 * track_width / 40000) + 4, page.seek.get_height() / 2)

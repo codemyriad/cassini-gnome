@@ -6,20 +6,44 @@ msgstr "Project-Id-Version: cassini-talk 0.3.0\nReport-Msgid-Bugs-To: https://gi
 msgid "@APP_NAME@"
 msgstr "@APP_NAME@"
 
-msgid "Meeting Player"
-msgstr "Meeting Player"
-
-msgid "Play meeting recordings and read along with their transcripts"
-msgstr "Play meeting recordings and read along with their transcripts"
-
 msgid "meeting;transcript;recording;opus;captions;speech;"
 msgstr "meeting;transcript;recording;opus;captions;speech;"
 
-msgid "Read along with meeting recordings"
-msgstr "Read along with meeting recordings"
+msgid "Meeting Recorder"
+msgstr "Meeting Recorder"
 
-msgid "Cassini plays meeting recordings in the Cassini portable meeting format: ordinary Ogg Opus files that carry their own word-by-word transcript, speaker names and summary."
-msgstr "Cassini plays meeting recordings in the Cassini portable meeting format: ordinary Ogg Opus files that carry their own word-by-word transcript, speaker names and summary."
+msgid "Record meetings and write them down on this computer"
+msgstr "Record meetings and write them down on this computer"
+
+msgid "Record meetings and write them down"
+msgstr "Record meetings and write them down"
+
+msgid "Cassini records your meetings and writes them down on this computer, offline. There is no account and nothing is uploaded."
+msgstr "Cassini records your meetings and writes them down on this computer, offline. There is no account and nothing is uploaded."
+
+msgid "Record your microphone and this computer’s sound, or calls in your browser with each person kept apart"
+msgstr "Record your microphone and this computer’s sound, or calls in your browser with each person kept apart"
+
+msgid "Write meetings down with the included Whistle model or the optional Parakeet Ultra"
+msgstr "Write meetings down with the included Whistle model or the optional Parakeet Ultra"
+
+msgid "Tell speakers apart, name them, and recognise saved voices in later meetings"
+msgstr "Tell speakers apart, name them, and recognise saved voices in later meetings"
+
+msgid "Search every meeting by phrase, speaker or date"
+msgstr "Search every meeting by phrase, speaker or date"
+
+msgid "Import audio files and export meetings as Cassini files, Markdown, text or subtitles"
+msgstr "Import audio files and export meetings as Cassini files, Markdown, text or subtitles"
+
+msgid "Cassini files are ordinary Ogg Opus audio files that carry their transcript, speakers and notes inside, and play in any audio player."
+msgstr "Cassini files are ordinary Ogg Opus audio files that carry their transcript, speakers and notes inside, and play in any audio player."
+
+msgid "The Library with sample meetings"
+msgstr "The Library with sample meetings"
+
+msgid "A sample meeting being written down while its audio plays"
+msgstr "A sample meeting being written down while its audio plays"
 
 msgid "Follow the transcript as it plays, with the spoken word highlighted"
 msgstr "Follow the transcript as it plays, with the spoken word highlighted"
@@ -27,29 +51,8 @@ msgstr "Follow the transcript as it plays, with the spoken word highlighted"
 msgid "Click any word to play from there"
 msgstr "Click any word to play from there"
 
-msgid "See participants and who is speaking, and switch between transcripts"
-msgstr "See participants and who is speaking, and switch between transcripts"
-
-msgid "Search the transcript"
-msgstr "Search the transcript"
-
-msgid "Read the meeting summary and jump to its topics"
-msgstr "Read the meeting summary and jump to its topics"
-
-msgid "Check that the audio still matches the transcript recorded with it"
-msgstr "Check that the audio still matches the transcript recorded with it"
-
-msgid "Export the transcript as text or WebVTT subtitles"
-msgstr "Export the transcript as text or WebVTT subtitles"
-
-msgid "Files without a transcript play like in any other audio player."
-msgstr "Files without a transcript play like in any other audio player."
-
 msgid "Codemyriad"
 msgstr "Codemyriad"
-
-msgid "A meeting transcript following playback"
-msgstr "A meeting transcript following playback"
 
 msgid "Keep recordings and received meetings in the Library, follow their transcripts, search across meetings, and import or export audio and transcripts."
 msgstr "Keep recordings and received meetings in the Library, follow their transcripts, search across meetings, and import or export audio and transcripts."

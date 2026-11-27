@@ -218,7 +218,8 @@ with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as clean
     dialog.prepare_retry.emit("clicked")
     until(lambda: dialog.local_dialog is not None and not dialog.local_dialog.closed)
     local = dialog.local_dialog
-    until(local.get_mapped)
+    # Mapped is not yet allocated: wait for the laid-out width before checking it.
+    until(lambda: local.get_mapped() and local.get_child().get_width() > 0)
     assert local.get_child().get_width() <= 540, "The folder path must wrap instead of widening the guide"
     assert not local.done.get_sensitive() and not dialog.done.get_sensitive()
     assert (local.folder / "manifest.json").is_file()

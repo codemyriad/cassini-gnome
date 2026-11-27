@@ -50,7 +50,6 @@
   --warning-color: var(--cx-warn-ink);
 
   /* App semantic colour roles backed by --cx-* tokens (HARMONY §10). */
-  --app-window-bg: var(--cx-ground);
   --app-window-fg: var(--cx-ink);
   --app-view-bg: var(--cx-surface);
   --app-view-fg: var(--cx-ink);
@@ -62,9 +61,7 @@
   --app-field-border: var(--cx-field-line);
   --app-headerbar-bg: var(--cx-ground);
   --app-hairline: var(--cx-line-soft);
-  --app-border: var(--cx-line);
   --app-export-border: var(--cx-line);
-  --app-details-border: var(--cx-line);
   --app-auto-tag-border: var(--cx-line);
   --app-wash-subtle: var(--cx-neutral-tint);
   --app-wash-chip: var(--cx-neutral-tint);
@@ -73,7 +70,6 @@
   --app-search-selected-bg: var(--cx-surface);
   --app-primary-bg: var(--cx-accent-strong);
   --app-primary-fg: var(--cx-on-accent);
-  --app-accent-bg: var(--cx-accent);
   --app-accent-ink: var(--cx-accent-ink);
   --app-accent-tint: var(--cx-accent-tint);
   --app-accent-wash: var(--cx-accent-tint);
@@ -85,7 +81,6 @@
   --app-record-dot: var(--cx-record-ink);
   --app-record-tint: var(--cx-record-tint);
   --app-record-halo: var(--cx-record-tint);
-  --app-record-trough: color-mix(in srgb, var(--cx-record-ink) 22%, var(--cx-record-tint));
   --app-badge-red-bg: var(--cx-record-tint);
   --app-badge-red-fg: var(--cx-record-ink);
   --app-badge-transcribing-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
@@ -107,7 +102,6 @@
   --app-mic-silent-btn-bg: var(--cx-surface);
   --app-mic-silent-btn-fg: var(--cx-warn-ink);
   --app-mic-silent-trough: color-mix(in srgb, var(--cx-warn-ink) 22%, var(--cx-warn-tint));
-  --app-live-silent-trough: color-mix(in srgb, var(--cx-warn-ink) 22%, var(--cx-warn-tint));
   --app-dup-notice-bg: var(--cx-sunken);
   --app-likely-tag-bg: color-mix(in srgb, var(--cx-ink) 10%, transparent);
   --app-success-bg: var(--cx-success-fill);
@@ -193,10 +187,10 @@ text > placeholder {
 .library-window .drop-overlay.error .drop-overlay-title { color: var(--cx-error); }
 .badge { min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 9pt; font-weight: 600; line-height: 1; font-feature-settings: "tnum"; }
 .badge .badge-label { font-size: 9pt; font-weight: 600; line-height: 1; font-feature-settings: "tnum"; }
-.badge-kind-recording, .library-window .badge-red { background: var(--app-badge-red-bg); color: var(--app-badge-red-fg); }
-.badge-kind-importing, .badge-kind-saving, .badge-kind-transcribing, .library-window .badge-accent, .library-window .badge-grey { background: var(--app-badge-grey-bg); color: var(--app-badge-grey-fg); }
+.badge-kind-recording { background: var(--app-badge-red-bg); color: var(--app-badge-red-fg); }
+.badge-kind-importing, .badge-kind-saving, .badge-kind-transcribing { background: var(--app-badge-grey-bg); color: var(--app-badge-grey-fg); }
 .badge-kind-transcribing .badge-glyph { color: var(--app-badge-transcribing-spinner); }
-.badge-kind-needsAttention, .badge-kind-interrupted, .library-window .badge-amber { background: var(--app-badge-amber-bg); color: var(--app-badge-amber-fg); }
+.badge-kind-needsAttention, .badge-kind-interrupted { background: var(--app-badge-amber-bg); color: var(--app-badge-amber-fg); }
 .badge-kind-received { background: transparent; color: var(--app-badge-received-fg); box-shadow: inset 0 0 0 1px var(--app-badge-received-ring); }
 /* D104 §2: Test recording result pills (STATUS-BADGES success / error tints) and the live level. */
 .test-pill-working { background: var(--cx-success-tint); color: var(--cx-success); }
@@ -264,14 +258,11 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
 .library-window button.hero-change-folder { min-width: 20px; min-height: 20px; padding: 0; border-radius: 6px; color: var(--cx-ink); background: color-mix(in srgb, var(--cx-ink) 9%, transparent); box-shadow: none; }
 .library-window button.hero-change-folder:hover { background: color-mix(in srgb, var(--cx-ink) 14%, transparent); }
 .library-window button.hero-change-folder:active { background: color-mix(in srgb, var(--cx-ink) 20%, transparent); }
-.library-window .excerpt { line-height: 1.5; }
 
 .library-window .live-pill { background: var(--app-record-tint); border-radius: 999px; padding: 4px 4px 4px 13px; min-height: 26px; }
 .library-window .live-dot { background: var(--app-record-dot); border-radius: 999px; }
 .library-window .live-pill.saving .live-dot { opacity: 0.45; }
 .library-window .live-timer { color: var(--app-record-ink); font-weight: 600; font-feature-settings: "tnum"; }
-.library-window .live-levels progressbar trough { min-width: 30px; min-height: 4px; background: var(--app-record-trough); border-radius: 2px; }
-.library-window .live-levels progressbar progress { min-height: 4px; background: var(--app-record-bg); border-radius: 2px; }
 .library-window .static-stop:disabled { background: var(--app-record-bg); background-image: none; color: var(--app-record-fg); filter: none; opacity: 1; min-width: 56px; min-height: 26px; padding: 0 10px; border-radius: 999px; }
 
 /* UX3 / WP3 (L-22, L-24, L-43, L-44): right-pane Meeting view, inline speakers, Find bar, and floating player. */
@@ -297,8 +288,7 @@ button.plain-action { background: transparent; color: var(--app-accent-ink); }
 button.meeting-date-btn.wrapped, button.meeting-date-btn.wrapped:hover, button.meeting-date-btn.wrapped:active { background: none; }
 button.meeting-date-btn.wrapped:focus-visible { outline: none; }
 .inline-speaker-button { min-height: 24px; min-width: 0; padding: 2px 4px; border-radius: 6px; font-weight: 400; }
-.inline-speaker-item { min-height: 24px; padding: 2px 4px; border-radius: 6px; }
-.inline-speaker-button.listening, .inline-speaker-item.listening { background: var(--app-accent-wash); }
+.inline-speaker-button.listening { background: var(--app-accent-wash); }
 .inline-speaker-name { font-size: 10.5pt; font-weight: 400; color: var(--cx-ink); }
 .inline-speaker-name.speaker-unnamed { text-decoration-line: underline; text-decoration-color: color-mix(in srgb, var(--cx-ink-2) 55%, transparent); }
 /* WP5 (L-45, L-48): header transcribing status line and chevron details popover. */
@@ -417,7 +407,6 @@ popover.transcribing-popover button.transcribing-popover-stop:not(:disabled):act
 .status-dot { min-width: 8px; min-height: 8px; border-radius: 50%; }
 .status-dot-connected { background: var(--cx-success); }
 .status-dot-off { background: var(--cx-error); }
-.cassini-preferences button.preferences-link { padding: 0 2px; min-height: 0; }
 .meeting-player { min-height: 44px; padding: 0 14px 0 6px; border-radius: 12px; border: 1px solid var(--cx-line-soft); background: var(--cx-raised); box-shadow: 0 10px 30px -12px var(--cx-shadow), 0 2px 6px -2px var(--cx-shadow); }
 .meeting-player button.suggested-action { border-radius: 50%; min-width: 32px; min-height: 32px; padding: 0; background: var(--cx-accent-strong); color: var(--cx-on-accent); }
 .meeting-player scale { padding: 0; }
@@ -477,7 +466,6 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .library-window .static-stop { background: var(--app-record-bg); color: var(--app-record-fg); font-weight: 600; font-size: 9.75pt; min-width: 56px; min-height: 26px; padding: 0 10px; border-radius: 999px; }
 .library-window .live-pill button.flat { min-height: 0; min-width: 0; padding: 0; }
 
-.live-levels progressbar.mic-silent-meter trough { background: var(--app-live-silent-trough); }
 .library-window .static-stop:disabled { background-image: none; opacity: 1; }
 .library-window .static-stop:disabled label { opacity: 1; color: var(--app-record-fg); }
 
@@ -561,7 +549,6 @@ label.warn-line, .warn-line > label, .warn-line > image { color: var(--app-warn-
 .companion-step-badge.done { border-color: var(--app-success-bg); background: var(--app-success-bg); color: var(--app-success-fg); }
 
 /* UX16/UX17 & WP6 (L-14, L-41, L-46): Name a speaker dialog and saved-voice avatars. */
-.speaker-edit { padding: 0; }
 .speakers-dialog,
 .speakers-dialog sheet {
   font-size: 11.25pt;
@@ -784,18 +771,11 @@ button.saved-voices-forget-all:disabled { opacity: 0.5; }
   font-size: 9.75pt;
 }
 .details-span { padding: 6px 0; }
-.details-marker { background: var(--app-accent-bg); border-radius: 3px; }
-.details-time { font-variant-numeric: tabular-nums; opacity: 0.75; }
 
 /* D36: recording colour follows the actual application appearance. */
 .library-window .spectro-stopping { opacity: 0.45; transition: opacity 220ms ease-out; }
 
 .library-window .spectro-check { padding: 0 8px; min-width: 0; }
-
-/* D70: reserve the accent edge so choosing a target never shifts a row. */
-.speaker-row { border-left: 3px solid transparent; border-radius: 6px; }
-.speaker-row.listening { border-left-color: var(--app-accent-ink); background: var(--app-accent-wash); }
-.speaker-caption { font-feature-settings: "tnum"; font-weight: 400; }
 
 .listening-bar { min-height: 44px; padding: 4px 8px; border-top: 1px solid var(--app-hairline); background: var(--app-headerbar-bg); }
 .listening-bar button { min-width: 24px; padding: 4px; }

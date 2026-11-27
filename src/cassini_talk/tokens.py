@@ -53,7 +53,6 @@ ADW_ROLE_TOKENS: dict[str, str] = {
 
 # Every CSS --app-* role in src/style.css mapped to its target --cx-* token.
 CSS_ROLE_TOKENS: dict[str, str] = {
-    "window-bg": "ground",
     "window-fg": "ink",
     "view-bg": "surface",
     "view-fg": "ink",
@@ -65,9 +64,7 @@ CSS_ROLE_TOKENS: dict[str, str] = {
     "field-border": "field-line",
     "headerbar-bg": "ground",
     "hairline": "line-soft",
-    "border": "line",
     "export-border": "line",
-    "details-border": "line",
     "auto-tag-border": "line",
     "wash-subtle": "neutral-tint",
     "wash-chip": "neutral-tint",
@@ -76,7 +73,6 @@ CSS_ROLE_TOKENS: dict[str, str] = {
     "search-selected-bg": "surface",
     "primary-bg": "accent-strong",
     "primary-fg": "on-accent",
-    "accent-bg": "accent",
     "accent-ink": "accent-ink",
     "accent-tint": "accent-tint",
     "accent-wash": "accent-tint",
@@ -88,7 +84,6 @@ CSS_ROLE_TOKENS: dict[str, str] = {
     "record-dot": "record-ink",
     "record-tint": "record-tint",
     "record-halo": "record-tint",
-    "record-trough": "record-tint",
     "badge-red-bg": "record-tint",
     "badge-red-fg": "record-ink",
     "badge-transcribing-bg": "ink",
@@ -110,7 +105,6 @@ CSS_ROLE_TOKENS: dict[str, str] = {
     "mic-silent-btn-bg": "surface",
     "mic-silent-btn-fg": "warn-ink",
     "mic-silent-trough": "warn-tint",
-    "live-silent-trough": "warn-tint",
     "dup-notice-bg": "sunken",
     "likely-tag-bg": "ink",
     "success-bg": "success-fill",
